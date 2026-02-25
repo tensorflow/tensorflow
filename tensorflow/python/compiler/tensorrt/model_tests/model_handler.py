@@ -337,7 +337,7 @@ class ModelHandlerV2(_ModelHandlerBase):
   def graph_func(self):
     try:
       return self._graph_func
-    except:
+    except Exception:
       graph_func = load_graph_func(
           saved_model_dir=self.model_config.saved_model_dir,
           saved_model_tags=self.model_config.saved_model_tags,

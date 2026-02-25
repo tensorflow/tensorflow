@@ -2387,7 +2387,7 @@ class variable_scope:
 
     try:
       return self._enter_scope_uncached()
-    except:
+    except Exception:
       if (self._in_graph_mode and not self._building_function and
           self._graph_context_manager is not None):
         self._graph_context_manager.__exit__(*sys.exc_info())
@@ -2432,7 +2432,7 @@ class variable_scope:
             name_scope, skip_on_eager=False)
         try:
           current_name_scope_name = current_name_scope.__enter__()
-        except:
+        except Exception:
           current_name_scope.__exit__(*sys.exc_info())
           raise
         self._current_name_scope = current_name_scope
@@ -2454,7 +2454,7 @@ class variable_scope:
             constraint=self._constraint)
         try:
           entered_pure_variable_scope = pure_variable_scope.__enter__()
-        except:
+        except Exception:
           pure_variable_scope.__exit__(*sys.exc_info())
           raise
         self._cached_pure_variable_scope = pure_variable_scope
@@ -2475,7 +2475,7 @@ class variable_scope:
             constraint=self._constraint)
         try:
           entered_pure_variable_scope = pure_variable_scope.__enter__()
-        except:
+        except Exception:
           pure_variable_scope.__exit__(*sys.exc_info())
           raise
         self._cached_pure_variable_scope = pure_variable_scope
@@ -2488,7 +2488,7 @@ class variable_scope:
           self._default_name, skip_on_eager=False)
       try:
         current_name_scope_name = current_name_scope.__enter__()
-      except:
+      except Exception:
         current_name_scope.__exit__(*sys.exc_info())
         raise
       self._current_name_scope = current_name_scope
@@ -2506,7 +2506,7 @@ class variable_scope:
           constraint=self._constraint)
       try:
         entered_pure_variable_scope = pure_variable_scope.__enter__()
-      except:
+      except Exception:
         pure_variable_scope.__exit__(*sys.exc_info())
         raise
       self._cached_pure_variable_scope = pure_variable_scope

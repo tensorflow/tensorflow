@@ -235,7 +235,7 @@ class ReturnStatementsTransformer(converter.Base):
       try:
         do_return_var_name = True
         retval_var_name = retval
-      except:
+      except Exception:
         do_return_var_name = False
         raise
     """

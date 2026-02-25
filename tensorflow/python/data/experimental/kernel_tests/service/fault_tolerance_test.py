@@ -188,7 +188,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     try:
       import portpicker  # pylint: disable=g-import-not-at-top
       dispatcher_port = portpicker.pick_unused_port()
-    except:
+    except Exception:
       raise self.skipTest("Flakes in portpicker library do not represent "
                           "TensorFlow errors.")
     cluster = data_service_test_base.TestCluster(

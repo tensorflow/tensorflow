@@ -56,7 +56,7 @@ class ContextTest(test.TestCase, parameterized.TestCase):
       # from tensors created from Python.
       tensor2 = tensor1 * tensor1
       context._set_context(original_context)
-    except:
+    except Exception:
       context._set_context(original_context)
       raise
 

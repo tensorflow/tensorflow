@@ -1623,7 +1623,7 @@ class BackupAndRestore(Callback):
   ...   model.fit(np.arange(100).reshape(5, 20), np.zeros(5), epochs=10,
   ...             batch_size=1, callbacks=[callback, InterruptingCallback()],
   ...             verbose=0)
-  ... except:
+  ... except Exception:
   ...   pass
   >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5), epochs=10,
   ...             batch_size=1, callbacks=[callback], verbose=0)

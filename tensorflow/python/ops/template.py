@@ -366,7 +366,7 @@ class Template(trackable.Trackable):
           # Trackable).
           with trackable_util.capture_dependencies(template=self):
             result = self._func(*args, **kwargs)
-        except:
+        except Exception:
           self._first_call = True
           raise
         self._variables_created = True

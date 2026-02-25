@@ -282,7 +282,7 @@ class Coordinator:
     ```python
     try:
       ...body...
-    except:
+    except Exception:
       coord.request_stop(sys.exc_info())
     ```
 

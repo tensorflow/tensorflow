@@ -144,7 +144,7 @@ class DType(
     except:  # bare except as possible raises by finfo not documented
       try:
         return ml_dtypes.iinfo(self.as_numpy_dtype).min
-      except:
+      except Exception:
         raise TypeError(f"Cannot find minimum value of {self}.")
 
   @property
@@ -168,7 +168,7 @@ class DType(
     except:  # bare except as possible raises by finfo not documented
       try:
         return ml_dtypes.iinfo(self.as_numpy_dtype).max
-      except:
+      except Exception:
         raise TypeError(f"Cannot find maximum value of {self}.")
 
   @property

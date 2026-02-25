@@ -696,7 +696,7 @@ class AstToCfg(gast.NodeVisitor):
 
     node = self.builder.add_exit_node(node, try_node, guards)
 
-    if may_exit_via_except:
+    if may_exit_via_except Exception:
       except_guards = self._get_enclosing_except_scopes(exits_nodes_of_type)
       self.builder.connect_raise_node(node, except_guards)
 

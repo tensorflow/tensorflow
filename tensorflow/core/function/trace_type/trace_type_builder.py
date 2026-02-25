@@ -201,7 +201,7 @@ def from_value(value: Any,
   except TypeError:
     try:
       return default_types.Literal(value)
-    except:
+    except Exception:
       raise TypeError(  # pylint: disable=raise-missing-from
           f"Could not generate a generic TraceType for {value!r}."
           f"Please verify that it is immutable/hashable. Otherwise, consider "

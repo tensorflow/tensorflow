@@ -2961,7 +2961,7 @@ class Graph(pywrap_tf_session.PyGraph):
         try:
           op_name, out_n = name.split(":")
           out_n = int(out_n)
-        except:
+        except Exception:
           raise ValueError("The name %s looks a like a Tensor name, but is "
                            "not a valid one. Tensor names must be of the "
                            "form \"<op_name>:<output_index>\"." % repr(name))
@@ -2976,7 +2976,7 @@ class Graph(pywrap_tf_session.PyGraph):
 
         try:
           return op.outputs[out_n]
-        except:
+        except Exception:
           raise KeyError("The name %s refers to a Tensor which does not "
                          "exist. The operation, %s, exists but only has "
                          "%s outputs." %
@@ -5642,7 +5642,7 @@ class internal_name_scope_v1(contextlib.AbstractContextManager[str]):  # pylint:
     try:
       self._name_scope = g.name_scope(self._name)
       return self._name_scope.__enter__()
-    except:
+    except Exception:
       if self._g_manager is not None:
         self._g_manager.__exit__(*sys.exc_info())
       raise

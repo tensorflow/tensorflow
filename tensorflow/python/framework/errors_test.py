@@ -110,7 +110,7 @@ class ErrorsTest(test.TestCase):
   def testStatusDoesNotLeak(self):
     try:
       _pywrap_file_io.DeleteFile(compat.as_bytes("/DOES_NOT_EXIST/"))
-    except:
+    except Exception:
       pass
     gc.collect()
     self.assertEqual(0, self._CountReferences(c_api_util.ScopedTFStatus))

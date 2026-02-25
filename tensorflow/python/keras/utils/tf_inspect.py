@@ -22,7 +22,7 @@ from tensorflow.python.util import tf_decorator
 
 try:
   ArgSpec = _inspect.ArgSpec
-except:
+except Exception:
   pass
 
 

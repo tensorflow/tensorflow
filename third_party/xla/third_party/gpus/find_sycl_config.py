@@ -51,7 +51,7 @@ def _get_basekit_path():
 def _get_basekit_version():
   try:
     version = _get_toolkit_path().split("/compiler/")[1].split("/")[0]
-  except:
+  except Exception:
     version = "unknown"
   return version
 

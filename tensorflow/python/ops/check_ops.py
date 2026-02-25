@@ -1654,7 +1654,7 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   `InvalidArgumentError` is raised.
 
   Size entries in the specified shapes are checked against other entries by
-  their __hash__, except:
+  their __hash__, except Exception:
     - a size entry is interpreted as an explicit size if it can be parsed as an
       integer primitive.
     - a size entry is interpreted as *any* size if it is None or '.'.
@@ -1727,7 +1727,7 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   `InvalidArgumentError` is raised.
 
   Size entries in the specified shapes are checked against other entries by
-  their __hash__, except:
+  their __hash__, except Exception:
     - a size entry is interpreted as an explicit size if it can be parsed as an
       integer primitive.
     - a size entry is interpreted as *any* size if it is None or '.'.

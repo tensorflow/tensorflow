@@ -528,7 +528,7 @@ def get_visible_devices(device_type=None):
   ...   visible_devices = tf.config.get_visible_devices()
   ...   for device in visible_devices:
   ...     assert device.device_type != 'GPU'
-  ... except:
+  ... except Exception:
   ...   # Invalid device or cannot modify virtual devices once initialized.
   ...   pass
 
@@ -562,7 +562,7 @@ def set_visible_devices(devices, device_type=None):
   ...   logical_devices = tf.config.list_logical_devices('GPU')
   ...   # Logical device was not created for first GPU
   ...   assert len(logical_devices) == len(physical_devices) - 1
-  ... except:
+  ... except Exception:
   ...   # Invalid device or cannot modify virtual devices once initialized.
   ...   pass
 
@@ -722,7 +722,7 @@ def get_memory_growth(device):
   >>> try:
   ...   tf.config.experimental.set_memory_growth(physical_devices[0], True)
   ...   assert tf.config.experimental.get_memory_growth(physical_devices[0])
-  ... except:
+  ... except Exception:
   ...   # Invalid device or cannot modify virtual devices once initialized.
   ...   pass
 
@@ -751,7 +751,7 @@ def set_memory_growth(device, enable):
   >>> physical_devices = tf.config.list_physical_devices('GPU')
   >>> try:
   ...   tf.config.experimental.set_memory_growth(physical_devices[0], True)
-  ... except:
+  ... except Exception:
   ...   # Invalid device or cannot modify virtual devices once initialized.
   ...   pass
 
@@ -837,7 +837,7 @@ def get_logical_device_configuration(device):
   ...   configs = tf.config.get_logical_device_configuration(
   ...     physical_devices[0])
   ...   assert len(configs) == 2
-  ... except:
+  ... except Exception:
   ...   # Cannot modify virtual devices once initialized.
   ...   pass
 
@@ -887,7 +887,7 @@ def set_logical_device_configuration(device, logical_devices):
   ...      tf.config.LogicalDeviceConfiguration(),
   ...      tf.config.LogicalDeviceConfiguration(),
   ...      tf.config.LogicalDeviceConfiguration()])
-  ... except:
+  ... except Exception:
   ...   # Cannot modify logical devices once initialized.
   ...   pass
 
@@ -907,7 +907,7 @@ def set_logical_device_configuration(device, logical_devices):
   ...     physical_devices[0],
   ...     [tf.config.LogicalDeviceConfiguration(memory_limit=10),
   ...      tf.config.LogicalDeviceConfiguration(memory_limit=10)])
-  ... except:
+  ... except Exception:
   ...   # Invalid device or cannot modify logical devices once initialized.
   ...   pass
 

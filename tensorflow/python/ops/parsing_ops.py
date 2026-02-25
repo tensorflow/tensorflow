@@ -372,7 +372,7 @@ def _parse_example_raw(serialized, names, params, name):
 def parse_single_example(serialized, features, name=None, example_names=None):
   """Parses a single `Example` proto.
 
-  Similar to `parse_example`, except:
+  Similar to `parse_example`, except Exception:
 
   For dense tensors, the returned `Tensor` is identical to the output of
   `parse_example`, except there is no batch dimension, the output shape is the
@@ -409,7 +409,7 @@ def parse_single_example_v2(
     ):
   """Parses a single `Example` proto.
 
-  Similar to `parse_example`, except:
+  Similar to `parse_example`, except Exception:
 
   For dense tensors, the returned `Tensor` is identical to the output of
   `parse_example`, except there is no batch dimension, the output shape is the

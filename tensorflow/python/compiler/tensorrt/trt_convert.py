@@ -799,7 +799,7 @@ class TrtGraphConverter(object):
             proto.ParseFromString(value)
             try:
               new_value = from_proto(proto, import_scope=scope)
-            except:
+            except Exception:
               continue
             dest_graph.add_to_collection(key, new_value)
         else:
@@ -1065,7 +1065,7 @@ def _convert_to_tensor(inp):
         args = map(ops.convert_to_tensor, inp)
       else:
         args = [ops.convert_to_tensor(inp)]
-  except:
+  except Exception:
     error_msg = "Failed to convert input to tensor."
     logging.error(error_msg + "\ninp = `{0}`\n".format(inp))
     raise RuntimeError(error_msg)

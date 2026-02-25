@@ -76,7 +76,7 @@ class MetricsNonportableTest(test_util.TensorFlowTestCase):
       gc.collect()
       stub2.increase_counter_debugger_creation()
       self.assertEqual(metrics._counter_debugger_creation.get_cell().value(), 3)
-    except:
+    except Exception:
       raise Exception('No exception should be raised.')
 
   def test_interpreter_creation_counter_increase_success(self):
