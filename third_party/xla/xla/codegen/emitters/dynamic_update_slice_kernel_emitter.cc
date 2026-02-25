@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -155,11 +156,12 @@ absl::StatusOr<KernelSpec> DynamicUpdateSliceKernelEmitter::GetKernelSpec()
   }
 
   KernelSpec::Buffers result_buffers;
-  for (auto& indexed : ShapeUtil::GetLeafShapes(fusion_.shape())) {
+  for (ShapeUtil::IndexedShape& indexed :
+       ShapeUtil::GetLeafShapes(fusion_.shape())) {
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment_->GetUniqueSlice(&fusion_, indexed.index));
-    result_buffers.push_back(std::move(slice));
+    result_buffers.push_back({slice, indexed.shape});
   }
 
   KernelSpec::Buffers argument_buffers;
@@ -172,15 +174,14 @@ absl::StatusOr<KernelSpec> DynamicUpdateSliceKernelEmitter::GetKernelSpec()
           buffer_assignment_->GetUniqueSlice(operand, indexed.index));
 
       bool invariant = absl::c_none_of(
-          result_buffers,
-          [&slice](const BufferAllocation::Slice& result_slice) {
-            return result_slice.OverlapsWith(slice);
+          result_buffers, [&slice](const ShapedSlice& result_slice) {
+            return result_slice.slice.OverlapsWith(slice);
           });
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }
 
-      argument_buffers.push_back(std::move(slice));
+      argument_buffers.push_back({slice, indexed.shape});
       ++operand_index;
     }
   }

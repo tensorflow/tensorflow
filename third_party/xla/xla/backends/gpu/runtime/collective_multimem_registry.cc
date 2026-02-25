@@ -25,7 +25,7 @@ limitations under the License.
 
 namespace xla::gpu {
 
-void CollectiveMultimemRegistry::Register(const MultimemRequest& request) {
+void CollectiveMultimemRegistry::Request(const MultimemRequest& request) {
   requests_.push_back(request);
 }
 

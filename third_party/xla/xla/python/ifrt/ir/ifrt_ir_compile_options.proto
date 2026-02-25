@@ -25,7 +25,7 @@ message IfrtIrCompileOptionsProto {
 
   repeated int32 device_ids = 1;
   map<string, xla.CompileOptionsProto> compile_option_overrides = 2;
-  bool propagate_shardings = 3;
+  bool propagate_shardings = 3 [deprecated = true];
 
   // If not empty, dump textual programs to the specified directory. By default,
   // programs are dumped only at the beginning of each IFRT pass manager run.

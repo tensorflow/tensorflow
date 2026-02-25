@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -410,6 +411,8 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
 BasicStringArray::pjrt_layout() const {
   return absl::UnimplementedError("String arrays do not support PjRtLayout");
 }
+
+LayoutRef BasicStringArray::layout() const { return nullptr; }
 
 std::string BasicStringArray::DebugString() const {
   DCHECK(this);

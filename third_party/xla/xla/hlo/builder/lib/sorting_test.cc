@@ -24,18 +24,23 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-using SortingTest = ClientLibraryTestBase;
+using SortingTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(SortingTest, TopK3From8Values) {
   XlaBuilder builder(TestName());
@@ -88,9 +93,10 @@ TEST_F(SortingTest, TopKFullSort) {
 TEST_F(SortingTest, TopKFullSortWithDuplicates) {
   XlaBuilder builder(TestName());
   XlaOp a;
-  auto a_data = CreateR1Parameter<int>({1, 1, 2, 2, 1}, 0, "a", &builder, &a);
+  Literal a_data =
+      CreateR1Parameter<int>({1, 1, 2, 2, 1}, 0, "a", &builder, &a);
   xla::GetTupleElement(xla::TopK(a, 5), 1);
-  ComputeAndCompareR1<int>(&builder, {2, 3, 0, 1, 4}, {a_data.get()});
+  ComputeAndCompareR1<int>(&builder, {2, 3, 0, 1, 4}, {&a_data});
 }
 
 TEST_F(SortingTest, TopK3From8Values2Partitions) {
@@ -139,8 +145,7 @@ TEST_F(SortingTest, DISABLED_TopKLargeInput) {
   XlaBuilder builder(TestName());
   Array<float> input({2, 1000000});
   input.FillRandom(1.0f, 2.0f);
-  auto x =
-      CreateConstantFromLiteral(LiteralUtil::CreateFromArray(input), &builder);
+  auto x = ConstantLiteral(&builder, LiteralUtil::CreateFromArray(input));
   Array2D<float> expected_array(2, 1000);
   expected_array.Fill(2.0f);
   xla::GetTupleElement(xla::TopK(x, 1000), 0);
@@ -170,9 +175,10 @@ TEST_F(SortingTest, TopK3From8Int16Indices5Partitions) {
 TEST_F(SortingTest, TopKFullSortWithDuplicates2Partitions) {
   XlaBuilder builder(TestName());
   XlaOp a;
-  auto a_data = CreateR1Parameter<int>({1, 1, 2, 2, 1}, 0, "a", &builder, &a);
+  Literal a_data =
+      CreateR1Parameter<int>({1, 1, 2, 2, 1}, 0, "a", &builder, &a);
   xla::GetTupleElement(xla::TopKWithPartitions(a, 3, /*num_partitions=*/2), 1);
-  ComputeAndCompareR1<int>(&builder, {2, 3, 0}, {a_data.get()});
+  ComputeAndCompareR1<int>(&builder, {2, 3, 0}, {&a_data});
 }
 
 }  // namespace

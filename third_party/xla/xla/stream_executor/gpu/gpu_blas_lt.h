@@ -254,7 +254,7 @@ struct BlasLt {
     // optimizations (like preloading matmul kernels) once the algorithm is set.
     virtual absl::Status SetAlgorithm(const MatmulAlgorithm& algorithm) = 0;
 
-    virtual ~MatmulPlan() {}
+    virtual ~MatmulPlan() = default;
   };  // class MatmulPlan
 
   using MatmulPlanPtr = std::unique_ptr<MatmulPlan>;
@@ -278,7 +278,7 @@ struct BlasLt {
   void ClearMatmulPlanCache();
   size_t GetMatmulPlanCacheSize() const;
 
-  virtual ~BlasLt() {}
+  virtual ~BlasLt() = default;
 
  protected:
   mutable absl::Mutex plan_cache_mu_;

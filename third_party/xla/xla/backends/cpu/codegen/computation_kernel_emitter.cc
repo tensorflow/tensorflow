@@ -182,18 +182,18 @@ ComputationKernelEmitter::EmitKernelDefinition() {
       slice_to_buffer_table_index;
 
   int64_t buffer_table_index = 0;
-  for (const auto& [array, slice] : llvm::zip(
+  for (const auto& [array, arg] : llvm::zip(
            kernel_prototype.arguments, kernel_prototype.argument_buffers)) {
     int64_t index = buffer_table_index++;
-    slice_to_buffer_table_index[slice] = index;
+    slice_to_buffer_table_index[arg.slice] = index;
     llvm::Value* buffer_table_ptr = llvm_ir::EmitBufferIndexingGEP(
         buffer_table, ir_builder.getPtrTy(), index, &ir_builder);
     ir_builder.CreateStore(array.GetBasePointer(), buffer_table_ptr);
   }
-  for (const auto& [array, slice] :
+  for (const auto& [array, result] :
        llvm::zip(kernel_prototype.results, kernel_prototype.result_buffers)) {
     int64_t index = buffer_table_index++;
-    slice_to_buffer_table_index[slice] = index;
+    slice_to_buffer_table_index[result.slice] = index;
     llvm::Value* buffer_table_ptr = llvm_ir::EmitBufferIndexingGEP(
         buffer_table, ir_builder.getPtrTy(), index, &ir_builder);
     ir_builder.CreateStore(array.GetBasePointer(), buffer_table_ptr);
@@ -216,9 +216,16 @@ ComputationKernelEmitter::EmitKernelDefinition() {
 
   LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
 
+  KernelSpec::Buffers kernel_arguments, kernel_results;
+  for (const auto& buffer : kernel_prototype.argument_buffers) {
+    kernel_arguments.push_back({buffer.slice, buffer.shape});
+  }
+  for (const auto& buffer : kernel_prototype.result_buffers) {
+    kernel_results.push_back({buffer.slice, buffer.shape});
+  }
+
   KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
-                  std::move(kernel_prototype.argument_buffers),
-                  std::move(kernel_prototype.result_buffers),
+                  std::move(kernel_arguments), std::move(kernel_results),
                   std::move(kernel_prototype.invariant_arguments));
 
   return KernelDefinition(std::move(spec), std::move(source));

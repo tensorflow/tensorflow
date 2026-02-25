@@ -631,7 +631,6 @@ absl::Status GraphToFunctionDef(
       copy_placeholder_attrs_from_nodes, body_nodes, inputs, outputs,
       output_names, control_outputs, control_output_names, description,
       /*allow_destructive_reads=*/false, fdef);
-  return absl::OkStatus();
 }
 
 absl::Status GraphToFunctionDef(

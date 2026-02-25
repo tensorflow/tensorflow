@@ -12,7 +12,7 @@ def cuda_stub(name, srcs):
     native.genrule(
         name = "{}_stub_gen".format(name),
         srcs = srcs,
-        tools = ["//third_party/implib_so:make_stub"],
+        tools = [Label("//third_party/implib_so:make_stub")],
         outs = [
             "{}.inc".format(name),
             "{}.tramp.S".format(name),

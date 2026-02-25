@@ -56,6 +56,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:dump",
         "//xla/service:scatter_simplifier",
+        "//xla/service:shaped_slice",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",

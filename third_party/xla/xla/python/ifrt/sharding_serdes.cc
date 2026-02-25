@@ -77,7 +77,11 @@ class SingleDeviceShardingSerDes
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::cast<DeserializeShardingOptions>(options.get());
+        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+    if (deserialize_sharding_options == nullptr) {
+      return absl::InvalidArgumentError(
+          "DeserializeShardingOptions must be provided");
+    }
 
     SingleDeviceShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -134,7 +138,11 @@ class OpaqueShardingSerDes
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::cast<DeserializeShardingOptions>(options.get());
+        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+    if (deserialize_sharding_options == nullptr) {
+      return absl::InvalidArgumentError(
+          "DeserializeShardingOptions must be provided");
+    }
 
     OpaqueShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -204,7 +212,11 @@ class ConcreteShardingSerDes
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::cast<DeserializeShardingOptions>(options.get());
+        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+    if (deserialize_sharding_options == nullptr) {
+      return absl::InvalidArgumentError(
+          "DeserializeShardingOptions must be provided");
+    }
 
     ConcreteShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -293,7 +305,11 @@ class ConcreteEvenShardingSerDes
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::cast<DeserializeShardingOptions>(options.get());
+        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+    if (deserialize_sharding_options == nullptr) {
+      return absl::InvalidArgumentError(
+          "DeserializeShardingOptions must be provided");
+    }
 
     ConcreteEvenShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
@@ -357,7 +373,11 @@ class ShardingParamShardingSerDes
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_sharding_options =
-        llvm::cast<DeserializeShardingOptions>(options.get());
+        llvm::dyn_cast_or_null<DeserializeShardingOptions>(options.get());
+    if (deserialize_sharding_options == nullptr) {
+      return absl::InvalidArgumentError(
+          "DeserializeShardingOptions must be provided");
+    }
     ShardingParamShardingProto proto;
     if (!proto.ParseFromString(serialized)) {
       return absl::InvalidArgumentError(

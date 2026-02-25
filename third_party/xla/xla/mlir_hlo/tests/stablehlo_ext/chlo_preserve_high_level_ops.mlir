@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --stablehlo-ext-chlo-preserve-high-level-ops=use-custom-call-encoding=false -split-input-file | FileCheck %s
-// RUN: mlir-hlo-opt %s --stablehlo-ext-chlo-preserve-high-level-ops=use-custom-call-encoding=true -split-input-file | FileCheck %s --check-prefixes=CHECK-CC
+// RUN: mlir-hlo-opt %s --stablehlo-ext-chlo-preserve-high-level-ops=use-custom-call-encoding=true -split-input-file
 // RUN: mlir-hlo-opt %s > %t.0
 // RUN: mlir-hlo-opt %s --stablehlo-ext-chlo-preserve-high-level-ops=use-custom-call-encoding=false | mlir-hlo-opt --stablehlo-ext-chlo-recompose-ops -symbol-dce > %t.1
 // RUN: mlir-hlo-opt %s --stablehlo-ext-chlo-preserve-high-level-ops=use-custom-call-encoding=true | mlir-hlo-opt --stablehlo-ext-chlo-recompose-ops -symbol-dce > %t.2
@@ -159,3 +159,19 @@ func.func @unregistered_attrs_preserve(%arg0: tensor<5x16xf32>) -> (tensor<?x?xf
   %values, %indices = chlo.top_k(%arg0, k = 4) {largest = true, mhlo.frontend_attributes = {foo = "true"}} : tensor<5x16xf32> -> (tensor<?x?xf32>, tensor<?x?xi32>)
   return %values, %indices : tensor<?x?xf32>, tensor<?x?xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @scan_preserve
+func.func @scan_preserve(%arg0: tensor<5x2xf64>, %arg1: tensor<5x3xf64>, %arg2: tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>) {
+  // CHECK-CC: stablehlo.custom_call @chlo.scan(%arg0, %arg1, %arg2) {called_computations = [@chlo.scan.impl], mhlo.attributes = {dimension = 0 : i64, operandSegmentSizes = array<i32: 2, 1>, resultSegmentSizes = array<i32: 1, 1>}, mhlo.version = 1 : i64} : (tensor<5x2xf64>, tensor<5x3xf64>, tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>)
+  // CHECK: stablehlo.composite "chlo.scan" %arg0, %arg1, %arg2 {composite_attributes = {dimension = 0 : i64, operandSegmentSizes = array<i32: 2, 1>, resultSegmentSizes = array<i32: 1, 1>}, decomposition = @chlo.scan.impl, version = 1 : i32}
+  %0:2 = chlo.scan(%arg0, %arg1) inits(%arg2) dimension=0 {
+  ^bb0(%b0: tensor<2xf64>, %b1: tensor<3xf64>, %b2: tensor<4xf64>):
+    %2 = stablehlo.constant dense<0.0> : tensor<f64>
+    %1 = stablehlo.add %b2, %b2 : tensor<4xf64>
+    stablehlo.return %2, %1 : tensor<f64>, tensor<4xf64>
+  } : (tensor<5x2xf64>, tensor<5x3xf64>, tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>)
+  return %0#0, %0#1 : tensor<5xf64>, tensor<4xf64>
+}
+// CHECK: func.func private @chlo.scan.impl

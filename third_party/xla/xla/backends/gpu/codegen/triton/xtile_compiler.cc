@@ -615,6 +615,7 @@ absl::Status LowerXTileToTriton(
     pm.addPass(mlir::triton::xla::CreateTensorLowerToTritonPass());
     pm.addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass(
         block_level_parameters.is_warp_specialization_allowed));
+    pm.addPass(xtile::createStablehloLowerToArithPass());
     pm.addPass(xtile::createStablehloLowerToXtilePass());
     pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
     pm.addPass(mlir::triton::xla::CreateArithFP8ConversionToTritonPass());

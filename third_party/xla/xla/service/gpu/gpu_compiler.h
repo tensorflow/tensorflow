@@ -140,7 +140,7 @@ class GpuCompiler : public LLVMCompiler {
 
   absl::StatusOr<std::unique_ptr<Executable>> LoadExecutableFromAotResult(
       const CompiledModule& aot_result,
-      const se::StreamExecutor& stream_exec) override;
+      const se::DeviceDescription& device_description) override;
 
   static std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
       const stream_executor::DeviceDescription& device_description,
@@ -180,13 +180,14 @@ class GpuCompiler : public LLVMCompiler {
       tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
       const Compiler::GpuTargetConfig* target_config,
       const MultiProcessKeyValueStore& key_value_store,
-      const se::SemanticVersion& toolkit_version,
+      const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
       const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn);
 
   virtual absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
   GetCodegenBackends(se::StreamExecutor* stream_exec,
                      const Compiler::GpuTargetConfig* target_config,
+                     const AliasInfo* alias_info,
                      const DebugOptions& debug_options,
                      mlir::MLIRContext* mlir_context) {
     return std::vector<std::unique_ptr<CodegenBackend>>();

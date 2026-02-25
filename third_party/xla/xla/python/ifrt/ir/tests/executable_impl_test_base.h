@@ -60,8 +60,7 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
   // after the IFRT -> VIFRT -> IFRT round trip.
   absl::StatusOr<std::unique_ptr<IfrtIRProgram>> SerDeRoundTrip(
       std::unique_ptr<IfrtIRProgram> program,
-      Version::CompatibilityRequirement compatibility_requirement,
-      bool propagate_shardings = false);
+      Version::CompatibilityRequirement compatibility_requirement);
 
   // Creates an Array from per shard data.
   // TODO(hyeontaek): Remove this when MakeArrayFromHostBuffer supports it

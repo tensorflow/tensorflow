@@ -1322,6 +1322,9 @@ message DebugOptions {
   // TODO(b/355487968): Remove this option when validation complete.
   optional bool xla_enable_command_buffers_during_profiling = 317;
 
+  // If true, the HLO dumper will print the stack frame inline.
+  optional bool xla_hlo_print_inline_stack_frames = 447;
+
   enum AutotuneCacheMode {
     AUTOTUNE_CACHE_MODE_UNSPECIFIED = 0;
 
@@ -1361,7 +1364,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 446
+  // Next id: 448
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1471,7 +1474,7 @@ message DebugOptions {
       206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 249,
       263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299, 302,
       303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358, 361,
-      367, 369, 371, 385, 394, 398, 402, 423;
+      367, 369, 371, 385, 394, 398, 402, 423, 446;
 }
 
 // Contains flags which affects the GPU compilation result.

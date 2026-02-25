@@ -29,11 +29,14 @@ void BroadcastImpl(const NdArrayDesc<N>& input_desc, const char* input_data,
                    const int type_size) {
   // Copy data from input to output.
   if (dim == last_broadcasting_dim) {
-    int copy_size = output_desc.strides[dim] * type_size;
+    size_t copy_size =
+        static_cast<size_t>(output_desc.strides[dim]) * type_size;
     const char* data_src =
-        input_data + SubscriptToIndex(input_desc, indexes) * type_size;
+        input_data +
+        static_cast<size_t>(SubscriptToIndex(input_desc, indexes)) * type_size;
     char* data_dst =
-        output_data + SubscriptToIndex(output_desc, indexes) * type_size;
+        output_data +
+        static_cast<size_t>(SubscriptToIndex(output_desc, indexes)) * type_size;
     for (int i = 0; i < output_desc.extents[dim]; ++i, data_dst += copy_size) {
       memcpy(data_dst, data_src, copy_size);
     }
@@ -50,9 +53,11 @@ void BroadcastImpl(const NdArrayDesc<N>& input_desc, const char* input_data,
   // Duplicate data in output tensor.
   indexes[dim] = 0;
   if (input_desc.extents[dim] != output_desc.extents[dim]) {
-    int copy_size = output_desc.strides[dim] * type_size;
+    size_t copy_size =
+        static_cast<size_t>(output_desc.strides[dim] * type_size);
     char* data_src =
-        output_data + SubscriptToIndex(output_desc, indexes) * type_size;
+        output_data +
+        static_cast<size_t>(SubscriptToIndex(output_desc, indexes)) * type_size;
     char* data_dst = data_src + copy_size;
     for (int i = 1; i < output_desc.extents[dim]; ++i, data_dst += copy_size) {
       memcpy(data_dst, data_src, copy_size);

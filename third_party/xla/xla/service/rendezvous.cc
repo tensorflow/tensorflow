@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -71,6 +72,9 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
                         absl::string_view name,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
+  // Record the time when a thread joined a rendezvous.
+  absl::Time rendezvous_start = absl::Now();
+
   // Wait for `warn_stuck_timeout` for the rendezvous to be ready.
   if (WaitForReadyWithTimeout(state, warn_stuck_timeout)) {
     return;
@@ -107,8 +111,24 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
   // Wait for `terminate_timeout` for the rendezvous to be ready before killing
   // the process.
   if (WaitForReadyWithTimeout(state, terminate_timeout)) {
-    LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
-                  "Perhaps the timeout is too short.";
+    // Record the time when a thread completed a rendezvous.
+    absl::Time rendezvous_end = absl::Now();
+
+    if (is_all_participants_arrived) {
+      LOG(ERROR) << absl::StreamFormat(
+          "[id=%d] This thread is unstuck waiting for `%s` after %s. All "
+          "threads joined the rendezvous on time however the leader took long "
+          "time to complete it. Warning above was a false-positive. Perhaps "
+          "the timeout is too short.",
+          id, name, absl::FormatDuration(rendezvous_end - rendezvous_start));
+    } else {
+      LOG(ERROR) << absl::StreamFormat(
+          "[id=%d] This thread is unstuck waiting for `%s` after %s. Threads "
+          "joined rendezvous with significant delay, system can be overloaded "
+          "and threads make progress at different rate. Warning above was a "
+          "false-positive. Perhaps the timeout is too short.",
+          id, name, absl::FormatDuration(rendezvous_end - rendezvous_start));
+    }
     return;
   }
 

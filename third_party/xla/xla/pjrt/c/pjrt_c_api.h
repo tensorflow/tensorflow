@@ -71,6 +71,7 @@ typedef enum {
   PJRT_Extension_Type_HostAllocator,  // Experimental.
   PJRT_Extension_Type_TpuTopology,
   PJRT_Extension_Type_TpuExecutable,
+  PJRT_Extension_Type_Megascale,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next

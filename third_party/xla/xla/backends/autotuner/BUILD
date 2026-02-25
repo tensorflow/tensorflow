@@ -39,6 +39,7 @@ cc_library(
         ":profiler",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/service:dump",

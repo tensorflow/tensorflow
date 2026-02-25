@@ -56,7 +56,7 @@ struct IfrtIrExecutableVersion
   // Tracking the runtime ABI version of an atom executable and the devices that
   // it is to be used on.
   struct AtomExecutableVersion {
-    std::unique_ptr<xla::ifrt::ExecutableVersion> runtime_abi_version;
+    std::shared_ptr<const xla::ifrt::ExecutableVersion> runtime_abi_version;
     std::vector<xla::ifrt::DeviceId> devices;
   };
 

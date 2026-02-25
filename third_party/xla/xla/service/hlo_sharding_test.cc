@@ -165,7 +165,7 @@ TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
     tuple_shardings {
       named_sharding {
         mesh {
-          axes { name: "a" size: 2 }
+          axes { name: "a" size: 4 }
           axes { name: "b" size: 4 }
         }
         dim_shardings {
@@ -184,7 +184,7 @@ TEST_F(HloShardingTest, NamedShardingTupleProtoRoundTrip) {
     tuple_shardings {
       named_sharding {
         mesh {
-          axes { name: "a" size: 2 }
+          axes { name: "a" size: 4 }
           axes { name: "b" size: 4 }
         }
         dim_shardings {
@@ -587,6 +587,21 @@ TEST_F(HloShardingTest, NestedTuple) {
   // Test should fail because the input type is not a tuple.
   EXPECT_IS_NOT_OK(tuple_sharding.Validate(ShapeUtil::MakeShape(F32, {}),
                                            /*num_devices=*/5));
+}
+
+TEST_F(HloShardingTest, DeviceAssignmentTiledSharding) {
+  TileAssignment ta({2, 4}, {4, 2}, {1, 0});
+  HloSharding sharding = HloSharding::Tile(ta);
+
+  EXPECT_EQ(sharding.device_assignment(), ta);
+}
+TEST_F(HloShardingTest, DeviceAssignmentNamedSharding) {
+  TileAssignment ta({2, 4}, {4, 2}, {1, 0});
+  Mesh mesh(ta, {"a", "b"});
+  HloSharding hlo_sharding_from_named(
+      test_utils::FromAxisNames(mesh, {{"a"}, {"b"}}));
+
+  EXPECT_EQ(hlo_sharding_from_named.device_assignment(), ta);
 }
 
 TEST_F(HloShardingTest, NormalizeTrivialSubgroupToManual) {

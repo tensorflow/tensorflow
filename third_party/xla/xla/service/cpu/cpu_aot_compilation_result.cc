@@ -145,8 +145,7 @@ CpuAotCompilationResult::CpuAotCompilationResult(
 }
 
 absl::StatusOr<std::unique_ptr<Executable>>
-CpuAotCompilationResult::LoadExecutable(
-    const se::StreamExecutor* stream_exec) && {
+CpuAotCompilationResult::LoadExecutable() && {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       HloModule::CreateFromProtoWithConfig(proto_.hlo_module()));
@@ -203,6 +202,13 @@ CpuAotCompilationResult::LoadExecutable(
   cpu_executable->set_hlo_proto(std::move(hlo_proto));
 
   return cpu_executable;
+}
+
+absl::StatusOr<std::unique_ptr<Executable>>
+CpuAotCompilationResult::LoadExecutable(
+    se::Platform::Id platform_id,
+    const se::DeviceDescription& device_description) && {
+  return std::move((*this)).LoadExecutable();
 }
 
 }  // namespace xla::cpu

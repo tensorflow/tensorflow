@@ -148,7 +148,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
 
 absl::StatusOr<std::unique_ptr<Executable>> CpuAotLoader::LoadExecutable(
     CompiledModule&& compilation_result) {
-  return std::move(compilation_result).LoadExecutable(/*executor=*/nullptr);
+  return std::move(compilation_result).LoadExecutable();
 }
 
 absl::StatusOr<std::unique_ptr<CompiledModule>>

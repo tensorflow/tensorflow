@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -93,7 +94,7 @@ TEST_F(TfrtGpuBufferTest, CreateBuffer) {
 TEST_F(TfrtGpuBufferTest, AcquireExternalReference) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
+      absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
@@ -316,9 +317,8 @@ TEST_F(TfrtGpuBufferTest, CopyPoisonedBuffer) {
       TF_ASSERT_OK_AND_ASSIGN(auto dst_buffer,
                               src_buffer->CopyToMemorySpace(dst_memory_space));
 
-      EXPECT_THAT(
-          dst_buffer->GetReadyFuture().Await(),
-          testing::status::StatusIs(absl::StatusCode::kInternal, errmsg));
+      EXPECT_THAT(dst_buffer->GetReadyFuture().Await(),
+                  absl_testing::StatusIs(absl::StatusCode::kInternal, errmsg));
     }
   }
 }

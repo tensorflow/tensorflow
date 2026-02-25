@@ -134,6 +134,10 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
                           const HloReduceScatterInstruction* inst,
                           std::vector<Buffer> buffers,
                           bool p2p_memcpy_enabled = false);
+  ReduceScatterStartThunk(
+      ThunkInfo thunk_info, const AllReduceConfig& config,
+      std::vector<Buffer> buffers,
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
   static absl::string_view GetHloOpName() { return "reduce-scatter-start"; }
 
@@ -143,6 +147,13 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
 
   static CollectiveOpGroupMode GetGroupMode(
       const HloReduceScatterInstruction* inst);
+
+  static absl::StatusOr<std::unique_ptr<ReduceScatterStartThunk>> FromProto(
+      ThunkInfo thunk_info, const ReduceScatterStartThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      CollectiveThunk::AsyncEventsMap& async_events_map);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
   absl::StatusOr<bool> RunCollective(const ExecuteParams& params,

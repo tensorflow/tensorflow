@@ -30,7 +30,8 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -90,12 +91,9 @@ absl::StatusOr<std::string> LegacyGpuAotCompilationResult::SerializeAsString()
 
 absl::StatusOr<std::unique_ptr<Executable>>
 LegacyGpuAotCompilationResult::LoadExecutable(
-    const se::StreamExecutor* stream_exec) && {
-  if (stream_exec == nullptr) {
-    return InvalidArgument("Stream executor is null.");
-  }
-
-  return compiler_->LoadExecutableFromAotResult(*this, *stream_exec);
+    se::Platform::Id platform_id,
+    const se::DeviceDescription& device_description) && {
+  return compiler_->LoadExecutableFromAotResult(*this, device_description);
 }
 
 absl::StatusOr<std::unique_ptr<BufferAssignment>>
@@ -124,7 +122,8 @@ absl::StatusOr<std::string> EarlyExitCompilationResult::SerializeAsString()
 
 absl::StatusOr<std::unique_ptr<Executable>>
 EarlyExitCompilationResult::LoadExecutable(
-    const se::StreamExecutor* stream_exec) && {
+    se::Platform::Id platform_id,
+    const se::DeviceDescription& device_description) && {
   return Unavailable(
       "LoadExecutable() is not supported by EarlyExitCompilationResult.");
 }

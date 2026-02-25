@@ -346,8 +346,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  CommandStateManager state;
-  TF_ASSERT_OK(executor.Initialize({stream_executor, source}, state));
+  TF_ASSERT_OK(executor.Initialize({stream_executor, source}));
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
@@ -356,6 +355,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
 
+  CommandStateManager state;
   Command::RecordParams record_params = {state};
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -419,8 +419,7 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   Thunk::ExecutableSource source = {/*text=*/{},
                                     /*binary=*/fatbin};
 
-  CommandStateManager state;
-  TF_ASSERT_OK(executor.Initialize({stream_executor, source}, state));
+  TF_ASSERT_OK(executor.Initialize({stream_executor, source}));
 
   ServiceExecutableRunOptions run_options;
   se::StreamExecutorAddressAllocator allocator(stream_executor);
@@ -429,6 +428,7 @@ TEST(CommandBufferCmdTest, LaunchCmdWithPriority) {
   Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
       run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
 
+  CommandStateManager state;
   Command::RecordParams record_params = {state};
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -665,10 +665,9 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
   Thunk::ExecutableSource source_empty = {/*text=*/{}, /*binary=*/{}};
   Thunk::ExecutableSource source_fatbin = {/*text=*/{}, /*binary=*/fatbin};
 
-  CommandStateManager state;
-  TF_ASSERT_OK(exec_a.Initialize({stream_executor, source_empty}, state));
-  TF_ASSERT_OK(exec_b.Initialize({stream_executor, source_fatbin}, state));
-  TF_ASSERT_OK(exec_c.Initialize({stream_executor, source_empty}, state));
+  TF_ASSERT_OK(exec_a.Initialize({stream_executor, source_empty}));
+  TF_ASSERT_OK(exec_b.Initialize({stream_executor, source_fatbin}));
+  TF_ASSERT_OK(exec_c.Initialize({stream_executor, source_empty}));
 
   // Execute params and allocations mapping indices 0=a,1=b,2=c
   ServiceExecutableRunOptions run_options;
@@ -677,6 +676,8 @@ TEST(CommandBufferCmdTest, RecordExecutorsWithDependencies) {
 
   Thunk::ExecuteParams exec_params = Thunk::ExecuteParams::Create(
       run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  CommandStateManager state;
   Command::RecordParams record_params = {state};
 
   // Create a primary command buffer and record A -> B -> C with dependencies.
@@ -773,18 +774,18 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
 
   // Prepare state and params; ChildCmd requires initialization to create a
   // nested buffer.
-  CommandStateManager state;
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   se::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b, c}, 0, &allocator);
   TF_ASSERT_OK(outer_executor.Initialize(
-      {stream_executor, source, &allocations, stream.get(), stream.get()},
-      state));
+      {stream_executor, source, &allocations, stream.get(), stream.get()}));
 
   // allocations already created above
   ServiceExecutableRunOptions run_options;
   Thunk::ExecuteParams exec_params = Thunk::ExecuteParams::Create(
       run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+
+  CommandStateManager state;
   Command::RecordParams record_params = {state};
 
   // Create a command buffer and record the nested ChildCmd (Create).

@@ -734,12 +734,27 @@ HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings,
 HloSharding MoveAndMergeShardingTiles(const HloSharding& sharding,
                                       int64_t source_dim, int64_t target_dim) {
   CHECK(sharding.IsTiled());
-
   CHECK_NE(source_dim, target_dim);
   CHECK_GE(source_dim, 0);
   CHECK_GE(target_dim, 0);
   CHECK_LT(source_dim, sharding.TiledDataRank());
   CHECK_LT(target_dim, sharding.TiledDataRank());
+
+  if (sharding.UseNamedShardingLeaf()) {
+    const NamedSharding& named_sharding = sharding.named_sharding();
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings(
+        named_sharding.dim_shardings().begin(),
+        named_sharding.dim_shardings().end());
+
+    new_dim_shardings[target_dim].Append(new_dim_shardings[source_dim],
+                                         named_sharding.mesh());
+    new_dim_shardings[source_dim] = NamedSharding::DimensionSharding();
+
+    return HloSharding(NamedSharding(
+        named_sharding.mesh(), std::move(new_dim_shardings),
+        named_sharding.replicated_axes(), named_sharding.unreduced_axes(),
+        named_sharding.manual_axes(), named_sharding.metadata()));
+  }
 
   // There are 3 steps to move and merge the sharding tiles. Given the sharding
   // with tile assignment [a, b, c, d, e], source_dim = 1, target_dim = 3, the
@@ -1682,6 +1697,51 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
     }
   }
   auto new_tile = sharding.tile_assignment().Reshape(new_tile_shape);
+  return sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile, sharding.metadata())
+             : HloSharding::Subgroup(new_tile, sharding.subgroup_types(),
+                                     sharding.metadata());
+}
+
+HloSharding AddShapeDimensions(const HloSharding& sharding,
+                               int64_t insertion_index, int64_t num_dims) {
+  if (!sharding.IsTiled() || num_dims == 0) {
+    return sharding;
+  }
+
+  CHECK_GE(insertion_index, 0);
+  CHECK_LE(insertion_index, sharding.TiledDataRank());
+
+  if (sharding.UseNamedShardingLeaf()) {
+    absl::Span<const NamedSharding::DimensionSharding> dim_shardings =
+        sharding.named_sharding().dim_shardings();
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings;
+    new_dim_shardings.reserve(dim_shardings.size() + num_dims);
+    new_dim_shardings.insert(new_dim_shardings.end(), dim_shardings.begin(),
+                             dim_shardings.begin() + insertion_index);
+    new_dim_shardings.insert(new_dim_shardings.end(), num_dims,
+                             NamedSharding::DimensionSharding());
+    new_dim_shardings.insert(new_dim_shardings.end(),
+                             dim_shardings.begin() + insertion_index,
+                             dim_shardings.end());
+
+    return HloSharding(NamedSharding(
+        sharding.named_sharding().mesh(), new_dim_shardings,
+        sharding.named_sharding().replicated_axes(),
+        sharding.named_sharding().unreduced_axes(),
+        sharding.named_sharding().manual_axes(), sharding.metadata()));
+  }
+
+  absl::Span<const int64_t> dims = sharding.dimensions();
+  DimensionVector new_tile_shape;
+  new_tile_shape.reserve(dims.size() + num_dims);
+  new_tile_shape.insert(new_tile_shape.end(), dims.begin(),
+                        dims.begin() + insertion_index);
+  new_tile_shape.insert(new_tile_shape.end(), num_dims, 1);
+  new_tile_shape.insert(new_tile_shape.end(), dims.begin() + insertion_index,
+                        dims.end());
+
+  TileAssignment new_tile = sharding.tile_assignment().Reshape(new_tile_shape);
   return sharding.ReplicateOnLastTileDim()
              ? HloSharding::PartialTile(new_tile, sharding.metadata())
              : HloSharding::Subgroup(new_tile, sharding.subgroup_types(),

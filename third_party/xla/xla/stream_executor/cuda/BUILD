@@ -1458,6 +1458,7 @@ cc_library(
         ":cudnn_plugin",
         ":cufft_plugin",
         ":make_batch_pointers_kernel_cuda",
+        ":multi_gpu_barrier_kernel_cuda",
         ":ragged_all_to_all_kernel_cuda",
         ":redzone_allocator_kernel_cuda",
         ":repeat_buffer_kernel_cuda",
@@ -2463,10 +2464,56 @@ cuda_library(
         "gpu",
     ],
     deps = [
-        "//xla/stream_executor:kernel_spec",
         "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = 1,
+)
+
+cuda_library(
+    name = "multi_gpu_barrier_kernel_cuda",
+    srcs = [
+        "multi_gpu_barrier_kernel_cuda.cu.cc",
+        "//xla/stream_executor/gpu:multi_gpu_barrier_kernel.cu.h",
+    ],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":collective_signal_cuda",
+        ":cuda_platform_id",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
+        "@com_google_absl//absl/base",
+    ],
+    alwayslink = 1,
+)
+
+xla_test(
+    name = "multi_gpu_barrier_test",
+    srcs = ["multi_gpu_barrier_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cuda_platform_id",
+        ":multi_gpu_barrier_kernel_cuda",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cuda_library(

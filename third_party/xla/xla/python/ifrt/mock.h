@@ -86,7 +86,7 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(ShardingRef, shared_ptr_sharding, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
               pjrt_layout, (), (const, final));
-  MOCK_METHOD(CustomLayoutRef, layout, (), (const, final));
+  MOCK_METHOD(LayoutRef, layout, (), (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
@@ -338,13 +338,13 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::string_view, name, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>,
-              executable_version, (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>,
+      executable_version, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),
@@ -404,13 +404,13 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::string_view, name, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>,
-              executable_version, (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>,
+      executable_version, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
-  MOCK_METHOD(tsl::Future<>, GetReadyFuture, (), (const, override));
   MOCK_METHOD(int, num_devices, (), (const, final));
   MOCK_METHOD(int64_t, SizeOfGeneratedCodeInBytes, (), (const, final));
   MOCK_METHOD(absl::StatusOr<CompiledMemoryStats>, GetCompiledMemoryStats, (),

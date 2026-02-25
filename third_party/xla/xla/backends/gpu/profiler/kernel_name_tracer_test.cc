@@ -165,10 +165,10 @@ void LaunchCommandBufferThunk(stream_executor::StreamExecutor* executor,
                               LaunchDimensions(1, kLength),
                               /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor cmd_buffer_executor,
-      CommandBufferCmdExecutor::Create(
+      CommandExecutor cmd_buffer_executor,
+      CommandExecutor::Create(
           std::move(commands),
-          CommandBufferCmdExecutor::SynchronizationMode::kConcurrent));
+          CommandExecutor::SynchronizationMode::kConcurrent));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(cmd_buffer_executor), Thunk::ThunkInfo());

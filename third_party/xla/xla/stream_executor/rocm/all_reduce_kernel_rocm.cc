@@ -20,7 +20,6 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/casts.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel_lib.cu.h"
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
@@ -59,7 +58,7 @@ union alignas(8) Vec<hip_bfloat16> {
                 &stream_executor::gpu::AllReduceKernelImpl<                  \
                     HIP_TYPE, xla::ReductionKind::REDUCTION_KIND,            \
                     xla::se::gpu::AllReduceStrategy::STRATEGY,               \
-                    stream_executor::gpu::PlatformType::ROCM>),              \
+                    stream_executor::gpu::PlatformType::kRocm>),             \
             "all_reduce_" #SUFFIX #STRATEGY, arity);                         \
       }));
 

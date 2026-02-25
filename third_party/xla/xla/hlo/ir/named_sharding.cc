@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <numeric>
 #include <optional>
 #include <ostream>
@@ -24,8 +25,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -33,10 +36,27 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 
 using DimensionSharding = NamedSharding::DimensionSharding;
+
+NamedSharding::NamedSharding(Mesh mesh,
+                             absl::Span<const DimensionSharding> dim_shardings,
+                             absl::Span<const AxisRef> replicated_axes,
+                             absl::Span<const AxisRef> unreduced_axes,
+                             absl::Span<const AxisRef> manual_axes,
+                             absl::Span<const OpMetadata> metadata)
+    : mesh_(std::move(mesh)),
+      dim_shardings_(CanonicalizedDimShardings(dim_shardings)),
+      replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
+      unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
+      manual_axes_(manual_axes.begin(), manual_axes.end()),
+      metadata_(metadata.begin(), metadata.end()) {
+  CHECK_OK(VerifyNamedSharding(*this));
+  InitShardedSizes();
+}
 
 void DimensionSharding::Append(const DimensionSharding& other,
                                const Mesh& mesh) {
@@ -389,5 +409,91 @@ NamedSharding FromAxisNames(
   return NamedSharding(mesh, dim_shardings_vec, replicated_axes_vec,
                        unreduced_axes_vec, manual_axes_vec, metadata);
 }
+
 }  // namespace test_utils
+
+namespace {
+
+bool CompareAxisRefs(const AxisRef& a, const AxisRef& b, const Mesh& mesh) {
+  if (a.mesh_axis_index() != b.mesh_axis_index()) {
+    return a.mesh_axis_index() < b.mesh_axis_index();
+  }
+  int64_t a_pre = a.sub_axis_info() ? a.sub_axis_info()->pre_size : 1;
+  int64_t b_pre = b.sub_axis_info() ? b.sub_axis_info()->pre_size : 1;
+
+  return a_pre != b_pre ? a_pre < b_pre : a.size(mesh) < b.size(mesh);
+}
+
+absl::Status VerifyAndTrack(
+    const AxisRef& axis, const Mesh& mesh,
+    absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
+  TF_RETURN_IF_ERROR(axis.Validate(mesh));
+  auto& axes_on_dim = seen_axes[axis.mesh_axis_index()];
+  for (const AxisRef& other : axes_on_dim) {
+    if (!axis.CanCoexistWithoutOverlap(other)) {
+      return absl::InvalidArgumentError("Axes cannot coexist or axes overlap.");
+    }
+  }
+  axes_on_dim.push_back(axis);
+  return absl::OkStatus();
+}
+
+absl::Status VerifySortedAxes(
+    absl::Span<const AxisRef> axes, absl::string_view name, const Mesh& mesh,
+    absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
+  if (!absl::c_is_sorted(axes, [&](const AxisRef& a, const AxisRef& b) {
+        return CompareAxisRefs(a, b, mesh);
+      })) {
+    return absl::InvalidArgumentError(
+        absl::StrCat(name,
+                     " axes must be sorted by mesh axis index and "
+                     "sub-axis pre-size."));
+  }
+  for (auto it = axes.begin(); it != axes.end(); ++it) {
+    TF_RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
+    if (it != axes.begin() && std::prev(it)->CanMerge(*it)) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Adjacent axes in ", name, " axes can be merged: ",
+          std::prev(it)->ToString(&mesh), ", ", it->ToString(&mesh)));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status VerifyDimShardings(
+    absl::Span<const NamedSharding::DimensionSharding> dim_shardings,
+    const Mesh& mesh,
+    absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
+  for (const NamedSharding::DimensionSharding& ds : dim_shardings) {
+    if (ds.axes().empty()) {
+      continue;
+    }
+    for (auto it = ds.axes().begin(); it != ds.axes().end(); ++it) {
+      TF_RETURN_IF_ERROR(VerifyAndTrack(*it, mesh, seen_axes));
+      if (it != ds.axes().begin() && std::prev(it)->CanMerge(*it)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Adjacent axes in dimension sharding can be merged: ",
+            std::prev(it)->ToString(&mesh), ", ", it->ToString(&mesh)));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+}  // namespace
+
+absl::Status VerifyNamedSharding(const NamedSharding& named_sharding) {
+  absl::flat_hash_map<int64_t, std::vector<AxisRef>> seen_axes;
+  const Mesh& mesh = named_sharding.mesh();
+  TF_RETURN_IF_ERROR(
+      VerifyDimShardings(named_sharding.dim_shardings(), mesh, seen_axes));
+  TF_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.replicated_axes(),
+                                      "Replicated", mesh, seen_axes));
+  TF_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.unreduced_axes(),
+                                      "Unreduced", mesh, seen_axes));
+  TF_RETURN_IF_ERROR(VerifySortedAxes(named_sharding.manual_axes(), "Manual",
+                                      mesh, seen_axes));
+  return absl::OkStatus();
+}
+
 }  // namespace xla

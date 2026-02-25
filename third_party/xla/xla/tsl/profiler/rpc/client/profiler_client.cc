@@ -48,6 +48,8 @@ using tensorflow::NewProfileSessionRequest;
 using tensorflow::NewProfileSessionResponse;
 using tensorflow::ProfileRequest;
 using tensorflow::ProfileResponse;
+using tensorflow::StopContinuousProfilingRequest;
+using tensorflow::StopContinuousProfilingResponse;
 
 inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
   return s.ok() ? absl::OkStatus()
@@ -91,6 +93,18 @@ absl::Status ContinuousProfilingGrpc(const std::string& service_address,
       CreateStub<tensorflow::grpc::ProfilerService>(service_address);
   TF_RETURN_IF_ERROR(FromGrpcStatus(
       stub->StartContinuousProfiling(&context, request, response)));
+  return absl::OkStatus();
+}
+
+absl::Status StopContinuousProfilingGrpc(
+    const std::string& service_address,
+    const StopContinuousProfilingRequest& request,
+    StopContinuousProfilingResponse* response) {
+  ::grpc::ClientContext context;
+  std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
+      CreateStub<tensorflow::grpc::ProfilerService>(service_address);
+  TF_RETURN_IF_ERROR(FromGrpcStatus(
+      stub->StopContinuousProfiling(&context, request, response)));
   return absl::OkStatus();
 }
 

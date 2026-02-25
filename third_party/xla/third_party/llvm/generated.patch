@@ -1,240 +1,47 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
---- a/clang/lib/Driver/ToolChains/Clang.cpp
-+++ b/clang/lib/Driver/ToolChains/Clang.cpp
-@@ -1065,10 +1065,6 @@
-     A->render(Args, CmdArgs);
-   }
+diff -ruN --strip-trailing-cr a/libcxx/include/stdatomic.h b/libcxx/include/stdatomic.h
+--- a/libcxx/include/stdatomic.h
++++ b/libcxx/include/stdatomic.h
+@@ -231,7 +231,7 @@
+ using std::atomic_signal_fence _LIBCPP_USING_IF_EXISTS;
+ using std::atomic_thread_fence _LIBCPP_USING_IF_EXISTS;
  
--  Args.addAllArgs(CmdArgs,
--                  {options::OPT_D, options::OPT_U, options::OPT_I_Group,
--                   options::OPT_F, options::OPT_embed_dir_EQ});
--
-   if (C.isOffloadingHostKind(Action::OFK_Cuda) ||
-       JA.isDeviceOffloading(Action::OFK_Cuda)) {
-     // Collect all enabled NVPTX architectures.
-@@ -1091,6 +1087,10 @@
-     }
-   }
+-#  elif defined(_LIBCPP_COMPILER_CLANG_BASED)
++#  elif !defined(__cplusplus) || defined(_LIBCPP_COMPILER_CLANG_BASED)
  
-+  Args.addAllArgs(CmdArgs,
-+                  {options::OPT_D, options::OPT_U, options::OPT_I_Group,
-+                   options::OPT_F, options::OPT_embed_dir_EQ});
+ // Before C++23, we include the next <stdatomic.h> on the path to avoid hijacking
+ // the header. We do this because Clang has historically shipped a <stdatomic.h>
+diff -ruN --strip-trailing-cr a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
+--- a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
++++ b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
+@@ -0,0 +1,30 @@
++//===----------------------------------------------------------------------===//
++//
++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
++// See https://llvm.org/LICENSE.txt for license information.
++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
++//
++//===----------------------------------------------------------------------===//
 +
-   // Add -Wp, and -Xpreprocessor if using the preprocessor.
- 
-   // FIXME: There is a very unfortunate problem here, some troubled
-diff -ruN --strip-trailing-cr a/clang/lib/Serialization/ASTReaderDecl.cpp b/clang/lib/Serialization/ASTReaderDecl.cpp
---- a/clang/lib/Serialization/ASTReaderDecl.cpp
-+++ b/clang/lib/Serialization/ASTReaderDecl.cpp
-@@ -3642,9 +3642,23 @@
- void ASTDeclReader::attachPreviousDeclImpl(ASTReader &Reader,
-                                            Redeclarable<VarDecl> *D,
-                                            Decl *Previous, Decl *Canon) {
-+  auto *VD = static_cast<VarDecl *>(D);
-   auto *PrevVD = cast<VarDecl>(Previous);
-   D->RedeclLink.setPrevious(PrevVD);
-   D->First = PrevVD->First;
++// We're building as C, so this test doesn't work when building with modules.
++// UNSUPPORTED: clang-modules-build
 +
-+  // We should keep at most one definition on the chain.
-+  // FIXME: Cache the definition once we've found it. Building a chain with
-+  // N definitions currently takes O(N^2) time here.
-+  if (VD->isThisDeclarationADefinition() == VarDecl::Definition) {
-+    for (VarDecl *CurD = PrevVD; CurD; CurD = CurD->getPreviousDecl()) {
-+      if (CurD->isThisDeclarationADefinition() == VarDecl::Definition) {
-+        Reader.mergeDefinitionVisibility(CurD, VD);
-+        VD->demoteThisDefinitionToDeclaration();
-+        break;
-+      }
-+    }
-+  }
- }
- 
- static bool isUndeducedReturnType(QualType T) {
-diff -ruN --strip-trailing-cr a/clang/test/Driver/cuda-arch-list.cu b/clang/test/Driver/cuda-arch-list.cu
---- a/clang/test/Driver/cuda-arch-list.cu
-+++ b/clang/test/Driver/cuda-arch-list.cu
-@@ -23,6 +23,11 @@
- // RUN:   --offload-arch=sm_60 --offload-arch=sm_70 --no-offload-arch=sm_60 %s 2>&1 \
- // RUN: | FileCheck -check-prefixes=DEVICE70-ONLY,HOST70-ONLY %s
- 
-+// Verify that user-specified -D__CUDA_ARCH_LIST__ overrides the driver-generated one
-+// RUN: %clang -### --target=x86_64-unknown-linux-gnu -nocudainc -nocudalib \
-+// RUN:   --offload-arch=sm_60 -D__CUDA_ARCH_LIST__=999 %s 2>&1 \
-+// RUN: | FileCheck -check-prefixes=DEVICE-OVERRIDE,HOST-OVERRIDE %s
++// GCC complains about unrecognized arguments because we're compiling the
++// file as C, but we're passing C++ flags on the command-line.
++// UNSUPPORTED: gcc
 +
- // DEVICE60: "-cc1" "-triple" "nvptx64-nvidia-cuda"
- // DEVICE60-SAME: "-target-cpu" "sm_60"
- // DEVICE60-SAME: "-D__CUDA_ARCH_LIST__=600"
-@@ -54,3 +59,12 @@
- 
- // HOST70-ONLY: "-cc1" "-triple" "x86_64-unknown-linux-gnu"
- // HOST70-ONLY-SAME: "-D__CUDA_ARCH_LIST__=700"
++// Test that stdatomic.h gets the C header with its definitions.
 +
-+// DEVICE-OVERRIDE: "-cc1" "-triple" "nvptx64-nvidia-cuda"
-+// DEVICE-OVERRIDE-SAME: "-target-cpu" "sm_60"
-+// DEVICE-OVERRIDE-SAME: "-D__CUDA_ARCH_LIST__=600"
-+// DEVICE-OVERRIDE-SAME: "-D" "__CUDA_ARCH_LIST__=999"
++// NOTE: It's not common or recommended to have libc++ in the header search
++// path when compiling C files, but it does happen often enough.
 +
-+// HOST-OVERRIDE: "-cc1" "-triple" "x86_64-unknown-linux-gnu"
-+// HOST-OVERRIDE-SAME: "-D__CUDA_ARCH_LIST__=600"
-+// HOST-OVERRIDE-SAME: "-D" "__CUDA_ARCH_LIST__=999"
-diff -ruN --strip-trailing-cr a/clang/test/Modules/pr149404-02.cppm b/clang/test/Modules/pr149404-02.cppm
---- a/clang/test/Modules/pr149404-02.cppm
-+++ b/clang/test/Modules/pr149404-02.cppm
-@@ -1,104 +0,0 @@
--// RUN: rm -rf %t
--// RUN: mkdir -p %t
--// RUN: split-file %s %t
--
--// RUN: %clang_cc1 -std=c++20 -emit-module-interface -o %t/format.pcm %t/format.cppm
--// RUN: %clang_cc1 -std=c++20  -emit-module-interface -o %t/includes_in_gmf.pcm %t/includes_in_gmf.cppm
--// RUN: %clang_cc1 -std=c++20 -fprebuilt-module-path=%t %t/test.cpp -verify -fsyntax-only
--
--// RUN: %clang_cc1 -std=c++20 -emit-reduced-module-interface -o %t/format.pcm %t/format.cppm
--// RUN: %clang_cc1 -std=c++20  -emit-reduced-module-interface -o %t/includes_in_gmf.pcm %t/includes_in_gmf.cppm
--// RUN: %clang_cc1 -std=c++20 -fprebuilt-module-path=%t %t/test.cpp -verify -fsyntax-only
--
--//--- format.h
--#pragma once
--
--namespace test {
--
--template <class _Tp>
--struct type_identity {
--    typedef _Tp type;
--};
--
--template <class _Tp>
--using type_identity_t = typename type_identity<_Tp>::type;
--
--
--template <class _Tp, class _CharT>
--struct formatter
--{
--    formatter() = delete;
--};
--
--template <>
--struct formatter<char, char>
--{};
--
--template <class _CharT, class... _Args>
--struct basic_format_string {
--    static inline const int __handles_{ [] {
--        formatter<char, _CharT> f;
--        (void)f;
--        return 0;
--        }() };
--    
--    consteval basic_format_string(const _CharT*) {
--        (void)__handles_;
--    }
--};
--
--template <class... _Args>
--using wformat_string = basic_format_string<wchar_t, type_identity_t<_Args>...>;
--
--template <class... _Args>
--using format_string = basic_format_string<char, type_identity_t<_Args>...>;
--
--template <class... _Args>
--void format(format_string<_Args...> __fmt, _Args&&... __args) {}
--
--template <class... _Args>
--void format(wformat_string<_Args...> __fmt, _Args&&... __args) {}
--
--}
--
--//--- format.cppm
--module;
--#include "format.h"
--export module format;
--
--export namespace test {
--	using test::format;
--	using test::formatter;
--	using test::format_string;
--}
--
--auto something() -> void
--{
--	auto a = 'a';
--	test::format("{}", a);
--}
--
--//--- includes_in_gmf.cppm
--module;
--#include "format.h"
--export module includes_in_gmf;
--
--namespace test {
--	using test::format;
--	using test::formatter;
--	using test::format_string;
--}
--
--//--- test.cpp
--// expected-no-diagnostics
--import format;
--import includes_in_gmf;
--
--auto what() -> void
--{
--    auto a = 'a';
--    test::format("{}", a);
--
--    constexpr auto fs = "{}"; // test::format_string<char>{ "{}" }; // <- same result even passing exact param type
--    test::format(fs, 'r');
--}
-diff -ruN --strip-trailing-cr a/clang/test/Modules/pr172241.cppm b/clang/test/Modules/pr172241.cppm
---- a/clang/test/Modules/pr172241.cppm
-+++ b/clang/test/Modules/pr172241.cppm
-@@ -1,47 +0,0 @@
--// RUN: rm -rf %t
--// RUN: mkdir -p %t
--// RUN: split-file %s %t
--//
--// RUN: %clang_cc1 -std=c++20 -triple %itanium_abi_triple %t/m.cppm -emit-module-interface -o %t/m.pcm
--// RUN: %clang_cc1 -std=c++20 -triple %itanium_abi_triple %t/use.cpp -fmodule-file=m=%t/m.pcm -emit-llvm -o - | FileCheck %t/use.cpp
--//
--// RUN: %clang_cc1 -std=c++20 -triple %itanium_abi_triple %t/m.cppm -emit-reduced-module-interface -o %t/m.pcm
--// RUN: %clang_cc1 -std=c++20 -triple %itanium_abi_triple %t/use.cpp -fmodule-file=m=%t/m.pcm -emit-llvm -o - | FileCheck %t/use.cpp
--
--//--- header.h
--#pragma once
--
--template <unsigned T>
--class Templ {
--public:
--    void lock() { __set_locked_bit(); }
--
--private:
--    static constexpr auto __set_locked_bit = [](){};
--};
--
--class JT {
--public:
--    ~JT() {
--        Templ<4> state;
--        state.lock();
--    }
--};
--
--//--- m.cppm
--module;
--#include "header.h"
--export module m;
--export struct M {
--    JT jt;
--};
--//--- use.cpp
--#include "header.h"
--import m;
--
--int main() {
--    M m;
--    return 0;
--}
--
--// CHECK: @_ZN5TemplILj4EE16__set_locked_bitE = {{.*}}linkonce_odr
++// RUN: %{cxx} -c -xc %s -fsyntax-only %{flags} %{compile_flags} -std=c99
++
++#include <stdatomic.h>
++
++int main(int argc, char** argv) {
++  (void)argc;
++  (void)argv;
++  [[maybe_unused]] atomic_bool x;
++  return 0;
++}

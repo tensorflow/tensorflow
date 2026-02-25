@@ -19,14 +19,12 @@ limitations under the License.
 #include <cstdint>
 
 #include "third_party/gpus/cuda/include/cuda/atomic"
-#include "third_party/gpus/cuda/include/cuda_bf16.h"
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
-#include "xla/stream_executor/kernel_spec.h"
 
 namespace stream_executor::gpu {
 
 template <>
-__device__ __forceinline__ void PutSignalFlag<PlatformType::CUDA>(
+__device__ __forceinline__ void PutSignalFlag<PlatformType::kCuda>(
     uint32_t* addr, uint32_t val) {
   ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
   // During signaling release semantics are used to ensure that writes
@@ -35,7 +33,7 @@ __device__ __forceinline__ void PutSignalFlag<PlatformType::CUDA>(
 }
 
 template <>
-__device__ __forceinline__ void WaitSignalFlag<PlatformType::CUDA>(
+__device__ __forceinline__ void WaitSignalFlag<PlatformType::kCuda>(
     uint32_t* addr, uint32_t expected) {
   ::cuda::atomic_ref<uint32_t, ::cuda::thread_scope_system> ref(*addr);
   // During waiting we use acquire semantics to ensure all memory writes by the

@@ -281,10 +281,15 @@ HloInstruction* GetFinalFftUsingCollectivePermute(
       dest_transform));
   // collective permute for source partition_id and source_transfrom.
   std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
-  sharding.EachTile([&](absl::Span<const int64_t> indices, int64_t src_device) {
+  HloSharding tile_based_sharding =
+      sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(sharding.named_sharding())
+          : std::move(sharding);
+  tile_based_sharding.EachTile([&](absl::Span<const int64_t> indices,
+                                   int64_t src_device) {
     std::vector<int64_t> target_indices(indices.begin(), indices.end());
     target_indices.back() = (indices.back() + 1) % num_partitions;
-    int64_t dst_device = sharding.tile_assignment()(target_indices);
+    int64_t dst_device = tile_based_sharding.tile_assignment()(target_indices);
     src_dst_pairs.emplace_back(src_device, dst_device);
   });
 

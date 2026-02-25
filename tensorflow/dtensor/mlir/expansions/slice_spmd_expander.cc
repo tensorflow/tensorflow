@@ -182,8 +182,9 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   mlir::ShapedType type =
       mlir::cast<mlir::ShapedType>(slice_op.getBegin().getType());
   if (type.getElementType().isInteger(32))
-    new_size = IntConst(
-        builder, loc, llvm::SmallVector<int32, 4>(sizes.begin(), sizes.end()));
+    new_size =
+        IntConst(builder, loc,
+                 llvm::SmallVector<int32_t, 4>(sizes.begin(), sizes.end()));
   else
     new_size = Int64Const(builder, loc, sizes);
 

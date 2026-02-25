@@ -91,8 +91,8 @@ class ThunkEmitter {
 
  private:
   struct HostKernelAllocationSlices {
-    std::vector<BufferAllocation::Slice> arguments;
-    std::vector<BufferAllocation::Slice> results;
+    std::vector<ShapedSlice> arguments;
+    std::vector<ShapedSlice> results;
   };
 
   std::optional<SortThunk::SortDirection> MatchSortDirection(

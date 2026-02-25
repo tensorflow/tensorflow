@@ -57,16 +57,16 @@ static GcsFileSystem::TimeoutConfig kTestTimeoutConfig(5, 1, 10, 20, 30);
 static RetryConfig kTestRetryConfig(0 /* init_delay_time_us */);
 
 // Default (empty) constraint config
-static std::unordered_set<string>* kAllowedLocationsDefault =
-    new std::unordered_set<string>();
+static std::unordered_set<std::string>* kAllowedLocationsDefault =
+    new std::unordered_set<std::string>();
 // Constraint config if bucket location constraint is turned on, with no
 // custom list
-static std::unordered_set<string>* kAllowedLocationsAuto =
-    new std::unordered_set<string>({"auto"});
+static std::unordered_set<std::string>* kAllowedLocationsAuto =
+    new std::unordered_set<std::string>({"auto"});
 
 class FakeAuthProvider : public AuthProvider {
  public:
-  absl::Status GetToken(string* token) override {
+  absl::Status GetToken(std::string* token) override {
     *token = "fake_token";
     return absl::OkStatus();
   }
@@ -74,7 +74,7 @@ class FakeAuthProvider : public AuthProvider {
 
 class FakeZoneProvider : public ZoneProvider {
  public:
-  absl::Status GetZone(string* zone) override {
+  absl::Status GetZone(std::string* zone) override {
     *zone = "us-east1-b";
     return absl::OkStatus();
   }
@@ -518,8 +518,8 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_WithLocationConstraintCaching) {
 
   std::unique_ptr<RandomAccessFile> file;
 
-  string bucket = "gs://bucket/random_access.txt";
-  string another_bucket = "gs://anotherbucket/random_access.txt";
+  std::string bucket = "gs://bucket/random_access.txt";
+  std::string another_bucket = "gs://anotherbucket/random_access.txt";
   // Multiple calls should only cause one request to the location API.
   TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
   TF_EXPECT_OK(fs.NewRandomAccessFile(bucket, nullptr, &file));
@@ -1263,7 +1263,7 @@ TEST(GcsFileSystemTest, NewWritableFile_ResumeUploadAllAttemptsFail) {
 }
 
 TEST(GcsFileSystemTest, NewWritableFile_UploadReturns410) {
-  std::vector<string> results;
+  std::vector<std::string> results;
   TF_EXPECT_OK(
       Env::Default()->GetMatchingPaths("/tmp/tmp_file_tensorflow*", &results));
   const int64_t tmp_files_before = results.size();
@@ -1763,10 +1763,10 @@ TEST(GcsFileSystemTest, GetChildren_NoItems) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> children;
+  std::vector<std::string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
 
-  EXPECT_EQ(std::vector<string>({"subpath/"}), children);
+  EXPECT_EQ(std::vector<std::string>({"subpath/"}), children);
 }
 
 TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
@@ -1791,10 +1791,10 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> children;
+  std::vector<std::string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
 
-  EXPECT_EQ(std::vector<string>({"file1.txt", "file3.txt", "subpath/"}),
+  EXPECT_EQ(std::vector<std::string>({"file1.txt", "file3.txt", "subpath/"}),
             children);
 }
 
@@ -1820,10 +1820,10 @@ TEST(GcsFileSystemTest, GetChildren_SelfDirectoryMarker) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> children;
+  std::vector<std::string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
 
-  EXPECT_EQ(std::vector<string>({"file3.txt", "subpath/"}), children);
+  EXPECT_EQ(std::vector<std::string>({"file3.txt", "subpath/"}), children);
 }
 
 TEST(GcsFileSystemTest, GetChildren_ThreeFiles_NoSlash) {
@@ -1848,10 +1848,10 @@ TEST(GcsFileSystemTest, GetChildren_ThreeFiles_NoSlash) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> children;
+  std::vector<std::string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path", nullptr, &children));
 
-  EXPECT_EQ(std::vector<string>({"file1.txt", "file3.txt", "subpath/"}),
+  EXPECT_EQ(std::vector<std::string>({"file1.txt", "file3.txt", "subpath/"}),
             children);
 }
 
@@ -1873,7 +1873,7 @@ TEST(GcsFileSystemTest, GetChildren_Root) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> children;
+  std::vector<std::string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket-a-b-c", nullptr, &children));
 
   EXPECT_EQ(0, children.size());
@@ -1898,7 +1898,7 @@ TEST(GcsFileSystemTest, GetChildren_Empty) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> children;
+  std::vector<std::string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path/", nullptr, &children));
 
   EXPECT_EQ(0, children.size());
@@ -1939,11 +1939,11 @@ TEST(GcsFileSystemTest, GetChildren_Pagination) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> children;
+  std::vector<std::string> children;
   TF_EXPECT_OK(fs.GetChildren("gs://bucket/path", nullptr, &children));
 
-  EXPECT_EQ(std::vector<string>({"file1.txt", "file3.txt", "subpath/",
-                                 "file4.txt", "file5.txt"}),
+  EXPECT_EQ(std::vector<std::string>({"file1.txt", "file3.txt", "subpath/",
+                                      "file4.txt", "file5.txt"}),
             children);
 }
 
@@ -1966,10 +1966,10 @@ TEST(GcsFileSystemTest, GetMatchingPaths_NoWildcard) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt",
                                    nullptr, &result));
-  EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+  EXPECT_EQ(std::vector<std::string>({"gs://bucket/path/subpath/file2.txt"}),
             result);
 }
 
@@ -1994,11 +1994,11 @@ TEST(GcsFileSystemTest, GetMatchingPaths_BucketAndWildcard) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/*/*", nullptr, &result));
-  EXPECT_EQ(std::vector<string>({"gs://bucket/path/file1.txt",
-                                 "gs://bucket/path/file3.txt",
-                                 "gs://bucket/path/subpath"}),
+  EXPECT_EQ(std::vector<std::string>({"gs://bucket/path/file1.txt",
+                                      "gs://bucket/path/file3.txt",
+                                      "gs://bucket/path/subpath"}),
             result);
 }
 
@@ -2023,10 +2023,10 @@ TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_Matches) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(
       fs.GetMatchingPaths("gs://bucket/path/*/file2.txt", nullptr, &result));
-  EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+  EXPECT_EQ(std::vector<std::string>({"gs://bucket/path/subpath/file2.txt"}),
             result);
 }
 
@@ -2050,9 +2050,9 @@ TEST(GcsFileSystemTest, GetMatchingPaths_SelfDirectoryMarker) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*", nullptr, &result));
-  EXPECT_EQ(std::vector<string>({"gs://bucket/path/file3.txt"}), result);
+  EXPECT_EQ(std::vector<std::string>({"gs://bucket/path/file3.txt"}), result);
 }
 
 TEST(GcsFileSystemTest, GetMatchingPaths_SlashInObjectName) {
@@ -2075,9 +2075,9 @@ TEST(GcsFileSystemTest, GetMatchingPaths_SlashInObjectName) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/*", nullptr, &result));
-  EXPECT_EQ(std::vector<string>(), result);
+  EXPECT_EQ(std::vector<std::string>(), result);
 }
 
 TEST(GcsFileSystemTest, GetMatchingPaths_SlashInObjectNameEscaped) {
@@ -2100,9 +2100,9 @@ TEST(GcsFileSystemTest, GetMatchingPaths_SlashInObjectNameEscaped) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/\\/*", nullptr, &result));
-  EXPECT_EQ(std::vector<string>({"gs://bucket/path//foo.txt"}), result);
+  EXPECT_EQ(std::vector<std::string>({"gs://bucket/path//foo.txt"}), result);
 }
 
 TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_NoMatches) {
@@ -2126,10 +2126,10 @@ TEST(GcsFileSystemTest, GetMatchingPaths_FolderAndWildcard_NoMatches) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   TF_EXPECT_OK(
       fs.GetMatchingPaths("gs://bucket/path/*/file3.txt", nullptr, &result));
-  EXPECT_EQ(std::vector<string>(), result);
+  EXPECT_EQ(std::vector<std::string>(), result);
 }
 
 TEST(GcsFileSystemTest, GetMatchingPaths_OnlyWildcard) {
@@ -2145,7 +2145,7 @@ TEST(GcsFileSystemTest, GetMatchingPaths_OnlyWildcard) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  std::vector<string> result;
+  std::vector<std::string> result;
   EXPECT_TRUE(
       absl::IsInvalidArgument(fs.GetMatchingPaths("gs://*", nullptr, &result)));
 }
@@ -2182,15 +2182,15 @@ TEST(GcsFileSystemTest, GetMatchingPaths_Cache) {
   // Repeated calls to fs.GetMatchingPaths on these patterns should not lead to
   // any additional HTTP requests to GCS.
   for (int i = 0; i < 10; i++) {
-    std::vector<string> result;
+    std::vector<std::string> result;
     TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt",
                                      nullptr, &result));
-    EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+    EXPECT_EQ(std::vector<std::string>({"gs://bucket/path/subpath/file2.txt"}),
               result);
     TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/*/*", nullptr, &result));
-    EXPECT_EQ(std::vector<string>({"gs://bucket/path/file1.txt",
-                                   "gs://bucket/path/file3.txt",
-                                   "gs://bucket/path/subpath"}),
+    EXPECT_EQ(std::vector<std::string>({"gs://bucket/path/file1.txt",
+                                        "gs://bucket/path/file3.txt",
+                                        "gs://bucket/path/subpath"}),
               result);
   }
 }
@@ -2224,19 +2224,19 @@ TEST(GcsFileSystemTest, GetMatchingPaths_Cache_Flush) {
 
   // This loop should trigger the first HTTP request to GCS.
   for (int i = 0; i < 10; i++) {
-    std::vector<string> result;
+    std::vector<std::string> result;
     TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt",
                                      nullptr, &result));
-    EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+    EXPECT_EQ(std::vector<std::string>({"gs://bucket/path/subpath/file2.txt"}),
               result);
   }
   // After flushing caches, there should be another (identical) request to GCS.
   fs.FlushCaches(nullptr);
   for (int i = 0; i < 10; i++) {
-    std::vector<string> result;
+    std::vector<std::string> result;
     TF_EXPECT_OK(fs.GetMatchingPaths("gs://bucket/path/subpath/file2.txt",
                                      nullptr, &result));
-    EXPECT_EQ(std::vector<string>({"gs://bucket/path/subpath/file2.txt"}),
+    EXPECT_EQ(std::vector<std::string>({"gs://bucket/path/subpath/file2.txt"}),
               result);
   }
 }
@@ -2482,7 +2482,7 @@ TEST(GcsFileSystemTest, GetFileSize) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  uint64 size;
+  uint64_t size;
   TF_EXPECT_OK(fs.GetFileSize("gs://bucket/file.txt", nullptr, &size));
   EXPECT_EQ(1010, size);
 }
@@ -2500,7 +2500,7 @@ TEST(GcsFileSystemTest, GetFileSize_NoObjectName) {
       kTestTimeoutConfig, *kAllowedLocationsDefault,
       nullptr /* gcs additional header */, false /* compose append */);
 
-  uint64 size;
+  uint64_t size;
   EXPECT_TRUE(
       absl::IsInvalidArgument(fs.GetFileSize("gs://bucket/", nullptr, &size)));
 }
@@ -3901,7 +3901,7 @@ TEST(GcsFileSystemTest, BucketLocationConstraintEnvironmentVariableTest) {
 
   setenv("GCS_ALLOWED_BUCKET_LOCATIONS", "CUSTOM,list", 1);
   GcsFileSystem fs2;
-  EXPECT_EQ(std::unordered_set<string>({"custom", "list"}),
+  EXPECT_EQ(std::unordered_set<std::string>({"custom", "list"}),
             fs2.allowed_locations());
 }
 
@@ -3936,7 +3936,7 @@ TEST(GcsFileSystemTest, AdditionalRequestHeaderTest) {
   EXPECT_EQ("a", fs6.additional_header_name());
   EXPECT_EQ("b", fs6.additional_header_value());
 
-  auto* add_header = new std::pair<const string, const string>(
+  auto* add_header = new std::pair<const std::string, const std::string>(
       "mynewheader", "newheadercontents");
 
   std::vector<HttpRequest*> requests(
@@ -4089,11 +4089,11 @@ class TestGcsStats : public GcsStatsInterface {
     block_cache_ = block_cache;
   }
 
-  void RecordBlockLoadRequest(const string& file, size_t offset) override {
+  void RecordBlockLoadRequest(const std::string& file, size_t offset) override {
     block_load_request_file_ = file;
   }
 
-  void RecordBlockRetrieved(const string& file, size_t offset,
+  void RecordBlockRetrieved(const std::string& file, size_t offset,
                             size_t bytes_transferred) override {
     block_retrieved_file_ = file;
     block_retrieved_bytes_transferred_ = bytes_transferred;
@@ -4107,8 +4107,8 @@ class TestGcsStats : public GcsStatsInterface {
   GcsThrottle* throttle_ = nullptr;
   const FileBlockCache* block_cache_ = nullptr;
 
-  string block_load_request_file_;
-  string block_retrieved_file_;
+  std::string block_load_request_file_;
+  std::string block_retrieved_file_;
   size_t block_retrieved_bytes_transferred_ = 0;
   int stat_object_request_count_ = 0;
 };
@@ -4179,7 +4179,7 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_StatsRecording) {
 }
 
 TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
-  std::vector<string> contents(
+  std::vector<std::string> contents(
       {"content0,", "content1,", "content2,", "content3,"});
   std::vector<HttpRequest*> requests({
       // Fetch the file (stats and then content)
@@ -4336,7 +4336,7 @@ TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithCompose) {
 }
 
 TEST(GcsFileSystemTest, NewAppendableFile_MultipleFlushesWithoutCompose) {
-  std::vector<string> contents(
+  std::vector<std::string> contents(
       {"content0,", "content1,", "content2,", "content3,"});
   std::vector<HttpRequest*> requests({
       new FakeHttpRequest(

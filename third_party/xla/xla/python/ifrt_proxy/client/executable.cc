@@ -345,7 +345,6 @@ LoadedExecutable::LoadedExecutable(
     std::optional<DeviceListRef> devices,
     std::vector<xla::ifrt::Device*> addressable_devices,
     absl::StatusOr<std::optional<std::string>> fingerprint,
-    tsl::Future<> ready_future,
     std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
         loaded_host_callbacks,
     std::vector<uint64_t> loaded_host_callback_handles)
@@ -357,7 +356,6 @@ LoadedExecutable::LoadedExecutable(
       devices_(devices),
       addressable_devices_(std::move(addressable_devices)),
       fingerprint_(std::move(fingerprint)),
-      ready_future_(std::move(ready_future)),
       user_context_(xla::ifrt::UserContextScope::current()),
       output_spec_cache_(
           std::make_unique<LoadedExecutable::OutputSpecCache>(this)) {
@@ -537,8 +535,6 @@ absl::StatusOr<std::string> LoadedExecutable::Serialize() const {
       "IFRT service executable does not support `Serialize` since the "
       "underlying serialization format is not stable");
 }
-
-tsl::Future<> LoadedExecutable::GetReadyFuture() const { return ready_future_; }
 
 int LoadedExecutable::num_devices() const { return num_devices_; }
 

@@ -18,6 +18,7 @@ package_group(
         "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/ifrt/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
+        "//third_party/neptune/serving/sidecar/...",
     ] + if_google([
         "//learning/brain/tfrt/cpp_tests/...",
         "//learning/serving/servables/tfrt/...",
@@ -25,6 +26,7 @@ package_group(
         "//learning/brain/tfrt/tfrt_session/...",
         # Allow visibility from the mlir language server.
         "//learning/brain/mlir/mlir_lsp_server/...",
+        # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
         "//learning/infra/mira/experimental/orbax_model/serving/sidecar/...",
         "//smartass/brain/util/...",
     ]),
@@ -158,7 +160,9 @@ cc_library(
         "@xla//xla/client:client_library",
         "@xla//xla/hlo/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@xla//xla/pjrt:pjrt_compiler",
+        "@xla//xla/pjrt:pjrt_layout",
         "@xla//xla/python/ifrt",
+        "@xla//xla/python/pjrt_ifrt:pjrt_layout",
         "@xla//xla/service:computation_placer_hdr",
         "@xla//xla/service:hlo_proto_cc",
         "@xla//xla/stream_executor:platform_manager",
@@ -214,12 +218,15 @@ tf_cc_test(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:RegisterAllDialects",  # buildcleaner: keep
         "@tsl//tsl/platform:protobuf",
+        "@xla//xla:shape_util",
         "@xla//xla/pjrt:pjrt_compiler",
+        "@xla//xla/pjrt:pjrt_layout",
         "@xla//xla/pjrt/plugin/xla_cpu:cpu_topology_description",
         "@xla//xla/python/ifrt",
         "@xla//xla/python/ifrt:mock",
         "@xla//xla/python/ifrt:test_util",
         "@xla//xla/python/pjrt_ifrt",
+        "@xla//xla/python/pjrt_ifrt:pjrt_layout",
         "@xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@xla//xla/service:computation_placer_hdr",
         "@xla//xla/tsl/platform:statusor",
@@ -305,5 +312,9 @@ tf_proto_library(
         "@xla//xla/service:hlo_proto",
         "//tensorflow/core:protos_all",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto",
+    ],
+    deps = [
+        "@xla//xla:xla_data_proto",
+        "@xla//xla/python/ifrt:layout_proto",
     ],
 )

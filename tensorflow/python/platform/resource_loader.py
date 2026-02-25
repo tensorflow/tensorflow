@@ -21,7 +21,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=g-import-not-at-top
 try:
-  from rules_python.python.runfiles import runfiles
+  from python.runfiles import runfiles
 except ImportError:
   runfiles = None
 # pylint: enable=g-import-not-at-top

@@ -63,6 +63,7 @@ cc_library(
         "//xla/runtime:work_group",
         "//xla/runtime:work_item",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",

@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -144,7 +145,9 @@ struct FissionTestParams {
       const Compiler::GpuTargetConfig*)>
       backend_factory;
   // Substrings expected to be in the module after ApplyConfig.
-  std::vector<std::string> expected_module_substrings;
+  std::function<std::vector<std::string>(
+      const se::DeviceDescription& device_description)>
+      expected_module_substrings_fn;
   std::string expected_backend_name;
 };
 
@@ -186,7 +189,7 @@ class FissionTest : public HloHardwareIndependentTestBase,
   }
 
   // Static helper to create a CublasBackend.
-  static std::unique_ptr<GpuCodegenBackend> CreateCublasBackendWiithF8Fallback(
+  static std::unique_ptr<GpuCodegenBackend> CreateCublasBackendWithF8Fallback(
       se::StreamExecutor* stream_executor, const DebugOptions* debug_options,
       Compiler* compiler, const Compiler::GpuTargetConfig* target_config) {
     return std::make_unique<CublasBackend>(stream_executor, debug_options,
@@ -210,6 +213,7 @@ class FissionTest : public HloHardwareIndependentTestBase,
   se::DeviceDescription device_description_;
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> base_codegen_backend_;
+  GpuAliasInfo alias_info_;
   std::unique_ptr<FissionBackend> fission_backend_;
   mlir::MLIRContext mlir_context_;
 
@@ -223,10 +227,11 @@ class FissionTest : public HloHardwareIndependentTestBase,
         rewriter_pipeline_(GetParam().pipeline_factory(device_description_)),
         base_codegen_backend_(GetParam().backend_factory(
             stream_executor_, &debug_options_, &compiler_, &target_config_)),
+        alias_info_(device_description_),
         fission_backend_(std::make_unique<FissionBackend>(
             &debug_options_, &compiler_, &target_config_,
             std::move(base_codegen_backend_), std::move(rewriter_pipeline_),
-            &mlir_context_, stream_executor_)) {}
+            &alias_info_, &mlir_context_, stream_executor_)) {}
 };
 
 class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
@@ -238,6 +243,7 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
   se::DeviceDescription device_description_;
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> base_codegen_backend_;
+  GpuAliasInfo alias_info_;
   std::unique_ptr<FissionBackend> fission_backend_;
   mlir::MLIRContext mlir_context_;
 
@@ -252,10 +258,11 @@ class CublasFissionBackendTest : public HloHardwareIndependentTestBase {
             FissionTest::GetCublasRewriterPipeline(device_description_)),
         base_codegen_backend_(FissionTest::CreateCublasBackend(
             stream_executor_, &debug_options_, &compiler_, &target_config_)),
+        alias_info_(device_description_),
         fission_backend_(std::make_unique<FissionBackend>(
             &debug_options_, &compiler_, &target_config_,
             std::move(base_codegen_backend_), std::move(rewriter_pipeline_),
-            &mlir_context_, stream_executor_)) {}
+            &alias_info_, &mlir_context_, stream_executor_)) {}
 };
 
 TEST_F(CublasFissionBackendTest, ApplyConfigRemovesComputation) {
@@ -427,7 +434,7 @@ TEST_P(FissionTest, ApplyConfig) {
   EXPECT_THAT(fission_backend_->ApplyConfig(*fusion, *config), IsOk());
   std::string module_str = module->ToString();
   for (const std::string& expected_substr :
-       GetParam().expected_module_substrings) {
+       GetParam().expected_module_substrings_fn(device_description_)) {
     EXPECT_THAT(module_str, HasSubstr(expected_substr));
   }
 }
@@ -435,38 +442,52 @@ TEST_P(FissionTest, ApplyConfig) {
 INSTANTIATE_TEST_SUITE_P(
     FissionTests, FissionTest,
     ::testing::ValuesIn<FissionTestParams>({
-        {"TritonFusion_Cublas",
-         kTritonFusionHlo,
+        {"TritonFusion_Cublas", kTritonFusionHlo,
          &FissionTest::GetCublasRewriterPipeline,
          &FissionTest::CreateCublasBackend,
-         /*expected_module_substrings=*/
-         {"custom_call_target=\"__cublas$gemm\"",
-          "\"selected_algorithm\":\"-1\""},
+         /*expected_module_substrings_fn=*/
+         [](const se::DeviceDescription& device_description) {
+           return std::vector<std::string>{
+               "custom_call_target=\"__cublas$gemm\"",
+               "\"selected_algorithm\":\"-1\""};
+         },
          /*expected_backend_name=*/"Cublas_fission"},
-        {"TritonFusion_CublasLt_F8",
-         kF8TritonFusionHlo,
+        {"TritonFusion_CublasLt_F8", kF8TritonFusionHlo,
          &FissionTest::GetCublasRewriterPipeline,
-         &FissionTest::CreateCublasBackendWiithF8Fallback,
-         /*expected_module_substrings=*/
-         {"custom_call_target=\"__cublas$lt$matmul$f8\"",
-          "\"selected_algorithm\":\"0\""},
+         &FissionTest::CreateCublasBackendWithF8Fallback,
+         /*expected_module_substrings_fn=*/
+         [](const se::DeviceDescription& device_description) {
+           if (device_description.gpu_compute_capability()
+                   .cuda_compute_capability()
+                   ->IsAtLeastHopper()) {
+             return std::vector<std::string>{
+                 "custom_call_target=\"__cublas$lt$matmul$f8\"",
+                 "\"selected_algorithm\":\"0\""};
+           }
+           return std::vector<std::string>{
+               "custom_call_target=\"__cublas$gemm\"",
+               "\"selected_algorithm\":\"-1\""};
+         },
          /*expected_backend_name=*/"Cublas_fission"},
-        {"TritonFusion_CustomKernel",
-         kTritonFusionHlo,
+        {"TritonFusion_CustomKernel", kTritonFusionHlo,
          &FissionTest::GetCustomKernelRewriterPipeline,
          &FissionTest::CreateCustomKernelBackend,
-         /*expected_module_substrings=*/
-         {
-             "\"kind\":\"__custom_fusion\"",
+         /*expected_module_substrings_fn=*/
+         [](const se::DeviceDescription& device_description) {
+           return std::vector<std::string>{
+               "\"kind\":\"__custom_fusion\"",
+           };
          },
          /*expected_backend_name=*/"CustomKernel_fission"},
-        {"ScaledDotFusion_Cublas",
-         kScaledDotFusionHlo,
+        {"ScaledDotFusion_Cublas", kScaledDotFusionHlo,
          &FissionTest::GetCublasRewriterPipeline,
          &FissionTest::CreateCublasBackend,
-         /*expected_module_substrings=*/
-         {"custom_call_target=\"__cublas$gemm\"",
-          "\"selected_algorithm\":\"-1\""},
+         /*expected_module_substrings_fn=*/
+         [](const se::DeviceDescription& device_description) {
+           return std::vector<std::string>{
+               "custom_call_target=\"__cublas$gemm\"",
+               "\"selected_algorithm\":\"-1\""};
+         },
          /*expected_backend_name=*/"Cublas_fission"},
     }),
     [](const ::testing::TestParamInfo<FissionTest::ParamType>& info) {

@@ -74,7 +74,7 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
   // attribute.
   auto shard_values = output_layout->num_shards();
   auto int_type = mlir::RankedTensorType::get(
-      static_cast<int64>(shard_values.size()), builder.getIntegerType(32));
+      static_cast<int64_t>(shard_values.size()), builder.getIntegerType(32));
   auto int_attr = mlir::DenseIntElementsAttr::get(int_type, shard_values);
   auto target_type_attr = mlir::hlo::convertElementsAttr(
       int_attr, mlir::cast<mlir::TensorType>(original_fill.getDims().getType())

@@ -621,8 +621,14 @@ TEST(ThunkProtoDeserializationTest, CudnnThunk) {
         thunk_info { execution_stream_id: 7 }
         cudnn_thunk {
           fingerprint: "fingerprint"
-          args { buffer_allocation_index: 0 }
-          args { buffer_allocation_index: 1 }
+          args {
+            slice { buffer_allocation_index: 0 }
+            shape { element_type: U8 }
+          }
+          args {
+            slice { buffer_allocation_index: 1 }
+            shape { element_type: U8 }
+          }
         }
       )pb");
   std::vector<BufferAllocation> buffer_allocations = {

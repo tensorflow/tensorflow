@@ -228,8 +228,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   HloCostAnalysis::Options priority_fusion_options;
   priority_fusion_options.count_multiple_input_accesses = true;
   PriorityFusion priority_fusion(
-      /*thread_pool=*/nullptr, gpu_device_info, priority_fusion_options,
-      mlir_context_);
+      /*thread_pool=*/nullptr, gpu_device_info, alias_info_,
+      priority_fusion_options, mlir_context_);
   TF_RETURN_IF_ERROR(priority_fusion.Run(hlo_module.get()).status());
 
   // If the priority fusion pass above skipped some instructions, turn them

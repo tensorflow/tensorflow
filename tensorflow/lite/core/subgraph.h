@@ -164,21 +164,33 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      bool is_variable = false, const std::vector<int>& dims_signature = {}) {
+      bool is_variable = false, const std::vector<int>& dims_signature = {},
+      size_t external_buffer_id = 0) {
     if (dims_signature.empty()) {
-      return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                          dims.data(), quantization,
-                                          is_variable);
+      return SetTensorParametersReadWrite(
+          tensor_index, type, name, dims.size(), dims.data(), quantization,
+          is_variable, 0, nullptr, external_buffer_id);
     }
     return SetTensorParametersReadWrite(
         tensor_index, type, name, dims.size(), dims.data(), quantization,
-        is_variable, dims_signature.size(), dims_signature.data());
+        is_variable, dims_signature.size(), dims_signature.data(),
+        external_buffer_id);
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, size_t ndims,
       const int* dims, TfLiteQuantization quantization,
       bool is_variable = false, size_t ndims_signature = 0,
-      const int* dims_signature = nullptr);
+      const int* dims_signature = nullptr, size_t external_buffer_id = 0);
+
+  // Set the external buffer ID for a tensor. This is used for tensors whose
+  // data is stored in an external file.
+  void SetTensorExternalBufferId(size_t tensor_index,
+                                 size_t external_buffer_id) {
+    if (external_buffer_id != kTfLiteNoBufferIdentifier &&
+        external_buffer_id != 0) {
+      tensor_external_buffer_ids_[tensor_index] = external_buffer_id;
+    }
+  }
 
   // Get all tensors in the subgraph.
   //

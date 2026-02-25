@@ -55,20 +55,34 @@ struct MultimemRequest {
   se::DeviceAddressBase map_to;
 };
 
+class CollectiveMultimemRequests {
+ public:
+  virtual void Request(const MultimemRequest& request) = 0;
+  virtual ~CollectiveMultimemRequests() = default;
+};
+
+class CollectiveMultimemProvider {
+ public:
+  virtual absl::StatusOr<std::shared_ptr<CollectiveMultimem>> Get(
+      const MultimemRequest& request) const = 0;
+  virtual ~CollectiveMultimemProvider() = default;
+};
+
 // Allocates and provides thunks requested multimem objects.
-class CollectiveMultimemRegistry {
+class CollectiveMultimemRegistry : public CollectiveMultimemRequests,
+                                   public CollectiveMultimemProvider {
  public:
   // Does not take ownership of `executor`, which must outlive this object.
   CollectiveMultimemRegistry(se::StreamExecutor* absl_nonnull executor,
                              GlobalDeviceId global_device_id)
       : executor_(*executor), global_device_id_(global_device_id) {}
 
-  void Register(const MultimemRequest& request);
+  void Request(const MultimemRequest& request) override;
 
   absl::Status Build();
 
   absl::StatusOr<std::shared_ptr<CollectiveMultimem>> Get(
-      const MultimemRequest& request) const;
+      const MultimemRequest& request) const override;
 
  private:
   std::vector<MultimemRequest> requests_;

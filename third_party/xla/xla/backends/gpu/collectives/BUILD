@@ -88,6 +88,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:casts",
     ],
@@ -396,7 +397,6 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/runtime:device_id",
         "//xla/runtime:process_id",
-        "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:nccl_memory_allocator",  # buildcleaner: keep (static registration)
         "//xla/tsl/cuda:nccl",
@@ -407,6 +407,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

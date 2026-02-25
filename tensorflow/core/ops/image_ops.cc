@@ -106,9 +106,9 @@ absl::Status DecodeImageV2ShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("expand_animations", &expand_animations));
 
   // `expand_animations` set to true will return 4-D shapes for GIF and
-  // WebP. 3-D shapes will be returned for jpg, png, and
+  // WebP. 3-D shapes will be returned for jpg, jxl, png, and
   // bmp. `expand_animations` set to false will always return 3-D shapes for all
-  // (jpg, png, bmp, gif, webp). So we *may* have a mix of 3D and 4D
+  // (jpg, jxl, png, bmp, gif, webp). So we *may* have a mix of 3D and 4D
   // shapes. Just return unknown.
   if (expand_animations) {
     c->set_output(0, c->UnknownShape());
@@ -665,6 +665,14 @@ REGISTER_OP("DecodeWebP")
                            InferenceContext::kUnknownDim, channels_dim}));
       return absl::OkStatus();
     });
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DecodeJxl")
+    .Input("contents: string")
+    .Attr("channels: int = 0")
+    .Attr("dtype: {uint8} = DT_UINT8")
+    .Output("image: dtype")
+    .SetShapeFn(DecodeImageShapeFn);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("RGBToHSV")

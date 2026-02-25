@@ -216,6 +216,9 @@ cc_library(
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/profiler/utils:xplane_builder",
+        "@xla//xla/tsl/profiler/utils:xplane_schema",
+        "@xla//xla/tsl/profiler/utils:xplane_utils",
     ] + if_not_android([
         ":profiler_collection",
         ":profiler_factory",
@@ -298,19 +301,13 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "libtpu_on_gce",
-    values = {"copt": "-DLIBTPU_ON_GCE"},
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "nvtx_utils",
     hdrs = ["nvtx_utils.h"],
     visibility = ["//visibility:public"],
     deps = select({
         # Remove this once we clean up all the CUDA specific deps.
-        "libtpu_on_gce": [":nvtx_utils_external"],
+        "@xla//xla/tsl:libtpu_on_gce": [":nvtx_utils_external"],
         # Place holder for internal dependencies
         "//conditions:default": [":nvtx_utils_impl"],
     }),

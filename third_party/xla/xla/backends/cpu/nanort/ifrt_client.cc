@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
@@ -421,6 +422,8 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
     return nullptr;
   }
 
+  ifrt::LayoutRef layout() const override { return nullptr; }
+
   absl::StatusOr<std::vector<ifrt::ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ifrt::ArrayCopySemantics array_copy_semantics,
       ifrt::SingleDeviceShardSemantics single_device_shard_semantics) override {
@@ -653,6 +656,8 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
       const override {
     return nullptr;
   }
+
+  ifrt::LayoutRef layout() const override { return nullptr; }
 
   absl::StatusOr<std::vector<ifrt::ArrayRef>> DisassembleIntoSingleDeviceArrays(
       ifrt::ArrayCopySemantics array_copy_semantics,
@@ -920,7 +925,7 @@ class NanoExecutable final
     return absl::UnimplementedError("Fingerprint is not implemented.");
   }
 
-  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
   executable_version() const override {
     return absl::UnimplementedError("executable_version is not implemented.");
   }
@@ -937,8 +942,6 @@ class NanoExecutable final
   }
 
   ifrt::UserContextRef user_context() const override { return user_context_; }
-
-  tsl::Future<> GetReadyFuture() const override { return Ready(); }
 
   int num_devices() const override { return 1; }
 
@@ -1563,6 +1566,14 @@ NanoIfrtClient::GetDefaultPjRtLayout(ifrt::DType dtype,
                                      ifrt::MemoryKind memory_kind) const {
   return std::make_shared<PjRtLayout>(
       LayoutUtil::MakeDescendingLayout(dims.size()));
+}
+
+absl::StatusOr<ifrt::CustomLayoutRef> NanoIfrtClient::GetDefaultLayout(
+    ifrt::DType dtype, const ifrt::Shape& shape,
+    const ifrt::ShardingRef& sharding) const {
+  TF_ASSIGN_OR_RETURN(ifrt::Shape shard_shape, sharding->GetShardShape(shape));
+  return ifrt::PjRtLayout::Create(std::make_shared<PjRtLayout>(
+      LayoutUtil::MakeDescendingLayout(shard_shape.dims().size())));
 }
 
 NanoIfrtClient::NanoIfrtClient(int32_t num_devices,

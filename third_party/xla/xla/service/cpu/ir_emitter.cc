@@ -1065,7 +1065,7 @@ absl::Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
 
   std::string replica_groups = ReplicaGroupsToString(crs->replica_groups());
   int32_t replica_groups_size = replica_groups.size();
-  llvm::Value* replica_groups_v = b()->CreateGlobalStringPtr(replica_groups);
+  llvm::Value* replica_groups_v = b()->CreateGlobalString(replica_groups);
 
   bool is_tuple = crs->operand_count() > 1;
   std::vector<llvm::Value*> input_buffer_ptrs;
@@ -1157,7 +1157,7 @@ absl::Status IrEmitter::HandleReduceScatter(HloInstruction* rs) {
 
   std::string replica_groups = ReplicaGroupsToString(rs->replica_groups());
   int32_t replica_groups_size = replica_groups.size();
-  llvm::Value* replica_groups_v = b()->CreateGlobalStringPtr(replica_groups);
+  llvm::Value* replica_groups_v = b()->CreateGlobalString(replica_groups);
 
   Shape shape = rs->operand(0)->shape();
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
@@ -1206,7 +1206,7 @@ absl::Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
   std::string replica_groups =
       ReplicaGroupsToString(instruction->replica_groups());
   int32_t replica_groups_size = replica_groups.size();
-  llvm::Value* replica_groups_v = b()->CreateGlobalStringPtr(replica_groups);
+  llvm::Value* replica_groups_v = b()->CreateGlobalString(replica_groups);
 
   int64_t buffer_size = -1;
   std::vector<llvm::Value*> input_buffer_ptrs;
@@ -1260,7 +1260,7 @@ absl::Status IrEmitter::HandleAllGather(HloInstruction* instruction) {
   std::string replica_groups =
       ReplicaGroupsToString(instruction->replica_groups());
   int32_t replica_groups_size = replica_groups.size();
-  llvm::Value* replica_groups_v = b()->CreateGlobalStringPtr(replica_groups);
+  llvm::Value* replica_groups_v = b()->CreateGlobalString(replica_groups);
 
   std::vector<llvm::Value*> input_buffer_ptrs;
   std::vector<llvm::Value*> output_buffer_ptrs;
@@ -1311,7 +1311,7 @@ absl::Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
   std::string source_target_pairs = absl::StrJoin(
       instr->source_target_pairs(), ",", absl::PairFormatter("="));
   llvm::Value* source_target_pairs_v =
-      b()->CreateGlobalStringPtr(source_target_pairs);
+      b()->CreateGlobalString(source_target_pairs);
 
   Shape shape = crs->operand(0)->shape();
 
@@ -2517,7 +2517,7 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       absl::string_view opaque = typed_custom_call->opaque();
       EmitCallToFunc(custom_call->custom_call_target(),
                      {output_address, operands_alloca,
-                      b()->CreateGlobalStringPtr(llvm_ir::AsStringRef(opaque)),
+                      b()->CreateGlobalString(llvm_ir::AsStringRef(opaque)),
                       b()->getInt64(opaque.size()), GetStatusArgument()},
                      b()->getVoidTy());
       EmitEarlyReturnIfErrorStatus();
@@ -2800,7 +2800,7 @@ absl::StatusOr<bool> EmitFastConcatenate(
 llvm::Value* IrEmitter::EmitPrintf(absl::string_view fmt,
                                    absl::Span<llvm::Value* const> arguments) {
   std::vector<llvm::Value*> call_args;
-  call_args.push_back(b()->CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)));
+  call_args.push_back(b()->CreateGlobalString(llvm_ir::AsStringRef(fmt)));
   absl::c_copy(arguments, std::back_inserter(call_args));
   return b()->CreateCall(
       b()->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
@@ -2813,7 +2813,7 @@ llvm::Value* IrEmitter::EmitPrintf(absl::string_view fmt,
 llvm::Value* IrEmitter::EmitPrintfToStderr(
     absl::string_view fmt, absl::Span<llvm::Value* const> arguments) {
   std::vector<llvm::Value*> call_args;
-  call_args.push_back(b()->CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)));
+  call_args.push_back(b()->CreateGlobalString(llvm_ir::AsStringRef(fmt)));
   absl::c_copy(arguments, std::back_inserter(call_args));
   return b()->CreateCall(
       b()->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
@@ -2977,11 +2977,11 @@ llvm::Value* IrEmitter::EmitCallToFfi(HloCustomCallInstruction* custom_call,
 
   std::vector<llvm::Value*> arguments = {
       /*run_options_ptr=*/GetExecutableRunOptionsArgument(),
-      /*target_name_ptr=*/b()->CreateGlobalStringPtr(target_ref),
+      /*target_name_ptr=*/b()->CreateGlobalString(target_ref),
       /*target_name_len=*/b()->getInt64(target.size()),
       /*outputs=*/results_alloca,
       /*inputs=*/operands_alloca,
-      /*opaque_str_ptr=*/b()->CreateGlobalStringPtr(opaque_ref),
+      /*opaque_str_ptr=*/b()->CreateGlobalString(opaque_ref),
       /*opaque_str_len=*/b()->getInt64(opaque.size()),
       /*status_opaque=*/GetStatusArgument(),
       /*operand_types=*/operand_types_encoded.alloca,
@@ -3393,8 +3393,8 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilderBase* b,
     fn->setOnlyAccessesArgMemory();
   }
 
-  auto* hlo_name = b->CreateGlobalStringPtr(hlo->name());
-  auto* hlo_module = b->CreateGlobalStringPtr(hlo->GetModule()->name());
+  auto* hlo_name = b->CreateGlobalString(hlo->name());
+  auto* hlo_module = b->CreateGlobalString(hlo->GetModule()->name());
   auto* program_id = b->getInt64(hlo->GetModule()->unique_id());
   auto* activity_id = b->CreateCall(
       trace_func, {run_options, hlo_name, hlo_module, program_id});

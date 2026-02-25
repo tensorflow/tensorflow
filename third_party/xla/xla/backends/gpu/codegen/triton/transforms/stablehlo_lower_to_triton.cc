@@ -816,50 +816,6 @@ class LowerAllReduce : public mlir::OpRewritePattern<stablehlo::AllReduceOp> {
   }
 };
 
-template <typename StableHloOp, typename FloatArithOp, typename IntArithOp,
-          typename UnsignedIntArithOp = IntArithOp>
-class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
- public:
-  using OpRewritePattern<StableHloOp>::OpRewritePattern;
-
- private:
-  mlir::LogicalResult matchAndRewrite(
-      StableHloOp op, mlir::PatternRewriter& rewriter) const override {
-    auto result_type = mlir::getElementTypeOrSelf(op.getResult().getType());
-    if (result_type.isFloat()) {
-      rewriter.replaceOpWithNewOp<FloatArithOp>(op, op.getOperands());
-    } else {
-      Operation* new_op = nullptr;
-      bool should_guard_ub = mlir::isa<stablehlo::DivOp, stablehlo::RemOp>(op);
-
-      if (result_type.isUnsignedInteger()) {
-        llvm::SmallVector<Value> signless_operands;
-        signless_operands.reserve(op.getOperands().size());
-        Type operand_type = op.getOperands().front().getType();
-        for (Value operand : op.getOperands()) {
-          signless_operands.push_back(
-              ::xla::xtile::UnsignedIntegerToSignlessInteger(rewriter,
-                                                             operand));
-        }
-        new_op = UnsignedIntArithOp::create(rewriter, op.getLoc(),
-                                            signless_operands.front().getType(),
-                                            signless_operands);
-
-        rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
-            op, op.getResult().getType(), new_op->getResult(0));
-      } else {
-        new_op = rewriter.replaceOpWithNewOp<IntArithOp>(op, op.getOperands());
-      }
-
-      // Special case for division with zero.
-      if (should_guard_ub) {
-        new_op->setAttr("xla.guard_ub", rewriter.getUnitAttr());
-      }
-    }
-    return mlir::success();
-  }
-};
-
 class StableHLOLowerToTritonPass
     : public impl::StableHLOLowerToTritonPassBase<StableHLOLowerToTritonPass> {
  public:
@@ -868,24 +824,8 @@ class StableHLOLowerToTritonPass
   void runOnOperation() override {
     mlir::MLIRContext* mlir_context = &getContext();
     mlir::RewritePatternSet patterns(mlir_context);
-    patterns.add<
-        LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim, LowerReduce,
-        LowerReshape, LowerAllReduce,
-        LowerStableHloOpToArith<stablehlo::AddOp, arith::AddFOp, arith::AddIOp>,
-        LowerStableHloOpToArith<stablehlo::SubtractOp, arith::SubFOp,
-                                arith::SubIOp>,
-        LowerStableHloOpToArith<stablehlo::MulOp, arith::MulFOp, arith::MulIOp>,
-        LowerStableHloOpToArith<stablehlo::AndOp, arith::AndIOp, arith::AndIOp>,
-        LowerStableHloOpToArith<stablehlo::OrOp, arith::OrIOp, arith::OrIOp>,
-        LowerStableHloOpToArith<stablehlo::XorOp, arith::XOrIOp, arith::XOrIOp>,
-        LowerStableHloOpToArith<stablehlo::DivOp, arith::DivFOp, arith::DivSIOp,
-                                arith::DivUIOp>,
-        LowerStableHloOpToArith<stablehlo::RemOp, arith::RemFOp, arith::RemSIOp,
-                                arith::RemUIOp>,
-        LowerStableHloOpToArith<stablehlo::MaxOp, arith::MaximumFOp,
-                                arith::MaxSIOp, arith::MaxUIOp>,
-        LowerStableHloOpToArith<stablehlo::MinOp, arith::MinimumFOp,
-                                arith::MinSIOp, arith::MinUIOp>>(mlir_context);
+    patterns.add<LowerTranspose, LowerIotaToMakeRange, LowerBroadcastInDim,
+                 LowerReduce, LowerReshape, LowerAllReduce>(mlir_context);
     patterns.add<LowerDotGeneral>(mlir_context, warp_specialization_allowed_);
 
     if (mlir::failed(

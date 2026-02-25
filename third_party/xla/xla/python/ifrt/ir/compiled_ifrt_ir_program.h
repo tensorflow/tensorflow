@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -78,7 +79,7 @@ struct CompiledIfrtIrProgram {
       execute_fn;
 
   // Compiles an IFRT IR program.
-  static absl::StatusOr<CompiledIfrtIrProgram> Create(
+  static tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>> Create(
       std::unique_ptr<xla::ifrt::IfrtIRProgram> ifrt_ir_program,
       std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
       xla::ifrt::Client* client,

@@ -51,7 +51,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   }
 
   std::vector<Tensor> EvaluateNodes(const GraphDef& graph,
-                                    const std::vector<string>& fetch) {
+                                    const std::vector<std::string>& fetch) {
     SessionOptions options;
     std::unique_ptr<Session> session(NewSession(options));
     TF_CHECK_OK(session->Create(graph));
@@ -282,7 +282,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   // Invokes ScopedAllocatorOptimizer on `graph_def`, then executes it and
   // returns the outputs specified by `output_names` in `outputs`.
   void ExecuteGraph(const GraphDef& graph_def,
-                    const std::vector<string>& output_names,
+                    const std::vector<std::string>& output_names,
                     std::vector<Tensor>* outputs) {
     // Turn off all optimization except the ScopedAllocatorOptimizer
     // to avoid anything that would alter the expected graph input/output,
@@ -300,8 +300,8 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     rwcfg->mutable_scoped_allocator_opts()->add_enable_op("Abs");
     std::unique_ptr<Session> session(CreateSession(graph_def, config));
 
-    std::vector<std::pair<string, Tensor>> inputs;
-    std::vector<string> target_nodes = {};
+    std::vector<std::pair<std::string, Tensor>> inputs;
+    std::vector<std::string> target_nodes = {};
     absl::Status s = session->Run(inputs, output_names, target_nodes, outputs);
     TF_ASSERT_OK(s);
     ASSERT_EQ(outputs->size(), output_names.size());
@@ -318,7 +318,8 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     }
   }
 
-  void GetNode(NodeMap* node_map, const string& node_name, NodeDef** node_def) {
+  void GetNode(NodeMap* node_map, const std::string& node_name,
+               NodeDef** node_def) {
     *node_def = node_map->GetNode(node_name);
     ASSERT_TRUE(*node_def);
   }
@@ -326,11 +327,11 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   // Validate that a node has a single control input from scoped allocator node.
   // Return the scoped allocator node.
   NodeDef* ValidateSAControlInput(GraphDef* graph, NodeMap* node_map,
-                                  const string& node_name) {
+                                  const std::string& node_name) {
     NodeDef* node = nullptr;
     GetNode(node_map, node_name, &node);
     int num_control_inputs = 0;
-    string control_input_name;
+    std::string control_input_name;
     for (const auto& input : node->input()) {
       if (IsControlInput(input)) {
         ++num_control_inputs;
@@ -344,7 +345,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     return control_input_node;
   }
 
-  int NumControlInputs(NodeMap* node_map, const string& node_name) {
+  int NumControlInputs(NodeMap* node_map, const std::string& node_name) {
     NodeDef* node = nullptr;
     GetNode(node_map, node_name, &node);
     int num_control_inputs = 0;
@@ -381,8 +382,8 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
   {
     auto& nd_set = node_map.GetOutputs(nd->name());
     ASSERT_EQ(3, nd_set.size());
-    std::unordered_set<string> expected = {"scoped_allocator_concat_1_1", "s1",
-                                           "s2"};
+    std::unordered_set<std::string> expected = {"scoped_allocator_concat_1_1",
+                                                "s1", "s2"};
     for (auto it : nd_set) {
       ASSERT_NE(expected.find(it->name()), expected.end())
           << "Failed to find " << it->name();
@@ -405,7 +406,7 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
   {
     auto& nd_set = node_map.GetOutputs("scoped_allocator_split_1_1");
     ASSERT_EQ(2, nd_set.size());
-    std::unordered_set<string> name_set;
+    std::unordered_set<std::string> name_set;
     for (auto it : nd_set) {
       name_set.insert(it->name());
     }

@@ -1990,7 +1990,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t ndims,
     const int* dims, TfLiteQuantization quantization, bool is_variable,
-    const size_t ndims_signature, const int* dims_signature) {
+    const size_t ndims_signature, const int* dims_signature,
+    const size_t external_buffer_id) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
@@ -2034,6 +2035,10 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   tensor.quantization = *scoped_quantization.release();
   tensor.dims_signature =
       ConvertArrayToTfLiteIntArray(ndims_signature, dims_signature);
+  if (external_buffer_id != kTfLiteNoBufferIdentifier &&
+      external_buffer_id != 0) {
+    tensor_external_buffer_ids_[tensor_index] = external_buffer_id;
+  }
   return kTfLiteOk;
 }
 

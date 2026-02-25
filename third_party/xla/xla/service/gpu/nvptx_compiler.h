@@ -68,6 +68,7 @@ class NVPTXCompiler : public GpuCompiler {
   absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
   GetCodegenBackends(se::StreamExecutor* stream_exec,
                      const Compiler::GpuTargetConfig* target_config,
+                     const AliasInfo* alias_info,
                      const DebugOptions& debug_options,
                      mlir::MLIRContext* mlir_context) override;
 

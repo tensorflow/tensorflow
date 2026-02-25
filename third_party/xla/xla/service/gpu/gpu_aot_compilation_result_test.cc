@@ -195,7 +195,8 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
   EnsureCudaSymbolIsRegistered();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
-                          std::move(*result).LoadExecutable(&executor_));
+                          std::move(*result).LoadExecutable(
+                              platform_.id(), GetDeviceDescription()));
 
   auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr) << "Executable is not a GpuExecutable.";

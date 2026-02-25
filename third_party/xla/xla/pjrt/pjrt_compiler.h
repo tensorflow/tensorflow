@@ -86,9 +86,20 @@ inline PjRtPlatformId TpuId() {
 }
 
 class PjRtCompiler;
+// A compiler variant is a string used to distinguish between different
+// compiler implementations registered for the same platform, such as a remote
+// compiler service vs in-process compilation.
+
 // Thread-safe. Returns a pointer to the registered compiler for the given
-// platform.
-absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(absl::string_view platform_name);
+// platform and a default compiler variant.
+absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
+    absl::string_view platform_name);
+
+// Thread-safe. Returns a pointer to the registered compiler for the given
+// platform and compiler variant.
+absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
+    absl::string_view platform_name, absl::string_view compiler_variant);
+
 class PjRtClient;
 
 // Abstract interface to represent device topology that is used by the compiler.
@@ -332,11 +343,20 @@ class PjRtCompiler {
   }
 };
 
-// Registers a compiler to compile programs for 'platform_name'.
-// Takes ownership of 'compiler'.
+// Registers a compiler to compile programs for 'platform_name' with
+// a default compiler variant. Takes ownership of 'compiler'.
 //
-// REQUIRES: No compiler has been registered for the platform yet.
+// REQUIRES: No default compiler has been registered for the platform.
+void PjRtRegisterDefaultCompiler(absl::string_view platform_name,
+                                 std::unique_ptr<PjRtCompiler> compiler);
+
+// Registers a compiler to compile programs for 'platform_name' with
+// 'compiler_variant'. Takes ownership of 'compiler'.
+//
+// REQUIRES: No compiler has been registered for the platform and compiler
+// variant yet.
 void PjRtRegisterCompiler(absl::string_view platform_name,
+                          absl::string_view compiler_variant,
                           std::unique_ptr<PjRtCompiler> compiler);
 
 // Compiles a 'computation' and generates a 'PjRtExecutable' using the compiler

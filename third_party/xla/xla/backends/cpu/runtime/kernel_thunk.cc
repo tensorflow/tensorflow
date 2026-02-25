@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
@@ -82,40 +83,39 @@ static absl::Status CheckBufferAlignment(
 }
 
 // VLOGs kernel arguments resolved from the buffer allocations.
-static void VlogKernelArgs(
-    absl::Span<const BufferAllocation::Slice> arguments_buffers,
-    absl::Span<const BufferAllocation::Slice> results_buffers,
-    absl::Span<const XLA_CPU_KernelArg> kernel_args) {
+static void VlogKernelArgs(absl::Span<const ShapedSlice> arguments_buffers,
+                           absl::Span<const ShapedSlice> results_buffers,
+                           absl::Span<const XLA_CPU_KernelArg> kernel_args) {
   for (int64_t i = 0; i < arguments_buffers.size(); ++i) {
     VLOG(3) << absl::StreamFormat("  arg #%d: %s (%p)", i,
-                                  arguments_buffers[i].ToString(),
+                                  arguments_buffers[i].slice.ToString(),
                                   kernel_args[i].data);
   }
   for (int64_t i = 0; i < results_buffers.size(); ++i) {
     VLOG(3) << absl::StreamFormat(
-        "  res #%d: %s (%p)", i, results_buffers[i].ToString(),
+        "  res #%d: %s (%p)", i, results_buffers[i].slice.ToString(),
         kernel_args[arguments_buffers.size() + i].data);
   }
 }
 
 // Returns kernel buffer uses for a given arguments and results buffers.
 static Thunk::BufferUses KernelBufferUses(
-    absl::Span<const BufferAllocation::Slice> arguments_buffers,
-    absl::Span<const BufferAllocation::Slice> results_buffers) {
+    absl::Span<const ShapedSlice> arguments_buffers,
+    absl::Span<const ShapedSlice> results_buffers) {
   Thunk::BufferUses buffer_uses;
-  for (const BufferAllocation::Slice& buffer : arguments_buffers) {
-    buffer_uses.emplace_back(BufferUse::Read(buffer));
+  for (const ShapedSlice& buffer : arguments_buffers) {
+    buffer_uses.emplace_back(BufferUse::Read(buffer.slice, buffer.shape));
   }
-  for (const BufferAllocation::Slice& buffer : results_buffers) {
-    buffer_uses.emplace_back(BufferUse::Write(buffer));
+  for (const ShapedSlice& buffer : results_buffers) {
+    buffer_uses.emplace_back(BufferUse::Write(buffer.slice, buffer.shape));
   }
   return buffer_uses;
 }
 
 template <int64_t num_arguments, int64_t num_results>
 KernelThunk<num_arguments, num_results>::KernelThunk(
-    Info info, absl::Span<const BufferAllocation::Slice> arguments_buffers,
-    absl::Span<const BufferAllocation::Slice> results_buffers,
+    Info info, absl::Span<const ShapedSlice> arguments_buffers,
+    absl::Span<const ShapedSlice> results_buffers,
     absl::flat_hash_set<int64_t> invariant_arguments,
     absl::string_view kernel_name, NumWorkGroups num_workgroups,
     std::optional<uint64_t> min_alignment)
@@ -151,11 +151,11 @@ KernelThunk<num_arguments, num_results>::KernelThunk(
   // We'll use them as a template to resolve buffer addresses at run time.
   for (size_t i = 0; i < arguments_buffers.size(); ++i) {
     kernel_args_[i] = XLA_CPU_KernelArg{
-        nullptr, static_cast<size_t>(arguments_buffers_[i].size())};
+        nullptr, static_cast<size_t>(arguments_buffers_[i].slice.size())};
   }
   for (size_t i = 0; i < results_buffers.size(); ++i) {
     kernel_args_[arguments_buffers_.size() + i] = XLA_CPU_KernelArg{
-        nullptr, static_cast<size_t>(results_buffers_[i].size())};
+        nullptr, static_cast<size_t>(results_buffers_[i].slice.size())};
   }
 }
 
@@ -173,22 +173,24 @@ KernelThunk<num_arguments, num_results>::ExecuteInternal(
 
   const BufferAllocations* allocations = params.buffer_allocations;
 
-  for (const BufferAllocation::Slice& buffer : arguments_buffers_) {
+  for (const ShapedSlice& buffer : arguments_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
+      TF_ASSIGN_OR_RETURN(auto mem,
+                          allocations->GetDeviceAddress(buffer.slice));
       kernel_args_ptr++->data = mem.opaque();
     } else {
-      auto mem = allocations->GetDeviceAddressUnchecked(buffer);
+      auto mem = allocations->GetDeviceAddressUnchecked(buffer.slice);
       kernel_args_ptr++->data = mem.opaque();
     }
   }
 
-  for (const BufferAllocation::Slice& buffer : results_buffers_) {
+  for (const ShapedSlice& buffer : results_buffers_) {
     if constexpr (ShouldCheckBufferSlices()) {
-      TF_ASSIGN_OR_RETURN(auto mem, allocations->GetDeviceAddress(buffer));
+      TF_ASSIGN_OR_RETURN(auto mem,
+                          allocations->GetDeviceAddress(buffer.slice));
       kernel_args_ptr++->data = mem.opaque();
     } else {
-      auto mem = allocations->GetDeviceAddressUnchecked(buffer);
+      auto mem = allocations->GetDeviceAddressUnchecked(buffer.slice);
       kernel_args_ptr++->data = mem.opaque();
     }
   }
@@ -312,9 +314,8 @@ SmallKernelThunk<num_arguments, num_results>::Execute(
 }
 
 absl::StatusOr<std::unique_ptr<Thunk>> KernelThunk::Create(
-    Thunk::Info info,
-    absl::Span<const BufferAllocation::Slice> arguments_buffers,
-    absl::Span<const BufferAllocation::Slice> results_buffers,
+    Thunk::Info info, absl::Span<const ShapedSlice> arguments_buffers,
+    absl::Span<const ShapedSlice> results_buffers,
     absl::string_view kernel_name, NumWorkGroups num_workgroups,
     absl::flat_hash_set<int64_t> invariant_arguments,
     std::optional<uint64_t> min_alignment) {

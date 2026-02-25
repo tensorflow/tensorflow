@@ -28,13 +28,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using ScanLoopAccumulatorInputUnificationTest = HloTestBase;
+using ScanLoopAccumulatorInputUnificationTest = HloPjRtTestBase;
 
 HloInstruction* GetTopLevelWhileInstruction(HloModule* module) {
   for (HloInstruction* instr :

@@ -417,9 +417,12 @@ tsl_cc_test(
     srcs = ["env_test.cc"],
     deps = [
         ":env",
+        "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
     ],
 )
 

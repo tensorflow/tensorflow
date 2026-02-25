@@ -360,12 +360,7 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Returns the default layout for an array with `dtype`, `shape`, and
   // `sharding`.
   virtual absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
-      DType dtype, const Shape& shape, const ShardingRef& sharding) const {
-    // TODO(hyeontaek): Change to a pure virtual method once all implementations
-    // override this method.
-    CHECK(false) << "Placeholder; do not use yet";
-    return absl::UnimplementedError("Not implemented yet");
-  }
+      DType dtype, const Shape& shape, const ShardingRef& sharding) const = 0;
   // Helper method for `GetDefaultLayout` for when shard shape dims are known.
   // TODO(hyeontaek): Remove this sugar API once the transition is complete.
   absl::StatusOr<CustomLayoutRef> GetDefaultLayout(

@@ -524,6 +524,8 @@ std::string HloModule::ToString() const {
   print_options.set_print_metadata(!db_options.xla_dump_disable_metadata());
   print_options.set_syntax_sugar_async_ops(
       db_options.xla_syntax_sugar_async_ops());
+  print_options.set_print_inline_stack_frames(
+      db_options.xla_hlo_print_inline_stack_frames());
   return ToString(print_options);
 }
 

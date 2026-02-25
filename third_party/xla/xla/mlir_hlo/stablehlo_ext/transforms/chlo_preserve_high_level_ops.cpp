@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
@@ -79,6 +80,41 @@ mlir::func::FuncOp buildFuncOpWrappingOperation(mlir::Operation* op,
   mlir::func::ReturnOp::create(builder, loc, clonedOp->getResults());
 
   LLVM_DEBUG(llvm::dbgs() << "Created function " << func.getName() << "\n");
+  return func;
+}
+
+mlir::func::FuncOp buildFuncOpFromRegion(Region& region, StringRef name,
+                                         mlir::ModuleOp module) {
+  mlir::SymbolTable symbolTable(module);
+  mlir::OpBuilder builder(module);
+  builder.setInsertionPointToEnd(&module.getBodyRegion().back());
+
+  // Create function
+  Block& entryBlock = region.front();
+  TypeRange argTypes = entryBlock.getArgumentTypes();
+  Operation* terminator = entryBlock.getTerminator();
+  TypeRange resultTypes = terminator->getOperandTypes();
+
+  mlir::func::FuncOp func = mlir::func::FuncOp::create(
+      builder, region.getParentOp()->getLoc(), name,
+      builder.getFunctionType(argTypes, resultTypes));
+  func.setPrivate();
+  symbolTable.insert(func);
+
+  // Clone region
+  IRMapping mapping;
+  region.cloneInto(&func.getRegion(), mapping);
+
+  // Replace stablehlo.return with func.return
+  for (Block& block : func.getBody()) {
+    Operation* term = block.getTerminator();
+    if (term->getName().getStringRef() == "stablehlo.return") {
+      builder.setInsertionPoint(term);
+      mlir::func::ReturnOp::create(builder, term->getLoc(),
+                                   term->getOperands());
+      term->erase();
+    }
+  }
   return func;
 }
 
@@ -293,6 +329,40 @@ struct AsinhOpToCustomCallPattern : public OpRewritePattern<chlo::AsinhOp> {
   }
 };
 
+struct ScanOpToCustomCallPattern : public OpRewritePattern<chlo::ScanOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::ScanOp op,
+                                PatternRewriter& rewriter) const override {
+    auto module = op->getParentOfType<ModuleOp>();
+    auto funcName = (op->getName().getStringRef() + ".impl").str();
+
+    func::FuncOp calledFunc =
+        buildFuncOpFromRegion(op.getBody(), funcName, module);
+
+    auto opAttrs = serializeChloAttributes(op);
+    if (failed(opAttrs)) return op->emitError("failed to serialize attributes");
+
+    SmallVector<NamedAttribute> attributes;
+    attributes.push_back(rewriter.getNamedAttr(
+        "call_target_name", rewriter.getStringAttr("chlo.scan")));
+    attributes.push_back(rewriter.getNamedAttr(
+        "mhlo.attributes", rewriter.getDictionaryAttr(opAttrs.value())));
+    attributes.push_back(
+        rewriter.getNamedAttr("mhlo.version", rewriter.getI64IntegerAttr(1)));
+    attributes.push_back(rewriter.getNamedAttr(
+        "called_computations",
+        ArrayAttr::get(getContext(), {FlatSymbolRefAttr::get(calledFunc)})));
+
+    SmallVector<Value> operands;
+    operands.append(op.getInputs().begin(), op.getInputs().end());
+    operands.append(op.getInits().begin(), op.getInits().end());
+
+    rewriter.replaceOpWithNewOp<stablehlo::CustomCallOp>(
+        op, op->getResultTypes(), operands, attributes);
+    return success();
+  }
+};
+
 ///////
 // CHLO to CompositeOp Patterns
 ///////
@@ -392,6 +462,14 @@ struct AsinhOpToCompositePattern : public OpRewritePattern<chlo::AsinhOp> {
   }
 };
 
+struct ScanOpToCompositePattern : public OpRewritePattern<chlo::ScanOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(chlo::ScanOp op,
+                                PatternRewriter& rewriter) const override {
+    return wrapChloOpInComposite(op, /*version=*/1, rewriter);
+  }
+};
+
 }  // namespace
 
 struct ChloPreserveHighLevelOpsPass
@@ -424,6 +502,7 @@ struct ChloPreserveHighLevelOpsPass
         SinhOpToCustomCallPattern,
         ErfOpToCustomCallPattern,
         RaggedDotOpToCustomCallPattern,
+        ScanOpToCustomCallPattern,
         TopKOpToCustomCallPattern>(ctx);
     } else {
       patterns.add<
@@ -436,6 +515,7 @@ struct ChloPreserveHighLevelOpsPass
         SinhOpToCompositePattern,
         ErfOpToCompositePattern,
         RaggedDotOpToCompositePattern,
+        ScanOpToCompositePattern,
         TopKOpToCompositePattern>(ctx);
     }
     // clang-format on

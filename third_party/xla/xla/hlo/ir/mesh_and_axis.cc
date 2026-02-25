@@ -46,20 +46,23 @@ namespace xla {
 absl::Status Mesh::ValidateMesh() {
   // TODO(varcho): An empty mesh is valid in Shardy. If support for such meshes
   // is required, update this validation.
-  if (device_assignment_.dimensions().empty() || axes_names_.empty()) {
+  if (device_assignment_.num_dimensions() == 0 || axes_names_.empty()) {
     return absl::InvalidArgumentError("Mesh must have at least one axis.");
   }
 
-  if (device_assignment_.dimensions().size() != axes_names_.size()) {
-    return absl::InvalidArgumentError(
+  if (device_assignment_.num_dimensions() != axes_names_.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
         "Number of axes names must match number of dimensions in the device "
-        "assignment.");
+        "assignment. Number of axes names: ",
+        axes_names_.size(),
+        ", Number of dimensions: ", device_assignment_.dimensions().size()));
   }
 
   absl::flat_hash_set<std::string> seen_axis_names;
   for (const std::string& axis_name : axes_names_) {
     if (!seen_axis_names.insert(axis_name).second) {
-      return absl::InvalidArgumentError("Mesh has duplicate axis names.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Mesh has duplicate axis names. Duplicate axis name: ", axis_name));
     }
   }
 
@@ -71,8 +74,8 @@ absl::Status Mesh::ValidateMesh() {
                                   device_assignment_.array().end());
   for (int64_t device_id : device_ids) {
     if (device_id < 0) {
-      return absl::InvalidArgumentError(
-          "Mesh device ids must be non-negative.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Mesh device ids must be non-negative. Device id: ", device_id));
     }
   }
   std::vector<int64_t> iota(device_ids.size());
@@ -128,9 +131,8 @@ std::string Mesh::ToString() const {
 
 MeshProto Mesh::ToProto() const {
   MeshProto proto;
-  int64_t num_axes = axes_names_.size();
 
-  if (num_axes == 0) {
+  if (num_axes() == 0) {
     if (device_assignment_.num_elements() == 0) {
       return MeshProto();
     }
@@ -141,7 +143,7 @@ MeshProto Mesh::ToProto() const {
   }
 
   std::vector<MeshProto::MeshAxis> axes;
-  axes.reserve(num_axes);
+  axes.reserve(num_axes());
 
   for (auto [name, size] :
        llvm::zip_equal(axes_names_, device_assignment_.dimensions())) {
@@ -203,11 +205,23 @@ Mesh Mesh::FromProto(const MeshProto& proto) {
   return Mesh(tile_assignment, mesh_axis_names_span);
 }
 
+bool Mesh::ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const {
+  if (num_axes() != axes.size()) {
+    return false;
+  }
+  for (int i = 0; i < axes.size(); ++i) {
+    if (axes[i].sub_axis_info().has_value() || axes[i].mesh_axis_index() != i) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::string AxisRef::ToString(const Mesh* mesh) const {
   // TODO(b/474013054): Remove these checks if they have significant overhead.
   CHECK_GE(mesh_axis_index_, 0);
   if (mesh) {
-    CHECK_LT(mesh_axis_index_, mesh->axis_names().size());
+    CHECK_LT(mesh_axis_index_, mesh->num_axes());
   }
   std::string axis_str = mesh ? mesh->axis_names()[mesh_axis_index_]
                               : std::to_string(mesh_axis_index_);
@@ -229,12 +243,12 @@ AxisRefProto AxisRef::ToProto() const {
 }
 
 AxisRef AxisRef::FromProto(const AxisRefProto& proto) {
-  AxisRef axis_ref(proto.mesh_axis_index());
   if (proto.has_sub_axis_info()) {
-    axis_ref.sub_axis_info_ = {proto.sub_axis_info().pre_size(),
-                               proto.sub_axis_info().size()};
+    return AxisRef(proto.mesh_axis_index(),
+                   SubAxis{proto.sub_axis_info().pre_size(),
+                           proto.sub_axis_info().size()});
   }
-  return axis_ref;
+  return AxisRef(proto.mesh_axis_index());
 }
 
 AxisRef::AxisRef(int64_t mesh_axis_index) : mesh_axis_index_(mesh_axis_index) {}
@@ -306,23 +320,27 @@ bool AxisRef::Merge(const AxisRef& other, const Mesh& mesh) {
 }
 
 absl::Status AxisRef::Validate(const Mesh& mesh) const {
-  if (mesh_axis_index_ >= mesh.axis_names().size()) {
-    return absl::InvalidArgumentError(
-        "Axis index must be less than number of axes.");
+  if (mesh_axis_index_ >= mesh.num_axes()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Axis index must be less than number of axes. Axis index: ",
+        mesh_axis_index_, ", Number of axes: ", mesh.axis_names().size()));
   }
   if (!sub_axis_info_.has_value()) {
     return absl::OkStatus();
   }
 
   int64_t axis_size = mesh.axis_size(mesh_axis_index_);
-  if (axis_size % sub_axis_info_->pre_size != 0 ||
-      axis_size % sub_axis_info_->size != 0) {
-    return absl::InvalidArgumentError(
-        "Pre-size and size must divide the full axis size.");
+  if (axis_size % sub_axis_info_->next_pre_size() != 0) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Sub-axis next_pre_size must divide the full axis size. Next "
+        "pre-size: ",
+        sub_axis_info_->next_pre_size(), ", Axis size: ", axis_size));
   }
   if (sub_axis_info_->size >= axis_size) {
-    return absl::InvalidArgumentError(
-        "Sub-axis size must be strictly less than the full axis size.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Sub-axis size must be strictly less than the full axis size. Sub-axis "
+        "size: ",
+        sub_axis_info_->size, ", Axis size: ", axis_size));
   }
   return absl::OkStatus();
 }
@@ -358,12 +376,26 @@ bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes) {
 }
 
 absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
-                                const Mesh& mesh) {
+                                const Mesh& mesh,
+                                bool allow_mergeable_neighbors) {
+  if (axes.empty()) {
+    return absl::OkStatus();
+  }
   for (const AxisRef& axis : axes) {
     TF_RETURN_IF_ERROR(axis.Validate(mesh));
   }
   if (!AxesCanCoexistWithoutOverlap(axes)) {
     return absl::InvalidArgumentError("Axes cannot coexist or axes overlap.");
+  }
+  if (allow_mergeable_neighbors) {
+    return absl::OkStatus();
+  }
+  for (auto it = axes.begin(); it != std::prev(axes.end()); ++it) {
+    if (it->CanMerge(*std::next(it))) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Adjacent axes in dimension sharding can be merged: ",
+          it->ToString(&mesh), ", ", std::next(it)->ToString(&mesh)));
+    }
   }
   return absl::OkStatus();
 }

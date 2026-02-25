@@ -860,6 +860,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::StatusOr<bool> TryRemovingBitcastOrReshapeTransposeChain(
       HloInstruction* instruction);
 
+  // Tries to hoist transpose over reshape:
+  // Reshape(Transpose(Reshape(x))) -> Transpose(Reshape(x))
+  absl::StatusOr<bool> TryHoistTransposeOfReshape(HloInstruction* reshape);
+
   // Helper function for HandleReduce. Reorders reduce dot
   // to a dot reduce. reduce(dot(A, B)) to dot(A, reduce(B))
   std::optional<absl::Status> ReorderReduceDotToDotReduce(

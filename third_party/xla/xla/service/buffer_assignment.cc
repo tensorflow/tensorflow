@@ -34,6 +34,8 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -79,6 +81,45 @@ using absl::StrAppend;
 using absl::StrAppendFormat;
 using memory_space_assignment::PresetAssignments;
 using ::tsl::strings::HumanReadableNumBytes;
+
+std::optional<bool> CompareSize(
+    absl::AnyInvocable<int64_t(const HloBuffer&)> size_of, const HloBuffer* a,
+    const HloBuffer* b) {
+  const int64_t a_size = size_of(*a);
+  const int64_t b_size = size_of(*b);
+  if (a_size != b_size) {
+    return a_size > b_size;  // use ">" for decreasing size.
+  }
+  return std::nullopt;
+};
+
+std::optional<bool> CompareLiveOut(const HloAliasAnalysis* alias_analysis,
+                                   const HloBuffer* a, const HloBuffer* b) {
+  const bool a_live_out = alias_analysis->BufferLivesOut(*a);
+  const bool b_live_out = alias_analysis->BufferLivesOut(*b);
+  if (a_live_out != b_live_out) {
+    return a_live_out;
+  }
+  return std::nullopt;
+};
+
+std::optional<bool> ComparePosition(
+    const absl::flat_hash_map<const HloInstruction*, int>* post_order_position,
+    const HloBuffer* a, const HloBuffer* b) {
+  auto compare = [post_order_position](const HloValue* value1,
+                                       const HloValue* value2) {
+    return post_order_position->at(value1->instruction()) <
+           post_order_position->at(value2->instruction());
+  };
+  const HloValue* a_min = *absl::c_min_element(a->values(), compare);
+  const HloValue* b_min = *absl::c_min_element(b->values(), compare);
+  int a_position = post_order_position->at(a_min->instruction());
+  int b_position = post_order_position->at(b_min->instruction());
+  if (a_position != b_position) {
+    return a_position < b_position;
+  }
+  return std::nullopt;
+}
 
 absl::flat_hash_map<int64_t, const HloInstruction*> BuildIdToHloInstructionMap(
     const HloModule* module) {
@@ -1798,39 +1839,37 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
     }
   }
 
-  absl::c_sort(
-      sorted_buffers, [&post_order_position, &alias_analysis, assignment](
-                          const HloBuffer* a, const HloBuffer* b) {
-        // Primary sort is by decreasing buffer size.
-        const int64_t a_size = assignment->HloBufferSize(*a);
-        const int64_t b_size = assignment->HloBufferSize(*b);
-        if (a_size != b_size) {
-          return a_size > b_size;  // use ">" for decreasing size.
-        }
+  using Comparator = absl::AnyInvocable<std::optional<bool>(
+      const HloBuffer* a, const HloBuffer* b)>;
+  auto size_of = absl::bind_front(&BufferAssignment::HloBufferSize, assignment);
+  Comparator compare_size = absl::bind_front(CompareSize, size_of);
+  Comparator compare_live_out =
+      absl::bind_front(CompareLiveOut, &alias_analysis);
+  Comparator compare_position =
+      absl::bind_front(ComparePosition, &post_order_position);
+  std::vector<Comparator> comparators;
+  switch (opts_.buffer_order) {
+    case BufferOrder::kBiggestFirst:
+      comparators.push_back(std::move(compare_size));
+      comparators.push_back(std::move(compare_live_out));
+      comparators.push_back(std::move(compare_position));
+      break;
+    case BufferOrder::kTopological:
+      comparators.push_back(std::move(compare_position));
+      comparators.push_back(std::move(compare_size));
+      comparators.push_back(std::move(compare_live_out));
+      break;
+  }
 
-        const bool a_live_out = alias_analysis.BufferLivesOut(*a);
-        const bool b_live_out = alias_analysis.BufferLivesOut(*b);
-        if (a_live_out != b_live_out) {
-          return a_live_out;
-        }
-        auto compare = [&post_order_position](const HloValue* value1,
-                                              const HloValue* value2) {
-          return post_order_position.at(value1->instruction()) <
-                 post_order_position.at(value2->instruction());
-        };
-        const HloValue* a_min = *absl::c_min_element(a->values(), compare);
-        const HloValue* b_min = *absl::c_min_element(b->values(), compare);
-        if (post_order_position.at(a_min->instruction()) <
-            post_order_position.at(b_min->instruction())) {
-          return true;
-        } else if (post_order_position.at(a_min->instruction()) >
-                   post_order_position.at(b_min->instruction())) {
-          return false;
-        }
-
-        // Use buffer ids to break ties and ensure a stable ordering.
-        return a->id() < b->id();
-      });
+  absl::c_sort(sorted_buffers,
+               [&comparators](const HloBuffer* a, const HloBuffer* b) {
+                 for (Comparator& c : comparators) {
+                   if (std::optional<bool> lt = c(a, b); lt.has_value()) {
+                     return *lt;
+                   }
+                 }
+                 return a->id() < b->id();
+               });
 
   std::vector<BufferAllocation::Index> allocation_indices;
 

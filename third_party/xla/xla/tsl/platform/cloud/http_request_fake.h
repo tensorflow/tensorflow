@@ -37,27 +37,27 @@ namespace tsl {
 class FakeHttpRequest : public CurlHttpRequest {
  public:
   /// Return the response for the given request.
-  FakeHttpRequest(const string& request, const string& response)
+  FakeHttpRequest(const std::string& request, const std::string& response)
       : FakeHttpRequest(request, response, absl::OkStatus(), nullptr, {}, 200) {
   }
 
   /// Return the response with headers for the given request.
-  FakeHttpRequest(const string& request, const string& response,
-                  const std::map<string, string>& response_headers)
+  FakeHttpRequest(const std::string& request, const std::string& response,
+                  const std::map<std::string, std::string>& response_headers)
       : FakeHttpRequest(request, response, absl::OkStatus(), nullptr,
                         response_headers, 200) {}
 
   /// \brief Return the response for the request and capture the POST body.
   ///
   /// Post body is not expected to be a part of the 'request' parameter.
-  FakeHttpRequest(const string& request, const string& response,
-                  string* captured_post_body)
+  FakeHttpRequest(const std::string& request, const std::string& response,
+                  std::string* captured_post_body)
       : FakeHttpRequest(request, response, absl::OkStatus(), captured_post_body,
                         {}, 200) {}
 
   /// \brief Return the response and the status for the given request.
-  FakeHttpRequest(const string& request, const string& response,
-                  absl::Status response_status, uint64 response_code)
+  FakeHttpRequest(const std::string& request, const std::string& response,
+                  absl::Status response_status, uint64_t response_code)
       : FakeHttpRequest(request, response, response_status, nullptr, {},
                         response_code) {}
 
@@ -65,10 +65,10 @@ class FakeHttpRequest : public CurlHttpRequest {
   ///  and capture the POST body.
   ///
   /// Post body is not expected to be a part of the 'request' parameter.
-  FakeHttpRequest(const std::string& request, const string& response,
-                  absl::Status response_status, string* captured_post_body,
-                  const std::map<string, string>& response_headers,
-                  uint64 response_code)
+  FakeHttpRequest(const std::string& request, const std::string& response,
+                  absl::Status response_status, std::string* captured_post_body,
+                  const std::map<std::string, std::string>& response_headers,
+                  uint64_t response_code)
       : expected_request_(request),
         response_(response),
         response_status_(response_status),
@@ -76,31 +76,32 @@ class FakeHttpRequest : public CurlHttpRequest {
         response_headers_(response_headers),
         response_code_(response_code) {}
 
-  void SetUri(const string& uri) override {
+  void SetUri(const std::string& uri) override {
     actual_uri_ += "Uri: " + uri + "\n";
   }
-  void SetRange(uint64 start, uint64 end) override {
+  void SetRange(uint64_t start, uint64_t end) override {
     actual_request_ += strings::StrCat("Range: ", start, "-", end, "\n");
   }
-  void AddHeader(const string& name, const string& value) override {
+  void AddHeader(const std::string& name, const std::string& value) override {
     actual_request_ += "Header " + name + ": " + value + "\n";
   }
-  void AddAuthBearerHeader(const string& auth_token) override {
+  void AddAuthBearerHeader(const std::string& auth_token) override {
     actual_request_ += "Auth Token: " + auth_token + "\n";
   }
   void SetDeleteRequest() override { actual_request_ += "Delete: yes\n"; }
-  absl::Status SetPutFromFile(const string& body_filepath,
+  absl::Status SetPutFromFile(const std::string& body_filepath,
                               size_t offset) override {
     std::ifstream stream(body_filepath);
-    const string& content = string(std::istreambuf_iterator<char>(stream),
-                                   std::istreambuf_iterator<char>())
-                                .substr(offset);
+    const std::string& content =
+        std::string(std::istreambuf_iterator<char>(stream),
+                    std::istreambuf_iterator<char>())
+            .substr(offset);
     actual_request_ += "Put body: " + content + "\n";
     return absl::OkStatus();
   }
   void SetPostFromBuffer(const char* buffer, size_t size) override {
     if (captured_post_body_) {
-      *captured_post_body_ = string(buffer, size);
+      *captured_post_body_ = std::string(buffer, size);
     } else {
       actual_request_ +=
           absl::StrCat("Post body: ", absl::string_view(buffer, size), "\n");
@@ -142,11 +143,11 @@ class FakeHttpRequest : public CurlHttpRequest {
 
   // This function just does a simple replacing of "/" with "%2F" instead of
   // full url encoding.
-  string EscapeString(const string& str) override {
-    const string victim = "/";
-    const string encoded = "%2F";
+  std::string EscapeString(const std::string& str) override {
+    const std::string victim = "/";
+    const std::string encoded = "%2F";
 
-    string copy_str = str;
+    std::string copy_str = str;
     std::string::size_type n = 0;
     while ((n = copy_str.find(victim, n)) != std::string::npos) {
       copy_str.replace(n, victim.size(), encoded);
@@ -155,22 +156,22 @@ class FakeHttpRequest : public CurlHttpRequest {
     return copy_str;
   }
 
-  string GetResponseHeader(const string& name) const override {
+  std::string GetResponseHeader(const std::string& name) const override {
     const auto header = response_headers_.find(name);
     return header != response_headers_.end() ? header->second : "";
   }
 
-  virtual uint64 GetResponseCode() const override { return response_code_; }
+  virtual uint64_t GetResponseCode() const override { return response_code_; }
 
-  void SetTimeouts(uint32 connection, uint32 inactivity,
-                   uint32 total) override {
+  void SetTimeouts(uint32_t connection, uint32_t inactivity,
+                   uint32_t total) override {
     actual_request_ += strings::StrCat("Timeouts: ", connection, " ",
                                        inactivity, " ", total, "\n");
   }
 
  private:
-  string actual_request() const {
-    string s;
+  std::string actual_request() const {
+    std::string s;
     s.append(actual_uri_);
     s.append(actual_request_);
     return s;
@@ -180,14 +181,14 @@ class FakeHttpRequest : public CurlHttpRequest {
   char* direct_result_buffer_ = nullptr;
   size_t direct_result_buffer_size_ = 0;
   size_t direct_result_bytes_transferred_ = 0;
-  string expected_request_;
-  string actual_uri_;
-  string actual_request_;
-  string response_;
+  std::string expected_request_;
+  std::string actual_uri_;
+  std::string actual_request_;
+  std::string response_;
   absl::Status response_status_;
-  string* captured_post_body_ = nullptr;
-  std::map<string, string> response_headers_;
-  uint64 response_code_ = 0;
+  std::string* captured_post_body_ = nullptr;
+  std::map<std::string, std::string> response_headers_;
+  uint64_t response_code_ = 0;
 };
 
 /// Fake HttpRequest factory for testing.

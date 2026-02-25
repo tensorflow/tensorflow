@@ -43,7 +43,7 @@ SmallVector<RegionEdge> getSuccessorRegions(RegionBranchOpInterface op,
     edge.predecessorOp = parentRegion ? parentRegion->front().getTerminator()
                                       : op.getOperation();
     edge.predecessorOperandIndex = edge.predecessorOp->getNumOperands() -
-                                   successor.getSuccessorInputs().size();
+                                   op.getSuccessorInputs(successor).size();
 
     if (successor.isParent()) {
       edge.successorRegionPoint = point.parent();

@@ -381,8 +381,14 @@ absl::Status HeapSimulator::RunComputation(
     for (const HloValue* value : buffer.values()) {
       size = std::max(size, (*size_fn_)(*value));
     }
+    const HloValue* first_value = nullptr;
     for (const HloValue* value : buffer.values()) {
-      buffer_sizes_[value] = size;
+      buffer_groups_.emplace(value, size);
+      if (first_value == nullptr) {
+        first_value = value;
+      } else {
+        buffer_groups_.at(first_value).Merge(&buffer_groups_.at(value));
+      }
     }
   }
 
@@ -558,6 +564,11 @@ void HeapSimulator::Free(const HloValue* buffer,
 // SharedGroup.
 void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
                                 const HloInstruction* instruction) {
+  // Update the size of the shared group.
+  int64_t new_size = std::max(GetBufferSize(buffer), GetBufferSize(shared));
+  buffer_groups_.at(buffer).Get() = new_size;
+  buffer_groups_.at(buffer).Merge(&buffer_groups_.at(shared));
+
   algorithm_->ShareWith(buffer, shared, GetBufferSize(shared));
   no_fragmentation_stats_->ShareWith(buffer, shared, GetBufferSize(shared));
   FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, buffer, instruction,
@@ -565,9 +576,9 @@ void HeapSimulator::ShareBuffer(const HloValue* buffer, const HloValue* shared,
 }
 
 int64_t HeapSimulator::GetBufferSize(const HloValue* buffer) const {
-  auto it = buffer_sizes_.find(buffer);
-  CHECK(it != buffer_sizes_.end());
-  return it->second;
+  auto it = buffer_groups_.find(buffer);
+  CHECK(it != buffer_groups_.end());
+  return it->second.Get();
 }
 
 absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Finish() {
@@ -2610,21 +2621,26 @@ void GlobalDecreasingSizeBestFitHeap<BufferType>::CommitChunk(
         buffer_interval,
     GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk chunk) {
   CHECK_EQ(chunk.size, buffer_interval.size);
-  result_.heap_size = result_.UpdatedHeapSize(chunk);
-  interval_tree_.Add(buffer_interval.start, buffer_interval.end, chunk);
+  const int64_t max_colocation_size = GetMaxColocationSize(buffer_interval);
+  Chunk max_size_chunk =
+      Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
+
+  result_.heap_size = result_.UpdatedHeapSize(max_size_chunk);
+  interval_tree_.Add(buffer_interval.start, buffer_interval.end,
+                     max_size_chunk);
   for (auto colocation : GetTransitiveColocations(buffer_interval)) {
     auto colocation_interval = buffer_intervals_[colocation];
-    // Create a colocation chunk with the same offset but with the correct size
-    // of the colocated interval in case the colocations are of different sizes.
+    // Create a colocation chunk with the same offset and the maximum size of
+    // all colocated buffers.
     Chunk colocation_chunk =
-        Chunk::FromOffsetSize(chunk.offset, colocation_interval.size);
+        Chunk::FromOffsetSize(chunk.offset, max_colocation_size);
     result_.heap_size = result_.UpdatedHeapSize(colocation_chunk);
     interval_tree_.Add(colocation_interval.start, colocation_interval.end,
                        colocation_chunk);
     AddToChunkMap(colocation, colocation_chunk);
   }
 
-  AddToChunkMap(buffer_interval.buffer, chunk);
+  AddToChunkMap(buffer_interval.buffer, max_size_chunk);
 }
 
 template <typename BufferType>

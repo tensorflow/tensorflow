@@ -3018,38 +3018,54 @@ OperandRange GeneratorDatasetRegionOp::getEntrySuccessorOperands(
   }
 }
 
+ValueRange GeneratorDatasetRegionOp::getSuccessorInputs(
+    RegionSuccessor successor) {
+  // For GeneratorDatasetRegionOp, the control flow carries:
+  // - parent -> init: the init_func_other_args
+  // - init -> next: state values yielded by init
+  // - next -> next/finalize: state values yielded by next
+  // - finalize -> parent: nothing (finalize's return is discarded)
+  //
+  // The "other args" for next/finalize are NOT carried through terminators;
+  // they are implicit captures from the parent operation's operands.
+  // Therefore, getSuccessorInputs returns only the portion of block arguments
+  // that correspond to what the incoming terminators provide.
+
+  if (successor.isParent()) {
+    return ValueRange();
+  }
+
+  Region* succ = successor.getSuccessor();
+  if (succ == &getInit()) {
+    return succ->getArguments();
+  }
+
+  Operation* initTerminator = getInit().front().getTerminator();
+  size_t stateCount = initTerminator->getNumOperands();
+  return succ->getArguments().take_front(stateCount);
+}
+
 void GeneratorDatasetRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
-  int n;
   if (point.isParent()) {
     // The op itself branches to `init` first.
-    regions.push_back(
-        RegionSuccessor(&getInit(), getInit().front().getArguments()));
+    regions.push_back(RegionSuccessor(&getInit()));
   } else if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
              &getInit()) {
-    // `init` branches to `next`, passing along the arguments given to `init`'s
-    // yield. Said arguments precede the "other args".
-    n = getInitFuncOtherArgs().size();
-    regions.push_back(RegionSuccessor(
-        &getNext(), getNext().front().getArguments().drop_back(n)));
+    // `init` branches to `next`.
+    regions.push_back(RegionSuccessor(&getNext()));
   } else if (point.getTerminatorPredecessorOrNull()->getParentRegion() ==
              &getNext()) {
     // `next` branches to itself, or to `finalize`, passing all arguments given
     // to `next`s yield.
 
-    // The number of values we're passing along.
-    int num = getNext().front().getTerminator()->getNumOperands();
-
     // The number of extra values from the parent ops that should go to `next`
     // and `finalize`.
-    regions.push_back(RegionSuccessor(
-        &getNext(), getNext().front().getArguments().slice(0, num)));
-    regions.push_back(RegionSuccessor(
-        &getFinalize(), getFinalize().front().getArguments().slice(0, num)));
+    regions.push_back(RegionSuccessor(&getNext()));
+    regions.push_back(RegionSuccessor(&getFinalize()));
   } else {
-    // `finalize` branches back to the op itself, not passing any arguments.
-    regions.push_back(RegionSuccessor(
-        point.getTerminatorPredecessorOrNull()->getParentRegion()));
+    // `finalize` branches back to the parent op.
+    regions.push_back(RegionSuccessor::parent());
   }
 }
 
@@ -3276,20 +3292,24 @@ OperandRange IfRegionOp::getEntrySuccessorOperands(RegionSuccessor successor) {
   return ::mlir::OperandRange(end, end);
 }
 
+::mlir::ValueRange IfRegionOp::getSuccessorInputs(
+    ::mlir::RegionSuccessor successor) {
+  if (successor.isParent()) return getResults();
+  return ::mlir::ValueRange();
+}
+
 void IfRegionOp::getSuccessorRegions(
     RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   if (!point.isParent()) {
     // The `then` and the `else` region branch back to the parent operation.
-    regions.push_back(RegionSuccessor::parent(getResults()));
+    regions.push_back(RegionSuccessor::parent());
     return;
   } else {
     // The parent can branch to either `then` or `else`.
-    regions.push_back(
-        RegionSuccessor(&getThenBranch(), getThenBranch().getArguments()));
+    regions.push_back(RegionSuccessor(&getThenBranch()));
     Region* elseRegion = &this->getElseBranch();
     if (!elseRegion->empty())
-      regions.push_back(
-          RegionSuccessor(elseRegion, elseRegion->getArguments()));
+      regions.push_back(RegionSuccessor(elseRegion));
     else
       regions.push_back(RegionSuccessor(
           point.getTerminatorPredecessorOrNull()->getParentRegion()));

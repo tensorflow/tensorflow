@@ -352,7 +352,7 @@ StatusOr<mlir::Operation*> HandleConvBackpropInput(
   // Compute the 'true' input/output layout of the operation. E.g. batch sharded
   // vs non-batch sharded. If at least one of the the input gradient or output
   // gradient is batch sharded, use that dimension.
-  string batch_sharding_dimension = grad_layout.sharding_spec(0);
+  std::string batch_sharding_dimension = grad_layout.sharding_spec(0);
   if (batch_sharding_dimension == Layout::kUnshardedDim) {
     batch_sharding_dimension = output_layout.sharding_spec(0);
   } else if ((output_layout.sharding_spec(0) != Layout::kUnshardedDim) &&
@@ -479,7 +479,7 @@ StatusOr<mlir::Operation*> HandleConvBackpropFilter(
   // TODO(b/262417847): if batch_sharding_dimension is Layout::kUnsharded, then
   // we should consider sharding the input here. It may be faster to spread
   // the convolution out and then all reduce after vs running it all locally.
-  string batch_sharding_dimension = input_layout.sharding_spec(0);
+  std::string batch_sharding_dimension = input_layout.sharding_spec(0);
   if (batch_sharding_dimension == Layout::kUnshardedDim) {
     batch_sharding_dimension = grad_layout.sharding_spec(0);
   } else if ((grad_layout.sharding_spec(0) != Layout::kUnshardedDim) &&

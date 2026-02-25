@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/nccl_collectives.h"
 
-#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
@@ -28,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "third_party/nccl/nccl.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
-#include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
@@ -85,8 +85,8 @@ class NcclIdStore {
         device_to_process_(std::move(device_to_process)),
         kv_store_(std::move(kv_store)) {}
 
-  absl::StatusOr<CliqueId> GetCliqueId(const CliqueKey& key,
-                                       NcclCollectives& nccl_collectives) {
+  absl::StatusOr<CliqueIds> GetCliqueIds(const CliqueKey& key,
+                                         NcclCollectives& nccl_collectives) {
     auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
     if (gpu_key == nullptr) {
       return InvalidArgument("Expected GPU clique key");
@@ -103,31 +103,88 @@ class NcclIdStore {
       }
     }
 
-    CliqueId clique_id;
-    if (process_id_ == device_to_process_.at(gpu_key->root_device())) {
-      TF_ASSIGN_OR_RETURN(clique_id, nccl_collectives.CreateUniqueCliqueId());
-      TF_RETURN_IF_ERROR(
-          kv_store_->Set(gpu_key->ToString(), clique_id.ToString()));
-    } else {
-      TF_ASSIGN_OR_RETURN(
-          std::string id_str,
-          kv_store_->Get(gpu_key->ToString(), absl::Minutes(10)));
-      clique_id = CliqueId(id_str);
+    // Check how many roots are needed to initialize the GpuClique.
+    static const int64_t nccl_init_rank_per_root_ratio =
+        xla::GetDebugOptionsFromFlags()
+            .xla_gpu_nccl_init_max_rank_per_root_ratio();
+    int64_t nranks = key.num_devices();
+    int64_t nroots = nccl_init_rank_per_root_ratio != 0
+                         ? CeilOfRatio(nranks, nccl_init_rank_per_root_ratio)
+                         : 1;
+
+    // Create a KV store key for the given root process and captured clique key.
+    auto kv_key = [&](ProcessId root_process) {
+      return absl::StrFormat("root_process: %v; clique: %v", root_process, key);
+    };
+
+    // Global devices that are responsible for generating clique ids.
+    std::vector<GlobalDeviceId> root_devices = gpu_key->GetRootDevices(nroots);
+
+    // Processes that are responsible for generating clique ids. Note that if
+    // multiple root devices belong to the same process id, we will generate
+    // just one clique id for them. We keep processes in a sorted container to
+    // guarantee that all ranks will generate identical clique ids.
+    absl::btree_set<ProcessId> root_processes;
+    for (GlobalDeviceId root : root_devices) {
+      root_processes.insert(device_to_process_.at(root));
     }
 
+    VLOG(4) << absl::StreamFormat(
+        "Get NCCL clique ids: process=%v; root_devices=%d:[%s]; "
+        "root_processes=%d:[%s]; clique=%v",
+        process_id_, root_devices.size(), HumanReadableDevices(root_devices),
+        root_processes.size(),
+        HumanReadableProcesses(std::vector<ProcessId>(root_processes.begin(),
+                                                      root_processes.end())),
+        key);
+
+    // If we are one of the root processes, generate the key and exchange it
+    // with other ranks by putting into KV store.
+    if (root_processes.contains(process_id_)) {
+      absl::Time set_clique_id_start = absl::Now();
+      TF_ASSIGN_OR_RETURN(CliqueId clique_id,
+                          nccl_collectives.CreateUniqueCliqueId());
+      TF_RETURN_IF_ERROR(
+          kv_store_->Set(kv_key(process_id_), clique_id.ToString()));
+      VLOG(5) << absl::StreamFormat(
+          "Set NCCL clique id process=%v in %s", process_id_,
+          absl::FormatDuration(absl::Now() - set_clique_id_start));
+    }
+
+    // Collect generated clique ids for all root processes. We will read back
+    // the key that we just generated, it's a small performance vs code
+    // readbility tradeoff.
+    absl::Time get_clique_ids_start = absl::Now();
+    CliqueIds clique_ids;
+    for (ProcessId root : root_processes) {
+      TF_ASSIGN_OR_RETURN(std::string id_str,
+                          kv_store_->Get(kv_key(root), absl::Minutes(10)));
+      clique_ids.Add(CliqueId(id_str));
+    }
+
+    VLOG(5) << absl::StreamFormat(
+        "Got NCCL clique ids in %s: root_devices=%d:[%s]; "
+        "root_processes=%d:[%s]; clique=%v",
+        absl::FormatDuration(absl::Now() - get_clique_ids_start),
+        root_devices.size(), HumanReadableDevices(root_devices),
+        root_processes.size(),
+        HumanReadableProcesses(std::vector<ProcessId>(root_processes.begin(),
+                                                      root_processes.end())),
+        key);
+
     absl::MutexLock lock(mu_);
-    auto result = cache_.emplace(*gpu_key, std::move(clique_id));
-    TF_RET_CHECK(result.second) << "Unique ID already in cache.";
+    auto result = cache_.emplace(*gpu_key, std::move(clique_ids));
+    TF_RET_CHECK(result.second) << "Clique IDs already in cache";
     return result.first->second;
   }
 
  private:
   ProcessId process_id_;
-  const absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process_;
-  const std::shared_ptr<KeyValueStoreInterface> kv_store_;
+  absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process_;
+  std::shared_ptr<KeyValueStoreInterface> kv_store_;
 
   absl::Mutex mu_;
-  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueId> cache_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<gpu::GpuCliqueKey, CliqueIds> cache_ ABSL_GUARDED_BY(mu_);
 };
 }  // namespace
 
@@ -162,7 +219,6 @@ static ncclComm_t Cast(const Communicator* comm) {
 }
 
 absl::StatusOr<CliqueId> NcclCollectives::CreateUniqueCliqueId() const {
-  VLOG(3) << "Create NCCL unique clique id";
   ncclUniqueId id;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetUniqueId(&id));
   return CliqueId(absl::string_view(id.internal, NCCL_UNIQUE_ID_BYTES));
@@ -230,17 +286,13 @@ NcclCollectives::CreateCommunicatorsWithCancel(
   if (!clique_ids.has_value() || clique_ids->data().empty()) {
     return InvalidArgument("CliqueId is required to create NCCL communicators");
   }
-  if (clique_ids->data().size() != 1) {
-    return InvalidArgument(
-        "CliqueIds size must be 1 for NCCL communicator initialization");
-  }
   VLOG(1) << absl::StreamFormat(
-      "[%s] ranks=[%s] Initialize NCCL (version %d.%d.%d) "
+      "[%s] [ranks=%s] Initialize NCCL (version %d.%d.%d) "
       "communicators for %d local devices (out of %d global devices); "
-      "fingerprint(id)=%v",
+      "size(id)=%zu; fingerprint(id)=%v",
       DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), NCCL_MAJOR,
       NCCL_MINOR, NCCL_PATCH, ranks.size(), clique_key.num_devices(),
-      clique_ids->fingerprint());
+      clique_ids->size(), clique_ids->fingerprint());
 
   const auto& gpu_config =
       tsl::down_cast<const GpuCollectives::Config&>(config);
@@ -255,25 +307,44 @@ NcclCollectives::CreateCommunicatorsWithCancel(
 
   // make_comm returns a new ncclComm_t.
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
+    absl::Time init_start = absl::Now();
     VLOG(1) << absl::StreamFormat(
         "[%d] [rank=%v] Initialize NCCL communicator for rank %v of %d; "
-        "fingerprint(id)=%v; size(id)=%zu",
+        "size(id)=%zu; fingerprint(id)=%v",
         DeviceOrdinal(ranks[i]), ranks[i].rank, ranks[i].rank,
-        clique_key.num_devices(), clique_ids->fingerprint(),
-        clique_ids->data().size());
+        clique_key.num_devices(), clique_ids->size(),
+        clique_ids->fingerprint());
 
     auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
 
+    std::vector<ncclUniqueId> nccl_unique_ids;
+    for (const CliqueId& clique_id : clique_ids->data()) {
+      TF_ASSIGN_OR_RETURN(nccl_unique_ids.emplace_back(),
+                          AsNcclUniqueId(clique_id));
+    }
+
     TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
                         AsNcclConfig(gpu_config, stream_executors[i]));
 
-    TF_ASSIGN_OR_RETURN(auto nccl_unique_id, AsNcclUniqueId(clique_ids->at(0)));
     ncclComm_t comm;
-    XLA_NCCL_RETURN_IF_ERROR(
-        ncclCommInitRankConfig(&comm, clique_key.num_devices(), nccl_unique_id,
-                               ranks[i].rank.value(), &comm_config));
+    if (nccl_unique_ids.size() > 1) {
+      XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankScalable(
+          &comm, clique_key.num_devices(), ranks[i].rank.value(),
+          nccl_unique_ids.size(), nccl_unique_ids.data(), &comm_config));
+    } else {
+      XLA_NCCL_RETURN_IF_ERROR(ncclCommInitRankConfig(
+          &comm, clique_key.num_devices(), nccl_unique_ids[0],
+          ranks[i].rank.value(), &comm_config));
+    }
+
+    absl::Time init_done = absl::Now();
+    VLOG(1) << absl::StreamFormat(
+        "[%d] [rank=%v] Initialized NCCL communicator for rank %v of %d in %s",
+        DeviceOrdinal(ranks[i]), ranks[i].rank, ranks[i].rank,
+        clique_key.num_devices(), absl::FormatDuration(init_done - init_start));
+
     return comm;
   };
 
@@ -313,7 +384,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
   };
 
   VLOG(1) << absl::StreamFormat(
-      "[%s] ranks=[%s] Split %d NCCL communicators using color %d and "
+      "[%s] [ranks=%s] Split %d NCCL communicators using color %d and "
       "keys [%s]",
       DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), comms.size(),
       color, absl::StrJoin(keys, ",", rank_formatter));
@@ -431,7 +502,7 @@ NcclCollectives::InitializeTopology(const Topology& topology) {
         topology.process_id, topology.device_to_process,
         std::move(topology.kv_store));
     return [nccl_id_store, this](const CliqueKey& key) {
-      return nccl_id_store->GetCliqueId(key, *this);
+      return nccl_id_store->GetCliqueIds(key, *this);
     };
   }
 

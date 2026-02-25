@@ -1,0 +1,228 @@
+
+--- a/include/triton/Analysis/Alias.h	2025-04-25 05:19:43.000000000 -0700
++++ b/include/triton/Analysis/Alias.h	2026-01-23 20:03:36.000000000 -0800
+@@ -91,8 +91,9 @@
+                  ArrayRef<dataflow::Lattice<AliasInfo> *> results) override;
+ 
+   void visitNonControlFlowArguments(
+-      Operation *op, const RegionSuccessor &successor,
+-      ArrayRef<dataflow::Lattice<AliasInfo> *> argLattices,
++      Operation* op, const RegionSuccessor& successor,
++      ValueRange successorInputs,
++      ArrayRef<dataflow::Lattice<AliasInfo>*> argLattices,
+       unsigned firstIndex) override;
+ };
+ 
+
+--- a/include/triton/Analysis/BufferRegion.h	2026-01-21 01:19:21.000000000 -0800
++++ b/include/triton/Analysis/BufferRegion.h	2026-01-23 20:03:36.000000000 -0800
+@@ -153,8 +153,9 @@
+       llvm::ArrayRef<dataflow::Lattice<RegionInfo> *> results) override;
+ 
+   void visitNonControlFlowArguments(
+-      Operation *op, const RegionSuccessor &successor,
+-      llvm::ArrayRef<dataflow::Lattice<RegionInfo> *> argLattices,
++      Operation* op, const RegionSuccessor& successor,
++      ValueRange successorInputs,
++      llvm::ArrayRef<dataflow::Lattice<RegionInfo>*> argLattices,
+       unsigned firstIndex) override;
+ 
+   LogicalResult initialize(Operation *top) override;
+
+--- a/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td	2026-01-21 01:19:21.000000000 -0800
++++ b/include/triton/Dialect/TritonGPU/IR/TritonGPUOps.td	2026-01-23 20:03:36.000000000 -0800
+@@ -455,7 +455,8 @@
+ 
+ def TTG_WarpSpecializeOp : TTG_Op<"warp_specialize", [
+   RecursiveMemoryEffects, RecursivelySpeculatable, AsyncRegions,
+-  DeclareOpInterfaceMethods<RegionBranchOpInterface>
++  DeclareOpInterfaceMethods<RegionBranchOpInterface,
++    ["getSuccessorInputs"]>
+ ]> {
+   let summary = "asynchronously execute code on multiple warpgroups";
+   let description = [{
+
+--- a/lib/Analysis/Alias.cpp	2025-07-31 00:13:23.000000000 -0700
++++ b/lib/Analysis/Alias.cpp	2026-01-23 20:03:36.000000000 -0800
+@@ -59,13 +59,13 @@
+ }
+ 
+ void SharedMemoryAliasAnalysis::visitNonControlFlowArguments(
+-    Operation *op, const RegionSuccessor &successor,
+-    ArrayRef<dataflow::Lattice<AliasInfo> *> argLattices, unsigned firstIndex) {
++    Operation* op, const RegionSuccessor& successor, ValueRange successorInputs,
++    ArrayRef<dataflow::Lattice<AliasInfo>*> argLattices, unsigned firstIndex) {
+   auto wsOp = dyn_cast<triton::gpu::WarpSpecializePartitionsOp>(op);
+   if (!wsOp) {
+     setAllToEntryStates(argLattices.take_front(firstIndex));
+-    setAllToEntryStates(argLattices.drop_front(
+-        firstIndex + successor.getSuccessorInputs().size()));
++    setAllToEntryStates(
++        argLattices.drop_front(firstIndex + successorInputs.size()));
+     return;
+   }
+ 
+
+--- a/lib/Analysis/AxisInfo.cpp	2026-01-21 01:19:21.000000000 -0800
++++ b/lib/Analysis/AxisInfo.cpp	2026-01-23 20:03:37.000000000 -0800
+@@ -145,8 +145,9 @@
+   }
+ 
+   void visitNonControlFlowArguments(
+-      Operation *op, const RegionSuccessor &successor,
+-      ArrayRef<dataflow::Lattice<AxisInfo> *> argLattices,
++      Operation* op, const RegionSuccessor& successor,
++      ValueRange successorInputs,
++      ArrayRef<dataflow::Lattice<AxisInfo>*> argLattices,
+       unsigned firstIndex) override {
+     if (auto forOp = dyn_cast<scf::ForOp>(op)) {
+       visitForOpInductionVar(forOp, argLattices);
+@@ -154,8 +155,8 @@
+       visitWarpSpecializeExplicitCaptures(ws, successor, argLattices);
+     } else {
+       setAllToEntryStates(argLattices.take_front(firstIndex));
+-      setAllToEntryStates(argLattices.drop_front(
+-          firstIndex + successor.getSuccessorInputs().size()));
++      setAllToEntryStates(
++          argLattices.drop_front(firstIndex + successorInputs.size()));
+     }
+   }
+ 
+
+--- a/lib/Analysis/BufferRegion.cpp	2026-01-21 01:19:21.000000000 -0800
++++ b/lib/Analysis/BufferRegion.cpp	2026-01-23 20:03:37.000000000 -0800
+@@ -297,14 +297,14 @@
+ }
+ 
+ void BufferRegionAnalysis::visitNonControlFlowArguments(
+-    Operation *op, const RegionSuccessor &successor,
+-    llvm::ArrayRef<dataflow::Lattice<RegionInfo> *> argLattices,
++    Operation* op, const RegionSuccessor& successor, ValueRange successorInputs,
++    llvm::ArrayRef<dataflow::Lattice<RegionInfo>*> argLattices,
+     unsigned firstIndex) {
+   auto wsOp = dyn_cast<triton::gpu::WarpSpecializePartitionsOp>(op);
+   if (!wsOp) {
+     setAllToEntryStates(argLattices.take_front(firstIndex));
+-    setAllToEntryStates(argLattices.drop_front(
+-        firstIndex + successor.getSuccessorInputs().size()));
++    setAllToEntryStates(
++        argLattices.drop_front(firstIndex + successorInputs.size()));
+     return;
+   }
+ 
+
+--- a/lib/Dialect/TritonGPU/IR/Ops.cpp	2026-01-21 19:11:53.000000000 -0800
++++ b/lib/Dialect/TritonGPU/IR/Ops.cpp	2026-01-23 20:03:37.000000000 -0800
+@@ -986,6 +986,12 @@
+              getPartitionOpHolder().front().front())
+       .getPartitionRegions();
+ }
++
++::mlir::ValueRange WarpSpecializeOp::getSuccessorInputs(
++    ::mlir::RegionSuccessor successor) {
++  if (successor.isParent()) return getResults();
++  return successor.getSuccessor()->getArguments();
++}
+ 
+ void WarpSpecializeOp::getSuccessorRegions(
+     RegionBranchPoint src, SmallVectorImpl<RegionSuccessor> &successors) {
+@@ -998,7 +1004,7 @@
+   // And the default region branches transparently back to the parent.
+   if (src.getTerminatorPredecessorOrNull()->getParentRegion() ==
+       &getDefaultRegion())
+-    successors.push_back(RegionSuccessor::parent(getResults()));
++    successors.push_back(RegionSuccessor::parent());
+ }
+ 
+ void WarpSpecializePartitionsOp::getSuccessorRegions(
+
+--- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp	2026-01-21 19:11:53.000000000 -0800
++++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp	2026-01-23 20:03:37.000000000 -0800
+@@ -717,8 +717,8 @@
+         }
+         visitNonControlFlowArguments(
+             branch,
+-            RegionSuccessor::parent(
+-                branch->getResults().slice(firstIndex, inputs.size())),
++            RegionSuccessor::parent(),
++            branch->getResults().slice(firstIndex, inputs.size()),
+             lattices, firstIndex);
+       } else {
+         if (!inputs.empty()) {
+@@ -727,8 +727,8 @@
+         Region *region = point->getBlock()->getParent();
+         visitNonControlFlowArguments(
+             branch,
+-            RegionSuccessor(region, region->getArguments().slice(
+-                                        firstIndex, inputs.size())),
++            RegionSuccessor(region),
++            region->getArguments().slice(firstIndex, inputs.size()),
+             lattices, firstIndex);
+       }
+     }
+
+--- a/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/MFMA.cpp	2025-12-11 07:03:23.000000000 -0800
++++ b/third_party/amd/lib/TritonAMDGPUToLLVM/DotOpToLLVM/MFMA.cpp	2026-01-23 20:03:37.000000000 -0800
+@@ -84,15 +84,20 @@
+     assert(blgp >= 0 && blgp <= 7);
+ 
+     auto b = TritonLLVMOpBuilder(loc, rewriter);
+-    Value zeroFlag = b.i32_val(0);
+-    Value cbszFlag = cbsz != 0 ? b.i32_val(cbsz) : zeroFlag;
+-    Value abidFlag = abid != 0 ? b.i32_val(abid) : zeroFlag;
+-    Value blgpFlag = blgp != 0 ? b.i32_val(blgp) : zeroFlag;
++    IntegerAttr zeroFlag = rewriter.getI32IntegerAttr(0);
++    IntegerAttr cbszFlag =
++        cbsz != 0 ? rewriter.getI32IntegerAttr(cbsz) : zeroFlag;
++    IntegerAttr abidFlag =
++        abid != 0 ? rewriter.getI32IntegerAttr(abid) : zeroFlag;
++    IntegerAttr blgpFlag =
++        blgp != 0 ? rewriter.getI32IntegerAttr(blgp) : zeroFlag;
+ 
+     auto resType = valC.getType();
+     OperationState loweredOp(loc, intrinsicName);
+     loweredOp.addTypes(resType);
+-    loweredOp.addOperands({valA, valB, valC, cbszFlag, abidFlag, blgpFlag});
++    loweredOp.addOperands({valA, valB, valC});
++    loweredOp.addAttributes(
++        {{"cbsz", cbszFlag}, {"abid", abidFlag}, {"blgp", blgpFlag}});
+     return rewriter.create(loweredOp)->getResult(0);
+   }
+ 
+@@ -537,8 +542,12 @@
+     loweredOp.addTypes(resType);
+     // If both scales are constant 0, the LLVM backend will use V_MFMA_*_F8F6F4
+     // instructions instead of V_MFMA_SCALE_*_F8F6F4 to reduce memory access.
+-    loweredOp.addOperands({valA, valB, valC, b.i32_val(cbsz), b.i32_val(blgp),
+-                           zeroFlag, zeroFlag, zeroFlag, zeroFlag});
++    loweredOp.addOperands({valA, valB, valC, zeroFlag, zeroFlag});
++    loweredOp.addAttributes(
++        {{"cbsz", rewriter.getI32IntegerAttr(cbsz)},
++         {"blgp", rewriter.getI32IntegerAttr(blgp)},
++         {"opselA", rewriter.getI32IntegerAttr(0)},
++         {"opselB", rewriter.getI32IntegerAttr(0)}});
+     return rewriter.create(loweredOp)->getResult(0);
+   }
+ 
+@@ -548,15 +557,17 @@
+                              int opSelB) const {
+     auto b = TritonLLVMOpBuilder(loc, rewriter);
+     auto resType = valC.getType();
+-    Value valOpSelA = b.i32_val(opSelA);
+-    Value valOpSelB = b.i32_val(opSelB);
+     OperationState loweredOp(loc, intrinsicName);
+     int32_t cbsz = getMfmaF8F6F4MatrixFormat(elemTypeA);
+     int32_t blgp = getMfmaF8F6F4MatrixFormat(elemTypeB);
+     assert((cbsz != -1) && (blgp != -1));
+     loweredOp.addTypes(resType);
+-    loweredOp.addOperands({valA, valB, valC, b.i32_val(cbsz), b.i32_val(blgp),
+-                           valOpSelA, valScaleA, valOpSelB, valScaleB});
++    loweredOp.addOperands({valA, valB, valC, valScaleA, valScaleB});
++    loweredOp.addAttributes(
++        {{"cbsz", rewriter.getI32IntegerAttr(cbsz)},
++         {"blgp", rewriter.getI32IntegerAttr(blgp)},
++         {"opselA", rewriter.getI32IntegerAttr(opSelA)},
++         {"opselB", rewriter.getI32IntegerAttr(opSelB)}});
+     return rewriter.create(loweredOp)->getResult(0);
+   }
+ 

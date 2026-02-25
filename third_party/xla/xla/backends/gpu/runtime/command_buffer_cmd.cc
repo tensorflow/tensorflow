@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
@@ -106,6 +108,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla::gpu {
@@ -419,8 +422,7 @@ LaunchCmd::LaunchCmd(
       shmem_bytes_(shmem_bytes),
       tma_metadata_(std::move(tma_metadata)) {}
 
-absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params,
-                                   CommandStateManager& state) {
+absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params) {
   {
     absl::MutexLock lock(mutex_);
     if (kernels_.contains(params.executor)) {
@@ -525,7 +527,7 @@ CustomKernelLaunchCmd::CustomKernelLaunchCmd(
       custom_kernel_(std::move(custom_kernel)) {}
 
 absl::Status CustomKernelLaunchCmd::Initialize(
-    const Thunk::InitializeParams& params, CommandStateManager& state) {
+    const Thunk::InitializeParams& params) {
   {
     absl::MutexLock lock(mutex_);
     if (kernels_.contains(params.executor)) {
@@ -744,9 +746,8 @@ Command::BufferUseVector ChildCmd::buffers() const {
   return {child_commands_.buffers().begin(), child_commands_.buffers().end()};
 }
 
-absl::Status ChildCmd::Initialize(const Thunk::InitializeParams& params,
-                                  CommandStateManager& state) {
-  TF_RETURN_IF_ERROR(child_commands_.Initialize(params, state));
+absl::Status ChildCmd::Initialize(const Thunk::InitializeParams& params) {
+  TF_RETURN_IF_ERROR(child_commands_.Initialize(params));
   return absl::OkStatus();
 }
 
@@ -789,10 +790,9 @@ CaseCmd::CaseCmd(ShapedSlice index,
       index_is_bool_(index.shape.element_type() == PRED),
       branches_(std::move(branches)) {}
 
-absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params,
-                                 CommandStateManager& state) {
+absl::Status CaseCmd::Initialize(const Thunk::InitializeParams& params) {
   for (auto& branch : branches_) {
-    TF_RETURN_IF_ERROR(branch.Initialize(params, state));
+    TF_RETURN_IF_ERROR(branch.Initialize(params));
   }
   return absl::OkStatus();
 }
@@ -867,10 +867,9 @@ WhileCmd::WhileCmd(BufferAllocation::Slice pred,
       trip_count_(trip_count),
       enable_loop_unroll_(enable_loop_unroll) {}
 
-absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params,
-                                  CommandStateManager& state) {
-  TF_RETURN_IF_ERROR(cond_commands_.Initialize(params, state));
-  TF_RETURN_IF_ERROR(body_commands_.Initialize(params, state));
+absl::Status WhileCmd::Initialize(const Thunk::InitializeParams& params) {
+  TF_RETURN_IF_ERROR(cond_commands_.Initialize(params));
+  TF_RETURN_IF_ERROR(body_commands_.Initialize(params));
   if (enable_loop_unroll_ && body_commands_.support_loop_unroll() &&
       cond_commands_.support_loop_unroll() && trip_count_.has_value()) {
     is_unrolled_loop_ = true;
@@ -921,15 +920,16 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
       std::vector<const se::CommandBuffer::Command*> dependencies;
 
       for (int64_t i = 0; i < trip_count_.value(); ++i) {
+        CommandExecutor::RecordId record_id(i);
         new_record_params.unroll_iteration = i;
-        TF_ASSIGN_OR_RETURN(
-            dependencies,
-            cond_commands_.RecordCreate(execute_params, new_record_params,
-                                        child_command_buffer, dependencies));
-        TF_ASSIGN_OR_RETURN(
-            dependencies,
-            body_commands_.RecordCreate(execute_params, new_record_params,
-                                        child_command_buffer, dependencies));
+        TF_ASSIGN_OR_RETURN(dependencies,
+                            cond_commands_.RecordCreate(
+                                execute_params, new_record_params,
+                                child_command_buffer, dependencies, record_id));
+        TF_ASSIGN_OR_RETURN(dependencies,
+                            body_commands_.RecordCreate(
+                                execute_params, new_record_params,
+                                child_command_buffer, dependencies, record_id));
       }
 
       return absl::OkStatus();
@@ -943,11 +943,14 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
       Command::RecordParams new_record_params = record_params;
 
       for (int64_t i = 0; i < trip_count_.value(); ++i) {
+        CommandExecutor::RecordId record_id(i);
         new_record_params.unroll_iteration = i;
-        TF_RETURN_IF_ERROR(cond_commands_.RecordUpdate(
-            execute_params, new_record_params, child_command_buffer));
-        TF_RETURN_IF_ERROR(body_commands_.RecordUpdate(
-            execute_params, new_record_params, child_command_buffer));
+        TF_RETURN_IF_ERROR(
+            cond_commands_.RecordUpdate(execute_params, new_record_params,
+                                        child_command_buffer, record_id));
+        TF_RETURN_IF_ERROR(
+            body_commands_.RecordUpdate(execute_params, new_record_params,
+                                        child_command_buffer, record_id));
       }
 
       return absl::OkStatus();
@@ -1016,8 +1019,7 @@ GemmCmd::GemmCmd(GemmConfig config, const BufferAllocation::Slice& lhs_buffer,
       workspace_(workspace),
       deterministic_(deterministic) {}
 
-absl::Status GemmCmd::Initialize(const Thunk::InitializeParams& params,
-                                 CommandStateManager& state) {
+absl::Status GemmCmd::Initialize(const Thunk::InitializeParams& params) {
   if (!params.stream->parent()->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support for GemmCmd");
   }
@@ -1075,12 +1077,6 @@ Command::BufferUseVector GemmCmd::buffers() const {
 CublasLtCmd::CublasLtCmd(const CublasLtMatmulThunk& matmul_thunk)
     : TracedCommandBufferCmd(CommandType::kCublasLtCmd),
       CublasLtMatmulThunk(matmul_thunk) {}
-
-absl::Status CublasLtCmd::Initialize(const Thunk::InitializeParams& params,
-                                     CommandStateManager& state) {
-  TF_RETURN_IF_ERROR(CublasLtMatmulThunk::Initialize(params));
-  return absl::OkStatus();
-}
 
 absl::StatusOr<const se::CommandBuffer::Command*> CublasLtCmd::Record(
     const Thunk::ExecuteParams& execute_params,
@@ -1149,14 +1145,13 @@ Command::BufferUseVector CublasLtCmd::buffers() const {
 // CuDnnCmd
 //===----------------------------------------------------------------------===//
 
-CuDnnCmd::CuDnnCmd(absl::Span<const BufferAllocation::Slice> args,
+CuDnnCmd::CuDnnCmd(absl::Span<const ShapedSlice> args,
                    const std::shared_ptr<se::dnn::LazyDnnGraph> graph)
     : TracedCommandBufferCmd(CommandType::kCuDnnCmd),
       args_(args.cbegin(), args.cend()),
       graph_(graph) {}
 
-absl::Status CuDnnCmd::Initialize(const Thunk::InitializeParams& params,
-                                  CommandStateManager&) {
+absl::Status CuDnnCmd::Initialize(const Thunk::InitializeParams& params) {
   if (!params.stream->parent()->AsDnn()) {
     return absl::InternalError("Failed to initialize DNN support for CuDnnCmd");
   }
@@ -1170,9 +1165,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> CuDnnCmd::Record(
   CHECK(graph_ != nullptr);
   std::vector<se::DeviceAddressBase> operands;
   operands.reserve(args_.size());
-  for (const BufferAllocation::Slice& arg : args_) {
+  for (const ShapedSlice& arg : args_) {
     se::DeviceAddressBase buf =
-        execute_params.buffer_allocations->GetDeviceAddress(arg);
+        execute_params.buffer_allocations->GetDeviceAddress(arg.slice);
     VLOG(5) << "  Arg: " << arg << ": " << buf.opaque();
     operands.push_back(buf);
   }
@@ -1206,9 +1201,10 @@ Command::BufferUseVector CuDnnCmd::buffers() const {
   Command::BufferUseVector buffer_usage;
   buffer_usage.reserve(args_.size());
   for (int i = 0; i < args_.size() - 1; ++i) {
-    buffer_usage.push_back(BufferUse::Read(args_[i]));
+    buffer_usage.push_back(BufferUse::Read(args_[i].slice, args_[i].shape));
   }
-  buffer_usage.push_back(BufferUse::Write(args_.back()));
+  buffer_usage.push_back(
+      BufferUse::Write(args_.back().slice, args_.back().shape));
   return buffer_usage;
 }
 
@@ -2167,8 +2163,8 @@ bool DynamicSliceFusionCmd::requires_initialization() {
 }
 
 absl::Status DynamicSliceFusionCmd::Initialize(
-    const Thunk::InitializeParams& params, CommandStateManager& state) {
-  TF_RETURN_IF_ERROR(embedded_commands_.Initialize(params, state));
+    const Thunk::InitializeParams& params) {
+  TF_RETURN_IF_ERROR(embedded_commands_.Initialize(params));
   absl::MutexLock lock(mutex_);
   if (offsets_allocs_.contains(params.executor)) {
     return absl::OkStatus();
