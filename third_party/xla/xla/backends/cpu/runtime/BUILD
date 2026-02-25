@@ -143,6 +143,7 @@ cc_library(
     hdrs = ["function_library.h"],
     deps = [
         ":kernel_c_api",
+        "//xla/backends/cpu/codegen:msan_emulated_tls",
         "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",

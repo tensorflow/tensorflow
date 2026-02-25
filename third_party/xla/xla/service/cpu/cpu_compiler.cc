@@ -1787,13 +1787,7 @@ CpuCompiler::CompileCpuExecutable(
       std::move(instruction_to_profile_idx),
       std::move(computation_to_profile_idx),
       ModuleComputationsTransitivelyContainCustomCall(*module),
-      &target_machine_features,
-#ifdef MEMORY_SANITIZER
-      /*emit_code_for_msan=*/true
-#else
-      /*emit_code_for_msan=*/false
-#endif
-  );
+      &target_machine_features);
 
   // The thunk runtime manages large constants, therefore we only emit
   // small ones.
@@ -2173,6 +2167,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
       IrCompiler::GetCodeGenOptLevel(hlo_module->config());
   llvm::TargetOptions target_options =
       CompilerTargetOptions(hlo_module->config());
+  if (options.sanitize_memory()) {
+    target_options.EmulatedTLS = true;
+  }
   auto target_machine_builder = [&]() {
     return absl::WrapUnique(target->createTargetMachine(
         triple, options.cpu_name(), options.features(), target_options,
@@ -2239,7 +2236,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
       /*disable_platform_dependent_math=*/
       options::DisablePlatformDependentMath(module->config()),
       /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
-      /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
+      /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow(),
+      /*msan_enabled=*/aot_options.sanitize_memory()};
 
   auto ir_compiler = std::make_unique<IrCompiler>(
       std::move(target_machine_builder), ir_compiler_options,
@@ -2249,7 +2247,6 @@ CpuCompiler::CompileAheadOfTimeThunks(
       auto cpu_executable,
       CompileCpuExecutable(std::move(module), thunk_emitter_options,
                            std::move(ir_compiler), pic_level, pie_level));
-
   const ThunkSequence& thunk_sequence =
       cpu_executable->thunks().thunk_sequence();
 

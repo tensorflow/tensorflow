@@ -49,7 +49,6 @@ cc_library(
     name = "passes",
     srcs = [
         "fuse_elementwise_pass.cc",
-        "initialize_allocs.cc",
         "linalg_elementwise_to_vector_pass.cc",
         "lower_xtile_entry.cc",
         "memref_copy_to_loops.cc",

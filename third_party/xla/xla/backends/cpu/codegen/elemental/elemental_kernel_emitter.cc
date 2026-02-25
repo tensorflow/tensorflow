@@ -307,8 +307,7 @@ ElementalKernelEmitter::ThreadLocalCallbackFactory(llvm::IRBuilderBase& builder,
       absl::flat_hash_map<const HloInstruction*, int64_t>{},
       /*computation_to_profile_idx=*/
       absl::flat_hash_map<const HloComputation*, int64_t>{},
-      ComputationsTransitivelyContainCustomCall(instr_), target_machine_,
-      /*emit_code_for_msan=*/false);
+      ComputationsTransitivelyContainCustomCall(instr_), target_machine_);
   IrEmitter::IRBuilderGuard builder_guard = ir_emitter->WithBuilder(builder);
 
   TF_RETURN_IF_ERROR(ir_emitter->EmitSmallConstantGlobals());

@@ -42,7 +42,6 @@ std::unique_ptr<mlir::Pass> CreateMemrefCopyToLoopsPass();
 std::unique_ptr<mlir::Pass> CreateFuseElementwisePass();
 std::unique_ptr<mlir::Pass> CreateVectorToScalarPass();
 std::unique_ptr<mlir::Pass> CreateUnpackSubByteVectorWritePass();
-std::unique_ptr<mlir::Pass> CreateInitializeAllocsPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"

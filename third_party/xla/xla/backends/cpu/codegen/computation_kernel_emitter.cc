@@ -238,13 +238,12 @@ absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(
     const {
   const HloModule* hlo_module = instr_->GetModule();
 
-  IrEmitter ir_emitter(
-      nullptr, *hlo_module, *buffer_assignment_, &llvm_module,
-      /*instruction_to_profile_idx=*/{},
-      /*computation_to_profile_idx=*/{},
-      ComputationsTransitivelyContainCustomCall(instr_), target_machine_,
-      /*emit_code_for_msan=*/false, std::move(buffer_table_index),
-      /*allow_runtime_calls=*/false);
+  IrEmitter ir_emitter(nullptr, *hlo_module, *buffer_assignment_, &llvm_module,
+                       /*instruction_to_profile_idx=*/{},
+                       /*computation_to_profile_idx=*/{},
+                       ComputationsTransitivelyContainCustomCall(instr_),
+                       target_machine_, std::move(buffer_table_index),
+                       /*allow_runtime_calls=*/false);
   IrEmitter::IRBuilderGuard builder_guard = ir_emitter.WithBuilder(builder);
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitSmallConstantGlobals());

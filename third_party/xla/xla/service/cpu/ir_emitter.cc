@@ -135,7 +135,6 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
                      absl::flat_hash_map<const HloComputation*, bool>
                          computation_transitively_contains_custom_call,
                      const TargetMachineFeatures* target_machine_features,
-                     bool emit_code_for_msan,
                      absl::flat_hash_map<BufferAllocation::Slice, int64_t>
                          slice_to_buffer_table_index,
                      bool allow_runtime_calls)
@@ -154,7 +153,6 @@ IrEmitter::IrEmitter(mlir::MLIRContext* mlir_context,
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
       target_machine_features_(*target_machine_features),
-      emit_code_for_msan_(emit_code_for_msan),
       slice_to_buffer_table_index_(std::move(slice_to_buffer_table_index)),
       allow_runtime_calls_(allow_runtime_calls) {
   b()->setFastMathFlags(llvm_ir::GetCpuFastMathFlags(hlo_module_config_));
@@ -583,17 +581,6 @@ absl::Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
     MemCpy(acquired_pointer, /*DstAlign=*/llvm::Align(1),
            program_buffer_address,
            /*SrcAlign=*/llvm::Align(1), length_32);
-    if (emit_code_for_msan_) {
-      // Mark the outfed data as initialized for msan. The buffer gets read by
-      // the host code, which might be msan-instrumented.
-      // TODO(b/66051036): Run the msan instrumentation pass instead.
-      const llvm::DataLayout& dl = module_->getDataLayout();
-      llvm::Type* intptr_type = b()->getIntPtrTy(dl);
-      EmitCallToFunc(
-          "__msan_unpoison",
-          {acquired_pointer, llvm::ConstantInt::get(intptr_type, length)},
-          b()->getVoidTy());
-    }
   }
 
   absl::string_view release_func_name =
@@ -2455,18 +2442,6 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
           b()->getPtrTy(), b()->getInt32(operand_values.size()),
           "cc_operands_alloca", b());
-  if (emit_code_for_msan_) {
-    // Mark the alloca as initialized for msan. The buffer gets read by the
-    // custom callee, which might be msan-instrumented.
-    // TODO(b/66051036): Run the msan instrumentation pass instead.
-    const llvm::DataLayout& dl = module_->getDataLayout();
-    llvm::Type* intptr_type = b()->getIntPtrTy(dl);
-    EmitCallToFunc("__msan_unpoison",
-                   {operands_alloca,
-                    llvm::ConstantInt::get(
-                        intptr_type, *operands_alloca->getAllocationSize(dl))},
-                   b()->getVoidTy());
-  }
   for (int64_t i = 0; i < operand_values.size(); ++i) {
     llvm::Value* slot_in_operands_alloca =
         InBoundsGEP(operands_alloca->getAllocatedType(), operands_alloca,
@@ -2544,18 +2519,6 @@ absl::Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
           llvm_ir::EmitAllocaAtFunctionEntryWithCount(
               b()->getPtrTy(), b()->getInt32(buffer_ptrs.size()),
               "ffi_results_alloca", b());
-      if (emit_code_for_msan_) {
-        // Mark the alloca as initialized for msan
-        // TODO(b/66051036): Run the msan instrumentation pass instead.
-        const llvm::DataLayout& dl = module_->getDataLayout();
-        llvm::Type* intptr_type = b()->getIntPtrTy(dl);
-        EmitCallToFunc(
-            "__msan_unpoison",
-            {results_alloca,
-             llvm::ConstantInt::get(intptr_type,
-                                    *results_alloca->getAllocationSize(dl))},
-            b()->getVoidTy());
-      }
       for (int i = 0; i < buffer_ptrs.size(); ++i) {
         llvm::Value* tuple_slot_in_results_alloca =
             InBoundsGEP(results_alloca->getAllocatedType(), results_alloca,

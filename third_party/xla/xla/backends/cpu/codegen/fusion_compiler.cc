@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -297,13 +296,6 @@ static void AddBufferizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createBufferHoistingPass());
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
-
-#ifdef ABSL_HAVE_MEMORY_SANITIZER
-  // We must initialize allocs to ensure that we don't get false positives from
-  // msan due to inconsistent instrumentation: memcpy will be instrumented
-  // but all other instructions will not.
-  pm.addPass(CreateInitializeAllocsPass());
-#endif  // ABSL_HAVE_MEMORY_SANITIZER
 
   mlir::bufferization::PromoteBuffersToStackPassOptions
       buffer_promotion_options;

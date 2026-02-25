@@ -959,6 +959,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/cpu/codegen:msan_emulated_tls",
         "//xla/backends/cpu/collectives:cpu_clique_key",
         "//xla/backends/cpu/collectives:cpu_cliques",
         "//xla/backends/cpu/collectives:cpu_collectives",

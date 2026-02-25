@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/config.h"  // IWYU pragma: keep
 #include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -77,6 +78,20 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
 
     bool dfsan_enabled = false;
     std::vector<std::string> dfsan_abi_list_files;
+
+    // This should be the _only_ place in XLA:CPU where we have an #ifdef
+    // to check for memory sanitizer, at least when it comes to code generation.
+    // - If we are JIT'ing, the default set below should not be modified.
+    // - If we're doing AOT compilation, it is up to the user to request
+    //   an msan-enabled binary via CpuAotCompilationOptions; that value must
+    //   override the default below. Note that it is entirely possible to have
+    //   an msan-enabled compiler that then emits a non-msan-enabled AOT binary.
+    bool msan_enabled =
+#ifdef ABSL_HAVE_MEMORY_SANITIZER
+        true;
+#else
+        false;
+#endif
   };
 
   // Compilation hooks for intercepting IR compilation stages.
@@ -98,14 +113,16 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
   InferTargetMachine(const llvm::TargetOptions& target_options,
                      llvm::CodeGenOptLevel opt_level,
-                     const TargetMachineOptions& target_machine_options);
+                     const TargetMachineOptions& target_machine_options,
+                     bool msan_enabled = false);
 
   // Returns a target machine builder that uses `InferTargetMachine` defined
   // above to infer the target machine for the given options.
   static TargetMachineBuilder InferTargetMachineBuilder(
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOptLevel opt_level,
-      const TargetMachineOptions& target_machine_options);
+      const TargetMachineOptions& target_machine_options,
+      bool msan_enabled = false);
 
   // Compiles a `module` to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(
@@ -140,6 +157,10 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   // races when calling user provided compilation hooks.
   absl::Mutex mutex_;
   CompilationHooks hooks_ ABSL_GUARDED_BY(mutex_);
+
+  // Injects MSAN emulated TLS symbols into the module. This is needed for
+  // supporting MSAN in JITed and AOTed code.
+  void InjectMsanEmulatedTls(llvm::Module& module) const;
 };
 
 }  // namespace xla::cpu

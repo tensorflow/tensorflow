@@ -32,6 +32,8 @@ cc_library(
     deps = [
         ":builtin_fp16",
         ":builtin_pow",
+        ":msan_emulated_tls",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Core",
@@ -56,6 +58,13 @@ cc_library(
     hdrs = ["builtin_pow.h"],
     visibility = internal_visibility([":friends"]),
     deps = ["@com_google_absl//absl/base:core_headers"],
+)
+
+cc_library(
+    name = "msan_emulated_tls",
+    srcs = ["msan_emulated_tls.cc"],
+    hdrs = ["msan_emulated_tls.h"],
+    deps = ["@com_google_absl//absl/base:config"],
 )
 
 cc_library(
@@ -95,6 +104,7 @@ cc_library(
     hdrs = ["ir_compiler.h"],
     deps = [
         ":kernel_api_ir_builder",
+        ":msan_emulated_tls",
         ":polynomial_approximations",
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -110,6 +120,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
@@ -204,7 +215,6 @@ cc_library(
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",

@@ -441,6 +441,11 @@ class AotCompilationOptions {
     sanitize_dataflow_ = sanitize_dataflow;
   }
 
+  bool sanitize_memory() const { return sanitize_memory_; }
+  void set_sanitize_memory(bool sanitize_memory) {
+    sanitize_memory_ = sanitize_memory;
+  }
+
   const std::vector<std::string>& sanitize_abilists_dataflow() const {
     return sanitize_abilists_dataflow_;
   }
@@ -485,6 +490,7 @@ class AotCompilationOptions {
   bool run_backend_only_ = false;
   bool sanitize_dataflow_ = false;
   std::vector<std::string> sanitize_abilists_dataflow_;
+  bool sanitize_memory_ = false;
   // Contains target-specific information required by AOT compilation.
   std::optional<GpuTopology> gpu_topology_;
   EarlyExitPoint early_exit_point_ = EarlyExitPoint::kNone;
