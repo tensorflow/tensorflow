@@ -269,6 +269,8 @@ def assert_input_compatibility(input_spec, inputs, layer_name):
 
 
 def display_shape(shape):
+  if shape.rank is None:
+    return str(shape)
   return str(tuple(shape.as_list()))
 
 
