@@ -638,10 +638,12 @@ CodegenDecision IsTritonSupportedFusion(
                    " is not supported: ", decision.Explain()));
 }
 
-bool AnyOperandIsFusion(const HloInstruction& hlo) {
-  return absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
-    return operand->opcode() == HloOpcode::kFusion;
-  });
+// Returns whether a control-flow regions should be created at the tile level.
+bool TilingControlFlowIsEnabled(const HloInstruction& hlo) {
+  return hlo.GetModule()
+      ->config()
+      .debug_options()
+      .xla_gpu_unsupported_disable_nested_gemm_fusions();
 }
 
 CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
@@ -653,7 +655,7 @@ CodegenDecision IsTritonSupportedConcatenate(const HloInstruction& hlo) {
     return CodegenDecision::Forbid(
         "Only concatenates in nested GEMM fusions are supported.");
   }
-  if (AnyOperandIsFusion(hlo)) {
+  if (!TilingControlFlowIsEnabled(hlo)) {
     // TODO(b/393299275): remove this operand filter once migration is
     // complete and priority fusion can produce nests.
     if (absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {

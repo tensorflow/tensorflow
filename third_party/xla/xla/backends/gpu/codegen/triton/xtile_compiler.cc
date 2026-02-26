@@ -499,9 +499,10 @@ absl::StatusOr<absl::InlinedVector<int64_t, 4>> DotTilingParameters(
     const HloInstruction* hlo,
     const SymbolicTileAnalysis& symbolic_tile_analysis,
     const BlockLevelParameters& block_level_parameters) {
-  if (absl::c_all_of(hlo->operands(), [](const HloInstruction* operand) {
-        return operand->opcode() != HloOpcode::kFusion;
-      })) {
+  if (hlo->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_unsupported_disable_nested_gemm_fusions()) {
     ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
     return FlatTiling(tile_config.sizes().begin(), tile_config.sizes().end());
   }

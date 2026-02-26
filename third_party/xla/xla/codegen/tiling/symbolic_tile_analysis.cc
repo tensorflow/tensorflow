@@ -421,20 +421,23 @@ using UnsafeSymbolicTiledHloInstructionOrderedSet =
         UnsafeSymbolicTiledHloInstructionOperandAgnosticHash,
         UnsafeSymbolicTiledHloInstructionOperandAgnosticEq>;
 
-bool AnyOperandIsFusion(const HloInstruction& hlo) {
-  return absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
-    return operand->opcode() == HloOpcode::kFusion;
-  });
+// Returns whether a control-flow regions should be created at the tile level.
+bool TilingControlFlowIsEnabled(const HloInstruction& hlo) {
+  return ABSL_DIE_IF_NULL(hlo.GetModule())
+      ->config()
+      .debug_options()
+      .xla_gpu_unsupported_disable_nested_gemm_fusions();
 }
 
 // Returns whether the instruction is a conditional block for tiling.
 bool IsControlFlowCondition(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kConcatenate && !AnyOperandIsFusion(hlo);
+  return hlo.opcode() == HloOpcode::kConcatenate &&
+         TilingControlFlowIsEnabled(hlo);
 }
 
 // Returns whether the instruction is a loop block for tiling.
 bool IsControlFlowLoop(const HloInstruction& hlo) {
-  return IsSomeDot(hlo) && !AnyOperandIsFusion(hlo);
+  return IsSomeDot(hlo) && TilingControlFlowIsEnabled(hlo);
 }
 
 // Detects pathological cases on which symbolic tile derivation should bail out.
@@ -444,7 +447,6 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
     const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
   const HloInstruction* hlo = tiled_hlo_instruction.hlo();
   const IndexingMap& indexing_map = tiled_hlo_instruction.indexing_map();
-  // TODO(b/446827313): update comment after disabling nested fusions.
   // Bail out on concatenates in the general path for now, but allow a
   // restricted form of concatenates for the nested GEMM fusion path.
   //
@@ -453,7 +455,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
   // for concatenates.
   if ((hlo->opcode() == HloOpcode::kConcatenate ||
        hlo->opcode() == HloOpcode::kPad) &&
-      !(IsWithinNestedGemmFusion(*hlo) || IsControlFlowCondition(*hlo))) {
+      !(IsWithinNestedGemmFusion(*hlo) || TilingControlFlowIsEnabled(*hlo))) {
     return FusionDecision::Forbid("Bailing out on ") << hlo->ToString();
   }
 
@@ -1928,7 +1930,8 @@ absl::StatusOr<std::unique_ptr<TiledHloInstruction>> ComputeTiledHloInstruction(
         std::move(tile_sizes), std::move(tile_strides),
         std::move(tile_offset_indexing));
   }
-  if (!symbolic_tiled_hlo->regions().empty()) {
+  if (TilingControlFlowIsEnabled(*hlo) &&
+      !symbolic_tiled_hlo->regions().empty()) {
     // Copy instruction mapping to avoid polluting with instructions from
     // sub-regions.
     absl::flat_hash_map<const SymbolicTiledHloInstruction*,

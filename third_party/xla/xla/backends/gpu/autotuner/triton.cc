@@ -293,11 +293,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
   TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(hlo_module.get()).status());
-  ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
-                                                     mlir_context_);
-  RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
-  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context_);
-  RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
+  if (debug_options().xla_gpu_unsupported_disable_nested_gemm_fusions()) {
+    ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
+                                                       mlir_context_);
+    RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
+  } else {
+    NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context_);
+    RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
+  }
   return hlo_module;
 }
 

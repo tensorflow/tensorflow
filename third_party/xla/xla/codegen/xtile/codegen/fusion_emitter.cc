@@ -131,10 +131,12 @@ TensorValue Iota(mlir::ImplicitLocOpBuilder& b, int32_t limit) {
   return stablehlo::IotaOp::create(b, type, /*iota_dimension=*/0);
 }
 
-bool AnyOperandIsFusion(const HloInstruction& hlo) {
-  return absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
-    return operand->opcode() == HloOpcode::kFusion;
-  });
+// Returns whether we expect to see sub-regions defined for TiledHloInstruction.
+bool TilingControlFlowIsEnabled(const HloInstruction& hlo) {
+  return hlo.GetModule()
+      ->config()
+      .debug_options()
+      .xla_gpu_unsupported_disable_nested_gemm_fusions();
 }
 
 absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
@@ -1614,7 +1616,7 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kConcatenate) {
-    if (!AnyOperandIsFusion(*hlo)) {
+    if (TilingControlFlowIsEnabled(*hlo)) {
       return EmitUnnestedConcatenate(b, fusion, tiled_hlo, fn, pid, values);
     }
     return EmitConcatenate(b, fusion, tiled_hlo, fn, pid, values);
@@ -1625,14 +1627,14 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
   }
 
   if (hlo->opcode() == HloOpcode::kDot) {
-    if (!AnyOperandIsFusion(*hlo)) {
+    if (TilingControlFlowIsEnabled(*hlo)) {
       return EmitUnnestedDot(b, fusion, tiled_hlo, fn, pid, values);
     }
     return EmitDot(b, fusion, tiled_hlo, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kScaledDot) {
-    if (!AnyOperandIsFusion(*hlo)) {
+    if (TilingControlFlowIsEnabled(*hlo)) {
       return EmitUnnestedScaledDot(b, fusion, tiled_hlo, fn, pid, values);
     }
     return EmitScaledDot(b, fusion, tiled_hlo, fn, pid, values);

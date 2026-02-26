@@ -98,6 +98,11 @@ constexpr ErrorSpec kExactMatch{/*aabs=*/0, /*arel=*/0};
 
 class TritonEmitterTest : public GpuCodegenTest, public XTileTestBase {
  public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_unsupported_disable_nested_gemm_fusions(true);
+    return debug_options;
+  }
   const stream_executor::GpuComputeCapability& GpuComputeCapability() {
     return backend()
         .default_stream_executor()
@@ -4849,9 +4854,6 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloTextTemplate));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_gpu_unsupported_disable_nested_gemm_fusions(true);
   TF_ASSERT_OK_AND_ASSIGN(auto optimized_module,
                           GetOptimizedModule(std::move(module)));
   constexpr absl::string_view kExpectedOptimizedHLO = R"(

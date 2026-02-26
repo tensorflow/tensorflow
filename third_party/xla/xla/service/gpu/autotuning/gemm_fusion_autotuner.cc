@@ -359,11 +359,14 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
 
   HoistFusedBitcasts hoist_fused_bitcasts;
   TF_RETURN_IF_ERROR(hoist_fused_bitcasts.Run(new_module.get()).status());
-  ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
-                                                     mlir_context);
-  RETURN_IF_ERROR(convert_triton_gemm_config.Run(new_module.get()).status());
-  NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
-  RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
+  if (debug_opts.xla_gpu_unsupported_disable_nested_gemm_fusions()) {
+    ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
+                                                       mlir_context);
+    RETURN_IF_ERROR(convert_triton_gemm_config.Run(new_module.get()).status());
+  } else {
+    NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context);
+    RETURN_IF_ERROR(nest_gemm_fusion.Run(new_module.get()).status());
+  }
   return new_module;
 }
 

@@ -599,12 +599,13 @@ ENTRY main {
   auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
       *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{1, 128}});
 
-  EXPECT_THAT(
-      result,
-      absl_testing::StatusIs(
-          absl::StatusCode::kFailedPrecondition,
-          HasSubstr(
-              "Concatenate is not supported by the indexing cost model")));
+  // Currently SymbolicTileAnalysis fails for concatenate. Once the analysis
+  // gets support of concatenate, this test should fail with an error from
+  // `EstimateRunTimeForTiledHloComputation` that propagation of the number of
+  // blocks is not supported (b/351342921).
+  EXPECT_THAT(result,
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
+                                     HasSubstr("SymbolicTileAnalysis failed")));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
