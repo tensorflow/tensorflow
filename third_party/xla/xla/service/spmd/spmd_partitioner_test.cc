@@ -15181,6 +15181,62 @@ TEST_P(SpmdPartitioningTest, DusOfBroadcastWithEnzymeOpt) {
                           op::Shape("f32[20,40,50]")));
 }
 
+TEST_P(SpmdPartitioningTest, DusOfBroadcastWithEnzymeOptNotSinglePartition) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %dus_in = f32[20,80,100] parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    %cst = f32[] parameter(1), sharding={replicated}
+    bcast = f32[1,1,100] broadcast(cst), dimensions={}, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    c9 = s32[] constant(9)
+    c8 = s32[] constant(8)
+    c0 = s32[] constant(0)
+    ROOT dus_out = f32[20,80,100] dynamic-update-slice(%dus_in, bcast, c9, c8, c0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+  }
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4,
+                                               SpmdPartitionerOptions(),
+                                               /*enable_enzyme_opt=*/true));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto sharded_input = AllOf(op::Parameter(1), op::Shape("f32[]"));
+  auto sharded_dus_in = AllOf(op::Parameter(0), op::Shape("f32[20,40,50]"));
+  EXPECT_THAT(root, AllOf(op::Select(op::Pad(_, _), sharded_dus_in,
+                                     op::Broadcast(sharded_input)),
+                          op::Shape("f32[20,40,50]")));
+}
+
+TEST_P(SpmdPartitioningTest, DusOfSliceWithEnzymeOptNotSinglePartition) {
+  absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  ENTRY entry {
+    %dus_in = f32[20,80,100] parameter(0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    %input = f32[20,80,100] parameter(1), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    %slice = f32[1,1,100] slice(%input), slice={[9:10], [8:9], [0:100]}, sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+    c9 = s32[] constant(9)
+    c8 = s32[] constant(8)
+    c0 = s32[] constant(0)
+    ROOT dus_out = f32[20,80,100] dynamic-update-slice(%dus_in, %slice, c9, c8, c0), sharding={devices=[1,2,2]<=[2,2]T(1,0)}
+  }
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4,
+                                               SpmdPartitionerOptions(),
+                                               /*enable_enzyme_opt=*/true));
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto sharded_input = AllOf(op::Parameter(1), op::Shape("f32[20,40,50]"));
+  auto sharded_dus_in = AllOf(op::Parameter(0), op::Shape("f32[20,40,50]"));
+  EXPECT_THAT(root,
+              AllOf(op::Select(op::Pad(_, _), sharded_dus_in, sharded_input),
+                    op::Shape("f32[20,40,50]")));
+}
+
 TEST_P(SpmdPartitioningTest, AddBroadcastWithEnzymeOpt) {
   absl::string_view hlo_string = R"hlo(
   HloModule module
