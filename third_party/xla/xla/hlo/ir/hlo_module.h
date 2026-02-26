@@ -826,6 +826,11 @@ class HloModule {
   // Getter for the stack frame DAG.
   const StackFrames& stack_frames() const { return stack_frames_; }
 
+  // Merges a stack frame (possibly a trace) into the module's stack frame
+  // index, potentially chaining it to a parent frame. Returns the new 1-based
+  // index into stack_frames.
+  int MergeStackFrames(int frame_id, int parent_frame_id);
+
   // Finalizes this module by destroying internal data structures that might be
   // used for building or modifying the module. It is undefined behavior to
   // modify the module (add computations or instructions) after the call. Should
@@ -971,6 +976,11 @@ class HloModule {
 
   // Stack frame representation.
   StackFrames stack_frames_;
+
+  bool IsStackFramePrefix(int prefix_id, int frame_id) const;
+  bool AreStackFramesEqual(int id1, int id2) const;
+  bool AreFileLocationsEqual(int loc_id1, int loc_id2) const;
+  int GetStackFrameDepth(int frame_id) const;
 
   // Topological ordering of the computations in this module.
   // The topological order only contains computations whose parent() is this
