@@ -1249,6 +1249,10 @@ message DebugOptions {
   // Dump HLO in long text format. Ignored unless xla_dump_hlo_as_text is true.
   optional bool xla_dump_hlo_as_long_text = 164;
 
+  // Dump BufferAssignment analysis. Ignored unless xla_dump_hlo_as_text is
+  // true.
+  optional bool xla_dump_buffer_assignment_analysis = 464;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -1427,7 +1431,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 464
+  // Next id: 465
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
