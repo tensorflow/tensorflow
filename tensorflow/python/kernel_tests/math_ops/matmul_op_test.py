@@ -214,7 +214,8 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
   def testMismatchedShape(self):
     with self.assertRaisesRegex(
         Exception, (r"(In\[0\] and In\[1\] has different ndims|In\[0\] "
-                    r"ndims must be >= 2|Shape must be rank 2 but is rank 1)")):
+                    r"ndims must be >= 2|Shape must be rank 2 but is rank 1|"
+                    r"must be at least rank 2)")):
       infix_matmul(
           ops.convert_to_tensor([10.0, 20.0, 30.0]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
@@ -233,6 +234,16 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
     b = ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0], [80.0, 90.0]])
     c = infix_matmul(a, b)
     self.assertEqual(c.op.type, "MatMul")
+
+  def testRank1InputErrorMessage(self):
+    a = ops.convert_to_tensor([[1, 2]])
+    b = ops.convert_to_tensor([1, 2, 3])
+    with self.assertRaisesRegex(
+        ValueError, r"must be at least rank 2.*tf\.linalg\.matvec"):
+      math_ops.matmul(a, b)
+    with self.assertRaisesRegex(
+        ValueError, r"must be at least rank 2.*tf\.linalg\.matvec"):
+      math_ops.matmul(b, a)
 
   def testInfixMatmulDoesDotProduct(self):
     a = ops.convert_to_tensor([[10.0, 20.0, 30.0]])
