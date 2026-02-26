@@ -24,16 +24,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
-#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/WalkPatternRewriteDriver.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/ChloOps.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
@@ -66,10 +64,9 @@ FailureOr<Attribute> deserializeRaggedDotDimensionNumbersAttr(
   auto lhsRagged = llvm::dyn_cast<DenseIntElementsAttr>(arrayAttr[4]);
   auto rhsGroup = llvm::dyn_cast<DenseIntElementsAttr>(arrayAttr[5]);
   if (!lhsBatch || !rhsBatch || !lhsContract || !rhsContract || !lhsRagged ||
-      !rhsGroup) {
+      !rhsGroup)
     return op->emitError() << "elements in ragged_dot_dimension_numbers are "
                               "not DenseIntElementsAttrs";
-  }
   return chlo::RaggedDotDimensionNumbersAttr::get(
       op->getContext(), llvm::to_vector(lhsBatch.getValues<int64_t>()),
       llvm::to_vector(rhsBatch.getValues<int64_t>()),
@@ -208,41 +205,213 @@ LogicalResult recomposeChloOpFromCustomCall(stablehlo::CustomCallOp op,
 // Composite deserialization patterns
 ////////
 
-template <typename ChloOpTy>
-struct ChloOpRecomposePattern
+template <typename OpType>
+LogicalResult recomposeChloOpFromCompositeOp(stablehlo::CompositeOp op,
+                                             PatternRewriter& rewriter) {
+  // Convert encoded attributes to CHLO attrs.
+  auto attrs =
+      deserializeChloAttributes(op, op.getName(), op.getCompositeAttributes());
+  if (failed(attrs)) {
+    return rewriter.notifyMatchFailure(op, "failed to deserialize attributes");
+  }
+  rewriter.replaceOpWithNewOp<OpType>(op, op->getResultTypes(),
+                                      op->getOperands(), attrs.value());
+  return success();
+}
+
+struct RaggedDotOpRecomposePattern
     : public OpRewritePattern<stablehlo::CompositeOp> {
   using OpRewritePattern::OpRewritePattern;
-
   LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
                                 PatternRewriter& rewriter) const override {
-    if (op.getName() != ChloOpTy::getOperationName()) {
-      return rewriter.notifyMatchFailure(op, "different op name");
+    if (op.getName() != "chlo.ragged_dot") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.ragged_dot");
     }
     if (op.getVersion() != 1) {
-      return rewriter.notifyMatchFailure(op, "different version");
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.ragged_dot composite");
     }
-    auto attrs = deserializeChloAttributes(op, op.getName(),
-                                           op.getCompositeAttributes());
-    if (failed(attrs)) {
-      return rewriter.notifyMatchFailure(op,
-                                         "failed to deserialize attributes");
+    return recomposeChloOpFromCompositeOp<chlo::RaggedDotOp>(op, rewriter);
+  }
+};
+
+struct TopKOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.top_k") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.top_k");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.top_k composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::TopKOp>(op, rewriter);
+  }
+};
+
+struct AcoshOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.acosh") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.acosh");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.acosh composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::AcoshOp>(op, rewriter);
+  }
+};
+
+struct ScanOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.scan") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.scan");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.scan composite");
     }
 
-    ChloOpTy chloOp;
-    if constexpr (ChloOpTy::template hasTrait<OpTrait::VariadicRegions>()) {
-      chloOp =
-          ChloOpTy::create(rewriter, op.getLoc(), op.getResultTypes(),
-                           op.getOperands(), attrs.value(), op.getNumRegions());
-    } else {
-      chloOp = ChloOpTy::create(rewriter, op.getLoc(), op.getResultTypes(),
-                                op.getOperands(), attrs.value());
+    auto module = op->getParentOfType<ModuleOp>();
+    auto func = module.lookupSymbol<func::FuncOp>(op.getDecomposition());
+    if (!func) return failure();
+
+    chlo::ScanOp scanOp;
+    func.walk([&](chlo::ScanOp op) {
+      scanOp = op;
+      return WalkResult::interrupt();
+    });
+    if (!scanOp) return failure();
+
+    IRMapping mapping;
+    for (auto [arg, operand] :
+         llvm::zip(func.getArguments(), op.getOperands())) {
+      mapping.map(arg, operand);
     }
-    for (auto [srcRegion, dstRegion] :
-         llvm::zip_equal(op.getCompositeRegions(), chloOp->getRegions())) {
-      rewriter.inlineRegionBefore(srcRegion, dstRegion, dstRegion.end());
-    }
-    rewriter.replaceOp(op, chloOp);
+
+    auto* clonedOp = rewriter.clone(*scanOp, mapping);
+    rewriter.replaceOp(op, clonedOp->getResults());
+
     return success();
+  }
+};
+
+struct AcosOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.acos") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.acos");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.acos composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::AcosOp>(op, rewriter);
+  }
+};
+
+struct AtanhOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.atanh") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.atanh");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.atanh composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::AtanhOp>(op, rewriter);
+  }
+};
+
+struct CoshOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.cosh") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.cosh");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.cosh composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::CoshOp>(op, rewriter);
+  }
+};
+
+struct SinhOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.sinh") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.sinh");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.cosh composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::SinhOp>(op, rewriter);
+  }
+};
+
+struct AsinOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.asin") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.asin");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.asin composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::AsinOp>(op, rewriter);
+  }
+};
+
+struct AsinhOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.asinh") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.asinh");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.asinh composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::AsinhOp>(op, rewriter);
+  }
+};
+
+struct ErfOpRecomposePattern : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.erf") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.erf");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.erf composite");
+    }
+    return recomposeChloOpFromCompositeOp<chlo::ErfOp>(op, rewriter);
   }
 };
 
@@ -435,11 +604,21 @@ struct ScanOpCustomCallRecomposePattern
   }
 };
 
+}  // namespace
+
 struct ChloRecomposeOpsPass
     : public impl::ChloRecomposeOpsPassBase<ChloRecomposeOpsPass> {
   using ChloRecomposeOpsPassBase::ChloRecomposeOpsPassBase;
 
   void runOnOperation() override {
+    // Do a single traversal to recompose CustomCallOp to CHLO ops.
+    GreedyRewriteConfig config;
+    config.setUseTopDownTraversal(true)
+        .setRegionSimplificationLevel(GreedySimplifyRegionLevel::Aggressive)
+        .setMaxIterations(1)
+        .setMaxNumRewrites(GreedyRewriteConfig::kNoLimit)
+        .setStrictness(GreedyRewriteStrictness::ExistingOps);
+
     auto* ctx = &getContext();
     RewritePatternSet patterns(ctx);
     // clang-format off
@@ -460,24 +639,35 @@ struct ChloRecomposeOpsPass
 
     // Composite Patterns
     patterns.add<
-      ChloOpRecomposePattern<chlo::AcosOp>,
-      ChloOpRecomposePattern<chlo::AsinOp>,
-      ChloOpRecomposePattern<chlo::AsinhOp>,
-      ChloOpRecomposePattern<chlo::AcoshOp>,
-      ChloOpRecomposePattern<chlo::AtanhOp>,
-      ChloOpRecomposePattern<chlo::CoshOp>,
-      ChloOpRecomposePattern<chlo::SinhOp>,
-      ChloOpRecomposePattern<chlo::ErfOp>,
-      ChloOpRecomposePattern<chlo::RaggedDotOp>,
-      ChloOpRecomposePattern<chlo::ScanOp>,
-      ChloOpRecomposePattern<chlo::TopKOp>>(ctx);
+      AcosOpRecomposePattern,
+      AsinOpRecomposePattern,
+      AsinhOpRecomposePattern,
+      AcoshOpRecomposePattern,
+      AtanhOpRecomposePattern,
+      CoshOpRecomposePattern,
+      SinhOpRecomposePattern,
+      ErfOpRecomposePattern,
+      RaggedDotOpRecomposePattern,
+      ScanOpRecomposePattern,
+      TopKOpRecomposePattern>(ctx);
     // clang-format on
 
-    walkAndApplyPatterns(getOperation(), std::move(patterns));
+    // Only apply to CustomCallOps
+    auto moduleOp = getOperation();
+    llvm::SmallVector<Operation*> candidateOps;
+    moduleOp.walk(
+        [&](stablehlo::CustomCallOp op) { candidateOps.push_back(op); });
+    moduleOp.walk(
+        [&](stablehlo::CompositeOp op) { candidateOps.push_back(op); });
+
+    if (failed(applyOpPatternsGreedily(candidateOps, std::move(patterns),
+                                       config))) {
+      moduleOp.emitError("Failed to converge ChloRecomposeOps in ")
+          << config.getMaxIterations() << " iterations";
+      return signalPassFailure();
+    }
   }
 };
-
-}  // namespace
 
 void createChloLegalizeToStablehloPipeline(OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(

@@ -1,47 +1,3 @@
-diff --ruN a/stablehlo/docs/spec.md b/stablehlo/docs/spec.md
---- stablehlo/docs/spec.md
-+++ stablehlo/docs/spec.md
-@@ -1947,8 +1947,8 @@
- #### Semantics
- 
- Encapsulates an operation made up (composed) of other StableHLO operations,
--taking `inputs` and `composite_attributes` and producing `results`. The
--semantics of the op are implemented by the `decomposition` attribute. The
-+taking `inputs`, `composite_attributes` and `regions` and producing `results`.
-+The semantics of the op are implemented by the `decomposition` attribute. The
- `composite` op can be replaced with its decomposition without changing program
- semantics. In cases where inlining the decomposition does not provide the same
- op semantics, prefer using `custom_call`.
-@@ -1956,15 +1956,20 @@
- The `version` field (defaults to `0`) is used to denote when a composite's
- semantics change.
- 
--#### Inputs
--
--| Label | Name                   | Type                      |
--|-------|------------------------|---------------------------|
--| (I1)  | `inputs`               | variadic number of values |
--| (I2)  | `name`                 | constant of type `string` |
--| (I3)  | `composite_attributes` | attribute dictionary      |
--| (I4)  | `decomposition`        | constant of type `string` |
--| (I5)  | `version`              | constant of type `si32`   |
-+The intent of `regions` is to only be used to model ops with bodies (e.g.
-+`my_op` may have a body like `while` or `reduce`). If the decomposition is
-+inlined, the `regions` are ignored.
-+
-+#### Inputs
-+
-+| Label | Name                   | Type                         |
-+|-------|------------------------|------------------------------|
-+| (I1)  | `inputs`               | variadic number of values    |
-+| (I2)  | `name`                 | constant of type `string`    |
-+| (I3)  | `composite_attributes` | attribute dictionary         |
-+| (I4)  | `decomposition`        | constant of type `string`    |
-+| (I5)  | `version`              | constant of type `si32`      |
-+| (I6)  | `regions`              | variadic number of functions |
- 
- #### Outputs
- 
 diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
 --- stablehlo/stablehlo/dialect/ChloOps.cpp
 +++ stablehlo/stablehlo/dialect/ChloOps.cpp
@@ -159,51 +115,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
  
  class StableHLO_ResourceBase<string resourceKind> :
      Resource<!strconcat("::mlir::stablehlo::side_effects::", resourceKind)> {}
-@@ -2369,6 +2369,10 @@
-     The `version` field (defaults to `0`) is used to denote when a composite's
-     semantics change.
- 
-+    The intent of `composite_regions` is to only be used to model ops with
-+    bodies, regions are thrown away if the fallback decomposition function gets
-+    inlined.
-+
-     See:
-     https://github.com/openxla/stablehlo/blob/main/docs/spec.md#composite
- 
-@@ -2391,9 +2395,31 @@
-     FlatSymbolRefAttr:$decomposition, /*composite_i4*/
-     DefaultValuedOptionalAttr<I32Attr, "0">:$version /*composite_i5*/
-   );
-+  let regions = (region VariadicRegion<AnyRegion>:$composite_regions);
-   let results = (outs Variadic<HLO_TensorOrPerAxisQuantizedTensorOrTokenOrTuple>);
- 
--  let assemblyFormat = "$name $inputs attr-dict `:` functional-type(operands, results)";
-+  let builders = [
-+    OpBuilder<(ins
-+      "::mlir::TypeRange":$resultTypes, "::mlir::ValueRange":$inputs,
-+      "::mlir::ArrayRef<::mlir::NamedAttribute>":$attributes
-+    ), [{
-+      build($_builder, $_state, resultTypes, inputs, attributes,
-+            /*regionsCount=*/0);
-+    }]>,
-+    OpBuilder<(ins
-+      "::mlir::TypeRange":$resultTypes, "::mlir::ValueRange":$inputs,
-+      "::mlir::StringRef":$name, "::mlir::DictionaryAttr":$attributes,
-+      "::mlir::StringRef":$decomposition, CArg<"uint32_t", "0">:$version
-+    ), [{
-+      build($_builder, $_state, resultTypes, inputs, name, attributes,
-+            decomposition, version, /*regionsCount=*/0);
-+    }]>
-+  ];
-+
-+  let assemblyFormat = [{
-+    $name operands (` ` `(` $composite_regions^ `)`)? attr-dict
-+    `:` functional-type(operands, results)
-+  }];
- }
- 
- def StableHLO_ConvolutionOp : StableHLO_Op<"convolution",
-@@ -2557,7 +2583,7 @@
+@@ -2557,7 +2557,7 @@
    }];
  }
  
@@ -212,7 +124,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/d
    let summary = "Dot operation";
    let description = [{
      This operation is on its way out of StableHLO, so it is not included in
-@@ -2587,7 +2613,8 @@
+@@ -2587,7 +2587,8 @@
  }
  
  def StableHLO_DotGeneralOp: StableHLO_ShapedInterfaceOp<"dot_general",
@@ -465,21 +377,6 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
  #include "mlir-c/IR.h"
  #include "mlir-c/Support.h"
  #include "mlir/Bindings/Python/NanobindAdaptors.h"
-diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
---- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
-+++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
-@@ -17,3 +17,11 @@
- # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
- from ._stablehlo_ops_gen import *
- from .._mlir_libs._stablehlo import *
-+
-+from . import _stablehlo_ops_gen
-+
-+class CompositeOp(_stablehlo_ops_gen.CompositeOp):
-+  def __init__(self, *args, **kwargs):
-+    if "num_composite_regions" not in kwargs:
-+      kwargs["num_composite_regions"] = 0
-+    super().__init__(*args, **kwargs)
 diff --ruN a/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir b/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
 --- stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
 +++ stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
@@ -1469,7 +1366,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  ArrayAttr convertPrecisionConfig(mlir::ArrayAttr precisionConfig,
                                   ConversionPatternRewriter& rewriter) {
    std::vector<Attribute> precisions;
-@@ -2123,131 +2273,159 @@
+@@ -2123,131 +2273,156 @@
    }
    RankedTensorType lhsTy = cast<RankedTensorType>(lhs.getType());
    RankedTensorType rhsTy = cast<RankedTensorType>(rhs.getType());
@@ -1701,39 +1598,29 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
 +    // without shape inference. But dot_general shape inference handles it.
 +    // However, if we accumulate, `out` needs to be initialized.
 +    // We peel the first iteration to initialize `out`.
-+    SmallVector<NamedAttribute, 2> attributes;
-+    attributes.push_back(rewriter.getNamedAttr(
-+        "dot_dimension_numbers",
-+        rewriter.getAttr<mlir::stablehlo::DotDimensionNumbersAttr>(
-+            lhsBatchingDimensions, rhsBatchingDims, lhsContractingDimensions,
-+            rhsContractingDims)));
-+    if (precisionConfig.has_value()) {
-+      attributes.push_back(
-+          rewriter.getNamedAttr("precision_config", precisionConfig.value()));
-+    }
      Value dotGeneral = mlir::stablehlo::DotGeneralOp::create(
 -        rewriter, op.getLoc(), TypeRange{out.getType()},
 -        ValueRange{lhs, rhsReshapedSlice},
--        ArrayRef<mlir::NamedAttribute>{
--            rewriter.getNamedAttr(
--                "dot_dimension_numbers",
--                rewriter.getAttr<mlir::stablehlo::DotDimensionNumbersAttr>(
++        rewriter, op.getLoc(), resultType, ValueRange{lhsMasked, rhsReshaped},
+         ArrayRef<mlir::NamedAttribute>{
+             rewriter.getNamedAttr(
+                 "dot_dimension_numbers",
+                 rewriter.getAttr<mlir::stablehlo::DotDimensionNumbersAttr>(
 -                    /*lhs_batching_dimensions=*/lhsBatchingDimensions,
 -                    /*rhs_batching_dimensions=*/rhsBatchingDims,
 -                    /*lhs_contracting_dimensions=*/lhsContractingDimensions,
 -                    /*rhs_contracting_dimensions=*/rhsContractingDims)),
--            rewriter.getNamedAttr("precision_config",
--                                  precisionConfig.value())});
--
++                    lhsBatchingDimensions, rhsBatchingDims,
++                    lhsContractingDimensions, rhsContractingDims)),
+             rewriter.getNamedAttr("precision_config",
+                                   precisionConfig.value())});
+ 
 -    // Place the i'th dot_general to the corresponding position in the result.
 -    Value select = mlir::stablehlo::SelectOp::create(
 -        rewriter, op.getLoc(), logicalAndBroadcasted, dotGeneral, outZeros);
 -    out = mlir::stablehlo::AddOp::create(rewriter, op.getLoc(), out, select);
 -    start =
 -        mlir::stablehlo::AddOp::create(rewriter, op.getLoc(), start, groupSize);
-+        rewriter, op.getLoc(), resultType, ValueRange{lhsMasked, rhsReshaped},
-+        attributes);
-+
 +    if (i == 0) {
 +      out = dotGeneral;
 +    } else {
@@ -1744,7 +1631,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
    }
    rewriter.replaceOp(op, {out});
    return success();
-@@ -2260,7 +2438,158 @@
+@@ -2260,7 +2435,156 @@
  //   result : [g, b, m, n]
  LogicalResult handleRaggedDotMode2(mlir::chlo::RaggedDotOp op,
                                     ConversionPatternRewriter& rewriter) {
@@ -1867,20 +1754,18 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
 +
 +    // Dot general.
 +    auto resultShape = op.getResult().getType().getShape().drop_front();
-+    SmallVector<NamedAttribute, 2> attributes;
-+    attributes.push_back(rewriter.getNamedAttr(
-+        "dot_dimension_numbers",
-+        rewriter.getAttr<mlir::stablehlo::DotDimensionNumbersAttr>(
-+            lhsBatchingDimensions,
-+            raggedDotDimensionNumbers.getRhsBatchingDimensions(),
-+            lhsContractingDimensions, rhsContractingDimensions)));
-+    if (precisionConfig.has_value()) {
-+      attributes.push_back(
-+          rewriter.getNamedAttr("precision_config", precisionConfig.value()));
-+    }
 +    Value dotGeneral = mlir::stablehlo::DotGeneralOp::create(
 +        rewriter, op.getLoc(), RankedTensorType::get(resultShape, outDType),
-+        {lhsMasked, rhs}, attributes);
++        {lhsMasked, rhs},
++        ArrayRef<NamedAttribute>{
++            rewriter.getNamedAttr(
++                "dot_dimension_numbers",
++                rewriter.getAttr<mlir::stablehlo::DotDimensionNumbersAttr>(
++                    lhsBatchingDimensions,
++                    raggedDotDimensionNumbers.getRhsBatchingDimensions(),
++                    lhsContractingDimensions, rhsContractingDimensions)),
++            rewriter.getNamedAttr("precision_config",
++                                  precisionConfig.value())});
 +
 +    results.push_back(dotGeneral);
 +    start = limit;
@@ -1904,7 +1789,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  }
  
  // Mode 3, where the ragged dimension is an lhs/rhs batch dim (b).
-@@ -2270,7 +2599,31 @@
+@@ -2270,7 +2594,27 @@
  //   result : [b, m, n]
  LogicalResult handleRaggedDotMode3(mlir::chlo::RaggedDotOp op,
                                     ConversionPatternRewriter& rewriter) {
@@ -1918,26 +1803,22 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
 +  }
 +
 +  auto raggedDotDimensionNumbers = op.getRaggedDotDimensionNumbers();
-+  SmallVector<NamedAttribute, 2> attributes;
-+  attributes.push_back(rewriter.getNamedAttr(
-+      "dot_dimension_numbers",
-+      rewriter.getAttr<mlir::stablehlo::DotDimensionNumbersAttr>(
-+          raggedDotDimensionNumbers.getLhsBatchingDimensions(),
-+          raggedDotDimensionNumbers.getRhsBatchingDimensions(),
-+          raggedDotDimensionNumbers.getLhsContractingDimensions(),
-+          raggedDotDimensionNumbers.getRhsContractingDimensions())));
-+  if (precisionConfig.has_value()) {
-+    attributes.push_back(
-+        rewriter.getNamedAttr("precision_config", precisionConfig.value()));
-+  }
 +  rewriter.replaceOpWithNewOp<mlir::stablehlo::DotGeneralOp>(
 +      op, op.getResult().getType(), ValueRange{op.getLhs(), op.getRhs()},
-+      attributes);
++      ArrayRef<NamedAttribute>{
++          rewriter.getNamedAttr(
++              "dot_dimension_numbers",
++              rewriter.getAttr<mlir::stablehlo::DotDimensionNumbersAttr>(
++                  raggedDotDimensionNumbers.getLhsBatchingDimensions(),
++                  raggedDotDimensionNumbers.getRhsBatchingDimensions(),
++                  raggedDotDimensionNumbers.getLhsContractingDimensions(),
++                  raggedDotDimensionNumbers.getRhsContractingDimensions())),
++          rewriter.getNamedAttr("precision_config", precisionConfig.value())});
 +  return success();
  }
  
  }  // namespace
-@@ -2291,6 +2644,333 @@
+@@ -2291,6 +2635,333 @@
      } else {
        return handleRaggedDotMode3(op, rewriter);
      }
@@ -2271,7 +2152,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
    }
  };
  
-@@ -2361,29 +3041,41 @@
+@@ -2361,29 +3032,41 @@
              : std::min(static_cast<int64_t>(op.getK()), lastDimSize);
      int64_t isDynamic = !operandType.hasStaticShape();
      auto i32Type = rewriter.getIntegerType(32);
@@ -2329,7 +2210,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
            /*dimension=*/0);
      }
  
-@@ -2426,18 +3118,12 @@
+@@ -2426,18 +3109,12 @@
        Value startIndices = mlir::stablehlo::ConstantOp::create(
            rewriter, op.getLoc(),
            DenseIntElementsAttr::get(indicesTy, beginIndices));
@@ -2351,7 +2232,7 @@ diff --ruN a/stablehlo/stablehlo/transforms/ChloLegalizeToStablehlo.cpp b/stable
  
        values = mlir::stablehlo::RealDynamicSliceOp::create(
            rewriter, op.getLoc(), resultType, tupleFirstElement, startIndices,
-@@ -2531,12 +3217,11 @@
+@@ -2531,12 +3208,11 @@
  static void populateChloDecompositionPatterns(MLIRContext* context,
                                                RewritePatternSet* patterns) {
    populateWithGenerated(*patterns);
