@@ -102,6 +102,47 @@ module {
             PrintModule(deserialized_program->mlir_module));
 }
 
+TEST_P(IfrtIRProgramSerDesTest, RoundTripWithUnreduced) {
+  static constexpr absl::string_view kMlirModuleStr = R"(
+!array = !ifrt.array<tensor<2xi32>, #ifrt.sharding_param<1 to [0] on 1 unreduced [0]>, [0]>
+module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  module @add_one {
+    func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+      %0 = mhlo.constant dense<1> : tensor<2xi32>
+      %1 = mhlo.add %arg0, %0 : tensor<2xi32>
+      return %1 : tensor<2xi32>
+    }
+  }
+}
+  )";
+
+  Serialized serialized;
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      support::ParseMlirModuleString(kMlirModuleStr, *context));
+  auto initial_program =
+      std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
+
+  // TODO(hyeontaek): Use `version()` to fill in
+  // `SerializeIfrtIRProgramOptions::ifrt_version`.
+  TF_ASSERT_OK_AND_ASSIGN(serialized,
+                          Serialize(*initial_program, /*options=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<IfrtIRProgram> deserialized_program,
+      Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
+
+  EXPECT_EQ(PrintModule(initial_program->mlir_module),
+            PrintModule(deserialized_program->mlir_module));
+}
+
 TEST_P(IfrtIRProgramSerDesTest, VersioningRoundTrip) {
   static constexpr absl::string_view kMlirModuleStr = R"(
 !array = !ifrt.array<tensor<2x2xi32>,
@@ -122,6 +163,51 @@ module @multiple_calls_of_same_module {
       %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
       %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
       return %1 : tensor<2x2xi32>
+    }
+  }
+}
+  )";
+
+  Serialized serialized;
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> module,
+      support::ParseMlirModuleString(kMlirModuleStr, *context));
+  auto initial_program =
+      std::make_unique<IfrtIRProgram>(std::move(context), std::move(module));
+
+  // TODO(hyeontaek): Use `version()` to fill in
+  // `SerializeIfrtIRProgramOptions::ifrt_version`.
+  auto options = std::make_unique<SerializeIfrtIRProgramOptions>(
+      Version::getCurrentVersion().toString(),
+      ::mlir::vhlo::Version::getCurrentVersion().toString(),
+      /*version_in_place=*/false);
+  TF_ASSERT_OK_AND_ASSIGN(serialized,
+                          Serialize(*initial_program, std::move(options)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<IfrtIRProgram> deserialized_program,
+      Deserialize<IfrtIRProgram>(serialized, /*options=*/nullptr));
+
+  EXPECT_EQ(PrintModule(initial_program->mlir_module),
+            PrintModule(deserialized_program->mlir_module));
+}
+
+TEST_P(IfrtIRProgramSerDesTest, VersioningRoundTripWithUnreduced) {
+  static constexpr absl::string_view kMlirModuleStr = R"(
+!array = !ifrt.array<tensor<2xi32>,
+                     #ifrt.sharding_param<1 to [0,1] on 1x2 unreduced [1]>, [0,1]>
+module @multiple_calls_of_same_module {
+  func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
+        : (!array) -> !array
+    return %0 : !array
+  }
+
+  module @add_one attributes {sym_visibility = "private"} {
+    func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+      %0 = stablehlo.constant dense<1> : tensor<2xi32>
+      %1 = stablehlo.add %arg0, %0 : tensor<2xi32>
+      return %1 : tensor<2xi32>
     }
   }
 }

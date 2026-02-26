@@ -104,6 +104,10 @@ cc_library(
     name = "device_address_handle",
     srcs = ["device_address_handle.cc"],
     hdrs = ["device_address_handle.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":device_address",
         ":stream_executor_h",

@@ -405,6 +405,10 @@ class PjRtCApiClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       mlir::ModuleOp module, CompileOptions options) override;
 
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::shared_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override;
+
   // `PjRtCApiClient::LoadSerializedExecutable()` ignores `LoadOptions` arg
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
   LoadSerializedExecutable(absl::string_view serialized,
@@ -773,8 +777,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
 
   absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const override {
-    CHECK(false)
-        << "PJRT C API does not support addressable_device_logical_ids";
+    return addressable_device_logical_ids_;
   }
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
@@ -874,6 +877,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   }
 
  private:
+  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
   // Groups data needed to support send/recv execution callbacks.
   struct SendRecvCallbackData {
     std::vector<std::vector<PJRT_SendCallbackInfo>> c_send_callbacks;
@@ -923,6 +927,7 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   std::vector<PjRtDevice*> addressable_devices_;
   std::unique_ptr<const DeviceAssignment> device_assignment_;
 
+  void InitAddressableDeviceLogicalIds();
   void InitDevices();
   void InitDeviceAssignment();
 };

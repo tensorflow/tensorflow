@@ -47,7 +47,7 @@ TEST(RegisterBuiltInFile, Works) {
       sentinel,
   };
 
-  ASSERT_OK(RegisterBuiltInFiles("dir", toc.data()));
+  ASSERT_TRUE(GlobalRegisterFiles("dir", toc.data()));
 
   std::string contents1;
   ASSERT_OK(

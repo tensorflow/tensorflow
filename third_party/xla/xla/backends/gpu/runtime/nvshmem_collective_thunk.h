@@ -81,8 +81,7 @@ class NvshmemCollectiveDoneThunk : public Thunk {
  public:
   NvshmemCollectiveDoneThunk(
       Thunk::Kind kind, ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-      AsyncStreamKind async_stream_kind);
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
@@ -92,8 +91,6 @@ class NvshmemCollectiveDoneThunk : public Thunk {
 
  private:
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  AsyncStreamKind async_stream_kind_ =
-      AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
 };
 
 //===----------------------------------------------------------------------===//

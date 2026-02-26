@@ -488,6 +488,73 @@ TEST(PjRtClientTest, CompileMlirModule) {
   EXPECT_NE(executable.get(), nullptr);
 }
 
+TEST(PjRtCApiClientTest, LoadExecutable) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  constexpr char kProgram[] = "func.func @main() {return}";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                          client->Compile(*module, options));
+  ASSERT_NE(executable.get(), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+      client->Load(std::move(executable), LoadOptions{}));
+  ASSERT_NE(loaded_executable.get(), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      loaded_executable->Execute(/*argument_handles=*/{{}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  EXPECT_EQ(results[0].size(), 0);
+}
+
+TEST(PjRtCApiClientTest, LoadSameExecutableTwice) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  constexpr char kProgram[] = "func.func @main() {return}";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(const std::shared_ptr<PjRtExecutable> executable,
+                          client->Compile(*module, options));
+  ASSERT_NE(executable.get(), nullptr);
+
+  // Load the executable twice.
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+        client->Load(executable, LoadOptions{}));
+    ASSERT_NE(loaded_executable.get(), nullptr);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+        loaded_executable->Execute(/*argument_handles=*/{{}},
+                                   ExecuteOptions()));
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].size(), 0);
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+        client->Load(executable, LoadOptions{}));
+    ASSERT_NE(loaded_executable.get(), nullptr);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+        loaded_executable->Execute(/*argument_handles=*/{{}},
+                                   ExecuteOptions()));
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].size(), 0);
+  }
+}
+
 TEST(PjRtClientTest, CanQueryMemoryDescriptions) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
@@ -866,6 +933,36 @@ ENTRY Identity() -> f32[2, 2] {
   poison_result = client->addressable_devices().front()->PoisonExecution(
       kLaunchId + 12, Internal("foobar3"));
   EXPECT_THAT(poison_result, IsOkAndHolds(false));
+}
+
+TEST(PjRtCApiClientTest, AddressableDeviceLogicalIds) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 1);
+
+  XlaBuilder builder("Identity");
+  Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
+  XlaOp input = Parameter(&builder, 0, shape, "input");
+  XlaComputation computation = builder.Build(input).value();
+
+  DeviceAssignment device_assignment(1, 2);
+  device_assignment(0, 0) = 0;
+  device_assignment(0, 1) = 1;
+
+  CompileOptions options;
+  options.executable_build_options.set_device_assignment(device_assignment);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(computation, options));
+
+  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds> logical_ids =
+      executable->addressable_device_logical_ids();
+  ASSERT_EQ(logical_ids.size(), 2);
+  EXPECT_EQ(logical_ids[0].replica, 0);
+  EXPECT_EQ(logical_ids[0].partition, 0);
+  EXPECT_EQ(logical_ids[1].replica, 0);
+  EXPECT_EQ(logical_ids[1].partition, 1);
 }
 
 }  // namespace

@@ -222,6 +222,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@snappy",
         "@tsl//tsl/platform",

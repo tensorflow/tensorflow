@@ -367,9 +367,6 @@ class GpuExecutable : public Executable {
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
-  // Retains shared ownership of on-device constants that are managed by XLA and
-  // potentially shared with other executables.
-  std::vector<std::shared_ptr<se::DeviceAddressBase>> shared_constants_;
   bool enable_debug_info_manager_;
 
   GpuExecutable(const GpuExecutable&) = delete;

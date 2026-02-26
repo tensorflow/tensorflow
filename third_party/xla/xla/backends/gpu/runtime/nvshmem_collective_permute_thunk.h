@@ -39,9 +39,7 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
       ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
       int64_t replica_count, int64_t partition_count,
       const std::vector<CollectiveThunk::Buffer>& buffers,
-      bool p2p_memcpy_enabled = false,
-      AsyncStreamKind stream_kind =
-          AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
+      bool p2p_memcpy_enabled = false);
 
   static const char* GetHloOpName() { return "collective-permute-start"; }
 
@@ -74,8 +72,7 @@ class NvshmemCollectivePermuteDoneThunk : public NvshmemCollectiveDoneThunk {
  public:
   NvshmemCollectivePermuteDoneThunk(
       ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-      AsyncStreamKind stream_kind);
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 };

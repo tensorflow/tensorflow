@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -590,6 +591,51 @@ Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder, Value value) {
   return mlir::UnrealizedConversionCastOp::create(
              builder, value.getLoc(), signless_integer_type_type, value)
       .getResult(0);
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
+    mlir::MemRefType memref) {
+  llvm::SmallVector<int64_t> strides;
+  int64_t offset;
+  if (memref.getStridesAndOffset(strides, offset).failed()) {
+    // This can fail if the layout is not strided (e.g., has dynamic strides).
+    return absl::InvalidArgumentError("Failed to get strides and offset");
+  }
+
+  llvm::SmallVector<int64_t> permutation;
+  permutation.resize(strides.size());
+  absl::c_iota(permutation, 0);
+
+  absl::c_sort(permutation, [&](int64_t lhs_dim, int64_t rhs_dim) {
+    int64_t lhs_stride = strides[lhs_dim];
+    int64_t rhs_stride = strides[rhs_dim];
+    if (lhs_stride != rhs_stride) {
+      return lhs_stride < rhs_stride;
+    }
+
+    // If the strides are the same, we need to ensure that the unit dimension is
+    // the more minor.
+    int64_t lhs_size = memref.getDimSize(lhs_dim);
+    int64_t rhs_size = memref.getDimSize(rhs_dim);
+    if (lhs_size != rhs_size) {
+      return lhs_size < rhs_size;
+    }
+
+    // If all else fails just sort in the canonical order.
+    return lhs_dim > rhs_dim;
+  });
+
+  // Check that the strides actually represent a permutation,
+  // this could happen for example with padded buffers.
+  int64_t size_product = 1;
+  for (int64_t dim : permutation) {
+    if (strides[dim] != size_product) {
+      return absl::InvalidArgumentError("Layout is not a valid permutation");
+    }
+    size_product *= memref.getDimSize(dim);
+  }
+
+  return permutation;
 }
 
 }  // namespace xla::xtile

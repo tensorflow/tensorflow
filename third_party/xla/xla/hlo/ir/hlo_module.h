@@ -832,6 +832,11 @@ class HloModule {
   // be called once, after HLO module is compiled to executable.
   void Finalize();
 
+  // Populates the stack_frames metadata from `index_proto`. Canonicalizes
+  // the stack frame IDs and remaps any stack frame IDs in the module's
+  // instructions' metadata to refer to the canonical `StackFrameId`s.
+  void CanonicalizeStackFrameIds(const StackFrameIndexProto& index_proto);
+
  private:
   friend class HloComputation;
 

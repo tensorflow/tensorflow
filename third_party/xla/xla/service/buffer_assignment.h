@@ -606,6 +606,9 @@ class BufferAssignment {
   // will result in a crash.
   void Finalize();
 
+  // Returns the HloModule used to construct this assignment.
+  const HloModule& module() const { return *module_; }
+
  private:
   // Only BufferAssigner can build or modify BufferAssignments.
   friend class BufferAssigner;
@@ -648,9 +651,6 @@ class BufferAssignment {
   absl::Status AddAssignment(BufferAllocation* allocation,
                              const HloValue& value, int64_t offset,
                              int64_t size);
-
-  // Returns the HloModule used to construct this assignment.
-  const HloModule& module() const { return *module_; }
 
   // Mutable accessors for allocations.
   BufferAllocation* GetMutableAssignedAllocation(const HloBuffer& buffer);

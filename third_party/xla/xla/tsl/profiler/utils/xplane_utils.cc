@@ -366,6 +366,13 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
     // Use SetOrAddStat to avoid duplicating stats in dst_plane.
     dst.SetOrAddStat(*stat_metadata, stat.RawStat(), src_plane);
   });
+
+  src.ForEachEventMetadata([&](const XEventMetadataVisitor& event_metadata) {
+    XEventMetadata* dst_event_metadata =
+        dst.GetOrCreateEventMetadata(event_metadata.Name());
+    CopyEventMetadata(*event_metadata.metadata(), src, *dst_event_metadata,
+                      dst);
+  });
   src.ForEachLine([&](const XLineVisitor& line) {
     XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
     int64_t time_offset_ps = 0LL;

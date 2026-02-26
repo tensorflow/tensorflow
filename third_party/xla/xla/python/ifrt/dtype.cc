@@ -128,7 +128,9 @@ std::optional<int> DType::bit_size() const {
 
 absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
   const SerDesVersionNumber version_number(dtype_proto.version_number());
-  if (version_number != SerDesVersionNumber(0)) {
+  // See //xla/python/ifrt/serdes_version.h for an explanation of changes with
+  // each version.
+  if (version_number > SerDesVersionNumber(1)) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Unsupported ", version_number, " for DType deserialization"));
   }

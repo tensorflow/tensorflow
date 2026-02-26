@@ -190,6 +190,28 @@ TEST_P(ShardingSerDesTest, ShardingParamShardingRoundTrip) {
   EXPECT_THAT(out_sharding->sharding_param(), sharding->sharding_param());
 }
 
+TEST_P(ShardingSerDesTest, ShardingParamShardingWithUnreducedDimsRoundTrip) {
+  if (version().version_number() < SerDesVersionNumber(1)) {
+    GTEST_SKIP() << "Unreduced dims not supported before version 1.";
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto sharding,
+      ShardingParamSharding::Create(ShardingParam({1, 1}, {{0}, {2}},
+                                                  /*unreduced_axes=*/{0}),
+                                    GetDevices({0, 1}), MemoryKind("abc")));
+
+  auto options = std::make_unique<SerializeOptions>(version());
+  TF_ASSERT_OK_AND_ASSIGN(auto serialized,
+                          Serialize(*sharding, std::move(options)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto out_sharding,
+      Deserialize<ShardingParamSharding>(
+          serialized, std::make_unique<DeserializeShardingOptions>(client())));
+  EXPECT_THAT(out_sharding->devices()->devices(),
+              ElementsAreArray(sharding->devices()->devices()));
+  EXPECT_THAT(out_sharding->sharding_param(), sharding->sharding_param());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumDevices, ShardingSerDesTest,
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),

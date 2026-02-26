@@ -109,7 +109,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 94
+#define PJRT_API_MINOR 96
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -708,6 +708,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Compile_Args, executable);
 // Compiles a program in specified format (such as MLIR or HLO) with given
 // `options`.
 typedef PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
+
+struct PJRT_Client_Load_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+  PJRT_Executable* executable;
+  // Serialized CompileOptionsProto.
+  const char* compile_options;
+  size_t compile_options_size;
+  PJRT_LoadedExecutable* loaded_executable;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Load_Args, loaded_executable);
+
+// Loads a PJRT_Executable.
+typedef PJRT_Error* PJRT_Client_Load(PJRT_Client_Load_Args* args);
 
 struct PJRT_Client_DefaultDeviceAssignment_Args {
   size_t struct_size;
@@ -1730,6 +1745,11 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_NumPartitions_Args, num_partitions);
 typedef PJRT_Error* PJRT_Executable_NumPartitions(
     PJRT_Executable_NumPartitions_Args* args);
 
+typedef struct PJRT_LogicalDeviceIds {
+  int replica;
+  int partition;
+} PJRT_LogicalDeviceIds;
+
 struct PJRT_LoadedExecutable_AddressableDevices_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -1743,6 +1763,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_AddressableDevices_Args,
 // Returns a list of devices this executable will run on.
 typedef PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
     PJRT_LoadedExecutable_AddressableDevices_Args* args);
+
+struct PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_LoadedExecutable* executable;
+  PJRT_LogicalDeviceIds* addressable_device_logical_ids;  // out
+  size_t num_addressable_device_logical_ids;              // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args,
+    num_addressable_device_logical_ids);
+
+// Returns a list of logical device ids this executable will run on.
+typedef PJRT_Error* PJRT_LoadedExecutable_AddressableDeviceLogicalIds(
+    PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args* args);
 
 struct PJRT_Executable_OptimizedProgram_Args {
   size_t struct_size;
@@ -2938,10 +2973,14 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Set);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_GetAttributes);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_Load);
+  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_AddressableDeviceLogicalIds);
 } PJRT_Api;
 
 enum {
-  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Device_GetAttributes)
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(
+      PJRT_Api, PJRT_LoadedExecutable_AddressableDeviceLogicalIds)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

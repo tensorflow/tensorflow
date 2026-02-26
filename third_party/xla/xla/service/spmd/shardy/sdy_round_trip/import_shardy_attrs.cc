@@ -199,7 +199,7 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
         funcOp.setArgAttr(
             argNum, kShardingAttr,
             convertToSdyShardingAttr(parseShardingFromString(oldSharding),
-                                     funcOp.getContext()));
+                                     argType, funcOp.getContext()));
       }
     } else {
       // Attempt to extract the TensorShardingAttr from the frontend attributes
@@ -229,6 +229,7 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
         funcOp.setResultAttr(
             resNum, kShardingAttr,
             convertToSdyShardingAttr(parseShardingFromString(oldSharding),
+                                     funcOp.getResultTypes()[resNum],
                                      funcOp.getContext()));
       }
     }
@@ -268,9 +269,9 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
             op)) {
       if (enableHloShardingV3) {
         auto sharding = op->getAttrOfType<StringAttr>(kXlaShardingAttr);
-        op->setAttr(kShardingAttr,
-                    convertToSdySharding(parseShardingFromString(sharding),
-                                         op->getContext()));
+        op->setAttr(kShardingAttr, convertToSdySharding(
+                                       parseShardingFromString(sharding),
+                                       op->getResultTypes(), op->getContext()));
       } else {
         if (auto sharding = parseStringAttr<TensorShardingPerValueAttr>(
                 dictAttr,
@@ -299,6 +300,7 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
           customCallOp->setAttr(
               kShardingAttr,
               convertToSdySharding(parseShardingFromString(sharding),
+                                   customCallOp->getResultTypes(),
                                    customCallOp->getContext()));
         } else {
           customCallOp->setAttr(

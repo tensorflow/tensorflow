@@ -86,7 +86,7 @@ TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   frame2->set_file_location_id(2);
   frame2->set_parent_frame_id(1);
 
-  module->set_stack_frames(StackFrames(index));
+  module->set_stack_frames(StackFrames::FromProto(index).value());
 
   // Set metadata on the instruction
   OpMetadata metadata;
@@ -122,7 +122,7 @@ TEST_F(HloInstructionTest, GetStackTraceString1BasedIndexing) {
   frame->set_file_location_id(1);  // 1-based
   frame->set_parent_frame_id(0);   // 0 means no parent
 
-  module->set_stack_frames(StackFrames(index));
+  module->set_stack_frames(StackFrames::FromProto(index).value());
 
   // Set metadata on the instruction
   OpMetadata metadata;
@@ -185,7 +185,7 @@ TEST_F(HloInstructionTest, GetStackTraceStringCombined) {
   auto frame = index.add_stack_frames();
   frame->set_file_location_id(1);
   frame->set_parent_frame_id(0);
-  module->set_stack_frames(StackFrames(index));
+  module->set_stack_frames(StackFrames::FromProto(index).value());
 
   // Set both stack_frame_id and source_info
   OpMetadata metadata;

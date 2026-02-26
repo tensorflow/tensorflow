@@ -529,7 +529,7 @@ void CompileAndFilecheck(
     std::vector<std::string> ir_paths;
     TF_ASSERT_OK(fs->GetMatchingPaths(fs->JoinPath(dump_dir, "*ir-no-opt.ll"),
                                       &ir_paths));
-    ASSERT_THAT(ir_paths, SizeIs(1));
+    ASSERT_THAT(ir_paths, SizeIs(testing::Ge(1)));
   }
 }
 

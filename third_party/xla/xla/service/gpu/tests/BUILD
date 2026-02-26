@@ -124,6 +124,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/service:compiler",
         "//xla/service:gpu_plugin",
+        "//xla/service:pjrt_gpu_utils",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
@@ -132,12 +133,9 @@ cc_library(
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:hlo_runner_agnostic_test_base",
         "//xla/tests:pjrt_client_registry",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_protobuf//:protobuf",
     ],
 )
 

@@ -195,6 +195,7 @@ struct PJRT_LoadedExecutable {
   // addressed by the compiled executable program. `client` owns the objects
   // these point to.
   std::vector<PJRT_Device*> addressable_devices;
+  std::vector<PJRT_LogicalDeviceIds> addressable_device_logical_ids;
 
   PJRT_LoadedExecutable(std::shared_ptr<xla::PjRtLoadedExecutable> executable,
                         PJRT_Client* client);
@@ -325,8 +326,10 @@ PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
 PJRT_Error* PJRT_Client_AddressableMemories(
     PJRT_Client_AddressableMemories_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
+PJRT_Error* PJRT_Client_Load(PJRT_Client_Load_Args* args);
 PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
+
 PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
     PJRT_Client_CreateUninitializedBuffer_Args* args);
 PJRT_Error* PJRT_Client_CreateAliasBuffer(

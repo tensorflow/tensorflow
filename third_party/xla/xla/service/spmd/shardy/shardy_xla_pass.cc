@@ -136,8 +136,9 @@ absl::Status createFromProtoAndReplaceComputations(
   // Remove the old computations, which are currently dead.
   CHECK_OK(HloDCE().Run(module));
 
-  module->set_stack_frames(StackFrames(proto.stack_frame_index()));
-
+  TF_ASSIGN_OR_RETURN(StackFrames stack_frames,
+                      StackFrames::FromProto(proto.stack_frame_index()));
+  module->set_stack_frames(std::move(stack_frames));
   return absl::OkStatus();
 }
 

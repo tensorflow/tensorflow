@@ -339,6 +339,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::RemapArrays(
   return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
 }
 
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::BitcastArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  return Array::BitcastArrays(this, rpc_helper_, arrays, specs, semantics);
+}
+
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(
     absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
     ArrayCopySemantics semantics) {

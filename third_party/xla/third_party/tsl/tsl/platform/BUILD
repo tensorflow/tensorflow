@@ -695,6 +695,8 @@ cc_library(
         ":macros",
         ":platform",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/platform:byte_order",
         "@xla//xla/tsl/platform:dynamic_annotations",
@@ -1337,6 +1339,7 @@ tsl_cc_test(
     deps = [
         ":mutex",
         ":platform_port",
+        "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:env_time",

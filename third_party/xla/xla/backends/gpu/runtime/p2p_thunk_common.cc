@@ -142,25 +142,6 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
   return p2p_config;
 }
 
-AsyncStreamKind GetStreamKindForP2P(const HloInstruction* instr) {
-  const auto& fe_map = instr->frontend_attributes().map();
-
-  // kCollectiveStreamAttrName takes precedence over kSendRecvPipelineAttr.
-  {
-    const auto it = fe_map.find(kCollectiveStreamAttrName);
-    if (it != fe_map.end() && it->second == kCollectiveStreamP2P) {
-      // Use any of the two p2p streams.
-      return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
-    }
-  }
-
-  const auto it = fe_map.find(kSendRecvPipelineAttr);
-  if (it != fe_map.end() && it->second == "1") {
-    return AsyncStreamKind::ASYNC_STREAM_KIND_P2P1;
-  }
-  return AsyncStreamKind::ASYNC_STREAM_KIND_P2P0;
-}
-
 // Retrieves the current collective ID (replica or partition ID) for the
 // executing device.
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(

@@ -88,6 +88,19 @@ def Vifrt_ShardingParamAttrV1 : Vifrt_AttrDef<"VifrtShardingParamV1", "0.1.0",
   let assemblyFormat = "`<` $sharding `>`";
 }
 
+def Vifrt_ShardingParameterV2 :
+    AttrOrTypeParameter<"::xla::ifrt::ShardingParam", ""> {
+  let parser = "::xla::ifrt::ShardingParam::ParseV2($_parser)";
+  let printer = "::xla::ifrt::ShardingParam::PrintV2($_printer, $_self)";
+}
+
+def Vifrt_ShardingParamAttrV2 : Vifrt_AttrDef<"VifrtShardingParamV2", "0.2.0",
+    "current"> {
+  let mnemonic = "sharding_param_v2";
+  let parameters = (ins Vifrt_ShardingParameterV2:$sharding);
+  let assemblyFormat = "`<` $sharding `>`";
+}
+
 def Vifrt_IntervalAttrV1 : Vifrt_AttrDef<"VifrtIntervalV1", "0.1.0",
     "current"> {
   let mnemonic = "interval_v1";

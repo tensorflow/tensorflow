@@ -721,6 +721,26 @@ func.func @add_n.impl(%arg0: tensor<i64>) -> tensor<i64> {
   func.return %1 : tensor<i64>
 }
 
+// CHECK-LABEL: "op_composite_regions"
+func.func @op_composite_regions(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK:      "stablehlo.composite"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:   composite_attributes = {n = 2 : i64},
+  // CHECK-SAME:   decomposition = @add_n.impl,
+  // CHECK-SAME:   name = "mhlo.add_n"
+  // CHECK-SAME: }> ({
+  // CHECK-NEXT: ^bb0(%[[ARG1:.*]]: tensor<i64>):
+  // CHECK-NEXT:   "stablehlo.return"(%[[ARG1]]) : (tensor<i64>) -> ()
+  // CHECK-NEXT: }) : (tensor<i64>) -> tensor<i64>
+  %0 = mhlo.composite "mhlo.add_n" %arg0 ({
+    ^bb0(%arg1: tensor<i64>):
+      mhlo.return %arg1 : tensor<i64>
+  }) {
+    composite_attributes = { n = 2 : i64 },
+    decomposition = @add_n.impl
+  } : (tensor<i64>) -> tensor<i64>
+  func.return %0 : tensor<i64>
+}
+
 // CHECK-LABEL: "op_concatenate"
 func.func @op_concatenate(%arg0: tensor<8xf32>, %arg1: tensor<8xf32>) -> tensor<16xf32> {
   //      CHECK: "stablehlo.concatenate"([[ARG0:%arg[0-9]+]], [[ARG1:%arg[0-9]+]]) <{

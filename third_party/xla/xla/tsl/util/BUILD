@@ -520,10 +520,11 @@ cc_library(
     hdrs = ["memfile_builtin.h"],
     deps = [
         ":file_toc",
+        "//xla/tsl/platform:embedded_filesystem",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:ram_file_system",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

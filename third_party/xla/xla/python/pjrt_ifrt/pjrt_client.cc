@@ -397,14 +397,26 @@ LocalTopologyProto MakeLocalTopologyFromPjRtClient(
     xla::PjRtClient* pjrt_client, const PjRtClient::CreateOptions& options) {
   LocalTopologyProto local_topology_proto;
   local_topology_proto.set_process_id(options.process_id);
-  std::string boot_id_str;
-  auto boot_id_str_or_status = GetBootIdString();
-  if (!boot_id_str_or_status.ok()) {
-    LOG(INFO) << boot_id_str_or_status.status();
+
+  // Boot id is optional, we leave it empty if we can't get it at run time.
+  absl::StatusOr<std::string> boot_id = GetBootIdString();
+  if (boot_id.ok()) {
+    local_topology_proto.set_boot_id(*boot_id);
   } else {
-    boot_id_str = boot_id_str_or_status.value();
+    LOG(INFO) << "Failed to get boot id: " << boot_id.status();
   }
-  local_topology_proto.set_boot_id(boot_id_str);
+
+  // Network nodes also optional, they are needed for global device assignment
+  // optimized for network locality.
+  absl::StatusOr<std::vector<std::string>> network_nodes = GetNetworkNodes();
+  if (network_nodes.ok()) {
+    for (auto& network_node : *network_nodes) {
+      *local_topology_proto.add_network_nodes() = std::move(network_node);
+    }
+  } else {
+    LOG(INFO) << "Failed to get network nodes: " << network_nodes.status();
+  }
+
   // We ignore any non-addressable devices. We're going to do our own topology
   // exchange, so we don't care what devices any given client things that some
   // other process has.
@@ -1714,6 +1726,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
     const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics semantics) {
   return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  return Unimplemented("BitcastArrays not available with pjrt-ifrt client.");
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(

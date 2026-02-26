@@ -877,19 +877,13 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
-      // TODO(b/445201291): Cache the `hlo_sharding` in `executable_bundle`.
-      TF_ASSIGN_OR_RETURN(
-          xla::HloSharding hlo_sharding,
-          xla::HloSharding::FromProto(
-              executable_bundle->compile_metadata.args()[i].sharding()));
-
       std::shared_ptr<xla::Shape> shape_ptr = nullptr;
       if (executable_bundle->xla_input_shapes.has_value()) {
         shape_ptr = (*executable_bundle->xla_input_shapes)[i];
       }
       IfrtLoadedVariableRegistry::KeyView key_view(
-          device_ids, inputs[i].scalar<tsl::tstring>()(), hlo_sharding,
-          std::move(shape_ptr));
+          device_ids, inputs[i].scalar<tsl::tstring>()(),
+          executable_bundle->arg_hlo_shardings[i], std::move(shape_ptr));
       auto it = executable_bundle->variable_arrays.find(key_view);
       if (it == executable_bundle->variable_arrays.end()) {
         return absl::InternalError(absl::StrCat(

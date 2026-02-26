@@ -263,7 +263,7 @@ class MMapWeightCacheProvider {
   // If the cache is still being built, this signals that all of the building
   // operations are done and that `CanStartBuildStep()` should now return
   // `false`.
-  void StopBuild() { building_run_ = false; }
+  void StopBuild() { builder_.Reset(); }
 
   // Sets the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
@@ -287,7 +287,7 @@ class MMapWeightCacheProvider {
   // file.
   [[nodiscard]]
   bool CanStartBuildStep() const {
-    return building_run_;
+    return builder_.IsStarted();
   };
 
   // Prepares to add new data to the cache.
@@ -340,7 +340,8 @@ class MMapWeightCacheProvider {
   // Releases the weight cache's memory.
   void Release();
 
-  // Returns true if any weights have been added to the underlying builder.
+  // Returns true if the underlying builder is ready to add weights to the
+  // cache.
   [[nodiscard]]
   bool IsBuilding() const {
     return builder_.IsBuilding();
@@ -418,12 +419,6 @@ class MMapWeightCacheProvider {
   // Used to build the cache.
   WeightCacheBuilder builder_;
 
-  // True if the current run is the one building the cache file.
-  //
-  // We cannot distinguish between a wrong/outdated cache and one that is not
-  // fully done. To detect misuse, we still want to raise an error when XNNPack
-  // tries to append data to an existing file (i.e. when this is `false`).
-  bool building_run_ = false;
 
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.

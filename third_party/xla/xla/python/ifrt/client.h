@@ -250,6 +250,27 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) = 0;
 
+  // Bitcasts arrays to new arrays according to the given specs. This bitcasting
+  // is a metadata-only operation that can change the per-shard interpretation
+  // without changing per-shard location.
+  //
+  // As the minimum requirement,
+  //
+  // * On-device size of the shard shape must remain the same.
+  // * `arrays[i].sharding().devices()` must be equal to
+  //   `specs[i].sharding().devices()`.
+  // * `arrays[i].sharding().memory_kind()` must be equal to
+  //   `specs[i].sharding().memory_kind()`.
+  //
+  // `dtype`, `shape`, `sharding`, and `layout` might change, but the runtime
+  // may impose additional constraints. For example, bitcasting to a smaller
+  // dtype or changing `layout` may not be allowed on some platforms.
+  //
+  // NOTE: `ArrayCopySemantics::kAlwaysCopy` is not allowed.
+  virtual absl::StatusOr<std::vector<ArrayRef>> BitcastArrays(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+      ArrayCopySemantics semantics) = 0;
+
   // Reshards arrays to new arrays according to the given specs.
   //
   // If destination specs have the layout specifications, applies it to the

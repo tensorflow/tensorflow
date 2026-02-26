@@ -74,6 +74,12 @@ size_t Align(size_t offset, const size_t alignment) {
   return offset + (misalign ? alignment - misalign : 0);
 }
 
+template <class T>
+T* Align(T* offset, const size_t alignment) {
+  return reinterpret_cast<T*>(
+      Align(reinterpret_cast<uintptr_t>(offset), alignment));
+}
+
 // Returns true if the given path exists.
 [[nodiscard]]
 bool FileExists(const char* path) {
@@ -193,8 +199,7 @@ void* WeightCacheBuilder::Reserve(size_t size) {
     data_ = std::make_unique<uint8_t[]>(size + kMinAlignment);
     capacity_ = size;
   }
-  return reinterpret_cast<void*>(
-      Align(reinterpret_cast<size_t>(data_.get()), kMinAlignment));
+  return Align(data_.get(), kMinAlignment);
 }
 
 BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
@@ -315,7 +320,6 @@ MMapWeightCacheProvider::MMapWeightCacheProvider(
       XNN_MOVE_CONSTRUCT_MEMBER(mmap_buffer_base_offset_),
       XNN_MOVE_CONSTRUCT_MEMBER(file_descriptor_),
       XNN_MOVE_CONSTRUCT_MEMBER(builder_),
-      XNN_MOVE_CONSTRUCT_MEMBER(building_run_),
       XNN_MOVE_CONSTRUCT_MEMBER(offset_to_addr_) {
   // The contexts need to keep pointing to their owning object.
   cache_provider_.context = this;
@@ -338,7 +342,6 @@ MMapWeightCacheProvider& MMapWeightCacheProvider::operator=(
   XNN_MOVE_MEMBER(mmap_buffer_base_offset_);
   XNN_MOVE_MEMBER(file_descriptor_);
   XNN_MOVE_MEMBER(builder_);
-  XNN_MOVE_MEMBER(building_run_);
   XNN_MOVE_MEMBER(offset_to_addr_);
 #undef XNN_MOVE_MEMBER
   return *this;
@@ -394,8 +397,7 @@ bool MMapWeightCacheProvider::StartBuild(const char* path, FileDescriptor fd) {
   XNNPACK_RETURN_CHECK(fd.IsValid(), "could not open file ('%s'): %s.",
                        file_path_.c_str(), strerror(errno));
   file_descriptor_ = std::move(fd);
-  building_run_ = builder_.Start(safe_path, file_descriptor_);
-  return building_run_;
+  return builder_.Start(safe_path, file_descriptor_);
 }
 
 bool MMapWeightCacheProvider::Load(const std::string& path, FileDescriptor fd) {

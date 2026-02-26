@@ -40,9 +40,9 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/conv_kind_assignment.h"
 #include "xla/backends/gpu/transforms/conv_padding_legalization.h"
 #include "xla/backends/gpu/transforms/conv_rewriter.h"
 #include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
@@ -187,11 +187,19 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
-    pipeline.AddPass<ConvRewriter>(gpu_version, dnn_version);
-    pipeline.AddPass<CudnnFusedConvRewriter>(*cuda_compute_capability,
-                                             dnn_version, toolkit_version);
-    pipeline.AddPass<ConvPaddingLegalization>();
-    pipeline.AddPass<CudnnPadForConvolutions>(*cuda_compute_capability);
+    if (hlo_module->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_conv_fusion()) {
+      pipeline.AddPass<ConvKindAssignment>(gpu_version, dnn_version);
+    } else {
+      // TODO(b/487265446): Remove ConvRewriter, CudnnFusedConvRewriter, and
+      // ConvPaddingLegalization once ConvFusionRewriter is the default.
+      pipeline.AddPass<ConvRewriter>(gpu_version, dnn_version);
+      pipeline.AddPass<CudnnFusedConvRewriter>(*cuda_compute_capability,
+                                               dnn_version, toolkit_version);
+      pipeline.AddPass<ConvPaddingLegalization>();
+      pipeline.AddPass<CudnnPadForConvolutions>(*cuda_compute_capability);
+    }
   }
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that

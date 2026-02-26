@@ -442,6 +442,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_matmul_perf_table_path("");
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
+  opts.set_xla_gpu_experimental_enable_conv_fusion(false);
   // --xla_ignore_channel_id should be kept false by default while channel ids
   // are load-bearing.
   opts.set_xla_ignore_channel_id(false);

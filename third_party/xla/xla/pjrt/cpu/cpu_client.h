@@ -151,7 +151,7 @@ class PjRtCpuClient final : public CommonPjRtClient {
       mlir::ModuleOp module, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable,
+      std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override;
 
   // TODO(b/403584258): PJRT wants to have just one simple Compile API. When the
@@ -564,11 +564,6 @@ class PjRtCpuLoadedExecutable final : public CommonPjRtLoadedExecutable {
 
   const HloInputOutputAliasConfig& input_output_alias_config() const override {
     return executable_->cpu_executable_->module().input_output_alias_config();
-  }
-
-  void LaunchOnDevice(PjRtDevice* device,
-                      absl::AnyInvocable<void()> execute_fn) const override {
-    client()->async_work_runner()->Schedule(std::move(execute_fn));
   }
 
  private:

@@ -288,6 +288,7 @@ absl::Status RefinePolymorphicShapes(mlir::ModuleOp module,
   pm.addPass(mlir::stablehlo_ext::createStablehloRefineShapesPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo_ext::createStablehloCanonicalizeDynamismPass());
+  pm.addPass(mlir::createSymbolDCEPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       std::make_unique<CheckShapeAssertionsPass>(enable_shape_assertions));
   if (!mlir::succeeded(pm.run(module))) {

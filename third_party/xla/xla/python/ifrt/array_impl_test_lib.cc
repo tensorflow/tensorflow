@@ -1259,6 +1259,78 @@ TEST(ArrayImplTest, CopyToSameDevices) {
   EXPECT_THAT(out_data, ElementsAreArray(data));
 }
 
+TEST(ArrayImplTest, BitcastArrays) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({});
+  Shape shard_shape({});
+  std::vector<float> data(1);
+  absl::c_iota(data, 3);
+  absl::Span<Device* const> devices = client->addressable_devices();
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList(devices));
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), shape,
+      /*shard_shape=*/shape, /*is_fully_replicated=*/true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data.data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/{}));
+
+  // Bitcast a fully-replicated F32 [] array into a fully-partitioned F32 [1]
+  // array.
+  Shape new_shape({2});
+  Shape new_shard_shape({1});
+  ShardingRef new_sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), new_shape, new_shard_shape,
+      /*is_fully_replicated=*/false);
+  ArraySpec new_array_spec = {dtype, new_shape, new_sharding};
+
+  auto new_arrays =
+      client->BitcastArrays(absl::MakeSpan(&array, 1), {new_array_spec},
+                            ArrayCopySemantics::kReuseInput);
+  if (absl::IsUnimplemented(new_arrays.status())) {
+    // This specific bitcast operation may not be supported by the runtime.
+    GTEST_SKIP() << "Skipping test; bitcast is unimplemented.";
+  }
+  TF_ASSERT_OK(new_arrays.status());
+
+  // If the bitcast was successful, the output array should have the new spec.
+  ASSERT_THAT(*new_arrays, SizeIs(1));
+
+  ASSERT_EQ(new_arrays->front()->dtype(), new_array_spec.dtype);
+  ASSERT_EQ(new_arrays->front()->shape(), new_array_spec.shape);
+  ASSERT_EQ(new_arrays->front()->shared_ptr_sharding(),
+            new_array_spec.sharding);
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const PjRtLayout> actual_pjrt_layout,
+                          new_arrays->front()->pjrt_layout());
+  ASSERT_EQ(actual_pjrt_layout, new_array_spec.layout);
+
+  // The data in the new array should be retrievable using the new spec.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto single_device_arrays,
+      new_arrays->front()->DisassembleIntoSingleDeviceArrays(
+          ArrayCopySemantics::kReuseInput,
+          SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_EQ(single_device_arrays.size(), devices.size());
+  for (int i = 0; i < single_device_arrays.size(); ++i) {
+    EXPECT_THAT(single_device_arrays[i]->sharding().devices()->devices(),
+                ElementsAre(devices[i]));
+
+    std::vector<float> out_data(1);
+    auto future = single_device_arrays[i]->CopyToHostBuffer(
+        out_data.data(),
+        /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+    TF_ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAre(3));
+  }
+}
+
 TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
 

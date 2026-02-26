@@ -3113,15 +3113,12 @@ xla_test(
     backends = [
         "gpu",
     ],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
-        ":hlo_test_base",
+        ":hlo_pjrt_interpreter_reference_mixin",
         ":xla_internal_test_main",
-        "//xla:literal",
-        "//xla:shape_util",
+        "//xla:error_spec",
         "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:test_helpers",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
     ],
 )
 

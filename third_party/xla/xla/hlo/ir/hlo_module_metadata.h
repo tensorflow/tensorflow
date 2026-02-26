@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -53,6 +54,11 @@ struct StackFrameId {
   friend void AbslStringify(Sink& sink, StackFrameId id) {
     absl::Format(&sink, "%d", id.value);
   }
+
+  template <typename H>
+  friend H AbslHashValue(H h, StackFrameId id) {
+    return H::combine(std::move(h), id.value);
+  }
 };
 
 // Describes a stack frame.
@@ -61,13 +67,15 @@ struct HloStackFrame {
   absl::string_view function_name;
   int line = 0;
   int column = 0;
+  int end_line = 0;
+  int end_column = 0;
 
   // Index of the parent frame. An invalid (0) value indicates the root.
   StackFrameId parent_frame_id;
 
   bool empty() const {
-    return line == 0 && column == 0 && file_name.empty() &&
-           function_name.empty();
+    return line == 0 && column == 0 && end_line == 0 && end_column == 0 &&
+           file_name.empty() && function_name.empty();
   }
 
   template <typename Sink>

@@ -70,6 +70,17 @@ class CommonPjRtClient : public PjRtClient {
   // Backend specific handlers for when an oom is detected during execute.
   virtual void CallOomHandlers() const {}
 
+  virtual void LaunchOnDevice(PjRtDevice* device,
+                              absl::AnyInvocable<void()> execute_fn) const {
+    async_work_runner()->Schedule(std::move(execute_fn));
+  }
+
+  virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
+                                const PjRtLoadedExecutable* executable,
+                                absl::Status perpare_status) {
+    return false;
+  }
+
   // Computes the memory requirements for storing shape on memory_space.
   // TODO(parkers): make pure virtual and update all clients.
   virtual absl::StatusOr<int64_t> GetOnDeviceBytesCount(
@@ -416,14 +427,6 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
       int replica, int partition, const ExecuteOptions& options,
       size_t host_callback_idx, PjRtDevice* device = nullptr) const;
-
-  virtual void LaunchOnDevice(PjRtDevice* device,
-                              absl::AnyInvocable<void()> execute_fn) const = 0;
-
-  virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
-                                absl::Status perpare_status) const {
-    return false;
-  }
 
   absl::StatusOr<Result> ExecuteLaunch(ExecuteLaunchArgs& launch_args,
                                        bool fill_future) const;

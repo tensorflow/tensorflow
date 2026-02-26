@@ -16,6 +16,12 @@ limitations under the License.
 #ifndef XLA_HLO_IR_STACK_FRAMES_H_
 #define XLA_HLO_IR_STACK_FRAMES_H_
 
+#include <string>
+#include <tuple>
+#include <utility>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/service/hlo.pb.h"
 
@@ -26,7 +32,10 @@ namespace xla {
 class StackFrames {
  public:
   StackFrames() = default;
-  explicit StackFrames(StackFrameIndexProto proto);
+  static absl::StatusOr<StackFrames> FromProto(StackFrameIndexProto proto);
+
+  // Internal helper to add a frame and return its new ID.
+  StackFrameId AddStackFrame(const HloStackFrame& frame);
 
   // Returns the stack frame with the given ID.
   // Returns an empty HloStackFrame if the id is invalid.
@@ -34,10 +43,30 @@ class StackFrames {
 
   const StackFrameIndexProto& proto() const { return proto_; }
 
+  // Returns true if 'prefix' is a prefix of 'full'.
+  bool IsPrefix(StackFrameId prefix, StackFrameId full) const;
+
+  // Concatenates 'prefix' and 'suffix' and returns the new stack frame ID.
+  StackFrameId Concatenate(StackFrameId prefix, StackFrameId suffix);
+
   bool empty() const { return proto_.stack_frames().empty(); }
 
  private:
+  using FileNameId = int;
+  using FunctionNameId = int;
+  using FileLocationId = int;
+
   StackFrameIndexProto proto_;
+
+  absl::flat_hash_map<std::string, FileNameId> file_name_to_id_;
+  absl::flat_hash_map<std::string, FunctionNameId> function_name_to_id_;
+
+  using FileLocationKey =
+      std::tuple<FileNameId, FunctionNameId, int, int, int, int>;
+  absl::flat_hash_map<FileLocationKey, FileLocationId> location_to_id_;
+
+  using FrameKey = std::pair<FileLocationId, StackFrameId>;
+  absl::flat_hash_map<FrameKey, StackFrameId> frame_to_id_;
 };
 
 }  // namespace xla

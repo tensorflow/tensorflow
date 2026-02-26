@@ -143,6 +143,7 @@ cc_library(
         "//xla/python/ifrt:serdes_default_version_accessor",
         "//xla/python/ifrt:serdes_version",
         "//xla/tsl/platform:errors",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -846,5 +847,6 @@ cc_library(
         "@riegeli//riegeli/bytes:cord_writer",
         "@riegeli//riegeli/messages:serialize_message",
         "@stablehlo//:version",
+        "@tsl//tsl/platform:protobuf",
     ],
 )

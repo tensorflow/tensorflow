@@ -77,6 +77,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     bool split_constants_module = false);
 
+void LinkLlvmModulesInPlace(
+    std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);
+
 }  // namespace gpu
 }  // namespace xla
 

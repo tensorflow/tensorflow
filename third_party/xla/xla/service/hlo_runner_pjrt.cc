@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -359,7 +360,7 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-HloRunnerPjRt::TransferLiteralsToDevice(
+HloRunnerPjRt::TransferLiteralsToDefaultDevice(
     const absl::Span<const ShapeLayout> layouts,
     const absl::Span<const Literal* const> literals) {
   // Note: This function is used for single (default) device execution.
@@ -370,53 +371,18 @@ HloRunnerPjRt::TransferLiteralsToDevice(
   TF_RET_CHECK(device != nullptr)
       << "Device with ordinal " << kDeviceIdx << " is null.";
 
-  TF_ASSIGN_OR_RETURN(bool flatten, MustFlattenInputTuple(layouts));
-  TF_ASSIGN_OR_RETURN(std::vector<Layout> parameter_layouts,
-                      FlattenedParameterLayouts(layouts));
-
-  auto transfer_literals =
-      [&, this](absl::Span<const Literal* const> input_literals)
-      -> absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> {
-    TF_RET_CHECK(parameter_layouts.size() == input_literals.size());
-    std::vector<std::unique_ptr<PjRtBuffer>> buffers;
-    buffers.reserve(input_literals.size());
-    for (int i = 0; i < input_literals.size(); ++i) {
-      const Literal* literal = input_literals[i];
-      TF_RET_CHECK(literal != nullptr);
-      const Layout& on_device_layout = parameter_layouts[i];
-      TF_ASSIGN_OR_RETURN(PjRtMemorySpace* absl_nonnull memory_space,
-                          GetMemorySpaceFromLayout(device, on_device_layout));
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<PjRtBuffer> buffer,
-          TransferLiteralToDevice(*literal, memory_space, on_device_layout));
-      TF_RETURN_IF_ERROR(buffer->GetReadyFuture().Await());
-      buffers.push_back(std::move(buffer));
-    }
-    return std::move(buffers);
-  };
-
-  if (flatten) {
-    Literal cloned_literal = literals[0]->Clone();
-    std::vector<Literal> flattened = cloned_literal.DecomposeTuple();
-    std::vector<const Literal*> flattened_ptrs;
-    flattened_ptrs.reserve(flattened.size());
-    for (const Literal& literal : flattened) {
-      flattened_ptrs.push_back(&literal);
-    }
-    return transfer_literals(flattened_ptrs);
-  }
-  return transfer_literals(literals);
+  return TransferLiteralsToDevice(layouts, literals, device);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-HloRunnerPjRt::TransferLiteralsToDevice(
+HloRunnerPjRt::TransferLiteralsToDefaultDevice(
     absl::Span<const Literal* const> literals) {
   std::vector<ShapeLayout> layouts;
   layouts.reserve(literals.size());
   for (const Literal* literal : literals) {
     layouts.push_back(ShapeLayout(literal->shape()));
   }
-  return TransferLiteralsToDevice(layouts, literals);
+  return TransferLiteralsToDefaultDevice(layouts, literals);
 }
 
 absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralsFromDevice(
@@ -508,7 +474,7 @@ HloRunnerPjRt::ExecuteWithExecutable(OpaqueExecutable* executable,
                       GenerateExecuteOptions(module));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<PjRtBuffer>> argument_handles,
-      TransferLiteralsToDevice(
+      TransferLiteralsToDefaultDevice(
           module.entry_computation_layout().parameter_layouts(), arguments));
 
   std::vector<absl::StatusOr<Literal>> results;
@@ -790,21 +756,15 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
 
     // Transfer literals to device.
     const int64_t argument_count = argument_count_provider(i);
-    std::vector<std::unique_ptr<PjRtBuffer>> replica_buffers;
-    replica_buffers.reserve(argument_count);
+    std::vector<const Literal*> replica_argument_ptrs;
+    replica_argument_ptrs.reserve(argument_count);
     for (int64_t arg_index = 0; arg_index < argument_count; arg_index++) {
-      const Literal* const argument = argument_provider(i, arg_index);
-      TF_RET_CHECK(argument != nullptr);
-      const ShapeLayout& layout = ecl.parameter_layout(arg_index);
-      TF_RET_CHECK(layout.LayoutIsSet());
-
-      TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
-                          device_ptr->default_memory_space());
-      TF_ASSIGN_OR_RETURN(
-          std::unique_ptr<PjRtBuffer> assignment,
-          TransferLiteralToDevice(*argument, memory_space, layout.layout()));
-      replica_buffers.push_back(std::move(assignment));
+      replica_argument_ptrs.push_back(argument_provider(i, arg_index));
     }
+    ASSIGN_OR_RETURN(
+        std::vector<std::unique_ptr<PjRtBuffer>> replica_buffers,
+        TransferLiteralsToDevice(ecl.parameter_layouts(), replica_argument_ptrs,
+                                 device_ptr));
     argument_buffer_slices.push_back(std::move(replica_buffers));
   }
 
@@ -895,6 +855,56 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
   TF_RETURN_IF_ERROR(infeed_outfeed_status);
 
   return std::move(result_literals);
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+HloRunnerPjRt::TransferLiteralsToDevice(
+    absl::Span<const ShapeLayout> layouts,
+    absl::Span<const Literal* const> literals,
+    PjRtDevice* absl_nonnull device) {
+  TF_ASSIGN_OR_RETURN(bool flatten, MustFlattenInputTuple(layouts));
+  TF_ASSIGN_OR_RETURN(std::vector<Layout> parameter_layouts,
+                      FlattenedParameterLayouts(layouts));
+
+  absl::Span<const Literal* const> input_literals = literals;
+  std::optional<std::vector<Literal>> flattened;
+  std::optional<std::vector<const Literal*>> flattened_ptrs;
+  if (flatten) {
+    Literal cloned_literal = literals[0]->Clone();
+    flattened = cloned_literal.DecomposeTuple();
+    flattened_ptrs = std::vector<const Literal*>{};
+    flattened_ptrs->reserve(flattened->size());
+    for (const Literal& literal : *flattened) {
+      flattened_ptrs->push_back(&literal);
+    }
+    input_literals = *flattened_ptrs;
+  }
+
+  TF_RET_CHECK(parameter_layouts.size() == input_literals.size());
+  std::vector<std::unique_ptr<PjRtBuffer>> buffers;
+  buffers.reserve(input_literals.size());
+  std::vector<tsl::Future<>> buffer_ready_futures;
+  buffer_ready_futures.reserve(input_literals.size());
+  for (int i = 0; i < input_literals.size(); ++i) {
+    const Literal* literal = input_literals[i];
+    TF_RET_CHECK(literal != nullptr);
+    const Layout& on_device_layout = parameter_layouts[i];
+    TF_ASSIGN_OR_RETURN(PjRtMemorySpace* absl_nonnull memory_space,
+                        GetMemorySpaceFromLayout(device, on_device_layout));
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtBuffer> buffer,
+        TransferLiteralToDevice(*literal, memory_space, on_device_layout));
+    buffer_ready_futures.push_back(buffer->GetReadyFuture());
+    buffers.push_back(std::move(buffer));
+  }
+
+  if (flattened.has_value()) {
+    // Extend the lifetime of the flattened literals (only matters if used)
+    // until the buffers are ready.
+    tsl::JoinFutures(buffer_ready_futures)
+        .OnReady([flattened = std::move(flattened)](absl::Status) {});
+  }
+  return buffers;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>

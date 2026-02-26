@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
@@ -235,6 +236,10 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
       num_nodes_(num_nodes),
       abort_collectives_on_failure_(abort_collectives_on_failure),
       kv_store_(std::move(kv_store)) {
+  VLOG(1) << absl::StreamFormat(
+      "Constructed StreamExecutor GPU client: #devices=%d #num_nodes=%d",
+      devices_.size(), num_nodes.value_or(1));
+
   if (gpu_topology != nullptr) {
     topology_.emplace(tsl::Fingerprint64(platform_name), platform_name,
                       std::move(gpu_topology),
@@ -1611,26 +1616,39 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   LocalTopologyProto local_topology;
   local_topology.set_process_id(process_id);
-  std::string boot_id_str;
-  auto boot_id_str_or_status = GetBootIdString();
-  if (!boot_id_str_or_status.ok()) {
-    LOG(INFO) << boot_id_str_or_status.status();
-  } else {
-    boot_id_str = boot_id_str_or_status.value();
-  }
-  local_topology.set_boot_id(boot_id_str);
+
+  // If partition index is defined set it for local topology, otherwise it will
+  // by assigned later based on the boot/fabric ids and network nodes.
   if (partition_index.has_value()) {
     local_topology.set_partition_index(*partition_index);
   }
-  for (const auto& ordinal_and_device : local_device_states) {
-    const se::Platform* platform =
-        ordinal_and_device.second->executor()->GetPlatform();
+
+  // Boot id is optional, we leave it empty if we can't get it at run time.
+  absl::StatusOr<std::string> boot_id = GetBootIdString();
+  if (boot_id.ok()) {
+    local_topology.set_boot_id(*boot_id);
+  } else {
+    LOG(INFO) << "Failed to get boot id: " << boot_id.status();
+  }
+
+  // Network nodes also optional, they are needed for global device assignment
+  // optimized for network locality.
+  absl::StatusOr<std::vector<std::string>> network_nodes = GetNetworkNodes();
+  if (network_nodes.ok()) {
+    for (auto& network_node : *network_nodes) {
+      *local_topology.add_network_nodes() = std::move(network_node);
+    }
+  } else {
+    LOG(INFO) << "Failed to get network nodes: " << network_nodes.status();
+  }
+
+  for (const auto& [ordinal, device] : local_device_states) {
+    const se::Platform* platform = device->executor()->GetPlatform();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::se::DeviceDescription> desc,
-        platform->DescriptionForDevice(
-            ordinal_and_device.second->local_hardware_id().value()));
+        platform->DescriptionForDevice(device->local_hardware_id().value()));
     DeviceProto* device_proto = local_topology.add_devices();
-    device_proto->set_local_device_ordinal(ordinal_and_device.first);
+    device_proto->set_local_device_ordinal(ordinal);
     device_proto->set_name(desc->name());
     device_proto->set_vendor(desc->device_vendor());
     auto compute_capability = MakeComputeCapabilityAttributeString(*desc);
@@ -1698,9 +1716,9 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   int curr_process_index_in_partition = 0;
   for (const LocalTopologyProto& node : global_topology.processes()) {
     for (const DeviceProto& device_proto : node.devices()) {
-      // The devices in the global topology are ordered by process_id,
-      // partition_index. This is guaranteed by the `BuildGlobalTopology`
-      // function and the `ExchangeTopologies` function.
+      // The devices in the global topology are ordered by `partition_index`,
+      // this is guaranteed by the `BuildGlobalTopology` function and the
+      // `ExchangeTopologies` function.
       if (curr_partition_index != device_proto.partition_index()) {
         curr_partition_index = device_proto.partition_index();
         curr_process_index = node.process_id();
@@ -1740,6 +1758,10 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
   for (const auto& device : local_device_states) {
     TF_RET_CHECK(device.second == nullptr);
   }
+
+  VLOG(3) << absl::StreamFormat(
+      "Set GPU device id map for process %d: %s", process_id,
+      absl::StrJoin(gpu_device_ids, ",", absl::PairFormatter("->")));
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
 
@@ -1776,6 +1798,14 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
           id, std::move(local_device_state), local_device_id, process_index,
           process_index_in_partition, partition_index, std::move(device_kind)),
       device_vendor_(std::move(device_vendor)) {
+  VLOG(1) << absl::StreamFormat(
+      "Constructed StreamExecutor GPU device: compute_capability=%s "
+      "core_count=%d shmem_per_block=%d local_device_id=%d process_index=%d "
+      "process_index_in_partition=%d partition_index=%d numa_node=%d",
+      compute_capability, core_count, shared_memory_per_block_optin,
+      local_device_id, process_index, process_index_in_partition,
+      partition_index, numa_node);
+
   StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
       description(), device_vendor_, compute_capability, core_count,
       static_cast<int64_t>(shared_memory_per_block_optin), partition_index);

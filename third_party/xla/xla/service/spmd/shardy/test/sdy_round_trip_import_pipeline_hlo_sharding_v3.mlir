@@ -32,6 +32,39 @@ module @module_1 {
     return %arg0, %arg1, %arg0, %arg1, %arg1, %arg2 : tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>
   }
 
+  // CHECK-LABEL: func @while_with_free_variables
+  func.func @while_with_free_variables(
+      %arg0: tensor<32x96xf32>,
+      %arg1: tensor<32x96xf32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{?}, {?}]}"})
+      -> tensor<32x96xf32> {
+    // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
+    // CHECK-NEXT: %[[C1:.*]] = sdy.constant dense<1>
+    // CHECK-NEXT: %[[C32:.*]] = sdy.constant dense<32>
+    // CHECK-NEXT: %[[SC:.*]] = sdy.sharding_constraint %arg1 <@mesh, [{?}, {?}]>
+    // CHECK-NEXT: %[[WHILE:.*]]:2 = stablehlo.while(%iterArg = %arg0, %iterArg_0 = %[[C0]])
+    // CHECK-NEXT:   cond {
+    // CHECK-NEXT:   %[[COND:.*]] = stablehlo.compare  LT, %iterArg_0, %[[C32]]
+    // CHECK-NEXT:   stablehlo.return %[[COND]]
+    // CHECK-DAG:   %[[ADD_0:.*]] = stablehlo.add %iterArg_0, %[[C1]]
+    // CHECK-DAG:   %[[ADD_1:.*]] = stablehlo.add %iterArg, %[[SC]]
+    // CHECK-NEXT:   stablehlo.return %[[ADD_1]], %[[ADD_0]]
+    // CHECK-NEXT: }
+    // CHECK-NEXT: return %[[WHILE]]#0
+    %0 = stablehlo.constant dense<0> : tensor<i32>
+    %1 = stablehlo.constant dense<1> : tensor<i32>
+    %2 = stablehlo.constant dense<32> : tensor<i32>
+    %3:2 = stablehlo.while(%iterArg = %arg0, %iterArg_0 = %0) : tensor<32x96xf32>, tensor<i32>
+      cond {
+      %4 = stablehlo.compare  LT, %iterArg_0, %2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      stablehlo.return %4 : tensor<i1>
+    } do {
+      %4 = stablehlo.add %iterArg_0, %1 : tensor<i32>
+      %5 = stablehlo.add %iterArg, %arg1 : tensor<32x96xf32>
+      stablehlo.return %5, %4 : tensor<32x96xf32>, tensor<i32>
+    }
+    return %3#0 : tensor<32x96xf32>
+  }
+
   // CHECK-LABEL: func @while_with_sinked_constants
   func.func @while_with_sinked_constants(%arg0: tensor<32x96xf32>) -> tensor<32x96xf32> {
     // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>

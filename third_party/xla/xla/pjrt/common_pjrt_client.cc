@@ -1007,7 +1007,8 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepareWithOomRetries(
     if (!absl::IsResourceExhausted(prepare_status)) {
       break;
     }
-    if (!ShouldRetryOnOom(attempts, launch_args->device, prepare_status)) {
+    if (!client()->ShouldRetryOnOom(attempts, launch_args->device, this,
+                                    prepare_status)) {
       break;
     }
   }
@@ -1181,7 +1182,8 @@ CommonPjRtLoadedExecutable::Execute(
         const int replica = addressable_device_logical_ids_[i].replica;
         const int partition = addressable_device_logical_ids_[i].partition;
         PjRtDevice* device = addressable_devices_[i];
-        LaunchOnDevice(device, [&, context_id, i, replica, partition, device] {
+        client()->LaunchOnDevice(device, [&, context_id, i, replica, partition,
+                                          device] {
           tsl::profiler::TraceMeConsumer consumer(
               [&] {
                 return tsl::profiler::TraceMeEncode(

@@ -733,11 +733,10 @@ PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCpuClient::Load(
-    std::unique_ptr<PjRtExecutable> executable,
+    std::shared_ptr<PjRtExecutable> executable,
     const LoadOptions& load_options) {
   TF_RET_CHECK(tensorflow::down_cast<PjRtCpuExecutable*>(executable.get()));
-  auto cpu_executable = absl::WrapUnique<PjRtCpuExecutable>(
-      tensorflow::down_cast<PjRtCpuExecutable*>(executable.release()));
+  auto cpu_executable = std::static_pointer_cast<PjRtCpuExecutable>(executable);
   CompileOptions options = cpu_executable->compile_options();
   int unused_num_replicas;
   int unused_num_partitions;

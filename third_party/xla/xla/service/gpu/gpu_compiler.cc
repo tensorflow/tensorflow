@@ -2617,9 +2617,6 @@ GpuCompiler::CompileToBackendResult(
       module->config()
           .debug_options()
           .xla_gpu_enable_llvm_module_compilation_parallelism();
-  const bool use_cache =
-      split_modules &&
-      !module->config().debug_options().xla_gpu_kernel_cache_file().empty();
 
   CompileModuleResults compile_module_results;
 
@@ -2635,7 +2632,7 @@ GpuCompiler::CompileToBackendResult(
             module, llvm_context, target_triple_, data_layout_, PlatformId(),
             gpu_device_info, alias_info.get(),
             std::move(buffer_size_bytes_function), llvm_options_lock,
-            /*split_constants_module=*/use_cache));
+            /*split_constants_module=*/can_use_link_modules));
   }
 
   if (user_pre_optimization_hook_) {
@@ -2663,7 +2660,14 @@ GpuCompiler::CompileToBackendResult(
                      CompileAndLink(module->config(), compile_module_results,
                                     gpu_device_info, options, module));
   } else {
-    CHECK(compile_module_results.llvm_module_constants == nullptr);
+    if (compile_module_results.llvm_module_constants) {
+      std::vector<std::unique_ptr<llvm::Module>> modules;
+      modules.push_back(std::move(compile_module_results.llvm_module));
+      modules.push_back(
+          std::move(compile_module_results.llvm_module_constants));
+      LinkLlvmModulesInPlace(modules);
+      compile_module_results.llvm_module = std::move(modules[0]);
+    }
     ASSIGN_OR_RETURN(
         backend_result,
         CompileSingleModule(module->config(), gpu_device_info, module,

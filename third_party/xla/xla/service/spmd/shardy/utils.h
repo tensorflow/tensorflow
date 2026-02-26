@@ -176,11 +176,13 @@ mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
 
 // Converts a non-tuple XLA HloSharding to an SDY TensorShardingAttr.
 mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
-    const HloSharding& hloSharding, mlir::MLIRContext* context);
+    const HloSharding& hloSharding, mlir::Type type,
+    mlir::MLIRContext* context);
 
 // Converts a tuple XLA HloSharding to an SDY TensorShardingPerValueAttr.
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
-    const HloSharding& hloSharding, mlir::MLIRContext* context);
+    const HloSharding& hloSharding, mlir::TypeRange types,
+    mlir::MLIRContext* context);
 
 }  // namespace sdy
 }  // namespace xla

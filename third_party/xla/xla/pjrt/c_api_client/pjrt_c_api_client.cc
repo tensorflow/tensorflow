@@ -712,6 +712,41 @@ PjRtCApiClient::LoadSerializedExecutable(absl::string_view serialized,
       std::make_unique<PjRtCApiLoadedExecutable>(this, c_exec));
 }
 
+absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Load(
+    std::shared_ptr<PjRtExecutable> executable,
+    const LoadOptions& load_options) {
+  if (pjrt_c_api()->PJRT_Client_Load == nullptr) {
+    return absl::UnimplementedError(
+        "PJRT_Client_Load not available in this version of "
+        "the PjRT plugin");
+  }
+
+  auto c_executable = std::static_pointer_cast<PjRtCApiExecutable>(executable);
+
+  PJRT_Client_Load_Args load_args;
+  load_args.struct_size = PJRT_Client_Load_Args_STRUCT_SIZE;
+  load_args.extension_start = nullptr;
+  load_args.client = c_client_.get();
+  load_args.executable = c_executable->c_executable();
+
+  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
+                      c_executable->GetCompileOptions());
+  TF_ASSIGN_OR_RETURN(const CompileOptionsProto options_proto,
+                      compile_options.ToProto());
+  std::string options_str = options_proto.SerializeAsString();
+  load_args.compile_options = options_str.c_str();
+  load_args.compile_options_size = options_str.size();
+  load_args.loaded_executable = nullptr;
+
+  const PJRT_Api* api = pjrt_c_api();
+  RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Client_Load(&load_args), api);
+
+  PJRT_LoadedExecutable* loaded_c_exec = load_args.loaded_executable;
+  CHECK(loaded_c_exec != nullptr);
+  return std::unique_ptr<PjRtLoadedExecutable>(
+      std::make_unique<PjRtCApiLoadedExecutable>(this, loaded_c_exec));
+}
+
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtCApiClient::CreateUninitializedBuffer(const Shape& shape,
                                           PjRtMemorySpace* memory_space) {
@@ -2601,7 +2636,42 @@ PjRtCApiLoadedExecutable::PjRtCApiLoadedExecutable(
   executable_ =
       std::make_unique<PjRtCApiExecutable>(pjrt_c_api(), args.executable);
   InitDevices();
+  InitAddressableDeviceLogicalIds();
   InitDeviceAssignment();
+}
+
+void PjRtCApiLoadedExecutable::InitAddressableDeviceLogicalIds() {
+  if (pjrt_c_api()->pjrt_api_version.major_version == 0 &&
+      pjrt_c_api()->pjrt_api_version.minor_version < 96) {
+    return;
+  }
+  PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args args;
+  args.struct_size =
+      PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = c_loaded_executable();
+  args.addressable_device_logical_ids = nullptr;
+  args.num_addressable_device_logical_ids = 0;
+
+  const PJRT_Api* api = pjrt_c_api();
+  if (api->PJRT_LoadedExecutable_AddressableDeviceLogicalIds == nullptr) {
+    return;
+  }
+  pjrt::LogFatalIfPjrtError(
+      api->PJRT_LoadedExecutable_AddressableDeviceLogicalIds(&args), api);
+
+  if (args.num_addressable_device_logical_ids == 0 ||
+      args.addressable_device_logical_ids == nullptr) {
+    return;
+  }
+  addressable_device_logical_ids_.reserve(
+      args.num_addressable_device_logical_ids);
+
+  for (size_t i = 0; i < args.num_addressable_device_logical_ids; ++i) {
+    PJRT_LogicalDeviceIds id = args.addressable_device_logical_ids[i];
+    addressable_device_logical_ids_.push_back(
+        LogicalDeviceIds{id.replica, id.partition});
+  }
 }
 
 void PjRtCApiLoadedExecutable::InitDevices() {

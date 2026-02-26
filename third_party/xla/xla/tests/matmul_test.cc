@@ -13,32 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <utility>
-
+#include "xla/error_spec.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/literal.h"
-#include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 
 namespace xla {
 namespace {
 
-class MatmulTestWithCublas : public HloTestBase,
-                             public ::testing::WithParamInterface<bool> {
+class MatmulTestWithCublas
+    : public HloPjRtInterpreterReferenceMixin<gpu::HloPjRtGpuTestBase>,
+      public ::testing::WithParamInterface<bool> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtInterpreterReferenceMixin<
+        gpu::HloPjRtGpuTestBase>::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(use_cublas_lt_);
     return debug_options;
   }
   void SetUp() override {
     auto dbg = GetDebugOptionsForTest();
     if (dbg.xla_gpu_enable_cublaslt()) {
-      const auto& gpu_cc = backend()
-                               .default_stream_executor()
-                               ->GetDeviceDescription()
-                               .gpu_compute_capability();
+      const auto& gpu_cc = device_description().gpu_compute_capability();
       if (auto* rocm = gpu_cc.rocm_compute_capability();
           rocm != nullptr && !rocm->has_hipblaslt()) {
         GTEST_SKIP() << "No hipblas-lt support on this architecture!";

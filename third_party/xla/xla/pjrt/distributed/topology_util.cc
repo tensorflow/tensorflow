@@ -339,8 +339,20 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
         kv_store->Get(global_topology_key, get_global_topology_timeout));
     global_topology->ParseFromString(global_topology_str);
   }
-  VLOG(3) << "Global topology for platform " << platform << ":\n"
-          << global_topology->DebugString();
+
+  // Because we might do global topology assignment based on network proximity
+  // of XLA processes, the process id might not be ordered anymore, however it
+  // does not matter for XLA at run time, as we always lookup replica and
+  // partition id based on global topology we compute here.
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Global topology for platform " << platform
+            << ": num_processes=" << global_topology->processes_size();
+    for (size_t rank = 0; rank < global_topology->processes_size(); ++rank) {
+      VLOG(3) << "topology for process rank #" << rank << ":\n"
+              << global_topology->processes(rank).DebugString();
+    }
+  }
+
   return absl::OkStatus();
 }
 

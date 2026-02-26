@@ -447,7 +447,11 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
   HloInstruction* left_halo = nullptr;
   if (left_amount > 0) {
     std::vector<std::pair<int64_t, int64_t>> pairs;
-    element_sharding.tile_assignment().Each(
+    if (element_sharding.UseNamedShardingLeaf()) {
+      element_sharding =
+          HloSharding::V3ToV2Sharding(element_sharding.named_sharding());
+    }
+    element_sharding.EachTile(
         [&](absl::Span<const int64_t> indices, int64_t device) {
           if (indices[dim] >= participating_shards) {
             return;
@@ -483,7 +487,11 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
 
   if (right_amount > 0) {
     std::vector<std::pair<int64_t, int64_t>> pairs;
-    element_sharding.tile_assignment().Each(
+    if (element_sharding.UseNamedShardingLeaf()) {
+      element_sharding =
+          HloSharding::V3ToV2Sharding(element_sharding.named_sharding());
+    }
+    element_sharding.EachTile(
         [&](absl::Span<const int64_t> indices, int64_t device) {
           if (indices[dim] >= participating_shards) {
             return;
@@ -660,7 +668,11 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_Wrap(
   HloInstruction* right_halo = nullptr;
   if (right_amount > 0) {
     std::vector<std::pair<int64_t, int64_t>> pairs;
-    element_sharding.tile_assignment().Each(
+    if (element_sharding.UseNamedShardingLeaf()) {
+      element_sharding =
+          HloSharding::V3ToV2Sharding(element_sharding.named_sharding());
+    }
+    element_sharding.EachTile(
         [&](absl::Span<const int64_t> indices, int64_t device) {
           if (indices[dim] >= participating_shards) {
             return;
@@ -706,7 +718,11 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_Wrap(
       participating_shards_minus_one_op, Comparison::Direction::kEq));
   if (left_amount > 0) {
     std::vector<std::pair<int64_t, int64_t>> pairs;
-    element_sharding.tile_assignment().Each(
+    if (element_sharding.UseNamedShardingLeaf()) {
+      element_sharding =
+          HloSharding::V3ToV2Sharding(element_sharding.named_sharding());
+    }
+    element_sharding.EachTile(
         [&](absl::Span<const int64_t> indices, int64_t device) {
           if (indices[dim] >= participating_shards) {
             return;

@@ -49,7 +49,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
 
 namespace {
 void IrHook(const llvm::Module& module, std::string& ir) {
-  ir = llvm_ir::DumpToString(&module);
+  ir += llvm_ir::DumpToString(&module);
 }
 
 void SetIrHook(LLVMCompiler* llvm_compiler,

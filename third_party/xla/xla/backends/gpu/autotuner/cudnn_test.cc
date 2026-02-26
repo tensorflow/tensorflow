@@ -65,6 +65,27 @@ const char kCudnnFusionHlo[] = R"(
       backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
   })";
 
+const char kCudnnConvolutionFusionHlo[] = R"(
+  fusion1 {
+    p0 = f32[16,56,56,16] parameter(0)
+    p1 = f32[16,3,3,16] parameter(1)
+    ROOT c = f32[16,54,54,16] convolution(p0, p1),
+      window={size=3x3},
+      dim_labels=f01b_i01o->f01b
+  }
+
+  ENTRY e {
+    p0 = f32[16,56,56,16] parameter(0)
+    p1 = f32[16,3,3,16] parameter(1)
+    ROOT _ = f32[16,54,54,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$fusion",
+          "cudnn_fusion_config": {"kind": "CONV_FPROP"}
+        }
+      }
+  })";
+
 const char kCudnnCustomCallHlo[] = R"(
   HloModule module
 
@@ -136,6 +157,16 @@ TEST_F(CudnnBackendTest, CanCreateCublasBackend) {
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnFusionHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_.GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
+}
+
+TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnConvolutionFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kCudnnConvolutionFusionHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
       backend_.GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()));

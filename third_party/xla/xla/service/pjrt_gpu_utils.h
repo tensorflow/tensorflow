@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-syntax = "proto3";
+#ifndef XLA_SERVICE_PJRT_GPU_UTILS_H_
+#define XLA_SERVICE_PJRT_GPU_UTILS_H_
 
-package xla.ifrt;
+#include "absl/base/nullability.h"
+#include "xla/backends/gpu/target_config/target_config.h"
+#include "xla/pjrt/pjrt_client.h"
 
-// Proto equivalent of C++ `ShardingParam`.
-message ShardingParamProto {
-  int32 version_number = 4;
+namespace xla::gpu {
 
-  repeated int64 dim_shards = 1;
-  repeated int32 permutation = 2;
-  repeated int32 axis_sizes = 3;
-  repeated int32 unreduced_axes = 5;
+GpuTargetConfig GetGpuTargetConfig(PjRtClient* absl_nonnull client);
+
 }
+
+#endif  // XLA_SERVICE_PJRT_GPU_UTILS_H_

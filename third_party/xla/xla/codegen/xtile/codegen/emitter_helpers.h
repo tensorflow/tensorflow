@@ -253,6 +253,14 @@ inline mlir::NamedAttribute GetDivisibilityAttr(mlir::ImplicitLocOpBuilder& b) {
 mlir::Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder,
                                              mlir::Value value);
 
+// Function to get the permutation vector from a MemRefType.
+// The motivation for extracting it from getStridesAndOffset vs directly from
+// xtile.layout is that when we fold memrefs (such as in a transpose) it
+// will have a generic strided layout that does not directly encode the
+// permutation.
+absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
+    mlir::MemRefType memref);
+
 }  // namespace xla::xtile
 
 #endif  // XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_

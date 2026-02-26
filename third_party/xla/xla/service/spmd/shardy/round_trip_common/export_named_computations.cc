@@ -70,6 +70,11 @@ using ::mlir::sdy::TensorShardingPerValueAttr;
 using ComputationKey = std::tuple<StringRef, TensorShardingPerValueAttr,
                                   TensorShardingPerValueAttr, ManualAxesAttr>;
 
+struct NamedComputationWithCount {
+  NamedComputationOp namedComputationOp;
+  int64_t callSiteCount;
+};
+
 StringAttr createFuncOp(NamedComputationOp namedComputationOp,
                         mlir::IRRewriter& rewriter, SymbolTable& symbolTable,
                         std::optional<TensorShardingPerValueAttr> inShardings,
@@ -141,7 +146,7 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
   if (dedupFunctionsFully) {
     using FuncNameKey = std::pair<StringRef, ManualAxesAttr>;
     llvm::SmallDenseMap<ComputationKey, int64_t> funcCallSiteCounts;
-    llvm::SmallDenseMap<FuncNameKey, std::pair<NamedComputationOp, int64_t>>
+    llvm::SmallDenseMap<FuncNameKey, NamedComputationWithCount>
         funcToNamedComputations;
     // TODO(enver): Instead of a SmallDenseMap and a separate SmallVector to
     // guarantee a deterministic iteration order, consider using
@@ -161,12 +166,13 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
       FuncNameKey funcNameKey =
           std::pair(namedComputationOp.getName(), manualAxesAttr);
       if (auto [it, inserted] = funcToNamedComputations.try_emplace(
-              funcNameKey, namedComputationOp, callSiteCount);
+              funcNameKey,
+              NamedComputationWithCount{namedComputationOp, callSiteCount});
           !inserted) {
-        auto& [cachedNamedComputationOp, cachedCallSiteCount] = it->second;
-        if (callSiteCount > cachedCallSiteCount) {
-          cachedNamedComputationOp = namedComputationOp;
-          cachedCallSiteCount = callSiteCount;
+        NamedComputationWithCount& cached = it->second;
+        if (callSiteCount > cached.callSiteCount) {
+          cached.namedComputationOp = namedComputationOp;
+          cached.callSiteCount = callSiteCount;
         }
       } else {  // inserted is true.
         funcNames.push_back(funcNameKey);
@@ -174,8 +180,8 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
     });
 
     for (FuncNameKey funcNameKey : funcNames) {
-      auto& [namedComputationOp, callSiteCount] =
-          funcToNamedComputations.find(funcNameKey)->second;
+      NamedComputationOp namedComputationOp =
+          funcToNamedComputations.at(funcNameKey).namedComputationOp;
       mlir::IRRewriter rewriter(namedComputationOp);
       rewriter.setInsertionPointToEnd(&moduleBlock);
       ManualAxesAttr manualAxesAttr = funcNameKey.second;

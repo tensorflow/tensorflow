@@ -387,7 +387,7 @@ class HloParserImpl : public HloParser {
   bool ParseHloModule(HloModule* module,
                       bool parse_module_without_header = false);
 
-  bool ParseStackFrameIndex(HloModule* module);
+  bool ParseStackFrameIndex();
   bool ParseComputations(HloModule* module);
   bool ParseComputation(HloComputation** entry_computation);
   bool ParseInstructionList(HloComputation** computation,
@@ -726,6 +726,7 @@ class HloParserImpl : public HloParser {
   NameUniquer name_uniquer_{/*separator=*/"."};
 
   const HloParserOptions options_;
+  StackFrameIndexProto stack_frame_index_proto_;
 };
 
 bool SplitToInt64s(absl::string_view s, char delim, std::vector<int64_t>* out) {
@@ -1162,9 +1163,10 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
     module->set_name(name);
   }
 
-  if (!ParseStackFrameIndex(module) || !ParseComputations(module)) {
+  if (!ParseStackFrameIndex() || !ParseComputations(module)) {
     return false;
   }
+  module->CanonicalizeStackFrameIds(stack_frame_index_proto_);
 
   if (parse_module_without_header) {
     name = absl::StrCat("module_", module->entry_computation()->name());
@@ -1311,15 +1313,14 @@ bool HloParserImpl::ParseStackFramesList(
   return true;
 }
 
-bool HloParserImpl::ParseStackFrameIndex(HloModule* module) {
+bool HloParserImpl::ParseStackFrameIndex() {
   if (!EatIfPresent(TokKind::kw_FileNames)) {
     return true;
   }
-  StackFrameIndexProto stack_frame_index;
 
   // Parse file names.
   while (EatIfPresent(TokKind::kInt)) {
-    ParseString(stack_frame_index.add_file_names());
+    ParseString(stack_frame_index_proto_.add_file_names());
   }
 
   // Parse function names.
@@ -1327,17 +1328,16 @@ bool HloParserImpl::ParseStackFrameIndex(HloModule* module) {
     return false;
   }
   while (EatIfPresent(TokKind::kInt)) {
-    ParseString(stack_frame_index.add_function_names());
+    ParseString(stack_frame_index_proto_.add_function_names());
   }
 
   // Parse file locations and stack frames.
   if (!ParseToken(TokKind::kw_FileLocations, "expects 'FileLocations'") ||
-      !ParseFileLocationList(&stack_frame_index) ||
+      !ParseFileLocationList(&stack_frame_index_proto_) ||
       !ParseToken(TokKind::kw_StackFrames, "expects 'StackFrames'") ||
-      !ParseStackFramesList(&stack_frame_index)) {
+      !ParseStackFramesList(&stack_frame_index_proto_)) {
     return false;
   }
-  module->set_stack_frames(StackFrames(std::move(stack_frame_index)));
   return true;
 }
 

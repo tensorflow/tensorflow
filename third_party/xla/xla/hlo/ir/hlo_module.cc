@@ -704,6 +704,91 @@ absl::StatusOr<HloModuleProto> HloModule::RemapInstructionIds(
   return proto_copy;
 }
 
+void HloModule::CanonicalizeStackFrameIds(
+    const StackFrameIndexProto& index_proto) {
+  absl::flat_hash_map<int, int> mapping;
+  std::vector<int> path;
+
+  for (HloComputation* computation : computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      OpMetadata& metadata = instruction->mutable_metadata();
+      int old_id = metadata.stack_frame_id();
+      if (old_id == 0) {
+        continue;
+      }
+
+      // Collect all ancestors that need to be interned.
+      int current = old_id;
+      absl::flat_hash_set<int> visited;
+      bool error = false;
+      while (current != 0) {
+        if (current < 0 || current > index_proto.stack_frames_size()) {
+          LOG_FIRST_N(WARNING, 10) << "Invalid stack_frame_id " << current;
+          error = true;
+          break;
+        }
+        if (!visited.insert(current).second) {
+          LOG_FIRST_N(WARNING, 10)
+              << "Cycle detected in stack_frame_id " << current;
+          error = true;
+          break;
+        }
+        if (mapping.contains(current)) {
+          break;
+        }
+        path.push_back(current);
+        current = index_proto.stack_frames(current - 1).parent_frame_id();
+      }
+
+      if (error) {
+        path.clear();
+        metadata.set_stack_frame_id(0);
+        continue;
+      }
+
+      // Intern frames from oldest to newest.
+      StackFrameId current_id =
+          (current == 0) ? StackFrameId{0} : StackFrameId{mapping[current]};
+      while (!path.empty()) {
+        int id_to_intern = path.back();
+        path.pop_back();
+        const auto& old_frame = index_proto.stack_frames(id_to_intern - 1);
+        int loc_id = old_frame.file_location_id();
+        if (loc_id <= 0 || loc_id > index_proto.file_locations_size()) {
+          LOG_FIRST_N(WARNING, 10) << "Invalid file_location_id " << loc_id;
+          current_id = StackFrameId{0};
+          break;
+        }
+        const auto& old_loc = index_proto.file_locations(loc_id - 1);
+
+        if (old_loc.file_name_id() <= 0 ||
+            old_loc.file_name_id() > index_proto.file_names_size() ||
+            old_loc.function_name_id() <= 0 ||
+            old_loc.function_name_id() > index_proto.function_names_size()) {
+          LOG_FIRST_N(WARNING, 10) << "Invalid IDs in file_location";
+          current_id = StackFrameId{0};
+          break;
+        }
+
+        HloStackFrame frame;
+        frame.file_name = index_proto.file_names(old_loc.file_name_id() - 1);
+        frame.function_name =
+            index_proto.function_names(old_loc.function_name_id() - 1);
+        frame.line = old_loc.line();
+        frame.column = old_loc.column();
+        frame.end_line = old_loc.end_line();
+        frame.end_column = old_loc.end_column();
+        frame.parent_frame_id = current_id;
+
+        current_id = stack_frames_.AddStackFrame(frame);
+        mapping[id_to_intern] = current_id.value;
+      }
+
+      metadata.set_stack_frame_id(current_id.value);
+    }
+  }
+}
+
 /* static */
 absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config,
@@ -882,9 +967,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     }
   }
 
-  if (proto.has_stack_frame_index()) {
-    module->stack_frames_ = StackFrames(proto.stack_frame_index());
-  }
+  module->CanonicalizeStackFrameIds(proto.stack_frame_index());
 
   if (proto.has_original_value_recovery_table()) {
     TF_ASSIGN_OR_RETURN(module->original_value_recovery_table_,

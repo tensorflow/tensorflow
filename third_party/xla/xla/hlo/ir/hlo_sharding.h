@@ -221,21 +221,39 @@ class HloSharding {
     return replicated_;
   }
 
-  // Returns true if the tile size is the same as the input size.
-  bool IsTileMaximal() const {
+  // Returns if the sharding is single-device (the whole tensor is on a unique
+  // device).
+  bool IsSingleDevice() const {
     if (!IsTuple()) {
-      return IsTileMaximalLeaf();
+      return IsSingleDeviceLeaf();
     }
     return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
-      return s.IsTileMaximal();
+      return s.IsSingleDevice();
     });
   }
-  bool IsTileMaximalLeaf() const {
+  bool IsSingleDeviceLeaf() const {
     DCHECK(!IsTuple());
     if (UseNamedShardingLeaf()) {
-      return named_sharding_->IsTileMaximal();
+      return named_sharding_->IsMaximal();
     }
-    return replicated_ || single_device_;
+    return single_device_;
+  }
+
+  // Returns if the sharding is replicated or single device.
+  bool IsReplicatedOrSingleDevice() const {
+    return IsReplicated() || IsSingleDevice();
+  }
+  bool IsReplicatedOrSingleDeviceLeaf() const {
+    return IsReplicatedLeaf() || IsSingleDeviceLeaf();
+  }
+
+  [[deprecated("Use IsReplicatedOrSingleDevice instead.")]]
+  bool IsTileMaximal() const {
+    return IsReplicatedOrSingleDevice();
+  }
+  [[deprecated("Use IsReplicatedOrSingleDeviceLeaf instead.")]]
+  bool IsTileMaximalLeaf() const {
+    return IsReplicatedOrSingleDeviceLeaf();
   }
 
   // Returns whether the sharding represents manual partitioning.
@@ -366,11 +384,12 @@ class HloSharding {
   // Returns whether the sharding represents a tiled sharding where the mapping
   // between devices and tiles is represented through 'tile_assignment()'.
   bool IsTiled() const {
-    return !IsTileMaximal() && !IsManual() && !IsUnreduced() && !IsUnknown();
+    return !IsReplicated() && !IsSingleDevice() && !IsManual() &&
+           !IsUnreduced() && !IsUnknown();
   }
   bool IsTiledLeaf() const {
-    return !IsTileMaximalLeaf() && !IsManualLeaf() && !IsUnreducedLeaf() &&
-           !IsUnknownLeaf();
+    return !IsReplicatedLeaf() && !IsSingleDeviceLeaf() && !IsManualLeaf() &&
+           !IsUnreducedLeaf() && !IsUnknownLeaf();
   }
 
   // Returns if the sharding has partial replication and partial sharding. If

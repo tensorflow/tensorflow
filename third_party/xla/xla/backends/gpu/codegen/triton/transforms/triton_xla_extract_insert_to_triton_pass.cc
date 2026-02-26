@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <numeric>
@@ -56,8 +55,9 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
+#include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
-#include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/ir/xla_ops.h"  // IWYU pragma: keep
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/permutation_util.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -69,6 +69,7 @@ namespace mlir::triton::xla {
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h.inc"
 
 namespace xtile = ::xla::xtile;
+namespace xtriton = ::xla::gpu::triton;
 
 namespace {
 
@@ -87,16 +88,6 @@ PointerType GetTensorPtrType(Type type) {
   return PointerType::get(
       xtile::StorageType(type),
       static_cast<unsigned>(mlir::NVVM::NVVMMemorySpace::Global));
-}
-
-SmallVector<Value> IndexCast(ImplicitLocOpBuilder& builder, Type type,
-                             ValueRange values) {
-  SmallVector<Value> result;
-  result.reserve(values.size());
-  for (auto value : values) {
-    result.push_back(arith::IndexCastOp::create(builder, type, value));
-  }
-  return result;
 }
 
 // Canonicalizes tile strides. Currently this converts zero strides to 1.
@@ -122,22 +113,6 @@ absl::Status CanonicalizeTileStrides(SmallVector<int64_t>& tile_strides,
   return absl::OkStatus();
 }
 
-// Returns true if 'value' is guaranteed to be divisible by 'divisor'.
-// This assumes that 'value' is a constant or an apply indexing op.
-bool IsGuaranteedDivisible(Value value, int64_t divisor) {
-  if (auto const_op = value.getDefiningOp<arith::ConstantIndexOp>()) {
-    return const_op.value() % divisor == 0;
-  }
-  if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
-    mlir::AffineMap affine_map = apply_indexing.getIndexingMap().GetAffineMap();
-    if (affine_map.getNumResults() != 1) {
-      return false;
-    }
-    return affine_map.getResult(0).isMultipleOf(divisor);
-  }
-  return false;
-}
-
 // Check if the offset is divisible by 16 bytes:
 //  - If the offset is a constant, we can check this directly.
 //  - If the offset is the result of an apply indexing op, we can check if the
@@ -150,7 +125,7 @@ bool IsOffsetDivisibilityGuaranteed(mlir::Value offset_val,
   const int64_t kByteDivisibilityFactor = 16;
   int64_t divisor = kByteDivisibilityFactor /
                     std::gcd(kByteDivisibilityFactor, element_byte_size);
-  return IsGuaranteedDivisible(offset_val, divisor);
+  return xtriton::IsGuaranteedDivisible(offset_val, divisor);
 }
 
 // Limitations of TMA are documented in IsTmaCompatible
@@ -378,143 +353,6 @@ class RewriteFuncOp : public mlir::OpRewritePattern<func::FuncOp> {
   }
 };
 
-// Compute the strides of a dense tensor given its shape and layout.
-SmallVector<int64_t> ComputeStrides(ArrayRef<int64_t> shape,
-                                    ArrayRef<int64_t> layout) {
-  CHECK_EQ(shape.size(), layout.size());
-  SmallVector<int64_t> result(shape.size());
-  int64_t stride = 1;
-  for (int64_t dim : layout) {
-    result[dim] = stride;
-    stride *= shape[dim];
-  }
-  return result;
-}
-
-// Returns the set of not-reduced dimensions.
-SmallVector<unsigned> GetRetainedDims(ArrayRef<unsigned> reduced_dims,
-                                      size_t rank) {
-  SmallVector<unsigned> result;
-  result.reserve(rank);
-  for (auto [i, dim] : llvm::enumerate(reduced_dims)) {
-    for (unsigned j = result.size() + i; j < dim; ++j) {
-      result.push_back(j);
-    }
-  }
-  while (result.size() < rank) {
-    result.push_back(result.size() + reduced_dims.size());
-  }
-  return result;
-}
-
-// Expands the value in all dimensions except `dim` and broadcasts the result
-// to the provided tile shape.
-Value ExpandAndBroadcastValue(ImplicitLocOpBuilder& builder, Value value,
-                              int dim, RankedTensorType tile_type) {
-  for (int i = 0; i < tile_type.getRank(); ++i) {
-    if (i != dim) {
-      value = ExpandDimsOp::create(builder, value, i);
-    }
-  }
-  return BroadcastOp::create(builder, tile_type, value);
-}
-
-// Returns a pair of tensors:
-// - The first tensor is a tensor of pointers to load/store.
-// - The second tensor is a tensor of in-bounds predicates.
-static std::pair<Value, Value> CreateTensorOfPointersAndMask(
-    ImplicitLocOpBuilder& builder, Value base_ptr,
-    ArrayRef<int64_t> original_shape, ArrayRef<int64_t> layout,
-    ValueRange offsets, ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides,
-    ArrayRef<unsigned> reduced_dims, ArrayRef<int64_t> tile_shape) {
-  CHECK_EQ(original_shape.size(), layout.size());
-  CHECK_EQ(original_shape.size(), offsets.size());
-  CHECK_EQ(original_shape.size(), sizes.size());
-  CHECK_EQ(original_shape.size(), strides.size());
-  CHECK_EQ(original_shape.size(), reduced_dims.size() + tile_shape.size());
-
-  SmallVector<int64_t> shape_strides = ComputeStrides(original_shape, layout);
-  SmallVector<unsigned> retained_dims =
-      GetRetainedDims(reduced_dims, tile_shape.size());
-
-  Type i64_type = builder.getI64Type();
-  auto i64_tile_type = RankedTensorType::get(tile_shape, i64_type);
-
-  // Combines the values using op, if rhs is present. Otherwise returns lhs.
-  auto add_if = [&](auto op, Value lhs, Value rhs) -> Value {
-    if (rhs) {
-      return decltype(op)::create(builder, lhs.getType(), lhs, rhs);
-    }
-    return lhs;
-  };
-
-  SmallVector<Value> cast_offsets = IndexCast(builder, i64_type, offsets);
-
-  Value range_tile, mask_tile;
-  for (auto [i, dim] : llvm::enumerate(retained_dims)) {
-    auto i64_row_type = RankedTensorType::get({sizes[dim]}, i64_type);
-
-    // Create iota range row tensor.
-    Value range = MakeRangeOp::create(
-        builder, i64_row_type.clone(builder.getI32Type()), 0, sizes[dim]);
-    range = arith::ExtSIOp::create(builder, i64_row_type, range);
-
-    // Multiply range by tile stride.
-    Value stride = arith::ConstantOp::create(
-        builder, DenseIntElementsAttr::get(i64_row_type, strides[dim]));
-    range = arith::MulIOp::create(builder, range, stride);
-
-    // Expand and broadcast range to tile shape.
-    range = ExpandAndBroadcastValue(builder, range, i, i64_tile_type);
-
-    // Create a mask for values that are inside bounds.
-    // We need to check the offset alignment with the tile size as well,
-    // otherwise we might load/store outside the valid range of the tile, even
-    // if the original shape is divisible by the tile size.
-    if (original_shape[dim] % sizes[dim] != 0 ||
-        !IsGuaranteedDivisible(offsets[dim], sizes[dim])) {
-      Value upper_bound =
-          arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
-      upper_bound =
-          arith::SubIOp::create(builder, upper_bound, cast_offsets[dim]);
-      upper_bound = SplatOp::create(builder, i64_tile_type, upper_bound);
-      Value mask = arith::CmpIOp::create(builder, arith::CmpIPredicate::slt,
-                                         range, upper_bound);
-
-      // Combine mask with previous iteration.
-      mask_tile = add_if(arith::AndIOp(), mask, mask_tile);
-    }
-
-    // Multiply range by shape strides.
-    Value shape_stride = arith::ConstantOp::create(
-        builder, DenseIntElementsAttr::get(i64_tile_type, shape_strides[dim]));
-    range = arith::MulIOp::create(builder, range, shape_stride);
-
-    // Combine range with previous iteration.
-    range_tile = add_if(arith::AddIOp(), range, range_tile);
-  }
-
-  // Sum up block-uniform offsets multiplied by strides.
-  Value block_offset;
-  for (auto [cast_offset, shape_stride] :
-       llvm::zip_equal(cast_offsets, shape_strides)) {
-    Value offset = arith::MulIOp::create(
-        builder, cast_offset,
-        arith::ConstantIntOp::create(builder, i64_type, shape_stride));
-    // Combine offset with previous iteration.
-    block_offset = add_if(arith::AddIOp(), offset, block_offset);
-  }
-  // Add the accumulated offsets to the base pointer.
-  Value block_ptr = add_if(AddPtrOp(), base_ptr, block_offset);
-
-  // Splat block-uniform pointer and add range offsets.
-  auto ptr_tile_type = RankedTensorType::get(tile_shape, base_ptr.getType());
-  Value ptr_tile = SplatOp::create(builder, ptr_tile_type, block_ptr);
-  ptr_tile = add_if(AddPtrOp(), ptr_tile, range_tile);
-
-  return std::make_pair(ptr_tile, mask_tile);
-}
-
 class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
  public:
   RewriteExtract(mlir::MLIRContext* context, bool allow_tma, int num_stages)
@@ -569,7 +407,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
 
       Value result = DescriptorLoadOp::create(
           builder, ordered_type, cast_to_tensor_desc.getResult(0),
-          IndexCast(builder, builder.getI32Type(), ordered_offsets));
+          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
 
       // Insert a transpose if the layout is not major-to-minor.
       if (!IsMajorToMinorLayout(src_layout)) {
@@ -594,7 +432,7 @@ class RewriteExtract : public mlir::OpRewritePattern<ExtractOp> {
     SmallVector<unsigned> reduced_dims = to_vector(*reduction_mask);
     absl::c_sort(reduced_dims);
 
-    auto [ptr, mask] = CreateTensorOfPointersAndMask(
+    auto [ptr, mask] = xtriton::CreateTensorOfPointersAndMask(
         builder, op.getSrc(), src_shape, src_layout, offsets, sizes, strides,
         reduced_dims, tile_shape);
     Value other;
@@ -687,9 +525,9 @@ class RewriteInsert : public mlir::OpRewritePattern<InsertOp> {
       auto ordered_offsets = GetMajorToMinorOrder(offsets, dst_layout);
       DescriptorStoreOp::create(
           builder, cast_to_tensor_desc.getResult(0), src,
-          IndexCast(builder, builder.getI32Type(), ordered_offsets));
+          xtriton::IndexCast(builder, builder.getI32Type(), ordered_offsets));
     } else {
-      auto [ptr, mask] = CreateTensorOfPointersAndMask(
+      auto [ptr, mask] = xtriton::CreateTensorOfPointersAndMask(
           builder, op.getDst(), dst_shape, dst_layout, offsets, sizes, strides,
           reduced_dims, tile_shape);
       StoreOp::create(builder, ptr, op.getSrc(), mask, CacheModifier::NONE,

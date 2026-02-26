@@ -1559,8 +1559,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
           Thunk::ThunkInfo::WithProfileAnnotation(
               instr, ir_emitter_context_->GetNextThunkId()),
           instr, replica_count, partition_count, buffers,
-          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
-          GetStreamKindForP2P(instr));
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
       GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
       thunks.push_back(std::move(thunk));
     } else {
@@ -1818,22 +1817,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNvshmemAsyncDone(
     return ThunkSequence{};
   }
 
-  AsyncStreamKind stream_kind = AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
-  if (is_send_recv) {
-    stream_kind = GetStreamKindForP2P(start);
-  }
-
   if (kind == Thunk::Kind::kNvshmemCollectivePermuteDone) {
     return GetThunkSequence(std::make_unique<NvshmemCollectivePermuteDoneThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             inst, ir_emitter_context_->GetNextThunkId()),
-        async_events_it->second, stream_kind));
+        async_events_it->second));
   }
   return GetThunkSequence(std::make_unique<NvshmemCollectiveDoneThunk>(
       kind,
       Thunk::ThunkInfo::WithProfileAnnotation(
           inst, ir_emitter_context_->GetNextThunkId()),
-      async_events_it->second, stream_kind));
+      async_events_it->second));
 }
 
 template <typename NvshmemAllReduceThunkType, typename HloAllReduceInstruction>

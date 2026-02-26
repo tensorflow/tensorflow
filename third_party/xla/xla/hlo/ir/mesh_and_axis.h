@@ -166,6 +166,29 @@ class AxisRef {
 
   bool operator!=(const xla::AxisRef& other) const { return !(*this == other); }
 
+  bool operator<(const AxisRef& other) const {
+    if (mesh_axis_index_ != other.mesh_axis_index_) {
+      return mesh_axis_index_ < other.mesh_axis_index_;
+    }
+    if (sub_axis_info_.has_value() && !other.sub_axis_info_.has_value()) {
+      return sub_axis_info_->pre_size == 1;
+    }
+    if (!sub_axis_info_.has_value() && other.sub_axis_info_.has_value()) {
+      // This is the full axis, it's smaller than `other` iff `other` is a
+      // sub-axis with pre-size > 1.
+      return other.sub_axis_info_->pre_size > 1;
+    }
+    // Both axis-refs are sub-axes.
+    if (sub_axis_info_->pre_size != other.sub_axis_info_->pre_size) {
+      return sub_axis_info_->pre_size < other.sub_axis_info_->pre_size;
+    }
+    return sub_axis_info_->size < other.sub_axis_info_->size;
+  }
+
+  bool operator>(const AxisRef& other) const { return other < *this; }
+  bool operator<=(const AxisRef& other) const { return !(*this > other); }
+  bool operator>=(const AxisRef& other) const { return !(*this < other); }
+
   template <typename H>
   friend H AbslHashValue(H h, const AxisRef& a) {
     return H::combine(std::move(h), a.mesh_axis_index_, a.sub_axis_info_);
@@ -178,6 +201,29 @@ class AxisRef {
   static AxisRef FromProto(const AxisRefProto& proto);
 
   bool CanCoexistWithoutOverlap(const AxisRef& other) const;
+
+  // Returns whether this axis and `other` can coexist in the same mesh:
+  // * If they overlap, then both overlapping and non-overlapping parts must
+  //   be valid axes or sub-axes.
+  // * Otherwise, both axes can be used to shard the same tensor.
+  //
+  // For example:
+  //  "a", "b"           -> true
+  //  "a", "b":(2)2      -> true
+  //  "a", "a"           -> true
+  //  "a", "a":(2)2      -> true
+  //  "a":(1)2, "a":(4)2 -> true
+  //  "a":(1)4, "a":(2)4 -> true
+  //  "a":(1)2, "a":(1)3 -> false
+  //  "a":(1)2, "a":(3)2 -> false
+  //  "a":(1)3, "a":(2)3 -> false
+  bool CanCoexist(const AxisRef& other) const;
+
+  // Returns true if this axis overlaps with `other`.
+  bool Overlaps(const AxisRef& other) const;
+
+  // Returns the largest prefix of this axis that does not overlap with `other`.
+  std::optional<AxisRef> GetPrefixWithoutOverlap(const AxisRef& other) const;
 
   // Returns true if this AxisRef can be merged with the `other`, i.e., they are
   // consecutive sub-axes of same full axis and this sub-axis is major to other.
@@ -208,6 +254,20 @@ bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes);
 absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
                                 const Mesh& mesh,
                                 bool allow_mergeable_neighbors = false);
+
+// Sorts and merges axes.
+//
+// The axes are sorted by `operator<` (mesh axis index, then pre-size) and
+// merged if applicable.
+// Adjacent axes that overlap will cause a fatal error.
+// Adjacent axes that can be merged are merged.
+void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh);
+
+// Removes parts of `axes` that overlap with any axis in `other_axis_refs`.
+//
+// Returns true if `axes` is modified.
+bool TruncateAxesByRemovingOverlaps(std::vector<AxisRef>& axes,
+                                    absl::Span<const AxisRef> other_axis_refs);
 
 }  // namespace xla
 
