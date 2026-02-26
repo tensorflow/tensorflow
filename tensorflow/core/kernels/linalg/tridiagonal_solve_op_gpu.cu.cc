@@ -127,6 +127,13 @@ class TridiagonalSolveOpGpuLinalg : public LinearAlgebraOp<Scalar> {
                 errors::InvalidArgument("Expected same number of rows in both "
                                         "arguments, got ",
                                         num_rows1, " and ", num_rows2, "."));
+
+    // Validate that RHS matrix has at least one column (avoid empty batches)
+    auto num_cols_rhs = input_matrix_shapes[1].dim_size(1);
+    OP_REQUIRES(context, num_cols_rhs >= 1,
+                errors::InvalidArgument(
+                    "RHS matrix must have at least 1 column, got ",
+                    num_cols_rhs, "."));
   }
 
   bool EnableInputForwarding() const final { return false; }
