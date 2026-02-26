@@ -443,6 +443,17 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.cpp b/stablehlo/stablehlo/
  }
  
  //===----------------------------------------------------------------------===//
+diff --ruN a/stablehlo/stablehlo/dialect/VhloDialect.td b/stablehlo/stablehlo/dialect/VhloDialect.td
+--- stablehlo/stablehlo/dialect/VhloDialect.td
++++ stablehlo/stablehlo/dialect/VhloDialect.td
+@@ -56,7 +56,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let usePropertiesForAttributes = 1;
+ }
+ 
+ #endif  // STABLEHLO_DIALECT_VHLO_DIALECT
 diff --ruN a/stablehlo/stablehlo/integrations/python/ChloModule.cpp b/stablehlo/stablehlo/integrations/python/ChloModule.cpp
 --- stablehlo/stablehlo/integrations/python/ChloModule.cpp
 +++ stablehlo/stablehlo/integrations/python/ChloModule.cpp
@@ -480,6 +491,18 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py 
 +    if "num_composite_regions" not in kwargs:
 +      kwargs["num_composite_regions"] = 0
 +    super().__init__(*args, **kwargs)
+diff --ruN a/stablehlo/stablehlo/reference/InterpreterOps.td b/stablehlo/stablehlo/reference/InterpreterOps.td
+--- stablehlo/stablehlo/reference/InterpreterOps.td
++++ stablehlo/stablehlo/reference/InterpreterOps.td
+@@ -31,8 +31,6 @@
+     Dialect to implement interpreter-specific functionality, outside of the
+     StableHLO spec.
+   }];
+-
+-  let usePropertiesForAttributes = 1;
+ }
+ 
+ def Interpreter_ArrayOfFlatSymbolRefArrayAttr :
 diff --ruN a/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir b/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
 --- stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
 +++ stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
@@ -492,6 +515,17 @@ diff --ruN a/stablehlo/stablehlo/testdata/convert_element_type_int8_100_100.mlir
      return %c : tensor<100x100xi1>
    }
  }
+diff --ruN a/stablehlo/stablehlo/tests/CheckOps.td b/stablehlo/stablehlo/tests/CheckOps.td
+--- stablehlo/stablehlo/tests/CheckOps.td
++++ stablehlo/stablehlo/tests/CheckOps.td
+@@ -32,7 +32,6 @@
+ 
+   let useDefaultAttributePrinterParser = 0;
+   let useDefaultTypePrinterParser = 0;
+-  let usePropertiesForAttributes = 1;
+ }
+ 
+ //===----------------------------------------------------------------------===//
 diff --ruN a/stablehlo/stablehlo/tests/TestUtils.cpp b/stablehlo/stablehlo/tests/TestUtils.cpp
 --- stablehlo/stablehlo/tests/TestUtils.cpp
 +++ stablehlo/stablehlo/tests/TestUtils.cpp
