@@ -161,15 +161,15 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     num: A `Tensor`. Must be one of the following types: `int32`, `int64`. 0-D
       tensor. Number of values to generate.
     name: A name for the operation (optional).
-    axis: Axis along which the operation is performed (can be specified to
-      non-zero only when N-D tensors are provided).
+    axis: Axis along which the values are generated. The axis is inserted into
+      the result shape and has size `num`.
 
   Returns:
     A `Tensor`. Has the same type as `start`.
 
   Raises:
-    InvalidArgumentError: If `axis` is specified to non-zero when 1-D tensor
-      is provided.
+    InvalidArgumentError: If `axis` is out of range for the expanded input
+      rank.
   """
 
   with ops.name_scope(name, "linspace", [start, stop]):
@@ -955,7 +955,8 @@ def round(x, name=None):  # pylint: disable=redefined-builtin
   ```
 
   Args:
-    x: A `Tensor` of type `float16`, `float32`, `float64`, `int32`, or `int64`.
+    x: A `Tensor` of type `bfloat16`, `float16`, `float32`, `float64`, `int8`,
+      `int16`, `int32`, `int64`, `complex64`, or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
