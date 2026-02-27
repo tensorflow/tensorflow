@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -28,9 +26,10 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
 #ifdef PLATFORM_GOOGLE
-#include "file/base/options.h"
+#include "xla/tsl/platform/env.h"
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -47,7 +46,7 @@ limitations under the License.
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
 #ifdef PLATFORM_GOOGLE
-#include "file/base/helpers.h"
+
 #include "util/task/status.pb.h"
 #endif
 
@@ -825,10 +824,11 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
   if (dump_model) {
     operations_research::MPModelProto model_proto;
     solver->ExportModelToProto(&model_proto);
-    auto write_status = file::SetTextProto(
+    auto write_status = tsl::WriteTextProto(
+        tsl::Env::Default(),
         // Modify this file path if needed.
         absl::StrCat("/tmp/model_", solver->NumVariables(), ".proto"),
-        model_proto, file::Defaults());
+        model_proto);
     if (!write_status.ok()) {
       LOG(ERROR) << write_status.message();
     }
@@ -841,9 +841,9 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromSolverRequest(
     std::string request_dump_path =
         absl::StrCat("/tmp/solver_request_", request.request_name(), "_",
                      solver_request_fprint, ".textproto");
-    auto write_status = file::SetTextProto(
-        // Modify this file path if needed.
-        request_dump_path, request, file::Defaults());
+    auto write_status = tsl::WriteTextProto(tsl::Env::Default(),
+                                            // Modify this file path if needed.
+                                            request_dump_path, request);
     LOG(INFO) << "Dumped solver request to " << request_dump_path;
     if (!write_status.ok()) {
       LOG(ERROR) << write_status.message();

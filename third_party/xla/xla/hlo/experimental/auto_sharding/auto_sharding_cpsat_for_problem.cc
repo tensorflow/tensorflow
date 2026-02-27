@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -28,9 +26,10 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 
 #ifdef PLATFORM_GOOGLE
-#include "file/base/options.h"
+#include "xla/tsl/platform/env.h"
 #endif
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -49,7 +48,7 @@ limitations under the License.
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
 #ifdef PLATFORM_GOOGLE
-#include "file/base/helpers.h"
+
 #include "util/task/status.pb.h"
 #endif
 
@@ -383,8 +382,7 @@ void AddMemoryTerms(
 //    is guaranteed to never produce a negative overall cost for the graph,
 //    however.
 absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromProblem(
-    const iopddl::Problem& problem,
-    const AutoShardingSolverParams& params) {
+    const iopddl::Problem& problem, const AutoShardingSolverParams& params) {
   const absl::Time start_time = absl::Now();
   const std::vector<int64_t> followers = GetFollowers(problem);
   const std::vector<iopddl::Edge> aliases = GetAliases(problem);
@@ -704,10 +702,11 @@ absl::StatusOr<AutoShardingSolverOutput> FormulateAndSolveMIPFromProblem(
   if (dump_model) {
     operations_research::MPModelProto model_proto;
     solver->ExportModelToProto(&model_proto);
-    auto write_status = file::SetTextProto(
+    auto write_status = tsl::WriteTextProto(
+        tsl::Env::Default(),
         // Modify this file path if needed.
         absl::StrCat("/tmp/model_", solver->NumVariables(), ".proto"),
-        model_proto, file::Defaults());
+        model_proto);
     if (!write_status.ok()) {
       LOG(ERROR) << write_status.message();
     }

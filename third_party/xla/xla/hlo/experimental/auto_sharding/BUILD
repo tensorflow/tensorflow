@@ -133,6 +133,7 @@ cc_library(
         ":iopddl_lib",
         "//xla:status_macros",
         "//xla:util",
+        "//xla/tsl/platform:env",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
