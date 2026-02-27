@@ -105,3 +105,128 @@ module {
 // CHECK-LABEL: @do_not_unroll
 // CHECK: %[[C1:.*]] = arith.constant 1 : index
 // CHECK: scf.for {{.*}} step %[[C1]]
+
+// -----
+
+module {
+  func.func private @small_callee(%arg0: f32) -> f32 {
+    %0 = arith.addf %arg0, %arg0 : f32
+    return %0 : f32
+  }
+
+  func.func @unroll_with_small_call(%arg0: f32) -> f32 {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c8 = arith.constant 8 : index
+    %ret = scf.for %i = %c0 to %c8 step %c1 iter_args (%v = %arg0) -> (f32) {
+      %call = func.call @small_callee(%v) : (f32) -> f32
+      scf.yield %call : f32
+    }
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @unroll_with_small_call
+// CHECK-NOT: scf.for
+
+// -----
+
+module {
+  func.func private @large_callee(%arg0: f32) -> f32 {
+    %0 = math.asin %arg0 : f32
+    return %0 : f32
+  }
+
+  func.func @do_not_unroll_with_large_call(%arg0: f32) -> f32 {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c32 = arith.constant 32 : index
+    %ret = scf.for %i = %c0 to %c32 step %c1 iter_args (%v = %arg0) -> (f32) {
+      %call = func.call @large_callee(%v) : (f32) -> f32
+      %add = arith.addf %v, %call : f32
+      scf.yield %add : f32
+    }
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @do_not_unroll_with_large_call
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: scf.for {{.*}} step %[[C1]]
+
+// -----
+
+module {
+  func.func private @pure_callee(%arg0: f32) -> f32 {
+    %0 = math.exp %arg0 : f32
+    return %0 : f32
+  }
+
+  func.func @unroll_with_pure_call(%arg0: f32) -> f32 {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c32 = arith.constant 32 : index
+    %ret = scf.for %i = %c0 to %c32 step %c1 iter_args (%v = %arg0) -> (f32) {
+      %call = xla.pure_call @pure_callee(%v) : (f32) -> f32
+      %add = arith.addf %v, %call : f32
+      scf.yield %add : f32
+    }
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @unroll_with_pure_call
+// CHECK: %[[C16:.*]] = arith.constant 16 : index
+// CHECK: scf.for {{.*}} step %[[C16]]
+
+// -----
+
+module {
+  func.func @do_not_unroll_with_nested_if(%arg0: f32, %cond: i1) -> f32 {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c32 = arith.constant 32 : index
+    %ret = scf.for %i = %c0 to %c32 step %c1 iter_args (%v = %arg0) -> (f32) {
+      %if = scf.if %cond -> (f32) {
+        %acos = math.acos %v : f32
+        scf.yield %acos : f32
+      } else {
+        scf.yield %v : f32
+      }
+      scf.yield %if : f32
+    }
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @do_not_unroll_with_nested_if
+// CHECK: %[[C1:.*]] = arith.constant 1 : index
+// CHECK: scf.for {{.*}} step %[[C1]]
+
+// -----
+
+module {
+  func.func @unroll_nested_for(%arg0: f32) -> f32 {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    %ret = scf.for %i = %c0 to %c4 step %c1 iter_args (%v = %arg0) -> (f32) {
+      %inner = scf.for %j = %c0 to %c4 step %c1 iter_args (%v2 = %v) -> (f32) {
+        %exp = math.exp %v2 : f32
+        %log = math.log %exp : f32
+        scf.yield %log : f32
+      }
+      scf.yield %inner : f32
+    }
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @unroll_nested_for
+// Body size of inner loop: math.exp (20) + math.log (20) = 40.
+// Size of inner loop: 4 * 40 = 160.
+// Size of outer loop: 4 * 160 = 640.
+// 640 > 400, so it doesn't unroll blindly.
+// factor = min(4, 400 / 160) = 2.
+// CHECK: %[[C2:.*]] = arith.constant 2 : index
+// CHECK: scf.for {{.*}} step %[[C2]]
