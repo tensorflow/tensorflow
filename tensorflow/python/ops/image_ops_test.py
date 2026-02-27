@@ -6390,6 +6390,26 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       (2525, 1, 1),  # future behavior
   ]
 
+  def _top_down_bmp(self):
+    width = 1
+    height = -1
+    bits_per_pixel = 24
+    row_size = 4
+    header_size = 54
+    file_size = header_size + row_size
+    bmp = bytearray(file_size)
+    bmp[0:2] = b"BM"
+    bmp[2:6] = file_size.to_bytes(4, "little")
+    bmp[10:14] = header_size.to_bytes(4, "little")
+    bmp[14:18] = (40).to_bytes(4, "little")
+    bmp[18:22] = width.to_bytes(4, "little", signed=True)
+    bmp[22:26] = height.to_bytes(4, "little", signed=True)
+    bmp[26:28] = (1).to_bytes(2, "little")
+    bmp[28:30] = bits_per_pixel.to_bytes(2, "little")
+    bmp[34:38] = row_size.to_bytes(4, "little")
+    bmp[54:58] = bytes([10, 20, 30, 0])
+    return bytes(bmp)
+
   def testBmpChannels(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
       with compat.forward_compatibility_horizon(*horizon):
@@ -6546,6 +6566,22 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                                  dtypes.float32)
           image0, image1 = self.evaluate([image0, image1])
           self.assertAllEqual(image0, image1)
+
+  @parameterized.named_parameters(
+      ("_uint16", dtypes.uint16),
+      ("_float32", dtypes.float32),
+  )
+  def testBmpTopDownNonUint8(self, dtype):
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session():
+          bmp = constant_op.constant(self._top_down_bmp())
+          image0 = image_ops.decode_image(bmp, dtype=dtype)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp),
+                                                 dtype)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
+          self.assertAllEqual(list(image0.shape), [1, 1, 3])
 
   def testExpandAnimations(self):
     for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
