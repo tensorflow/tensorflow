@@ -101,7 +101,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "mosaic_gpu",
                          kMockMosaicGpu);
 
 // Verify that the client can initialize NVSHMEM and that buffers used by
-// mosaic_gpu custom calls are assigned to the collective memory space.
+// mosaic_gpu custom calls are assigned to the default memory space.
 TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   static constexpr char const* kProgram = R"(
     HloModule ffi_handler
@@ -159,7 +159,7 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
   Shape result_shape = result_buffers[0]->on_device_shape();
   int64_t memory_space = result_shape.layout().memory_space();
-  EXPECT_EQ(memory_space, 1);
+  EXPECT_EQ(memory_space, Layout::kDefaultMemorySpace);
 }
 
 // Verify that all-reduce ops that use nvshmem buffers
