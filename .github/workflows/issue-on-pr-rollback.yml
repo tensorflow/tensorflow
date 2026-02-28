@@ -14,7 +14,7 @@
 # ==============================================================================
 
 name: Creates a GitHub Issue when a PR Rolled back via Commit to Master
-on:
+on:damian-cell/tensorflow
   push:
     branches:
       - master
