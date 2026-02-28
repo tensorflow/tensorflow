@@ -1,7 +1,9 @@
 ---
 name: TensorFlow Lite Converter Issue
 about: Use this template for reporting issues during model conversion to TFLite
-labels: 'TFLiteConverter'
+title: ''
+labels: ''
+assignees: ''
 
 ---
 
