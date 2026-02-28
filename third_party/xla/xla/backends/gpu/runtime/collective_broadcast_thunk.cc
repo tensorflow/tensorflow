@@ -140,7 +140,7 @@ absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,
                                     se::Stream& stream, Communicator& comm) {
-  auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+  auto* gpu_comm = absl::down_cast<GpuCommunicator*>(&comm);
   Future<> future = gpu_comm->GroupExecute(
       [&buffers, &stream](GpuCommunicator* comm) -> absl::Status {
         for (auto buffer : buffers) {
