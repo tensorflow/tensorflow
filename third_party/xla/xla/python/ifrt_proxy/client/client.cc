@@ -188,7 +188,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
       std::move(addressable_device_ptrs), all_device_ptrs, std::move(memories),
       std::move(client_attributes)));
   for (ifrt::Device* device : all_device_ptrs) {
-    tensorflow::down_cast<Device*>(device)->client_ = client.get();
+    absl::down_cast<Device*>(device)->client_ = client.get();
   }
   return client;
 }
