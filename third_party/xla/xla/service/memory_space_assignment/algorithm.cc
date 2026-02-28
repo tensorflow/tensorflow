@@ -3643,9 +3643,12 @@ std::vector<HloPositionOrUse> MsaAlgorithm::GetInefficientAllocationSites(
         }
       }
     }
+    use_bytes = std::max(use_bytes, int64_t{0});
+    copy_bytes = std::max(copy_bytes, int64_t{0});
     VLOG(3) << "      use bytes: " << use_bytes
             << ", copy bytes: " << copy_bytes;
-    if (options_.inefficient_use_to_copy_ratio * copy_bytes > use_bytes) {
+    if (copy_bytes > 0 &&
+        options_.inefficient_use_to_copy_ratio * copy_bytes > use_bytes) {
       for (const Allocation* allocation : allocation_group) {
         MemorySpace position_memory_space =
             GetDefiningPositionMemorySpace(*allocation);
@@ -3996,9 +3999,9 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
         }
       }
       preferred_offset_for_allocation_value[&allocation_value_to_update] =
-          UpdatePreferredOffsetForUse(use,
-                                      preferred_offset_for_allocation_value.at(
-                                          &allocation_value_to_update));
+          CheckOrUpdatePreferredOffsetForUse(
+              use, preferred_offset_for_allocation_value.at(
+                       &allocation_value_to_update));
       AllocationRequest request = CreateAllocationRequest(
           allocation_value, allocation_value_to_update, use, previous_use,
           preferred_offset_for_allocation_value.at(&allocation_value_to_update),
@@ -4159,15 +4162,20 @@ bool MsaAlgorithm::VerifyAllConversionsAreSuccessful() {
   return true;
 }
 
-AliasedOffset* MsaAlgorithm::UpdatePreferredOffsetForUse(
+AliasedOffset* MsaAlgorithm::CheckOrUpdatePreferredOffsetForUse(
     const AllocationValue::Use& use, AliasedOffset* preferred_offset) const {
   // Assign the required assignment offset as a preferred offset.
   std::optional<RequiredMemoryAssignment> required_assignment =
       AliasedRequiredAssignmentForUse(use);
-  if (required_assignment &&
-      required_assignment->memory_space == MemorySpace::kAlternate) {
+  if (required_assignment.has_value() &&
+      required_assignment.value().memory_space == MemorySpace::kAlternate) {
     if (preferred_offset) {
-      CHECK_EQ(preferred_offset, required_assignment->offset);
+      CHECK_EQ(preferred_offset->offset,
+               required_assignment.value().offset->offset)
+          << "required assignment " << required_assignment.value().ToString()
+          << " is not equal to preferred offset " << preferred_offset->offset
+          << " for use:\n"
+          << use.hlo_use.ToString();
     } else {
       preferred_offset = required_assignment->offset;
       VLOG(3) << "Setting preferred offset due to required assignment for use: "
@@ -5289,7 +5297,7 @@ MsaAlgorithm::AliasedRequiredAssignmentForUse(
       required_assignment = required_assignment_for_alias;
     } else {
       CHECK(required_assignment_for_alias == std::nullopt ||
-            required_assignment->equals_ignoring_time(
+            required_assignment->memory_space_and_offset_equal(
                 *required_assignment_for_alias));
     }
   }
@@ -5332,16 +5340,17 @@ void MsaAlgorithm::AddRequiredAssignment(const HloValue* value,
 
   // Check for existing required assignment at this time and make sure it is the
   // same as this if there is one.
-  auto existing_required_assignment = RequiredMemoryAssignmentAt(value, time);
-  if (existing_required_assignment) {
-    CHECK(memory_space == existing_required_assignment->memory_space)
-        << "Failed to add conflicting required assignment for: "
-        << value->defining_position().ToString()
-        << " existing required assignment: "
-        << existing_required_assignment->ToString()
-        << " new required assignment: " << required_assignment.ToString();
-    CHECK((!offset && !existing_required_assignment->offset) ||
-          offset == existing_required_assignment->offset);
+  std::optional<RequiredMemoryAssignment> existing_required_assignment =
+      RequiredMemoryAssignmentAt(value, time);
+
+  if (existing_required_assignment.has_value()) {
+    CHECK(required_assignment.memory_space_and_offset_equal(
+        existing_required_assignment.value()))
+        << "Failed to add required assignment due to a conflict. Existing "
+           "required assignment: "
+        << existing_required_assignment.value().ToString()
+        << "; new required assignment: " << required_assignment.ToString()
+        << "; hlo value: " << value->ToShortString();
     VLOG(3) << "Not adding required assignment because there is one already: "
             << value->ToShortString()
             << " required assignment: " << required_assignment.ToString();
@@ -5879,8 +5888,8 @@ void MsaAlgorithm::FinalizeAllocations(
           allocation_value.mutable_split_shape().has_value()) {
         allocation->set_split_shape(allocation_value.mutable_split_shape());
       }
-      if ((allocation->memory_space() == MemorySpace::kAlternate) &&
-          (!allocation->is_scoped_allocation())) {
+      if (allocation->memory_space() == MemorySpace::kAlternate &&
+          !allocation->is_scoped_allocation()) {
         for (const HloUse& use : allocation->uses()) {
           AddOperandToAlternateMemoryMap(use.instruction, use.operand_number,
                                          use.operand_index);
@@ -6259,8 +6268,14 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
       required_assignment_at_end = aliased_required_assignment_at_end;
     } else {
       CHECK(aliased_required_assignment_at_end == std::nullopt ||
-            aliased_required_assignment_at_end->equals_ignoring_time(
-                *required_assignment_at_end));
+            aliased_required_assignment_at_end->memory_space_and_offset_equal(
+                *required_assignment_at_end))
+          << "Conflicting aliased required assignment at end."
+             " required_assignment_at_end: "
+          << required_assignment_at_end->ToString()
+          << " aliased_required_assignment_at_end: "
+          << aliased_required_assignment_at_end->ToString()
+          << " for alised use: " << request.use->hlo_use.ToString();
     }
   }
   std::optional<MemorySpace> required_memory_space_at_end;
