@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -1050,6 +1052,7 @@ class HeapAlgorithmTestBase : public ::testing::Test {
 
  private:
   friend class GlobalDecreasingSizeBestFitHeapBenchmark;
+  friend class ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark;
 
   // Create a dummy HloValue to pass to the heap algorithm.
   const HloValue* DummyBufferValue() {
@@ -3976,6 +3979,73 @@ TEST_F(HeapSimulatorTest, UnionFindSizeUpdate) {
   //    updates its size to max(20, 30) = 30.
   EXPECT_EQ(share_sizes[&v2_value], 30);
 }
+
+class ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark
+    : public HeapAlgorithmTestBase {
+ public:
+  void TestBody() override {}
+  void RunBenchmark(
+      ::testing::benchmark::State& state,
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::PackingStrategy&
+          algorithm_type) {
+    const int n = state.range(0);
+    int alignment = 16;
+    std::mt19937_64 rng(47);
+    std::uniform_int_distribution<int> buffer_size_dist(0, 10'000);
+    uint64_t unbounded_heap_size = std::numeric_limits<uint64_t>::max();
+
+    std::vector<std::pair<const HloValue*, int64_t>> buffers_and_sizes;
+    for (int i = 0; i < n; i++) {
+      buffers_and_sizes.emplace_back(DummyBufferValue(), buffer_size_dist(rng));
+    }
+
+    for (auto s : state) {
+      state.PauseTiming();
+      benchmark::DoNotOptimize(alignment);
+      ConstrainedGlobalDecreasingSizeBestFitHeap heap(
+          unbounded_heap_size, alignment, algorithm_type);
+      for (const auto& [buffer, size] : buffers_and_sizes) {
+        heap.Alloc(buffer, size);
+      }
+      for (const auto& [buffer, size] : buffers_and_sizes) {
+        heap.Free(buffer, size);
+      }
+      state.ResumeTiming();
+      TF_ASSERT_OK_AND_ASSIGN(const HeapSimulator::Result<HloValue> result,
+                              heap.Finish());
+    }
+  }
+};
+
+static void BM_GlobalDecreasingSizeBestFitHeap_FastMerge(
+    ::testing::benchmark::State& state) {
+  ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state, GlobalDecreasingSizeBestFitHeap<HloValue>::kFastMerge);
+}
+static void BM_GlobalDecreasingSizeBestFitHeap_FastSplit(
+    ::testing::benchmark::State& state) {
+  ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state, GlobalDecreasingSizeBestFitHeap<HloValue>::kFastSplit);
+}
+static void BM_GlobalDecreasingSizeBestFitHeap_Spatial(
+    ::testing::benchmark::State& state) {
+  ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state, GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial);
+}
+static void BM_GlobalDecreasingSizeBestFitHeap_Temporal(
+    ::testing::benchmark::State& state) {
+  ConstrainedGlobalDecreasingSizeBestFitHeapBenchmark bm;
+  bm.RunBenchmark(state, GlobalDecreasingSizeBestFitHeap<HloValue>::kTemporal);
+}
+
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap_FastMerge)
+    ->Range(1'000, 1'000'000);
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap_FastSplit)
+    ->Range(1'000, 1'000'000);
+// The interval tree based algorithms grow quadratically with the number of
+// buffers, so keep the number of buffers small.
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap_Spatial)->Range(1'000, 10'000);
+BENCHMARK(BM_GlobalDecreasingSizeBestFitHeap_Temporal)->Range(1'000, 10'000);
 
 }  // namespace
 }  // namespace xla
