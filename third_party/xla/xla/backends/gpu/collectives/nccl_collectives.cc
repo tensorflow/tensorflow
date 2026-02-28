@@ -87,7 +87,7 @@ class NcclIdStore {
 
   absl::StatusOr<CliqueIds> GetCliqueIds(const CliqueKey& key,
                                          NcclCollectives& nccl_collectives) {
-    auto* gpu_key = tsl::down_cast<const gpu::GpuCliqueKey*>(&key);
+    auto* gpu_key = absl::down_cast<const GpuCliqueKey*>(&key);
     if (gpu_key == nullptr) {
       return InvalidArgument("Expected GPU clique key");
     }
@@ -193,7 +193,7 @@ class NcclIdStore {
 //===----------------------------------------------------------------------===//
 
 static auto DeviceOrdinal(const Collectives::DeviceRank& rank) {
-  auto* device = tsl::down_cast<const GpuCollectives::Device*>(rank.device);
+  auto* device = absl::down_cast<const GpuCollectives::Device*>(rank.device);
   return device->stream_executor()->device_ordinal();
 }
 
@@ -213,7 +213,7 @@ static auto DeviceRanksToString(
 }
 
 static ncclComm_t Cast(const Communicator* comm) {
-  auto* nccl_communicator = tsl::down_cast<const NcclCommunicator*>(comm);
+  auto* nccl_communicator = absl::down_cast<const NcclCommunicator*>(comm);
   CHECK(nccl_communicator != nullptr) << "Unsupported XLA communicator";
   return nccl_communicator->comm();
 }
@@ -275,7 +275,7 @@ static absl::StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
     absl::Span<const NcclCollectives::DeviceRank> ranks) {
   std::vector<se::StreamExecutor*> stream_executors(ranks.size());
   for (size_t i = 0; i < ranks.size(); ++i) {
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device) << "Device must be GpuCollectives::Device";
     stream_executors[i] = device->stream_executor();
   }
@@ -301,7 +301,7 @@ NcclCollectives::CreateCommunicatorsWithCancel(
       clique_ids->size(), clique_ids->fingerprint());
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
   if (!gpu_config.blocking_communicators && !gpu_config.async_execution) {
     return FailedPrecondition(
         "GpuCollectives::Config blocking_communicators is false, but "
@@ -321,7 +321,7 @@ NcclCollectives::CreateCommunicatorsWithCancel(
         clique_key.num_devices(), clique_ids->size(),
         clique_ids->fingerprint());
 
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     auto activate_context = device->stream_executor()->Activate();
 
@@ -404,7 +404,7 @@ NcclCollectives::SplitCommunicatorsWithCancel(
   TF_ASSIGN_OR_RETURN(auto stream_executors, GetStreamExecutors(ranks));
 
   const auto& gpu_config =
-      tsl::down_cast<const GpuCollectives::Config&>(config);
+      absl::down_cast<const GpuCollectives::Config&>(config);
 
   auto make_comm = [&](int i) -> absl::StatusOr<ncclComm_t> {
     TF_ASSIGN_OR_RETURN(ncclConfig_t comm_config,
@@ -449,7 +449,7 @@ static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Get("gpu", "nvshmem"));
   xla::gpu::GpuCollectives* nvshmem_collectives =
-      tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
+      absl::down_cast<GpuCollectives*>(collectives);
   if (nvshmem_collectives == nullptr) {
     return Internal("Failed to get NVSHMEM collectives");
   }
