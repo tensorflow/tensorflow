@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 
 namespace pjrt {
 
