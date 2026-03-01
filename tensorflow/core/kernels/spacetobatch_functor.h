@@ -67,7 +67,7 @@ void SubtleMustCopyFlatHelper(const Tensor& t, OutputType* output) {
 template <typename OutputType>
 void SubtleMustCopyFlat(const Tensor& t, OutputType* output) {
   if (t.dtype() == DT_INT32) {
-    SubtleMustCopyFlatHelper<int32, OutputType>(t, output);
+    SubtleMustCopyFlatHelper<int32_t, OutputType>(t, output);
   } else {
     SubtleMustCopyFlatHelper<int64_t, OutputType>(t, output);
   }
