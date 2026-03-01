@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/host_callback.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/raw_buffer.h"
@@ -441,6 +442,19 @@ CommonPjRtClient::CreateViewOfDeviceBuffer(
 absl::StatusOr<xla::Shape> CommonPjRtClient::MakeDefaultShapeForMemorySpace(
     PjRtMemorySpace* memory_space, xla::Shape shape,
     const xla::Layout* layout) const {
+  if (memory_space->kind_id() == UnpinnedHostMemorySpace::kKindId) {
+    *shape.mutable_layout() =
+        LayoutUtil::MakeDescendingLayout(shape.dimensions().size());
+    ShapeUtil::UpdateElementSizeInBits(&shape, /*pack_subbyte_types=*/true);
+    if (layout != nullptr && *layout != shape.layout()) {
+      return InvalidArgument(
+          "unpinned_host only supports descending layouts, but got an "
+          "unsupported custom layout: %s (expected) vs. %s (provided)",
+          shape.layout().ToString(), layout->ToString());
+    }
+    return shape;
+  }
+
   if (layout) {
     *shape.mutable_layout() = *layout;
   } else {
