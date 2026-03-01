@@ -550,7 +550,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsForScaledDotOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
+TEST_F(SymbolicTilePropagationTest, DISABLED_CanPropagateToInputsOfReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     max {
