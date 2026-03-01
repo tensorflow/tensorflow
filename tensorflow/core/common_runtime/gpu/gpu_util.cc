@@ -16,11 +16,18 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "xla/layout_util.h"
 #include "xla/shape.h"

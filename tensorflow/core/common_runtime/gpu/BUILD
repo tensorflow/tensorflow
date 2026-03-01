@@ -82,6 +82,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/device:device_id",
+        "@com_google_absl//absl/status",
     ] + if_static([
         ":gpu_id_impl",
     ]),
@@ -99,6 +100,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/device:device_id_impl",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -196,13 +198,21 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime:core_cpu_impl",
         "//tensorflow/core/common_runtime:device_id_utils",
         "//tensorflow/core/common_runtime:node_file_writer",
+        "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/platform:tensor_float_32_utils",
         "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@xla//xla:shape_util",
         "@xla//xla/pjrt:host_memory_allocator",
@@ -255,6 +265,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
         "@xla//xla/stream_executor/gpu:gpu_init",
     ] + if_static([":gpu_runtime_impl"]),
@@ -321,7 +332,10 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
         "@xla//xla/stream_executor/integrations:device_mem_allocator",
+        "@xla//xla/tsl/protobuf:bfc_memory_map_proto_cc",
     ],
 )
 
@@ -431,6 +445,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -457,6 +472,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/memory",
         "@xla//xla/stream_executor:platform",
         "@xla//xla/stream_executor/integrations:device_mem_allocator",
     ],
@@ -478,6 +494,7 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
         "@xla//xla/tsl/framework:serving_device_selector",
     ],
 )
