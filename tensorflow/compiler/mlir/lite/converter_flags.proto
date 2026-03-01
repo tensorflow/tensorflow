@@ -39,7 +39,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 69.
+// Next ID to use: 70.
 message ConverterFlags {
   reserved 54, 61;
 
@@ -380,4 +380,7 @@ message ConverterFlags {
   // but it may cause incorrect results when broadcasting ops are introduced by
   // explicit broadcasting in the source model.
   optional bool unsafe_fuse_dynamic_shaped_broadcast = 68 [default = false];
+
+  // If false, downcast x64 tensors and inputs to x32.
+  optional bool enable_x64 = 69 [default = true];
 }
