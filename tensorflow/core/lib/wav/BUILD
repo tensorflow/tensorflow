@@ -25,13 +25,12 @@ cc_library(
     ],
     hdrs = ["wav_io.h"],
     deps = [
-        "//tensorflow/core/lib/core:coding",
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
     ],
 )
