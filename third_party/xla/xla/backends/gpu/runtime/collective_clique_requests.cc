@@ -37,7 +37,7 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     std::vector<std::vector<GlobalDeviceId>> device_groups,
     const CliqueRequirements& requirements) {
   // Sort each device group in ascending order, and all device groups using
-  // the first device. We need this for determenistic check below.
+  // the first device. We need this for deterministic check below.
   absl::c_for_each(device_groups, [](auto& group) { absl::c_sort(group); });
   absl::c_sort(device_groups, [](const auto& a, const auto& b) {
     CHECK(!a.empty() && !b.empty()) << "Replica groups must not be empty";
