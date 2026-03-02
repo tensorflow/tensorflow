@@ -902,9 +902,30 @@ absl::Status BatchResourceBase::ConcatInputTensors(
       std::vector<Tensor> to_concatenate;
       to_concatenate.reserve(output->size());
 
+      bool has_invalid_tensor = false;
       for (int j = 0; j < output->size(); ++j) {
+        Tensor& tensor = (*output)[j][i];
+        // Defensive validation: catch tensors with null data pointers that may
+        // have slipped past the status check above. This can happen if:
+        // 1. A subtask completed with OK status but failed to populate outputs
+        // 2. Memory corruption caused buf_->data() to become null
+        // 3. A race condition between status update and tensor population
+        if (!tensor.IsInitialized()) {
+          final_status.Update(absl::InternalError(absl::StrCat(
+              "Split task output tensor not initialized for batch index ", j,
+              ", output index ", i,
+              ". This may indicate a silent failure in the split task.")));
+          has_invalid_tensor = true;
+          break;
+        }
         // Move tensors from the matrix into the concat list
-        to_concatenate.push_back(std::move((*output)[j][i]));
+        to_concatenate.push_back(std::move(tensor));
+      }
+
+      // Skip concat if we encountered an invalid tensor - we already recorded
+      // the error in final_status.
+      if (has_invalid_tensor) {
+        continue;
       }
 
       const auto concat_status =
