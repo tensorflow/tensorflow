@@ -72,6 +72,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/scatter_simplifier.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -292,7 +293,7 @@ CpuScatterFusion::EmitKernelDefinition() {
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment_.GetUniqueSlice(fusion_, indexed.index));
-    result_buffers.push_back(std::move(slice));
+    result_buffers.push_back({slice, indexed.shape});
   }
 
   // TODO(willfroom): Move this to common method that can be shared across
@@ -306,15 +307,14 @@ CpuScatterFusion::EmitKernelDefinition() {
           buffer_assignment_.GetUniqueSlice(operand, indexed.index));
 
       bool invariant = absl::c_none_of(
-          result_buffers,
-          [&slice](const BufferAllocation::Slice& result_slice) {
-            return result_slice.OverlapsWith(slice);
+          result_buffers, [&slice](const ShapedSlice& result_slice) {
+            return result_slice.slice.OverlapsWith(slice);
           });
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }
 
-      argument_buffers.push_back(std::move(slice));
+      argument_buffers.push_back({slice, indexed.shape});
       ++operand_index;
     }
   }

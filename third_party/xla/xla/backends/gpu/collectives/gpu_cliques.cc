@@ -310,9 +310,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
                     const GpuCollectives::CliqueIdCallback& clique_id_callback,
                     int32_t num_local_participants, RankId rank,
                     const GpuCollectives::Config& config) {
-  VLOG(3) << absl::StreamFormat(
-      "[%d] [rank=%v] Initialize GPU clique %v: local_participants=%d",
-      device->device_ordinal(), rank, clique_key, num_local_participants);
+  VLOG(3) << absl::StreamFormat("[%d] [rank=%v] Initialize GPU clique %v",
+                                device->device_ordinal(), rank, clique_key);
 
   // Start GPU clique heart beat monitor when create a first clique.
   StartGpuCliqueHeartBeatMonitor();
@@ -322,30 +321,13 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     bool synchronized;
   };
 
-  // Check how many roots are needed to initialize the GpuClique
-  static const int64_t nccl_init_rank_per_root_ratio =
-      xla::GetDebugOptionsFromFlags()
-          .xla_gpu_nccl_init_max_rank_per_root_ratio();
-  int64_t nranks = clique_key.num_devices();
-  int64_t nroots = nccl_init_rank_per_root_ratio != 0
-                       ? CeilOfRatio(nranks, nccl_init_rank_per_root_ratio)
-                       : 1;
-
   // Initializes a GpuClique for given device ranks and returns a lock that
   // gives access to clique communicators.
   auto initialize = [&](absl::Span<const RendezvousArg* const> args)
       -> absl::StatusOr<LockableGpuClique::Lock> {
     tsl::profiler::TraceMe trace("InitializeGpuClique");
 
-    CliqueIds clique_ids;
-    std::vector<GpuCliqueKey> subkeys = clique_key.GetSubKeys(nroots);
-    for (const auto& subkey : subkeys) {
-      VLOG(5) << absl::StreamFormat(
-          "Get CliqueId for sub clique key %s; nroots=%lld", subkey.ToString(),
-          nroots);
-      TF_ASSIGN_OR_RETURN(auto clique_id, clique_id_callback(subkey));
-      clique_ids.Add(clique_id);
-    }
+    TF_ASSIGN_OR_RETURN(CliqueIds clique_ids, clique_id_callback(clique_key));
 
     // Check that all ranks successfully synchronized device activity before
     // trying to instantiate GPU communicators.
@@ -375,7 +357,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         "[%s] [ranks=%s] Create GPU communicators for clique %v; "
         "nroots=%lld; fingerprint(id)=%d, peer_access_enabled=%d",
         DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), clique_key,
-        nroots, clique_ids.fingerprint(), peer_access_enabled);
+        clique_ids.size(), clique_ids.fingerprint(), peer_access_enabled);
 
     ProcessGpuCliques& state = GetProcessGpuCliques();
 
@@ -426,7 +408,7 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
         "[%s] [ranks=%s] Created GPU communicators for clique %v; "
         "nroots=%lld; fingerprint(id)=%d, peer_access_enabled=%d",
         DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), clique_key,
-        nroots, clique_ids.fingerprint(), peer_access_enabled);
+        clique_ids.size(), clique_ids.fingerprint(), peer_access_enabled);
 
     // Put constructed clique into the per-process state.
     absl::MutexLock lock(state.mu);
@@ -470,8 +452,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
   // will update cliques state, and others will destroy unused communicators.
   auto rendezvous_key = std::make_tuple(run_id, clique_key);
   auto initialization_rendezvous_name =
-      absl::StrFormat("initialize clique for rank %d; clique=%v; run_id=%d",
-                      rank.value(), clique_key, run_id.ToInt());
+      absl::StrFormat("[%d] [rank=%v] [run_id=%v] Initialize clique: %v",
+                      device->device_ordinal(), rank, run_id, clique_key);
 
   GpuCollectives::Device gpu_device(device);
   GpuCollectives::DeviceRank device_rank = {&gpu_device, rank};
@@ -712,8 +694,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
   // will update cliques state, and others will destroy unused communicators.
   auto rendezvous_key = std::make_tuple(run_id, clique_key, parent_clique_key);
   auto initialization_rendezvous_name = absl::StrFormat(
-      "initialize clique for rank %d; clique=%v; run_id=%v; parent=%v",
-      rank.value(), clique_key, run_id, parent_clique_key);
+      "[%d] [rank=%v] [run_id=%v] Initialize clique: %v from parent: %v",
+      device->device_ordinal(), rank, run_id, clique_key, parent_clique_key);
 
   return Rendezvous<LockableGpuClique::Lock>(
       initialization_rendezvous_name, rendezvous_key, rank_pair,
@@ -746,8 +728,8 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
   // members participate in XLA run.
   auto rendezvous_key = std::make_tuple(run_id, clique_key);
   auto rendezvous_name =
-      absl::StrFormat("acquire clique for rank %v; clique=%v; run_id=%v", rank,
-                      clique_key, run_id);
+      absl::StrFormat("[%d] [rank=%v] [run_id=%v] Acquire clique: %v",
+                      device->device_ordinal(), rank, run_id, clique_key);
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<LockableGpuClique::Lock> clique,

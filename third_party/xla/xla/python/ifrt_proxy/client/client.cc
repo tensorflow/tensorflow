@@ -59,6 +59,7 @@
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
@@ -472,6 +473,20 @@ Client::GetDefaultPjRtLayout(xla::ifrt::DType dtype,
   }
   return layout;
 }
+
+absl::StatusOr<xla::ifrt::CustomLayoutRef> Client::GetDefaultLayout(
+    xla::ifrt::DType dtype, const xla::ifrt::Shape& shape,
+    const xla::ifrt::ShardingRef& sharding) const {
+  TF_ASSIGN_OR_RETURN(xla::ifrt::Shape shard_shape,
+                      sharding->GetShardShape(shape));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const xla::PjRtLayout> pjrt_layout,
+      GetDefaultPjRtLayout(dtype, shard_shape.dims(),
+                           sharding->devices()->devices().front(),
+                           sharding->memory_kind()));
+  return xla::ifrt::PjRtLayout::Create(std::move(pjrt_layout));
+}
+
 }  // namespace proxy
 }  // namespace ifrt
 }  // namespace xla

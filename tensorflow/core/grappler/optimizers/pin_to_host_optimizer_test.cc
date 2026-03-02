@@ -29,13 +29,13 @@ namespace {
 class PinToHostOptimizerTest : public GrapplerTest {};
 
 TEST_F(PinToHostOptimizerTest, TryFindHostDeviceNoDevices) {
-  gtl::FlatSet<string> devices = {};
+  gtl::FlatSet<std::string> devices = {};
 
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "ABC"), "");
 }
 
 TEST_F(PinToHostOptimizerTest, TryFindHostDeviceCpuXlaGpu) {
-  gtl::FlatSet<string> devices = {"/device:CPU:0", "/device:XLA_GPU:0"};
+  gtl::FlatSet<std::string> devices = {"/device:CPU:0", "/device:XLA_GPU:0"};
 
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, ""), "/device:CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, "/device:XLA_GPU:0"),
@@ -67,7 +67,7 @@ TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
   EXPECT_EQ(tensors_expected.size(), tensors.size());
   for (int i = 0; i < tensors.size(); ++i) {
     if (i < num_int32) {
-      test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+      test::ExpectTensorEqual<int32_t>(tensors[i], tensors_expected[i]);
     } else {
       test::ExpectTensorEqual<tstring>(tensors[i], tensors_expected[i]);
     }
@@ -146,7 +146,7 @@ TEST_F(PinToHostOptimizerTest, TopologicalSort) {
   auto tensors = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(tensors_expected.size(), tensors.size());
   for (int i = 0; i < tensors.size(); ++i) {
-    test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+    test::ExpectTensorEqual<int32_t>(tensors[i], tensors_expected[i]);
   }
 
   int found = 0;
@@ -182,7 +182,7 @@ TEST_F(PinToHostOptimizerTest, NoSwap) {
   auto tensors = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(tensors_expected.size(), tensors.size());
   for (int i = 0; i < tensors.size(); ++i) {
-    test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+    test::ExpectTensorEqual<int32_t>(tensors[i], tensors_expected[i]);
   }
 
   int found = 0;
@@ -253,7 +253,7 @@ TEST_F(PinToHostOptimizerTest, PortIdToArgId) {
   auto tensors = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(tensors_expected.size(), tensors.size());
   for (int i = 0; i < tensors.size(); ++i) {
-    test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+    test::ExpectTensorEqual<int32_t>(tensors[i], tensors_expected[i]);
   }
 
   int found = 0;

@@ -155,6 +155,9 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
   void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
                         xla::Shape shape) override;
 
+  absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
+  RemoveDynamicShapeMetadataIfPresent(const xla::Shape& logical_shape) override;
+
   void CopyToLiteralAsync(
       Promise<> promise,
       tsl::RCReference<PjRtDeviceEventPromise> device_promise,

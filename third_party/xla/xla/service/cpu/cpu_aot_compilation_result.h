@@ -42,6 +42,10 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
+namespace stream_executor {
+class DeviceDescription;
+}
+
 namespace xla::cpu {
 
 class CpuExecutable;
@@ -116,8 +120,12 @@ class CpuAotCompilationResult : public CompiledModule {
     return proto_.SerializeAsString();
   }
 
-  absl::StatusOr<std::unique_ptr<Executable>>
-      LoadExecutable(const se::StreamExecutor* stream_exec) && override;
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && override;
+
+  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      se::Platform::Id platform_id,
+      const se::DeviceDescription& device_description) &&
+      override;
 
   const HloModule* optimized_module() const override { return module_.get(); }
 

@@ -65,7 +65,7 @@ HloPassPipeline FusionPipeline(
       /*per_second_rates=*/{},
       /*min_latencies_seconds=*/{},
       /*count_multiple_input_accesses=*/true};
-  fusion.AddPass<PriorityFusion>(thread_pool, gpu_device_info,
+  fusion.AddPass<PriorityFusion>(thread_pool, gpu_device_info, alias_info,
                                  std::move(cost_analysis_options),
                                  mlir_context);
 

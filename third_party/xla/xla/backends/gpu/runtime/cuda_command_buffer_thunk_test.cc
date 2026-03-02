@@ -41,6 +41,9 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_dnn.h"
@@ -125,7 +128,6 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   EXPECT_THAT(graph.SupportsExplicitCommandBufferConstruction(),
               absl_testing::IsOkAndHolds(true));
 
-  std::vector<BufferAllocation::Slice> args;
   BufferAllocation alloc_input(/*index=*/0, kTotalElements, /*color=*/0);
   BufferAllocation alloc_output(/*index=*/1, kTotalElements * sizeof(int32_t),
                                 /*color=*/0);
@@ -134,17 +136,21 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   BufferAllocation::Slice slice_output(&alloc_output, 0,
                                        kTotalElements * sizeof(int32_t));
 
+  Shape shape = ShapeUtil::MakeShape(S32, {kTotalElements});
+
+  std::vector<ShapedSlice> args;
   args.reserve(4);
-  args.push_back(slice_input);  // multiplying the input by itself
-  args.push_back(slice_input);
-  args.push_back(slice_output);
+  args.push_back({slice_input, shape});  // multiplying the input by itself
+  args.push_back({slice_input, shape});
+  args.push_back({slice_output, shape});
 
   if (workspace_size > 0) {
     BufferAllocation alloc_workspace(
         /*index=*/2, workspace_size, /*color=*/0);
     BufferAllocation::Slice slice_workspace(&alloc_workspace, 0,
                                             workspace_size);
-    args.push_back(slice_workspace);
+    args.push_back(
+        {slice_workspace, ShapeUtil::MakeShape(U8, {workspace_size})});
   }
 
   auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));

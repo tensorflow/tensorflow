@@ -2,7 +2,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable", "tsl_pybind_extension")
+load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "get_compatible_with_portable", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
@@ -321,8 +321,8 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt/hlo:hlo_program",
+        "//xla/tsl/concurrency:future",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -340,16 +340,15 @@ cc_library(
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -514,14 +513,16 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
-        "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt/ir/transforms:debug",
         "//xla/python/ifrt/ir/transforms:passes",
         "//xla/python/ifrt/ir/transforms:utils",
         "//xla/python/ifrt/support:module_parsing",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
@@ -596,4 +597,44 @@ tf_proto_library(
     deps = [
         ":ifrt_ir_compile_options_proto",
     ],
+)
+
+cc_library(
+    name = "serialization_utils",
+    srcs = ["serialization_utils.cc"],
+    hdrs = ["serialization_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//xla/python/ifrt:users"],
+    deps = [
+        ":compiled_ifrt_ir_program",
+        ":ifrt_ir_program",
+        ":serialized_executable_metadata_proto_cc",
+        ":version",
+        "//xla/python/ifrt",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf_lite",
+        "@riegeli//riegeli/bytes:cord_writer",
+        "@riegeli//riegeli/messages:serialize_message",
+        "@stablehlo//:version",
+    ],
+)
+
+tf_proto_library(
+    name = "program_memory_trace_proto",
+    srcs = ["program_memory_trace.proto"],
+    compatible_with = get_compatible_with_libtpu_portable(),
+    make_default_target_header_only = True,
+    visibility = ["//learning/brain/research/ifrt:__subpackages__"],
 )

@@ -328,6 +328,7 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
 
+  pm.addPass(xtile::createStablehloLowerToArithPass());
   pm.addPass(CreateShloToVectorPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(

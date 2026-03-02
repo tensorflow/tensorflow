@@ -27,9 +27,11 @@ package_group(
         # Authorized users go here.
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/core/...",
+        # copybara:uncomment "//third_party/neptune/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
+        # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
         # copybara:uncomment "//learning/infra/mira/experimental/orbax_model/...",
     ],
 )

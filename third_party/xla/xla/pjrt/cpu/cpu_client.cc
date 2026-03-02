@@ -491,9 +491,8 @@ PjRtCpuClient::LoadSerializedExecutable(absl::string_view serialized,
   std::string str = std::move(*proto.mutable_serialized_executable());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       compiler.LoadAotCompilationResult(str));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      std::move(*aot_result).LoadExecutable(/*executor=*/nullptr));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      std::move(*aot_result).LoadExecutable());
 
   // Set up other arguments for PjRtCpuLoadedExecutable
   // TODO(b/232263665): Remove duplicated code in DeserializeExecutable and
@@ -638,7 +637,7 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
                       compiler.LoadAotCompilationResult(serialized_aot_result));
 
-  return std::move(*aot_result).LoadExecutable(/*executor=*/nullptr);
+  return std::move(*aot_result).LoadExecutable();
 }
 
 absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,

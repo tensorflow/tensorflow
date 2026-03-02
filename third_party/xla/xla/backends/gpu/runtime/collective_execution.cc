@@ -101,8 +101,6 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
   int64_t num_local_participants =
       GetNumLocalParticipants(params, participants);
 
-  GlobalDeviceId root_device = GlobalDeviceId(-1);
-
   absl::flat_hash_set<IncarnationId> unique_incarnations;
   if (params.incarnations) {
     for (GlobalDeviceId id : participants) {
@@ -119,7 +117,7 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
   absl::c_sort(incarnations);
 
   return GpuCliqueKey(std::move(participants), num_local_participants, is_p2p,
-                      std::move(participant_groups), root_device, incarnations);
+                      std::move(participant_groups), incarnations);
 }
 
 }  // namespace xla::gpu

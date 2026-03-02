@@ -53,6 +53,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "google/protobuf/text_format.h"
+#include "riegeli/bytes/string_reader.h"
+#include "riegeli/bytes/string_writer.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/debug_options_flags.h"
 #include "xla/ffi/ffi.h"
@@ -108,6 +110,8 @@ limitations under the License.
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_executable_and_options_writer.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -471,9 +475,13 @@ TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
   opts.recv_callbacks = recv_callbacks;
 
   // Check that send error safely rejected and we do not dead lock.
-  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
-  EXPECT_TRUE(absl::StrContains(result.status().message(),
-                                "Uh-oh, can send chunk to host"));
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          executable->Execute(/*argument_handles=*/{{}}, opts));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  auto status = result[0][0]->GetReadyFuture().Await();
+  EXPECT_TRUE(
+      absl::StrContains(status.message(), "Uh-oh, can send chunk to host"));
 }
 
 TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
@@ -507,8 +515,12 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
   opts.recv_callbacks = recv_callbacks;
 
   // Check that invalid chunk safely rejected and we do not dead lock.
-  auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
-  EXPECT_TRUE(absl::StrContains(result.status().message(),
+  TF_ASSERT_OK_AND_ASSIGN(auto result,
+                          executable->Execute(/*argument_handles=*/{{}}, opts));
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result[0].size(), 1);
+  auto status = result[0][0]->GetReadyFuture().Await();
+  EXPECT_TRUE(absl::StrContains(status.message(),
                                 "Adding chunk of size 40 would overflow buffer "
                                 "of size 8 (0 already transferred)"));
 }
@@ -2310,12 +2322,15 @@ ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
                           gpu_exe->SerializeExecutable());
 
   ExecutableAndOptionsProto proto;
-  proto.ParseFromString(serialized);
+  ASSERT_OK(ReadSplitProto(
+      std::make_unique<riegeli::StringReader<>>(serialized), proto));
   EXPECT_EQ(proto.pjrt_client_name(), "PjRtStreamExecutorClient");
   proto.set_pjrt_client_name("SomeGpuClient");
-  serialized = proto.SerializeAsString();
+  std::string modified_serialized;
+  ASSERT_OK(WriteSplitExecutableAndOptions(
+      proto, std::make_unique<riegeli::StringWriter<>>(&modified_serialized)));
 
-  EXPECT_THAT(client->DeserializeExecutable(serialized, std::nullopt),
+  EXPECT_THAT(client->DeserializeExecutable(modified_serialized, std::nullopt),
               absl_testing::StatusIs(
                   absl::StatusCode::kInternal,
                   HasSubstr("PjRt client type expected by the serialized "
@@ -2856,7 +2871,7 @@ TEST(StreamExecutorGpuClientTest, EventCaching) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
   auto* async_work_runner =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client.get())
+      absl::down_cast<PjRtStreamExecutorClient*>(client.get())
           ->async_work_runner();
   const auto& device = client->addressable_devices()[0];
   LocalDeviceState* local_device_state =

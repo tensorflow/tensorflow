@@ -169,6 +169,9 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
       override;
 
+  std::vector<tsl::RCReference<tsl::AsyncValue>>
+  GetAsyncValueDefinitionAndUsageEvents() override;
+
   void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
 
   void Delete(PjRtMemorySpace* memory_space) override;

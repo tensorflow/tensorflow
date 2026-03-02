@@ -471,6 +471,57 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_GetRoutingStrategy_Args,
 typedef PJRT_Error* PJRT_TpuTopology_GetRoutingStrategy(
     PJRT_TpuTopology_GetRoutingStrategy_Args* args);
 
+typedef struct PJRT_TpuTopology_SliceConfig {
+  size_t dim_size;
+  int32_t dimensions[4];  // contains `dim_size` elements.
+  bool wrap[4];           // contains `dim_size` elements.
+  bool twist;
+} PJRT_TpuTopology_SliceConfig;
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_SliceConfig, twist);
+
+struct PJRT_TpuTopology_GetSliceConfig_Args {
+  size_t struct_size;
+  const char* platform_type_name;
+  size_t platform_type_name_len;
+  const char* slice_name;
+  size_t slice_name_len;
+  PJRT_TpuTopology_SliceConfig* slice_config;  // in / out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_GetSliceConfig_Args, slice_config);
+
+// Returns the slice config for the given platform and slice name.
+typedef PJRT_Error* PJRT_TpuTopology_GetSliceConfig(
+    PJRT_TpuTopology_GetSliceConfig_Args* args);
+
+struct PJRT_TpuTopology_GetSliceConfigs_Args {
+  size_t struct_size;
+  const char* platform_type_name;
+  size_t platform_type_name_len;
+  PJRT_TpuTopology_SliceConfig* slice_configs;
+  size_t max_slice_configs;
+  size_t num_slice_configs;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_GetSliceConfigs_Args,
+                          num_slice_configs);
+
+// Returns all the slice configs for the given platform.
+typedef PJRT_Error* PJRT_TpuTopology_GetSliceConfigs(
+    PJRT_TpuTopology_GetSliceConfigs_Args* args);
+
+struct PJRT_TpuTopology_GetDefaultPlatformConfig_Args {
+  size_t struct_size;
+  const char* platform_type_name;
+  size_t platform_type_name_len;
+  int64_t num_chips_per_tray;  // out
+  int64_t num_trays;           // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_GetDefaultPlatformConfig_Args,
+                          num_trays);
+
+// Returns the default platform config for the given platform.
+typedef PJRT_Error* PJRT_TpuTopology_GetDefaultPlatformConfig(
+    PJRT_TpuTopology_GetDefaultPlatformConfig_Args* args);
+
 typedef struct PJRT_TpuTopology_Extension {
   PJRT_Extension_Base base;
   PJRT_TpuTopology_Subslice* subslice;
@@ -506,8 +557,12 @@ typedef struct PJRT_TpuTopology_Extension {
   PJRT_TpuTopology_ChipBounds* chip_bounds;
   PJRT_TpuTopology_ProcessBounds* process_bounds;
   PJRT_TpuTopology_GetRoutingStrategy* get_routing_strategy;
+  PJRT_TpuTopology_GetSliceConfig* get_slice_config;
+  PJRT_TpuTopology_GetSliceConfigs* get_slice_configs;
+  PJRT_TpuTopology_GetDefaultPlatformConfig* get_default_platform_config;
 } PJRT_TpuTopology_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_Extension, get_routing_strategy);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuTopology_Extension,
+                          get_default_platform_config);
 
 #ifdef __cplusplus
 }

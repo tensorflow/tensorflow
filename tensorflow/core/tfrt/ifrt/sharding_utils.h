@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
@@ -57,7 +59,8 @@ class H2DTransferExecutor {
   virtual absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> ScheduledH2DTransfer(
       const tensorflow::Tensor& tensor,
       const xla::ifrt::DeviceListRef& device_list,
-      const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool);
+      const xla::OpSharding& sharding, tsl::thread::ThreadPool& thread_pool,
+      const xla::ifrt::LayoutRef& xla_input_layout);
 
   // Executes the H2D transfers for all registered tensors.
   virtual absl::Status RunH2DTransfers();
@@ -78,7 +81,8 @@ class H2DTransferExecutorFactory {
 absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool);
+    const tsl::thread::ThreadPool& thread_pool,
+    const xla::ifrt::LayoutRef& xla_input_layout);
 
 // A variant of the above api. The difference is that the user passes in
 // device_list directly instead of a list of device_ids.
@@ -86,7 +90,8 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const xla::ifrt::DeviceListRef& device_list,
     const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool);
+    const tsl::thread::ThreadPool& thread_pool,
+    const xla::ifrt::LayoutRef& xla_input_layout);
 
 // Reshard an disassembled array list back to one single tensor
 // based on given sharding spec.

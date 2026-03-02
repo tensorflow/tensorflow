@@ -44,13 +44,12 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/python/ifrt/with_user_context.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/random.h"
 
 namespace xla {
 namespace ifrt {
@@ -96,8 +95,9 @@ llvm::SmallVector<bool> GetOutputShardingPropagation(
 
 }  // namespace
 
-absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileModule(
-    CallOp call_op, mlir::ModuleOp module_op) {
+absl::StatusOr<AtomProgramCompileResult>
+MultiThreadedAtomProgramCompiler::CompileModule(CallOp call_op,
+                                                mlir::ModuleOp module_op) {
   auto module_type =
       call_op->getAttrOfType<mlir::StringAttr>(kIfrtModuleTypeAttrName);
   if (module_type == kIfrtModuleTypeXla) {
@@ -166,8 +166,9 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
   return compile_options;
 }
 
-absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
-    CallOp call_op, mlir::ModuleOp module_op) {
+absl::StatusOr<AtomProgramCompileResult>
+MultiThreadedAtomProgramCompiler::CompileXla(CallOp call_op,
+                                             mlir::ModuleOp module_op) {
   TF_ASSIGN_OR_RETURN(xla::CompileOptions compile_options,
                       GetXlaCompileOptions(call_op, module_op));
   // In order to be able to compile multiple XLA computations in parallel, we
@@ -184,19 +185,16 @@ absl::StatusOr<CompileFuture> MultiThreadedAtomProgramCompiler::CompileXla(
                       CloneModuleIntoContext(module_op, *context));
   auto hlo_program = std::make_unique<HloProgram>(std::move(context),
                                                   std::move(cloned_module));
-  auto [promise, future] = tsl::MakePromise<AtomProgramCompileResult>();
-  tsl::Env::Default()->StartDetachedThread(
-      tsl::ThreadOptions(), /*name=*/"MultiThreadedAtomProgramCompiler",
-      WithCurrentUserContext([this, hlo_program = std::move(hlo_program),
-                              compile_options = std::move(compile_options),
-                              promise = std::move(promise)]() mutable {
-        promise.Set(compiler_->CompileXla(std::move(hlo_program),
-                                          std::move(compile_options)));
-      }));
-  return std::move(future);
+  AtomProgramCompileResult result;
+  result.name = absl::StrCat(
+      hlo_program->mlir_module().getName().value_or("<unknown>").str(), ".",
+      tsl::random::ThreadLocalNew64());
+  result.executable =
+      compiler_->CompileXla(std::move(hlo_program), std::move(compile_options));
+  return result;
 }
 
-absl::StatusOr<CompileFuture>
+absl::StatusOr<AtomProgramCompileResult>
 MultiThreadedAtomProgramCompiler::CompileMpmdReshard(mlir::ModuleOp module_op) {
   auto main_func =
       module_op.lookupSymbol<mlir::func::FuncOp>(kCalleeMainFuncName);
@@ -226,13 +224,11 @@ MultiThreadedAtomProgramCompiler::CompileMpmdReshard(mlir::ModuleOp module_op) {
         << "Unsupported return type `" << mlir::debugString(result_type) << "`";
     out_arrays_types.push_back(array_type);
   }
-  auto [promise, future] = tsl::MakePromise<AtomProgramCompileResult>();
-  // No need to dispatch from a different thread because MpmdReshard uses its
-  // own thread pool already.
-  auto compile_result = compiler_->CompileMpmdReshard(
+  AtomProgramCompileResult result;
+  result.name = absl::StrCat("mpmd_reshard.", tsl::random::ThreadLocalNew64());
+  result.executable = compiler_->CompileMpmdReshard(
       std::move(dtypes), std::move(shapes), in_arrays_types, out_arrays_types);
-  promise.Set(std::move(compile_result));
-  return future;
+  return result;
 }
 
 }  // namespace ifrt

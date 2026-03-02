@@ -44,6 +44,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/IR/BuiltinOps.h"
+#include "riegeli/bytes/string_reader.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
@@ -110,11 +111,13 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
+#include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/unbounded_work_queue.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/status_macros.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -194,7 +197,7 @@ std::shared_ptr<HostMemoryAllocator> CreateHostMemoryAllocator(
   allocator_options.unmap_fn = [client](void* data) {
     return client->DmaUnmap(data);
   };
-  return factory(std::move(allocator_options));
+  return factory(std::move(allocator_options)).value();
 }
 
 }  // namespace
@@ -652,17 +655,38 @@ TfrtGpuClient::DeserializeExecutable(
                              local_executables_and_options.second);
 }
 
-absl::StatusOr<
-    std::pair<std::vector<std::unique_ptr<LocalExecutable>>, CompileOptions>>
-TfrtGpuClient::DeserializeToLocalExecutable(
-    absl::string_view serialized, std::optional<CompileOptions> options) {
+namespace {
+absl::StatusOr<ExecutableAndOptionsProto> DeserializeExecutableAndOptionsProto(
+    absl::string_view serialized) {
   ExecutableAndOptionsProto proto;
+  auto reader = std::make_unique<riegeli::StringReader<>>(serialized);
+  // The serialized string may be of the new SplitProto format (which allows
+  // executables larger than 2GB) or the legacy format which is just a regular
+  // proto.
+  ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader));
+  if (is_split_proto) {
+    RETURN_IF_ERROR(ReadSplitProto(std::move(reader), proto));
+    return proto;
+  }
+
   if (serialized.size() > std::numeric_limits<int>::max()) {
     return Internal("Proto is too large (>2GB)");
   }
   if (!proto.ParseFromString(serialized)) {
     return Internal("Proto deserialization failed");
   }
+
+  return proto;
+}
+}  // namespace
+
+absl::StatusOr<
+    std::pair<std::vector<std::unique_ptr<LocalExecutable>>, CompileOptions>>
+TfrtGpuClient::DeserializeToLocalExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options) {
+  TF_ASSIGN_OR_RETURN(ExecutableAndOptionsProto proto,
+                      DeserializeExecutableAndOptionsProto(serialized));
+
   if (!proto.pjrt_client_name().empty() &&
       proto.pjrt_client_name() != kPjRtClientName) {
     return Internal(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -91,22 +92,34 @@ absl::Status SequentialThunk::Initialize(const InitializeParams& params) {
 absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   std::optional<tsl::profiler::ScopedAnnotation> seq_annotation =
       GetKernelAnnotation(profile_annotation());
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
+
+  for (size_t i = 0; i < thunks_.size(); ++i) {
+    const std::unique_ptr<Thunk>& thunk = thunks_[i];
+
     tsl::profiler::TraceMe trace(thunk->profile_annotation());
 
     std::optional<tsl::profiler::ScopedAnnotation> annotation =
         GetKernelAnnotation(thunk->profile_annotation());
+
     if (params.mock_collectives && thunk->IsCollective()) {
+      XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
+          << absl::StreamFormat(
+                 "[thunk=%d/%d] Skip SequentialThunk::ExecuteOnStream: %s", i,
+                 thunks_.size(), thunk->profile_annotation());
       continue;
     }
 
     XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
-        << "Start SequentialThunk::ExecuteOnStream: "
-        << thunk->profile_annotation();
+        << absl::StreamFormat(
+               "[thunk=%d/%d] Start SequentialThunk::ExecuteOnStream: %s", i,
+               thunks_.size(), thunk->profile_annotation());
+
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
+
     XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
-        << "End SequentialThunk::ExecuteOnStream: "
-        << thunk->profile_annotation();
+        << absl::StreamFormat(
+               "[thunk=%d/%d] End SequentialThunk::ExecuteOnStream: %s", i,
+               thunks_.size(), thunk->profile_annotation());
   }
   return absl::OkStatus();
 }

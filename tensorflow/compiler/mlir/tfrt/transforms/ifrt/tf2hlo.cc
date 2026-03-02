@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -117,15 +119,34 @@ absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   }
   fingerprint = tsl::FingerprintCat64(
       fingerprint, tsl::Fingerprint64(serialized_compile_metadata));
+  fingerprint = tsl::FingerprintCat64(
+      fingerprint,
+      tsl::Fingerprint64(populate_layout_in_xla_input_shapes ? "1" : "0"));
   return fingerprint;
 }
 
-Tf2HLOResultProto Tf2HloResult::ToProto() const {
+absl::StatusOr<Tf2HLOResultProto> Tf2HloResult::ToProto() const {
   Tf2HLOResultProto proto;
   *proto.mutable_hlo_module_proto() = hlo_module_proto;
   *proto.mutable_compile_metadata() = compile_metadata;
   *proto.mutable_host_compute_metadata() = host_compute_metadata;
+  for (const auto& shape : xla_input_shapes) {
+    *proto.add_xla_input_shapes() = shape.ToProto();
+  }
   return proto;
+}
+
+/*static*/ absl::StatusOr<Tf2HloResult> Tf2HloResult::FromProto(
+    const Tf2HLOResultProto& proto) {
+  Tf2HloResult result;
+  result.hlo_module_proto = proto.hlo_module_proto();
+  result.compile_metadata = proto.compile_metadata();
+  result.host_compute_metadata = proto.host_compute_metadata();
+  for (const auto& shape : proto.xla_input_shapes()) {
+    TF_ASSIGN_OR_RETURN(xla::Shape xla_shape, xla::Shape::FromProto(shape));
+    result.xla_input_shapes.push_back(std::move(xla_shape));
+  }
+  return result;
 }
 
 absl::Status UpdateCompileMetadata(
@@ -266,9 +287,14 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   }
 
   Tf2HloResult result;
-  result.hlo_module_proto = compilation_result.computation->proto();
+  if (arg.populate_layout_in_xla_input_shapes) {
+    result.xla_input_shapes = std::move(compilation_result.xla_input_shapes);
+  }
+
+  result.hlo_module_proto = std::move(compilation_result.computation->proto());
   result.compile_metadata = arg.compile_metadata;
-  result.host_compute_metadata = compilation_result.host_compute_metadata;
+  result.host_compute_metadata =
+      std::move(compilation_result.host_compute_metadata);
 
   return result;
 }

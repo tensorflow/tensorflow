@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -54,7 +54,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 namespace m = xla::match;
 
-class HloCseTest : public HloTestBase {
+class HloCseTest : public HloPjRtTestBase {
  protected:
   HloCseTest() {}
 };

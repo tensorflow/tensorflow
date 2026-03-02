@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -76,7 +77,8 @@ using DataflowPathsView = absl::Span<DataflowPathView>;
 
 using InstructionSet = absl::flat_hash_set<HloInstruction*>;
 
-bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
+bool IsCustomCall(const HloInstruction* hlo,
+                  stream_executor::Platform::Id platform_id) {
   auto* custom_call = DynCast<HloCustomCallInstruction>(hlo);
   if (custom_call == nullptr) {
     return false;
@@ -98,10 +100,10 @@ bool IsCustomCall(const HloInstruction* hlo, absl::string_view platform_name) {
       custom_call->api_version() == CustomCallApiVersion::API_VERSION_TYPED_FFI;
 
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
-      call_target_name, std::string(platform_name));
+      call_target_name, std::string(platform_id->ToName()));
 
   absl::StatusOr<ffi::HandlerRegistration> handler_registration =
-      ffi::FindHandler(call_target_name, platform_name);
+      ffi::FindHandler(call_target_name, platform_id->ToName());
 
   // At least one implementation should be available at run time.
   bool found_custom_call = !is_ffi_custom_call && call_target != nullptr;
@@ -262,7 +264,7 @@ absl::StatusOr<bool> DynamicSliceFusionRewriter::RunImpl(
     }
     for (HloInstruction* instr : computation->instructions()) {
       if ((HloPredicateIsOp<HloOpcode::kReduceScatter>(instr)) ||
-          IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_name_)) {
+          IsLegacyCublasMatmul(*instr) || IsCustomCall(instr, platform_id_)) {
         UseDefDataflowPaths sliced_operand_paths =
             GetSlicedOperandPaths(*instr, *call_graph);
         bool has_sliced_operand_paths = sliced_operand_paths.size() > 1;

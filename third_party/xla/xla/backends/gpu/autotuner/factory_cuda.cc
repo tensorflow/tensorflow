@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/triton.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
@@ -65,10 +66,11 @@ std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::GpuTargetConfig* target_config, MLIRContext* mlir_context) {
+    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<TritonBackend>(
-      debug_options, compiler, target_config, mlir_context));
+      debug_options, compiler, target_config, alias_info, mlir_context));
   backends.push_back(std::make_unique<CublasBackend>(
       stream_executor, debug_options, compiler, target_config));
   backends.push_back(std::make_unique<CublasLtBackend>(
@@ -81,13 +83,14 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
 std::vector<std::unique_ptr<CodegenBackend>> GetFissionBackendsForCuda(
     stream_executor::StreamExecutor* stream_executor,
     const DebugOptions* debug_options, Compiler* compiler,
-    const Compiler::GpuTargetConfig* target_config, MLIRContext* mlir_context) {
+    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
+    MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   backends.push_back(std::make_unique<FissionBackend>(
       debug_options, compiler, target_config,
       std::make_unique<CublasBackend>(stream_executor, debug_options, compiler,
                                       target_config),
-      GetCublasRewriterPipeline(target_config->device_description),
+      GetCublasRewriterPipeline(target_config->device_description), alias_info,
       mlir_context));
   return backends;
 }

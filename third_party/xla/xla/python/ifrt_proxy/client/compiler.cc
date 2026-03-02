@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -38,6 +39,7 @@
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
 #include "xla/python/ifrt_proxy/client/mpmd_executable.h"
@@ -131,9 +133,22 @@ tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
   TF_ASSIGN_OR_RETURN(*request->mutable_compile_options(),
                       Serialize(*options, std::move(serialize_options)));
 
-  // TODO(b/266635130): Avoid blocking the caller.
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<CompileResponse> response,
-                      rpc_helper_->Compile(std::move(request)).Await());
+  xla::ifrt::UserContextRef user_context =
+      xla::ifrt::UserContextScope::current();
+
+  return rpc_helper_->Compile(std::move(request))
+      .Map(absl::bind_front(&Compiler::CreateExecutableFromResponse, this,
+                            std::move(loaded_host_callbacks),
+                            std::move(user_context)));
+}
+
+absl::StatusOr<xla::ifrt::LoadedExecutableRef>
+Compiler::CreateExecutableFromResponse(
+    std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
+        loaded_host_callbacks,
+    xla::ifrt::UserContextRef user_context,
+    std::shared_ptr<CompileResponse> response) {
+  xla::ifrt::UserContextScope user_context_scope(user_context);
 
   std::vector<xla::ifrt::Device*> addressable_devices;
   addressable_devices.reserve(response->addressable_device_ids_size());
@@ -217,15 +232,14 @@ tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
         client_, rpc_helper_, response->loaded_executable_handle(),
         response->name(), response->num_devices(), device_list,
         std::move(addressable_devices), std::move(mpmd_addressable_devices),
-        std::move(fingerprint), std::move(ready_future),
-        std::move(loaded_host_callbacks),
+        std::move(fingerprint), std::move(loaded_host_callbacks),
         std::move(loaded_host_callback_handles));
   }
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),
       response->name(), response->num_devices(), device_list,
       std::move(addressable_devices), std::move(fingerprint),
-      std::move(ready_future), std::move(loaded_host_callbacks),
+      std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
 }
 

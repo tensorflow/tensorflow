@@ -16,13 +16,26 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_H_
 
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
+#include <variant>
+#include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
+#include "xla/stream_executor/platform.h"
 
 namespace xla::gpu {
 
@@ -173,8 +186,7 @@ class Command {
   // Initialize a command for recording on a given executor. We split it into a
   // separate function to allow expensive initialization (e.g. device kernel
   // loading) to happen before a command buffer thunk execution.
-  virtual absl::Status Initialize(const Thunk::InitializeParams& params,
-                                  CommandStateManager& state) {
+  virtual absl::Status Initialize(const Thunk::InitializeParams& params) {
     return absl::OkStatus();
   }
 

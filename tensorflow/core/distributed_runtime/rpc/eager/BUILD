@@ -76,14 +76,14 @@ tf_cc_test(
     deps = [
         ":grpc_eager_client",
         "//tensorflow/c:tf_status_headers",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/platform:blocking_counter",
-        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

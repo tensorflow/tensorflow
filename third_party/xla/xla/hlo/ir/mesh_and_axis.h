@@ -102,13 +102,17 @@ class Mesh {
   static Mesh FromProto(const MeshProto& proto);
 
   const TileAssignment& device_assignment() const { return device_assignment_; }
-  std::vector<std::string> axis_names() const { return axes_names_; }
+  absl::Span<const std::string> axis_names() const { return axes_names_; }
+  int64_t num_axes() const { return axes_names_.size(); }
   absl::Span<const int64_t> axis_sizes() const {
     return device_assignment_.dimensions();
   }
   int64_t axis_size(int64_t axis_index) const {
     return device_assignment_.dim(axis_index);
   }
+
+  // Returns true if the given axes span contains all mesh axes in order.
+  bool ContainsAllMeshAxesInOrder(absl::Span<const AxisRef> axes) const;
 
  private:
   absl::Status ValidateMesh();
@@ -201,10 +205,12 @@ std::ostream& operator<<(std::ostream& out, const AxisRef& axis);
 
 bool AxesCanCoexistWithoutOverlap(absl::Span<const AxisRef> axes);
 
-// The span of axes is valid if (1) all axes are valid for the given mesh, and
-// (2) the axes can coexist without overlap.
+// The span of axes is valid if (1) all axes are valid for the given mesh,
+// (2) the axes can coexist without overlap, and (3) mergeable neighbors are
+// merged if `allow_mergeable_neighbors` is false.
 absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
-                                const Mesh& mesh);
+                                const Mesh& mesh,
+                                bool allow_mergeable_neighbors = false);
 
 }  // namespace xla
 

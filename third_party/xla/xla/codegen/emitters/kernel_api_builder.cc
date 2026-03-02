@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -401,7 +402,7 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment->GetUniqueSlice(&hlo_instruction, indexed.index));
-    result_buffers.push_back(std::move(slice));
+    result_buffers.push_back({slice, indexed.shape});
   }
 
   KernelSpec::Buffers argument_buffers;
@@ -414,15 +415,14 @@ absl::StatusOr<KernelSpec> GetKernelSpec(
           buffer_assignment->GetUniqueSlice(operand, indexed.index));
 
       bool invariant = absl::c_none_of(
-          result_buffers,
-          [&slice](const BufferAllocation::Slice& result_slice) {
-            return result_slice.OverlapsWith(slice);
+          result_buffers, [&slice](const ShapedSlice& result_slice) {
+            return result_slice.slice.OverlapsWith(slice);
           });
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }
 
-      argument_buffers.push_back(std::move(slice));
+      argument_buffers.push_back({slice, indexed.shape});
       ++operand_index;
     }
   }

@@ -28,6 +28,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "google",
+    flag_values = {":oss_setting": "False"},
+    visibility = ["//visibility:public"],
+)
+
 # Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
@@ -582,14 +588,21 @@ bool_flag(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "libtpu_on_gce",
+    # This should never point to a set `config_setting` in OSS.
+    actual = if_google("//tools/cc_target_os:gce", ":google"),
+    visibility = ["//visibility:public"],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
         ":package_groups_bzl",
+        ":transitive_dependencies_bzl",
         # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
-        "@rules_cc//cc/common",
         "@rules_python//python:py_library_bzl",
         "@bazel_skylib//lib:new_sets",
         "@local_config_cuda//cuda:build_defs_bzl",
@@ -599,6 +612,16 @@ bzl_library(
         "@xla//third_party/py/rules_pywrap:pywrap_bzl",
         "@local_config_rocm//rocm:build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
+    ],
+)
+
+bzl_library(
+    name = "transitive_dependencies_bzl",
+    srcs = ["transitive_dependencies.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":package_groups_bzl",
+        "@rules_cc//cc/common",
     ],
 )
 

@@ -40,8 +40,7 @@ static GpuCliqueKey GetBaseCliqueKey() {
                       /*participant_groups=*/
                       std::vector<std::vector<GlobalDeviceId>>{
                           {GlobalDeviceId(0), GlobalDeviceId(1)},
-                          {GlobalDeviceId(2), GlobalDeviceId(3)}},
-                      /*root_device=*/GlobalDeviceId(0));
+                          {GlobalDeviceId(2), GlobalDeviceId(3)}});
 }
 
 TEST(GpuCliqueKeyTest, IsSubsetOf) {
@@ -60,29 +59,36 @@ TEST(GpuCliqueKeyTest, IsSubsetOf) {
   EXPECT_FALSE(key0.IsSubsetOf(key3));
 }
 
-TEST(GpuCliqueKeyTest, GetSubKeys) {
+TEST(GpuCliqueKeyTest, GetRootDevices) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);
   GlobalDeviceId id2 = GlobalDeviceId(2);
   GlobalDeviceId id3 = GlobalDeviceId(3);
 
-  GpuCliqueKey key({id0, id1, id2, id3}, /*num_local_participants=*/1, true);
-  std::array<int64_t, 4> nroots{1, 2, 3, 4};
-  std::vector<std::vector<GlobalDeviceId>> exp_root_devs{
-      {id0}, {id0, id2}, {id0, id2, id3}, {id0, id1, id2, id3}};
-  for (int ridx = 0; ridx < nroots.size(); ++ridx) {
-    int64_t n = nroots[ridx];
-    const auto& subkeys = key.GetSubKeys(n);
-    EXPECT_EQ(subkeys.size(), exp_root_devs[ridx].size());
-    for (int kidx = 0; kidx < subkeys.size(); ++kidx) {
-      GpuCliqueKey exp_subkey(
-          /*devices=*/{id0, id1, id2, id3},
-          /*num_local_participants=*/1,
-          /*is_p2p=*/true,
-          /*participant_groups=*/{},
-          /*root_device=*/exp_root_devs[ridx][kidx]);
-      EXPECT_EQ(subkeys[kidx], exp_subkey);
-    }
+  GpuCliqueKey key({id0, id1, id2, id3}, /*num_local_participants=*/1);
+
+  {
+    std::vector<GlobalDeviceId> roots = key.GetRootDevices(1);
+    std::vector<GlobalDeviceId> expected = {id0};
+    ASSERT_EQ(roots, expected);
+  }
+
+  {
+    std::vector<GlobalDeviceId> roots = key.GetRootDevices(2);
+    std::vector<GlobalDeviceId> expected = {id0, id2};
+    ASSERT_EQ(roots, expected);
+  }
+
+  {
+    std::vector<GlobalDeviceId> roots = key.GetRootDevices(3);
+    std::vector<GlobalDeviceId> expected = {id0, id2, id3};
+    ASSERT_EQ(roots, expected);
+  }
+
+  {
+    std::vector<GlobalDeviceId> roots = key.GetRootDevices(4);
+    std::vector<GlobalDeviceId> expected = {id0, id1, id2, id3};
+    ASSERT_EQ(roots, expected);
   }
 }
 
@@ -179,8 +185,22 @@ TEST(GpuCliqueKeyGettersTest, IsP2P) {
 
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
-            "devices=[0,1]; is_p2p=0; groups=[[0,1],[2,3]]; root=0; "
+            "devices=2:[0,1]; is_p2p=false; groups=[[0,1],[2,3]]; "
             "local_participants=2; incarnations=[]");
+}
+
+TEST(GpuCliqueKeyGetterTest, ToStringManyDevices) {
+  std::vector<GlobalDeviceId> devices;
+  devices.reserve(100);
+  for (size_t i = 0; i < 100; ++i) {
+    devices.push_back(GlobalDeviceId(i));
+  }
+
+  GpuCliqueKey key(devices, 100, /*is_p2p=*/false);
+
+  EXPECT_EQ(key.ToString(),
+            "devices=100:[0,1,2,3,4,5,6,7,8,9...96,97,98,99]; is_p2p=false; "
+            "local_participants=100; incarnations=[]");
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {

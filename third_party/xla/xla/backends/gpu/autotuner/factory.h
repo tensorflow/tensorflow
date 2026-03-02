@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -32,13 +33,15 @@ namespace gpu {
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
       stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
-      const Compiler::GpuTargetConfig*, mlir::MLIRContext* mlir_context)>;
+      const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
+      mlir::MLIRContext* mlir_context)>;
 };
 
 struct GetFissionBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
       stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
-      const Compiler::GpuTargetConfig*, mlir::MLIRContext* mlir_context)>;
+      const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
+      mlir::MLIRContext* mlir_context)>;
 };
 
 }  // namespace gpu

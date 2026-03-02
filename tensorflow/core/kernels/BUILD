@@ -4812,7 +4812,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:lib_internal",
         "@com_google_absl//absl/status",
-        "@net_zstd//:zstdlib",
+        "@net_zstd//:zstd",
     ] + PARSING_DEPS,
 )
 
@@ -7235,6 +7235,7 @@ cc_library(
         "//tensorflow/core/framework:tensor_proto_cc",
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/lib/jxl:jxl_io",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:strong_hash",
@@ -7248,6 +7249,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_protobuf//:protobuf",

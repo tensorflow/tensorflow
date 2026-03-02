@@ -79,14 +79,14 @@ jobs:
         run: |
           docker exec \
             ${{ env.CONTAINER_NAME }} \
-            bash -c "build_tools/rocm/execute_ci_build.sh --config=ci_single_gpu --local_test_jobs=2 --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL=linux_x64_gpu_gfx90a"
+            bash -c "build_tools/rocm/execute_ci_build.sh --config=ci_single_gpu --local_test_jobs=2 --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL=linux_x64_gpu_gfx90a --repo_env=TF_ROCM_RBE_DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}"
 
       - name: Test XLA [multi_gpu]
         if: always()
         run: |
           docker exec \
             ${{ env.CONTAINER_NAME }} \
-            bash -c "build_tools/rocm/execute_ci_build.sh --config=ci_multi_gpu --strategy=TestRunner=local --local_test_jobs=2"
+            bash -c "build_tools/rocm/execute_ci_build.sh --config=ci_multi_gpu --strategy=TestRunner=local --local_test_jobs=2 --repo_env=TF_ROCM_RBE_DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}"
 
       - name: Cleanup container
         if: always()

@@ -16,9 +16,11 @@ package_group(
         # copybara:uncomment "//cloud/ai/platform/prediction/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
         # copybara:uncomment "//learning/infra/mira/experimental/orbax_model/...",
         # copybara:uncomment "//learning/serving/servables/tfrt/...",
         # copybara:uncomment "//smartass/brain/inference/...",
+        # copybara:uncomment "//third_party/neptune/...",
         # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/core/tfrt/graph_executor/python/...",

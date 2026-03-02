@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
@@ -48,13 +49,14 @@ class FissionBackend : public GpuCodegenBackend {
                  const Compiler::GpuTargetConfig* target_config,
                  std::unique_ptr<GpuCodegenBackend> backend,
                  std::unique_ptr<HloPassPipeline> rewriter_pipeline,
-                 mlir::MLIRContext* mlir_context,
+                 const AliasInfo* alias_info, mlir::MLIRContext* mlir_context,
                  stream_executor::StreamExecutor* stream_executor = nullptr)
       : GpuCodegenBackend(absl::StrCat(backend->name(), "_fission"),
                           debug_options, compiler, target_config,
                           stream_executor),
         rewriter_pipeline_(std::move(rewriter_pipeline)),
         codegen_backend_(std::move(backend)),
+        alias_info_(alias_info),
         mlir_context_(mlir_context) {}
   ~FissionBackend() override = default;
 
@@ -81,6 +83,7 @@ class FissionBackend : public GpuCodegenBackend {
 
   std::unique_ptr<HloPassPipeline> rewriter_pipeline_;
   std::unique_ptr<GpuCodegenBackend> codegen_backend_;
+  const AliasInfo* alias_info_;
   mlir::MLIRContext* mlir_context_;
 };
 

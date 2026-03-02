@@ -27,13 +27,9 @@ limitations under the License.
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
-#include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace ifrt {
-
-using CompileFuture = tsl::Future<AtomProgramCompileResult>;
 
 // Wrapper around `AtomProgramCompiler` that offers multi-threaded dispatch
 // of atom program compilations.
@@ -52,7 +48,8 @@ class MultiThreadedAtomProgramCompiler {
   // Dispatches compilation of an atom program module.
   // Depending on the type of module, a MLIR pipeline might be executed before
   // the compilation is dispatched.
-  absl::StatusOr<CompileFuture> CompileModule(CallOp, mlir::ModuleOp module_op);
+  absl::StatusOr<AtomProgramCompileResult> CompileModule(
+      CallOp, mlir::ModuleOp module_op);
 
  private:
   // Compiles an atom XLA program.
@@ -60,11 +57,12 @@ class MultiThreadedAtomProgramCompiler {
   //
   // Note that the method runs `ifrt-compile-xla-preprocessing-pipeline`
   // before dispatching compilation.
-  absl::StatusOr<CompileFuture> CompileXla(CallOp call_op,
-                                           mlir::ModuleOp module_op);
+  absl::StatusOr<AtomProgramCompileResult> CompileXla(CallOp call_op,
+                                                      mlir::ModuleOp module_op);
 
   // Returns a future of a AtomProgramCompileResult for the MPMD reshard module.
-  absl::StatusOr<CompileFuture> CompileMpmdReshard(mlir::ModuleOp module_op);
+  absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
+      mlir::ModuleOp module_op);
 
   // Gets the XLA compile options for the given atom program module.
   absl::StatusOr<xla::CompileOptions> GetXlaCompileOptions(

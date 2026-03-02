@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
@@ -43,8 +44,9 @@ namespace xla::gpu {
 class TritonFusionNumericsVerifier : public HloModulePass {
  public:
   TritonFusionNumericsVerifier(const DeviceOrDevicelessConfig& config,
+                               const AliasInfo* alias_info,
                                mlir::MLIRContext* mlir_context)
-      : config_(config), mlir_context_(mlir_context) {}
+      : config_(config), alias_info_(alias_info), mlir_context_(mlir_context) {}
 
   static absl::string_view Name() { return "triton-numerics-verifier"; }
   absl::string_view name() const override { return Name(); }
@@ -60,6 +62,7 @@ class TritonFusionNumericsVerifier : public HloModulePass {
 
  private:
   DeviceOrDevicelessConfig config_;
+  const AliasInfo* alias_info_;
   mlir::MLIRContext* mlir_context_;
 
   // In some models there are many identical fusions. These are cached to avoid
@@ -73,7 +76,8 @@ namespace triton_fusion_numerics_pass_internal {
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
     AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
     const DeviceOrDevicelessConfig& config, const DebugOptions& debug_opts,
-    bool disable_triton, mlir::MLIRContext* mlir_context);
+    bool disable_triton, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context);
 absl::Status CompareBuffers(const ScopedShapedBuffer& current,
                             const ScopedShapedBuffer& expected,
                             const Shape& shape, const DebugOptions& debug_opts,

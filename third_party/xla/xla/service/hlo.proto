@@ -48,6 +48,13 @@ enum TriState {
   TRI_STATE_FALSE = 2;
 }
 
+enum ConvolutionKind {
+  CONVOLUTION_KIND_UNSET = 0;
+  CONVOLUTION_KIND_FPROP = 1;
+  CONVOLUTION_KIND_DGRAD = 2;
+  CONVOLUTION_KIND_WGRAD = 3;
+}
+
 // The version of the API used by the custom call function. The signatures for
 // each version are given below.
 // TODO(b/189822916): Remove this enum when all clients are migrated to the
@@ -119,7 +126,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 97
+// Next ID: 98
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -414,6 +421,9 @@ message HloInstructionProto {
 
   // Whether the scan instruction is associative.
   TriState is_associative = 96;
+
+  // Conv type (fprop, dgrad, wgrad)
+  ConvolutionKind conv_kind = 97;
 }
 
 // Serialization of HloComputation.

@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/cleanup/cleanup.h"
+#include "absl/base/no_destructor.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -44,11 +44,11 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.h"
-#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
@@ -62,6 +62,9 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -73,6 +76,21 @@ namespace ifrt {
 using ::tsl::profiler::TraceMe;
 
 namespace {
+
+// An executor that uses `tsl::Env::SchedClosure` to schedule tasks. Used to run
+// future callbacks that must not run on fibers.
+class FutureExecutor : public tsl::Executor {
+ public:
+  static FutureExecutor& Get() {
+    static absl::NoDestructor<FutureExecutor> instance;
+    return *instance;
+  }
+
+  void Execute(Task task) override {
+    tsl::Env::Default()->SchedClosure(
+        [task = std::move(task)]() mutable { std::move(task)(); });
+  }
+};
 
 absl::StatusOr<xla::ifrt::ArraySpec> ToArraySpec(
     xla::ifrt::IfrtArrayType array, xla::ifrt::Client* client,
@@ -176,6 +194,8 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
                              const AtomExecutableMap& atom_program_executables,
                              absl::Span<xla::ifrt::ArraySpec> in_specs,
                              absl::Span<xla::ifrt::ArraySpec> out_specs) {
+  tsl::profiler::TraceMe traceme("PopulateLayouts");
+
   auto main_func = xla::ifrt::GetMainFunction(mlir_module);
   mlir::SymbolTableCollection symbol_table;
 
@@ -303,12 +323,13 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
 
 }  // namespace
 
-absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
+tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>>
+CompiledIfrtIrProgram::Create(
     std::unique_ptr<xla::ifrt::IfrtIRProgram> ifrt_ir_program,
     std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> ifrt_ir_compile_options,
     xla::ifrt::Client* client,
     std::shared_ptr<xla::ifrt::AtomProgramCompiler> atom_program_compiler) {
-  TraceMe traceme([]() { return "ProgramCompiler::CompileForInterpreter"; });
+  TraceMe traceme("ProgramCompiler::CompileForInterpreter");
 
   // Sharing the compile options with the passes and when pipeline is done add
   // it to the CompiledIfrtIrProgram.
@@ -331,10 +352,11 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
 
   // Add the bounded executables to the atom program executable map so that
   // they can be used by the interpreter
-  std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_executable_map =
-      std::make_shared<xla::ifrt::AtomExecutableMap>(
-          compile_options->loaded_exec_binding.begin(),
-          compile_options->loaded_exec_binding.end());
+  auto atom_executable_future_map =
+      std::make_shared<xla::ifrt::AtomExecutableFutureMap>();
+  for (const auto& [key, exec] : compile_options->loaded_exec_binding) {
+    atom_executable_future_map->insert({key, exec});
+  }
   // Extract bindings.
   std::shared_ptr<xla::ifrt::AtomExecutableMap> bound_executable_map =
       std::make_shared<xla::ifrt::AtomExecutableMap>(
@@ -352,29 +374,22 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
                     compile_options->mlir_dump_func_re,
                     compile_options->mlir_enable_timing);
 
-    xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions
-        outline_pipeline_options;
-    outline_pipeline_options.propagate_shardings =
-        compile_options->propagate_shardings;
-    xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(
-        pm, outline_pipeline_options);
+    xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
 
     xla::ifrt::createIfrtPopulateAtomProgramMetadataPipeline(pm);
 
     OutlinedAtomProgramsToCompiledPipelineOptions compile_pipeline_options;
-    compile_pipeline_options.propagate_shardings =
-        compile_options->propagate_shardings;
     for (const auto device : devices) {
       compile_pipeline_options.platform_names.push_back(
           std::string(device->PlatformName()));
     }
     TF_RETURN_IF_ERROR(xla::ifrt::createOutlinedAtomProgramsToCompiledPipeline(
         pm, std::move(atom_program_compiler), compile_pipeline_options,
-        compile_options, atom_executable_map, std::move(bound_executable_map)));
+        compile_options, atom_executable_future_map,
+        std::move(bound_executable_map)));
 
     {
-      TraceMe traceme(
-          []() { return "ProgramCompiler::CompileForInterpreter::RunPasses"; });
+      TraceMe traceme("ProgramCompiler::CompileForInterpreter::RunPasses");
       StatusScopedDiagnosticHandler diag_handler(context);
       if (mlir::failed(pm.run(mlir_module))) {
         return diag_handler.ConsumeStatus();
@@ -389,18 +404,6 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
   TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArraySpec> out_specs,
                       ExtractOutSpecs(mlir_module, client, devices));
 
-  absl::Status layout_status =
-      PopulateLayouts(mlir_module, client, *atom_executable_map,
-                      absl::MakeSpan(in_specs), absl::MakeSpan(out_specs));
-  if (!layout_status.ok()) {
-    for (auto& spec : in_specs) {
-      spec.layout = nullptr;
-    }
-    for (auto& spec : out_specs) {
-      spec.layout = nullptr;
-    }
-  }
-
   mlir::func::FuncOp main_func = xla::ifrt::GetMainFunction(mlir_module);
   std::vector<int> donatable_input_indices;
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
@@ -412,24 +415,65 @@ absl::StatusOr<CompiledIfrtIrProgram> CompiledIfrtIrProgram::Create(
 
   TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       client->MakeDeviceList(devices));
-  TF_ASSIGN_OR_RETURN(
-      auto interpreter,
-      ProgramInterpreter::Create(client, program_name, mlir_module,
-                                 atom_executable_map, std::move(device_list)));
-  TF_ASSIGN_OR_RETURN(auto execute_fn, interpreter->BuildExecuteFn());
 
-  return CompiledIfrtIrProgram{
-      /*program_name=*/std::move(program_name),
-      /*atom_program_executables=*/std::move(atom_executable_map),
-      /*in_specs=*/std::move(in_specs),
-      /*out_specs=*/std::move(out_specs),
-      /*layout_status=*/layout_status,
-      /*donatable_input_indices=*/std::move(donatable_input_indices),
-      /*program=*/std::move(ifrt_ir_program),
-      /*device_assignments=*/std::move(device_assignments),
-      /*compile_options=*/compile_options,
-      /*execute_fn=*/std::move(execute_fn),
+  // Perform the rest of the work once all atom programs are successfully
+  // compiled since they need information from the compiled executables.
+  std::vector<tsl::Future<>> ready_futures;
+  ready_futures.reserve(atom_executable_future_map->size());
+  for (const auto& [key, exec] : *atom_executable_future_map) {
+    ready_futures.push_back(exec.GetReadyFuture());
+  }
+  auto create_program =
+      [program_name = std::move(program_name),
+       atom_executable_future_map = std::move(atom_executable_future_map),
+       mlir_module, client, in_specs = std::move(in_specs),
+       out_specs = std::move(out_specs),
+       donatable_input_indices = std::move(donatable_input_indices),
+       device_list = std::move(device_list),
+       ifrt_ir_program = std::move(ifrt_ir_program),
+       device_assignments = std::move(device_assignments),
+       compile_options = std::move(compile_options)]() mutable
+      -> absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>> {
+    auto atom_executable_map = std::make_shared<xla::ifrt::AtomExecutableMap>();
+    for (const auto& [key, exec] : *atom_executable_future_map) {
+      CHECK(exec.IsReady());
+      TF_ASSIGN_OR_RETURN(LoadedExecutableRef executable, exec.Await());
+      atom_executable_map->insert({key, std::move(executable)});
+    }
+
+    absl::Status layout_status =
+        PopulateLayouts(mlir_module, client, *atom_executable_map,
+                        absl::MakeSpan(in_specs), absl::MakeSpan(out_specs));
+    if (!layout_status.ok()) {
+      for (auto& spec : in_specs) {
+        spec.layout = nullptr;
+      }
+      for (auto& spec : out_specs) {
+        spec.layout = nullptr;
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(auto interpreter,
+                        ProgramInterpreter::Create(
+                            client, program_name, mlir_module,
+                            atom_executable_map, std::move(device_list)));
+    TF_ASSIGN_OR_RETURN(auto execute_fn, interpreter->BuildExecuteFn());
+
+    return std::make_shared<CompiledIfrtIrProgram>(CompiledIfrtIrProgram{
+        /*program_name=*/std::move(program_name),
+        /*atom_program_executables=*/std::move(atom_executable_map),
+        /*in_specs=*/std::move(in_specs),
+        /*out_specs=*/std::move(out_specs),
+        /*layout_status=*/layout_status,
+        /*donatable_input_indices=*/std::move(donatable_input_indices),
+        /*program=*/std::move(ifrt_ir_program),
+        /*device_assignments=*/std::move(device_assignments),
+        /*compile_options=*/compile_options,
+        /*execute_fn=*/std::move(execute_fn),
+    });
   };
+  return tsl::JoinFutures(ready_futures)
+      .Map(FutureExecutor::Get(), std::move(create_program));
 }
 
 }  // namespace ifrt

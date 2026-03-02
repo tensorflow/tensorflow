@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -34,6 +33,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/lower_to_ifrt.h"
@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/mock.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
@@ -57,7 +58,7 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
  public:
   TestChildExecutableCompiler() { methods_.reserve(kMaxTestMethods); }
 
-  absl::StatusOr<AtomProgramCompileResult> CompileXla(
+  tsl::Future<LoadedExecutableRef> CompileXla(
       std::unique_ptr<HloProgram> hlo_program,
       xla::CompileOptions options) override ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock lock(mu_);
@@ -99,12 +100,10 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
       ON_CALL(*mock_executable, GetOutputShardings())
           .WillByDefault(testing::Return(std::move(output_shardings)));
     }
-    return AtomProgramCompileResult{
-        /*name=*/absl::StrCat("fake_component__", methods_.back()),
-        /*executable=*/std::move(mock_executable)};
+    return mock_executable;
   }
 
-  absl::StatusOr<AtomProgramCompileResult> CompileMpmdReshard(
+  tsl::Future<LoadedExecutableRef> CompileMpmdReshard(
       std::vector<DType> dtypes, std::vector<Shape> shapes,
       std::vector<IfrtArrayType> in_array_types,
       std::vector<IfrtArrayType> out_array_types) override
@@ -114,11 +113,7 @@ class TestChildExecutableCompiler : public AtomProgramCompiler {
     CHECK_LT(methods_.size(), kMaxTestMethods)
         << "push_back() might have caused reallocation, which might have "
            "invalidated some method string_views.";
-    auto mock_executable =
-        std::make_unique<testing::NiceMock<MockLoadedExecutable>>();
-    return AtomProgramCompileResult{
-        /*name=*/absl::StrCat("fake_mpmd_reshard_component__", methods_.back()),
-        /*executable=*/std::make_unique<MockLoadedExecutable>()};
+    return std::make_unique<testing::NiceMock<MockLoadedExecutable>>();
   }
 
  private:
@@ -154,10 +149,9 @@ int main(int argc, char** argv) {
   std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options =
       std::make_shared<xla::ifrt::IfrtIRCompileOptions>();
   compile_options->dot_graph_dump_to = "sponge";
-  std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_executable_map =
-      std::make_shared<xla::ifrt::AtomExecutableMap>();
-  std::shared_ptr<xla::ifrt::AtomExecutableMap> bound_executable_map =
-      std::make_shared<xla::ifrt::AtomExecutableMap>();
+  auto atom_executable_map =
+      std::make_shared<xla::ifrt::AtomExecutableFutureMap>();
+  auto bound_executable_map = std::make_shared<xla::ifrt::AtomExecutableMap>();
 
   mlir::registerAllPasses();
   xla::ifrt::registerIfrtPassesAndPipelines(

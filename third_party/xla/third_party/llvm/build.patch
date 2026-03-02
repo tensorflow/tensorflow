@@ -1,29 +1,59 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 7770284e5543..0b45127495dc 100644
+index e83a237a5397..462b6b60f5b2 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -218,13 +218,15 @@ cc_library(
-         "lib/Support/BLAKE3/llvm_blake3_prefix.h",
-     ] + select({
-         "@platforms//cpu:aarch64": [
--            "lib/Support/BLAKE3/blake3_neon.c",
-+            # TODO(b/234415414): temporary disabled
-+            #            "lib/Support/BLAKE3/blake3_neon.c",
+@@ -232,19 +232,19 @@ write_file(
+ config_setting(
+     name = "is_windows_clang_mingw",
+     constraint_values = ["@platforms//os:windows"],
+-    flag_values = {"@rules_cc//cc/compiler:compiler": "clang"},
++    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
+ )
+ 
+ config_setting(
+     name = "is_windows_clang_cl",
+     constraint_values = ["@platforms//os:windows"],
+-    flag_values = {"@rules_cc//cc/compiler:compiler": "clang-cl"},
++    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang-cl"},
+ )
+ 
+ config_setting(
+     name = "is_windows_msvc",
+     constraint_values = ["@platforms//os:windows"],
+-    flag_values = {"@rules_cc//cc/compiler:compiler": "msvc-cl"},
++    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "msvc-cl"},
+ )
+ 
+ config_setting(
+@@ -253,7 +253,7 @@ config_setting(
+         "@platforms//cpu:x86_64",
+         "@platforms//os:windows",
+     ],
+-    flag_values = {"@rules_cc//cc/compiler:compiler": "clang"},
++    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
+ )
+ 
+ # TODO(zbarsky): Is there a better way to express this?
+@@ -327,12 +327,14 @@ cc_library(
+             "lib/Support/BLAKE3/blake3_neon.c",
          ],
-         "@platforms//cpu:x86_64": [
--            "lib/Support/BLAKE3/blake3_avx2_x86-64_unix.S",
--            "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
--            "lib/Support/BLAKE3/blake3_sse2_x86-64_unix.S",
--            "lib/Support/BLAKE3/blake3_sse41_x86-64_unix.S",
+         ":is_x86_64_windows_clang_mingw": [
+-            pattern % "windows_gnu"
+-            for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
 +            # TODO(b/234415414): temporary disabled
-+            # "lib/Support/BLAKE3/blake3_avx2_x86-64_unix.S",
-+            # "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
-+            # "lib/Support/BLAKE3/blake3_sse2_x86-64_unix.S",
-+            # "lib/Support/BLAKE3/blake3_sse41_x86-64_unix.S",
++            # pattern % "windows_gnu"
++            # for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
+         ],
+         ":is_x86_64_non_windows": [
+-            pattern % "unix"
+-            for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
++            # TODO(b/234415414): temporary disabled
++            # pattern % "unix"
++            # for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
          ],
          "//conditions:default": [
          ],
-@@ -249,14 +251,16 @@ cc_library(
+@@ -358,14 +360,16 @@ cc_library(
      ],
      copts = llvm_copts,
      defines = select({

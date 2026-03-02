@@ -21,6 +21,7 @@ import "xla/backends/cpu/xnn_fusion_options.proto";
 import "xla/backends/cpu/ynn_fusion_options.proto";
 import "xla/service/buffer_assignment.proto";
 import "xla/service/hlo.proto";
+import "xla/service/shaped_slice.proto";
 import "xla/xla_data.proto";
 
 option cc_enable_arenas = true;
@@ -226,9 +227,8 @@ message KernelThunkProto {
   NumWorkGroups num_workgroups = 2;
   repeated int64 invariant_arguments = 3;
   Int64Optional min_alignment = 4;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto arguments_buffers =
-      5;
-  repeated xla.buffer_assignment.BufferAllocationSliceProto results_buffers = 6;
+  repeated ShapedSliceProto arguments_buffers = 5;
+  repeated ShapedSliceProto results_buffers = 6;
 }
 
 message CopyThunkProto {

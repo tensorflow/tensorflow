@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
+#include "xla/backends/gpu/runtime/collective_multimem.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -206,6 +208,78 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$device_all_reduce",
                              /*execute=*/kDeviceAllReduce,
                          });
 
+static absl::Status PrepareMultimemKernel(
+    ffi::BufferR0<U32> src, ffi::Result<ffi::BufferR0<U32>> dst,
+    const CollectiveParams* collective_params,
+    CollectiveCliqueRequests* clique_requests,
+    CollectiveMultimemRequests* multimem_requests) {
+  TF_ASSIGN_OR_RETURN(
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(
+          *collective_params, {AllDevices()},
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID, false));
+
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceAddressBase src_memory_range,
+      collective_params->executor->GetMemoryRange(src.device_memory()));
+  multimem_requests->Request({clique_key, src_memory_range});
+  return absl::OkStatus();
+}
+
+static absl::Status InitializeMultimemKernel(
+    ffi::BufferR0<U32> src, ffi::Result<ffi::BufferR0<U32>> dst,
+    const CollectiveParams* collective_params,
+    const CollectiveCliques* collective_cliques,
+    const CollectiveMultimemProvider* memory_requests) {
+  TF_ASSIGN_OR_RETURN(
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(
+          *collective_params, {AllDevices()},
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID, false));
+  TF_ASSIGN_OR_RETURN(
+      se::DeviceAddressBase src_memory_range,
+      collective_params->executor->GetMemoryRange(src.device_memory()));
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<CollectiveMultimem> multimem,
+                      memory_requests->Get({clique_key, src_memory_range}));
+  return absl::OkStatus();
+}
+
+static absl::Status ExecuteMultimemKernel(ffi::BufferR0<U32> src,
+                                          ffi::Result<ffi::BufferR0<U32>> dst) {
+  return absl::OkStatus();
+}
+
+XLA_FFI_DEFINE_HANDLER(kPrepareMultimemKernel, PrepareMultimemKernel,
+                       ffi::Ffi::BindPrepare()
+                           .Arg<ffi::BufferR0<U32>>()  // src
+                           .Ret<ffi::BufferR0<U32>>()  // dst
+                           .Ctx<ffi::CollectiveParams>()
+                           .Ctx<ffi::CollectiveCliqueRequests>()
+                           .Ctx<ffi::CollectiveMultimemRequests>());
+
+XLA_FFI_DEFINE_HANDLER(kInitializeMultimemKernel, InitializeMultimemKernel,
+                       ffi::Ffi::BindInitialize()
+                           .Arg<ffi::BufferR0<U32>>()  // src
+                           .Ret<ffi::BufferR0<U32>>()  // dst
+                           .Ctx<ffi::CollectiveParams>()
+                           .Ctx<ffi::CollectiveCliques>()
+                           .Ctx<ffi::CollectiveMultimemProvider>());
+
+XLA_FFI_DEFINE_HANDLER(
+    kExecuteMultimemKernel, ExecuteMultimemKernel,
+    ffi::Ffi::Bind().Arg<ffi::BufferR0<U32>>().Ret<ffi::BufferR0<U32>>());
+
+// Register handler bundle for the custom all-reduce operation with
+// multimem.
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$multimem_kernel",
+                         "gpu",
+                         XLA_FFI_Handler_Bundle{
+                             /*instantiate=*/nullptr,
+                             /*prepare=*/kPrepareMultimemKernel,
+                             /*initialize=*/kInitializeMultimemKernel,
+                             /*execute=*/kExecuteMultimemKernel,
+                         });
+
 TEST_F(CollectiveOpsTestFFI, AllReduce) {
   if (hlo_runner_->device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
@@ -284,4 +358,39 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduce) {
   }
 }
 
+// Checks multimem requests and provider
+TEST_F(CollectiveOpsTestFFI, MultimemKernel) {
+  if (hlo_runner_->device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << hlo_runner_->device_count() << " available)";
+  }
+
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "Test requires Hopper+";
+  }
+
+  constexpr absl::string_view hlo_string = R"(
+      HloModule m, replica_count=2
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        in = u32[]{:S(1)} copy(id)
+        ROOT kernel = u32[]{:S(1)} custom-call(in),
+          custom_call_target="__xla_test$$multimem_kernel",
+          api_version=API_VERSION_TYPED_FFI
+      }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        /*arguments=*/std::vector<Literal*>(),
+                        /*run_hlo_passes=*/false));
+
+  absl::Span<const Literal> results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+}
 }  // namespace xla::gpu

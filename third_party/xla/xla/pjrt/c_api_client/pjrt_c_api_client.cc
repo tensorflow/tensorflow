@@ -3063,10 +3063,14 @@ Future<> PjRtCApiBuffer::ToLiteral(MutableLiteralBase* literal) {
 
   args.dst_size = ShapeUtil::ByteSizeOfElements(shape);
   args.dst = literal->untyped_data();
-  if (args.dst == nullptr) {
-    // For zero-sized buffers, args.dst will be nullptr. In that case, the C API
-    // will return early and not allocate an event.
-    return Future<>(absl::OkStatus());
+  std::unique_ptr<char[]> placeholder_dst;
+  if (args.dst == nullptr && args.dst_size == 0) {
+    // `PJRT_Buffer_ToHostBuffer` returns early for `nullptr` dst, which skips
+    // buffer error propagation. Therefore, we set `args.dst` to a non-null
+    // placeholder to force `PJRT_Buffer_ToHostBuffer` to proceed to copy and
+    // propagate errors.
+    placeholder_dst = std::make_unique<char[]>(0);
+    args.dst = placeholder_dst.get();
   }
   absl::StatusOr<pjrt::BufferMemoryLayoutData> c_layout_data;
   if (literal->shape().has_layout()) {

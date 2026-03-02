@@ -181,6 +181,7 @@ cc_library(
         "//xla/python/ifrt_proxy/common:versions",
         "//xla/python/ifrt_proxy/contrib/pathways:status_annotator_util",  # build_cleaner: keep
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
+        "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
@@ -369,6 +370,7 @@ cc_library(
         "//xla/pjrt:host_callback",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:user_context",
         "//xla/python/ifrt:user_context_status_util",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:versions",
@@ -381,6 +383,7 @@ cc_library(
         "//xla/tsl/platform:status_to_from_proto",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

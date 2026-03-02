@@ -182,6 +182,32 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMultimemRequests_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_multimem_requests) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *collective_multimem_requests = gpu->collective_multimem_requests;
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMultimemProvider_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_multimem_provider) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *collective_multimem_provider =
+        const_cast<xla::gpu::CollectiveMultimemProvider*>(  // NOLINT
+            gpu->collective_multimem_provider);
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 static XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
     XLA_FFI_ExecutionContext* ctx, void** gpu_compute_capability) {
   if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
@@ -216,6 +242,8 @@ const XLA_FFI_InternalApi* GetInternalApi() {
       XLA_FFI_INTERNAL_CollectiveParams_Get,
       XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,
       XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get,
+      XLA_FFI_INTERNAL_CollectiveMultimemRequests_Get,
+      XLA_FFI_INTERNAL_CollectiveMultimemProvider_Get,
       XLA_FFI_INTERNAL_CollectiveCliques_Get,
       XLA_FFI_INTERNAL_GpuComputeCapability_Get,
   };

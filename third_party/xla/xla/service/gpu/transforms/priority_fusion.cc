@@ -43,6 +43,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/debug_options_flags.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dfs_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -162,7 +163,8 @@ class PriorityFusionQueue {
                       mlir::MLIRContext* mlir_context,
                       HloFusionAnalysisCache& fusion_analysis_cache,
                       FusionDeduplicationCache& fusion_deduplication_cache,
-                      bool triton_heroless_fusion_enabled)
+                      bool triton_heroless_fusion_enabled,
+                      const AliasInfo* alias_info)
       : computation_(computation),
         device_info_(device_info),
         cost_analysis_(cost_analysis_options, *device_info),
@@ -177,7 +179,8 @@ class PriorityFusionQueue {
         fusion_deduplication_cache_(fusion_deduplication_cache),
         fusion_info_cache_(*device_info_),
         reachability_(HloDfsReachability::Build(computation)),
-        triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled) {
+        triton_heroless_fusion_enabled_(triton_heroless_fusion_enabled),
+        alias_info_(alias_info) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     CHECK_OK(computation_->Accept(&cost_analysis_));
 
@@ -869,7 +872,7 @@ class PriorityFusionQueue {
     }
 
     return InstructionFusion::ShouldFuseInPlaceOp(producer, consumer,
-                                                  std::nullopt);
+                                                  alias_info_, std::nullopt);
   }
 
   FusionDecision CanFuseCached(HloInstruction* producer,
@@ -1079,6 +1082,8 @@ class PriorityFusionQueue {
   // If true, redirect all fusion decisions to Triton fusion.
   bool triton_heroless_fusion_enabled_;
 
+  const AliasInfo* alias_info_;
+
   bool dump_fusion_visualization_;
 };
 
@@ -1171,7 +1176,7 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
         computation, cost_analysis_options_, &device_info_,
         fusion_process_dump_.get(), thread_pool_, mlir_context_,
         fusion_analysis_cache_, fusion_deduplication_cache,
-        triton_heroless_fusion_enabled);
+        triton_heroless_fusion_enabled, alias_info_);
 
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();

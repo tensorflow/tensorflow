@@ -304,12 +304,8 @@ class XtileLoweringTest(absltest.TestCase):
           %index = arith.muli %tile_id, %c_8 : index
           %input_tile = xtile.extract %input[%index, %c_0][8, 32][1, 1] : memref<1024x32xf32> -> tensor<8x32xf32>
           %result = stablehlo.reduce(%input_tile init: %init_tile)
-                    across dimensions = [1]
+                    applies stablehlo.add across dimensions = [1]
                     : (tensor<8x32xf32>, tensor<f32>) -> tensor<8xf32>
-            reducer(%arg0: tensor<f32>, %arg1: tensor<f32>) {
-              %add = arith.addf %arg0, %arg1 : tensor<f32>
-              stablehlo.return %add : tensor<f32>
-            }
           xtile.insert %result into %output[%index][8][1] : tensor<8xf32> -> memref<1024xf32>
           xtile.return
         }

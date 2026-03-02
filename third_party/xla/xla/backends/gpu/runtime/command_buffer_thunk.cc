@@ -149,7 +149,7 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   absl::MutexLock lock(cmd_buffer->mutex);
 
   // Initialize commands.
-  TF_RETURN_IF_ERROR(commands_.Initialize(params, cmd_buffer->state));
+  TF_RETURN_IF_ERROR(commands_.Initialize(params));
 
   // Always initialize thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.

@@ -415,6 +415,7 @@ cc_library(
     hdrs = ["pjrt_executable.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":pjrt_abi_version",
         ":pjrt_common",
         ":pjrt_device_dimensions",
         ":pjrt_layout",
@@ -759,7 +760,10 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "//xla/util/split_proto:split_executable_and_options_writer",
+        "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -778,6 +782,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@riegeli//riegeli/bytes:string_reader",
+        "@riegeli//riegeli/bytes:string_writer",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:platform_port",
@@ -1450,6 +1456,7 @@ cc_library(
         "//xla/tsl/framework:allocator",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 

@@ -47,7 +47,7 @@ absl::StatusOr<FusionEmissionResult> CuDnnFusion::Emit(
           fusion.fused_instructions_computation(), {}),
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
-      kernel_arguments.GetArgumentBufferSlices(),
+      kernel_arguments.GetArgumentShapedSlices(),
       kernel_arguments.GetArgumentOutputFlags()));
   return result;
 }

@@ -53,6 +53,7 @@ cc_library(
         "@xla//xla:xla_data_proto_cc",
         "@xla//xla/backends/cpu/runtime:convolution_dims",
         "@xla//xla/backends/cpu/runtime:dot_dims",
+        "@xla//xla/backends/cpu/runtime:kernel_thunk",
         "@xla//xla/backends/cpu/runtime:thunk_proto_cc",
         "@xla//xla/service/cpu:executable_proto_cc",
         "@xla//xla/tsl/platform:statusor",

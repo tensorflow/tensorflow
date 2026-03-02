@@ -922,9 +922,19 @@ std::unique_ptr<PjRtClient> PjRtClient::Create(
   return *Create(std::move(options));
 }
 
+static int NumCompilationThreads(xla::PjRtPlatformId platform_id) {
+  if (platform_id == xla::CudaId()) {
+    // Disable asynchronous compilation on GPUs since sharded autotuning may
+    // require in-order compilation.
+    return 0;
+  }
+  return 8;
+}
+
 PjRtClient::PjRtClient(std::shared_ptr<xla::PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)),
-      default_compiler_(this),
+      default_compiler_(this,
+                        NumCompilationThreads(pjrt_client_->platform_id())),
       attributes_(MakeAttributeMap(pjrt_client_.get())) {}
 
 PjRtClient::~PjRtClient() {
@@ -1773,6 +1783,17 @@ PjRtClient::GetDefaultPjRtLayout(DType dtype, absl::Span<const int64_t> dims,
     default_layout_cache_.insert({std::move(key), layout});
   }
   return layout;
+}
+
+absl::StatusOr<CustomLayoutRef> PjRtClient::GetDefaultLayout(
+    DType dtype, const Shape& shape, const ShardingRef& sharding) const {
+  TF_ASSIGN_OR_RETURN(const Shape shard_shape, sharding->GetShardShape(shape));
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const xla::PjRtLayout> layout,
+      GetDefaultPjRtLayout(dtype, shard_shape.dims(),
+                           sharding->devices()->devices().front(),
+                           sharding->memory_kind()));
+  return PjRtLayout::Create(std::move(layout));
 }
 
 absl::Status PjRtClient::TransferToInfeed(PjRtDevice* device,

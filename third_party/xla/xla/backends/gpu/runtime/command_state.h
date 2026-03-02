@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_STATE_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_STATE_H_
 
+#include <cstdint>
+#include <memory>
+#include <tuple>
+
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
@@ -88,18 +92,20 @@ class CommandState {
 // for the state is a pair or `Command` and `se::CommandBuffer` which fully
 // identify where exactly command is being recorded.
 //
-// IMPORTANT: Command can be recorded into the command buffer only once before
-// it can be updated, and the command life cycle should be:
+// IMPORTANT: Command can be recorded into the command buffer multiple times
+// for different record ids (see `CommandExecutor::RecordId`). The typical
+// command lifecycle is:
 //
 // (1) Command::Prepare() - prepare state for execution
 // (2) Command::Initialize() - initialize resources for execution (or state)
 // (3) Command::Record(create) - record commands into the command buffer
 // (4) Command::Record(update) - update previousy recorded command
 //
-// Step (4) can be called multiple times: every time the buffers used by
-// commands change, and underlying command buffer attributes must be updated.
-//
-// Steps (1) though (4) repeated for every new constructed command buffer.
+// Steps (1) and (2) called exactly one time for each top level XLA program
+// execution. Steps (3) and (4) can be called multiple times. In the most
+// common scenario step (3) called once when command recorded first time, and
+// then every time XLA program executes it calls step (4) to update command
+// with new buffer addresses.
 class CommandStateManager {
  public:
   template <typename State>

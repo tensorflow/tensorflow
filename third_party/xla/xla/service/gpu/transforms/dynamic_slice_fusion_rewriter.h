@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_TRANSFORMS_DYNAMIC_SLICE_FUSION_REWRITER_H_
 #define XLA_SERVICE_GPU_TRANSFORMS_DYNAMIC_SLICE_FUSION_REWRITER_H_
 
-#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/platform.h"
 
 namespace xla {
 namespace gpu {
@@ -73,8 +73,8 @@ class DynamicSliceFusionRewriter : public HloModulePass {
     return "dynamic-slice-fusion-rewriter";
   }
 
-  explicit DynamicSliceFusionRewriter(std::string platform_name)
-      : platform_name_(std::move(platform_name)) {}
+  explicit DynamicSliceFusionRewriter(stream_executor::Platform::Id platform_id)
+      : platform_id_(std::move(platform_id)) {}
 
  protected:
   absl::StatusOr<bool> RunImpl(
@@ -82,7 +82,7 @@ class DynamicSliceFusionRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  std::string platform_name_;
+  stream_executor::Platform::Id platform_id_;
 };
 
 }  // namespace gpu

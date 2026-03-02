@@ -27,7 +27,7 @@ namespace port {
 
 TEST(Port, AlignedMalloc) {
   for (size_t alignment = 1; alignment <= 1 << 20; alignment <<= 1) {
-    void* p = AlignedMalloc(1, alignment);
+    void* p = AlignedMalloc(1, static_cast<std::align_val_t>(alignment));
     ASSERT_TRUE(p != nullptr) << "AlignedMalloc(1, " << alignment << ")";
     uintptr_t pval = reinterpret_cast<uintptr_t>(p);
     EXPECT_EQ(pval % alignment, 0);

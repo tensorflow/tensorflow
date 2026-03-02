@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallBitVector.h"
@@ -174,6 +175,10 @@ SymbolicMap CompressDims(const SymbolicMap& map,
 // Expressions are updated to use the new symbol indices.
 SymbolicMap CompressSymbols(const SymbolicMap& map,
                             const llvm::SmallBitVector& unused_symbols);
+
+// Parses a SymbolicMap from its string representation.
+SymbolicMap ParseSymbolicMap(absl::string_view serialized_symbolic_map,
+                             mlir::MLIRContext* mlir_context);
 
 template <typename H>
 H AbslHashValue(H h, const llvm::SmallVector<SymbolicExpr>& vec) {

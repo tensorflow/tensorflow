@@ -2821,7 +2821,7 @@ PJRT_Error* PJRT_TopologyDescription_Deserialize(
   }
 
   PJRT_ASSIGN_OR_RETURN(xla::PjRtCompiler * compiler,
-                        xla::GetPjRtCompiler(proto.platform_name()));
+                        xla::GetDefaultPjRtCompiler(proto.platform_name()));
   std::string serialized_topology_str(args->serialized_topology,
                                       args->serialized_topology_size);
   PJRT_ASSIGN_OR_RETURN(

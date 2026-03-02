@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/autotuner/triton.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -326,7 +327,7 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
 NVPTXCompiler::GetCodegenBackends(
     se::StreamExecutor* stream_exec,
-    const Compiler::GpuTargetConfig* target_config,
+    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   const auto& enabled_backends =
@@ -362,7 +363,7 @@ NVPTXCompiler::GetCodegenBackends(
 
   if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_TRITON)) {
     backends.push_back(std::make_unique<TritonBackend>(
-        &debug_options, this, target_config, mlir_context));
+        &debug_options, this, target_config, alias_info, mlir_context));
   }
 
   if (!debug_options.xla_gpu_experimental_disable_binary_libraries()) {
@@ -381,7 +382,7 @@ NVPTXCompiler::GetCodegenBackends(
             std::make_unique<CublasBackend>(stream_exec, &debug_options, this,
                                             target_config, true),
             GetCublasRewriterPipeline(target_config->device_description),
-            mlir_context));
+            alias_info, mlir_context));
       }
       if (debug_options.xla_gpu_enable_cublaslt() &&
           is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_CUBLASLT)) {
@@ -391,7 +392,7 @@ NVPTXCompiler::GetCodegenBackends(
                                               target_config),
             GetCublasRewriterPipeline(target_config->device_description,
                                       /*enable_cublaslt=*/true),
-            mlir_context));
+            alias_info, mlir_context));
       }
     }
     backends.push_back(std::make_unique<FissionBackend>(
@@ -399,7 +400,7 @@ NVPTXCompiler::GetCodegenBackends(
         std::make_unique<CustomKernelBackend>(stream_exec, &debug_options, this,
                                               target_config),
         GetCustomKernelRewriterPipeline(target_config->device_description),
-        mlir_context));
+        alias_info, mlir_context));
   }
 
   return backends;

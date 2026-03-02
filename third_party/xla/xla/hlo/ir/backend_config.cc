@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -62,20 +63,35 @@ absl::Status BackendConfigWrapper::GetProto(
     tsl::protobuf::Message* output_proto) const {
   output_proto->Clear();
 
-  absl::WriterMutexLock lock{mutex_};
-  if (proto_ != nullptr) {
+  auto copy_from_cache =
+      [&]() ABSL_SHARED_LOCKS_REQUIRED(mutex_) -> absl::Status {
     if (proto_->GetDescriptor() != output_proto->GetDescriptor()) {
       return Internal("Mismatched backend config descriptors.");
     }
     output_proto->CopyFrom(*proto_);
     return absl::OkStatus();
+  };
+
+  // Fast path: check with reader lock if proto is already cached.
+  {
+    absl::ReaderMutexLock lock{mutex_};
+    if (proto_ != nullptr) {
+      return copy_from_cache();
+    }
+    // Empty string does not parse as valid JSON, but it's a valid backend
+    // config, corresponding to the empty proto.
+    if (raw_string_.empty()) {
+      return absl::OkStatus();
+    }
   }
 
-  // Empty string does not parse as valid JSON, but it's a valid backend config,
-  // corresponding to the empty proto.
-  if (raw_string_.empty()) {
-    return absl::OkStatus();
+  absl::WriterMutexLock lock{mutex_};
+  // Check again if another thread parsed and cached the proto while we were
+  // waiting for the writer lock.
+  if (proto_ != nullptr) {
+    return copy_from_cache();
   }
+
   TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
   // Cache the proto into the empty proto_.
   proto_ = CloneBackendConfigProto(output_proto);

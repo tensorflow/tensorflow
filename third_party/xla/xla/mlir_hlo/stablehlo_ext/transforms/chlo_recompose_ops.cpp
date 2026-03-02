@@ -22,11 +22,14 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "stablehlo/dialect/ChloOps.h"
@@ -261,6 +264,43 @@ struct AcoshOpRecomposePattern
           op, "unsupported version for chlo.acosh composite");
     }
     return recomposeChloOpFromCompositeOp<chlo::AcoshOp>(op, rewriter);
+  }
+};
+
+struct ScanOpRecomposePattern
+    : public OpRewritePattern<stablehlo::CompositeOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getName() != "chlo.scan") {
+      return rewriter.notifyMatchFailure(op, "not a chlo.scan");
+    }
+    if (op.getVersion() != 1) {
+      return rewriter.notifyMatchFailure(
+          op, "unsupported version for chlo.scan composite");
+    }
+
+    auto module = op->getParentOfType<ModuleOp>();
+    auto func = module.lookupSymbol<func::FuncOp>(op.getDecomposition());
+    if (!func) return failure();
+
+    chlo::ScanOp scanOp;
+    func.walk([&](chlo::ScanOp op) {
+      scanOp = op;
+      return WalkResult::interrupt();
+    });
+    if (!scanOp) return failure();
+
+    IRMapping mapping;
+    for (auto [arg, operand] :
+         llvm::zip(func.getArguments(), op.getOperands())) {
+      mapping.map(arg, operand);
+    }
+
+    auto* clonedOp = rewriter.clone(*scanOp, mapping);
+    rewriter.replaceOp(op, clonedOp->getResults());
+
+    return success();
   }
 };
 
@@ -519,6 +559,51 @@ struct AsinhOpCustomCallRecomposePattern
   }
 };
 
+struct ScanOpCustomCallRecomposePattern
+    : public OpRewritePattern<stablehlo::CustomCallOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(stablehlo::CustomCallOp op,
+                                PatternRewriter& rewriter) const override {
+    if (op.getCallTargetName() != "chlo.scan") return failure();
+
+    auto attrs = getCustomCallOpAttributes(op, rewriter);
+    if (failed(attrs)) return failure();
+
+    auto chloAttrs = deserializeChloAttributes(op, "chlo.scan", attrs.value());
+    if (failed(chloAttrs)) return failure();
+
+    if (op.getCalledComputations().size() != 1)
+      return rewriter.notifyMatchFailure(op, "expected 1 called computation");
+
+    auto funcSymbol =
+        mlir::cast<FlatSymbolRefAttr>(op.getCalledComputations()[0]);
+    auto module = op->getParentOfType<ModuleOp>();
+    auto func = module.lookupSymbol<func::FuncOp>(funcSymbol.getValue());
+    if (!func)
+      return rewriter.notifyMatchFailure(op, "called computation not found");
+
+    auto scanOp =
+        chlo::ScanOp::create(rewriter, op.getLoc(), op.getResultTypes(),
+                             op.getOperands(), chloAttrs.value());
+
+    IRMapping mapping;
+    func.getBody().cloneInto(&scanOp.getBody(), mapping);
+
+    for (Block& block : scanOp.getBody()) {
+      Operation* term = block.getTerminator();
+      if (isa<func::ReturnOp>(term)) {
+        rewriter.setInsertionPoint(term);
+        stablehlo::ReturnOp::create(rewriter, term->getLoc(),
+                                    term->getOperands());
+        rewriter.eraseOp(term);
+      }
+    }
+
+    rewriter.replaceOp(op, scanOp.getResults());
+    return success();
+  }
+};
+
 }  // namespace
 
 struct ChloRecomposeOpsPass
@@ -548,6 +633,7 @@ struct ChloRecomposeOpsPass
       SinhOpCustomCallRecomposePattern,
       ErfOpCustomCallRecomposePattern,
       RaggedDotOpCustomCallRecomposePattern,
+      ScanOpCustomCallRecomposePattern,
       TanOpCustomCallRecomposePattern,
       TopKOpCustomCallRecomposePattern>(ctx);
 
@@ -562,6 +648,7 @@ struct ChloRecomposeOpsPass
       SinhOpRecomposePattern,
       ErfOpRecomposePattern,
       RaggedDotOpRecomposePattern,
+      ScanOpRecomposePattern,
       TopKOpRecomposePattern>(ctx);
     // clang-format on
 

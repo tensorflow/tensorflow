@@ -361,7 +361,7 @@ absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
     return Internal("Encoded shape size exceeded int32_t size limit.");
   }
   *shape_size = static_cast<int32_t>(encoded_shape.size());
-  return b->CreateGlobalStringPtr(encoded_shape);
+  return b->CreateGlobalString(encoded_shape);
 }
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,

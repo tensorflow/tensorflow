@@ -110,9 +110,8 @@ ENTRY e {
         std::unique_ptr<CompiledModule> aot_result,
         compiler->LoadAotCompilationResult(serialized_aot_result));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::unique_ptr<Executable> executable,
-        std::move(*aot_result).LoadExecutable(aot_options->executor()));
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                            std::move(*aot_result).LoadExecutable());
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         test_runner_as_hlo_runner().WrapExecutable(std::move(executable));
 

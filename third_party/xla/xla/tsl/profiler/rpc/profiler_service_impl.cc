@@ -52,6 +52,8 @@ using tensorflow::MonitorRequest;
 using tensorflow::MonitorResponse;
 using tensorflow::ProfileRequest;
 using tensorflow::ProfileResponse;
+using tensorflow::StopContinuousProfilingRequest;
+using tensorflow::StopContinuousProfilingResponse;
 using tensorflow::TerminateRequest;
 using tensorflow::TerminateResponse;
 
@@ -139,7 +141,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
   ::grpc::Status StartContinuousProfiling(
       ::grpc::ServerContext* ctx, const ProfileRequest* req,
       ContinuousProfilingResponse* response) override {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (continuous_profiling_session_.has_value()) {
       return ::grpc::Status(::grpc::StatusCode::ALREADY_EXISTS,
                             "A profiling session is already running.");
@@ -159,10 +161,28 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
     return ::grpc::Status::OK;
   }
 
+  ::grpc::Status StopContinuousProfiling(
+      ::grpc::ServerContext* ctx, const StopContinuousProfilingRequest* req,
+      StopContinuousProfilingResponse* response) override {
+    std::optional<ContinuousSession> session_to_destroy;
+    {
+      absl::MutexLock lock(&mutex_);
+      if (!continuous_profiling_session_.has_value()) {
+        return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
+                              "No continuous profiling session found.");
+      }
+      // Move session to a local variable so that it is destroyed after mutex
+      // is released, avoiding potentially expensive destruction of
+      // ProfilerSession under lock.
+      session_to_destroy.swap(continuous_profiling_session_);
+    }
+    return ::grpc::Status::OK;
+  }
+
   ::grpc::Status GetSnapshot(::grpc::ServerContext* ctx,
                              const GetSnapshotRequest* req,
                              ProfileResponse* response) override {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     if (!continuous_profiling_session_.has_value()) {
       return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
                             "No continuous profiling session found.");

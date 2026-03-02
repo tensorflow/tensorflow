@@ -161,13 +161,21 @@ cc_library(
     deps = [
         "//xla/tsl/distributed_runtime/coordination:coordination_service",
         "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_library(
     name = "process_id",
     hdrs = ["process_id.h"],
-    deps = ["//xla/tsl/lib/gtl:int_type"],
+    deps = [
+        "//xla/tsl/lib/gtl:int_type",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(

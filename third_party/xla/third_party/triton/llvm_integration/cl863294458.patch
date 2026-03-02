@@ -1,0 +1,219 @@
+
+--- a/include/triton/Analysis/Alias.h	2026-01-27 23:24:40.000000000 -0800
++++ b/include/triton/Analysis/Alias.h	2026-01-30 10:35:44.000000000 -0800
+@@ -90,11 +90,11 @@
+                  ArrayRef<const dataflow::Lattice<AliasInfo> *> operands,
+                  ArrayRef<dataflow::Lattice<AliasInfo> *> results) override;
+ 
+-  void visitNonControlFlowArguments(
+-      Operation* op, const RegionSuccessor& successor,
+-      ValueRange successorInputs,
+-      ArrayRef<dataflow::Lattice<AliasInfo>*> argLattices,
+-      unsigned firstIndex) override;
++  void visitNonControlFlowArguments(Operation* op,
++                                    const RegionSuccessor& successor,
++                                    ValueRange nonSuccessorInputs,
++                                    ArrayRef<dataflow::Lattice<AliasInfo>*>
++                                        nonSuccessorInputLattices) override;
+ };
+ 
+ } // namespace mlir
+
+--- a/include/triton/Analysis/BufferRegion.h	2026-01-27 23:24:40.000000000 -0800
++++ b/include/triton/Analysis/BufferRegion.h	2026-01-30 10:35:44.000000000 -0800
+@@ -154,9 +154,9 @@
+ 
+   void visitNonControlFlowArguments(
+       Operation* op, const RegionSuccessor& successor,
+-      ValueRange successorInputs,
+-      llvm::ArrayRef<dataflow::Lattice<RegionInfo>*> argLattices,
+-      unsigned firstIndex) override;
++      ValueRange nonSuccessorInputs,
++      llvm::ArrayRef<dataflow::Lattice<RegionInfo>*> nonSuccessorInputLattices)
++      override;
+ 
+   LogicalResult initialize(Operation *top) override;
+ 
+
+--- a/lib/Analysis/Alias.cpp	2026-01-27 23:24:40.000000000 -0800
++++ b/lib/Analysis/Alias.cpp	2026-01-30 10:35:44.000000000 -0800
+@@ -59,13 +59,12 @@
+ }
+ 
+ void SharedMemoryAliasAnalysis::visitNonControlFlowArguments(
+-    Operation* op, const RegionSuccessor& successor, ValueRange successorInputs,
+-    ArrayRef<dataflow::Lattice<AliasInfo>*> argLattices, unsigned firstIndex) {
++    Operation* op, const RegionSuccessor& successor,
++    ValueRange nonSuccessorInputs,
++    ArrayRef<dataflow::Lattice<AliasInfo>*> nonSuccessorInputLattices) {
+   auto wsOp = dyn_cast<triton::gpu::WarpSpecializePartitionsOp>(op);
+   if (!wsOp) {
+-    setAllToEntryStates(argLattices.take_front(firstIndex));
+-    setAllToEntryStates(
+-        argLattices.drop_front(firstIndex + successorInputs.size()));
++    setAllToEntryStates(nonSuccessorInputLattices);
+     return;
+   }
+ 
+@@ -75,7 +74,8 @@
+   ProgramPoint *point = getProgramPointAfter(wsOp);
+ 
+   for (auto [capture, argLattice] :
+-       llvm::zip(wsOp.getParentOp().getExplicitCaptures(), argLattices)) {
++       llvm::zip(wsOp.getParentOp().getExplicitCaptures(),
++                 nonSuccessorInputLattices)) {
+     propagateIfChanged(
+         argLattice,
+         argLattice->join(getLatticeElementFor(point, capture)->getValue()));
+
+--- a/lib/Analysis/AxisInfo.cpp	2026-01-27 23:24:40.000000000 -0800
++++ b/lib/Analysis/AxisInfo.cpp	2026-01-30 10:35:44.000000000 -0800
+@@ -144,19 +144,18 @@
+                      AxisInfo::getPessimisticValueState(lattice->getAnchor())));
+   }
+ 
+-  void visitNonControlFlowArguments(
+-      Operation* op, const RegionSuccessor& successor,
+-      ValueRange successorInputs,
+-      ArrayRef<dataflow::Lattice<AxisInfo>*> argLattices,
+-      unsigned firstIndex) override {
++  void visitNonControlFlowArguments(Operation* op,
++                                    const RegionSuccessor& successor,
++                                    ValueRange nonSuccessorInputs,
++                                    ArrayRef<dataflow::Lattice<AxisInfo>*>
++                                        nonSuccessorInputLattices) override {
+     if (auto forOp = dyn_cast<scf::ForOp>(op)) {
+-      visitForOpInductionVar(forOp, argLattices);
++      visitForOpInductionVar(forOp, nonSuccessorInputLattices);
+     } else if (auto ws = dyn_cast<gpu::WarpSpecializePartitionsOp>(op)) {
+-      visitWarpSpecializeExplicitCaptures(ws, successor, argLattices);
++      visitWarpSpecializeExplicitCaptures(ws, successor,
++                                          nonSuccessorInputLattices);
+     } else {
+-      setAllToEntryStates(argLattices.take_front(firstIndex));
+-      setAllToEntryStates(
+-          argLattices.drop_front(firstIndex + successorInputs.size()));
++      setAllToEntryStates(nonSuccessorInputLattices);
+     }
+   }
+ 
+
+--- a/lib/Analysis/BufferRegion.cpp	2026-01-27 23:24:40.000000000 -0800
++++ b/lib/Analysis/BufferRegion.cpp	2026-01-30 10:35:44.000000000 -0800
+@@ -297,14 +297,12 @@
+ }
+ 
+ void BufferRegionAnalysis::visitNonControlFlowArguments(
+-    Operation* op, const RegionSuccessor& successor, ValueRange successorInputs,
+-    llvm::ArrayRef<dataflow::Lattice<RegionInfo>*> argLattices,
+-    unsigned firstIndex) {
++    Operation* op, const RegionSuccessor& successor,
++    ValueRange nonSuccessorInputs,
++    llvm::ArrayRef<dataflow::Lattice<RegionInfo>*> nonSuccessorInputLattices) {
+   auto wsOp = dyn_cast<triton::gpu::WarpSpecializePartitionsOp>(op);
+   if (!wsOp) {
+-    setAllToEntryStates(argLattices.take_front(firstIndex));
+-    setAllToEntryStates(
+-        argLattices.drop_front(firstIndex + successorInputs.size()));
++    setAllToEntryStates(nonSuccessorInputLattices);
+     return;
+   }
+ 
+@@ -314,7 +312,8 @@
+   ProgramPoint *point = getProgramPointAfter(wsOp);
+ 
+   for (auto [capture, argLattice] :
+-       llvm::zip(wsOp.getParentOp().getExplicitCaptures(), argLattices)) {
++       llvm::zip(wsOp.getParentOp().getExplicitCaptures(),
++                 nonSuccessorInputLattices)) {
+     propagateIfChanged(
+         argLattice,
+         argLattice->join(getLatticeElementFor(point, capture)->getValue()));
+
+--- a/test/Conversion/amd/mbarrier_ops_to_llvm_gfx1250.mlir	2026-01-21 01:19:21.000000000 -0800
++++ b/test/Conversion/amd/mbarrier_ops_to_llvm_gfx1250.mlir	2026-01-30 10:35:44.000000000 -0800
+@@ -8,7 +8,9 @@
+     // GFX1250: %[[INIT_VAL1:.+]] = llvm.mlir.constant(4294967297 : i64) : i64
+     // GFX1250: %[[ALLOC_PTR:.+]] = llvm.extractvalue %arg0[0] : !llvm.struct<(ptr<3>, i32)>
+     // GFX1250: llvm.store %[[INIT_VAL1]], %[[ALLOC_PTR]] : i64, !llvm.ptr<3>
+-    // GFX1250: rocdl.barrier
++    // GFX1250: llvm.fence
++    // GFX1250: rocdl.s.barrier
++    // GFX1250: llvm.fence
+     amdg.init_barrier %alloc, 2 : !ttg.memdesc<1xi64, #shared, #smem, mutable>
+     tt.return
+   }
+
+--- a/test/Conversion/amd/tritongpu_to_llvm.mlir	2026-01-21 01:19:21.000000000 -0800
++++ b/test/Conversion/amd/tritongpu_to_llvm.mlir	2026-01-30 10:35:44.000000000 -0800
+@@ -8,7 +8,9 @@
+     // CHECK: llvm.atomicrmw
+     // CHECK: llvm.store
+     // CHECK: llvm.br
+-    // CHECK: rocdl.barrier
++    // CHECK: llvm.fence
++    // CHECK: rocdl.s.barrier
++    // CHECK: llvm.fence
+     // CHECK: llvm.load
+     // CHECK: llvm.store
+     %0 = tt.atomic_rmw fadd, relaxed, gpu, %arg0, %arg2, %arg1 : (!tt.ptr<f32>, f32, i1) -> f32
+
+--- a/test/Proton/amd/protongpu_to_llvm.mlir	2025-12-11 07:03:23.000000000 -0800
++++ b/test/Proton/amd/protongpu_to_llvm.mlir	2026-01-30 10:35:45.000000000 -0800
+@@ -6,7 +6,9 @@
+ module attributes {"ttg.num-warps" = 8 : i32} {
+   // CHECK-LABEL: no_conversion
+   llvm.func @no_conversion() {
+-    //CHECK: rocdl.barrier
++    // CHECK: llvm.fence
++    // CHECK: rocdl.s.barrier
++    // CHECK: llvm.fence
+     %0 = ttg.local_alloc : () -> !ttg.memdesc<256xi32, #shared, #smem, mutable>
+     gpu.barrier
+     llvm.return
+
+--- a/third_party/amd/lib/Analysis/RangeAnalysis.cpp	2026-01-27 23:24:40.000000000 -0800
++++ b/third_party/amd/lib/Analysis/RangeAnalysis.cpp	2026-01-30 10:35:45.000000000 -0800
+@@ -709,27 +709,32 @@
+     assert(inputs.size() == operands->size() &&
+            "expected the same number of successor inputs as operands");
+ 
++    auto valueToLattices = [&](Value v) { return getLatticeElement(v); };
+     unsigned firstIndex = 0;
+     if (inputs.size() != lattices.size()) {
+       if (!point->isBlockStart()) {
+         if (!inputs.empty()) {
+           firstIndex = cast<OpResult>(inputs.front()).getResultNumber();
+         }
+-        visitNonControlFlowArguments(
+-            branch,
+-            RegionSuccessor::parent(),
+-            branch->getResults().slice(firstIndex, inputs.size()),
+-            lattices, firstIndex);
++        SmallVector<Value> nonSuccessorInputs =
++            branch.getNonSuccessorInputs(RegionSuccessor::parent());
++        auto nonSuccessorInputLattices =
++            llvm::map_to_vector(nonSuccessorInputs, valueToLattices);
++        visitNonControlFlowArguments(branch, RegionSuccessor::parent(),
++                                     nonSuccessorInputs,
++                                     nonSuccessorInputLattices);
+       } else {
+         if (!inputs.empty()) {
+           firstIndex = cast<BlockArgument>(inputs.front()).getArgNumber();
+         }
+         Region *region = point->getBlock()->getParent();
+-        visitNonControlFlowArguments(
+-            branch,
+-            RegionSuccessor(region),
+-            region->getArguments().slice(firstIndex, inputs.size()),
+-            lattices, firstIndex);
++        SmallVector<Value> nonSuccessorInputs =
++            branch.getNonSuccessorInputs(RegionSuccessor(region));
++        auto nonSuccessorInputLattices =
++            llvm::map_to_vector(nonSuccessorInputs, valueToLattices);
++        visitNonControlFlowArguments(branch, RegionSuccessor(region),
++                                     nonSuccessorInputs,
++                                     nonSuccessorInputLattices);
+       }
+     }
+ 

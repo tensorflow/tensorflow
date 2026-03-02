@@ -69,6 +69,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -599,14 +600,17 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
 
   absl::StatusOr<std::unique_ptr<Thunk>> CreateKernelThunk() {
     TF_RETURN_IF_ERROR(AddBufferAllocations(2));
+    Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
     return KernelThunk::Create(
         Thunk::Info(),
         /*arguments_buffers=*/
-        {CreateBufferAllocationSlice(
-            buffer_allocations_[buffer_allocations_.size() - 2])},
+        {{CreateBufferAllocationSlice(
+              buffer_allocations_[buffer_allocations_.size() - 2]),
+          shape}},
         /*results_buffers=*/
-        {CreateBufferAllocationSlice(
-            buffer_allocations_[buffer_allocations_.size() - 1])},
+        {{CreateBufferAllocationSlice(
+              buffer_allocations_[buffer_allocations_.size() - 1]),
+          shape}},
         /*kernel_name=*/"test",
         /*num_workgroups=*/NumWorkGroups{1},
         /*invariant_arguments=*/{0},
@@ -1037,17 +1041,16 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
     return thunk_1.kernel_name() == thunk_2.kernel_name() &&
            thunk_1.num_workgroups() == thunk_2.num_workgroups() &&
            thunk_1.min_alignment() == thunk_2.min_alignment() &&
-           absl::c_equal(thunk_1.arguments_buffers(),
-                         thunk_2.arguments_buffers(),
-                         [this](const BufferAllocation::Slice& slice_1,
-                                const BufferAllocation::Slice& slice_2) {
-                           return VerifySliceEquality(slice_1, slice_2);
-                         }) &&
-           absl::c_equal(thunk_1.results_buffers(), thunk_2.results_buffers(),
-                         [this](const BufferAllocation::Slice& slice_1,
-                                const BufferAllocation::Slice& slice_2) {
-                           return VerifySliceEquality(slice_1, slice_2);
-                         }) &&
+           absl::c_equal(
+               thunk_1.arguments_buffers(), thunk_2.arguments_buffers(),
+               [this](const ShapedSlice& buf1, const ShapedSlice& buf2) {
+                 return VerifySliceEquality(buf1.slice, buf2.slice);
+               }) &&
+           absl::c_equal(
+               thunk_1.results_buffers(), thunk_2.results_buffers(),
+               [this](const ShapedSlice& buf1, const ShapedSlice& buf2) {
+                 return VerifySliceEquality(buf1.slice, buf2.slice);
+               }) &&
            thunk_1.invariant_arguments() == thunk_2.invariant_arguments();
   }
 

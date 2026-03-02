@@ -18,22 +18,34 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla {
 namespace {
+
+bool IsIdentifierCharacter(char c) {
+  return absl::ascii_isalnum(c) || c == '_';
+}
 
 llvm::SmallVector<SymbolicExpr> CreateVariableRange(mlir::MLIRContext* ctx,
                                                     int64_t n,
@@ -55,7 +67,161 @@ llvm::DenseSet<VariableID> GetUsedVariablesFromExpressions(
   return used_vars;
 }
 
+// Helper class to manage the state of the parser.
+class SymbolicMapParserImpl {
+ public:
+  SymbolicMapParserImpl(absl::string_view str, mlir::MLIRContext* context)
+      : remaining_str_(str), context_(context) {}
+
+  SymbolicMap Parse() {
+    std::optional<int64_t> num_dims_opt =
+        ParseArgList("(", ")", /*is_dim=*/true);
+    if (!num_dims_opt.has_value()) {
+      return ReportError(
+          "Failed to parse dimension list in SymbolicMap string");
+    }
+    num_dims_ = num_dims_opt.value();
+
+    std::optional<int64_t> num_symbols_opt = 0;
+    SkipWhitespace();
+    if (absl::StartsWith(remaining_str_, "[")) {
+      num_symbols_opt = ParseArgList("[", "]", /*is_dim=*/false);
+      if (!num_symbols_opt.has_value()) {
+        return ReportError("Failed to parse symbol list in SymbolicMap string");
+      }
+    }
+    num_symbols_ = num_symbols_opt.value();
+
+    SkipWhitespace();
+    if (!absl::ConsumePrefix(&remaining_str_, "->")) {
+      return ReportError("Failed to parse SymbolicMap string: missing `->`");
+    }
+
+    auto exprs = ParseExprList();
+    if (!exprs.has_value()) {
+      return ReportError(
+          "Failed to parse expression list in SymbolicMap string");
+    }
+
+    SkipWhitespace();
+    if (!remaining_str_.empty()) {
+      return ReportError(
+          "Unexpected characters at the end of SymbolicMap string");
+    }
+
+    return SymbolicMap::Get(context_, num_dims_, num_symbols_, exprs.value());
+  }
+
+ private:
+  // Logs the error message and returns an empty SymbolicMap similarly to the
+  // ParseSymbolicExpr function.
+  SymbolicMap ReportError(absl::string_view msg) {
+    LOG(ERROR) << msg << " at: \"" << remaining_str_ << "\"";
+    return SymbolicMap();
+  }
+
+  // Parses an identifier and removes it from remaining_str_. Returns nullopt if
+  // parsing fails.
+  std::optional<absl::string_view> ParseIdentifier() {
+    auto it = absl::c_find_if_not(remaining_str_, IsIdentifierCharacter);
+    size_t len = std::distance(remaining_str_.begin(), it);
+    if (len == 0) {
+      return std::nullopt;
+    }
+    absl::string_view name = remaining_str_.substr(0, len);
+    remaining_str_.remove_prefix(len);
+    return name;
+  }
+
+  // Parses a list of identifiers and removes it from remaining_str_. Returns a
+  // count of the number of identifiers parsed. If is_dim is true, the
+  // identifiers are interpreted as dimension indices, otherwise they are
+  // interpreted as symbol indices.
+  std::optional<int64_t> ParseArgList(absl::string_view open,
+                                      absl::string_view close, bool is_dim) {
+    SkipWhitespace();
+    if (!absl::ConsumePrefix(&remaining_str_, open)) {
+      return std::nullopt;
+    }
+    SkipWhitespace();
+    if (absl::ConsumePrefix(&remaining_str_, close)) {
+      return 0;
+    }
+
+    int64_t count = 0;
+    while (true) {
+      std::optional<absl::string_view> name = ParseIdentifier();
+      if (!name.has_value()) {
+        return std::nullopt;
+      }
+
+      // Update the variable map with the parsed identifier.
+      if (is_dim) {
+        variable_map_[llvm::StringRef(*name)] = CreateDimExpr(count, context_);
+      } else {
+        variable_map_[llvm::StringRef(*name)] =
+            CreateSymbolExpr(count, num_dims_, context_);
+      }
+      count++;
+
+      SkipWhitespace();
+      if (absl::ConsumePrefix(&remaining_str_, close)) {
+        return count;
+      }
+      if (!absl::ConsumePrefix(&remaining_str_, ",")) {
+        return std::nullopt;
+      }
+      SkipWhitespace();
+    }
+  }
+
+  std::optional<llvm::SmallVector<SymbolicExpr>> ParseExprList() {
+    SkipWhitespace();
+    if (!absl::ConsumePrefix(&remaining_str_, "(")) {
+      return std::nullopt;
+    }
+
+    llvm::SmallVector<SymbolicExpr> exprs;
+    SkipWhitespace();
+    if (absl::ConsumePrefix(&remaining_str_, ")")) {
+      return exprs;
+    }
+
+    while (true) {
+      SymbolicExpr expr =
+          ParseSymbolicExprAndAdvance(&remaining_str_, context_, variable_map_);
+      if (!expr) {
+        return std::nullopt;
+      }
+      exprs.push_back(expr);
+      SkipWhitespace();
+      if (absl::ConsumePrefix(&remaining_str_, ")")) {
+        return exprs;
+      }
+      if (!absl::ConsumePrefix(&remaining_str_, ",")) {
+        return std::nullopt;
+      }
+      SkipWhitespace();
+    }
+  }
+
+  void SkipWhitespace() {
+    remaining_str_ = absl::StripLeadingAsciiWhitespace(remaining_str_);
+  }
+
+  absl::string_view remaining_str_;
+  mlir::MLIRContext* context_;
+  int64_t num_dims_ = 0;
+  int64_t num_symbols_ = 0;
+  llvm::DenseMap<llvm::StringRef, SymbolicExpr> variable_map_;
+};
+
 }  // namespace
+
+SymbolicMap ParseSymbolicMap(absl::string_view serialized_symbolic_map,
+                             mlir::MLIRContext* mlir_context) {
+  return SymbolicMapParserImpl(serialized_symbolic_map, mlir_context).Parse();
+}
 
 SymbolicMap::SymbolicMap(mlir::MLIRContext* ctx, int64_t num_dimensions,
                          int64_t num_symbols,

@@ -162,6 +162,7 @@ tf_proto_library(
         "//xla/backends/cpu:ynn_fusion_options_proto",
         "//xla/service:buffer_assignment_proto",
         "//xla/service:hlo_proto",
+        "//xla/service:shaped_slice_proto",
     ],
 )
 
@@ -952,6 +953,7 @@ cc_library(
         "//xla/runtime:buffer_use",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "//xla/stream_executor:device_address",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:errors",
@@ -1262,6 +1264,7 @@ cc_library(
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
+        "//xla/service:shaped_slice",
         "//xla/stream_executor:device_address",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -1354,6 +1357,7 @@ xla_cc_test(
         "//xla/service:buffer_assignment",
         "//xla/service:collective_ops_utils",
         "//xla/service:hlo_proto_cc",
+        "//xla/service:shaped_slice",
         "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

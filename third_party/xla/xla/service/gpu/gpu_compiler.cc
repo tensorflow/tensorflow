@@ -292,6 +292,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/reduce_scatter_reassociate.h"
+#include "xla/service/scan_expander.h"
 #include "xla/service/scatter_determinism_expander.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
@@ -515,6 +516,7 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module) {
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<CompositeRewriter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
+  pre_spmd_pipeline.AddPass<ScanExpander>();
   pre_spmd_pipeline.AddPass<FlattenCallGraph>();
   pre_spmd_pipeline.AddPass<CallInliner>(
       /*single_call_site=*/false, /*update_domain=*/false,
@@ -1340,7 +1342,8 @@ absl::Status RunPostFusionSimplificationPasses(
 absl::Status RunPostFusionVerificationPasses(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const GpuCompiler::CompileOptions& options,
-    const GpuTargetConfig& gpu_target_config, mlir::MLIRContext* mlir_context) {
+    const GpuTargetConfig& gpu_target_config, const AliasInfo* alias_info,
+    mlir::MLIRContext* mlir_context) {
   HloPassPipeline pipeline("post-fusion-verification-pipeline optimization");
 
   if (hlo_module->config()
@@ -1349,7 +1352,7 @@ absl::Status RunPostFusionVerificationPasses(
     DeviceOrDevicelessConfig device_config =
         GetDeviceConfig(stream_exec, options, gpu_target_config);
     if (!device_config.IsDeviceless()) {
-      pipeline.AddPass<TritonFusionNumericsVerifier>(device_config,
+      pipeline.AddPass<TritonFusionNumericsVerifier>(device_config, alias_info,
                                                      mlir_context);
     }
   }
@@ -1408,14 +1411,12 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
   const DebugOptions& opts = hlo_module->config().debug_options();
   if (opts.xla_gpu_enable_dynamic_slice_fusion()) {
     HloPassPipeline pipeline("dynamic-slice");
-    ASSIGN_OR_RETURN(se::Platform * platform,
-                     se::PlatformManager::PlatformWithId(platform_id));
     pipeline.AddPass<GpuReduceScatterCombiner>(
         kDefaultReduceScatterCombineThreshold,
         opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
         kCombineThresholdCount,
         opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
-    pipeline.AddPass<DynamicSliceFusionRewriter>(platform->Name());
+    pipeline.AddPass<DynamicSliceFusionRewriter>(platform_id);
     pipeline.AddPass<AsyncWrapper>([](const HloInstruction* instr) {
       if (!IsDynamicSliceFusion(instr)) {
         return false;
@@ -1659,8 +1660,9 @@ absl::Status GpuCompiler::OptimizeHloModule(
           gpu_target_config.platform_name == "ROCM"),
       gpu_version, gpu_target_config));
 
-  RETURN_IF_ERROR(RunPostFusionVerificationPasses(
-      hlo_module, stream_exec, options, gpu_target_config, &mlir_context_));
+  RETURN_IF_ERROR(RunPostFusionVerificationPasses(hlo_module, stream_exec,
+                                                  options, gpu_target_config,
+                                                  alias_info, &mlir_context_));
 
   RETURN_IF_ERROR(
       RunCollectiveScheduleLinearizerPasses(hlo_module, stream_exec));
@@ -1823,12 +1825,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
          rocm_cc != nullptr)) {
       pipeline.AddPass<GemvRewriter>();
-      // Transpose dimension grouper simplifies the dimensions of the transpose
-      // and enables the symbolic tiling analysis for the generic emitter to
-      // find the possible tiling. It should run before the gemm rewriter has
-      // introduced the nested fusions. We also want to keep it close to the
-      // gemm rewriter to avoid the possibility of new passes to rewrite the
-      // transpose.
       pipeline.AddPass<GemmFusion>(gpu_version);
       pipeline.AddPass<GemmFusionSwapOperands>();
     } else if (cuda_cc != nullptr &&
@@ -1911,8 +1907,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPass(
       &pipeline, hlo_module, gpu_version, options, autotune_config, thread_pool,
       stream_exec, &gpu_target_config, options.key_value_store,
-      gpu_target_config.device_description.runtime_version(), debug_options,
-      &mlir_context_, ShapeSizeBytesFunction()));
+      gpu_target_config.device_description.runtime_version(), alias_info,
+      debug_options, &mlir_context_, ShapeSizeBytesFunction()));
   // After autotuning, update GEMM workspace sizes to match the exact
   // requirements of the selected algorithms, potentially reducing memory usage.
   pipeline.AddPass<GemmWorkspaceRewriter>(gpu_version, stream_exec);
@@ -3171,7 +3167,8 @@ GpuCompiler::LoadAotCompilationResult(
 
 absl::StatusOr<std::unique_ptr<Executable>>
 GpuCompiler::LoadExecutableFromAotResult(
-    const CompiledModule& aot_result, const se::StreamExecutor& stream_exec) {
+    const CompiledModule& aot_result,
+    const se::DeviceDescription& device_description) {
   tsl::profiler::TraceMe traceme("LoadExecutableFromAotResult");
 
   const auto* gpu_aot_result =
@@ -3192,16 +3189,12 @@ GpuCompiler::LoadExecutableFromAotResult(
   std::vector<uint8_t> binary(proto.binary().begin(), proto.binary().end());
 
   // Build the executable, which should be a thunk sequence.
-  ASSIGN_OR_RETURN(se::Platform * platform,
-                   se::PlatformManager::PlatformWithId(PlatformId()));
-  std::string platform_name = platform->Name();
+  absl::string_view platform_name = PlatformId()->ToName();
 
-  const se::DeviceDescription& gpu_device_info =
-      stream_exec.GetDeviceDescription();
   llvm::LLVMContext llvm_context;
 
   // Recreate BufferAssignment from proto.
-  std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+  std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
   ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssignment::FromProto(proto.buffer_assignment(), hlo_module.get(),
@@ -3209,7 +3202,7 @@ GpuCompiler::LoadExecutableFromAotResult(
 
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
-      platform_name, gpu_device_info, mlir_context(), &llvm_context,
+      platform_name, device_description, mlir_context(), &llvm_context,
       /*emit_kernels=*/false, llvm::Triple(target_triple()), data_layout());
 
   absl::string_view cache_file_path =
@@ -3242,7 +3235,7 @@ GpuCompiler::LoadExecutableFromAotResult(
 
   {
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
-    std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+    std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
     return GpuExecutable::Create(GpuExecutable::Params{
         /*asm_text=*/proto.asm_text(),
         /*binary=*/binary,
@@ -3258,7 +3251,7 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*buffer_assignment=*/std::move(buffer_assignment),
         /*alias_info=*/std::move(alias_info),
         /*debug_options=*/std::move(debug_options),
-        /*device_description=*/gpu_device_info,
+        /*device_description=*/device_description,
         /*debug_module=*/std::move(hlo_module),
         /*enable_debug_info_manager=*/true});
   }
@@ -3271,11 +3264,11 @@ absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
     se::StreamExecutor* stream_exec,
     const Compiler::GpuTargetConfig* target_config,
     const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version,
+    const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
-                      GetCodegenBackends(stream_exec, target_config,
+                      GetCodegenBackends(stream_exec, target_config, alias_info,
                                          debug_options, mlir_context));
 
   bool do_not_autotune_cublas_and_cudnn =

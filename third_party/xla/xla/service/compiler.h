@@ -60,6 +60,11 @@ namespace mlir {
 class DialectRegistry;
 }  // namespace mlir
 
+namespace stream_executor {
+class DeviceDescription;
+
+}  // namespace stream_executor
+
 namespace xla {
 
 // The following types are used for ahead of time compilation.
@@ -326,7 +331,7 @@ class Compiler {
   // Creates an `Executable` based on the given `aot_result`.
   virtual absl::StatusOr<std::unique_ptr<Executable>>
   LoadExecutableFromAotResult(const CompiledModule& aot_result,
-                              const se::StreamExecutor& stream_exec) {
+                              const se::DeviceDescription& device_description) {
     return Unimplemented("LoadExecutableFromAotResult unimplemented");
   }
 

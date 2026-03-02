@@ -58,6 +58,17 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformUmbrielB200) {
   EXPECT_TRUE(topology.has_gpu_target_config());
 }
 
+TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB200) {
+  auto topology_or = GetGpuTopologyForPlatform("oberon_b200", 1, 2, 4);
+  ASSERT_OK(topology_or);
+  const auto& topology = *topology_or;
+  EXPECT_EQ(topology.platform_version(), "oberon_b200");
+  EXPECT_EQ(topology.num_partitions(), 1);
+  EXPECT_EQ(topology.num_hosts_per_partition(), 2);
+  EXPECT_EQ(topology.num_devices_per_host(), 4);
+  EXPECT_TRUE(topology.has_gpu_target_config());
+}
+
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformInvalid) {
   EXPECT_THAT(GetGpuTopologyForPlatform("invalid_gpu", 1, 1, 1),
               StatusIs(absl::StatusCode::kInvalidArgument));
