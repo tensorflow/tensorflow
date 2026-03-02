@@ -132,7 +132,7 @@ TEST(HostExecuteStartThunkTest, SingleArgSingleResult) {
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
 
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_device_to_host_stream(stream.get());
   executable_run_options.set_host_to_device_stream(stream.get());
@@ -214,7 +214,7 @@ TEST(HostExecuteStartThunkTest, MultiArgMultipleResult) {
                       {{slice_result0, ShapeUtil::MakeShape(S32, {})},
                        {slice_result1, ShapeUtil::MakeShape(S32, {})}}));
 
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_device_to_host_stream(stream.get());
   executable_run_options.set_host_to_device_stream(stream.get());
@@ -272,16 +272,17 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
       stream_executor->HostMemoryAllocate(1 * sizeof(int32_t)));
 
   constexpr int32_t kArgValue = 5;
-  std::memcpy(arg_memory_allocation->opaque(), &kArgValue, sizeof(kArgValue));
+  std::memcpy(arg_memory_allocation->address().opaque(), &kArgValue,
+              sizeof(kArgValue));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result_memory_allocation,
       stream_executor->HostMemoryAllocate(1 * sizeof(int32_t)));
 
-  se::DeviceAddressBase arg(arg_memory_allocation->opaque(),
-                            arg_memory_allocation->size());
-  se::DeviceAddressBase result(result_memory_allocation->opaque(),
-                               result_memory_allocation->size());
+  se::DeviceAddressBase arg(arg_memory_allocation->address().opaque(),
+                            arg_memory_allocation->address().size());
+  se::DeviceAddressBase result(result_memory_allocation->address().opaque(),
+                               result_memory_allocation->address().size());
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
@@ -296,7 +297,7 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
 
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_device_to_host_stream(stream.get());
   executable_run_options.set_host_to_device_stream(stream.get());
@@ -320,7 +321,8 @@ TEST(HostExecuteStartThunkTest, ArgAndResultPinnedOnHost) {
   TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
-  EXPECT_EQ(*static_cast<int32_t*>(result_memory_allocation->opaque()), 10);
+  EXPECT_EQ(
+      *static_cast<int32_t*>(result_memory_allocation->address().opaque()), 10);
 }
 
 TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
@@ -347,16 +349,17 @@ TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
       unified_memory_allocator->Allocate(1 * sizeof(int32_t)));
 
   constexpr int32_t kArgValue = 5;
-  std::memcpy(arg_memory_allocation->opaque(), &kArgValue, sizeof(kArgValue));
+  std::memcpy(arg_memory_allocation->address().opaque(), &kArgValue,
+              sizeof(kArgValue));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result_memory_allocation,
       unified_memory_allocator->Allocate(1 * sizeof(int32_t)));
 
-  se::DeviceAddressBase arg(arg_memory_allocation->opaque(),
-                            arg_memory_allocation->size());
-  se::DeviceAddressBase result(result_memory_allocation->opaque(),
-                               result_memory_allocation->size());
+  se::DeviceAddressBase arg(arg_memory_allocation->address().opaque(),
+                            arg_memory_allocation->address().size());
+  se::DeviceAddressBase result(result_memory_allocation->address().opaque(),
+                               result_memory_allocation->address().size());
 
   // Prepare buffer allocations for recording command buffer.
   BufferAllocation alloc_arg(/*index=*/0, 4, /*color=*/0);
@@ -371,7 +374,7 @@ TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
 
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_device_to_host_stream(stream.get());
   executable_run_options.set_host_to_device_stream(stream.get());
@@ -395,7 +398,8 @@ TEST(HostExecuteStartThunkTest, ArgAndResultInSharedMemory) {
   TF_ASSERT_OK(stream->WaitFor(execute_event.get().get()));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
-  EXPECT_EQ(*static_cast<int32_t*>(result_memory_allocation->opaque()), 10);
+  EXPECT_EQ(
+      *static_cast<int32_t*>(result_memory_allocation->address().opaque()), 10);
 }
 
 TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
@@ -432,7 +436,7 @@ TEST(HostExecuteStartThunkTest, ArgAndResultNonRegisteredHostMemory) {
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
 
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_device_to_host_stream(stream.get());
   executable_run_options.set_host_to_device_stream(stream.get());
@@ -501,7 +505,7 @@ TEST(HostExecuteStartThunkTest, TestErrorPropagationFromExecuteEvent) {
                               {{slice_arg, ShapeUtil::MakeShape(S32, {})}},
                               {{slice_result, ShapeUtil::MakeShape(S32, {})}}));
 
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   ExecutableRunOptions executable_run_options;
   executable_run_options.set_device_to_host_stream(stream.get());
   executable_run_options.set_host_to_device_stream(stream.get());
