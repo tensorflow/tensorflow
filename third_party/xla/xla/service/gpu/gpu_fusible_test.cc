@@ -1770,6 +1770,31 @@ e {
       32);
 }
 
+TEST_F(GpuFusibleTest, FourBitConcatenationUnrolled16or32xOnBlackwell) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+e {
+  ROOT c = s4[2048000] concatenate(s4[1024000] parameter(0), s4[1024000] parameter(1)), dimensions={0}
+})"));
+  const HloInstruction& root = *module->entry_computation()->root_instruction();
+  EXPECT_EQ(
+      ComputeLoopFusionConfig(HloFusionAnalysis::Create(
+                                  root, TestGpuDeviceInfo::H100SXMDeviceInfo()),
+                              root.shape())
+          .unroll_factor,
+      4);
+  EXPECT_EQ(
+      ComputeLoopFusionConfig(HloFusionAnalysis::Create(
+                                  root, TestGpuDeviceInfo::B200SXMDeviceInfo()),
+                              root.shape())
+          .unroll_factor,
+      16);
+  EXPECT_EQ(
+      ComputeLoopFusionConfig(
+          HloFusionAnalysis::Create(root, B200WithCUDA129()), root.shape())
+          .unroll_factor,
+      32);
+}
+
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopReduce) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m

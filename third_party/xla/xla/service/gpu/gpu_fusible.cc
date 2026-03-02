@@ -163,7 +163,9 @@ int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis) {
       (analysis->emitter_fusion_kind() ==
            HloFusionAnalysis::EmitterFusionKind::kLoop ||
        analysis->emitter_fusion_kind() ==
-           HloFusionAnalysis::EmitterFusionKind::kTranspose) &&
+           HloFusionAnalysis::EmitterFusionKind::kTranspose ||
+       analysis->emitter_fusion_kind() ==
+           HloFusionAnalysis::EmitterFusionKind::kConcatenate) &&
       analysis->input_output_info().smallest_output_dtype_bits <
           max_bits_for_aggressive_unrolling &&
       analysis->fusion_root_count() <= kMaxNumOutputsForFullUnrolling &&
