@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/config.h"
 #include "absl/functional/bind_front.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -93,7 +94,11 @@ PjRtCompiler::PjRtCompiler(PjRtClient* client, int num_threads)
     : client_(client) {
   if (num_threads > 0) {
     tsl::ThreadOptions thread_options;
+#if defined(ABSL_HAVE_THREAD_SANITIZER)
+    thread_options.stack_size = 1024 * 1024;
+#else
     thread_options.stack_size = 512 * 1024;
+#endif
     thread_pool_.emplace(tsl::Env::Default(), thread_options,
                          "PjRtCompilerThreadPool", num_threads);
   }

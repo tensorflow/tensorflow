@@ -457,6 +457,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:config",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
