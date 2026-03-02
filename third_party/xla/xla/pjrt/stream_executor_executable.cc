@@ -251,7 +251,7 @@ StreamExecutorExecutable::ConsumeExecutable(
           executables_)) {
     auto tmp = std::get<std::vector<std::unique_ptr<LocalExecutable>>>(
         std::move(executables_));
-    if (tmp.size() == 0) {
+    if (tmp.empty()) {
       return absl::InternalError("No local executable");
     }
     if (tmp.size() > 1) {
@@ -259,8 +259,9 @@ StreamExecutorExecutable::ConsumeExecutable(
           "ConsumeExecutable is not supported for more than one executable.");
     }
     return std::move(tmp[0]);
-  } else if (std::holds_alternative<
-                 std::vector<std::unique_ptr<CompiledModule>>>(executables_)) {
+  }
+  if (std::holds_alternative<std::vector<std::unique_ptr<CompiledModule>>>(
+          executables_)) {
     auto aot_executables =
         std::get<std::vector<std::unique_ptr<CompiledModule>>>(
             std::move(executables_));

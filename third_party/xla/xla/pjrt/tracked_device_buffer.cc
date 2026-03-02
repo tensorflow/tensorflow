@@ -217,7 +217,9 @@ void TrackedDeviceBuffer::AddUsageEvent(BufferSequencingEventRef event,
   for (auto& existing : usage_events_) {
     // If the existing event is 0, it means that the event is not recorded yet
     // and the task related to this event is deferred, so don't replace it.
-    if (!existing.event->IsDefined()) continue;
+    if (!existing.event->IsDefined()) {
+      continue;
+    }
     if (existing.event->definition_stream() == usage_stream) {
       if (*existing.event < *event) {
         existing.event = event;
