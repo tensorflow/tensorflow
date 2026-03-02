@@ -110,7 +110,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 97
+#define PJRT_API_MINOR 98
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2447,6 +2447,26 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToMemory_Args, dst_buffer);
 typedef PJRT_Error* PJRT_Buffer_CopyToMemory(
     PJRT_Buffer_CopyToMemory_Args* args);
 
+struct PJRT_Buffer_Bitcast_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Buffer* buffer;
+  // The new buffer type.
+  PJRT_Buffer_Type element_type;
+  // The new array dimensions.
+  const int64_t* dims;
+  size_t num_dims;
+  // The new buffer layout. If nullptr, a default layout (not the source
+  // buffer's layout) will be used.
+  PJRT_Buffer_MemoryLayout* device_layout;
+  // The new buffer.
+  PJRT_Buffer* out_buffer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Bitcast_Args, out_buffer);
+
+// Bitcasts the buffer to a new type, dimensions, and layout.
+typedef PJRT_Error* PJRT_Buffer_Bitcast(PJRT_Buffer_Bitcast_Args* args);
+
 struct PJRT_Buffer_IsOnCpu_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2980,12 +3000,10 @@ typedef struct PJRT_Api {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Load);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_AddressableDeviceLogicalIds);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Bitcast);
 } PJRT_Api;
 
-enum {
-  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(
-      PJRT_Api, PJRT_LoadedExecutable_AddressableDeviceLogicalIds)
-};
+enum { PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_Bitcast) };
 
 #undef _PJRT_API_STRUCT_FIELD
 

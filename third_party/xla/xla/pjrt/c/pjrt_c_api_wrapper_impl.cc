@@ -1124,6 +1124,48 @@ PJRT_Error* PJRT_Client_Load(PJRT_Client_Load_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Buffer_Bitcast(PJRT_Buffer_Bitcast_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Buffer_Bitcast_Args", PJRT_Buffer_Bitcast_Args_STRUCT_SIZE,
+      args->struct_size));
+  xla::PrimitiveType element_type =
+      pjrt::ConvertFromPjRtBufferType(args->element_type);
+  absl::Span<const int64_t> dims =
+      absl::Span<const int64_t>(args->dims, args->num_dims);
+  std::optional<xla::Layout> cpp_layout;
+  xla::Layout* device_layout;
+  if (args->device_layout != nullptr) {
+    PJRT_Buffer_MemoryLayout* layout = args->device_layout;
+    switch (layout->type) {
+      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
+        PJRT_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
+        break;
+      }
+      case PJRT_Buffer_MemoryLayout_Type::
+          PJRT_Buffer_MemoryLayout_Type_Strides: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
+            "converted to a xla::Layout."));
+        break;
+      }
+      default: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
+            "Unexpected PJRT_Buffer_MemoryLayout_Type type: ", layout->type)));
+      }
+    }
+    device_layout = &*cpp_layout;
+  } else {
+    device_layout = nullptr;
+  }
+
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> bitcast_buffer,
+      args->buffer->buffer->Bitcast(element_type, dims, device_layout));
+  args->out_buffer =
+      new PJRT_Buffer{std::move(bitcast_buffer), args->buffer->client};
+  return nullptr;
+}
+
 static void PopulateDeviceAssignment(int* const device_assignment_buffer,
                                      int num_replicas, int num_partitions,
                                      xla::DeviceAssignment device_assignment) {
@@ -3630,6 +3672,7 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Client_Load=*/pjrt::PJRT_Client_Load,
       /*PJRT_LoadedExecutable_AddressableDeviceLogicalIds=*/
       pjrt::PJRT_LoadedExecutable_AddressableDeviceLogicalIds,
+      /*PJRT_Buffer_Bitcast=*/pjrt::PJRT_Buffer_Bitcast,
   };
 }
 
