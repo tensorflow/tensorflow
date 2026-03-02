@@ -373,6 +373,7 @@ xla_test(
         "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotuner_cache_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/autotuner:profiler",
         "//xla/backends/gpu/autotuner:cublas",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
