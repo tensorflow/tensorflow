@@ -39,6 +39,8 @@ toc:
     path: /xla/indexing
   - title: LHS Cost Model
     path: /xla/lhs_cost_model
+  - title: Megascale
+    path: /xla/megascale/overview
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
   - title: Persisted autotuning
@@ -70,6 +72,8 @@ toc:
     path: /xla/error_codes
   - title: Debug OOM errors with XProf
     path: /xla/oom_debugging
+  - title: Debug Megascale
+    path: /xla/megascale/debugging_workflow
 - title: Contributing
   # These should be in alphabetical order unless otherwise noted.
   section:
