@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -74,6 +75,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/invoke.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -112,6 +114,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/unique_any.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -1343,6 +1346,16 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
 
   RunId run_id = execute_params.collective_params->run_id;
 
+  // Lookup per-execution state for prepare and init stages.
+  ffi::ExecutionState* prepare_state = nullptr;
+  ffi::ExecutionState* initialize_state = nullptr;
+  if (execute_params.execution_scoped_state) {
+    auto& state = tsl::any_cast<CustomCallThunk::PrepareAndInitState>(
+        execute_params.execution_scoped_state->at(thunk_id_));
+    prepare_state = &state.prepare;
+    initialize_state = &state.init;
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
@@ -1355,7 +1368,11 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
                     stream,
                     execute_params.buffer_allocations->memory_allocator(),
                 },
-                ffi::InvokeContext::StateContext{execution_state_.get()},
+                ffi::InvokeContext::StateContext{
+                    /*instantiate=*/execution_state_.get(),
+                    /*prepare=*/prepare_state,
+                    /*initialize=*/initialize_state,
+                },
                 /*called_computation=*/nullptr,  // TODO(b/342285364)
                 execute_params.ffi_execution_context};
             return ffi::Invoke(ffi::GetXlaFfiApi(), handler_, *call_frame,

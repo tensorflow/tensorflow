@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/attribute_map.h"
@@ -470,13 +471,14 @@ class CustomCallCmd : public Command {
   CustomCallCmd(std::string target_name, XLA_FFI_Handler* handler,
                 std::vector<NullableShapedSlice> operands,
                 std::vector<NullableShapedSlice> results,
-                ffi::CallFrame call_frame,
+                ffi::CallFrame call_frame, ThunkId thunk_id,
                 std::shared_ptr<ffi::ExecutionState> execution_state,
                 const HloComputation* called_computation)
       : Command(CommandType::kCustomCallCmd),
         target_name_(std::move(target_name)),
         handler_(handler),
         call_frame_(std::move(call_frame)),
+        thunk_id_(thunk_id),
         execution_state_(std::move(execution_state)),
         call_frames_([this] { return call_frame_->Copy(); }),
         called_computation_(called_computation),
@@ -516,6 +518,9 @@ class CustomCallCmd : public Command {
 
   // Reference call frame pre-initialized at construction time.
   std::optional<ffi::CallFrame> call_frame_;
+
+  // Thunk ID of the thunk this command is associated with.
+  ThunkId thunk_id_;
 
   // Execution state bound to the FFI handler. It is initialized by the
   // corresponding Thunk at construction time.

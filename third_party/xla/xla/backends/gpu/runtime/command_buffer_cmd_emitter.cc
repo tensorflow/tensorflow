@@ -279,7 +279,8 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
   if (auto bundle = thunk.bundle(); bundle.has_value()) {
     return std::make_unique<CustomCallCmd>(
         thunk.target_name(), bundle->execute, thunk.operands(), thunk.results(),
-        *thunk.call_frame(), thunk.execution_state(),
+        *thunk.call_frame(), thunk.thunk_info().thunk_id,
+        thunk.execution_state(),
         /*called_computation=*/nullptr);  // TODO(b/342285364)
   }
   return std::make_unique<CustomCallCmd>(thunk.target_name(),

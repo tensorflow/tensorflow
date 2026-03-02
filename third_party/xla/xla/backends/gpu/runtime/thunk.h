@@ -263,8 +263,7 @@ class Thunk {
   // might lead to "leaks", as the map will be destroyed only when the
   // executable is destroyed. It also thread-safe by construction as all thunks
   // for a GPU program run sequentially from a single thread.
-  using ExecutionScopedState =
-      absl::flat_hash_map<const Thunk*, tsl::UniqueAny>;
+  using ExecutionScopedState = absl::flat_hash_map<ThunkId, tsl::UniqueAny>;
 
   //===--------------------------------------------------------------------===//
   // PrepareParams

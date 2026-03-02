@@ -251,10 +251,15 @@ static absl::StatusOr<std::unique_ptr<MemcpyState>> MemcpyInstantiate() {
   return std::make_unique<MemcpyState>();
 }
 
+static absl::StatusOr<std::unique_ptr<MemcpyState>> MemcpyInitialize() {
+  return std::make_unique<MemcpyState>();
+}
+
 static absl::Status Memcpy(se::Stream* stream, MemcpyState* state,
-                           ffi::AnyBuffer src,
+                           MemcpyState* device_state, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
   EXPECT_NE(state, nullptr);
+  EXPECT_NE(device_state, nullptr);
   se::DeviceAddressBase dst_mem = dst->device_memory();
   se::DeviceAddressBase src_mem = src.device_memory();
   return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
@@ -263,16 +268,25 @@ static absl::Status Memcpy(se::Stream* stream, MemcpyState* state,
 XLA_FFI_DEFINE_HANDLER(kMemcpyInstantiate, MemcpyInstantiate,
                        ffi::Ffi::BindInstantiate());
 
-XLA_FFI_DEFINE_HANDLER(kMemcpy, Memcpy,
+XLA_FFI_DEFINE_HANDLER(kMemcpyInitialize, MemcpyInitialize,
+                       ffi::Ffi::BindInitialize());
+
+XLA_FFI_DEFINE_HANDLER(kMemcpyExecute, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
                            .Ctx<ffi::State<MemcpyState>>()
+                           .Ctx<ffi::Initialized<MemcpyState>>()
                            .Arg<ffi::AnyBuffer>()   // src
                            .Ret<ffi::AnyBuffer>(),  // dst
                        {ffi::Traits::kCmdBufferCompatible});
 
 XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
-                         {kMemcpyInstantiate, nullptr, nullptr, kMemcpy});
+                         {
+                             /*instantiate=*/kMemcpyInstantiate,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/kMemcpyInitialize,
+                             /*execute=*/kMemcpyExecute,
+                         });
 
 TEST_P(CommandBufferTest, TracedCustomCalls) {
   constexpr absl::string_view hlo_text = R"(
