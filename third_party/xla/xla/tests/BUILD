@@ -2944,6 +2944,7 @@ xla_test(
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
+        "//xla/runtime:device_id",
         "//xla/service:collective_ops_utils",
         "//xla/service:rendezvous",
         "//xla/service/gpu/tests:collective_ops_e2e_test_base",
