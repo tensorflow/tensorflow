@@ -462,6 +462,20 @@ TEST(NamedShardingTest, GetShardedSize) {
   EXPECT_EQ(ds_empty.getShardedSize(mesh), 1);
 }
 
+TEST(NamedShardingTest, AxisNames) {
+  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
+
+  AxisRef axis_a(0);
+  AxisRef axis_b(1);
+  AxisRef axis_c(2);
+
+  DimensionSharding ds_abc({axis_a, axis_b, axis_c}, /*is_closed=*/true);
+  EXPECT_THAT(ds_abc.axis_names(mesh), ElementsAre("a", "b", "c"));
+
+  DimensionSharding ds_empty({}, /*is_closed=*/true);
+  EXPECT_TRUE(ds_empty.axis_names(mesh).empty());
+}
+
 TEST(NamedShardingTest, Dimension) {
   Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
 

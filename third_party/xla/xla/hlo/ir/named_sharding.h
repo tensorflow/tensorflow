@@ -59,6 +59,11 @@ class NamedSharding {
         : axes_(axes.begin(), axes.end()), is_closed_(is_closed) {}
 
     absl::Span<const AxisRef> axes() const { return axes_; }
+
+    // Returns the names of the axis in the dimension sharding. This should only
+    // be called for non-sub-axis.
+    std::vector<std::string> axis_names(const Mesh& mesh) const;
+
     bool is_closed() const { return is_closed_; }
 
     int64_t getShardedSize(const Mesh& mesh) const;
