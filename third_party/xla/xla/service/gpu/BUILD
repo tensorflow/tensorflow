@@ -3569,8 +3569,6 @@ cc_library(
     deps = [
         ":gpu_compiler",
         ":target_constants",
-        "//xla:debug_options_flags",
-        "//xla/hlo/analysis:hlo_dataflow_analysis",
         "//xla/hlo/ir:hlo",
         "//xla/service:dump",
         "//xla/service/gpu/llvm_gpu_backend:spirv_backend",
