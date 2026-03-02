@@ -443,6 +443,13 @@ absl::StatusOr<xla::Shape> CommonPjRtClient::MakeDefaultShapeForMemorySpace(
     const xla::Layout* layout) const {
   if (layout) {
     *shape.mutable_layout() = *layout;
+    if (primitive_util::IsSubByteNonPredType(shape.element_type()) &&
+        shape.layout().element_size_in_bits() !=
+            primitive_util::BitWidth(shape.element_type())) {
+      return InvalidArgument(
+          "Device buffers only support packed layouts, but got %s for shape %s",
+          layout->ToString(), shape.ToString());
+    }
   } else {
     TF_ASSIGN_OR_RETURN(
         *shape.mutable_layout(),
