@@ -3241,16 +3241,26 @@ absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
       GetAutotunerBackends(stream_exec, target_config, alias_info,
                            debug_options, mlir_context));
 
-  bool do_not_autotune_cublas_and_cudnn =
+  bool do_not_autotune_cublas =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
       debug_options.xla_gpu_exclude_nondeterministic_ops();
-  auto should_autotune = [do_not_autotune_cublas_and_cudnn](
+  // We need to run miopen autotune to decompose unsuported fused convolutions
+  // TODO: Merge this with above once we are able to achieve the same with
+  // FissionBackend
+  bool do_not_autotune_cudnn =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      (do_not_autotune_cublas && !gpu_version.IsRocm());
+  auto should_autotune = [do_not_autotune_cublas, do_not_autotune_cudnn](
                              const HloInstruction& instruction) -> bool {
-    if (!do_not_autotune_cublas_and_cudnn &&
+    if (!do_not_autotune_cublas &&
         (instruction.opcode() == HloOpcode::kCustomCall &&
-         (IsCublasGemm(instruction) ||
-          IsCustomCallToDnnConvolution(instruction)))) {
+         IsCublasGemm(instruction))) {
+      return true;
+    }
+    if (!do_not_autotune_cudnn &&
+        (instruction.opcode() == HloOpcode::kCustomCall &&
+         IsCustomCallToDnnConvolution(instruction))) {
       return true;
     }
     if (instruction.opcode() != HloOpcode::kFusion) {

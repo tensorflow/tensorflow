@@ -118,10 +118,15 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   ConvBfloat16Support conv_bf16_support(*gpu_version.rocm_compute_capability());
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
-  pipeline.AddPass<ConvRewriter>(gpu_version);
-  pipeline.AddPass<ConvPaddingLegalization>();
-  auto rcc = gpu_version.rocm_compute_capability();
-  pipeline.AddPass<CudnnFusedConvRewriter>(*rcc, dnn_version, toolkit_version);
+  if (!hlo_module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries()) {
+    pipeline.AddPass<ConvRewriter>(gpu_version);
+    pipeline.AddPass<ConvPaddingLegalization>();
+    auto rcc = gpu_version.rocm_compute_capability();
+    pipeline.AddPass<CudnnFusedConvRewriter>(*rcc, dnn_version,
+                                             toolkit_version);
+  }
 
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
