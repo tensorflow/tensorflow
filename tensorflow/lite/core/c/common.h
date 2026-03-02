@@ -1514,7 +1514,7 @@ TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t);
 
 /// Returns a sentinel value to be used as the user_data field of a TfLiteNode
 /// when the kernel initialization fails.
-void* TfLiteKernelInitFailed();
+void* TfLiteKernelInitFailed(void);
 
 /** @} */
 // Ends `\addtogroup`, it's important for the doc generator that this doesn't

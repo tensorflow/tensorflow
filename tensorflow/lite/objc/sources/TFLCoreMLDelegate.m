@@ -45,24 +45,24 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - NSObject
 
 - (void)dealloc {
-  TfLiteCoreMlDelegateDelete((TfLiteDelegate*)self.cDelegate);
+  TfLiteCoreMlDelegateDelete((TfLiteDelegate *)self.cDelegate);
 }
 
 #pragma mark - Public
 
 - (nullable instancetype)init {
-  TFLCoreMLDelegateOptions* options = [[TFLCoreMLDelegateOptions alloc] init];
+  TFLCoreMLDelegateOptions *options = [[TFLCoreMLDelegateOptions alloc] init];
   return [self initWithOptions:options];
 }
 
-- (nullable instancetype)initWithOptions:(TFLCoreMLDelegateOptions*)options {
+- (nullable instancetype)initWithOptions:(TFLCoreMLDelegateOptions *)options {
   self = [super init];
   if (self != nil) {
     TfLiteCoreMlDelegateOptions cOptions;
 
-    cOptions.coreml_version = options.coreMLVersion;
-    cOptions.max_delegated_partitions = options.maxDelegatedPartitions;
-    cOptions.min_nodes_per_partition = options.minNodesPerPartition;
+    cOptions.coreml_version = (int)options.coreMLVersion;
+    cOptions.max_delegated_partitions = (int)options.maxDelegatedPartitions;
+    cOptions.min_nodes_per_partition = (int)options.minNodesPerPartition;
 
     switch (options.enabledDevices) {
       case TFLCoreMLDelegateEnabledDevicesNeuralEngine:
