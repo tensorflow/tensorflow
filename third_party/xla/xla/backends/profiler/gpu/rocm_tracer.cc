@@ -490,7 +490,7 @@ int RocmTracer::toolInit(rocprofiler_client_finalize_t fini_func,
 
 void RocmTracer::toolFinalize(void* tool_data) {
   auto& obj = RocmTracer::GetRocmTracerSingleton();
-  LOG(INFO) << "Calling toolFinalize!";
+  VLOG(1) << "Calling toolFinalize!";
   rocprofiler_stop_context(obj.utility_context_);
   obj.utility_context_.handle = 0;
   rocprofiler_stop_context(obj.context_);
