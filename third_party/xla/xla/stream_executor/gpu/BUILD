@@ -131,6 +131,7 @@ cc_library(
     hdrs = ["gpu_command_buffer.h"],
     deps = [
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/service:dump",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
@@ -1003,6 +1004,7 @@ cc_library(
     hdrs = ["kernel_serialization_check.h"],
     deps = [
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:kernel_spec_proto_cc",
         "//xla/stream_executor:kernel_symbol_registry",
         "//xla/stream_executor:platform",
         "//xla/tsl/platform:statusor",
