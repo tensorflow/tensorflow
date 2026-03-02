@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
@@ -60,7 +61,6 @@ namespace {
 
 using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
-using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
 
 // A hash set of unique pointers.
@@ -257,8 +257,8 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
       continue;
     }
 
-    auto operands_tiles =
-        PropagateTileToInput(tiling_space, *hlo, tiled_hlo->symbolic_tile(), 0);
+    auto operands_tiles = PropagateSymbolicTileToInput(
+        tiling_space, *hlo, tiled_hlo->symbolic_tile(), 0);
     if (!operands_tiles.has_value()) {
       return FusionDecision::Forbid("Couldn't propagate tile ")
              << tiled_hlo->symbolic_tile().ToString() << " to the input of "

@@ -31,6 +31,14 @@ using SymbolicTiles = llvm::SmallVector<SymbolicTile, 2>;
 
 std::string ToString(const SymbolicTiles& tiles);
 
+std::optional<SymbolicTiles> PropagateSymbolicTileToInput(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const SymbolicTile& output_tile, int64_t output_index);
+
+std::optional<SymbolicTiles> PropagateSymbolicTileToOutput(
+    const TilingSpace& tiling_space, const HloInstruction& hlo,
+    const SymbolicTile& input_tile, int64_t input_index);
+
 std::optional<SymbolicTiles> PropagateTileToInput(
     const TilingSpace& tiling_space, const HloInstruction& hlo,
     const SymbolicTile& output_tile, int64_t output_index);

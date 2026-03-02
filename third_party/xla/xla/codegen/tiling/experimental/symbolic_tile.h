@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/Support/LLVM.h"
 
 namespace xla::gpu::experimental {
 
@@ -116,6 +117,9 @@ class SymbolicTile {
   const TilingSpace& tiling_space() const { return *tiling_space_; }
   mlir::MLIRContext* mlir_context() const;
 
+  // Replace tiling expressions with the given map.
+  void Replace(const mlir::DenseMap<mlir::AffineExpr, mlir::AffineExpr>& map);
+
   bool operator==(const SymbolicTile& other) const;
 
   // This allows GUnit to print the tile.
@@ -146,7 +150,8 @@ DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
 // Returns a DimTile that covers the entire dimension, i.e.
 //  offset = AffineDimExpr(id) * AffineSymbolExpr(id),
 //  size = AffineSymbolExpr(id), stride 1, upper_bound = dim_size.
-DimTile GetDefaultDimTile(int64_t id, int64_t dim_size, mlir::MLIRContext* ctx);
+DimTile GetDefaultDimTile(int64_t id, mlir::AffineExpr tile_size,
+                          int64_t dim_size);
 
 }  // namespace xla::gpu::experimental
 

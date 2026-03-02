@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
@@ -57,14 +58,18 @@ class TilingSpace {
   struct DimensionInfo {
     // Unique ID for the dimension within the tiling space.
     ID id;
+
     // Size of the dimension.
     int64_t dimension_size;
+
     // Type of the dimension.
     DimensionSemantics type;
+
     // HLO instruction that defines (introduces) the dimension. For example
     // fusion root instruction defines the parallel dimensions. Dot/reduce
     // defines the sequential (contraction) dimensions.
     const HloInstruction* hlo;
+
     // Index into the ordered list of dimensions of the HLO instruction `hlo`
     // that defines the dimension.
     // All dimensions in the HLO instruction are ordered as
@@ -73,6 +78,9 @@ class TilingSpace {
     // Example, for `[a,b,c] = dot(lhs, rhs, lhs_contracting_dims={d,e}, ...)`.
     // The ordered list of dimensions is [a,b,c,d,e].
     int64_t dim_position;
+
+    // Tile size for the dimension.
+    int64_t tile_size = -1;
   };
 
   // Information about a runtime variable.
@@ -117,6 +125,9 @@ class TilingSpace {
   // exist.
   const DimensionInfo& GetDimensionInfo(const HloInstruction& hlo,
                                         int64_t dim_position) const;
+
+  // Assigns tile sizes to the dimensions.
+  void AssignTileSizes(absl::Span<const int64_t> tile_sizes);
 
   // Returns the runtime variable info for `hlo` that uses it and its
   // `operand_id`. This runtime variable info must exist.

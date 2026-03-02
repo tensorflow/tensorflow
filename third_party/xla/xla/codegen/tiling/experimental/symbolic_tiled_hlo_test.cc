@@ -61,7 +61,7 @@ TEST_F(SymbolicTiledHloTest, TestPrinting) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateTileToInput(
+  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToInput(
       *tiling_space, *root,
       GetTestSymbolicTile(*tiling_space, root->shape().dimensions()), 0);
 
@@ -69,7 +69,7 @@ TEST_F(SymbolicTiledHloTest, TestPrinting) {
   SymbolicTiledHloInstruction tiled_hlo_instruction(root, (*tiled_operands)[0]);
   EXPECT_THAT(tiled_hlo_instruction, MatchString(R"(
     hlo: %broadcast = f32[10,20,30]{2,1,0} broadcast(%p0), dimensions={0,2}
-    tile: (tid_0, tid_1, tid_2)[ts_0, ts_1, ts_2]
+    tile: (tid_0, tid_1, tid_2)
       -> offsets [tid_0 * ts_0, tid_2 * ts_2]
          sizes [ts_0, ts_2]
          strides [1, 3]
@@ -99,7 +99,7 @@ TEST_F(SymbolicTiledHloTest, TestReduceWithRegionPrinting) {
   auto tiled_reduce = std::make_unique<SymbolicTiledHloInstruction>(
       reduce,
       GetTestSymbolicTile(*tiling_space_reduce, reduce->shape().dimensions()));
-  std::optional<SymbolicTiles> operands_tiles = PropagateTileToInput(
+  std::optional<SymbolicTiles> operands_tiles = PropagateSymbolicTileToInput(
       *tiling_space_reduce, *reduce,
       GetTestSymbolicTile(*tiling_space_reduce, reduce->shape().dimensions()),
       0);
@@ -114,18 +114,18 @@ TEST_F(SymbolicTiledHloTest, TestReduceWithRegionPrinting) {
 
   EXPECT_THAT(*tiled_reduce, MatchString(R"(
     hlo: %reduce = f32[2]{0} reduce(%p0, %constant), dimensions={1}, to_apply=%max
-    tile: (tid_0, tid_1)[ts_0, ts_1]
+    tile: (tid_0, tid_1)
       -> offsets [tid_0 * ts_0]
          sizes [ts_0]
          strides [1]
          upper bounds [2]
     region #0 {
       hlo: %p0 = f32[2,97]{1,0} parameter(0)
-      tile: (tid_0, tid_1)[ts_0, ts_1]
+      tile: (tid_0, tid_1)
         -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
            strides [1, 1] upper bounds [2, 97]
       hlo: %constant = f32[] constant(-inf)
-      tile: (tid_0, tid_1)[ts_0, ts_1]
+      tile: (tid_0, tid_1)
         -> offsets [] sizes [] strides [] upper bounds []
     }
   )"));

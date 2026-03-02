@@ -61,7 +61,7 @@ TEST_F(SymbolicTileTest, StringFormat) {
                      DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
 
   EXPECT_THAT(tile.ToString(), MatchIndexingString(R"(
-    (tid_0, tid_1)[ts_0, ts_1]{rt_0} ->
+    (tid_0, tid_1){rt_0} ->
       offsets [tid_0 * ts_0, tid_1 * ts_1 + rt_0]
       sizes [ts_0, ts_1]
       strides [1, 1]
