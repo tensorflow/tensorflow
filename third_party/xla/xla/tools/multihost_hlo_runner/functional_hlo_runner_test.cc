@@ -658,7 +658,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   TF_RET_CHECK(env.client->addressable_device_count() == 1);
 
   // The logic for exchanging autotuning results is tested using mocks in
-  // gemm_fusion_autotuner_test.cc. Here, we just check that compilation
+  // autotuner_test.cc. Here, we just check that compilation
   // actually succeeds, and that the autotuner runs correctly ends up storing
   // results for each node in the key-value store.
   TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
