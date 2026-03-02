@@ -47,7 +47,6 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/WalkResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/extract_callback.h"
@@ -71,8 +70,8 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
-#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
@@ -617,10 +616,27 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
                         xla::HloSharding::FromProto(arg.sharding()));
     executable_bundle->arg_hlo_shardings.push_back(hlo_sharding);
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_sharding,
+        ToIfrtSharding(*ifrt_client_, hlo_sharding, assigned_device_list_));
+    executable_bundle->arg_ifrt_shardings.push_back(std::move(ifrt_sharding));
     TF_ASSIGN_OR_RETURN(auto reshaped_tensor,
                         tensorflow::TensorShape::BuildTensorShape(arg.shape()));
     executable_bundle->reshaped_input_tensors.push_back(
         std::move(reshaped_tensor));
+  }
+
+  if (UsePortableExecution()) {
+    // For core selection, the device is selected at runtime. We pre-calculate
+    // the sharding for each addressable device to avoid doing it on the
+    // critical path. The map is keyed by device ID.
+    for (xla::ifrt::Device* device : ifrt_client_->addressable_devices()) {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef device_list,
+                          ifrt_client_->MakeDeviceList({device}));
+      executable_bundle->portable_single_device_shardings.emplace(
+          device->Id(), xla::ifrt::SingleDeviceSharding::Create(
+                            device, xla::ifrt::MemoryKind()));
+    }
   }
 
   executable_bundle->retval_hlo_shardings.reserve(
@@ -847,9 +863,16 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (xla::ifrt::Device* device : device_list->devices()) {
     device_ids.push_back(device->Id().value());
   }
-  std::vector<tsl::Future<xla::ifrt::ArrayRef>> args;
-  args.reserve(inputs.size());
   int variable_arg_index = 0;
+  std::vector<tsl::Future<xla::ifrt::ArrayRef>> variable_args;
+  variable_args.reserve(variable_arg_indices.size());
+
+  std::vector<InputHandle> input_handles;
+  std::vector<int> input_handle_result_indices;
+  input_handles.reserve(inputs.size() - variable_arg_indices.size());
+  input_handle_result_indices.reserve(inputs.size() -
+                                      variable_arg_indices.size());
+
   // TODO(b/445201291): Plumb the H2DTransferExecutorFactory from the
   // IfrtServingExecutable constructor.
   absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
@@ -893,7 +916,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         return absl::InternalError(absl::StrCat(
             "Variable array not found for key: ", key_view.input_name));
       }
-      args.push_back((*it).second.array);
+      variable_args.push_back((*it).second.array);
       variable_arg_index++;
     } else {
       // If the input shape is not the same as the shape after Tf2Hlo
@@ -913,24 +936,57 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
               : nullptr;
       const xla::Shape* xla_input_shape =
           xla_input_shapes != nullptr ? (*xla_input_shapes)[i].get() : nullptr;
-      TF_ASSIGN_OR_RETURN(
-          tsl::Future<xla::ifrt::ArrayRef> array_ref,
-          (*user_inputs_h2d_transfer_executor)
-              ->ScheduledH2DTransfer(reshaped, xla_input_shape, device_list,
-                                     executable_bundle->arg_hlo_shardings[i],
-                                     thread_pool_, std::move(layout_ref)));
-      args.push_back(std::move(array_ref));
+
+      xla::ifrt::ShardingRef ifrt_sharding =
+          executable_bundle->arg_ifrt_shardings[i];
+      if (UsePortableExecution()) {
+        // Portable execution is only supported for single-device programs.
+        auto sharding_it =
+            executable_bundle->portable_single_device_shardings.find(
+                device_list->devices().front()->Id());
+        if (sharding_it ==
+            executable_bundle->portable_single_device_shardings.end()) {
+          return absl::InternalError(absl::StrCat(
+              "Portable single device sharding not found for device id: ",
+              device_list->devices().front()->Id()));
+        }
+        ifrt_sharding = sharding_it->second;
+      }
+      input_handles.push_back({
+          .tensor = reshaped,
+          .input_xla_shape = xla_input_shape,
+          .device_list = device_list,
+          .ifrt_sharding = std::move(ifrt_sharding),
+          .xla_input_layout = std::move(layout_ref),
+      });
+      input_handle_result_indices.push_back(i);
     }
   }
-  DCHECK_EQ(args.size(), executable_bundle->compile_metadata.args().size());
 
+  TF_ASSIGN_OR_RETURN(
+      auto input_futures,
+      (*user_inputs_h2d_transfer_executor)
+          ->ScheduledH2DTransfers(absl::MakeSpan(input_handles), thread_pool_));
   TF_RETURN_IF_ERROR((*user_inputs_h2d_transfer_executor)->RunH2DTransfers());
 
   std::vector<xla::ifrt::ArrayRef> transfer_result;
-  transfer_result.reserve(args.size());
-  for (auto& arg : args) {
-    TF_ASSIGN_OR_RETURN(auto array_ref, arg.Await());
-    transfer_result.push_back(std::move(array_ref));
+  transfer_result.resize(inputs.size());
+
+  for (int i = 0; i < variable_args.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(auto array_ref, variable_args[i].Await());
+    transfer_result[variable_arg_indices[i]] = std::move(array_ref);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto input_arrays, input_futures.Await());
+  if (input_arrays.size() != input_handles.size()) {
+    return absl::InternalError(absl::StrCat("Expected ", input_handles.size(),
+                                            " input arrays but got ",
+                                            input_arrays.size()));
+  }
+
+  for (int i = 0; i < input_arrays.size(); ++i) {
+    transfer_result[input_handle_result_indices[i]] =
+        std::move(input_arrays[i]);
   }
 
   VLOG(2) << "Start Execution";
@@ -1028,7 +1084,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
             tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
             checkpoint_loader_queue_, sharding_config, std::move(layout_ref),
-            std::move(shape_on_device)));
+            std::move(shape_on_device), devices));
   }
   return absl::OkStatus();
 }
