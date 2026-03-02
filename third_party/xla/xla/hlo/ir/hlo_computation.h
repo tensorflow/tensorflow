@@ -805,7 +805,11 @@ class HloComputation {
   bool IsFusionComputation() const {
     // TODO(b/418034360): There should be at most one fusion instruction calling
     // a fusion computation. Assert this and fix all related tests.
-    return !caller_instructions(HloOpcode::kFusion).empty();
+    bool is_fusion = !caller_instructions(HloOpcode::kFusion).empty();
+    if (!is_fusion) {
+      fprintf(stderr, "Fusion Computation: %s\n", ToString().c_str());
+    }
+    return is_fusion;
   }
 
   // Returns if this computation is the entry computation of the module.

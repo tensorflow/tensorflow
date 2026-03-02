@@ -597,6 +597,8 @@ absl::StatusOr<bool> InstructionFusion::RunImpl(
 
   for (auto* computation :
        GetNonFusionComputations(module, execution_threads)) {
+    fprintf(stderr, "Running fusion on computation: %s\n",
+            computation->ToString().c_str());
     CHECK(!computation->IsFusionComputation());
     std::unique_ptr<HloReachabilityMap> reachability =
         HloReachabilityMap::Build(computation);
@@ -1092,8 +1094,10 @@ bool IsSafeToFuseSliceIntoDusFusion(const HloInstruction* producer,
 
 FusionDecision InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                              int64_t operand_index) {
-  return ShouldFuse(consumer, operand_index,
-                    InstructionFusion::ShouldFuseInPlaceOp);
+  FusionDecision decision = ShouldFuse(consumer, operand_index,
+                                       InstructionFusion::ShouldFuseInPlaceOp);
+  fprintf(stderr, "ShouldFuse: %s\n", decision.Explain().c_str());
+  return decision;
 }
 
 FusionDecision InstructionFusion::ShouldFuse(

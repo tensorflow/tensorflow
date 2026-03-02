@@ -56,6 +56,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -782,6 +784,32 @@ TEST(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
   ASSERT_TRUE(executable_without_debug_info_manager->has_module());
   EXPECT_FALSE(XlaDebugInfoManager::Get()->TracksModule(
       executable_without_debug_info_manager->module().unique_id()));
+}
+
+TEST(GpuExecutableTest, ExecutableAbiVersion) {
+  stream_executor::ExecutableAbiVersionProto executable_abi_version_proto;
+  executable_abi_version_proto.set_platform_name("TEST_PLATFORM");
+  executable_abi_version_proto.mutable_cuda_platform_version()
+      ->set_cuda_toolkit_version("9.9.9");
+
+  GpuExecutable::Params params;
+  ASSERT_OK_AND_ASSIGN(params.executable_abi_version,
+                       stream_executor::ExecutableAbiVersion::FromProto(
+                           executable_abi_version_proto));
+  params.executable =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo{}, ThunkSequence{});
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                       GpuExecutable::Create(std::move(params)));
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::ExecutableAbiVersion executable_abi_version,
+      executable->GetExecutableAbiVersion());
+  EXPECT_THAT(executable_abi_version.proto(),
+              EqualsProto(executable_abi_version_proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
+  EXPECT_THAT(proto.executable_abi_version(),
+              EqualsProto(executable_abi_version_proto));
 }
 
 }  // namespace
