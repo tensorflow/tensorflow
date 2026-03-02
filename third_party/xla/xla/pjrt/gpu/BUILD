@@ -511,9 +511,11 @@ cc_library(
     deps = [
         ":se_gpu_pjrt_compiler_impl",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:stream_executor_platform_id_mapping",
         "//xla/service/gpu:nvptx_compiler",  # buildcleaner: keep
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/stream_executor/platform:initialize",
+        "@com_google_absl//absl/log:check",
     ],
     alwayslink = 1,
 )
@@ -529,9 +531,11 @@ cc_library(
     deps = [
         ":se_gpu_pjrt_compiler_impl",
         "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:stream_executor_platform_id_mapping",
         "//xla/service/gpu:amdgpu_compiler",  # buildcleaner: keep
         "//xla/stream_executor/platform:initialize",
         "//xla/stream_executor/rocm:rocm_platform_id",
+        "@com_google_absl//absl/log:check",
     ],
     alwayslink = 1,
 )

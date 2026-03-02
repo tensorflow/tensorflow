@@ -1586,3 +1586,33 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "stream_executor_platform_id_mapping",
+    srcs = ["stream_executor_platform_id_mapping.cc"],
+    hdrs = ["stream_executor_platform_id_mapping.h"],
+    deps = [
+        ":pjrt_common",
+        "//xla/stream_executor:platform_id",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "stream_executor_platform_id_mapping_test",
+    srcs = ["stream_executor_platform_id_mapping_test.cc"],
+    deps = [
+        ":pjrt_common",
+        ":stream_executor_platform_id_mapping",
+        "//xla/stream_executor:platform_id",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
