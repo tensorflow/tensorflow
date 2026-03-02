@@ -4213,13 +4213,13 @@ def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$operand,
-    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$update,
+    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, QI16, I8, I16, I32, I64, F32, F16]>:$operand,
+    TFL_TensorOf<[I1, TFL_I4, QI4, QI8, QI16, I8, I16, I32, I64, F32, F16]>:$update,
     TFL_I32OrI64Tensor:$start_indices
   );
 
   let results = (
-    outs TFL_TensorOf<[I1, TFL_I4, QI4, QI8, I8, I16, I32, I64, F32, F16]>:$output);
+    outs TFL_TensorOf<[I1, TFL_I4, QI4, QI8, QI16, I8, I16, I32, I64, F32, F16]>:$output);
 
   let extraClassDeclaration = [{
     // Quantized axes are verified in the Verify function.
