@@ -39,6 +39,8 @@ toc:
     path: /xla/indexing
   - title: LHS Cost Model
     path: /xla/lhs_cost_model
+  - title: Megascale
+    path: /xla/megascale/overview
   - title: Multi-host HLO runner
     path: /xla/tools_multihost_hlo_runner
   - title: Persisted autotuning
@@ -62,6 +64,8 @@ toc:
 - title: Debugging
   section:
   # This is the default tab for the Debugging section.
+  - title: Debug Megascale
+    path: /xla/megascale/debugging_workflow
   - title: Dump HLO Computations
     path: /xla/hlo_dumps
   - title: Errors Overview
