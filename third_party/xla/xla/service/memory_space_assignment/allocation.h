@@ -148,6 +148,7 @@ class Allocation {
   virtual bool is_window_prefetched_allocation() const = 0;
   virtual bool is_scoped_allocation() const = 0;
   virtual bool is_reserved_allocation() const = 0;
+  virtual bool is_mirrored_allocation() const = 0;
   // True if the allocation is for a copy or a sliced-copy.
   bool is_copy_like_allocation() const;
 
@@ -232,6 +233,7 @@ class PinnedAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -267,6 +269,7 @@ class ReservedAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return true; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -327,6 +330,7 @@ class CopyAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -435,6 +439,7 @@ class SlicedCopyAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
   // bitcast_split_fn) to create asynchronous slice copies, and a bitcast-concat
   // call to glue the slices back together.
@@ -513,6 +518,7 @@ class WindowPrefetchedAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return true; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   // MemorySpaceAssignment::Process() calls Process(const BitcastSplitFn&
   // bitcast_split_fn) to create asynchronous window prefetches.
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
@@ -551,13 +557,22 @@ class WindowPrefetchedAllocation final : public Allocation {
   int64_t bytes_;
 };
 
-// An allocation in the default memory space that mirrors another Allocation
-// object. This is useful to model an eviction that happens before a while op
-// so that we don't need to redundantly evict the buffer after the while op as
-// well.
+// An allocation that mirrors another Allocation object. The memory space for
+// this allocation is set to be the default memory space regardless of the
+// memory space of the original allocation so that it does not conflict with
+// existing allocations in the alternate memory space.
+// - It is useful to model an eviction that happens before a while op so that
+//   we don't need to redundantly evict the buffer after the while op as well.
+// - It is useful to model a pinned allocation for a parameter in a branched
+//   computation of a conditional op in the alternate memory space, when the
+//   conditional input is already pinned in the parent computation throughout
+//   the live range of the conditional op.
 class MirroredAllocation final : public Allocation {
  public:
   MirroredAllocation(const Allocation& original_allocation, int64_t time);
+  MirroredAllocation(HloPosition defining_position,
+                     const Allocation& original_allocation, int64_t start_time,
+                     int64_t end_time);
 
   // Overridden methods
   //
@@ -570,6 +585,7 @@ class MirroredAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return true; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -581,8 +597,10 @@ class MirroredAllocation final : public Allocation {
 
   // New non-virtual methods
   bool operator==(const MirroredAllocation& other) const;
+  const Allocation& original_allocation() const { return original_allocation_; }
 
  private:
+  const std::optional<HloPosition> defining_position_;
   const Allocation& original_allocation_;
 };
 
@@ -606,6 +624,7 @@ class ParentAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return false; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override;
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)
@@ -640,6 +659,7 @@ class ScopedAllocation final : public Allocation {
   bool is_window_prefetched_allocation() const override { return false; }
   bool is_scoped_allocation() const override { return true; }
   bool is_reserved_allocation() const override { return false; }
+  bool is_mirrored_allocation() const override { return false; }
   absl::Status Process(const BitcastSplitFn& bitcast_split_fn) override;
   absl::Status PostProcess() override { return absl::OkStatus(); }
   void MarkIfNeeded(absl::flat_hash_set<const Allocation*>& needed_allocations)

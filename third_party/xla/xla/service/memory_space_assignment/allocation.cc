@@ -857,11 +857,27 @@ MirroredAllocation::MirroredAllocation(const Allocation& original_allocation,
                  /*start_time=*/time,
                  /*end_time=*/time,
                  /*cross_program_prefetch_index=*/std::nullopt),
+      defining_position_(std::nullopt),
+      original_allocation_(original_allocation) {}
+
+MirroredAllocation::MirroredAllocation(HloPosition defining_position,
+                                       const Allocation& original_allocation,
+                                       int64_t start_time, int64_t end_time)
+    : Allocation(original_allocation.defining_position(), MemorySpace::kDefault,
+                 original_allocation.maybe_chunk(),
+                 /*start_time=*/start_time,
+                 /*end_time=*/end_time,
+                 /*cross_program_prefetch_index=*/std::nullopt),
+      defining_position_(defining_position),
       original_allocation_(original_allocation) {}
 
 absl::Status MirroredAllocation::Process(
     const BitcastSplitFn& bitcast_split_fn) {
-  set_original_defining_position(original_allocation_.defining_position());
+  if (defining_position_.has_value()) {
+    set_original_defining_position(defining_position_.value());
+  } else {
+    set_original_defining_position(original_allocation_.defining_position());
+  }
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   return UpdateUses(computation, producing_instruction, bitcast_split_fn);
