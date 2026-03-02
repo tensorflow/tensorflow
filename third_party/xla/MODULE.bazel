@@ -8,7 +8,7 @@ bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_a
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.1")
-bazel_dep(name = "boringssl", version = "0.20250818.0")
+bazel_dep(name = "boringssl", version = "0.20260211.0")
 bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
 bazel_dep(name = "googletest", version = "1.17.0", repo_name = "com_google_googletest")
