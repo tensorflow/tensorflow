@@ -69,11 +69,9 @@ bool IsGpuClient(const PjRtClient& client) {
 bool IsSameTopology(const PjRtTopologyDescription& topology1,
                     const PjRtTopologyDescription& topology2) {
   const StreamExecutorGpuTopologyDescription& gpu_topology1 =
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
-          topology1);
+      absl::down_cast<const StreamExecutorGpuTopologyDescription&>(topology1);
   const StreamExecutorGpuTopologyDescription& gpu_topology2 =
-      tensorflow::down_cast<const StreamExecutorGpuTopologyDescription&>(
-          topology2);
+      absl::down_cast<const StreamExecutorGpuTopologyDescription&>(topology2);
   return gpu_topology1 == gpu_topology2;
 }
 
@@ -140,8 +138,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   CompileOptions input_options = options;
   if (xla::IsEarlyExitCompilation(options)) {
     auto* se_gpu_topology =
-        tsl::down_cast<const xla::StreamExecutorGpuTopologyDescription*>(
-            &topology);
+        absl::down_cast<const StreamExecutorGpuTopologyDescription*>(&topology);
     const xla::GpuTopology& gpu_topology = se_gpu_topology->gpu_topology();
     TF_RET_CHECK(gpu_topology.has_gpu_target_config())
         << "GPU cross-compile is not yet implemented for topology "
@@ -158,8 +155,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       return executable;
     }
     const auto& gpu_topology =
-        tensorflow::down_cast<const xla::StreamExecutorGpuTopologyDescription&>(
-            topology);
+        absl::down_cast<const StreamExecutorGpuTopologyDescription&>(topology);
     if (gpu_topology.target_config().has_value()) {
       TF_ASSIGN_OR_RETURN(
           Compiler::GpuTargetConfig target_config,
