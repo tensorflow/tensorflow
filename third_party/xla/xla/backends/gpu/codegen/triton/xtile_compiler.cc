@@ -263,9 +263,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   TF_ASSIGN_OR_RETURN(
       auto triton_module,
-      xtile::EmitXTileModule(fn_name, fusion, symbolic_tile_analysis, tiling,
-                             mlir_context, absl::MakeSpan(opaque_args_types)));
-
+      xtile::EmitXTileModule(
+          fn_name, fusion, symbolic_tile_analysis, tiling, mlir_context,
+          absl::MakeSpan(opaque_args_types),
+          std::make_optional(device_info.gpu_compute_capability())));
   const auto debug_options = fusion->GetModule()->config().debug_options();
 
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
