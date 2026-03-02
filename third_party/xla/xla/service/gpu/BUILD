@@ -799,7 +799,6 @@ tf_proto_library(
         "//xla/backends/gpu/runtime:thunk_proto",
         "//xla/service:hlo_proto",
         "//xla/stream_executor:device_description_proto",
-        "//xla/stream_executor/cuda:cuda_compute_capability_proto",
     ],
 )
 

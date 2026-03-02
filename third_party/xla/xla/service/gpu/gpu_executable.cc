@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
@@ -270,7 +271,15 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
 
   // TODO(b/461380690): Remove this once we have a better way to distinguish
   // between compiler-generated and runtime-loaded GPU executables.
-  absl::StatusOr<ThunkProto> thunk_proto = params.executable->ToProto();
+  absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto =
+      [&]() -> absl::StatusOr<std::vector<ThunkProto>> {
+    ASSIGN_OR_RETURN(ThunkProto thunk_proto, params.executable->ToProto());
+    return std::vector<ThunkProto>(
+        std::make_move_iterator(
+            thunk_proto.mutable_sequential_thunk()->mutable_thunks()->begin()),
+        std::make_move_iterator(
+            thunk_proto.mutable_sequential_thunk()->mutable_thunks()->end()));
+  }();
 
   RETURN_IF_ERROR(RunThunkPasses(
       params.debug_options, params.device_description, params.executable.get(),
@@ -285,7 +294,7 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(allocator.MutableAllocations()), std::move(params.alias_info),
       std::move(params.debug_options), std::move(params.constants),
       std::move(params.output_info), params.enable_debug_info_manager,
-      std::move(params.module_stats), std::move(thunk_proto)));
+      std::move(params.module_stats), std::move(thunk_sequence_proto)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -303,7 +312,7 @@ GpuExecutable::GpuExecutable(
     std::vector<ConstantInfo> constants,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     bool enable_debug_info_manager, ModuleStats module_stats,
-    absl::StatusOr<ThunkProto> thunk_proto)
+    absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto)
     : Executable(std::move(debug_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -324,7 +333,7 @@ GpuExecutable::GpuExecutable(
       constants_(std::move(constants)),
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(enable_debug_info_manager),
-      thunk_proto_(std::move(thunk_proto)) {
+      thunk_sequence_proto_(std::move(thunk_sequence_proto)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -1438,7 +1447,11 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   // TODO(b/461380690): Generate the proto on-the-fly once we have a better way
   // to distinguish between compiler-generated and runtime-loaded GPU
   // executables.
-  ASSIGN_OR_RETURN(*proto.mutable_thunk(), thunk_proto_);
+  ASSIGN_OR_RETURN(const auto& thunk_sequence_proto, thunk_sequence_proto_);
+  proto.mutable_thunks()->Reserve(thunk_sequence_proto.size());
+  for (const auto& thunk_proto : thunk_sequence_proto) {
+    *proto.add_thunks() = thunk_proto;
+  }
 
   proto.set_module_name(module_name_);
   *proto.mutable_program_shape() = program_shape_.ToProto();
@@ -1515,19 +1528,19 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   params.device_description = device_description;
 
-  ASSIGN_OR_RETURN(
-      std::unique_ptr<Thunk> thunk,
-      DeserializeThunkProto(proto.thunk(), params.mlir_allocations.value(),
-                            params.debug_module.get(), platform_name,
-                            gpu_compute_capability, symbol_resolver));
-
-  if (dynamic_cast<const SequentialThunk*>(thunk.get()) == nullptr) {
-    return absl::InvalidArgumentError(
-        "The top-most serialized thunk in the GPU Executable is not a "
-        "SequentialThunk!");
+  ThunkSequence thunk_sequence;
+  thunk_sequence.reserve(proto.thunks_size());
+  for (const auto& thunk_proto : proto.thunks()) {
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        DeserializeThunkProto(thunk_proto, params.mlir_allocations.value(),
+                              params.debug_module.get(), platform_name,
+                              gpu_compute_capability, symbol_resolver));
+    thunk_sequence.push_back(std::move(thunk));
   }
 
-  params.executable = unique_ptr_down_cast<SequentialThunk>(std::move(thunk));
+  params.executable = std::make_unique<SequentialThunk>(
+      Thunk::ThunkInfo(), std::move(thunk_sequence));
 
   params.constants.reserve(proto.constants().size());
   for (const auto& constant_proto : proto.constants()) {
