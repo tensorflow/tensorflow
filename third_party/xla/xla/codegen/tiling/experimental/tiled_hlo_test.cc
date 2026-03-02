@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/symbolic_tiled_hlo_computation.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -25,9 +26,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/symbolic_tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
+#include "xla/codegen/tiling/experimental/tile_propagation.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -39,11 +42,103 @@ limitations under the License.
 namespace xla::gpu::experimental {
 namespace {
 
+using ::mlir::MLIRContext;
+
+class TiledHloTest : public HloHardwareIndependentTestBase {
+ public:
+  HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
+    auto module_or = ParseAndReturnVerifiedModule(hlo_string);
+    CHECK_OK(module_or);
+    module_ = std::move(module_or.value());
+    return module_->entry_computation()->root_instruction();
+  }
+
+  MLIRContext mlir_context_;
+  std::unique_ptr<VerifiedHloModule> module_;
+};
+
+TEST_F(TiledHloTest, TestPrinting) {
+  HloInstruction* root = ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[10,30] parameter(0)
+      ROOT broadcast = f32[10,20,30] broadcast(p0), dimensions={0,2}
+    }
+  )");
+  auto tiling_space = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
+      *tiling_space, *root,
+      GetTestTile(*tiling_space, root->shape().dimensions()), 0);
+
+  ASSERT_TRUE(tiled_operands.has_value());
+  TiledHloInstruction tiled_hlo_instruction(root, (*tiled_operands)[0]);
+  EXPECT_THAT(tiled_hlo_instruction, MatchString(R"(
+    hlo: %broadcast = f32[10,20,30]{2,1,0} broadcast(%p0), dimensions={0,2}
+    tile: (tid_0, tid_1, tid_2)
+      -> offsets [tid_0 * ts_0, tid_2 * ts_2]
+         sizes [ts_0, ts_2]
+         strides [1, 3]
+         upper bounds [10, 30]
+  )"));
+}
+
+TEST_F(TiledHloTest, TestReduceWithRegionPrinting) {
+  HloInstruction* reduce = ParseAndGetRoot(R"(
+    HloModule m
+
+    max {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT maximum = f32[] maximum(x, y)
+    }
+
+    ENTRY e {
+      p0 = f32[2,97]{1,0} parameter(0)
+      constant = f32[] constant(-inf)
+      ROOT reduce = f32[2]{0} reduce(p0, constant), dimensions={1}, to_apply=max
+    }
+  )");
+
+  auto tiling_space_reduce = TilingSpace::Create(
+      *HloFusionAdaptor::ForInstruction(reduce), &mlir_context_);
+  auto tiled_reduce = std::make_unique<TiledHloInstruction>(
+      reduce, GetTestTile(*tiling_space_reduce, reduce->shape().dimensions()));
+  std::optional<Tiles> operands_tiles = PropagateTileToInput(
+      *tiling_space_reduce, *reduce,
+      GetTestTile(*tiling_space_reduce, reduce->shape().dimensions()), 0);
+
+  TiledHloInstruction::Region region;
+  for (const auto& [operand, tile] :
+       llvm::zip(reduce->operands(), (*operands_tiles))) {
+    region.push_back(std::make_unique<TiledHloInstruction>(operand, tile));
+  }
+  tiled_reduce->AddRegion(std::move(region));
+
+  EXPECT_THAT(*tiled_reduce, MatchString(R"(
+    hlo: %reduce = f32[2]{0} reduce(%p0, %constant), dimensions={1}, to_apply=%max
+    tile: (tid_0, tid_1)
+      -> offsets [tid_0 * ts_0]
+         sizes [ts_0]
+         strides [1]
+         upper bounds [2]
+    region #0 {
+      hlo: %p0 = f32[2,97]{1,0} parameter(0)
+      tile: (tid_0, tid_1)
+        -> offsets [tid_0 * ts_0, tid_1 * ts_1] sizes [ts_0, ts_1]
+           strides [1, 1] upper bounds [2, 97]
+      hlo: %constant = f32[] constant(-inf)
+      tile: (tid_0, tid_1)
+        -> offsets [] sizes [] strides [] upper bounds []
+    }
+  )"));
+}
+
 using ::testing::Contains;
 
 MATCHER_P2(IsHloWithOperands, opcode, operand_opcodes,
            "Check if HLO has given opcode and operands with given opcodes") {
-  const SymbolicTiledHloInstruction& hlo = *arg;
+  const TiledHloInstruction& hlo = *arg;
   if (hlo.hlo()->opcode() != opcode) {
     return false;
   }
@@ -54,7 +149,7 @@ MATCHER_P2(IsHloWithOperands, opcode, operand_opcodes,
                         });
 }
 
-class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
+class TileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
@@ -63,22 +158,21 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
     return module_->entry_computation()->root_instruction();
   }
 
-  SymbolicTiledComputation ParseAndTile(absl::string_view hlo_string) {
+  TiledHloComputation ParseAndTile(absl::string_view hlo_string) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
     auto tiled_computation_or =
-        SymbolicTiledComputation::Tile(*fusion_adaptor, &mlir_context_);
-    CHECK(
-        std::holds_alternative<SymbolicTiledComputation>(tiled_computation_or));
-    return std::get<SymbolicTiledComputation>(std::move(tiled_computation_or));
+        TiledHloComputation::Tile(*fusion_adaptor, &mlir_context_);
+    CHECK(std::holds_alternative<TiledHloComputation>(tiled_computation_or));
+    return std::get<TiledHloComputation>(std::move(tiled_computation_or));
   }
 
   mlir::MLIRContext mlir_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
-TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
-  const SymbolicTiledComputation tiled_computation = ParseAndTile(R"(
+TEST_F(TileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
+  const TiledHloComputation tiled_computation = ParseAndTile(R"(
     max {
       p1 = f32[] parameter(1)
       p0 = f32[] parameter(0)
@@ -142,8 +236,8 @@ TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
                                  std::vector<HloOpcode>{HloOpcode::kReduce})));
 }
 
-TEST_F(SymbolicTileAnalysisTest, ConcatenateIsSupported) {
-  const SymbolicTiledComputation tiled_computation = ParseAndTile(R"(
+TEST_F(TileAnalysisTest, ConcatenateIsSupported) {
+  const TiledHloComputation tiled_computation = ParseAndTile(R"(
     concatenate {
       p0 = bf16[6] parameter(0)
       p1 = bf16[6] parameter(1)
@@ -190,8 +284,8 @@ TEST_F(SymbolicTileAnalysisTest, ConcatenateIsSupported) {
                   std::vector<HloOpcode>(3, HloOpcode::kParameter))));
 }
 
-TEST_F(SymbolicTileAnalysisTest, DotIsSupported) {
-  const SymbolicTiledComputation tiled_computation = ParseAndTile(R"(
+TEST_F(TileAnalysisTest, DotIsSupported) {
+  const TiledHloComputation tiled_computation = ParseAndTile(R"(
     fusion {
       p0 = f32[4,8] parameter(0)
       p1 = f32[8,16] parameter(1)
@@ -239,8 +333,8 @@ TEST_F(SymbolicTileAnalysisTest, DotIsSupported) {
           HloOpcode::kDot, std::vector<HloOpcode>(2, HloOpcode::kParameter))));
 }
 
-TEST_F(SymbolicTileAnalysisTest, ScaledDotIsSupported) {
-  const SymbolicTiledComputation tiled_computation = ParseAndTile(R"(
+TEST_F(TileAnalysisTest, ScaledDotIsSupported) {
+  const TiledHloComputation tiled_computation = ParseAndTile(R"(
     fusion {
       lhs = f8e4m3fn[128,64] parameter(0)
       rhs = f8e4m3fn[64,128] parameter(1)

@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/constraint_expression.h"
-#include "xla/codegen/tiling/experimental/symbolic_tile.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -46,7 +46,7 @@ namespace xla::gpu::experimental {
 //
 // This information allows us later to explore the space of all possible tilings
 // and assign concrete tilings for every instruction of the fusion with
-// SymbolicTilePropagation.
+// TilePropagation.
 class TilingSpace {
  public:
   TilingSpace() : constraints_(ConstraintExpression::GetAlwaysSatisfied()) {}
@@ -139,7 +139,7 @@ class TilingSpace {
 
   mlir::MLIRContext* mlir_context() const { return mlir_context_; }
 
-  llvm::ArrayRef<SymbolicTile> tiled_roots() const { return tiled_roots_; }
+  llvm::ArrayRef<Tile> tiled_roots() const { return tiled_roots_; }
 
   int64_t num_dimensions() const { return dimensions_.size(); }
   int64_t num_rt_vars() const { return rt_vars_.size(); }
@@ -148,6 +148,8 @@ class TilingSpace {
                        int64_t dim_size, DimensionSemantics dim_type);
   void AppendRTVar(const HloInstruction* hlo, int64_t operand_id,
                    const HloInstruction* rt_var, int64_t upper_bound);
+
+  bool IsSymbolic() const { return is_symbolic_; }
 
  private:
   void ProcessDotLike(const HloInstruction& hlo);
@@ -172,12 +174,15 @@ class TilingSpace {
   // Symbolic tiles for the fusion roots.
   // For tuple roots, there will be one tile per tuple element. Otherwise,
   // there will be only one symbolic tile.
-  llvm::SmallVector<SymbolicTile, 2> tiled_roots_;
+  llvm::SmallVector<Tile, 2> tiled_roots_;
 
   // Constraint expression for the tiling space.
   ConstraintExpression constraints_;
 
   mlir::MLIRContext* mlir_context_;
+
+  // Whether the tiling space is symbolic.
+  bool is_symbolic_ = true;
 };
 
 // If the shape is a tuple, return the shape at the given index.

@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/codegen/tiling/experimental/symbolic_tile.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -180,6 +180,7 @@ const TilingSpace::RTVarInfo& TilingSpace::GetRTVarInfo(
 
 void TilingSpace::AssignTileSizes(absl::Span<const int64_t> tile_sizes) {
   CHECK_EQ(tile_sizes.size(), dimensions_.size());
+  is_symbolic_ = false;
   mlir::DenseMap<AffineExpr, AffineExpr> replacement_map;
   for (const auto& [index, dim] : llvm::enumerate(dimensions_)) {
     dim.tile_size = tile_sizes[index];
@@ -213,7 +214,7 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
       dim_tiles.push_back(
           GetDefaultDimTile(index, getAffineSymbolExpr(index, ctx), dim));
     }
-    SymbolicTile tile{*tiling_space, std::move(dim_tiles)};
+    Tile tile{*tiling_space, std::move(dim_tiles)};
     if (root_shape.IsTuple()) {
       for (int64_t i = 0, e = root_shape.tuple_shapes().size(); i < e; ++i) {
         tiling_space->tiled_roots_.push_back(tile);

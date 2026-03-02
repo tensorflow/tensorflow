@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/symbolic_tile.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 
 #include <cstdint>
 
@@ -31,7 +31,7 @@ namespace {
 
 using ::mlir::AffineExpr;
 
-using SymbolicTileTest = HloHardwareIndependentTestBase;
+using TileTest = HloHardwareIndependentTestBase;
 
 TilingSpace GetFakeTilingSpace(int64_t num_dims, int64_t num_rt_vars) {
   TilingSpace tiling_space;
@@ -45,7 +45,7 @@ TilingSpace GetFakeTilingSpace(int64_t num_dims, int64_t num_rt_vars) {
   return tiling_space;
 }
 
-TEST_F(SymbolicTileTest, StringFormat) {
+TEST_F(TileTest, StringFormat) {
   mlir::MLIRContext mlir_context;
   AffineExpr tid0, tid1, ts0, ts1, rt;
   mlir::bindDims(&mlir_context, tid0, tid1);
@@ -56,9 +56,9 @@ TEST_F(SymbolicTileTest, StringFormat) {
 
   TilingSpace tiling_space =
       GetFakeTilingSpace(/*num_dims=*/2, /*num_rt_vars=*/1);
-  SymbolicTile tile{tiling_space,
-                    {DimTile{tid0 * ts0, ts0, c1, c16},
-                     DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
+  Tile tile{tiling_space,
+            {DimTile{tid0 * ts0, ts0, c1, c16},
+             DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
 
   EXPECT_THAT(tile.ToString(), MatchIndexingString(R"(
     (tid_0, tid_1){rt_0} ->

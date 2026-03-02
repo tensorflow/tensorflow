@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/codegen/tiling/experimental/symbolic_tile_propagation.h"
+#include "xla/codegen/tiling/experimental/tile_propagation.h"
 
 #include <memory>
 #include <optional>
@@ -27,8 +27,8 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/symbolic_tile.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -48,7 +48,7 @@ MATCHER_P(MatchToString, test_string, "") {
                             result_listener);
 }
 
-class SymbolicTilePropagationTest : public HloHardwareIndependentTestBase {
+class TilePropagationTest : public HloHardwareIndependentTestBase {
  public:
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
@@ -61,7 +61,7 @@ class SymbolicTilePropagationTest : public HloHardwareIndependentTestBase {
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -72,9 +72,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToInput(
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()), 0);
+      GetTestTile(*tiling_space, root->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1)
       -> offsets [tid_0 * ts_0, tid_1 * ts_1]
@@ -89,7 +89,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfElementwiseOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfElementwiseOp) {
+TEST_F(TilePropagationTest, CanPropagateToOutputsOfElementwiseOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -108,17 +108,17 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfElementwiseOp) {
          upper bounds [10, 20]
   )";
 
-  std::optional<SymbolicTiles> from_operand_0 = PropagateSymbolicTileToOutput(
+  std::optional<Tiles> from_operand_0 = PropagateTileToOutput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()), 0);
+      GetTestTile(*tiling_space, root->shape().dimensions()), 0);
   EXPECT_THAT(from_operand_0, Optional(MatchToString(kExpected)));
-  std::optional<SymbolicTiles> from_operand_1 = PropagateSymbolicTileToOutput(
+  std::optional<Tiles> from_operand_1 = PropagateTileToOutput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()), 1);
+      GetTestTile(*tiling_space, root->shape().dimensions()), 1);
   EXPECT_THAT(from_operand_1, Optional(MatchToString(kExpected)));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputOfBroadcastOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputOfBroadcastOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -128,9 +128,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputOfBroadcastOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToInput(
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()), 0);
+      GetTestTile(*tiling_space, root->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
       -> offsets [tid_0 * ts_0, tid_2 * ts_2]
@@ -140,7 +140,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputOfBroadcastOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfBroadcastOp) {
+TEST_F(TilePropagationTest, CanPropagateToOutputOfBroadcastOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -150,11 +150,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfBroadcastOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToOutput(
+  std::optional<Tiles> tiled_operands = PropagateTileToOutput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space,
-                          root->operand(0)->shape().dimensions()),
-      0);
+      GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
          -> offsets [tid_0 * ts_0, 0, tid_1 * ts_1]
@@ -165,7 +163,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfBroadcastOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -177,9 +175,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToInput(
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()), 0);
+      GetTestTile(*tiling_space, root->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0)
       -> offsets [tid_0 * ts_0]
@@ -199,7 +197,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfConcatenateOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
+TEST_F(TilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -213,11 +211,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
 
   // Operand 0
-  std::optional<SymbolicTiles> from_operand_0 = PropagateSymbolicTileToOutput(
+  std::optional<Tiles> from_operand_0 = PropagateTileToOutput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space,
-                          root->operand(0)->shape().dimensions()),
-      0);
+      GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()), 0);
   EXPECT_THAT(from_operand_0, Optional(MatchToString(R"(
     0) (tid_0, tid_1)
       -> offsets [tid_0 * ts_0, tid_1 * ts_1]
@@ -227,11 +223,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
   )")));
 
   // Operand 1
-  std::optional<SymbolicTiles> from_operand_1 = PropagateSymbolicTileToOutput(
+  std::optional<Tiles> from_operand_1 = PropagateTileToOutput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space,
-                          root->operand(1)->shape().dimensions()),
-      1);
+      GetTestTile(*tiling_space, root->operand(1)->shape().dimensions()), 1);
   EXPECT_THAT(from_operand_1, Optional(MatchToString(R"(
     0) (tid_0, tid_1)
       -> offsets [tid_0 * ts_0, tid_1 * ts_1 + 5]
@@ -241,11 +235,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
   )")));
 
   // Operand 2
-  std::optional<SymbolicTiles> from_operand_2 = PropagateSymbolicTileToOutput(
+  std::optional<Tiles> from_operand_2 = PropagateTileToOutput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space,
-                          root->operand(2)->shape().dimensions()),
-      2);
+      GetTestTile(*tiling_space, root->operand(2)->shape().dimensions()), 2);
   EXPECT_THAT(from_operand_2, Optional(MatchToString(R"(
     0) (tid_0, tid_1)
       -> offsets [tid_0 * ts_0, tid_1 * ts_1 + 13]
@@ -255,7 +247,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputsOfConcatenateOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest,
+TEST_F(TilePropagationTest,
        CanPropagateToInputsOfConcatenateOpWithNonDefaultUpperBound) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
@@ -268,15 +260,13 @@ TEST_F(SymbolicTilePropagationTest,
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  SymbolicTile symbolic_tile =
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions());
+  Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
   llvm::SmallVector<AffineExpr, 1> upper_bounds{
       mlir::getAffineConstantExpr(25, &mlir_context_)};
-  symbolic_tile = SymbolicTile{*tiling_space, symbolic_tile.offsets(),
-                               symbolic_tile.sizes(), symbolic_tile.strides(),
-                               upper_bounds};
-  std::optional<SymbolicTiles> tiled_operands =
-      PropagateSymbolicTileToInput(*tiling_space, *root, symbolic_tile, 0);
+  tile = Tile{*tiling_space, tile.offsets(), tile.sizes(), tile.strides(),
+              upper_bounds};
+  std::optional<Tiles> tiled_operands =
+      PropagateTileToInput(*tiling_space, *root, tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0)
       -> offsets [tid_0 * ts_0]
@@ -296,7 +286,7 @@ TEST_F(SymbolicTilePropagationTest,
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest,
+TEST_F(TilePropagationTest,
        CanPropagateToInputsOfConcatenateOpWithNonConstantUpperBound) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
@@ -309,20 +299,17 @@ TEST_F(SymbolicTilePropagationTest,
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  SymbolicTile symbolic_tile =
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions());
+  Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
   llvm::SmallVector<AffineExpr, 1> upper_bounds{
       mlir::getAffineDimExpr(0, &mlir_context_) * 30};
-  symbolic_tile = SymbolicTile{*tiling_space, symbolic_tile.offsets(),
-                               symbolic_tile.sizes(), symbolic_tile.strides(),
-                               upper_bounds};
-  std::optional<SymbolicTiles> tiled_operands =
-      PropagateSymbolicTileToInput(*tiling_space, *root, symbolic_tile, 0);
+  tile = Tile{*tiling_space, tile.offsets(), tile.sizes(), tile.strides(),
+              upper_bounds};
+  std::optional<Tiles> tiled_operands =
+      PropagateTileToInput(*tiling_space, *root, tile, 0);
   EXPECT_EQ(tiled_operands, std::nullopt);
 }
 
-TEST_F(SymbolicTilePropagationTest,
-       CanPropagateToInputsOfPadOpWithEdgePadding) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfPadOpWithEdgePadding) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -333,9 +320,9 @@ TEST_F(SymbolicTilePropagationTest,
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToInput(
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()),
+      GetTestTile(*tiling_space, root->shape().dimensions()),
       /*output_index=*/0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1)
@@ -348,8 +335,7 @@ TEST_F(SymbolicTilePropagationTest,
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest,
-       CanNotPropagateToInputsOfPadOpWithInteriorPadding) {
+TEST_F(TilePropagationTest, CanNotPropagateToInputsOfPadOpWithInteriorPadding) {
   auto root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -360,14 +346,14 @@ TEST_F(SymbolicTilePropagationTest,
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToInput(
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()),
+      GetTestTile(*tiling_space, root->shape().dimensions()),
       /*output_index=*/0);
   EXPECT_EQ(tiled_operands, std::nullopt);
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfTransposeOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfTransposeOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -377,9 +363,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfTransposeOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToInput(
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()), 0);
+      GetTestTile(*tiling_space, root->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
       -> offsets [tid_1 * ts_1, tid_3 * ts_3, tid_0 * ts_0, tid_2 * ts_2]
@@ -389,7 +375,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfTransposeOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfTransposeOp) {
+TEST_F(TilePropagationTest, CanPropagateToOutputOfTransposeOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -399,11 +385,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfTransposeOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToOutput(
+  std::optional<Tiles> tiled_operands = PropagateTileToOutput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space,
-                          root->operand(0)->shape().dimensions()),
-      0);
+      GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
       -> offsets [tid_2 * ts_2, tid_0 * ts_0, tid_3 * ts_3, tid_1 * ts_1]
@@ -413,7 +397,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfTransposeOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfSliceOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfSliceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -423,9 +407,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfSliceOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateSymbolicTileToInput(
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions()), 0);
+      GetTestTile(*tiling_space, root->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
       -> offsets [(tid_0 * ts_0) * 2 + 1, tid_1 * ts_1, (tid_2 * ts_2) * 2 + 5]
@@ -435,7 +419,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfSliceOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDynSliceOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfDynSliceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -449,10 +433,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDynSliceOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  auto symbolic_tile =
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions());
-  std::optional<SymbolicTiles> tiled_operands =
-      PropagateSymbolicTileToInput(*tiling_space, *root, symbolic_tile, 0);
+  auto tile = GetTestTile(*tiling_space, root->shape().dimensions());
+  std::optional<Tiles> tiled_operands =
+      PropagateTileToInput(*tiling_space, *root, tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2){rt_0, rt_1, rt_2}
       -> offsets [tid_0 * ts_0 + 4, tid_1 * ts_1 + rt_1, tid_2 * ts_2 + rt_2]
@@ -468,7 +451,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDynSliceOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDotOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfDotOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     ENTRY e {
@@ -481,13 +464,11 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDotOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  auto symbolic_tile =
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions());
-  symbolic_tile = SymbolicTile{*tiling_space, symbolic_tile.offsets(),
-                               symbolic_tile.sizes(), symbolic_tile.strides(),
-                               symbolic_tile.upper_bounds()};
-  std::optional<SymbolicTiles> tiled_operands =
-      PropagateSymbolicTileToInput(*tiling_space, *root, symbolic_tile, 0);
+  auto tile = GetTestTile(*tiling_space, root->shape().dimensions());
+  tile = Tile{*tiling_space, tile.offsets(), tile.sizes(), tile.strides(),
+              tile.upper_bounds()};
+  std::optional<Tiles> tiled_operands =
+      PropagateTileToInput(*tiling_space, *root, tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3, tid_4, tid_5, tid_6, tid_7)
          -> offsets [tid_2 * ts_2, tid_1 * ts_1, tid_7 * ts_7,
@@ -504,7 +485,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfDotOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsForScaledDotOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsForScaledDotOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule module
 
@@ -520,10 +501,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsForScaledDotOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  auto symbolic_tile =
-      GetTestSymbolicTile(*tiling_space, root->shape().dimensions());
-  std::optional<SymbolicTiles> tiled_operands =
-      PropagateSymbolicTileToInput(*tiling_space, *root, symbolic_tile, 0);
+  auto tile = GetTestTile(*tiling_space, root->shape().dimensions());
+  std::optional<Tiles> tiled_operands =
+      PropagateTileToInput(*tiling_space, *root, tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
       -> offsets [tid_0 * ts_0, tid_2 * ts_2]
@@ -548,7 +528,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsForScaledDotOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -566,10 +546,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
 
-  std::optional<SymbolicTiles> symbolic_tiled_operands =
-      PropagateSymbolicTileToInput(*tiling_space, *root,
-                                   tiling_space->tiled_roots()[0], 0);
-  EXPECT_THAT(symbolic_tiled_operands, Optional(MatchToString(R"(
+  std::optional<Tiles> tiled_operands = PropagateTileToInput(
+      *tiling_space, *root, tiling_space->tiled_roots()[0], 0);
+  EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
       -> offsets [tid_0 * ts_0, tid_3 * ts_3, tid_1 * ts_1, tid_2 * ts_2]
         sizes [ts_0, ts_3, ts_1, ts_2]
@@ -580,9 +559,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
   )")));
 
   tiling_space->AssignTileSizes({8, 16, 32, 64});
-  std::optional<SymbolicTiles> tiled_operands = PropagateTileToInput(
+  std::optional<Tiles> concrete_tiled_operands = PropagateTileToInput(
       *tiling_space, *root, tiling_space->tiled_roots()[0], 0);
-  EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
+  EXPECT_THAT(concrete_tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
       -> offsets [tid_0 * 8, tid_3 * 64, tid_1 * 16, tid_2 * 32]
         sizes [8, 64, 16, 32]
@@ -593,7 +572,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfReduceOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfReduceOp) {
+TEST_F(TilePropagationTest, CanPropagateToOutputOfReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
     HloModule m
     max {
@@ -610,11 +589,9 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfReduceOp) {
   )");
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
-  std::optional<SymbolicTiles> tiled_operands = PropagateTileToOutput(
+  std::optional<Tiles> tiled_operands = PropagateTileToOutput(
       *tiling_space, *root,
-      GetTestSymbolicTile(*tiling_space,
-                          root->operand(0)->shape().dimensions()),
-      0);
+      GetTestTile(*tiling_space, root->operand(0)->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2, tid_3)
       -> offsets [tid_0 * ts_0, tid_2 * ts_2]
@@ -624,7 +601,7 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToOutputOfReduceOp) {
   )")));
 }
 
-TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
+TEST_F(TilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
   HloInstruction* root = ParseAndGetRoot(R"(
    HloModule m
     min {
@@ -649,13 +626,11 @@ TEST_F(SymbolicTilePropagationTest, CanPropagateToInputsOfVariadicReduceOp) {
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
   MLIRContext mlir_context;
-  auto symbolic_tile =
-      GetTestSymbolicTile(*tiling_space, GetFirstShape(root).dimensions());
-  symbolic_tile = SymbolicTile{*tiling_space, symbolic_tile.offsets(),
-                               symbolic_tile.sizes(), symbolic_tile.strides(),
-                               symbolic_tile.upper_bounds()};
-  std::optional<SymbolicTiles> tiled_operands =
-      PropagateSymbolicTileToInput(*tiling_space, *root, symbolic_tile, 0);
+  auto tile = GetTestTile(*tiling_space, GetFirstShape(root).dimensions());
+  tile = Tile{*tiling_space, tile.offsets(), tile.sizes(), tile.strides(),
+              tile.upper_bounds()};
+  std::optional<Tiles> tiled_operands =
+      PropagateTileToInput(*tiling_space, *root, tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1) -> offsets [tid_1 * ts_1, tid_0 * ts_0]
       sizes [ts_1, ts_0] strides [1, 1] upper bounds [256, 10]
