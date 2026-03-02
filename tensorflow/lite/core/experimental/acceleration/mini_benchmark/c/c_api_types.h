@@ -67,7 +67,7 @@ struct TfLiteMiniBenchmarkCustomValidationInfo {
 // might be added in the future) get zero-initialized.
 struct TfLiteMiniBenchmarkSettings {
   // The pointer to a flatbuffer data of MinibenchmarkSettings.
-  uint8_t* flatbuffer_data;
+  const uint8_t* flatbuffer_data;
   // The byte size of the flatbuffer_data.
   size_t flatbuffer_data_size;
   // Custom validation related info.
