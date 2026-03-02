@@ -287,9 +287,9 @@ absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
   for (auto index_domain = index_domains.begin() + 1;
        index_domain < index_domains.end(); ++index_domain) {
     if (first_index_domain->shape() != index_domain->shape()) {
-      return absl::UnimplementedError(absl::StrCat(
-          "Expect equal shape of ", first_index_domain->shape().DebugString(),
-          " but got ", index_domain->shape().DebugString()));
+      return absl::UnimplementedError(
+          absl::StrCat("Expect equal shape of ", first_index_domain->shape(),
+                       " but got ", index_domain->shape()));
     }
   }
 
@@ -309,9 +309,9 @@ absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
   int num_replicas = index_domain_counts.begin()->second;
   for (const auto& [index_domain, count] : index_domain_counts) {
     if (count != num_replicas) {
-      return absl::FailedPreconditionError(absl::StrCat(
-          "Expected ", num_replicas, " replicas for ",
-          index_domain.DebugString(), " but got ", count, " replicas"));
+      return absl::FailedPreconditionError(
+          absl::StrCat("Expected ", num_replicas, " replicas for ",
+                       index_domain, " but got ", count, " replicas"));
     }
     unique_index_domains.push_back(index_domain);
   }
@@ -329,7 +329,7 @@ absl::StatusOr<int> VerifyIndexDomainsAndGetReplicas(
   if (xla::ifrt::Shape(bounded_shape) !=
       xla::ifrt::Shape(tensor_shape.dim_sizes())) {
     return absl::FailedPreconditionError(absl::StrCat(
-        "IndexDomain ", last_index_domain.DebugString(),
+        "IndexDomain ", last_index_domain,
         " does not overlap with tensor shape ", tensor_shape.DebugString()));
   }
 
@@ -389,7 +389,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeAssembledArrayFromHostBuffer(
       return absl::FailedPreconditionError(absl::StrCat(
           "Only support even sharding, but input tensor shape ",
           input_tensor.shape().DebugString(), " not even splittable to ",
-          first_index_domain->shape().DebugString()));
+          first_index_domain->shape()));
     }
     int num_partitions = input_tensor.shape().dim_size(dim) / target_size;
     total_num_partitions *= num_partitions;
@@ -495,7 +495,7 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
     if (fully_replicated_array->shape() != ToIfrtShape(tensor_shape)) {
       return absl::InternalError(absl::StrCat(
           "Not fully replicated output. Expected ", tensor_shape.DebugString(),
-          " but got ", fully_replicated_array->shape().DebugString()));
+          " but got ", fully_replicated_array->shape()));
     }
 
     tensorflow::Tensor output_tensor(data_type, tensor_shape);
@@ -567,10 +567,9 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
 
   for (int i = 0; i < index_domains.size(); ++i) {
     if (index_domains[i].shape() != disassembled_array[i]->shape()) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Index domain ", index_domains[i].shape().DebugString(),
-                       " not equal to array shape ",
-                       disassembled_array[i]->shape().DebugString()));
+      return absl::FailedPreconditionError(absl::StrCat(
+          "Index domain ", index_domains[i].shape(),
+          " not equal to array shape ", disassembled_array[i]->shape()));
     }
   }
 
@@ -588,7 +587,7 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
 
   VLOG(2) << "Index domains: ";
   for (const auto& index_domain : index_domains) {
-    VLOG(2) << index_domain.DebugString();
+    VLOG(2) << index_domain;
   }
 
   // disassembled array is in device order.
