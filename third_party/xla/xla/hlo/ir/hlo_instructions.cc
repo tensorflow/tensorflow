@@ -1023,6 +1023,11 @@ HloCollectiveInstruction::HloCollectiveInstruction(
   }
 }
 
+void HloCollectiveInstruction::set_device_list(
+    std::shared_ptr<CollectiveDeviceListBase> device_list) {
+  device_list_ = std::move(device_list);
+}
+
 void HloCollectiveInstruction::ToProto(HloInstructionProto* proto) const {
   HloChannelInstruction::ToProto(proto);
 

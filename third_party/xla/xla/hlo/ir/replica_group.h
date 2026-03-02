@@ -152,7 +152,7 @@ class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
   static MeshAxesReplicaGroupList FromProto(
       const MeshAxesReplicaGroupListProto& proto);
   IotaReplicaGroupList ToIotaReplicaGroupList() const;
-  CollectiveDeviceList ToCollectiveDeviceList() const;
+  std::unique_ptr<CollectiveDeviceList> ToCollectiveDeviceList() const;
 
  protected:
   bool isEqual(const CollectiveDeviceListBase& other) const override {

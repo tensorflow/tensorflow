@@ -3013,6 +3013,38 @@ xla_test(
 )
 
 cc_library(
+    name = "replica_group_canonicalizer",
+    srcs = ["replica_group_canonicalizer.cc"],
+    hdrs = ["replica_group_canonicalizer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "replica_group_canonicalizer_test",
+    srcs = ["replica_group_canonicalizer_test.cc"],
+    backends = ["interpreter"],
+    deps = [
+        ":replica_group_canonicalizer",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/tests:hlo_pjrt_test_base",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "while_loop_simplifier",
     srcs = ["while_loop_simplifier.cc"],
     hdrs = ["while_loop_simplifier.h"],

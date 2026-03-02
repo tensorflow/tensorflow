@@ -290,7 +290,7 @@ void MeshAxesReplicaGroupList::Print(Printer* printer) const {
 void MeshAxesReplicaGroupList::Print(Printer* printer,
                                      bool print_full_replica_group_list) const {
   if (print_full_replica_group_list) {
-    ToCollectiveDeviceList().Print(printer, print_full_replica_group_list);
+    ToCollectiveDeviceList()->Print(printer, print_full_replica_group_list);
     return;
   }
   Print(printer);
@@ -313,7 +313,7 @@ std::string MeshAxesReplicaGroupList::ToString() const {
 std::string MeshAxesReplicaGroupList::ToString(
     bool print_full_replica_group_list) const {
   if (print_full_replica_group_list) {
-    return ToCollectiveDeviceList().ToString(print_full_replica_group_list);
+    return ToCollectiveDeviceList()->ToString(print_full_replica_group_list);
   }
   return ToString();
 }
@@ -359,8 +359,9 @@ IotaReplicaGroupList MeshAxesReplicaGroupList::ToIotaReplicaGroupList() const {
                               *ta.iota());
 }
 
-CollectiveDeviceList MeshAxesReplicaGroupList::ToCollectiveDeviceList() const {
-  return CollectiveDeviceList(flattened_replica_groups());
+std::unique_ptr<CollectiveDeviceList>
+MeshAxesReplicaGroupList::ToCollectiveDeviceList() const {
+  return std::make_unique<CollectiveDeviceList>(flattened_replica_groups());
 }
 
 /************** IotaReplicaGroupList implementation ***************************/
@@ -514,9 +515,9 @@ CollectiveDeviceList CollectiveDeviceList::FromProto(
   }
 
   if (proto.has_mesh_axes_replica_group_list()) {
-    return MeshAxesReplicaGroupList::FromProto(
-               proto.mesh_axes_replica_group_list())
-        .ToCollectiveDeviceList();
+    return *MeshAxesReplicaGroupList::FromProto(
+                proto.mesh_axes_replica_group_list())
+                .ToCollectiveDeviceList();
   }
 
   if (!proto.has_collective_device_list()) {
@@ -542,7 +543,7 @@ CollectiveDeviceList ConvertToV1CollectiveDeviceList(
       const auto* v3 =
           dynamic_cast<const MeshAxesReplicaGroupList*>(&device_list);
       CHECK(v3 != nullptr) << "Failed to convert kMeshAxes to V1 list.";
-      return v3->ToCollectiveDeviceList();
+      return *v3->ToCollectiveDeviceList();
     }
     default:
       LOG(FATAL) << "Unknown CollectiveDeviceListVersion: "

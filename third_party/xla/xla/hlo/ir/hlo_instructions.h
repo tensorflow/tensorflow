@@ -691,6 +691,7 @@ class HloCollectiveInstruction : public HloChannelInstruction {
   }
 
   const CollectiveDeviceListBase& device_list() const { return *device_list_; }
+  void set_device_list(std::shared_ptr<CollectiveDeviceListBase> device_list);
 
   // Returns true if the layout of the AllReduce is enforced by XLA client (as
   // the layout set in the shape). The only reason for the client to set the

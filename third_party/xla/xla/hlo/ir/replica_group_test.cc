@@ -451,12 +451,12 @@ TEST(MeshAxesReplicaGroupListTest, ToCollectiveDeviceList) {
   MeshAxesReplicaGroupList replica_group_b(mesh, {AxisRef(0)});
   EXPECT_EQ(
       replica_group_b.flattened_replica_groups(),
-      replica_group_b.ToCollectiveDeviceList().flattened_replica_groups());
+      replica_group_b.ToCollectiveDeviceList()->flattened_replica_groups());
 
   MeshAxesReplicaGroupList replica_group_a_1_3(mesh, {AxisRef(0, {1, 3})});
   EXPECT_EQ(
       replica_group_a_1_3.flattened_replica_groups(),
-      replica_group_a_1_3.ToCollectiveDeviceList().flattened_replica_groups());
+      replica_group_a_1_3.ToCollectiveDeviceList()->flattened_replica_groups());
 }
 
 TEST(MeshAxesReplicaGroupListTest, ToStringWithFullReplicaGroupList) {
