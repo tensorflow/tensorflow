@@ -27,10 +27,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -80,6 +79,9 @@ P2PConfig GetP2PConfigForSendRecv(const HloSendRecvInstruction* instr,
 
 absl::StatusOr<const int64_t> GetCollectiveCurrentId(
     CollectiveParams* collective_params, const P2PConfig& config);
+
+P2PConfigProto P2PConfigToProto(const P2PConfig& config);
+absl::StatusOr<P2PConfig> P2PConfigFromProto(const P2PConfigProto& proto);
 
 }  // namespace gpu
 }  // namespace xla

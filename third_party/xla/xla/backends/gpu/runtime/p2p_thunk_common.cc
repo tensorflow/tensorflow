@@ -26,15 +26,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/source_target_pairs.h"
 #include "xla/shape.h"
@@ -132,6 +130,43 @@ absl::StatusOr<const int64_t> GetCollectiveCurrentId(
           ? current_logical_id.replica_id
           : current_logical_id.computation_id;
   return current_id;
+}
+
+P2PConfigProto P2PConfigToProto(const P2PConfig& config) {
+  P2PConfigProto proto;
+  *proto.mutable_config() = config.config.ToProto();
+
+  auto* mutable_id_map = proto.mutable_id_to_source_target();
+  // We are writing to a proto map, so the iterating order doesn't matter.
+  for (const auto& [id, source_target] : config.id_to_source_target) {
+    P2PConfigProto::SourceTargetMapEntry& entry = (*mutable_id_map)[id];
+    if (source_target.source.has_value()) {
+      entry.set_source(*source_target.source);
+    }
+    if (source_target.target.has_value()) {
+      entry.set_target(*source_target.target);
+    }
+  }
+
+  return proto;
+}
+
+absl::StatusOr<P2PConfig> P2PConfigFromProto(const P2PConfigProto& proto) {
+  P2PConfig config;
+  config.config = CollectiveConfig::FromProto(proto.config());
+
+  // We are writing into a hash map, so the iterating order doesn't matter.
+  for (const auto& [id, entry] : proto.id_to_source_target()) {
+    P2PConfig::SourceTargetMapEntry& map_entry = config.id_to_source_target[id];
+    if (entry.has_source()) {
+      map_entry.source = entry.source();
+    }
+    if (entry.has_target()) {
+      map_entry.target = entry.target();
+    }
+  }
+
+  return config;
 }
 
 }  // namespace gpu

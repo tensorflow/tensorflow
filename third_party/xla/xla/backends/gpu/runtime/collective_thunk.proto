@@ -37,3 +37,13 @@ message CollectiveConfigProto {
   xla.CollectiveOpGroupMode group_mode = 3;
   bool use_symmetric_buffer = 4;
 }
+
+message P2PConfigProto {
+  message SourceTargetMapEntry {
+    optional int64 source = 1;
+    optional int64 target = 2;
+  }
+
+  CollectiveConfigProto config = 1;
+  map<int64, SourceTargetMapEntry> id_to_source_target = 2;
+}
