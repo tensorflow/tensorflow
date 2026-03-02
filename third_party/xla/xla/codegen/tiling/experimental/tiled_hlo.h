@@ -126,7 +126,7 @@ using TiledHloRegionOrError =
 class TiledHloComputation {
  public:
   static TileAnalysisOrError Tile(const HloFusionAdaptor& fusion,
-                                  mlir::MLIRContext* ctx);
+                                  std::unique_ptr<TilingSpace> tiling_space);
 
   // Returns the symbolic tiled HLO instructions in def-before-use order.
   llvm::ArrayRef<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions()

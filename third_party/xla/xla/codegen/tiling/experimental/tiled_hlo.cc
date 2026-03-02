@@ -20,9 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
@@ -331,9 +334,7 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
 }
 
 /*static*/ TileAnalysisOrError TiledHloComputation::Tile(
-    const HloFusionAdaptor& fusion, MLIRContext* ctx) {
-  auto tiling_space = TilingSpace::Create(fusion, ctx);
-
+    const HloFusionAdaptor& fusion, std::unique_ptr<TilingSpace> tiling_space) {
   SmallVector<const TiledHloInstruction*> roots_with_no_users;
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
 

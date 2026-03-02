@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
@@ -158,11 +160,16 @@ class TileAnalysisTest : public HloHardwareIndependentTestBase {
     return module_->entry_computation()->root_instruction();
   }
 
-  TiledHloComputation ParseAndTile(absl::string_view hlo_string) {
+  TiledHloComputation ParseAndTile(absl::string_view hlo_string,
+                                   absl::Span<const int64_t> tile_sizes = {}) {
     HloInstruction* root = ParseAndGetRoot(hlo_string);
     auto fusion_adaptor = HloFusionAdaptor::ForInstruction(root);
+    auto tiling_space = TilingSpace::Create(*fusion_adaptor, &mlir_context_);
+    if (!tile_sizes.empty()) {
+      tiling_space->AssignTileSizes(tile_sizes);
+    }
     auto tiled_computation_or =
-        TiledHloComputation::Tile(*fusion_adaptor, &mlir_context_);
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
     CHECK(std::holds_alternative<TiledHloComputation>(tiled_computation_or));
     return std::get<TiledHloComputation>(std::move(tiled_computation_or));
   }
@@ -324,6 +331,56 @@ TEST_F(TileAnalysisTest, DotIsSupported) {
             sizes [ts_0, ts_2] strides [1, 1] upper bounds [4, 8]
           p1.1.tile_0 = parameter() offsets [tid_2 * ts_2, tid_1 * ts_1]
             sizes [ts_2, ts_1] strides [1, 1] upper bounds [8, 16]
+        }
+  )"));
+
+  EXPECT_THAT(
+      tiled_computation.tiled_hlo_instructions(),
+      Contains(IsHloWithOperands(
+          HloOpcode::kDot, std::vector<HloOpcode>(2, HloOpcode::kParameter))));
+}
+
+TEST_F(TileAnalysisTest, DotIsSupportedConcreteTileSizes) {
+  const TiledHloComputation tiled_computation = ParseAndTile(R"(
+    fusion {
+      p0 = f32[4,8] parameter(0)
+      p1 = f32[8,16] parameter(1)
+      ROOT dot = f32[4,16] dot(p0, p1),
+        lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    }
+
+    ENTRY main {
+      p0 = f32[4,8] parameter(0)
+      p1 = f32[8,16] parameter(1)
+      ROOT fusion = f32[4,16] fusion(p0, p1), kind=kLoop, calls=fusion
+    })",
+                                                             {2, 4, 8});
+
+  EXPECT_THAT(tiled_computation, MatchString(R"(
+    Dimensions:
+    0 type: parallel size: 4 dim ID:0
+      hlo: %dot = f32[4,16]{1,0} dot(%p0, %p1), lhs_contracting_dims={1},
+                  rhs_contracting_dims={0}
+    1 type: parallel size: 16 dim ID:1
+      hlo: %dot = f32[4,16]{1,0} dot(%p0, %p1), lhs_contracting_dims={1},
+                  rhs_contracting_dims={0}
+    2 type: sequential size: 8 dim ID:2
+      hlo: %dot = f32[4,16]{1,0} dot(%p0, %p1), lhs_contracting_dims={1},
+                  rhs_contracting_dims={0}
+
+    Root tiles:
+    0 root tile:  offsets [tid_0 * 2, tid_1 * 4] sizes [2, 4]
+                  strides [1, 1] upper bounds [4, 16]
+
+    Tiled HLO:
+      dot.tile_0 = dot(p0.1.tile_0, p1.1.tile_0)
+        offsets [tid_0 * 2, tid_1 * 4] sizes [2, 4]
+        strides [1, 1] upper bounds [4, 16]
+        region #0 {
+          p0.1.tile_0 = parameter() offsets [tid_0 * 2, tid_2 * 8]
+            sizes [2, 8] strides [1, 1] upper bounds [4, 8]
+          p1.1.tile_0 = parameter() offsets [tid_2 * 8, tid_1 * 4]
+            sizes [8, 4] strides [1, 1] upper bounds [8, 16]
         }
   )"));
 
