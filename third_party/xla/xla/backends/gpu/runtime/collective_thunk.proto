@@ -1,0 +1,39 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/service/shaped_slice.proto";
+import "xla/xla_data.proto";
+
+option java_outer_classname = "CollectiveThunk";
+option java_multiple_files = true;
+
+message CollectiveBufferProto {
+  int64 element_count = 1;
+  xla.ShapedSliceProto source_buffer = 2;
+  xla.ShapedSliceProto destination_buffer = 3;
+  int64 source_memory_space = 4;
+  int64 destination_memory_space = 5;
+}
+
+message CollectiveConfigProto {
+  repeated xla.PrimitiveType operand_element_type = 1;
+  repeated xla.ReplicaGroup replica_groups = 2;
+  xla.CollectiveOpGroupMode group_mode = 3;
+  bool use_symmetric_buffer = 4;
+}

@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/backends/gpu/codegen/kernels/custom_kernel.proto";
+import "xla/backends/gpu/runtime/collective_thunk.proto";
 import "xla/backends/gpu/runtime/convolution_filter_thunk.proto";
 import "xla/backends/gpu/runtime/copy_thunk.proto";
 import "xla/backends/gpu/runtime/dynamic_slice_thunk.proto";
@@ -279,21 +280,6 @@ message CustomKernelThunkProto {
   CustomKernelProto custom_kernel = 3;
 }
 
-message CollectiveBufferProto {
-  int64 element_count = 1;
-  ShapedSliceProto source_buffer = 2;
-  ShapedSliceProto destination_buffer = 3;
-  int64 source_memory_space = 4;
-  int64 destination_memory_space = 5;
-}
-
-message CollectiveConfigProto {
-  repeated PrimitiveType operand_element_type = 1;
-  repeated ReplicaGroup replica_groups = 2;
-  CollectiveOpGroupMode group_mode = 3;
-  bool use_symmetric_buffer = 4;
-}
-
 message AllGatherStartThunkProto {
   optional uint64 async_events_unique_id = 1;
   CollectiveConfigProto collective_config = 2;
@@ -448,6 +434,7 @@ message ThunkProto {
     NvshmemCollectiveDoneThunkProto nvshmem_collective_done_thunk = 50;
     NvshmemCollectivePermuteDoneThunkProto
         nvshmem_collective_permute_done_thunk = 51;
+    NvshmemAllReduceStartThunkProto nvshmem_all_reduce_start_thunk = 52;
   }
 }
 

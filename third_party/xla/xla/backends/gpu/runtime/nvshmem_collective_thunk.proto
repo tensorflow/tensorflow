@@ -17,9 +17,12 @@ syntax = "proto3";
 
 package xla.gpu;
 
+import "xla/backends/gpu/runtime/collective_thunk.proto";
 import "xla/backends/gpu/runtime/thunk_kind.proto";
+import "xla/core/collectives/reduction_kind.proto";
 
 option java_outer_classname = "NvshmemCollectiveThunk";
+option java_multiple_files = true;
 
 message NvshmemCollectiveDoneThunkProto {
   ThunkKindProto thunk_kind = 1;
@@ -28,4 +31,11 @@ message NvshmemCollectiveDoneThunkProto {
 
 message NvshmemCollectivePermuteDoneThunkProto {
   optional uint64 async_events_unique_id = 1;
+}
+
+message NvshmemAllReduceStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  CollectiveConfigProto collective_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+  xla.ReductionKindProto reduction_kind = 4;
 }
