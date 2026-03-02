@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
