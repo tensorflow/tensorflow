@@ -4,7 +4,6 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//xla:py_strict.bzl", "py_strict_binary")
 load(
     "//xla/tsl:tsl.bzl",
@@ -576,24 +575,5 @@ tsl_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
-    ],
-)
-
-bzl_library(
-    name = "cc_embed_data",
-    srcs = ["cc_embed_data.bzl"],
-    deps = [
-        "@bazel_skylib//lib:paths",
-        "@rules_cc//cc:find_cc_toolchain_bzl",
-        "@rules_cc//cc/common",
-    ],
-)
-
-bzl_library(
-    name = "memfile_embed_data",
-    srcs = ["memfile_embed_data.bzl"],
-    deps = [
-        ":cc_embed_data",
-        "//xla/tsl/platform:rules_cc_bzl",
     ],
 )
