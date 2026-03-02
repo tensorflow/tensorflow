@@ -46,3 +46,10 @@ message NvshmemCollectivePermuteStartThunkProto {
   repeated CollectiveBufferProto buffers = 3;
   bool p2p_memcpy_enabled = 4;
 }
+
+message NvshmemSendThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  P2PConfigProto p2p_config = 2;
+  CollectiveBufferProto buffer = 3;
+  string hlo_name = 4;
+}

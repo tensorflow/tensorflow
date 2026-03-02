@@ -437,6 +437,7 @@ message ThunkProto {
     NvshmemAllReduceStartThunkProto nvshmem_all_reduce_start_thunk = 52;
     NvshmemCollectivePermuteStartThunkProto
         nvshmem_collective_permute_start_thunk = 53;
+    NvshmemSendThunkProto nvshmem_send_thunk = 54;
   }
 }
 
