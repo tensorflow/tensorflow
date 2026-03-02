@@ -500,9 +500,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
         "//tensorflow/lite/tools:logging",
     ] + select({
-        # copybara:uncomment_begin(google-only)
-        # "//tools/cc_target_os:linux-google": ["//third_party/opencl_icd_loader"],
-        # copybara:uncomment_end
         "//conditions:default": [],
     }),
 )
