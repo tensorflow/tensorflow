@@ -681,8 +681,8 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
-        "@llvm-project//mlir:X86VectorDialect",
-        "@llvm-project//mlir:X86VectorTransforms",
+        "@llvm-project//mlir:X86Dialect",
+        "@llvm-project//mlir:X86Transforms",
         "@stablehlo//:chlo_ops",
     ],
 )
