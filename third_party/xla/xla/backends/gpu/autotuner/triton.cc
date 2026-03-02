@@ -222,22 +222,24 @@ TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
-                      GetSupportedConfigs(instr));
-  // Filter split_k>1 configs. Split_k>1 is not guaranteed to be supported.
-  configs.erase(
-      std::remove_if(configs.begin(), configs.end(),
-                     [](const std::unique_ptr<BackendConfig>& config) {
-                       AutotuneResult::TritonGemmKey triton_config_proto;
-                       config->UnpackTo(&triton_config_proto);
-                       return triton_config_proto.split_k() > 1;
-                     }),
-      configs.end());
-  if (configs.empty()) {
+  if (!IsSupported(instr)) {
     return absl::InvalidArgumentError(
         "TritonBackend does not support this instruction.");
   }
-  return std::move(configs[0]);
+  std::vector<TritonGemmConfig> configs = GetDefaultTritonConfigs(
+      target_config().device_description.gpu_compute_capability());
+  configs.erase(std::remove_if(configs.begin(), configs.end(),
+                               [](const TritonGemmConfig& config) {
+                                 return config.split_k > 1;
+                               }),
+                configs.end());
+  if (configs.empty()) {
+    return absl::InvalidArgumentError(
+        "No default config found for this instruction.");
+  }
+  auto any = std::make_unique<google::protobuf::Any>();
+  any->PackFrom(configs[0].ToProto());
+  return std::move(any);
 }
 
 absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
