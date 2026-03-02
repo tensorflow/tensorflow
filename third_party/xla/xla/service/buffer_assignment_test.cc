@@ -2223,33 +2223,65 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignmentWithInstructionSequence(
-      module.get(), {param, log, rev, neg, concat, root});
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(module->entry_computation(),
+                        {param, log, rev, neg, concat, root});
+  CHECK_OK(module->set_schedule(schedule));
 
-  // The temporary buffer should hold the 4 interior instructions.
-  const BufferAllocation& buffer = GetTopLevelAllocation(*buffers, concat);
-  EXPECT_FALSE(buffer.IsInputOrOutput());
-  EXPECT_TRUE(buffer.IsPreallocatedTempBuffer());
-  ASSERT_EQ(buffer.assigned_buffers().size(), 4);
-  const char* const kExpectedMemoryUsageReport =
+  const char* const kExpectedSpatialReport =
       R"(cumulative_size;       size;       offset; used_by_n_values; shapes_list
 ------------------------------------------------------------
      800B( 50%);       800B;            0;                2; f32[100], f32[200]
    1.2KiB( 75%);       400B;          800;                1; f32[100]
    1.6KiB(100%);       400B;         1200;                1; f32[100]
 )";
-  EXPECT_EQ(buffer.MemoryUsageReport(""), kExpectedMemoryUsageReport);
 
-  const std::vector<const HloValue*>& peak_buffers =
-      buffer.PeakMemoryLogicalBuffers();
+  const char* const kExpectedTemporalReport =
+      R"(cumulative_size;       size;       offset; used_by_n_values; shapes_list
+------------------------------------------------------------
+     800B( 50%);       800B;          400;                2; f32[100], f32[200]
+   1.2KiB( 75%);       400B;            0;                1; f32[100]
+   1.6KiB(100%);       400B;         1200;                1; f32[100]
+)";
 
-  // The peak live set should be concat and its inputs.
-  ASSERT_EQ(peak_buffers.size(), 3);
-  std::vector<const HloInstruction*> peak_instructions;
-  for (const HloValue* logical_buffer : peak_buffers) {
-    peak_instructions.push_back(logical_buffer->instruction());
+  for (auto algorithm :
+       {buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT,
+        buffer_assignment::BufferAssignmentAlgorithmProto::SPATIAL,
+        buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL,
+        buffer_assignment::BufferAssignmentAlgorithmProto::
+            BEST_OF_SPATIAL_TEMPORAL}) {
+    BufferAssigner::Options opts;
+    opts.allocate_buffers_for_constants = true;
+    opts.buffer_assignment_algorithm = algorithm;
+    auto assignment =
+        BufferAssigner::Run(
+            module.get(),
+            std::make_unique<SequentialHloOrdering>(module->schedule()),
+            &BufferSizeBytes, &alias_info_,
+            [](LogicalBuffer::Color) { return 1; }, std::move(opts))
+            .value();
+    const BufferAllocation& buffer = GetTopLevelAllocation(*assignment, concat);
+    EXPECT_FALSE(buffer.IsInputOrOutput());
+    EXPECT_TRUE(buffer.IsPreallocatedTempBuffer());
+    ASSERT_EQ(buffer.assigned_buffers().size(), 4);
+
+    if (algorithm ==
+        buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL) {
+      EXPECT_EQ(buffer.MemoryUsageReport(""), kExpectedTemporalReport);
+    } else {
+      EXPECT_EQ(buffer.MemoryUsageReport(""), kExpectedSpatialReport);
+    }
+    const std::vector<const HloValue*>& peak_buffers =
+        buffer.PeakMemoryLogicalBuffers();
+
+    // The peak live set should be concat and its inputs.
+    ASSERT_EQ(peak_buffers.size(), 3);
+    std::vector<const HloInstruction*> peak_instructions;
+    for (const HloValue* logical_buffer : peak_buffers) {
+      peak_instructions.push_back(logical_buffer->instruction());
+    }
+    EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
   }
-  EXPECT_THAT(peak_instructions, UnorderedElementsAre(rev, neg, concat));
 }
 
 TEST_F(BufferAssignmentTest, AliasedBuffersShouldntCoexistInPeakBuffers) {
