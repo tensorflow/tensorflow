@@ -243,8 +243,9 @@ TEST_F(ParamsTest, ThreeThousandParameters) {
 }
 
 TEST_F(ParamsTest, ThreeThousandParametersAndOutputElements) {
-  // TODO(b/487954262): Re-enable when fixed.
-  if (test::DeviceTypeIs(test::kTpu) || test::DeviceIs(test::kCpu)) {
+  // TODO(b/488995691): Triggers O(n^2 log n) behavior in InstructionFusion on
+  // CPU.
+  if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }
   XlaBuilder builder(TestName());
@@ -305,10 +306,6 @@ TEST_F(ParamsTest, ThreeThousandParametersAndOutputElements) {
 // }
 // result = {p0, p1, ..., pN}
 TEST_F(ParamsTest, ManyParametersIntoWhileLoop) {
-  // TODO(b/487954262): Re-enable when fixed.
-  if (test::DeviceTypeIs(test::kTpu)) {
-    GTEST_SKIP();
-  }
   XlaBuilder builder(TestName());
 
   std::vector<Literal> param_data_owner;

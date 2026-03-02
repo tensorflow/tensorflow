@@ -442,10 +442,6 @@ TEST_F(LocalClientExecuteTest, LargeTuple) {
 }
 
 TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
-  // TODO(b/487954262): Re-enable when fixed.
-  if (test::DeviceTypeIs(test::kTpu)) {
-    GTEST_SKIP();
-  }
   // Construct and run a computation which takes a two-level nested tuple
   // parameter with a large fanout.
   const int kFanout = 40;
@@ -507,10 +503,6 @@ TEST_F(LocalClientExecuteTest, LargeNestedTuple) {
 }
 
 TEST_F(LocalClientExecuteTest, DeepTuple) {
-  // TODO(b/487954262): Re-enable when fixed.
-  if (test::DeviceTypeIs(test::kTpu)) {
-    GTEST_SKIP();
-  }
   // Construct and run a computation which takes a very deep tuple. The tuple
   // has no fan out and a single scalar element at the bottom.
   const int kTupleDepth = 100;
