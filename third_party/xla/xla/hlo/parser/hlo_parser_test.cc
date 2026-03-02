@@ -4150,6 +4150,12 @@ TEST_F(HloParserTest, ParseNamedShardingNonIotaMeshDeviceList) {
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
+TEST_F(HloParserTest, ParseNamedShardingEmptyMeshReplicated) {
+  const std::string original = "{mesh[], replicated}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+}
+
 TEST_F(HloParserTest, ParseNamedShardingFullyReplicated) {
   const std::string original = "{mesh[a=2,b=4], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));

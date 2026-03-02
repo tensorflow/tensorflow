@@ -4034,12 +4034,13 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
       if (!ParseAttributeName(&axis_name)) {
         return false;
       }
-      axis_names_storage.push_back(axis_name);
       int64_t axis_size;
       if (!ParseInt64(&axis_size)) {
         return false;
       }
+      axis_names_storage.push_back(axis_name);
       axis_sizes.push_back(axis_size);
+
       if (!EatIfPresent(TokKind::kComma)) {
         break;
       }
@@ -4048,6 +4049,12 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
 
   if (!ParseToken(TokKind::kRsquare, "expected ']' to end mesh axes")) {
     return false;
+  }
+
+  // Empty mesh
+  if (axis_sizes.empty() && axis_names_storage.empty()) {
+    mesh.emplace();
+    return true;
   }
 
   std::vector<absl::string_view> axis_names_views(axis_names_storage.begin(),
@@ -4095,18 +4102,17 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
       return false;
     }
     Array<int64_t> device_ids_array(axis_sizes);
-    CHECK(devices.size() == device_ids_array.num_elements()) << absl::StrFormat(
-        "Expected %d device_ids based on mesh axes, but got %d",
-        device_ids_array.num_elements(), devices.size());
+    CHECK_EQ(devices.size(), device_ids_array.num_elements())
+        << absl::StrFormat(
+               "Expected %d device_ids based on mesh axes, but got %d",
+               device_ids_array.num_elements(), devices.size());
     absl::c_copy(devices, device_ids_array.begin());
-    TileAssignment tile_assignment =
-        TileAssignment(std::make_shared<Array<int64_t>>(device_ids_array));
-    mesh.emplace(tile_assignment, axis_names_views);
+    mesh.emplace(device_ids_array, axis_names_views);
     return true;
   }
 
   // Simple iota case
-  mesh.emplace(TileAssignment(axis_sizes), axis_names_views);
+  mesh.emplace(axis_sizes, axis_names_views);
   return true;
 }
 
@@ -4245,9 +4251,6 @@ bool HloParserImpl::ParseSingleSharding(
 
   EatIfPresent(TokKind::kComma);
 
-  std::vector<AxisRef> replicated_axes;
-  std::vector<AxisRef> unreduced_axes;
-  std::vector<AxisRef> manual_axes;
   std::vector<OpMetadata> metadata;
 
   // Special cases for fully replicated, unreduced, or manual sharding.
@@ -4283,6 +4286,10 @@ bool HloParserImpl::ParseSingleSharding(
   if (!ParseDimensionShardingList(*mesh, dim_shardings)) {
     return false;
   }
+
+  std::vector<AxisRef> replicated_axes;
+  std::vector<AxisRef> unreduced_axes;
+  std::vector<AxisRef> manual_axes;
 
   while (lexer_.GetKind() != TokKind::kRbrace) {
     if (!ParseToken(TokKind::kComma, "expected ',' before next attribute")) {
