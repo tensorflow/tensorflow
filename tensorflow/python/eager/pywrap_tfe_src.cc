@@ -3967,7 +3967,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (static_cast<int64_t>(static_cast<int32_t>(num_outputs)) != num_outputs) {
     PyErr_SetString(
         PyExc_ValueError,
-        Printf("Number of outputs is too big: %ld", num_outputs).c_str());
+        absl::StrFormat("Number of outputs is too big: %ld", num_outputs)
+            .c_str());
     return nullptr;
   }
   int num_retvals = num_outputs;
