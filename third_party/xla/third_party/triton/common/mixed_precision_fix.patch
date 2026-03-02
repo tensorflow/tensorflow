@@ -16,3 +16,4 @@
        rets.push_back(op->getOperand(0));
        if (auto cvt = dyn_cast<triton::gpu::LocalLoadOp>(op)) {
          // NYI for other encodings, for example if we have transpose
+

@@ -25,7 +25,7 @@ reshape outcomes.
  
  // Provide custom directive handlers for declarative assemblyFormat.
  // They must be visible before including the generated op classes.
-@@ -574,7 +575,45 @@
+@@ -574,7 +575,45 @@ LogicalResult MemDescReshapeOp::verify() {
    return OpTrait::impl::verifyEquivalentMemDescType(expectedTy, dstType);
  }
  
@@ -72,7 +72,7 @@ reshape outcomes.
                                                     Attribute srcEnc,
                                                     ArrayRef<int64_t> dstShape,
                                                     Attribute &dstEnc) {
-@@ -595,6 +634,11 @@
+@@ -595,6 +634,11 @@ static LogicalResult inferMemDescReshapeOpEncoding(ArrayRef<int64_t> srcShape,
              ctx, mmaEncoding.getSwizzlingByteWidth(),
              mmaEncoding.getTransposed(), mmaEncoding.getElementBitWidth(),
              mmaEncoding.getFp4Padded(), CGALayout);
@@ -84,7 +84,7 @@ reshape outcomes.
          auto srcLL = toLinearLayout(srcShape, srcEnc);
          auto dstLL = toLinearLayout(dstShape, candidateEncoding);
          if (reshapeLayout(ctx, srcLL, dstShape) == dstLL) {
-@@ -634,8 +678,8 @@
+@@ -634,8 +678,8 @@ LogicalResult MemDescReshapeOp::inferReturnTypes(
  
    Attribute dstEncoding;
    if (Attribute srcEnc = srcTy.getEncoding()) {

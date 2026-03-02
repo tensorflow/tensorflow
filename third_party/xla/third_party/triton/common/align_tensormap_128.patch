@@ -11,7 +11,7 @@ Cherry-pick: https://github.com/triton-lang/triton/pull/9499
  } PyCUtensorMapObject;
  
  typedef enum { ARG_CONSTEXPR = 0, ARG_KERNEL = 1, ARG_TUPLE = 2 } ArgType;
-@@ -1044,12 +1044,14 @@
+@@ -1078,12 +1078,14 @@ bool extractTmaDesc(void *ptr, PyObject *obj) {
      return false;
    }
    *((CUtensorMap *)ptr) = ((PyCUtensorMapObject *)obj)->tensorMap;
@@ -30,3 +30,4 @@ Cherry-pick: https://github.com/triton-lang/triton/pull/9499
      return false;
    }
    return true;
+

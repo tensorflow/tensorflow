@@ -3,7 +3,7 @@ We should remove this patch as soon as we upgraded all our targets to cuda 12.9+
 
 --- a/third_party/nvidia/backend/compiler.py
 +++ b/third_party/nvidia/backend/compiler.py
-@@ -502,7 +502,11 @@
+@@ -500,7 +500,11 @@ class CUDABackend(BaseBackend):
  
              # Use -Ofc mid to compile ConSan code, if nothing else is specified.
              if any(mode in knobs.compilation.instrumentation_mode for mode in ["consan", "fpsan"]):
@@ -16,3 +16,4 @@ We should remove this patch as soon as we upgraded all our targets to cuda 12.9+
  
              # Add --regAllocOptLevel=2 to work around ptxas 13.x bug
              reg_alloc = ['--regAllocOptLevel=2']
+

@@ -26,3 +26,4 @@ See also b/422133176.
      if (user->hasTrait<OpTrait::SameOperandsAndResultEncoding>() ||
          user->hasTrait<OpTrait::Elementwise>() ||
          isa<ReduceOp, ExpandDimsOp, ReshapeOp, TransOp, JoinOp, SplitOp,
+

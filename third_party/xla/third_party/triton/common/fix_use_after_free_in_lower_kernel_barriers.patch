@@ -3,7 +3,7 @@
 
 --- a/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
 +++ b/lib/Conversion/TritonGPUToLLVM/WarpSpecializeUtility.cpp
-@@ -72,8 +72,11 @@
+@@ -72,8 +72,11 @@ lowerKernelBarriers(LLVM::LLVMFuncOp func,
        return WalkResult::skip();
      }
      if (barrierHelper.isBarrierOp(op)) {
@@ -17,3 +17,4 @@
      }
      if (auto callOp = dyn_cast<LLVM::CallOp>(op)) {
        if (!innerFunctions.contains(callOp.getCalleeAttr().getAttr()))
+

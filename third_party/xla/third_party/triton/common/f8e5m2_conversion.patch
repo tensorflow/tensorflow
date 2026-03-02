@@ -1,6 +1,6 @@
 --- a/python/test/unit/language/test_conversions.py
 +++ b/python/test/unit/language/test_conversions.py
-@@ -333,14 +333,18 @@
+@@ -333,14 +333,18 @@ def test_typeconvert_upcast(src_dtype, dst_dtype, device):
  def test_typeconvert_downcast(src_dtype, dst_dtype, rounding, max_repr, device):
  
      if is_cuda():
@@ -30,7 +30,7 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/ElementwiseOpToLLVM.cpp
-@@ -28,15 +28,20 @@
+@@ -28,15 +28,20 @@ struct Fp8ConversionDesc {
  static const Fp8ConversionDesc Fp16_to_Fp8E5M2_RTNE(bool hasNativeFP) {
    Fp8ConversionDesc ret;
    if (!hasNativeFP) {
@@ -60,3 +60,4 @@
    } else {
      ret = {"cvt.rn.satfinite.e5m2x2.f16x2 $0, $1; \n\t", 32, 16, 2};
    }
+

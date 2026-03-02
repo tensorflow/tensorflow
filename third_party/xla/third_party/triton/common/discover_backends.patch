@@ -13,3 +13,4 @@ Bug tracking the issue: http://b/322980485
 +backends: dict[str, Backend] = {
 +        "nvidia": Backend(CUDABackend, CudaDriver)
 +}
+

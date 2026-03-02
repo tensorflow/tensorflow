@@ -4,7 +4,7 @@ would not be able to get run on presubmit anyway.
 
 --- a/python/test/unit/language/test_compile_only.py
 +++ b/python/test/unit/language/test_compile_only.py
-@@ -185,6 +185,8 @@
+@@ -184,6 +184,8 @@ def test_signature_ordering():
      triton.compile(src=src, target=target)
  
  
@@ -13,3 +13,4 @@ would not be able to get run on presubmit anyway.
  def test_fp8_compiles_for_multiple_architectures_hip():
      """
      Validate FP8 compilation succeeds for architectures with different
+

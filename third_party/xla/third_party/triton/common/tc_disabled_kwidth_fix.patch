@@ -2,7 +2,7 @@
 
 --- a/lib/Dialect/TritonGPU/Transforms/Prefetch.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Prefetch.cpp
-@@ -143,8 +143,14 @@
+@@ -143,8 +143,14 @@ Value Prefetcher::generatePrefetch(Value v, unsigned opIdx, bool isPrologue,
            type.getMutableMemory(), type.getAllocShape()),
        v, offset);
  
@@ -21,7 +21,7 @@
 
 --- a/test/TritonGPU/prefetch.mlir
 +++ b/test/TritonGPU/prefetch.mlir
-@@ -358,3 +358,23 @@
+@@ -358,3 +358,23 @@ tt.func @matmul_loop_mixed_amd(%lb : index, %ub : index, %step : index, %A : !tt
    tt.return %loop#4 : tensor<128x128xf32, #C>
  }
  }  // end module
@@ -45,3 +45,4 @@
 +    tt.return %loop#0 : tensor<16x32xf32, #blocked>
 +  }
 +} // end module
+

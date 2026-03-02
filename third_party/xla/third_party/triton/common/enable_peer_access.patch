@@ -33,7 +33,7 @@ new file mode 100644
 
 --- a/third_party/nvidia/backend/driver.c
 +++ b/third_party/nvidia/backend/driver.c
-@@ -844,6 +844,37 @@
+@@ -844,6 +844,37 @@ static void ensureCudaContext() {
    }
  }
  
@@ -71,13 +71,14 @@ new file mode 100644
  static void _launch(int gridX, int gridY, int gridZ, int num_warps,
                      int num_ctas, int launch_cooperative_grid, int launch_pdl,
                      int shared_memory, CUstream stream, CUfunction function,
-@@ -942,6 +973,9 @@
-   Py_DECREF(ret);
+@@ -943,6 +974,9 @@ bool extractPointer(void *ptr, PyObject *obj) {
    if (*dev_ptr == 0) {
      return true; // valid nullptr
-+  }
+   }
 +  if (enablePeerAccessIfNecessary(*dev_ptr) == NULL) {
 +    return false;
-   }
++  }
    CUresult status = cuPointerGetAttribute(
        dev_ptr, CU_POINTER_ATTRIBUTE_DEVICE_POINTER, *dev_ptr);
+   if (status == CUDA_ERROR_INVALID_VALUE) {
+

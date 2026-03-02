@@ -18,3 +18,4 @@ Fix for b/405045790.
  }
  
  // Finds the bitwidth with which the value x is loaded
+
