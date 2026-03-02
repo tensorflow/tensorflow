@@ -24,8 +24,8 @@ limitations under the License.
 #include "xla/hlo/transforms/despecializer.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
 #include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_utils.h"
 
 namespace xla {
@@ -47,7 +47,7 @@ struct GroupedConvolution2DSpec {
 };
 
 class GroupedConvolution2DTest
-    : public HloTestBase,
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
       public ::testing::WithParamInterface<
           ::testing::tuple<GroupedConvolution2DSpec, bool>> {};
 
@@ -248,7 +248,8 @@ INSTANTIATE_TEST_CASE_P(
                        ::testing::Bool()),
     GroupedConvolution2DTestDataToString);
 
-using GroupedConvolutionTest = HloTestBase;
+using GroupedConvolutionTest =
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(GroupedConvolutionTest, BackwardInputConvolution) {
   auto module = ParseAndReturnVerifiedModule(R"(

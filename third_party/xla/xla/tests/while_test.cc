@@ -32,8 +32,9 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -47,7 +48,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class WhileTest : public ClientLibraryTestBase {};
+class WhileTest : public ClientLibraryTestRunnerMixin<
+                      HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {};
 
 // Tests a while node when the result type T is S32.
 //
@@ -82,7 +84,7 @@ TEST_F(WhileTest, WhileWithScalarS32Result) {
   auto init = ConstantR0<int32_t>(&builder, 0);
   While(condition, body, init);
 
-  ComputeAndCompareR0<int32_t>(&builder, 5, {});
+  this->ComputeAndCompareR0<int32_t>(&builder, 5, {});
 }
 
 // Tests a while node when the result type T is S64.
@@ -118,7 +120,7 @@ TEST_F(WhileTest, WhileWithScalarS64Result) {
   auto init = ConstantR0<int64_t>(&builder, 0);
   While(condition, body, init);
 
-  ComputeAndCompareR0<int64_t>(&builder, 5, {});
+  this->ComputeAndCompareR0<int64_t>(&builder, 5, {});
 }
 
 TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
@@ -151,7 +153,7 @@ TEST_F(WhileTest, WhileWithScalarResultNonConstInit) {
                      CreateScalarAddComputation(S32, &builder), {0});
   While(condition, body, init);
 
-  ComputeAndCompareR0<int32_t>(&builder, 5, {});
+  this->ComputeAndCompareR0<int32_t>(&builder, 5, {});
 }
 
 TEST_F(WhileTest, WhileWithPredicateResult) {
@@ -181,7 +183,7 @@ TEST_F(WhileTest, WhileWithPredicateResult) {
       Ne(ConstantR0<bool>(&builder, false), ConstantR0<bool>(&builder, true));
   While(condition, body, init);
 
-  ComputeAndCompareR0<bool>(&builder, true, {});
+  this->ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 // Tests a while node when the result type T is a vector.
@@ -237,7 +239,7 @@ TEST_F(WhileTest, WhileWithEmptyVectorResult) {
   VLOG(2) << "while = "
           << ShapeUtil::HumanString(builder.GetShape(result).value());
 
-  ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareR1<float>(&builder, {}, {}, ErrorSpec(0.0001));
 }
 
 // Tests a while node when the result type T is a vector.
@@ -294,7 +296,7 @@ TEST_F(WhileTest, WhileWithVectorResult) {
   // the sum will increase by 1.0.  It will first be >15.5 when the elements
   // have all reached 2.0.
   std::vector<float> expected = {2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f};
-  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 // Tests a while node when the result type is a vector which is part
@@ -357,7 +359,7 @@ TEST_F(WhileTest, WhileWithVectorResultIntoTuple) {
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f, 2.f});
   auto expected = LiteralUtil::MakeTuple({&expected_data});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
-  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
@@ -410,7 +412,7 @@ TEST_F(WhileTest, WhileWithPermutationAndTupleResult) {
   auto expected = LiteralUtil::MakeTuple(
       {&expected_counter, &expected_w2, &expected_w3, &expected_w1});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
-  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
@@ -460,7 +462,7 @@ TEST_F(WhileTest, WhileWithPermutationAndVectorResult) {
   VLOG(2) << "result = "
           << ShapeUtil::HumanString(builder.GetShape(result).value());
   std::vector<float> expected = {6.f, 6.f, 6.f};
-  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 // Tests a while node when the result type T is a Tuple.
@@ -515,7 +517,7 @@ TEST_F(WhileTest, WhileWithTupleResult) {
       {5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f});
   auto expected = LiteralUtil::MakeTuple({&expected_counter, &expected_data});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
-  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 TEST_F(WhileTest, WhileWithPredicateTupleResult) {
@@ -561,7 +563,7 @@ TEST_F(WhileTest, WhileWithPredicateTupleResult) {
   auto expected_predicate = LiteralUtil::CreateR0<bool>(true);
   auto expected =
       LiteralUtil::MakeTuple({&expected_counter, &expected_predicate});
-  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0));
+  this->ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0));
 }
 
 TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
@@ -605,7 +607,7 @@ TEST_F(WhileTest, WhileWithTupleConstantScalarResult) {
   auto expected_data = LiteralUtil::CreateR0<int32_t>(7);
   auto expected = LiteralUtil::MakeTuple({&expected_counter, &expected_data});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
-  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 // Tests two while nodes when the result type T is a Tuple and the second
@@ -695,7 +697,7 @@ TEST_F(WhileTest, TwoWhileWithTupleResult) {
           << ShapeUtil::HumanString(builder.GetShape(result).value());
   const float sum = c1 + c2;
   std::vector<float> expected(10, sum);
-  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 // Test while nodes that share the while body computation.
@@ -759,7 +761,7 @@ TEST_F(WhileTest, TwoWhileLoopsAndSharedBody) {
           << ShapeUtil::HumanString(builder.GetShape(result).value());
   const float sum = c1 + c2;
   std::vector<float> expected(10, sum);
-  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 TEST_F(WhileTest, WhileLoopsWithSharedBodyAndInit) {
@@ -821,7 +823,7 @@ TEST_F(WhileTest, WhileLoopsWithSharedBodyAndInit) {
           << ShapeUtil::HumanString(builder.GetShape(result).value());
   const float sum = c1 + c2;
   std::vector<float> expected(10, sum);
-  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 // WhileTest that uses DynamicUpdateSlice instruction in body computation.
@@ -879,7 +881,7 @@ TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
       {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f});
   auto expected = LiteralUtil::MakeTuple({&expected_counter, &expected_data});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected.shape());
-  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
+  this->ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.0001));
 }
 
 // Tests a while node when the result type T is a vector of S32.
@@ -935,11 +937,9 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   for (int i = 1; i < 4; ++i) {
     TF_ASSERT_OK_AND_ASSIGN(auto computation, while_loop(i));
 
-    ExecutionOptions execution_options = execution_options_;
-    execution_options.set_seed(65);
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto result,
-        client_->ExecuteAndTransfer(computation, {}, &execution_options));
+    this->mutable_execution_options()->set_seed(65);
+    TF_ASSERT_OK_AND_ASSIGN(auto result,
+                            this->ExecuteAndTransfer(computation, {}));
   }
 }
 
@@ -996,8 +996,8 @@ TEST_F(WhileTest, WhileThatSwapsParameterWithBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
       client_->TransferToServer(LiteralUtil::CreateR1<float>({42, 42})));
-  ComputeAndCompareR1<float>(&outer, {1.0f, 1.0f}, {parameter_data.get()},
-                             ErrorSpec(1e-6));
+  this->ComputeAndCompareR1<float>(&outer, {1.0f, 1.0f}, {parameter_data.get()},
+                                   ErrorSpec(1e-6));
 }
 
 TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
@@ -1022,8 +1022,8 @@ TEST_F(WhileTest, WhileThatTurnsScalarParameterToTupleElement) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GlobalData> parameter_data,
       client_->TransferToServer(LiteralUtil::CreateR0<float>(42)));
-  ComputeAndCompareR0<float>(&outer, 43.0f, {parameter_data.get()},
-                             ErrorSpec(1e-6));
+  this->ComputeAndCompareR0<float>(&outer, 43.0f, {parameter_data.get()},
+                                   ErrorSpec(1e-6));
 }
 
 // Tests loop where the init value comes from two sources (constant and
@@ -1134,7 +1134,7 @@ TEST_F(WhileTest, NestedWhileWithScalarResult) {
   auto init = ConstantR0<int32_t>(&builder, 0);
   While(outer_condition, outer_body, init);
 
-  ComputeAndCompareR0<int32_t>(&builder, 42, {});
+  this->ComputeAndCompareR0<int32_t>(&builder, 42, {});
 }
 
 // Tests a while node when the result type T is S32.
@@ -1180,7 +1180,7 @@ TEST_F(WhileTest, WhileWithCallInsideCondition) {
   auto init = ConstantR0<int32_t>(&builder, 0);
   While(condition, body, init);
 
-  ComputeAndCompareR0<int32_t>(&builder, 5, {});
+  this->ComputeAndCompareR0<int32_t>(&builder, 5, {});
 }
 
 TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
@@ -1222,7 +1222,7 @@ TEST_F(WhileTest, WhileWithLoopInvariantOperation) {
       auto param_value, client_->TransferToServer(LiteralUtil::CreateR2<float>(
                             {{1.0, 2.0}, {-1.0, -2.0}})));
 
-  ComputeAndCompareR2<float>(
+  this->ComputeAndCompareR2<float>(
       &builder, {{-0.76159416, -0.96402758}, {0.76159416, 0.96402758}},
       {param_value.get()}, ErrorSpec(4e-5));
 }
@@ -1256,10 +1256,10 @@ TEST_F(WhileTest, WhileInfeedCondition) {
   TF_ASSERT_OK(client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(true)));
   TF_ASSERT_OK(client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(false)));
 
-  ComputeAndCompareR0<int32_t>(&builder, 2, {});
+  this->ComputeAndCompareR0<int32_t>(&builder, 2, {});
 }
 
-TEST_F(HloTestBase, ParallelExecution) {
+TEST_F(HloPjRtTestBase, ParallelExecution) {
   // Test while loops work when an executable is executed in parallel.
   const char* const hlo_string = R"(
   HloModule m

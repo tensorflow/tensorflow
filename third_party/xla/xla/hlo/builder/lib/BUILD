@@ -421,11 +421,7 @@ cc_library(
 xla_test(
     name = "qr_test",
     srcs = ["qr_test.cc"],
-    tags = [
-        "optonly",
-        "pjrt_migration_candidate",
-    ],
-    use_legacy_runtime = True,
+    tags = ["optonly"],
     deps = [
         ":matrix",
         ":qr",
@@ -438,7 +434,9 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
-        "//xla/tests:client_library_test_base",
+        "//xla/tests:client_library_test_runner_mixin",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
     ],
@@ -586,9 +584,7 @@ xla_test(
     tags = [
         "manual",
         "notap",
-        "pjrt_migration_candidate",
     ],
-    use_legacy_runtime = True,
     deps = [
         ":quantize",
         "//xla:array2d",
@@ -596,7 +592,9 @@ xla_test(
         "//xla:util",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/testlib:test",
-        "//xla/tests:client_library_test_base",
+        "//xla/tests:client_library_test_runner_mixin",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:bfloat16",
     ],
@@ -807,8 +805,6 @@ cc_library(
 xla_test(
     name = "tuple_test",
     srcs = ["tuple_test.cc"],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
         ":tuple",
         "//xla:error_spec",
@@ -820,7 +816,8 @@ xla_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/service",
         "//xla/tests:client_library_test_runner_mixin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",

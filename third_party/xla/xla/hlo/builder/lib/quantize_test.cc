@@ -24,7 +24,9 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/bfloat16.h"
@@ -168,7 +170,8 @@ std::vector<bfloat16> GenerateMinCombinedOutput(const QuantizedRange &range) {
 // TODO(wangtao): add a test to make sure this op is the inverse of the existing
 // TF quantize op defined in: third_party/tensorflow/core/kernels/quantize_op.cc
 
-using DequantizeTest = ClientLibraryTestBase;
+using DequantizeTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST(PackTest, PackUint8ToUint32) {
   std::vector<uint8_t> input = {0xAB, 0x0B, 0x00, 0xF0, 0x01};
@@ -196,7 +199,7 @@ TEST_F(DequantizeTest, MinCombinedUint16R1) {
   QuantizedRange range(0, 255.0f);
   xla::Dequantize<uint16_t>(x, range, "MIN_COMBINED");
   auto expected = GenerateMinCombinedOutput<uint16_t>(range);
-  ComputeAndCompareR1<bfloat16>(&builder, expected, {});
+  this->ComputeAndCompareR1<bfloat16>(&builder, expected, {});
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R1) {
@@ -206,7 +209,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R1) {
   QuantizedRange range(0, 127.0f);
   xla::Dequantize<uint8_t>(x, range, "MIN_COMBINED");
   auto expected = GenerateMinCombinedOutput<uint8_t>(range);
-  ComputeAndCompareR1<bfloat16>(&builder, expected, {});
+  this->ComputeAndCompareR1<bfloat16>(&builder, expected, {});
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R2) {
@@ -230,7 +233,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R2) {
       {bfloat16(8.0), bfloat16(9.0), bfloat16(10.0), bfloat16(11.0)},
       {bfloat16(12.0), bfloat16(13.0), bfloat16(16.0), bfloat16(15.0)},
   };
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  this->ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R2TransposeOutput) {
@@ -254,7 +257,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R2TransposeOutput) {
       {bfloat16(2.0), bfloat16(6.0), bfloat16(10.0), bfloat16(16.0)},
       {bfloat16(3.0), bfloat16(7.0), bfloat16(11.0), bfloat16(15.0)},
   };
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  this->ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
@@ -285,7 +288,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
       {bfloat16(12.0), bfloat16(13.0), bfloat16(16.0), bfloat16(15.0),
        bfloat16(19.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
   };
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  this->ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
@@ -316,7 +319,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
       {bfloat16(0.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
       {bfloat16(0.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
   };
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  this->ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
@@ -330,7 +333,7 @@ TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
 
   const Array2D<bfloat16> expected =
       GenerateLargeSizeMinCombinedOutput<uint8_t>(input, range);
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  this->ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTestTransposeOutput) {
@@ -345,7 +348,7 @@ TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTestTransposeOutput) {
   const Array2D<bfloat16> expected =
       GenerateLargeSizeMinCombinedOutput<uint8_t>(input, range,
                                                   /*transpose_output=*/true);
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  this->ComputeAndCompareR2<bfloat16>(&builder, expected, {});
 }
 
 }  // namespace

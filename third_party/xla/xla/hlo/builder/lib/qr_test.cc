@@ -28,14 +28,17 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/statusor.h"
 
 namespace {
 
-using QrTest = xla::ClientLibraryTestBase;
+using QrTest = xla::ClientLibraryTestRunnerMixin<
+    xla::HloPjRtInterpreterReferenceMixin<xla::HloPjRtTestBase>>;
 
 TEST_F(QrTest, Simple) {
   xla::Array2D<float> data({
@@ -51,7 +54,8 @@ TEST_F(QrTest, Simple) {
         xla::XlaBuilder builder(TestName());
         xla::XlaOp a, q, r;
         xla::Array<float> a_vals = data.Slice({0, 0}, {m, n});
-        auto a_data = CreateParameter<float>(a_vals, 0, "a", &builder, &a);
+        auto a_data = this->CreateParameterAndTransferLiteral(
+            0, xla::LiteralUtil::CreateFromArray(a_vals), "a", &builder, &a);
         xla::QrExplicit(a, full_matrices, q, r);
 
         // Verifies that the decomposition composes back to the original matrix.
@@ -70,8 +74,9 @@ TEST_F(QrTest, Simple) {
         EXPECT_EQ(r_shape,
                   xla::ShapeUtil::MakeShape(
                       xla::F32, {full_matrices ? m : std::min(m, n), n}));
-        ComputeAndCompare<float>(&builder, a_vals, {a_data.get()},
-                                 xla::ErrorSpec(1e-4, 1e-4));
+        this->ComputeAndCompareLiteral(
+            &builder, xla::LiteralUtil::CreateFromArray(a_vals), {&a_data},
+            xla::ErrorSpec(1e-4, 1e-4));
       }
     }
   }
@@ -87,7 +92,7 @@ TEST_F(QrTest, ZeroDiagonal) {
   });
 
   xla::XlaOp a, q, r;
-  auto a_data = CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);
+  auto a_data = this->CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);
   xla::QrExplicit(a, /*full_matrices=*/true, q, r);
 
   // Verifies that the decomposition composes back to the original matrix.
@@ -98,8 +103,8 @@ TEST_F(QrTest, ZeroDiagonal) {
   // from Python, anyway, where we have access to numpy and scipy.
   xla::BatchDot(q, r, xla::PrecisionConfig::HIGHEST);
 
-  ComputeAndCompareR2<float>(&builder, a_vals, {a_data.get()},
-                             xla::ErrorSpec(1e-4, 1e-4));
+  this->ComputeAndCompareR2<float>(&builder, a_vals, {&a_data},
+                                   xla::ErrorSpec(1e-4, 1e-4));
 }
 
 TEST_F(QrTest, SimpleBatched) {
@@ -121,13 +126,13 @@ TEST_F(QrTest, SimpleBatched) {
   });
 
   xla::XlaOp a, q, r;
-  auto a_data = CreateR3Parameter<float>(a_vals, 0, "a", &builder, &a);
+  auto a_data = this->CreateR3Parameter<float>(a_vals, 0, "a", &builder, &a);
   xla::QrExplicit(a, /*full_matrices=*/true, q, r);
 
   xla::BatchDot(q, r, xla::PrecisionConfig::HIGHEST);
 
-  ComputeAndCompareR3<float>(&builder, a_vals, {a_data.get()},
-                             xla::ErrorSpec(1e-4, 1e-4));
+  this->ComputeAndCompareR3<float>(&builder, a_vals, {&a_data},
+                                   xla::ErrorSpec(1e-4, 1e-4));
 }
 
 TEST_F(QrTest, SubnormalComplex) {
@@ -141,11 +146,13 @@ TEST_F(QrTest, SubnormalComplex) {
 
   xla::XlaBuilder builder(TestName());
   xla::XlaOp a, q, r;
-  auto a_data = CreateParameter<xla::complex64>(a_vals, 0, "a", &builder, &a);
+  auto a_data = this->CreateParameterAndTransferLiteral(
+      0, xla::LiteralUtil::CreateFromArray(a_vals), "a", &builder, &a);
   xla::QrExplicit(a, /*full_matrices=*/true, q, r);
   xla::BatchDot(q, r, xla::PrecisionConfig::HIGHEST);
-  ComputeAndCompare<xla::complex64>(&builder, a_vals, {a_data.get()},
-                                    xla::ErrorSpec(1e-4, 1e-4));
+  this->ComputeAndCompareLiteral(&builder,
+                                 xla::LiteralUtil::CreateFromArray(a_vals),
+                                 {&a_data}, xla::ErrorSpec(1e-4, 1e-4));
 }
 
 TEST_F(QrTest, DuplicateHouseholderExpansion) {
@@ -169,18 +176,20 @@ TEST_F(QrTest, DuplicateHouseholderExpansion) {
   // in compilation failure.
 
   xla::XlaOp a0, q0, r0;
-  auto a0_data = CreateR2Parameter<float>(a0_vals, 0, "a0", &builder, &a0);
+  auto a0_data =
+      this->CreateR2Parameter<float>(a0_vals, 0, "a0", &builder, &a0);
   xla::QrExplicit(a0, /*full_matrices=*/true, q0, r0);
 
   xla::XlaOp a1, q1, r1;
-  auto a1_data = CreateR2Parameter<float>(a1_vals, 1, "a1", &builder, &a1);
+  auto a1_data =
+      this->CreateR2Parameter<float>(a1_vals, 1, "a1", &builder, &a1);
   xla::QrExplicit(a1, /*full_matrices=*/true, q1, r1);
 
   // Verifies that the decomposition composes back to the original matrix.
   xla::BatchDot(q1, r1, xla::PrecisionConfig::HIGHEST);
 
-  ComputeAndCompareR2<float>(&builder, a1_vals, {a0_data.get(), a1_data.get()},
-                             xla::ErrorSpec(1e-4, 1e-4));
+  this->ComputeAndCompareR2<float>(&builder, a1_vals, {&a0_data, &a1_data},
+                                   xla::ErrorSpec(1e-4, 1e-4));
 }
 
 }  // namespace
