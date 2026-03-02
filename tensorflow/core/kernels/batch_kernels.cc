@@ -855,7 +855,7 @@ class UnbatchResource : public ResourceBase {
                .emplace(batch_key,
                         WaitingCallback{deadline_micros, context, done})
                .second) {
-        return errors::AlreadyExists(
+        return absl::AlreadyExistsError(
             "Multiple session runs with the same batch key.");
       }
 
@@ -876,7 +876,7 @@ class UnbatchResource : public ResourceBase {
                      .emplace(batch_keys[i],
                               WaitingTensor{deadline_micros, split_inputs[i]})
                      .second) {
-              return errors::AlreadyExists(
+              return absl::AlreadyExistsError(
                   "Multiple tensors returned for same batch key.");
             }
           }
