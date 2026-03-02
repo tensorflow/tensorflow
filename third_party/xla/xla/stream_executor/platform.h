@@ -19,15 +19,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_PLATFORM_H_
 #define XLA_STREAM_EXECUTOR_PLATFORM_H_
 
-#include <cstddef>
 #include <memory>
 #include <string>
 
-#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor {
 
@@ -45,47 +44,16 @@ class Platform {
  public:
   virtual ~Platform() = default;
 
-  // Returns metadata about the Platforms ID.
-  class IdInfo {
-   public:
-    using NameGetter = absl::string_view (*)(const IdInfo&);
-
-    explicit constexpr IdInfo(NameGetter name_getter)
-        : name_getter_(name_getter) {}
-
-    // Returns the platforms name, i.e. the string representation of the
-    // platform ID.
-    absl::string_view ToName() const { return name_getter_(*this); };
-
-   private:
-    NameGetter name_getter_;
-  };
-
   // A platform ID is a unique identifier for each registered platform type -
   // each platform is required to expose an ID to ensure unique registration and
   // as a target against which plugins can register.
   //
-  // The macro below is provided to help generate a [process-unique] identifier.
-  using Id = const IdInfo*;
-
-// Helper macro to define a plugin ID. To be used only inside plugin
-// implementation files. Works by "reserving" an address/value (guaranteed to be
-// unique) inside a process space.
-//
-// ID_VAR_NAME: The name of the variable to initialize with the platform ID.
-// PLATFORM_NAME: The string name of the platform.
-#define PLATFORM_DEFINE_ID(ID_VAR_NAME, PLATFORM_NAME)          \
-  namespace {                                                   \
-  constexpr ::stream_executor::Platform::IdInfo                 \
-      kInternalIdInfo_##PLATFORM_NAME(                          \
-          [](const ::stream_executor::Platform::IdInfo&)        \
-              -> absl::string_view { return #PLATFORM_NAME; }); \
-  }                                                             \
-  constexpr ::stream_executor::Platform::Id ID_VAR_NAME(        \
-      &kInternalIdInfo_##PLATFORM_NAME);
+  // Check out platform_id.h for more details.
+  using Id [[deprecated("Use PlatformId instead")]] = PlatformId;
+  using IdInfo [[deprecated("Use PlatformIdInfo instead")]] = PlatformIdInfo;
 
   // Returns a key uniquely identifying this platform.
-  virtual Id id() const = 0;
+  virtual PlatformId id() const = 0;
 
   // Name of this platform.
   virtual const std::string& Name() const = 0;

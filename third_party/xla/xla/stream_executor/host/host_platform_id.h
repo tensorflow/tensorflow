@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_HOST_HOST_PLATFORM_ID_H_
 #define XLA_STREAM_EXECUTOR_HOST_HOST_PLATFORM_ID_H_
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor {
 namespace host {
@@ -26,7 +26,7 @@ namespace host {
 // instantiating a HostPlatform object.
 // This is broken out here to avoid a circular dependency between HostPlatform
 // and HostStreamExecutor.
-extern const Platform::Id kHostPlatformId;
+extern const PlatformId kHostPlatformId;
 
 }  // namespace host
 }  // namespace stream_executor
