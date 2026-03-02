@@ -20,11 +20,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/stream.h"
 
@@ -40,12 +45,26 @@ class NvshmemRecvThunk : public NvshmemCollectiveThunk {
                    std::shared_ptr<NvshmemBufferAddresses> buffer_addresses);
   absl::Status Initialize(const InitializeParams& params) override;
 
+  absl::StatusOr<ThunkProto> ToProto() const override;
+  static absl::StatusOr<std::unique_ptr<NvshmemRecvThunk>> FromProto(
+      ThunkInfo thunk_info, const NvshmemRecvThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations,
+      std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
+      CollectiveThunk::AsyncEventsMap& async_events_map);
+
  protected:
   const CollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNvshmemCollective(const ExecuteParams& params,
                                     se::Stream& stream) override;
 
  private:
+  NvshmemRecvThunk(
+      ThunkInfo thunk_info, P2PConfig config,
+      const CollectiveThunk::Buffer& buffer,
+      std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
+      std::string hlo_name,
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+
   const P2PConfig config_;
   const CollectiveThunk::Buffer buffer_;
   const std::string hlo_name_;

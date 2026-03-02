@@ -53,3 +53,10 @@ message NvshmemSendThunkProto {
   CollectiveBufferProto buffer = 3;
   string hlo_name = 4;
 }
+
+message NvshmemRecvThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  P2PConfigProto config = 2;
+  CollectiveBufferProto buffer = 3;
+  string hlo_name = 4;
+}

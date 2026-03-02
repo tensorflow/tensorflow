@@ -3548,6 +3548,7 @@ cc_library(
         ":nvshmem_all_reduce_thunk",
         ":nvshmem_collective_permute_thunk",
         ":nvshmem_collective_thunk",
+        ":nvshmem_recv_thunk",
         ":nvshmem_send_thunk",
         ":outfeed_thunk",
         ":ragged_all_to_all_thunk",
@@ -3749,11 +3750,28 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "nvshmem_recv_thunk_test",
+    srcs = ["nvshmem_recv_thunk_test.cc"],
+    deps = [
+        ":collective_thunk",
+        ":nvshmem_collective_thunk",
+        ":nvshmem_collective_thunk_proto_cc",
+        ":nvshmem_recv_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "nvshmem_recv_thunk",
     srcs = ["nvshmem_recv_thunk.cc"],
     hdrs = ["nvshmem_recv_thunk.h"],
-    tags = ["gpu"],
     deps = [
         ":collective_thunk",
         ":nvshmem_collective_thunk",
@@ -3768,14 +3786,19 @@ cc_library(
         "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:device_id",
+        "//xla/service:buffer_assignment",
         "//xla/service:computation_placer",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/stream_executor:stream",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

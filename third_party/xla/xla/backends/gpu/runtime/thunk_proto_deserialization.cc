@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nvshmem_all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_recv_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_send_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
@@ -331,6 +332,11 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kNvshmemSendThunk:
       return NvshmemSendThunk::FromProto(
           std::move(thunk_info), thunk_proto.nvshmem_send_thunk(),
+          buffer_allocations, nvshmem_buffer_addresses,
+          collective_async_events_map);
+    case ThunkProto::kNvshmemRecvThunk:
+      return NvshmemRecvThunk::FromProto(
+          std::move(thunk_info), thunk_proto.nvshmem_recv_thunk(),
           buffer_allocations, nvshmem_buffer_addresses,
           collective_async_events_map);
     default:
