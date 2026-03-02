@@ -25,14 +25,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -55,10 +54,15 @@ absl::StatusOr<xla::ifrt::ArrayRef> LoadIfrtVariable(
     const tsl::thread::ThreadPool& thread_pool,
     const tensorflow::Tensor& variable,
     const VariableDeviceShardingConfig& sharding_config,
-    const xla::ifrt::LayoutRef& xla_input_layout) {
+    const xla::ifrt::LayoutRef& xla_input_layout,
+    const xla::ifrt::DeviceListRef& device_list) {
+  TF_ASSIGN_OR_RETURN(
+      auto sharding,
+      tensorflow::ifrt_serving::ToIfrtSharding(
+          *ifrt_client, sharding_config.hlo_sharding, device_list));
   return tensorflow::ifrt_serving::MakeArrayFromTensor(
-      *ifrt_client, variable, sharding_config.device_ids,
-      sharding_config.hlo_sharding, thread_pool, xla_input_layout);
+      *ifrt_client, variable, device_list, std::move(sharding), thread_pool,
+      xla_input_layout);
 }
 
 }  // namespace
@@ -97,7 +101,8 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfig& sharding_config,
     const xla::ifrt::LayoutRef& xla_input_layout,
-    std::shared_ptr<xla::Shape> shape_on_device) {
+    std::shared_ptr<xla::Shape> shape_on_device,
+    const xla::ifrt::DeviceListRef& device_list) {
   IfrtLoadedVariableRegistry::Key key{
       .device_ids = sharding_config.device_ids,
       .input_name = std::string(tensor_name),
@@ -147,7 +152,8 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
        checkpoint_loader_queue = checkpoint_loader_queue,
        sharding_config = sharding_config,
        loaded_variable_promise = std::move(loaded_variable_promise),
-       bg_context = std::move(bg_context), xla_input_layout = xla_input_layout](
+       bg_context = std::move(bg_context), xla_input_layout = xla_input_layout,
+       device_list = device_list](
           absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
         if (!restored_tensor.ok()) {
           loaded_variable_promise.Set(restored_tensor.status());
@@ -161,11 +167,13 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
              restored_tensor = std::move(*restored_tensor),
              loaded_variable_promise = std::move(loaded_variable_promise),
              bg_context = std::move(bg_context),
-             xla_input_layout = std::move(xla_input_layout)]() mutable {
+             xla_input_layout = std::move(xla_input_layout),
+             device_list = std::move(device_list)]() mutable {
               tensorflow::WithContext wc(bg_context);
               absl::StatusOr<xla::ifrt::ArrayRef> variable_array =
                   LoadIfrtVariable(ifrt_client, thread_pool, restored_tensor,
-                                   sharding_config, xla_input_layout);
+                                   sharding_config, xla_input_layout,
+                                   device_list);
               loaded_variable_promise.Set(std::move(variable_array));
             });
       });

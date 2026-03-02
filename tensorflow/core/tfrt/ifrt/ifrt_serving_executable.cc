@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
@@ -617,10 +618,27 @@ IfrtServingExecutable::CreateExecutableSynchronously(
     TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
                         xla::HloSharding::FromProto(arg.sharding()));
     executable_bundle->arg_hlo_shardings.push_back(hlo_sharding);
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_sharding,
+        ToIfrtSharding(*ifrt_client_, hlo_sharding, assigned_device_list_));
+    executable_bundle->arg_ifrt_shardings.push_back(std::move(ifrt_sharding));
     TF_ASSIGN_OR_RETURN(auto reshaped_tensor,
                         tensorflow::TensorShape::BuildTensorShape(arg.shape()));
     executable_bundle->reshaped_input_tensors.push_back(
         std::move(reshaped_tensor));
+  }
+
+  if (UsePortableExecution()) {
+    // For core selection, the device is selected at runtime. We pre-calculate
+    // the sharding for each addressable device to avoid doing it on the
+    // critical path. The map is keyed by device ID.
+    for (xla::ifrt::Device* device : ifrt_client_->addressable_devices()) {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef device_list,
+                          ifrt_client_->MakeDeviceList({device}));
+      executable_bundle->portable_single_device_shardings.emplace(
+          device->Id(), xla::ifrt::SingleDeviceSharding::Create(
+                            device, xla::ifrt::MemoryKind()));
+    }
   }
 
   executable_bundle->retval_hlo_shardings.reserve(
@@ -913,12 +931,17 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
               : nullptr;
       const xla::Shape* xla_input_shape =
           xla_input_shapes != nullptr ? (*xla_input_shapes)[i].get() : nullptr;
+      xla::ifrt::ShardingRef ifrt_sharding =
+          UsePortableExecution()
+              ? executable_bundle->portable_single_device_shardings
+                    [device_list->devices().front()->Id()]
+              : executable_bundle->arg_ifrt_shardings[i];
       TF_ASSIGN_OR_RETURN(
           tsl::Future<xla::ifrt::ArrayRef> array_ref,
           (*user_inputs_h2d_transfer_executor)
               ->ScheduledH2DTransfer(reshaped, xla_input_shape, device_list,
-                                     executable_bundle->arg_hlo_shardings[i],
-                                     thread_pool_, std::move(layout_ref)));
+                                     ifrt_sharding, thread_pool_,
+                                     std::move(layout_ref)));
       args.push_back(std::move(array_ref));
     }
   }
@@ -1028,7 +1051,7 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
             tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
             checkpoint_loader_queue_, sharding_config, std::move(layout_ref),
-            std::move(shape_on_device)));
+            std::move(shape_on_device), devices));
   }
   return absl::OkStatus();
 }

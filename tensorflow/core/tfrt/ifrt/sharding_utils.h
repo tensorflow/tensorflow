@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <vector>
 
 #include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
@@ -30,7 +29,8 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -61,8 +61,7 @@ class H2DTransferExecutor {
       // `input_xla_shape` is not used in this implementation.
       const xla::Shape* /*input_xla_shape*/,
       const xla::ifrt::DeviceListRef& device_list,
-      const xla::HloSharding& hlo_sharding,
-      tsl::thread::ThreadPool& thread_pool,
+      xla::ifrt::ShardingRef sharding, tsl::thread::ThreadPool& thread_pool,
       xla::ifrt::LayoutRef xla_input_layout);
 
   // Executes the H2D transfers for all registered tensors.
@@ -83,7 +82,7 @@ class H2DTransferExecutorFactory {
 // sharding information.
 absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
+    absl::Span<const int> device_ids, xla::ifrt::ShardingRef sharding,
     const tsl::thread::ThreadPool& thread_pool,
     const xla::ifrt::LayoutRef& xla_input_layout);
 
@@ -92,8 +91,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
 absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const xla::ifrt::DeviceListRef& device_list,
-    const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool,
+    xla::ifrt::ShardingRef sharding, const tsl::thread::ThreadPool& thread_pool,
     const xla::ifrt::LayoutRef& xla_input_layout);
 
 // Reshard an disassembled array list back to one single tensor
@@ -117,6 +115,20 @@ tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
 // TensorFlow tensor.
 std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(
     tensorflow::DataType dtype, const tensorflow::TensorShape& shape);
+
+// Converts `hlo_sharding` to `xla::ifrt::Sharding`.
+//
+// Returns `xla::ifrt::SingleDeviceSharding` if `device_list` has only one
+// device or `hlo_sharding` is maximal and not replicated (i.e. the entire
+// tensor is on a single device). Otherwise returns `xla::ifrt::HloSharding`.
+//
+// Returns error if `hlo_sharding` is not one of following supported cases:
+// * Tiled: The tensor is split into pieces, each assigned to a device.
+// * Replicated: The entire tensor is copied to every device.
+// * TileMaximal: The entire tensor is on a single device (when not replicated).
+absl::StatusOr<xla::ifrt::ShardingRef> ToIfrtSharding(
+    xla::ifrt::Client& ifrt_client, const xla::HloSharding& hlo_sharding,
+    const xla::ifrt::DeviceListRef& device_list);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow
