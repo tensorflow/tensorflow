@@ -39,3 +39,10 @@ message NvshmemAllReduceStartThunkProto {
   repeated CollectiveBufferProto buffers = 3;
   xla.ReductionKindProto reduction_kind = 4;
 }
+
+message NvshmemCollectivePermuteStartThunkProto {
+  optional uint64 async_events_unique_id = 1;
+  P2PConfigProto p2p_config = 2;
+  repeated CollectiveBufferProto buffers = 3;
+  bool p2p_memcpy_enabled = 4;
+}

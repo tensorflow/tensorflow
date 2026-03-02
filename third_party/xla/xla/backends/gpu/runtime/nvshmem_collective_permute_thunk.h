@@ -21,11 +21,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
@@ -56,12 +59,25 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
 
   absl::Status Initialize(const InitializeParams& params) override;
 
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<NvshmemCollectivePermuteStartThunk>>
+  FromProto(ThunkInfo thunk_info,
+            const NvshmemCollectivePermuteStartThunkProto& thunk_proto,
+            absl::Span<const BufferAllocation> buffer_allocations,
+            CollectiveThunk::AsyncEventsMap& async_events_map);
+
  protected:
   const CollectiveConfig& config() const override { return config_.config; }
   absl::Status RunNvshmemCollective(const ExecuteParams& params,
                                     se::Stream& stream) override;
 
  private:
+  NvshmemCollectivePermuteStartThunk(
+      ThunkInfo thunk_info, P2PConfig config,
+      std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled,
+      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+
   const P2PConfig config_;
   const std::vector<CollectiveThunk::Buffer> buffers_;
   const bool p2p_memcpy_enabled_ = false;
