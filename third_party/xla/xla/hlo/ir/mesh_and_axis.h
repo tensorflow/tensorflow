@@ -150,6 +150,10 @@ class AxisRef {
 
   explicit AxisRef(int64_t mesh_axis_index, SubAxis sub_axis_info);
 
+  int64_t pre_size() const {
+    return sub_axis_info_.has_value() ? sub_axis_info_->pre_size : 1;
+  }
+
   bool operator==(const xla::AxisRef& other) const {
     if (mesh_axis_index_ != other.mesh_axis_index_) {
       return false;
@@ -170,13 +174,11 @@ class AxisRef {
     if (mesh_axis_index_ != other.mesh_axis_index_) {
       return mesh_axis_index_ < other.mesh_axis_index_;
     }
-    if (sub_axis_info_.has_value() && !other.sub_axis_info_.has_value()) {
-      return sub_axis_info_->pre_size == 1;
+    if (!sub_axis_info_.has_value()) {
+      return other.pre_size() > 1;
     }
-    if (!sub_axis_info_.has_value() && other.sub_axis_info_.has_value()) {
-      // This is the full axis, it's smaller than `other` iff `other` is a
-      // sub-axis with pre-size > 1.
-      return other.sub_axis_info_->pre_size > 1;
+    if (!other.sub_axis_info_.has_value()) {
+      return pre_size() == 1;
     }
     // Both axis-refs are sub-axes.
     if (sub_axis_info_->pre_size != other.sub_axis_info_->pre_size) {
@@ -184,10 +186,6 @@ class AxisRef {
     }
     return sub_axis_info_->size < other.sub_axis_info_->size;
   }
-
-  bool operator>(const AxisRef& other) const { return other < *this; }
-  bool operator<=(const AxisRef& other) const { return !(*this > other); }
-  bool operator>=(const AxisRef& other) const { return !(*this < other); }
 
   template <typename H>
   friend H AbslHashValue(H h, const AxisRef& a) {
