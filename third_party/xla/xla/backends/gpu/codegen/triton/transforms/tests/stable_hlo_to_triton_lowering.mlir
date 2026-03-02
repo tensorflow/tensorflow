@@ -242,6 +242,36 @@ xtile.entry_func @all_reduce_with_incorrect_num_args_doesnt_lower(%input: memref
   xtile.return
 }
 
+// CHECK-LABEL: xtile.entry_func @all_reduce_one_shot
+xtile.entry_func @all_reduce_one_shot(%input: memref<65536xf32>, %output: memref<65536xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<!tt.ptr<i32>>, %remote_input_buffer: !tt.ptr<!tt.ptr<f32>>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %tile = xtile.extract %input[%tile_id][65536][1] : memref<65536xf32> -> tensor<65536xf32>
+  // CHECK: triton_xla.block_barrier
+  // CHECK-NOT: triton_xla.block_barrier
+  %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<65536xf32>) -> tensor<65536xf32>
+  xtile.insert %all_reduce into %output[%tile_id][65536][1] : tensor<65536xf32> -> memref<65536xf32>
+  xtile.return
+}
+
+// CHECK-LABEL: xtile.entry_func @all_reduce_two_shot
+xtile.entry_func @all_reduce_two_shot(%input: memref<131072xf32>, %output: memref<131072xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<!tt.ptr<i32>>, %remote_input_buffer: !tt.ptr<!tt.ptr<f32>>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %tile = xtile.extract %input[%tile_id][131072][1] : memref<131072xf32> -> tensor<131072xf32>
+  // CHECK: triton_xla.block_barrier
+  // CHECK: triton_xla.block_barrier
+  // CHECK-NOT: triton_xla.block_barrier
+  %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<131072xf32>) -> tensor<131072xf32>
+  xtile.insert %all_reduce into %output[%tile_id][131072][1] : tensor<131072xf32> -> memref<131072xf32>
+  xtile.return
+}
+
+
 // CHECK: func @lower_dot_with_warp_specialization_to_triton
 func.func @lower_dot_with_warp_specialization_to_triton(
     %arg0: tensor<2x4xf32>,

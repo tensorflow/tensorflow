@@ -276,7 +276,7 @@ TEST_P(CollectiveEmitterParameterizedTest,
       BuildModuleWithEmitter(GetModuleStr(GetParam()), device_info_));
   const TritonFusion* triton_fusion = result->emitter.get();
   ASSERT_NE(triton_fusion, nullptr);
-  TF_ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(  // Check that we can generate the kernel
       TritonWrapperResult triton_kernel,
       triton_fusion->GenerateTritonKernelAndWrapper(
           *result->FusionInstr(), "test-all-reduce-start", device_info_,
@@ -289,7 +289,8 @@ INSTANTIATE_TEST_SUITE_P(
     CollectiveEmitterParameterizedTest,
     ::testing::Values(ShapeUtil::MakeShape(F32, {65536}),
                       ShapeUtil::MakeShape(BF16, {200, 100}),
-                      ShapeUtil::MakeShape(PRED, {200, 64})),
+                      ShapeUtil::MakeShape(PRED, {200, 64}),
+                      ShapeUtil::MakeShape(F32, {131072})),
     [](const ::testing::TestParamInfo<
         CollectiveEmitterParameterizedTest::ParamType>& info) {
       return primitive_util::LowercasePrimitiveTypeName(

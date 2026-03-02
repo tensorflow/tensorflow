@@ -306,7 +306,7 @@ TEST_P(AllReduceTest, Pred_2GPUs) {
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
     ASSERT_TRUE(LiteralTestUtil::Equal(test_io.expected_outputs[i], results[i]))
-        << "ExpectedOutput != Result at index " << i;
+        << "ExpectedOutput != Result at rank " << i;
   }
 }
 
