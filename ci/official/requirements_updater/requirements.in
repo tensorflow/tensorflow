@@ -26,7 +26,8 @@ tb-nightly ~= 2.20.0.a
 # More info at https://protobuf.dev/support/cross-version-runtime-guarantee/
 protobuf >= 5.28.0, < 7.0
 # Test dependencies
-grpcio >= 1.68.1, < 2.0
+grpcio >= 1.68.1, < 2.0 ; python_version <= "3.13"
+grpcio >= 1.78.0 ; python_version == "3.14"
 portpicker == 1.6.0
 # Scipy 15.x and above have misc.derivative removed, but we still use it
 scipy >= 1.13.0, < 1.15.0 ; python_version <= "3.13"
