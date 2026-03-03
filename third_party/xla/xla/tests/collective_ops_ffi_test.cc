@@ -469,6 +469,10 @@ TEST_F(CollectiveOpsTestFFI, AllReduce) {
                  << device_count() << " available)";
   }
 
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "NCCL symmetric memory requires Hopper+";
+  }
+
   constexpr absl::string_view hlo_string = R"(
       HloModule m, replica_count=2
 
