@@ -18,7 +18,7 @@ limitations under the License.
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tsl/platform/platform.h"
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
 // clang-format on
 
 // We replace this implementation with a null implementation for mobile
@@ -59,16 +59,15 @@ class Gauge {
 
   template <typename... MetricDefArgs>
   static Gauge* New(MetricDefArgs&&... metric_def_args) {
-    static_assert(
-        std::is_same<ValueType, int64>::value ||
-            std::is_same<ValueType, std::string>::value ||
-            std::is_same<ValueType, bool>::value ||
-            std::is_same<ValueType, std::function<int64()> >::value ||
-            std::is_same<ValueType, std::function<std::string()> >::value ||
-            std::is_same<ValueType, std::function<bool()> >::value ||
-            std::is_same<ValueType, std::function<double()> >::value ||
-            std::is_same<ValueType, double>::value,
-        "Gauge only allows bool, int64, double and string types.");
+    static_assert(std::is_same_v<ValueType, int64> ||
+                      std::is_same_v<ValueType, std::string> ||
+                      std::is_same_v<ValueType, bool> ||
+                      std::is_same_v<ValueType, std::function<int64()>> ||
+                      std::is_same_v<ValueType, std::function<std::string()>> ||
+                      std::is_same_v<ValueType, std::function<bool()>> ||
+                      std::is_same_v<ValueType, std::function<double()>> ||
+                      std::is_same_v<ValueType, double>,
+                  "Gauge only allows bool, int64, double and string types.");
     return new Gauge();
   }
 
@@ -95,18 +94,21 @@ class Gauge {
 
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <type_traits>
+#include <utility>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/label_array_utils.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace monitoring {
@@ -126,13 +128,13 @@ class GaugeCell {
   ~GaugeCell() {}
 
   // Atomically sets the value.
-  void Set(const T& value) TF_LOCKS_EXCLUDED(mu_);
+  void Set(const T& value) ABSL_LOCKS_EXCLUDED(mu_);
 
   // Retrieves the current value.
-  T value() const TF_LOCKS_EXCLUDED(mu_);
+  T value() const ABSL_LOCKS_EXCLUDED(mu_);
 
  private:
-  T value_ TF_GUARDED_BY(mu_);
+  T value_ ABSL_GUARDED_BY(mu_);
   mutable absl::Mutex mu_;
 
   GaugeCell(const GaugeCell&) = delete;
@@ -223,7 +225,8 @@ class Gauge {
   // Retrieves the cell for the specified labels, creating it on demand if not
   // already present.
   template <typename... Labels>
-  GaugeCell<ValueType>* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
+  GaugeCell<ValueType>* GetCell(const Labels&... labels)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   absl::Status GetStatus() { return status_; }
 
@@ -237,7 +240,7 @@ class Gauge {
 
               absl::MutexLock l(mu_);
               for (const auto& cell : cells_) {
-                metric_collector.CollectValue(cell.first, cell.second.value());
+                metric_collector.CollectValue(cell.first, cell.second->value());
               }
             })) {
     if (registration_handle_) {
@@ -254,7 +257,9 @@ class Gauge {
   absl::Status status_;
 
   using LabelArray = std::array<std::string, NumLabels>;
-  std::map<LabelArray, GaugeCell<ValueType> > cells_ TF_GUARDED_BY(mu_);
+  using LabelViewArray = std::array<absl::string_view, NumLabels>;
+
+  LabelArrayMap<GaugeCell<ValueType>, NumLabels> cells_ ABSL_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
@@ -293,16 +298,15 @@ template <typename ValueType, int NumLabels>
 template <typename... MetricDefArgs>
 Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
-  static_assert(
-      std::is_same<ValueType, int64_t>::value ||
-          std::is_same<ValueType, std::string>::value ||
-          std::is_same<ValueType, bool>::value ||
-          std::is_same<ValueType, std::function<int64_t()> >::value ||
-          std::is_same<ValueType, std::function<std::string()> >::value ||
-          std::is_same<ValueType, std::function<bool()> >::value ||
-          std::is_same<ValueType, std::function<double()> >::value ||
-          std::is_same<ValueType, double>::value,
-      "Gauge only allows bool, int64, double, and string types.");
+  static_assert(std::is_same_v<ValueType, int64_t> ||
+                    std::is_same_v<ValueType, std::string> ||
+                    std::is_same_v<ValueType, bool> ||
+                    std::is_same_v<ValueType, std::function<int64_t()>> ||
+                    std::is_same_v<ValueType, std::function<std::string()>> ||
+                    std::is_same_v<ValueType, std::function<bool()>> ||
+                    std::is_same_v<ValueType, std::function<double()>> ||
+                    std::is_same_v<ValueType, double>,
+                "Gauge only allows bool, int64, double, and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));
@@ -311,7 +315,7 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
 template <typename ValueType, int NumLabels>
 template <typename... Labels>
 GaugeCell<ValueType>* Gauge<ValueType, NumLabels>::GetCell(
-    const Labels&... labels) TF_LOCKS_EXCLUDED(mu_) {
+    const Labels&... labels) ABSL_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(
@@ -319,17 +323,18 @@ GaugeCell<ValueType>* Gauge<ValueType, NumLabels>::GetCell(
       "Mismatch between Gauge<ValueType, NumLabels> and number of labels "
       "provided in GetCell(...).");
 
-  const LabelArray& label_array = {{labels...}};
+  LabelViewArray label_view_array = {{labels...}};
   absl::MutexLock l(mu_);
-  const auto found_it = cells_.find(label_array);
+  const auto found_it = cells_.find(label_view_array);
   if (found_it != cells_.end()) {
-    return &(found_it->second);
+    return found_it->second.get();
   }
-  return &(cells_
-               .emplace(std::piecewise_construct,
-                        std::forward_as_tuple(label_array),
-                        std::forward_as_tuple(ValueType()))
-               .first->second);
+  return cells_
+      .emplace(std::piecewise_construct,
+               std::forward_as_tuple(LabelArray{std::string(labels)...}),
+               std::forward_as_tuple(
+                   std::make_unique<GaugeCell<ValueType>>(ValueType())))
+      .first->second.get();
 }
 
 }  // namespace monitoring

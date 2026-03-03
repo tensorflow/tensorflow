@@ -21,13 +21,15 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/label_array_utils.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -123,8 +125,9 @@ class CounterGauge {
   absl::Status status_;
 
   using LabelArray = std::array<std::string, NumLabels>;
-  absl::flat_hash_map<LabelArray, std::unique_ptr<CounterGaugeCell> > cells_
-      ABSL_GUARDED_BY(mu_);
+  using LabelViewArray = std::array<absl::string_view, NumLabels>;
+
+  LabelArrayMap<CounterGaugeCell, NumLabels> cells_ ABSL_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
@@ -167,11 +170,17 @@ CounterGaugeCell* CounterGauge<NumLabels>::GetCell(const Labels&... labels)
                 "Mismatch between CounterGauge<NumLabels> and number of labels "
                 "provided in GetCell(...).");
 
-  const LabelArray& label_array = {{labels...}};
+  LabelViewArray label_view_array = {{labels...}};
   absl::MutexLock l(mu_);
-  auto [it, unused_inserted] =
-      cells_.try_emplace(label_array, std::make_unique<CounterGaugeCell>());
-  return it->second.get();
+  const auto found_it = cells_.find(label_view_array);
+  if (found_it != cells_.end()) {
+    return found_it->second.get();
+  }
+  return cells_
+      .emplace(std::piecewise_construct,
+               std::forward_as_tuple(LabelArray{std::string(labels)...}),
+               std::forward_as_tuple(std::make_unique<CounterGaugeCell>()))
+      .first->second.get();
 }
 
 }  // namespace monitoring
