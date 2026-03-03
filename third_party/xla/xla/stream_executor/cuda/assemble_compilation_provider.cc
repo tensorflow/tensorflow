@@ -157,7 +157,32 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
       absl::StrCat("Parallel compilation support is desired: ",
                    parallel_compilation_support_is_desired));
 
-  if (has_nvjitlink.ok() && has_nvptxcompiler.ok()) {
+  const bool has_driver_compilation_support =
+      options.enable_driver_compilation();
+  append_to_decision_log(absl::StrCat("Driver compilation is enabled: ",
+                                      has_driver_compilation_support));
+
+#ifdef PLATFORM_GOOGLE
+  if (parallel_compilation_support_is_desired && has_nvptxcompiler.ok() &&
+      has_driver_compilation_support) {
+    // It's possible to use libnvptxcompiler for compilation and the driver for
+    // linking. This setup supports parallel compilation but is less desired
+    // because we don't control the driver version. A too old driver might lead
+    // to linking errors.
+    VLOG(3) << "Using libnvptxcompiler for compilation and the driver for "
+               "linking.";
+    std::vector<std::unique_ptr<CompilationProvider>> providers;
+    providers.reserve(2);
+    providers.push_back(std::make_unique<NvptxcompilerCompilationProvider>());
+    providers.push_back(std::make_unique<DriverCompilationProvider>());
+    return CompositeCompilationProvider::Create(std::move(providers));
+  }
+#endif
+
+  // During parallel compilation, Nvjitlink leaks memory for all CUDA
+  // versions(at least up to 13.1)
+  if (has_nvjitlink.ok() && has_nvptxcompiler.ok() &&
+      !parallel_compilation_support_is_desired) {
     // If both libraries are supported, we will use them together. This setup
     // supports parallel compilation and we have the most control over the
     // versions being used.
@@ -170,7 +195,8 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
     return CompositeCompilationProvider::Create(std::move(providers));
   }
 
-  if (has_nvjitlink.ok() && !has_nvptxcompiler.ok()) {
+  if (has_nvjitlink.ok() && !has_nvptxcompiler.ok() &&
+      !parallel_compilation_support_is_desired) {
     // If we only have libnvjitlink, we use it for both compilation and
     // linking. To support parallel compilation we defer compilation into
     // relocatable modules to the linking step by using the
@@ -220,11 +246,6 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
                                                            nvlink_path.value());
   }
 
-  const bool has_driver_compilation_support =
-      options.enable_driver_compilation();
-  append_to_decision_log(absl::StrCat("Driver compilation is enabled: ",
-                                      has_driver_compilation_support));
-
   if (parallel_compilation_support_is_desired && has_nvptxcompiler.ok() &&
       has_driver_compilation_support) {
     // It's possible to use libnvptxcompiler for compilation and the driver for
@@ -242,9 +263,8 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
 
   if (ptxas_path.ok() && has_driver_compilation_support) {
     // It's possible to use ptxas for compilation and the driver for linking.
-    // This setup supports parallel compilation but is less desired because we
-    // don't control the driver version. A too old driver might lead to linking
-    // errors.
+    // This setup supports parallel compilation.
+    // cuda_compat should help with old drivers.
     VLOG(3) << "Using libnvptxcompiler for compilation and the driver for "
                "linking.";
     std::vector<std::unique_ptr<CompilationProvider>> providers;
