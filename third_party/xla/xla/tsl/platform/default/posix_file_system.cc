@@ -300,7 +300,7 @@ absl::Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-absl::Status PosixFileSystem::FileExists(const std::string& fname,
+absl::Status PosixFileSystem::FileExists(absl::string_view fname,
                                          TransactionToken* token) {
   if (access(TranslateName(fname).c_str(), F_OK) == 0) {
     return absl::OkStatus();

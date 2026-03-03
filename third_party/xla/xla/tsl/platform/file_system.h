@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
@@ -153,11 +154,11 @@ class FileSystem {
   }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  virtual absl::Status FileExists(const std::string& fname) {
+  virtual absl::Status FileExists(absl::string_view fname) {
     return FileExists(fname, nullptr);
   }
 
-  virtual absl::Status FileExists(const std::string& fname,
+  virtual absl::Status FileExists(absl::string_view fname,
                                   TransactionToken* token) {
     return absl::OkStatus();
   }
@@ -226,7 +227,7 @@ class FileSystem {
   /// This function provides the equivalent of posix fnmatch, however it is
   /// implemented without fnmatch to ensure that this can be used for cloud
   /// filesystems on windows. For windows filesystems, it uses PathMatchSpec.
-  virtual bool Match(const std::string& filename, const std::string& pattern);
+  virtual bool Match(absl::string_view filename, absl::string_view pattern);
 
   /// \brief Obtains statistics for the given path.
   virtual absl::Status Stat(const std::string& fname, FileStatistics* stat) {
@@ -361,7 +362,7 @@ class FileSystem {
   /// invoke any system calls (getcwd(2)) in order to resolve relative
   /// paths with respect to the actual working directory.  That is, this is
   /// purely string manipulation, completely independent of process state.
-  virtual std::string TranslateName(const std::string& name) const;
+  virtual std::string TranslateName(absl::string_view name) const;
 
   /// \brief Returns whether the given path is a directory or not.
   ///
@@ -614,7 +615,7 @@ class WrappedFileSystem : public FileSystem {
                                                 result);
   }
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override {
     return fs_->FileExists(fname, (token ? token : token_));
   }
@@ -635,7 +636,7 @@ class WrappedFileSystem : public FileSystem {
     return fs_->GetMatchingPaths(pattern, (token ? token : token_), results);
   }
 
-  bool Match(const std::string& filename, const std::string& pattern) override {
+  bool Match(absl::string_view filename, absl::string_view pattern) override {
     return fs_->Match(filename, pattern);
   }
 
@@ -687,7 +688,7 @@ class WrappedFileSystem : public FileSystem {
     return fs_->CopyFile(src, target, (token ? token : token_));
   }
 
-  std::string TranslateName(const std::string& name) const override {
+  std::string TranslateName(absl::string_view name) const override {
     return fs_->TranslateName(name);
   }
 

@@ -20,6 +20,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/file_system_helper.h"
@@ -62,7 +64,7 @@ class NullFileSystem : public FileSystem {
         "NewReadOnlyMemoryRegionFromFile unimplemented");
   }
 
-  absl::Status FileExists(const string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override {
     return errors::Unimplemented("FileExists unimplemented");
   }

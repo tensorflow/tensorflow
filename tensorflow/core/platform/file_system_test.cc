@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -46,7 +47,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
  public:
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override {
     std::string parsed_path;
     ParsePath(fname, &parsed_path);
@@ -139,7 +140,7 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     return celestial_bodies_.find(name) != celestial_bodies_.end();
   }
 
-  void ParsePath(const std::string& name, std::string* parsed_path) {
+  void ParsePath(absl::string_view name, std::string* parsed_path) {
     absl::string_view scheme, host, path;
     this->ParseURI(name, &scheme, &host, &path);
     ASSERT_EQ(scheme, "ipfs");

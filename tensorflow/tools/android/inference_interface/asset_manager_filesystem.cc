@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unistd.h>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
@@ -124,7 +125,7 @@ AssetManagerFileSystem::AssetManagerFileSystem(AAssetManager* asset_manager,
                                                const string& prefix)
     : asset_manager_(asset_manager), prefix_(prefix) {}
 
-Status AssetManagerFileSystem::FileExists(const string& fname,
+Status AssetManagerFileSystem::FileExists(absl::string_view fname,
                                           TransactionToken* token) {
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
@@ -235,7 +236,7 @@ string AssetManagerFileSystem::NormalizeDirectoryPath(const string& fname) {
   return RemoveSuffix(RemoveAssetPrefix(fname), "/");
 }
 
-string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
+string AssetManagerFileSystem::RemoveAssetPrefix(absl::string_view name) {
   StringPiece piece(name);
   absl::ConsumePrefix(&piece, prefix_);
   return string(piece);

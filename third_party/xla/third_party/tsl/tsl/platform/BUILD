@@ -1214,6 +1214,8 @@ cc_library(
     name = "null_file_system",
     hdrs = ["null_file_system.h"],
     deps = [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/platform:env",
     ],
 )
@@ -1442,6 +1444,7 @@ cc_library(
     deps = [
         ":random",
         ":retrying_utils",
+        "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:status",
@@ -1457,7 +1460,6 @@ tsl_cc_test(
         ":str_util",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/lib/core:status_test_util",
-        "@xla//xla/tsl/platform:env_impl",
         "@xla//xla/tsl/platform:test",
     ],
 )

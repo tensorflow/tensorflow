@@ -28,7 +28,9 @@ limitations under the License.
 #include <unistd.h>
 
 #include <cstdint>
+#include <string>
 
+#include "absl/strings/string_view.h"
 #include "tsl/platform/numa.h"
 
 #ifdef __FreeBSD__
@@ -132,8 +134,9 @@ class PosixEnv : public Env {
 
   ~PosixEnv() override { LOG(FATAL) << "Env::Default() must not be destroyed"; }
 
-  bool MatchPath(const std::string& path, const std::string& pattern) override {
-    return fnmatch(pattern.c_str(), path.c_str(), FNM_PATHNAME) == 0;
+  bool MatchPath(absl::string_view path, absl::string_view pattern) override {
+    return fnmatch(std::string(pattern).c_str(), std::string(path).c_str(),
+                   FNM_PATHNAME) == 0;
   }
 
   void SleepForMicroseconds(int64_t micros) override {

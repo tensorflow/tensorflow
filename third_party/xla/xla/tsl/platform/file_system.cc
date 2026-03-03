@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status.h"
 
 #if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
@@ -42,15 +43,15 @@ limitations under the License.
 
 namespace tsl {
 
-bool FileSystem::Match(const std::string& filename,
-                       const std::string& pattern) {
+bool FileSystem::Match(absl::string_view filename, absl::string_view pattern) {
 #if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM) || \
     defined(PLATFORM_GOOGLE)
   // We avoid relying on RE2 on mobile platforms, because it incurs a
   // significant binary size increase.
   // For POSIX platforms, there is no need to depend on RE2 if `fnmatch` can be
   // used safely.
-  return fnmatch(pattern.c_str(), filename.c_str(), FNM_PATHNAME) == 0;
+  return fnmatch(std::string(pattern).c_str(), std::string(filename).c_str(),
+                 FNM_PATHNAME) == 0;
 #else
   string regexp(pattern);
   regexp = str_util::StringReplace(regexp, "*", "[^/]*", true);
@@ -62,10 +63,12 @@ bool FileSystem::Match(const std::string& filename,
         // defined(PLATFORM_GOOGLE)
 }
 
-std::string FileSystem::TranslateName(const std::string& name) const {
+std::string FileSystem::TranslateName(absl::string_view name) const {
   // If the name is empty, CleanPath returns "." which is incorrect and
   // we should return the empty path instead.
-  if (name.empty()) return name;
+  if (name.empty()) {
+    return std::string(name);
+  }
 
   // Otherwise, properly separate the URI components and clean the path one
   absl::string_view scheme, host, path;

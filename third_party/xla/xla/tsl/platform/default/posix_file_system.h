@@ -45,7 +45,7 @@ class PosixFileSystem : public FileSystem {
       const std::string& filename, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override;
 
   absl::Status GetChildren(const std::string& dir, TransactionToken* token,
@@ -79,7 +79,7 @@ class PosixFileSystem : public FileSystem {
 
 class LocalPosixFileSystem : public PosixFileSystem {
  public:
-  std::string TranslateName(const std::string& name) const override {
+  std::string TranslateName(absl::string_view name) const override {
     absl::string_view scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
     return std::string(path);

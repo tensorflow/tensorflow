@@ -122,7 +122,7 @@ absl::Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
-absl::Status Env::GetFileSystemForFile(const std::string& fname,
+absl::Status Env::GetFileSystemForFile(absl::string_view fname,
                                        FileSystem** result) {
   absl::string_view scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
@@ -235,7 +235,7 @@ absl::Status Env::NewAppendableFile(const std::string& fname,
   return fs->NewAppendableFile(fname, result);
 }
 
-absl::Status Env::FileExists(const std::string& fname) {
+absl::Status Env::FileExists(absl::string_view fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);

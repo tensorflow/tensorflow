@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
 #include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
@@ -707,7 +708,7 @@ class TestTFEnvironment : public ::tensorflow::EnvWrapper {
   using tf_base = ::tensorflow::EnvWrapper;
   TestTFEnvironment() : ::tensorflow::EnvWrapper(Default()) {}
   absl::Status GetFileSystemForFile(
-      const string& fname, ::tensorflow::FileSystem** result) override {
+      absl::string_view fname, ::tensorflow::FileSystem** result) override {
     was_used_ = true;
     if (fname == "test://test") {
       *result = &test_filesystem_;

@@ -2780,7 +2780,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
         "//tensorflow/core/kernels:bcast_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:concat_op",
@@ -2789,7 +2788,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:immutable_constant_op",
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:topk_op",
-        "@eigen_archive//:eigen3",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 

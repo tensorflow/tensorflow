@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_CLOUD_EXPIRING_LRU_CACHE_H_
 #define XLA_TSL_PLATFORM_CLOUD_EXPIRING_LRU_CACHE_H_
 
+#include <functional>
 #include <list>
 #include <map>
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/types.h"
@@ -45,7 +48,7 @@ class ExpiringLRUCache {
 
   /// Insert `value` with key `key`. This will replace any previous entry with
   /// the same key.
-  void Insert(const std::string& key, const T& value) {
+  void Insert(absl::string_view key, const T& value) {
     if (max_age_ == 0) {
       return;
     }
@@ -56,7 +59,7 @@ class ExpiringLRUCache {
   // Delete the entry with key `key`. Return true if the entry was found for
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
-  bool Delete(const std::string& key) {
+  bool Delete(absl::string_view key) {
     absl::MutexLock lock(mu_);
     return DeleteLocked(key);
   }
@@ -64,7 +67,7 @@ class ExpiringLRUCache {
   /// Look up the entry with key `key` and copy it to `value` if found. Returns
   /// true if an entry was found for `key`, and its timestamp is not more than
   /// max_age_ seconds in the past.
-  bool Lookup(const std::string& key, T* value) {
+  bool Lookup(absl::string_view key, T* value) {
     if (max_age_ == 0) {
       return false;
     }
@@ -72,12 +75,12 @@ class ExpiringLRUCache {
     return LookupLocked(key, value);
   }
 
-  typedef std::function<absl::Status(const std::string&, T*)> ComputeFunc;
+  typedef std::function<absl::Status(absl::string_view, T*)> ComputeFunc;
 
   /// Look up the entry with key `key` and copy it to `value` if found. If not
   /// found, call `compute_func`. If `compute_func` returns successfully, store
   /// a copy of the output parameter in the cache, and another copy in `value`.
-  absl::Status LookupOrCompute(const std::string& key, T* value,
+  absl::Status LookupOrCompute(absl::string_view key, T* value,
                                const ComputeFunc& compute_func) {
     if (max_age_ == 0) {
       return compute_func(key, value);
@@ -120,7 +123,7 @@ class ExpiringLRUCache {
     std::list<std::string>::iterator lru_iterator;
   };
 
-  bool LookupLocked(const std::string& key, T* value)
+  bool LookupLocked(absl::string_view key, T* value)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto it = cache_.find(key);
     if (it == cache_.end()) {
@@ -137,9 +140,9 @@ class ExpiringLRUCache {
     return true;
   }
 
-  void InsertLocked(const std::string& key, const T& value)
+  void InsertLocked(absl::string_view key, const T& value)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    lru_list_.push_front(key);
+    lru_list_.push_front(std::string(key));
     Entry entry{env_->NowSeconds(), value, lru_list_.begin()};
     auto insert = cache_.insert(std::make_pair(key, entry));
     if (!insert.second) {
@@ -151,7 +154,7 @@ class ExpiringLRUCache {
     }
   }
 
-  bool DeleteLocked(const std::string& key) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool DeleteLocked(absl::string_view key) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto it = cache_.find(key);
     if (it == cache_.end()) {
       return false;
@@ -176,11 +179,11 @@ class ExpiringLRUCache {
   absl::Mutex mu_;
 
   /// The cache (a map from string key to Entry).
-  std::map<std::string, Entry> cache_ TF_GUARDED_BY(mu_);
+  std::map<std::string, Entry, std::less<>> cache_ ABSL_GUARDED_BY(mu_);
 
   /// The LRU list of entries. The front of the list identifies the most
   /// recently accessed entry.
-  std::list<std::string> lru_list_ TF_GUARDED_BY(mu_);
+  std::list<std::string> lru_list_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace tsl
