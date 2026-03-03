@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
@@ -122,6 +123,17 @@ Range RecursivelyIdentifyRange(
     }
   }
   switch (instr->opcode()) {
+    case HloOpcode::kParameter: {
+      // handle a case when we get kParameter inside fusion
+      if (instr->parent()->IsFusionComputation()) {
+        return RecursivelyIdentifyRange(
+            instr->parent()->FusionInstruction()->operand(
+                instr->parameter_number()),
+            known_ranges, dataflow_analysis);
+      }
+      // TODO: possibly handle other parameters.
+      return Range{};
+    }
     case HloOpcode::kGetTupleElement: {
       if (dataflow_analysis != nullptr) {
         auto value_set = dataflow_analysis->GetFlattenedValueSet(instr);

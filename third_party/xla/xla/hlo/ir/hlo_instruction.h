@@ -2071,6 +2071,10 @@ class HloInstruction {
     return backend_config_.ApplyFnOnProto(fn);
   }
 
+  void set_backend_config_no_status(const tsl::protobuf::Message& proto) {
+    backend_config_ = BackendConfigWrapper(proto);
+  }
+
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
     return absl::OkStatus();
