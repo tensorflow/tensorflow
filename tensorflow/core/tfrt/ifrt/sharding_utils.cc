@@ -669,6 +669,23 @@ H2DTransferExecutor::ScheduledH2DTransfer(
   return tsl::Future<xla::ifrt::ArrayRef>(std::move(array_ref));
 }
 
+absl::StatusOr<tsl::Future<std::vector<xla::ifrt::ArrayRef>>>
+H2DTransferExecutor::ScheduledH2DTransfers(
+    absl::Span<const InputHandle> handles,
+    tsl::thread::ThreadPool& thread_pool) {
+  std::vector<xla::ifrt::ArrayRef> arrays;
+  arrays.reserve(handles.size());
+  for (const auto& handle : handles) {
+    TF_ASSIGN_OR_RETURN(
+        auto array,
+        MakeArrayFromTensor(ifrt_client_, handle.tensor, handle.device_list,
+                            handle.ifrt_sharding, thread_pool,
+                            handle.xla_input_layout));
+    arrays.push_back(std::move(array));
+  }
+  return tsl::Future<std::vector<xla::ifrt::ArrayRef>>(std::move(arrays));
+}
+
 absl::Status H2DTransferExecutor::RunH2DTransfers() { return absl::OkStatus(); }
 
 tsl::Future<tensorflow::Tensor> MakeTensorFromArray(

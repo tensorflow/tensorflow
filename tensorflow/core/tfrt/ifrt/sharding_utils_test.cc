@@ -37,6 +37,8 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -752,6 +754,79 @@ TEST(ShardingUtilsTest, MismatchRank) {
                   "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));
 }
 
+TEST(H2DTransferExecutorTest, BatchTransfer) {
+  constexpr int kMaxParallelism = 16;
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                      "Resharding", kMaxParallelism);
+
+  // Create contexts required for the compiler execution.
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list,
+                          xla::ifrt::test_util::GetDevices(client.get(), {0}));
+
+  H2DTransferExecutor executor(*client);
+
+  auto tensor1 = test::AsTensor<int32_t>({1}, TensorShape({}));
+  auto tensor2 = test::AsTensor<int32_t>({2, 3}, TensorShape({2}));
+
+  xla::Shape xla_shape1 = xla::ShapeUtil::MakeShape(xla::S32, {});
+  xla::Shape xla_shape2 = xla::ShapeUtil::MakeShape(xla::S32, {2});
+
+  InputHandle handle1{
+      .tensor = tensor1,
+      .input_xla_shape = &xla_shape1,
+      .device_list = device_list,
+      .ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
+          device_list, xla::ifrt::MemoryKind(), xla::HloSharding::Replicate())),
+  };
+
+  InputHandle handle2{
+      .tensor = tensor2,
+      .input_xla_shape = &xla_shape2,
+      .device_list = device_list,
+      .ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
+          device_list, xla::ifrt::MemoryKind(), xla::HloSharding::Replicate())),
+  };
+
+  std::vector<InputHandle> handles = {handle1, handle2};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto future,
+                          executor.ScheduledH2DTransfers(handles, thread_pool));
+  auto arrays = future.Await();
+  TF_ASSERT_OK(arrays);
+  ASSERT_EQ(arrays->size(), 2);
+
+  {
+    auto expected_out_tensor = tensor1;
+    auto array = arrays->at(0);
+    tensorflow::Tensor host_tensor(expected_out_tensor.dtype(),
+                                   expected_out_tensor.shape());
+    TF_ASSERT_OK(
+        array
+            ->CopyToHostBuffer(
+                host_tensor.data(),
+                GetByteStrides(host_tensor.dtype(), host_tensor.shape()),
+                xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
+            .Await());
+    EXPECT_THAT(expected_out_tensor, TensorEq(host_tensor));
+  }
+  {
+    auto expected_out_tensor = tensor2;
+    auto array = arrays->at(1);
+    tensorflow::Tensor host_tensor(expected_out_tensor.dtype(),
+                                   expected_out_tensor.shape());
+    TF_ASSERT_OK(
+        array
+            ->CopyToHostBuffer(
+                host_tensor.data(),
+                GetByteStrides(host_tensor.dtype(), host_tensor.shape()),
+                xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
+            .Await());
+    EXPECT_THAT(expected_out_tensor, TensorEq(host_tensor));
+  }
+}
+
 struct ToIfrtShardingTestParam {
   std::vector<int> device_indices;
   xla::HloSharding sharding;
@@ -809,7 +884,6 @@ INSTANTIATE_TEST_SUITE_P(ToIfrtShardingTests, ToIfrtShardingTest,
                                  .expect_single_device_sharding = false,
                              },
                          }));
-
 }  // namespace
 }  // namespace ifrt_serving
 }  // namespace tensorflow
