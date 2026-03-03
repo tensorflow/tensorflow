@@ -15,17 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/while_thunk.h"
 
+#include <cstddef>
 #include <cstdint>
-#include <iterator>
-#include <list>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/functional/function_ref.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -36,9 +33,11 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -50,43 +49,6 @@ namespace gpu {
 
 using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::TraceMeEncode;
-
-struct RunningLoop {
-  const HloInstruction* loop_instr;
-  int64_t counter;
-};
-
-static std::list<RunningLoop>& RunningLoops() {
-  // TODO(b/343294327): Do not rely on thread-local storage.
-  static thread_local std::list<RunningLoop> loops;
-  return loops;
-}
-
-bool WhileThunk::RunningWhileThunkLoop() { return !RunningLoops().empty(); }
-
-absl::StatusOr<int64_t> WhileThunk::CurrentLoopIteration(int64_t depth) {
-  if (depth >= RunningLoops().size()) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Loop depth %d is greater than the number of tracked loops %d", depth,
-        RunningLoops().size()));
-  }
-
-  auto loop = RunningLoops().begin();
-  std::advance(loop, depth);
-  return loop->counter;
-}
-
-absl::StatusOr<int64_t> WhileThunk::CurrentLoopIteration(
-    const HloInstruction* while_instr) {
-  for (const auto& loop : RunningLoops()) {
-    if (loop.loop_instr == while_instr) {
-      return loop.counter;
-    }
-  }
-
-  return absl::InvalidArgumentError(
-      absl::StrFormat("Loop %s is not currently running", while_instr->name()));
-}
 
 WhileThunk::WhileThunk(
     ThunkInfo thunk_info, const HloInstruction* loop,
@@ -122,20 +84,16 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
-  auto& stream = *params.stream;
-
-  RunningLoop& loop = RunningLoops().emplace_front();
-  loop.loop_instr = loop_;
-  int64_t& iter = loop.counter;
-  absl::Cleanup cleanup = [&] { RunningLoops().pop_front(); };
+  ScopedWhileLoop loop(loop_->name(), trip_count_);
+  se::Stream& stream = *params.stream;
 
   int device_ordinal = stream.parent()->device_ordinal();
   if (trip_count_.has_value()) {
     XLA_VLOG_DEVICE(2, device_ordinal)
         << "Executing WhileThunk for " << *trip_count_ << " iterations";
-    for (iter = 0; iter < trip_count_; ++iter) {
+    for (size_t i = 0; i < trip_count_; loop.IncLoopIteration(), ++i) {
       XLA_VLOG_DEVICE(3, device_ordinal)
-          << "Executing iteration # " << iter
+          << "Executing iteration # " << i
           << " (Device: " << stream.parent()->device_ordinal() << ")";
       TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
     }
@@ -153,11 +111,14 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
       params.buffer_allocations->GetDeviceAddress(
           condition_result_buffer_index_);
 
-  while (true) {
-    TraceMe trace(
-        [&] { return TraceMeEncode("While", {{"iteration:", iter}}); });
+  for (;; loop.IncLoopIteration()) {
+    TraceMe trace([&] {
+      return TraceMeEncode("While", {{"iteration:", loop.loop_iteration()}});
+    });
+
     XLA_VLOG_DEVICE(3, device_ordinal)
-        << "Executing WhileThunk condition computation; iter=" << iter;
+        << "Executing WhileThunk condition computation; iter="
+        << loop.loop_iteration();
     TF_RETURN_IF_ERROR(condition_thunk_sequence_->ExecuteOnStream(params));
 
     // Copy the result of condition computation and break the loop if 'false'.
@@ -174,14 +135,14 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
         << "condition_result = " << *condition_result;
     if (!*condition_result) {
       XLA_VLOG_DEVICE(3, device_ordinal)
-          << "Break WhileThunk loop; iter=" << iter;
+          << "Break WhileThunk loop; iter=" << loop.loop_iteration();
       break;
     }
 
     XLA_VLOG_DEVICE(3, device_ordinal)
-        << "Executing WhileThunk body computation; iter=" << iter;
+        << "Executing WhileThunk body computation; iter="
+        << loop.loop_iteration();
     TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
-    ++iter;
   }
   return absl::OkStatus();
 }

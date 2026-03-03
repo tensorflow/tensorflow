@@ -68,7 +68,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
@@ -914,9 +914,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
       Command::RecordParams new_record_params = record_params;
       std::vector<const se::CommandBuffer::Command*> dependencies;
 
-      for (int64_t i = 0; i < trip_count_.value(); ++i) {
+      ScopedWhileLoop loop("record_fn", trip_count_);
+      for (int64_t i = 0; i < *trip_count_; loop.IncLoopIteration(), ++i) {
         CommandExecutor::RecordId record_id(i);
-        new_record_params.unroll_iteration = i;
         TF_ASSIGN_OR_RETURN(dependencies,
                             cond_commands_.RecordCreate(
                                 execute_params, new_record_params,
@@ -937,9 +937,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
 
       Command::RecordParams new_record_params = record_params;
 
-      for (int64_t i = 0; i < trip_count_.value(); ++i) {
+      ScopedWhileLoop loop("record_fn", trip_count_);
+      for (int64_t i = 0; i < *trip_count_; loop.IncLoopIteration(), ++i) {
         CommandExecutor::RecordId record_id(i);
-        new_record_params.unroll_iteration = i;
         TF_RETURN_IF_ERROR(
             cond_commands_.RecordUpdate(execute_params, new_record_params,
                                         child_command_buffer, record_id));
@@ -2445,19 +2445,16 @@ DynamicSliceCopyFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
                 << mem_size_ << " from " << src_with_offset.opaque()
                 << " (offset " << src_offset << ") to "
                 << dst_with_offset.opaque() << " (offset " << dst_offset
-                << "), dependends_on_loop: " << offsets_.depends_on_loop;
+                << "), depends_on_loop: " << offsets_.depends_on_loop;
         return command_buffer->CreateMemcpyD2D(
             &dst_with_offset, src_with_offset, mem_size_, dependencies);
       },
-      [&](const se::CommandBuffer::Command* command) {
+      [&](const se::CommandBuffer::Command* command) -> absl::Status {
         int64_t iteration_index = 0;
         if (offsets_.depends_on_loop) {
-          if (WhileThunk::RunningWhileThunkLoop()) {
-            TF_ASSIGN_OR_RETURN(iteration_index,
-                                WhileThunk::CurrentLoopIteration());
-          } else {
-            iteration_index = record_params.unroll_iteration;
-          }
+          const WhileLoopState* state = IsInsideWhileLoop();
+          TF_RET_CHECK(state) << "DynamicSliceCopyFusionCmd depends on loop";
+          iteration_index = state->loop_iteration;
         }
         int64_t src_offset = offsets_.src_offsets[iteration_index];
         int64_t dst_offset = offsets_.dst_offsets[iteration_index];

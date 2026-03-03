@@ -153,11 +153,6 @@ class Command {
     // A flag indicating whether we record commands at command buffer thunk
     // initialization time.
     bool is_initialization = false;
-
-    // The command sequence might be recorded in the loop unrolling pattern, so
-    // the command sequence might be instantiated multiple times, we uses
-    // unroll_iteration to locate the commands for current unroll iteration.
-    int64_t unroll_iteration = 0;
   };
 
   // Create new commands in the command buffer using the given dependencies.

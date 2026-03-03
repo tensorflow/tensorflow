@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -102,9 +103,8 @@ class IterationLoggerThunk : public Thunk {
       : Thunk(Thunk::Kind::kKernel, Thunk::ThunkInfo()), loop_(loop) {}
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
-    auto iter = WhileThunk::CurrentLoopIteration(loop_);
-    if (iter.ok()) {
-      iteration_counters_.push_back(*iter);
+    if (const WhileLoopState* state = IsInsideWhileLoop()) {
+      iteration_counters_.push_back(state->loop_iteration);
     } else {
       iteration_counters_.push_back(std::nullopt);
     }
@@ -225,30 +225,7 @@ TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationNestedTest) {
       /*trip_count=*/3);
 
   EXPECT_THAT(ExecuteThunk(outer_while_thunk), absl_testing::IsOk());
-  EXPECT_THAT(logger->logged_counters(), ElementsAre(0, 0, 1, 1, 2, 2));
-}
-
-TEST_F(KnownTripCountWhileThunkTest, CurrentLoopIterationUnknownLoopTest) {
-  TF_ASSERT_OK_AND_ASSIGN(const HloInstruction* loop,
-                          CreateFakeWhileInstruction());
-  TF_ASSERT_OK_AND_ASSIGN(const HloInstruction* not_running_loop,
-                          CreateFakeWhileInstruction());
-
-  auto [body_thunk, logger] = CreateLoggingSequentialThunk(not_running_loop);
-  auto condition_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence());
-
-  BufferAllocation::Slice slice;
-  WhileThunk while_thunk(
-      Thunk::ThunkInfo(), loop,
-      /*condition_result_buffer_index=*/slice,
-      /*condition_thunk_sequence=*/std::move(condition_thunk),
-      /*body_thunk_sequence_=*/std::move(body_thunk),
-      /*trip_count=*/3);
-
-  EXPECT_THAT(ExecuteThunk(while_thunk), absl_testing::IsOk());
-  EXPECT_THAT(logger->logged_counters(),
-              ElementsAre(std::nullopt, std::nullopt, std::nullopt));
+  EXPECT_THAT(logger->logged_counters(), ElementsAre(0, 1, 0, 1, 0, 1));
 }
 
 TEST(WhileThunkTest, ToProto) {

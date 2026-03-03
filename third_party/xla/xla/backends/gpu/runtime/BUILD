@@ -167,7 +167,7 @@ cc_library(
         ":send_thunk",
         ":thunk",
         ":thunk_id",
-        ":while_thunk",
+        ":while_loop",
         "//xla:debug_options_flags",
         "//xla:executable_run_options",
         "//xla:literal",
@@ -845,7 +845,8 @@ cc_library(
         ":copy_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
-        ":while_thunk",
+        ":while_loop",
+        "//xla:status_macros",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
@@ -2996,6 +2997,25 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "while_loop",
+    srcs = ["while_loop.cc"],
+    hdrs = ["while_loop.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "while_loop_test",
+    srcs = ["while_loop_test.cc"],
+    deps = [
+        ":while_loop",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "while_thunk",
     srcs = ["while_thunk.cc"],
     hdrs = ["while_thunk.h"],
@@ -3004,20 +3024,21 @@ cc_library(
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
+        ":while_loop",
+        "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -3036,6 +3057,7 @@ xla_test(
         ":sequential_thunk",
         ":thunk",
         ":thunk_proto_cc",
+        ":while_loop",
         ":while_thunk",
         "//xla:executable_run_options",
         "//xla/hlo/ir:hlo",
