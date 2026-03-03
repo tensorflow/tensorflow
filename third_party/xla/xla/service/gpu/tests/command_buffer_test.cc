@@ -246,6 +246,48 @@ TEST_P(CommandBufferTest, Fusions) {
                               /*run_hlo_passes=*/false);
 }
 
+static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
+                           ffi::Result<ffi::AnyBuffer> dst) {
+  se::DeviceAddressBase dst_mem = dst->device_memory();
+  se::DeviceAddressBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemcpyExecuteNoState, Memcpy,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::AnyBuffer>()   // src
+                           .Ret<ffi::AnyBuffer>(),  // dst
+                       {ffi::Traits::kCmdBufferCompatible});
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
+                         kMemcpyExecuteNoState);
+
+TEST_P(CommandBufferTest, TracedCustomCalls) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule m, is_scheduled=true
+
+  command_buffer {
+    p0 = f32[2,2] parameter(0)
+    ROOT f3 = f32[2,2] custom-call(p0),
+      custom_call_target="__xla_test$$memcpy",
+      api_version=API_VERSION_TYPED_FFI
+  }
+
+  ENTRY main {
+    p0 = f32[2,2] parameter(0)
+    ROOT call = f32[2,2] call(p0), to_apply=command_buffer
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal expected = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
+}
+
 // Empty memcpy state to test stateful custom calls.
 struct MemcpyState {};
 
@@ -257,12 +299,12 @@ static absl::StatusOr<std::unique_ptr<MemcpyState>> MemcpyInitialize() {
   return std::make_unique<MemcpyState>();
 }
 
-static absl::Status Memcpy(se::Stream* stream,
-                           const xla::gpu::CollectiveParams* collective_params,
-                           const xla::gpu::CollectiveMemory* collective_memory,
-                           MemcpyState* state, MemcpyState* device_state,
-                           ffi::AnyBuffer src,
-                           ffi::Result<ffi::AnyBuffer> dst) {
+static absl::Status StatefulMemcpy(
+    se::Stream* stream, const xla::gpu::CollectiveParams* collective_params,
+    const xla::gpu::CollectiveMemory* collective_memory, MemcpyState* state,
+    MemcpyState* device_state,
+
+    ffi::AnyBuffer src, ffi::Result<ffi::AnyBuffer> dst) {
   EXPECT_NE(state, nullptr);
   EXPECT_NE(device_state, nullptr);
   EXPECT_NE(collective_params, nullptr);
@@ -278,7 +320,7 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyInstantiate, MemcpyInstantiate,
 XLA_FFI_DEFINE_HANDLER(kMemcpyInitialize, MemcpyInitialize,
                        ffi::Ffi::BindInitialize());
 
-XLA_FFI_DEFINE_HANDLER(kMemcpyExecute, Memcpy,
+XLA_FFI_DEFINE_HANDLER(kMemcpyExecute, StatefulMemcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
                            .Ctx<ffi::CollectiveParams>()
@@ -289,7 +331,8 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyExecute, Memcpy,
                            .Ret<ffi::AnyBuffer>(),  // dst
                        {ffi::Traits::kCmdBufferCompatible});
 
-XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$stateful_memcpy",
+                         "gpu",
                          {
                              /*instantiate=*/kMemcpyInstantiate,
                              /*prepare=*/nullptr,
@@ -297,14 +340,14 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
                              /*execute=*/kMemcpyExecute,
                          });
 
-TEST_P(CommandBufferTest, TracedCustomCalls) {
+TEST_P(CommandBufferTest, TracedStatefulCustomCalls) {
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
   command_buffer {
     p0 = f32[2,2] parameter(0)
     ROOT f3 = f32[2,2] custom-call(p0),
-      custom_call_target="__xla_test$$memcpy",
+      custom_call_target="__xla_test$$stateful_memcpy",
       api_version=API_VERSION_TYPED_FFI
   }
 

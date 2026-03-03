@@ -1350,10 +1350,13 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
   ffi::ExecutionState* prepare_state = nullptr;
   ffi::ExecutionState* initialize_state = nullptr;
   if (execute_params.execution_scoped_state) {
-    auto& state = tsl::any_cast<CustomCallThunk::PrepareAndInitState>(
-        execute_params.execution_scoped_state->at(thunk_id_));
-    prepare_state = &state.prepare;
-    initialize_state = &state.init;
+    auto it = execute_params.execution_scoped_state->find(thunk_id_);
+    if (it != execute_params.execution_scoped_state->end()) {
+      auto& state =
+          tsl::any_cast<CustomCallThunk::PrepareAndInitState>(it->second);
+      prepare_state = &state.prepare;
+      initialize_state = &state.init;
+    }
   }
 
   TF_ASSIGN_OR_RETURN(
