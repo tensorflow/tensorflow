@@ -2082,6 +2082,42 @@ ENTRY main {
 }
 
 TEST_F(SymbolicTileAnalysisTest,
+       PadOutsideOfNestedGemmFusionsForbidSymbolicTileDerivation) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+pad {
+  p0 = bf16[63] parameter(0)
+  c0 = bf16[] constant(0.0)
+  ROOT pad = bf16[64] pad(p0, c0), padding=0_1
+}
+
+ENTRY main {
+  p0 = bf16[63] parameter(0)
+  ROOT fusion = bf16[64] fusion(p0), kind=kCustom, calls=pad
+})"));
+  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       PadInNestedGemmFusionsAllowSymbolicTileDerivation) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+pad {
+  p0 = bf16[63] parameter(0)
+  c0 = bf16[] constant(0.0)
+  ROOT pad = bf16[64] pad(p0, c0), padding=0_1
+}
+
+ENTRY main {
+  p0 = bf16[63] parameter(0)
+  ROOT fusion = bf16[64] fusion(p0), kind=kCustom, calls=pad,
+    backend_config={"fusion_backend_config":
+      {"kind":"__triton_nested_gemm_fusion"}}
+})"));
+  ASSERT_TRUE(TryAnalyzeModule(module.get()).has_value());
+}
+
+TEST_F(SymbolicTileAnalysisTest,
        ConcatenatesInNestedGemmFusionsAllowSymbolicTileDerivation) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
