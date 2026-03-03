@@ -25,6 +25,7 @@
 * `tf.data`
     * Adds `NoneTensorSpec` to the public API so that `None`s in `element_spec`
       can be identified via `isinstance(..., tf.NoneTensorSpec)`.
+* The TensorBoard (TB) dependency was removed starting from this release `Tensorflow 2.21.0`
 
 ## Thanks to our Contributors
 
