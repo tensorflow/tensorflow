@@ -34,6 +34,17 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "stacktrace_lineinfo",
+    flag_values = {":lineinfo": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "lineinfo",
+    build_setting_default = False,
+)
+
 # Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
