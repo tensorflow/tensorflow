@@ -19,6 +19,7 @@ limitations under the License.
 #include <atomic>
 
 #include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
 #include "absl/synchronization/mutex.h"
 #include "nanobind/nanobind.h"
 
@@ -66,7 +67,7 @@ class SafeStatic {
     // mutex before any critical sections because release_gil releases
     // all critical sections.
     nanobind::gil_scoped_release release_gil;
-    absl::MutexLock lock(mutex_);
+    absl::MutexLock lock(*mutex_);
     // Second check under the lock.
     if (T* result = output_.load()) {
       return *result;
@@ -77,7 +78,7 @@ class SafeStatic {
   }
 
  private:
-  absl::Mutex mutex_;
+  absl::NoDestructor<absl::Mutex> mutex_{absl::kConstInit};
   std::atomic<T*> output_{nullptr};
 };
 
