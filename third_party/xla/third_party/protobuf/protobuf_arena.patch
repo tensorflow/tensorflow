@@ -1,0 +1,17 @@
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 734bec81a..bc96f6e42 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -388,6 +388,12 @@ alias(
+     visibility = ["//visibility:public"],
+ )
+
++alias(
++    name = "arena",
++    actual = "//src/google/protobuf:arena",
++    visibility = ["//visibility:public"],
++)
++
+ alias(
+     name = "protobuf_nowkt",
+     actual = "//src/google/protobuf",

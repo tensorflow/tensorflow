@@ -2103,6 +2103,7 @@ cc_library(
 
 cc_library(
     name = "gpu_aot_compilation_result",
+    srcs = ["gpu_aot_compilation_result.cc"],
     hdrs = ["gpu_aot_compilation_result.h"],
     deps = [
         ":gpu_executable",
@@ -2117,10 +2118,15 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "//xla/util/split_proto:split_gpu_executable_writer",
+        "//xla/util/split_proto:split_proto_reader",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:arena",
+        "@riegeli//riegeli/bytes:reader",
         "@riegeli//riegeli/bytes:string_writer",
     ],
 )

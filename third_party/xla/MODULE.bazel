@@ -69,6 +69,13 @@ single_version_override(
     ],
 )
 
+single_version_override(
+    module_name = "protobuf",
+    patch_strip = 1,
+    patches = ["//third_party/protobuf:protobuf_arena.patch"],
+    version = "32.1",
+)
+
 # Use an unreleased version of googletest
 archive_override(
     module_name = "googletest",

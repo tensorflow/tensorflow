@@ -3117,15 +3117,14 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
 absl::StatusOr<std::unique_ptr<CompiledModule>>
 GpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
-  GpuExecutableProto gpu_executable_proto;
   auto reader =
       std::make_unique<riegeli::StringReader<>>(serialized_aot_result);
   ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader));
   if (is_split_proto) {
-    RETURN_IF_ERROR(ReadSplitProto(std::move(reader), gpu_executable_proto));
-    return GpuAotCompilationResult::FromProto(std::move(gpu_executable_proto));
+    return GpuAotCompilationResult::FromSerialized(std::move(reader));
   }
 
+  GpuExecutableProto gpu_executable_proto;
   if (!gpu_executable_proto.ParseFromString(serialized_aot_result)) {
     return InvalidArgument(
         "Failed to parse serialized AOT result as GpuExecutableProto.");
