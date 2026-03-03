@@ -499,10 +499,32 @@ void CommonPjRtBufferImpl::CopyToRemoteDevice(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::Bitcast(
-    PrimitiveType element_type, absl::Span<int64_t const> dims,
+    xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
     const Layout* device_layout) {
-  return absl::UnimplementedError(
-      "Bitcast is not yet implemented for CommonPjRtBufferImpl.");
+  if (!primitive_util::IsArrayType(on_device_shape_.element_type()) ||
+      !primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Bitcast can only be used on array types.");
+  }
+  TF_ASSIGN_OR_RETURN(const Shape shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dims));
+  TF_ASSIGN_OR_RETURN(Shape new_on_device_shape,
+                      client()->MakeDefaultShapeForMemorySpace(
+                          memory_space(), shape, device_layout));
+  if (ShapeUtil::ArraySize(on_device_shape_) !=
+      ShapeUtil::ArraySize(new_on_device_shape)) {
+    return InvalidArgument(
+        "Bitcast requires a new on-device shape to have the same size of %d "
+        "bytes, but got %d bytes.",
+        ShapeUtil::ArraySize(on_device_shape_),
+        ShapeUtil::ArraySize(new_on_device_shape));
+  }
+
+  std::unique_ptr<AbstractTrackedDeviceBuffer> device_buffer = ReleaseBuffer();
+  if (device_buffer == nullptr) {
+    return InvalidArgument("Bitcast was called on deleted or donated buffer.");
+  }
+  return std::make_unique<CommonPjRtBufferImpl>(
+      new_on_device_shape, std::move(device_buffer), memory_space());
 }
 
 void CommonPjRtClient::ScheduleRemoteSend(
