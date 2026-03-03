@@ -4674,14 +4674,17 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
         GetPartitionedHlo(hlo->operand(i)).Replicate().hlo());
   }
 
-  if (!hlo->sharding().ReplicateOnLastTileDim()) {
+  if (!hlo->sharding().HasPartialReplication()) {
     SetPartitionedHlo(hlo,
                       b_.AddInstruction(HloInstruction::CreateRng(
                           MakePartitionedShape(hlo->shape(), hlo->sharding()),
                           hlo->random_distribution(), new_operands)));
   } else {
-    std::vector<int64_t> group_dims(hlo->sharding().num_dimensions() - 1);
+    std::vector<int64_t> group_dims(hlo->sharding().num_dimensions());
     absl::c_iota(group_dims, 0);
+    int64_t replication_dim = hlo->sharding().SubgroupReplicationDim();
+    group_dims.erase(group_dims.begin() + replication_dim);
+
     auto sharding_grouped =
         hlo_sharding_util::GroupShardingOnDims(hlo->sharding(), group_dims);
     auto per_group_state = CreatePerGroupPartitioningState(
