@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 #define TENSORFLOW_CORE_FRAMEWORK_LOCAL_RENDEZVOUS_H_
 
+#include <atomic>
 #include <memory>
-#include <optional>
 #include <vector>
 
 #include "tensorflow/core/framework/rendezvous.h"
@@ -67,8 +67,6 @@ class LocalRendezvous {
  private:
   void DoAbort(const absl::Status& status);
 
-  tsl::core::RefCountPtr<Rendezvous> GetOwnerRefCountPtr();
-
   struct Item;
 
   // By invariant, the item queue under each key is of the form
@@ -92,16 +90,13 @@ class LocalRendezvous {
   struct TableBucket {
     mutex mu;
     Table table TF_GUARDED_BY(mu);
-
-    // Track the number of pening callbacks using a counter.
-    int pending_callback_counter TF_GUARDED_BY(mu) = 0;
-    condition_variable pending_callback_cond_var TF_GUARDED_BY(mu);
   };
 
   // Immutable set of buckets. This uses less memory than std::vector.
   const std::unique_ptr<TableBucket[]> table_buckets_;
   mutex mu_;
   absl::Status status_ TF_GUARDED_BY(mu_);
+  std::atomic<bool> has_status_ = {false};
 
   // We deliberately leak one reference of the aborted rendezvous here, so that
   // they won't be destructed, and lose the status_.
