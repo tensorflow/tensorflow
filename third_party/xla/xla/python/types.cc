@@ -78,7 +78,8 @@ struct CustomDtypes {
 };
 
 const CustomDtypes& GetCustomDtypes() {
-  const CustomDtypes& custom_dtypes = SafeStaticInit<CustomDtypes>([]() {
+  static SafeStatic<CustomDtypes> custom_dtypes;
+  return custom_dtypes.Get([]() {
     nb::module_ ml_dtypes = nb::module_::import_("ml_dtypes");
     auto dtypes = std::make_unique<CustomDtypes>();
     dtypes->bfloat16 = nb_dtype::from_args(ml_dtypes.attr("bfloat16"));
@@ -109,7 +110,6 @@ const CustomDtypes& GetCustomDtypes() {
     }
     return dtypes;
   });
-  return custom_dtypes;
 }
 
 }  // namespace
@@ -150,8 +150,10 @@ absl::StatusOr<PrimitiveType> DtypeToPrimitiveType(const nb_dtype& np_type) {
   struct DtypeHash {
     ssize_t operator()(const nb_dtype& key) const { return nb::hash(key); }
   };
-  const auto& custom_dtype_map = SafeStaticInit<
-      absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>([]() {
+  static SafeStatic<
+      absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>
+      custom_dtype_map_init;
+  const auto& custom_dtype_map = custom_dtype_map_init.Get([]() {
     const CustomDtypes& custom_dtypes = GetCustomDtypes();
     auto map = std::make_unique<
         absl::flat_hash_map<nb_dtype, PrimitiveType, DtypeHash, DtypeEq>>();
@@ -424,8 +426,8 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     return dtypes;
   };
 
-  const NumpyScalarTypes& singleton = SafeStaticInit<NumpyScalarTypes>(init_fn);
-  return singleton;
+  static SafeStatic<NumpyScalarTypes> singleton;
+  return singleton.Get(init_fn);
 }
 
 const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type) {
