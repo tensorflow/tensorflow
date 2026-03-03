@@ -310,7 +310,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"performance_counter_description", kPerformanceCounterDescription},
        {"performance_counter_sets", kPerformanceCounterSets},
        // XLA metadata map related.
-       {"Hlo Proto", kHloProto},
+       {"HLO Proto", kHloProto},
        {"EdgeTPU Model information", kEdgeTpuModelInfo},
        {"EdgeTPU Model Profile information", kEdgeTpuModelProfileInfo},
        {"EdgeTPU MLIR", kEdgeTpuMlir},
@@ -400,7 +400,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"cuda_runtime_version", kMetadataCudaRuntimeVersion},
        {"cuda_driver_version", kMetadataCudaDriverVersion},
        // LLO Debug Dump.
-       {"llo_proto", kLloProto},
+       {"LLO Proto", kLloProto},
        // Power-related stats
        {"vdd_core_energy_nj", kVddCoreEnergy},
        {"vdd_core_power_events", kVddCorePowerEvents},
