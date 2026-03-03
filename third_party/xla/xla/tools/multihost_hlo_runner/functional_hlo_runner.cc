@@ -970,7 +970,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
             argument_literal_j.shape(),
             [&](const Shape& subshape, const ShapeIndex& index) {
               if (subshape.IsArray()) {
-                for (int64_t k = 0; k < subshape.dimensions_size(); ++k) {
+                for (int64_t k = 0; k < subshape.dimensions().size(); ++k) {
                   if (subshape.is_dynamic_dimension(k)) {
                     argument_literal_j.SetDynamicSize(k, index, 0);
                   }
