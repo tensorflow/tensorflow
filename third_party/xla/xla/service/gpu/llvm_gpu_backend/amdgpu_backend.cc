@@ -538,6 +538,8 @@ absl::StatusOr<EmitResult> EmitModuleToHsaco(
 
   if (debug_options.xla_gpu_use_inprocess_lld()) {
 #ifdef HAS_SUPPORT_FOR_LLD_AS_A_LIBRARY
+    static absl::Mutex lld_mu(absl::kConstInit);
+
     std::array<const char*, 7> args{
         "ld.lld",           "--threads=1",       "-shared",
         "--no-undefined",   isabin_path.c_str(), "-o",
@@ -548,7 +550,7 @@ absl::StatusOr<EmitResult> EmitModuleToHsaco(
     llvm::raw_string_ostream os(error_message);
     lld::Result result;
     {
-      llvm_lock.UpgradeToExclusiveAccessToRawLLVMCommandLine();
+      absl::MutexLock lock(&lld_mu);
       result =
           lld::lldMain(args, llvm::nulls(), os, {{lld::Gnu, &lld::elf::link}});
     }

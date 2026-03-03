@@ -123,7 +123,7 @@ class GpuKernelToBlobPass
       if (!hsaco_or.ok()) {
         return tensorflow::errors::Internal("Failure when generating HSACO");
       }
-      auto hsaco = hsaco_or.value();
+      auto hsaco = std::move(hsaco_or.value().hsaco);
       images.push_back({arch_str, std::move(hsaco)});
     }
 
