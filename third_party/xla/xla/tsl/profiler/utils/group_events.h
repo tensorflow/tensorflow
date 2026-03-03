@@ -151,18 +151,12 @@ using ContextGroupMap = absl::flat_hash_map<
 // events specified in root_event_types or marked by the semantic argument.
 class EventForest {
  public:
-  using OldXPlaneVisitorFactory =
-      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>;
   using XPlaneVisitorFactory = std::function<std::unique_ptr<XPlaneVisitor>(
       const tensorflow::profiler::XPlane*)>;
 
-  void AddSpace(OldXPlaneVisitorFactory visitor_factory,
-                tensorflow::profiler::XSpace* space);
-  void AddPlanes(OldXPlaneVisitorFactory visitor_factory,
-                 const std::vector<tensorflow::profiler::XPlane*>& planes);
-
   void AddSpace(XPlaneVisitorFactory visitor_factory,
                 tensorflow::profiler::XSpace* space);
+
   void AddPlanes(XPlaneVisitorFactory visitor_factory,
                  const std::vector<tensorflow::profiler::XPlane*>& planes);
 
@@ -180,13 +174,9 @@ class EventForest {
   }
 
  private:
-  template <typename Factory>
-  void AddPlane(Factory visitor_factory, tensorflow::profiler::XPlane* plane);
+  void AddPlane(XPlaneVisitorFactory visitor_factory,
+                tensorflow::profiler::XPlane* plane);
 
-  // Creates, stores and returns an XPlaneVisitor reference for the given
-  // XPlane.
-  XPlaneVisitor& AddVisitor(OldXPlaneVisitorFactory visitor_factory,
-                            tensorflow::profiler::XPlane* plane);
   XPlaneVisitor& AddVisitor(XPlaneVisitorFactory visitor_factory,
                             tensorflow::profiler::XPlane* plane);
 
@@ -238,7 +228,6 @@ class EventForest {
   absl::flat_hash_set<XPlane*> registered_planes_;
   // std::deque for pointer stability.
   std::deque<std::unique_ptr<XPlaneVisitor>> unique_visitors_;
-  std::deque<XPlaneVisitor> visitors_;
   std::deque<std::pair<tensorflow::profiler::XPlane*, XPlaneVisitor&>> planes_;
   // The "step" id (actually it is "function" id that are associated with
   // the tf.data pipeline.
