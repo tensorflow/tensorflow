@@ -168,6 +168,17 @@ void exportFunc(FuncOp funcOp, const SymbolTable& symbolTable,
           enableHloShardingV3 ? HloSharding(NamedSharding::Replicate())
                               : HloSharding::Replicate();
       op->setAttr(kXlaShardingAttr, getStringAttr(replicatedSharding));
+    } else if (!op->hasAttr(kXlaShardingAttr) &&
+               (mlir::isa<stablehlo::SendOp, stablehlo::RecvOp,
+                          stablehlo::CreateTokenOp>(op))) {
+      // Side-effecting HLO ops must have sharding. Send/recv/create_token
+      // ops that reach here without sharding (e.g, because they were not
+      // processed by the MPMD pipeline) need a maximal sharding to satisfy
+      // the SPMD partitioner. Replicated sharding is not valid for
+      // send/recv (side-effecting ops can't have replicated sharding).
+      CHECK(manualAxes.empty());
+      op->setAttr(kXlaShardingAttr,
+                  builder.getStringAttr("{maximal device=0}"));
     }
   });
 }
