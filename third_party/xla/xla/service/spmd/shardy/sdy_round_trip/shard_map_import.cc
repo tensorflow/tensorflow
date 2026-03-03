@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cassert>
 #include <memory>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseSet.h"
@@ -165,6 +166,46 @@ mlir::LogicalResult rewriteManualComputation(
   return mlir::success();
 }
 
+std::pair<FuncOp, bool> cloneManualComputationsRecursively(
+    CallOp callOp, SymbolTable& symbolTable,
+    llvm::SmallDenseSet<StringRef>& manualComputationNames) {
+  FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
+  auto [_, inserted] = manualComputationNames.insert(funcOp.getName());
+  if (!inserted) {
+    funcOp = funcOp.clone();
+  }
+  funcOp->walk([&](CallOp callOp) {
+    if (!callOp.getCallee().contains(kManualComputationFuncName)) {
+      return;
+    }
+    if (auto [funcOp, cloned] = cloneManualComputationsRecursively(
+            callOp, symbolTable, manualComputationNames);
+        cloned) {
+      callOp.setCallee(symbolTable.insert(funcOp));
+    }
+  });
+  return {funcOp, !inserted};
+}
+
+void flattenManualComputations(ModuleOp module, SymbolTable& symbolTable) {
+  llvm::SmallDenseSet<StringRef> manualComputationNames;
+  module->walk([&](FuncOp funcOp) {
+    if (funcOp.getName().contains(kManualComputationFuncName)) {
+      return;
+    }
+    funcOp->walk([&](CallOp callOp) {
+      if (!callOp.getCallee().contains(kManualComputationFuncName)) {
+        return;
+      }
+      if (auto [funcOp, cloned] = cloneManualComputationsRecursively(
+              callOp, symbolTable, manualComputationNames);
+          cloned) {
+        callOp.setCallee(symbolTable.insert(funcOp));
+      }
+    });
+  });
+}
+
 class SdyRoundTripShardMapImportPass
     : public mlir::PassWrapper<SdyRoundTripShardMapImportPass,
                                mlir::OperationPass<ModuleOp>> {
@@ -177,23 +218,10 @@ class SdyRoundTripShardMapImportPass
     mlir::SymbolTableCollection symbolTableCollection;
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(module);
     mlir::IRRewriter rewriter(module);
+
+    flattenManualComputations(module, symbolTable);
+
     llvm::SmallDenseSet<StringRef> manualComputationCalleeNames;
-
-    // Clone multiple calls to the same function.
-    module->walk([&](CallOp op) {
-      if (!op.getCallee().contains(kManualComputationFuncName)) {
-        return;
-      }
-      if (manualComputationCalleeNames.insert(op.getCallee()).second) {
-        return;
-      }
-      // TODO(b/446881697): Clone just the body on demand like in
-      // shardy/stablehlo_round_trip/shard_map_import.cc.
-      FuncOp funcOp = symbolTable.lookup<FuncOp>(op.getCallee()).clone();
-      op.setCallee(symbolTable.insert(funcOp));
-      manualComputationCalleeNames.insert(funcOp.getName());
-    });
-
     mlir::CallGraph callGraph(module);
     llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
     for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
@@ -203,6 +231,7 @@ class SdyRoundTripShardMapImportPass
                 if (!callOp.getCallee().contains(kManualComputationFuncName)) {
                   return mlir::WalkResult::advance();
                 }
+                manualComputationCalleeNames.insert(callOp.getCallee());
                 rewriter.setInsertionPoint(callOp);
                 if (mlir::failed(rewriteManualComputation(callOp, rewriter,
                                                           symbolTable))) {

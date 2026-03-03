@@ -54,11 +54,12 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
   }
 }
 
-void addCommonPostImportPasses(mlir::OpPassManager& pm, bool importFuncCalls) {
+void addCommonPostImportPasses(mlir::OpPassManager& pm, bool importFuncCalls,
+                               bool enableNativeNonFlatSupport) {
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
   if (importFuncCalls) {
-    pm.addPass(createImportFuncCallsPass());
+    pm.addPass(createImportFuncCallsPass(enableNativeNonFlatSupport));
   }
 }
 

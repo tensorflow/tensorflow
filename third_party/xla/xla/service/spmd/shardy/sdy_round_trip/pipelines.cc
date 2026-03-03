@@ -63,11 +63,12 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport,
                                    bool importFuncCalls,
                                    bool liftAndDedupMeshes,
-                                   bool enableHloShardingV3) {
+                                   bool enableHloShardingV3,
+                                   bool enableNativeNonFlatSupport) {
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
   pm.addPass(createSdyRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm, importFuncCalls);
+  addCommonPostImportPasses(pm, importFuncCalls, enableNativeNonFlatSupport);
   if (liftAndDedupMeshes) {
     // Lift and dedup meshes required here because of sdy shardings added
     // directly to hlo in tf2xla.

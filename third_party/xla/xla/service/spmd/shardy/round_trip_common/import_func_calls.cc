@@ -161,7 +161,15 @@ class ImportFuncCallsPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ImportFuncCallsPass)
 
+  ImportFuncCallsPass(bool enableNativeNonFlatSupport)
+      : enableNativeNonFlatSupport(enableNativeNonFlatSupport) {}
+
   void runOnOperation() final {
+    // TODO(enver): Inline for calls inside manual computations.
+    if (enableNativeNonFlatSupport) {
+      return;
+    }
+
     mlir::ModuleOp moduleOp = getOperation();
 
     IRRewriter rewriter(moduleOp.getContext());
@@ -207,16 +215,22 @@ class ImportFuncCallsPass
   ImportFuncCallsPass(ImportFuncCallsPass&&) = delete;
   ImportFuncCallsPass& operator=(ImportFuncCallsPass&&) = delete;
   ~ImportFuncCallsPass() override = default;
+
+ private:
+  bool enableNativeNonFlatSupport;
 };
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> createImportFuncCallsPass() {
-  return std::make_unique<ImportFuncCallsPass>();
+std::unique_ptr<mlir::Pass> createImportFuncCallsPass(
+    bool enableNativeNonFlatSupport) {
+  return std::make_unique<ImportFuncCallsPass>(enableNativeNonFlatSupport);
 }
 
 void registerImportFuncCallsPass() {
-  mlir::registerPass([] { return createImportFuncCallsPass(); });
+  mlir::registerPass([] {
+    return createImportFuncCallsPass(/*enableNativeNonFlatSupport=*/false);
+  });
 }
 
 }  // namespace sdy
