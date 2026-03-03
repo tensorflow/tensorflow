@@ -46,7 +46,6 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 // `kMeshesRoundTripAttr`.
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport = true,
-                                   bool importFuncCalls = false,
                                    bool liftAndDedupMeshes = false,
                                    bool enableHloShardingV3 = false);
 

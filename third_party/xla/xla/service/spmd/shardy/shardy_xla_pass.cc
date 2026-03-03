@@ -378,7 +378,6 @@ absl::Status runShardingPropagation(
   } else {
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
-                                  /*importFuncCalls=*/true,
                                   /*liftAndDedupMeshes=*/true,
                                   debugOptions.xla_enable_hlo_sharding_v3());
   }

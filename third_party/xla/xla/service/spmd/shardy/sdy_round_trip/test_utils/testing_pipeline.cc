@@ -43,7 +43,6 @@ void sdyRoundTripTestingPipeline(
                                 options.enableHloShardingV3);
   pm.addPass(createSdyRoundTripStablehloToHloToStablehloPass());
   addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
-                                /*importFuncCalls=*/true,
                                 /*liftAndDedupMeshes=*/false,
                                 options.enableHloShardingV3);
 }
