@@ -32,13 +32,27 @@ filegroup(
 )
 
 cc_library(
-    name = "cpu_codegen_test_main",
+    name = "cpu_pjrt_codegen_test",
     testonly = True,
-    hdrs = ["cpu_codegen_test.h"],
+    srcs = ["cpu_pjrt_codegen_test.cc"],
+    hdrs = ["cpu_pjrt_codegen_test.h"],
     deps = [
-        "//xla/service:cpu_plugin",
-        "//xla/tests:llvm_irgen_test_base",
-        "//xla/tsl/platform:test_main",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiler",
+        "//xla/service:executable",
+        "//xla/service:llvm_compiler",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "//xla/tests:codegen_utils",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:pjrt_cpu_client_registry",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -106,25 +120,24 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_external_constants_test",
     srcs = ["cpu_external_constants_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
-        ":cpu_codegen_test_main",
+        ":cpu_pjrt_codegen_test",
         "//xla:array2d",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_options",
+        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_noalias_test",
     srcs = ["cpu_noalias_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
     deps = [
-        ":cpu_codegen_test_main",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
@@ -133,14 +146,21 @@ xla_cc_test(
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service:buffer_assignment",
+        "//xla/service:compiler",
         "//xla/service:logical_buffer",
+        "//xla/service:platform_util",
+        "//xla/service/cpu:cpu_compiler",
         "//xla/service/llvm_ir:alias_analysis",
         "//xla/service/llvm_ir:ir_array",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/stream_executor:platform",
+        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
@@ -171,15 +191,15 @@ xla_cc_test(
     # The objective of this test to ensure that LLVM auto vectorization kicks in. This is not
     # necessary with the tiled emitter which explicitly creates vector instructions.
     env = {"XLA_FLAGS": "--xla_backend_extra_options=xla_cpu_disable_tiled_emitter"},
-    tags = ["pjrt_migration_candidate"],
     deps = [
-        ":cpu_codegen_test_main",
+        ":cpu_pjrt_codegen_test",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/service/cpu:cpu_compiler",
+        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -192,13 +212,14 @@ xla_cc_test(
 xla_cc_test(
     name = "tree_reduction_rewriter_test",
     srcs = ["tree_reduction_rewriter_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
-        ":cpu_codegen_test_main",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
         "//xla/hlo/transforms/simplifiers:tree_reduction_rewriter",
         "//xla/service/cpu:cpu_compiler",
+        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
@@ -235,28 +256,28 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_literal_caching_test",
     srcs = ["cpu_literal_caching_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
-        ":cpu_codegen_test_main",
+        ":cpu_pjrt_codegen_test",
         "//xla/hlo/ir:hlo",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
+        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest",
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_spmd_compile_test",
     srcs = ["cpu_spmd_compile_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
     deps = [
-        ":cpu_codegen_test_main",
         "//xla:debug_options_flags",
-        "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:test_header_helper",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
@@ -269,16 +290,22 @@ xla_cc_test(
     # The objective of this test to ensure that LLVM auto vectorization kicks in. This is not
     # necessary with the tiled emitter which explicitly creates vector instructions.
     env = {"XLA_FLAGS": "--xla_backend_extra_options=xla_cpu_disable_tiled_emitter"},
-    tags = ["pjrt_migration_candidate"],
     deps = [
-        ":cpu_codegen_test_main",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:compiler",
+        "//xla/service:llvm_compiler",
+        "//xla/service:platform_util",
         "//xla/service/cpu:cpu_compiler",
+        "//xla/stream_executor:platform",
+        "//xla/tests:codegen_utils",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
@@ -291,17 +318,18 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_while_test",
     srcs = ["cpu_while_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
     deps = [
-        ":cpu_codegen_test_main",
         "//xla:literal",
         "//xla:literal_util",
-        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service/cpu:cpu_compiler",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -447,14 +475,15 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_copy_test",
     srcs = ["cpu_copy_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
     deps = [
-        ":cpu_codegen_test_main",
         "//xla:literal",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -17,15 +17,16 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "xla/literal.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::cpu {
 namespace {
 
-TEST_F(CpuCodegenTest, SubByteCopy) {
+TEST_F(HloPjRtTestBase, SubByteCopy) {
   const std::string hlo_text = R"hlo(
 HloModule module
 
