@@ -1493,9 +1493,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
                                             std::move(*identity_literal), b);
   // Update partition_id for partial replicate.
   auto partition_id = indices.state().partition_id;
-  if (indices.sharding().ReplicateOnLastTileDim()) {
+  if (indices.sharding().HasPartialReplication()) {
     auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
-        indices.sharding(), {indices.sharding().num_dimensions() - 1});
+        indices.sharding(), {indices.sharding().SubgroupReplicationDim()});
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
         indices.state(), sharding_grouped.device_groups, b);
     partition_id = per_group_partitioner_state.partition_id;
