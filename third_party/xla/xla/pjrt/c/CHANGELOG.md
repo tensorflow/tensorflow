@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.98
+
+* Added `PJRT_Buffer_Bitcast`.
+
 ## 0.97
 
 * Add `multi_slice_config` field to `PJRT_ExecuteOptions`.
