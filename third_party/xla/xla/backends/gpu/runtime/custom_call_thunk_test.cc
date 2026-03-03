@@ -74,6 +74,10 @@ struct NonSerializableTestState {
 struct FailingSerializableTestState {
   int value;
 };
+
+struct FailingDeserializableTestState {
+  int value;
+};
 }  // namespace xla::gpu
 
 namespace xla::ffi {
@@ -101,6 +105,20 @@ struct TypeRegistry::SerDes<xla::gpu::FailingSerializableTestState>
   Deserialize(absl::string_view data) {
     return std::make_unique<xla::gpu::FailingSerializableTestState>(
         xla::gpu::FailingSerializableTestState{0});
+  }
+};
+
+template <>
+struct TypeRegistry::SerDes<xla::gpu::FailingDeserializableTestState>
+    : public std::true_type {
+  static absl::StatusOr<std::string> Serialize(
+      const xla::gpu::FailingDeserializableTestState& value) {
+    return "some state";
+  }
+  static absl::StatusOr<
+      std::unique_ptr<xla::gpu::FailingDeserializableTestState>>
+  Deserialize(absl::string_view data) {
+    return absl::InternalError("Deserialization failed");
   }
 };
 }  // namespace xla::ffi
@@ -538,6 +556,40 @@ TEST(CustomCallThunkTest, DeserializationFailsWithMissingHloModule) {
                                          /*platform_name=*/kTestPlatformName,
                                          /*gpu_compute_capability=*/{}),
               StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(CustomCallThunkTest, DeserializationFailsGracefully) {
+  // We use a custom call name that is registered (so that finding the handler
+  // succeeds) but we provide an execution state that fails deserialization.
+  // The thunk creation should succeed, but the execution state should be null.
+  CustomCallThunkProto proto =
+      tsl::proto_testing::ParseTextProtoOrDie<CustomCallThunkProto>(
+          R"pb(
+            target_name: "__xla_test$$verify_callback_arguments"
+            api_version: API_VERSION_TYPED_FFI
+            called_computation: "called_computation"
+            execution_state {
+              type_name: "xla::gpu::FailingDeserializableTestState"
+              state: "some state"
+            }
+          )pb");
+
+  HloModuleConfig config;
+  HloModule hlo_module("test_module", config);
+  HloComputation::Builder builder("called_computation");
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(U32, {42}), "parameter"));
+  hlo_module.AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CustomCallThunk> thunk,
+      CustomCallThunk::FromProto(Thunk::ThunkInfo(), proto,
+                                 /*buffer_allocations=*/{}, &hlo_module,
+                                 /*platform_name=*/kTestPlatformName,
+                                 /*gpu_compute_capability=*/{}));
+  // If deserialization fails, we fall back to an empty execution state.
+  EXPECT_NE(thunk->execution_state(), nullptr);
+  EXPECT_FALSE(thunk->execution_state()->IsSet());
 }
 
 TEST(CustomCallThunkTest, RoundtripWithNonSerializableExecutionState) {

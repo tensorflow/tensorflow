@@ -747,9 +747,16 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::FromProto(
   }
   std::unique_ptr<ffi::ExecutionState> execution_state;
   if (proto.has_execution_state()) {
-    TF_ASSIGN_OR_RETURN(
-        auto state, ffi::ExecutionState::FromProto(proto.execution_state()));
-    execution_state = std::make_unique<ffi::ExecutionState>(std::move(state));
+    auto state = ffi::ExecutionState::FromProto(proto.execution_state());
+    if (state.ok()) {
+      execution_state =
+          std::make_unique<ffi::ExecutionState>(std::move(state.value()));
+    } else {
+      LOG(WARNING)
+          << "Failed to deserialize the custom call execution state. Falling "
+             "back to runtime instantiaton of the execution state. Reason: "
+          << state.status();
+    }
   }
 
   return CustomCallThunk::Create(
