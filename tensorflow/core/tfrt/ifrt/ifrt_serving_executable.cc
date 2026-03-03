@@ -989,7 +989,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     const xla::ifrt::ArrayRef& array_for_copy = execution_result->outputs[i];
     // IFRT's return does not contain sufficient information; so we use
     // sharding spec from metadata.
-    VLOG(2) << "Output sharding: " << array_for_copy->sharding().DebugString();
+    VLOG(2) << "Output sharding: " << array_for_copy->sharding();
 
     output_futures.push_back(MakeTensorFromArray(
         *ifrt_client_, *array_for_copy,

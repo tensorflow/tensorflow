@@ -363,7 +363,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeAssembledArrayFromHostBuffer(
     const xla::ifrt::LayoutRef& xla_input_layout) {
   // TODO(b/316959894): use xla::HloSharding to identifying sharding axis.
 
-  VLOG(2) << "Assembling arrays by sharding " << ifrt_sharding->DebugString();
+  VLOG(2) << "Assembling arrays by sharding " << ifrt_sharding;
 
   TF_ASSIGN_OR_RETURN(auto index_domains,
                       ifrt_sharding->IndexDomains(
@@ -691,7 +691,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     const xla::ifrt::DeviceListRef& device_list,
     xla::ifrt::ShardingRef sharding, const tsl::thread::ThreadPool& thread_pool,
     const xla::ifrt::LayoutRef& xla_input_layout) {
-  VLOG(1) << "Hlo sharding: " << sharding->DebugString();
+  VLOG(1) << "Hlo sharding: " << sharding;
   VLOG(1) << "Device list size: " << device_list->size();
   // Fast path for single device sharding.
   if (llvm::isa<const xla::ifrt::SingleDeviceSharding>(sharding.get())) {
