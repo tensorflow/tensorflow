@@ -353,6 +353,7 @@ std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
   absl::StatusOr<xla::HloSharding> sharding_cpp =
       xla::ParseSharding(sharding.str());
   if (sharding_cpp.ok()) return sharding_cpp->ToProto();
+  CHECK(sharding_cpp.ok()) << "DBG ConvertSharding failed: " << sharding.str();
   return std::nullopt;
 }
 

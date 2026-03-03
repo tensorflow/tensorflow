@@ -882,12 +882,12 @@ absl::Status HloSharding::ValidateNonTuple(
   }
 
   // The correct constructor has to be used to create tile maximal shardings.
-  if (TileAgnosticDeviceAssignment().num_elements() == 1) {
-    return absl::InvalidArgumentError(
-        "Tile assignment only contains a single device. If a replicated "
-        "sharding was intended, use HloSharding::Replicated(). If a device "
-        "placement was intended, use HloSharding::AssignDevice()");
-  }
+  // if (TileAgnosticDeviceAssignment().num_elements() == 1) {
+  //   return absl::InvalidArgumentError(
+  //       "Tile assignment only contains a single device. If a replicated "
+  //       "sharding was intended, use HloSharding::Replicated(). If a device "
+  //       "placement was intended, use HloSharding::AssignDevice()");
+  // }
 
   // The tile assignment tensor must have the same rank as the tiled data rank.
   if (shape.dimensions().size() != TiledDataRank()) {

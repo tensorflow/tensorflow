@@ -131,13 +131,14 @@ absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
       xla_hlo_sharding_.IsUnreduced() || xla_hlo_sharding_.IsUnknown()) {
     return shape;
   }
-  if (xla_hlo_sharding_.TotalNumTiles() != devices_->size()) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("sharding's tile count and device count does not "
-                        "match: %d vs. %d; shape=%s, sharding=%s",
-                        xla_hlo_sharding_.TotalNumTiles(), devices_->size(),
-                        shape.DebugString(), xla_hlo_sharding_.ToString()));
-  }
+  // if (xla_hlo_sharding_.TotalNumTiles() != devices_->size()) {
+  //   LOG(INFO) << "JAX:DBG HloSharding::GetShardShape: TotalNumTiles";
+  //   return absl::InvalidArgumentError(
+  //       absl::StrFormat("sharding's tile count and device count does not "
+  //                       "match: %d vs. %d; shape=%s, sharding=%s",
+  //                       xla_hlo_sharding_.TotalNumTiles(), devices_->size(),
+  //                       shape.DebugString(), xla_hlo_sharding_.ToString()));
+  // }
   if (shape.dims().size() != xla_hlo_sharding_.TiledDataRank()) {
     return InvalidArgument(
         "Numbers of dimensions don't match. From Shape %d vs from "

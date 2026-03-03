@@ -4031,7 +4031,10 @@ bool HloParserImpl::ParseMesh(std::optional<Mesh>& mesh) {
   if (lexer_.GetKind() != TokKind::kRsquare) {
     while (true) {
       std::string axis_name;
-      if (!ParseAttributeName(&axis_name)) {
+      if (!ParseString(&axis_name)) {
+        return false;
+      }
+      if (!ParseToken(TokKind::kEqual, "expects '=' after axis name")) {
         return false;
       }
       int64_t axis_size;
@@ -4120,7 +4123,7 @@ bool HloParserImpl::ParseAxisRef(
     const Mesh& mesh, AxisRef& axis,
     const absl::flat_hash_map<absl::string_view, int64_t>& axis_name_to_idx) {
   std::string axis_name_or_index;
-  if (!ParseName(&axis_name_or_index)) {
+  if (!ParseString(&axis_name_or_index)) {
     return false;
   }
   // Axis can be specified by name or index based on if mesh was specified while
@@ -4140,9 +4143,16 @@ bool HloParserImpl::ParseAxisRef(
       << mesh.ToString() << " which has " << mesh.axis_names().size()
       << " axes";
 
+  if (!EatIfPresent(TokKind::kColon)) {
+    axis = AxisRef(axis_index);
+    return true;
+  }
+
   // Sub-axis
-  // Colon would be eaten by ParseName if present due to sub-axis
-  if (EatIfPresent(TokKind::kLparen)) {
+  if (!ParseToken(TokKind::kLparen,
+                  "expected '(' before pre_size in sub axis")) {
+    return false;
+  }
     int64_t pre_size;
     if (!ParseInt64(&pre_size)) {
       return false;
@@ -4156,10 +4166,7 @@ bool HloParserImpl::ParseAxisRef(
       return false;
     }
     axis = AxisRef(axis_index, {pre_size, size});
-  } else {
-    axis = AxisRef(axis_index);
-  }
-  return true;
+    return true;
 }
 
 bool HloParserImpl::ParseAxisRefList(const Mesh& mesh,
