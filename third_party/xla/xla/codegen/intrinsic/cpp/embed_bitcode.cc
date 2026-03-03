@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -122,7 +123,8 @@ std::string GenerateHeaderContent(const xla::EmbeddedConstantBuffers& buffers,
   os << "// LLVM Bitcode compiled for the current architecture\n";
 
   if (buffers.variable_decls.empty()) {
-    std::cerr << "Error: no variable declaration in EmbeddedConstantBuffers.\n";
+    fprintf(stderr,
+            "Error: no variable declaration in EmbeddedConstantBuffers.\n");
     std::abort();
   }
 
@@ -194,22 +196,25 @@ int main(int argc, char* argv[]) {
 
   std::optional<Args> args = ParseArgs(argc, argv);
   if (!args) {
-    std::cerr << "Usage: " << argv[0]
-              << " <input_file> <output_object_file> <output_header_file> "
-                 "<variable_name> <namespace> [--fail_if_no_bitcode]\n";
+    fprintf(stderr,
+            "Usage: %s <input_file> <output_object_file> <output_header_file> "
+            "<variable_name> <namespace> [--fail_if_no_bitcode]\n",
+            argv[0]);
     return 1;
   }
 
   auto buffer_or_err = llvm::MemoryBuffer::getFile(args->input_path);
   if (!buffer_or_err) {
-    std::cerr << "Error: Could not open input file " << args->input_path << ": "
-              << buffer_or_err.getError().message() << "\n";
+    fprintf(stderr, "Error: Could not open input file %s: %s\n",
+            args->input_path.c_str(),
+            buffer_or_err.getError().message().c_str());
     return 1;
   }
   std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(buffer_or_err.get());
 
   if (buffer->getBuffer().empty()) {
-    std::cerr << "Info: Input file " << args->input_path << " is empty.\n";
+    fprintf(stderr, "Info: Input file %s is empty.\n",
+            args->input_path.c_str());
   }
 
   llvm::StringRef content = ExtractBitcodeContent(*buffer);
@@ -217,19 +222,21 @@ int main(int argc, char* argv[]) {
   // Handle empty bitcode correctly (e.g. for MacOS/Windows bypass)
   if (content.empty()) {
     if (!buffer->getBuffer().empty()) {
-      std::cerr << "Info: Input file " << args->input_path
-                << " contains no bitcode.\n";
+      fprintf(stderr, "Info: Input file %s contains no bitcode.\n",
+              args->input_path.c_str());
     }
     if (args->fail_if_no_bitcode) {
-      std::cerr << "Error: No bitcode found in " << args->input_path
-                << " and --fail_if_no_bitcode was specified.\n";
+      fprintf(stderr,
+              "Error: No bitcode found in %s and --fail_if_no_bitcode "
+              "was specified.\n",
+              args->input_path.c_str());
       return 1;
     }
 
     std::ofstream header_file(args->output_header_path);
     if (!header_file) {
-      std::cerr << "Error: Could not open output header file "
-                << args->output_header_path << "\n";
+      fprintf(stderr, "Error: Could not open output header file %s\n",
+              args->output_header_path.c_str());
       return 1;
     }
     header_file << "#pragma once\n\n#include <cstdint>\n#include <string>\n\n";
@@ -277,16 +284,16 @@ int main(int argc, char* argv[]) {
       target_triple, absl::MakeSpan(constants));
 
   if (!embedded_buffers.ok()) {
-    std::cerr << "Error: Failed to create embedded constant buffer: "
-              << embedded_buffers.status().ToString() << "\n";
+    fprintf(stderr, "Error: Failed to create embedded constant buffer: %s\n",
+            embedded_buffers.status().ToString().c_str());
     return 1;
   }
 
   // Write object file
   std::ofstream object_file(args->output_object_path, std::ios::binary);
   if (!object_file) {
-    std::cerr << "Error: Could not open output object file "
-              << args->output_object_path << "\n";
+    fprintf(stderr, "Error: Could not open output object file %s\n",
+            args->output_object_path.c_str());
     return 1;
   }
   object_file.write(embedded_buffers->object_file_data.data(),
@@ -297,8 +304,8 @@ int main(int argc, char* argv[]) {
   std::string header_content = GenerateHeaderContent(*embedded_buffers, *args);
   std::ofstream header_file(args->output_header_path);
   if (!header_file) {
-    std::cerr << "Error: Could not open output header file "
-              << args->output_header_path << "\n";
+    fprintf(stderr, "Error: Could not open output header file %s\n",
+            args->output_header_path.c_str());
     return 1;
   }
   header_file << header_content;
