@@ -22,6 +22,34 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/di
  };
  
  }  // end namespace side_effects
+diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.cpp b/stablehlo/stablehlo/dialect/VhloBytecode.cpp
+--- stablehlo/stablehlo/dialect/VhloBytecode.cpp
++++ stablehlo/stablehlo/dialect/VhloBytecode.cpp
+@@ -962,6 +962,16 @@
+   // cheap.
+   size_t numElements = cast<RankedTensorV1Type>(type).getNumElements();
+   size_t packedSize = llvm::divideCeil(numElements, 8);
++
++  // Unpack splats to single element 0x01 to match unpacked splat format.
++  if (blob.size() == 1 && blob[0] == 0xFF) {
++    rawData.resize(1);
++    rawData[0] = 0x01;
++    return success();
++  }
++  // Unpack the blob if it's packed.
++  // splat and blob.size() == packedSize for all N<=8 elements are ambiguous,
++  // non 0xFF means not splat so must be unpacked.
+   if (blob.size() == packedSize && blob.size() != numElements) {
+     // Unpack the blob.
+     rawData.resize(numElements);
+@@ -987,6 +997,7 @@
+   auto numElements = cast<RankedTensorV1Type>(attr.getType()).getNumElements();
+ 
+   // If the attribute is a splat, we can just splat the value directly.
++  // Use 0xFF to avoid ambiguity with packed format of <=8 elements.
+   bool isSplat = rawData.size() == 1 && numElements > 1;
+   if (isSplat) {
+     data.resize(1);
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
@@ -291,6 +319,22 @@ diff --ruN a/stablehlo/stablehlo/tests/verify_reduce_window.mlir b/stablehlo/sta
    // expected-error@+1 {{requires at least 1 input value}}
    "stablehlo.reduce_window"() ({
      ^bb0():
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_bool_in_memory_repr.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_bool_in_memory_repr.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_bool_in_memory_repr.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_bool_in_memory_repr.mlir
+@@ -0,0 +1,12 @@
++// RUN: stablehlo-opt %s --stablehlo-aggressive-folder | FileCheck %s
++// RUN: stablehlo-translate %s --serialize --target=1.14.0 | stablehlo-translate --deserialize  | stablehlo-opt --stablehlo-aggressive-folder | FileCheck %s
++// RUN-DISABLED(llvm/llvm-project#186178): stablehlo-opt %s -emit-bytecode | stablehlo-opt --stablehlo-aggressive-folder | FileCheck %s
++
++// Bools are packed in bytecode, ensure that their unpacked memory repr matches
++// what MLIR infra expects (see llvm/llvm-project#186178, or jax-ml/jax#35762).
++func.func public @main() -> (tensor<32xi32>) {
++  // CHECK: dense<1> : tensor<32xi32>
++  %c = stablehlo.constant dense<true> : tensor<32xi1>
++  %0 = stablehlo.convert %c : (tensor<32xi1>) -> tensor<32xi32>
++  return %0 : tensor<32xi32>
++}
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp

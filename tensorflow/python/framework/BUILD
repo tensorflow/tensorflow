@@ -2135,6 +2135,7 @@ py_library(
     strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
+    # "//third_party/py/orbax/experimental/model/tf2obm:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",
     # "//tensorflow:internal",
     # "//tensorflow_models:__subpackages__",

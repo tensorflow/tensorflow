@@ -616,16 +616,17 @@ PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
   return std::make_pair(std::move(raw_buffer), std::move(buffer_promise_cb));
 }
 
-void PjRtStreamExecutorClient::WaitForAllocation(
+absl::Status PjRtStreamExecutorClient::WaitForAllocation(
     se::Stream* stream, const CommonPjRtRawBuffer& raw_buffer) {
-  auto event =
+  TF_ASSIGN_OR_RETURN(
+      auto event,
       tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(&raw_buffer)
           ->device_buffer()
-          ->GetDefinitionEvent(async_work_runner(), /*nullptr_if_past=*/true);
-  CHECK_OK(event.status());
-  if (*event) {
-    (*event)->WaitForEventOnStream(stream);
+          ->GetDefinitionEvent(async_work_runner(), /*nullptr_if_past=*/true));
+  if (event) {
+    event->WaitForEventOnStream(stream);
   }
+  return absl::OkStatus();
 }
 
 bool PjRtStreamExecutorClient::IsOnCpu(PjRtMemorySpace* memory_space) {
@@ -669,7 +670,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
 
   auto* copy_stream = local_device->host_to_device_stream();
 
-  WaitForAllocation(copy_stream, *raw_buffer);
+  TF_RETURN_IF_ERROR(WaitForAllocation(copy_stream, *raw_buffer));
   auto definition_event = tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
       BufferSequencingEvent::Create(async_work_runner()));
 
@@ -887,7 +888,7 @@ PjRtStreamExecutorClient::LinearizeInto(
   auto* copy_stream = local_device->host_to_device_stream();
   BufferSequencingEventRef event =
       BufferSequencingEvent::Create(async_work_runner());
-  WaitForAllocation(copy_stream, *raw_buffer);
+  TF_RETURN_IF_ERROR(WaitForAllocation(copy_stream, *raw_buffer));
   auto on_device_shape = device_shape;
 
   TransferManager* transfer_manager = client()->backend().transfer_manager();
