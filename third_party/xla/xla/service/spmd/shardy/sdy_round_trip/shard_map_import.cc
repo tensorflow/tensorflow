@@ -179,21 +179,6 @@ class SdyRoundTripShardMapImportPass
     mlir::IRRewriter rewriter(module);
     llvm::SmallDenseSet<StringRef> manualComputationCalleeNames;
 
-    // Clone multiple calls to the same function.
-    module->walk([&](CallOp op) {
-      if (!op.getCallee().contains(kManualComputationFuncName)) {
-        return;
-      }
-      if (manualComputationCalleeNames.insert(op.getCallee()).second) {
-        return;
-      }
-      // TODO(b/446881697): Clone just the body on demand like in
-      // shardy/stablehlo_round_trip/shard_map_import.cc.
-      FuncOp funcOp = symbolTable.lookup<FuncOp>(op.getCallee()).clone();
-      op.setCallee(symbolTable.insert(funcOp));
-      manualComputationCalleeNames.insert(funcOp.getName());
-    });
-
     mlir::CallGraph callGraph(module);
     llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
     for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
