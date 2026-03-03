@@ -40,6 +40,7 @@ package(
         # xprof depends on this package
         "//third_party/xprof:__subpackages__",
         "//tensorflow/python/profiler/internal:__pkg__",
+        "//platforms/xla/util:__subpackages__",
     ]),
     licenses = ["notice"],
 )
@@ -179,22 +180,10 @@ cc_library(
 cc_library(
     name = "cell_reader",
     testonly = 1,
-    hdrs = ["cell_reader.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cell_reader-inl",
-        ":collected_metrics",
-        ":metric_def",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-cc_library(
-    name = "cell_reader-inl",
-    testonly = 1,
     srcs = ["cell_reader-inl.cc"],
-    hdrs = ["cell_reader-inl.h"],
-    #visibility = ["//visibility:private"],
+    hdrs = ["cell_reader.h"],
+    textual_hdrs = ["cell_reader-inl.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":collected_metrics",
         ":collection_registry",
@@ -203,6 +192,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
