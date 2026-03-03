@@ -41,10 +41,7 @@ restarting the job, then checking again.
 
 ## Network Analysis
 
-MegaScale also provides a Colab notebook to help analyze network performance
-using an XProf trace.
-
-TODO: Upload network analysis colab and link to it here.
+MegaScale also provides a Colab [notebook](https://github.com/openxla/xla/blob/main/xla/megascale/tools/network_analysis_oss.ipynb) to help analyze network performance using an XProf trace.
 
 ### Collective Slack Too Small
 
