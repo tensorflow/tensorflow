@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 * Support for Python 3.9 has been removed starting with TF 2.21.
+* The TensorBoard (TB) dependency has been removed starting with TF 2.21.
 
 ### Major Features and Improvements
 
