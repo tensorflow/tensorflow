@@ -26,6 +26,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"
@@ -255,11 +257,16 @@ static absl::StatusOr<std::unique_ptr<MemcpyState>> MemcpyInitialize() {
   return std::make_unique<MemcpyState>();
 }
 
-static absl::Status Memcpy(se::Stream* stream, MemcpyState* state,
-                           MemcpyState* device_state, ffi::AnyBuffer src,
+static absl::Status Memcpy(se::Stream* stream,
+                           const xla::gpu::CollectiveParams* collective_params,
+                           const xla::gpu::CollectiveMemory* collective_memory,
+                           MemcpyState* state, MemcpyState* device_state,
+                           ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
   EXPECT_NE(state, nullptr);
   EXPECT_NE(device_state, nullptr);
+  EXPECT_NE(collective_params, nullptr);
+  EXPECT_NE(collective_memory, nullptr);
   se::DeviceAddressBase dst_mem = dst->device_memory();
   se::DeviceAddressBase src_mem = src.device_memory();
   return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
@@ -274,8 +281,10 @@ XLA_FFI_DEFINE_HANDLER(kMemcpyInitialize, MemcpyInitialize,
 XLA_FFI_DEFINE_HANDLER(kMemcpyExecute, Memcpy,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
-                           .Ctx<ffi::State<MemcpyState>>()
+                           .Ctx<ffi::CollectiveParams>()
+                           .Ctx<ffi::CollectiveMemory>()
                            .Ctx<ffi::Initialized<MemcpyState>>()
+                           .Ctx<ffi::State<MemcpyState>>()
                            .Arg<ffi::AnyBuffer>()   // src
                            .Ret<ffi::AnyBuffer>(),  // dst
                        {ffi::Traits::kCmdBufferCompatible});

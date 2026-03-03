@@ -243,6 +243,8 @@ xla_test(
         "//xla:literal_util",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu:ffi",
+        "//xla/backends/gpu/runtime:collective_memory",
+        "//xla/backends/gpu/runtime:collective_params",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
