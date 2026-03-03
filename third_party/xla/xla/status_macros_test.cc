@@ -156,7 +156,7 @@ TEST(StatusMacros, ReturnIfErrorOnError) {
 TEST(StatusMacros, AssignOrReturnSuccessfully) {
   absl::Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
-    EXPECT_EQ(value, 42);
+    EXPECT_EQ(value, 43);
     return absl::OkStatus();
   }();
   EXPECT_IS_OK(status);
