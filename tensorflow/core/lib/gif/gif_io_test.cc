@@ -260,5 +260,79 @@ TEST(GifTest, TransparentIndexOutsideColorTable) {
 }
 
 }  // namespace
+
+TEST(GifTest, TruncatedGifs) {
+  Env* env = Env::Default();
+  std::string gif;
+  const std::string testdata_path = kTestData;
+
+  // Test 1: Multiframe GIF, last frame truncated.
+  // "scan.gif" has 12 frames.
+  ReadFileToStringOrDie(env, testdata_path + "scan.gif", &gif);
+
+  // Truncate aggressively to cut into the last frame's data.
+  // We need to be careful not to truncate ALL frames.
+  ASSERT_GT(gif.size(), 1000);
+  std::string truncated_scan =
+      gif.substr(0, gif.size() - 50);  // Truncate last part
+
+  std::unique_ptr<uint8_t[]> imgdata;
+  std::string error_string;
+  int nframes = 0;
+
+  auto allocator = [&](int frame_cnt, int width, int height,
+                       int channels) -> uint8_t* {
+    nframes = frame_cnt;
+    return new uint8_t[frame_cnt * height * width * channels];
+  };
+
+  imgdata.reset(gif::Decode(truncated_scan.data(), truncated_scan.size(),
+                            allocator, &error_string));
+
+  // With the fix, we should get less than 12 frames (or however many are
+  // valid), but NOT nullptr. Without the fix, this would return nullptr because
+  // DGifSlurp returns error.
+  ASSERT_NE(imgdata, nullptr)
+      << "Failed to decode truncated scan.gif: " << error_string;
+  // We expect fewer than 12 frames, but at least 1.
+  ASSERT_GT(nframes, 0);
+  ASSERT_LT(nframes, 12);
+  // Error string should indicate partial failure.
+  EXPECT_NE(error_string.find("failed to slurp gif file"), std::string::npos);
+}
+
+TEST(GifTest, MissingEndOfFileMarker) {
+  Env* env = Env::Default();
+  string gif;
+  const string testdata_path = kTestData;
+  ReadFileToStringOrDie(env, testdata_path + "lena.gif", &gif);
+
+  // Remove the last byte (GIF terminator ';')
+  string truncated_gif = gif.substr(0, gif.size() - 1);
+
+  std::unique_ptr<uint8[]> imgdata;
+  string error_string;
+  int nframes;
+  imgdata.reset(gif::Decode(
+      truncated_gif.data(), truncated_gif.size(),
+      [&](int frame_cnt, int width, int height, int channels) -> uint8* {
+        nframes = frame_cnt;
+        return new uint8[frame_cnt * height * width * channels];
+      },
+      &error_string));
+
+  // The decode should succeed despite the missing terminator, because the image
+  // data is intact. Before fix, D_GIF_ERR_EOF_TOO_SOON causes failure. After
+  // fix, we expect a warning (error_string set) but successful decode (imgdata
+  // valid).
+
+  // Check that we got valid image data.
+  ASSERT_NE(imgdata, nullptr);
+  ASSERT_EQ(nframes, 1);
+  // error_string will contain "failed to slurp gif file" but that's expected
+  // for truncated files.
+  ASSERT_THAT(error_string, ::testing::HasSubstr("failed to slurp gif file"));
+}
+
 }  // namespace gif
 }  // namespace tensorflow
