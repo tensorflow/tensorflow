@@ -24,13 +24,14 @@ class CollectionRegistryTestAccess;
 }  // namespace tensorflow
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
-#include "tsl/platform/platform.h"  // IWYU pragma: keep
+#include "tsl/platform/platform.h"
 // clang-format on
 
 // We use a null implementation for mobile platforms.
 #ifdef IS_MOBILE_PLATFORM
 
 #include <functional>
+#include <map>
 #include <memory>
 
 #include "xla/tsl/lib/monitoring/metric_def.h"
@@ -101,25 +102,22 @@ class CollectionRegistry {
 }  // namespace tsl
 #else  // !defined(IS_MOBILE_PLATFORM)
 
-#include <array>
-#include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/macros.h"
+#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
+#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace monitoring {
@@ -186,7 +184,7 @@ class MetricCollectorGetter {
   // metric_def.
   template <MetricKind metric_kind, typename Value, int NumLabels>
   MetricCollector<metric_kind, Value, NumLabels> Get(
-      const MetricDef<metric_kind, Value, NumLabels>* metric_def);
+      const MetricDef<metric_kind, Value, NumLabels>* const metric_def);
 
  private:
   friend class internal::Collector;
@@ -239,11 +237,11 @@ class CollectionRegistry {
   std::unique_ptr<RegistrationHandle> Register(
       const AbstractMetricDef* metric_def,
       const CollectionFunction& collection_function)
-      ABSL_LOCKS_EXCLUDED(mu_) ABSL_MUST_USE_RESULT;
+      TF_LOCKS_EXCLUDED(mu_) TF_MUST_USE_RESULT;
 
   // Options for collecting metrics.
   struct CollectMetricsOptions {
-    CollectMetricsOptions() = default;
+    CollectMetricsOptions() {}
     bool collect_metric_descriptors = true;
   };
   // Goes through all the registered metrics, collects their definitions
@@ -261,7 +259,7 @@ class CollectionRegistry {
   // Unregisters the metric from this registry. This is private because the
   // public interface provides a Registration handle which automatically calls
   // this upon destruction.
-  void Unregister(const AbstractMetricDef* metric_def) ABSL_LOCKS_EXCLUDED(mu_);
+  void Unregister(const AbstractMetricDef* metric_def) TF_LOCKS_EXCLUDED(mu_);
 
   // TF environment, mainly used for timestamping.
   Env* const env_;
@@ -274,8 +272,7 @@ class CollectionRegistry {
     CollectionFunction collection_function;
     uint64_t registration_time_millis;
   };
-  absl::flat_hash_map<absl::string_view, CollectionInfo> registry_
-      ABSL_GUARDED_BY(mu_);
+  std::map<absl::string_view, CollectionInfo> registry_ TF_GUARDED_BY(mu_);
 
   CollectionRegistry(const CollectionRegistry&) = delete;
   void operator=(const CollectionRegistry&) = delete;
@@ -386,12 +383,12 @@ class Collector {
   MetricCollector<metric_kind, Value, NumLabels> GetMetricCollector(
       const MetricDef<metric_kind, Value, NumLabels>* const metric_def,
       const uint64_t registration_time_millis,
-      internal::Collector* const collector) ABSL_LOCKS_EXCLUDED(mu_) {
+      internal::Collector* const collector) TF_LOCKS_EXCLUDED(mu_) {
     auto* const point_set = [&]() {
       absl::MutexLock l(mu_);
       return collected_metrics_->point_set_map
           .insert(std::make_pair(std::string(metric_def->name()),
-                                 std::make_unique<PointSet>()))
+                                 std::unique_ptr<PointSet>(new PointSet())))
           .first->second.get();
     }();
     return MetricCollector<metric_kind, Value, NumLabels>(
@@ -400,18 +397,18 @@ class Collector {
 
   uint64_t collection_time_millis() const { return collection_time_millis_; }
 
-  void CollectMetricDescriptor(const AbstractMetricDef* metric_def)
-      ABSL_LOCKS_EXCLUDED(mu_);
+  void CollectMetricDescriptor(const AbstractMetricDef* const metric_def)
+      TF_LOCKS_EXCLUDED(mu_);
 
   void CollectMetricValues(
       const CollectionRegistry::CollectionInfo& collection_info);
 
   std::unique_ptr<CollectedMetrics> ConsumeCollectedMetrics()
-      ABSL_LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable absl::Mutex mu_;
-  std::unique_ptr<CollectedMetrics> collected_metrics_ ABSL_GUARDED_BY(mu_);
+  std::unique_ptr<CollectedMetrics> collected_metrics_ TF_GUARDED_BY(mu_);
   const uint64_t collection_time_millis_;
 
   Collector(const Collector&) = delete;
@@ -426,8 +423,8 @@ class Collector {
 // collection function was registered, while the end timestamp will be set to
 // the collection time.
 template <MetricKind kind>
-void WriteTimestamps(uint64_t registration_time_millis,
-                     uint64_t collection_time_millis, Point* point);
+void WriteTimestamps(const uint64_t registration_time_millis,
+                     const uint64_t collection_time_millis, Point* const point);
 
 template <>
 inline void WriteTimestamps<MetricKind::kGauge>(

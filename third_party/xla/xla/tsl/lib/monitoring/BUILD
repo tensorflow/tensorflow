@@ -49,17 +49,15 @@ cc_library(
     hdrs = ["counter.h"],
     deps = [
         ":collection_registry",
-        ":label_array_utils",
         ":metric_def",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -70,16 +68,13 @@ cc_library(
     ],
     deps = [
         ":collection_registry",
-        ":label_array_utils",
         ":metric_def",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -88,12 +83,11 @@ cc_library(
     hdrs = ["counter_gauge.h"],
     deps = [
         ":collection_registry",
-        ":label_array_utils",
         ":metric_def",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -113,16 +107,17 @@ cc_library(
     hdrs = ["sampler.h"],
     deps = [
         ":collection_registry",
-        ":label_array_utils",
         ":metric_def",
         "//xla/tsl/lib/histogram",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status",
+        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -137,22 +132,14 @@ cc_library(
 )
 
 cc_library(
-    name = "label_array_utils",
-    hdrs = ["label_array_utils.h"],
-    deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-    ],
-)
-
-cc_library(
     name = "metric_def",
     hdrs = ["metric_def.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":types",
+        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
-        "@com_google_absl//absl/strings:string_view",
+        "@tsl//tsl/platform:stringpiece",
     ],
 )
 
@@ -168,12 +155,12 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
+        "@tsl//tsl/platform:stringpiece",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -246,18 +233,16 @@ cc_library(
     hdrs = ["percentile_sampler.h"],
     deps = [
         ":collection_registry",
-        ":label_array_utils",
         ":metric_def",
         ":types",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 

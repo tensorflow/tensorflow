@@ -15,15 +15,12 @@ limitations under the License.
 
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 
-#include <memory>
-#include <string>
-#include <utility>
-
-#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/types.h"
+#include "tsl/platform/stringpiece.h"
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
@@ -36,10 +33,9 @@ namespace monitoring {
 namespace internal {
 
 void Collector::CollectMetricValues(
-    const CollectionRegistry::CollectionInfo& collection_info) {
-  collection_info.collection_function(
-      MetricCollectorGetter(this, collection_info.metric_def,
-                            collection_info.registration_time_millis));
+    const CollectionRegistry::CollectionInfo& info) {
+  info.collection_function(MetricCollectorGetter(
+      this, info.metric_def, info.registration_time_millis));
 }
 
 std::unique_ptr<CollectedMetrics> Collector::ConsumeCollectedMetrics() {
@@ -52,8 +48,9 @@ void Collector::CollectMetricDescriptor(
   auto* const metric_descriptor = [&]() {
     absl::MutexLock l(mu_);
     return collected_metrics_->metric_descriptor_map
-        .insert(std::make_pair(std::string(metric_def->name()),
-                               std::make_unique<MetricDescriptor>()))
+        .insert(std::make_pair(
+            std::string(metric_def->name()),
+            std::unique_ptr<MetricDescriptor>(new MetricDescriptor())))
         .first->second.get();
   }();
   metric_descriptor->name = std::string(metric_def->name());
@@ -101,7 +98,8 @@ CollectionRegistry::Register(const AbstractMetricDef* const metric_def,
       {metric_def->name(),
        {metric_def, collection_function, env_->NowMicros() / 1000}});
 
-  return std::make_unique<RegistrationHandle>(this, metric_def);
+  return std::unique_ptr<RegistrationHandle>(
+      new RegistrationHandle(this, metric_def));
 }
 
 void CollectionRegistry::Unregister(const AbstractMetricDef* const metric_def) {
@@ -114,16 +112,12 @@ std::unique_ptr<CollectedMetrics> CollectionRegistry::CollectMetrics(
   internal::Collector collector(env_->NowMicros() / 1000);
 
   absl::MutexLock l(mu_);
-  // Though `registry_` doesn't itself have a deterministic iteration order,
-  // `CollectMetricDescriptor` inserts each metric into an ordered container,
-  // implicitly sorting the metrics in the process. This loop's result is
-  // therefore deterministic.
-  for (const auto& [unused_name, collection_info] : registry_) {  // NOLINT
+  for (const auto& registration : registry_) {
     if (options.collect_metric_descriptors) {
-      collector.CollectMetricDescriptor(collection_info.metric_def);
+      collector.CollectMetricDescriptor(registration.second.metric_def);
     }
 
-    collector.CollectMetricValues(collection_info);
+    collector.CollectMetricValues(registration.second /* collection_info */);
   }
   return collector.ConsumeCollectedMetrics();
 }
