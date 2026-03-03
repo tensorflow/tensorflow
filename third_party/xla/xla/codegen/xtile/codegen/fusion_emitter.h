@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_
 #define XLA_CODEGEN_XTILE_CODEGEN_FUSION_EMITTER_H_
 
+#include <optional>
+
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -28,6 +30,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla::xtile {
 
@@ -40,11 +43,14 @@ namespace xla::xtile {
 // mlir_context: The MLIR context to use.
 // opaque_args_types: The types of the opaque arguments to the function, e.x.
 // arguments for collectives in XLA:GPU.
+// gpu_cc: When set, used check for supported data types (e.g. FNUZ on ROCm),
+// Omit otherwise.
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const SymbolicTileAnalysis& symbolic_tile_analysis, const Tiling& tiling,
     mlir::MLIRContext& mlir_context,
-    absl::Span<mlir::Type> opaque_args_types = {});
+    absl::Span<mlir::Type> opaque_args_types = {},
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc = {});
 
 }  // namespace xla::xtile
 
