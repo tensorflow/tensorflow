@@ -84,7 +84,7 @@ absl::StatusOr<se::DeviceAddressHandle> AllocateMemory(
       executor,
       executor->Allocate(
           size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
-  if (local_buffer_alloc.memory().is_null()) {
+  if (local_buffer_alloc.address().is_null()) {
     return absl::InternalError(absl::StrFormat(
         "Failed to allocate %s for all-reduce.", debug_buffer_name));
   }
@@ -303,8 +303,8 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
       // correct state after use, so we don't need to zero out after
       // initialization.
       TF_RETURN_IF_ERROR(params.executor->SynchronousMemZero(
-          memory_state->signal_buffers_handle.memory_ptr(),
-          memory_state->signal_buffers_handle.memory().size()));
+          memory_state->signal_buffers_handle.address_ptr(),
+          memory_state->signal_buffers_handle.address().size()));
       // Create a kernel for execution.
       std::unique_ptr<se::Kernel> kernel = nullptr;
       if (!kernel_name_.empty()) {
