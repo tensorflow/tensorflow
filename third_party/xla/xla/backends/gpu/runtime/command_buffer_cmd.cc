@@ -1367,6 +1367,11 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
                 ffi::InvokeContext::GpuContext{
                     stream,
                     execute_params.buffer_allocations->memory_allocator(),
+                    execute_params.collective_params,
+                    /*collective_clique_requests=*/nullptr,
+                    /*collective_memory_requests=*/nullptr,
+                    /*collective_cliques=*/nullptr,
+                    /*collective_memory=*/execute_params.collective_memory,
                 },
                 ffi::InvokeContext::StateContext{
                     /*instantiate=*/execution_state_.get(),
