@@ -46,7 +46,7 @@ namespace {
 absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     const HloModule& hlo_module, std::unique_ptr<Thunk> thunk,
     const std::string& path) {
-  std::vector<std::unique_ptr<Thunk>> sequence;
+  ThunkSequence sequence;
   sequence.emplace_back(std::move(thunk));
 
   absl::flat_hash_set<BufferAllocation::Slice> processed;

@@ -335,7 +335,7 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
 
   auto memset_thunk =
       std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 84, slice_a);
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(memset_thunk));
   auto seq_thunks =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
@@ -394,7 +394,7 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
 
   auto memset_thunk =
       std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 84, slice_a);
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(memset_thunk));
   auto seq_thunks =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
@@ -1613,7 +1613,7 @@ TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
   TF_ASSERT_OK_AND_ASSIGN(
       CommandExecutor executor,
       CommandExecutor::Create(std::move(commands), serialize));
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.emplace_back(
       std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 42, slice_a));
   CommandBufferThunk thunk(

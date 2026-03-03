@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_pass.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/thunk_proto_deserialization.h"
 #include "xla/client/executable_build_options.h"
@@ -250,7 +251,7 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
 
   if (hlo_module && DumpingEnabledForHloModule(*hlo_module)) {
     ThunkMetadataListProto metadata_list_proto =
-        GetMetadataListProtoFromThunkGraph(*root_thunk);
+        GetMetadataListProtoFromThunkGraph(root_thunk->executor().thunks());
     DumpPerModuleProtobufToFile(*hlo_module, metadata_list_proto, debug_options,
                                 "thunk_metadata");
   }
@@ -437,9 +438,10 @@ absl::Status ExecuteThunksImpl(
   int32_t progress_tracking_n =
       debug_options ? debug_options->xla_gpu_execution_progress_tracking() : 0;
 
-  std::optional<SequentialThunk::ScopedProgressTracker> tracker;
+  std::optional<ThunkExecutor::ScopedProgressTracker> tracker;
   if (progress_tracking_n > 0) {
-    ASSIGN_OR_RETURN(tracker, InstallProgressTracker(executor, thunk_sequence));
+    ASSIGN_OR_RETURN(
+        tracker, InstallProgressTracker(executor, thunk_sequence.executor()));
   }
 
   // Maybe add a watch guard for this execution.

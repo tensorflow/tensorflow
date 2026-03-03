@@ -178,7 +178,7 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
   auto fake_thunk = std::make_unique<FakeThunk>(
       Thunk::ThunkInfo(), Thunk::BufferUses{BufferUse::Read(slice, arg_shape)});
   Thunk* fake_thunk_ptr = fake_thunk.get();
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
@@ -224,7 +224,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
           BufferUse::Scratch(slice_scratch, arg_shape),
       });
   Thunk* fake_thunk_ptr = fake_thunk.get();
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
@@ -243,7 +243,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
   //    3. BuffersDebugChecksumThunk (checksum output buffers)
   // ]
   // 3. CustomCallThunk (buffer debug log dump)
-  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
       new_thunks,
       ElementsAre(
@@ -309,7 +309,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
       Thunk::ThunkInfo(), ShapedSlice{condition_slice, condition_shape},
       std::move(branch_thunks));
   const Thunk* const conditional_thunk_ptr = conditional_thunk.get();
-  std::vector<std::unique_ptr<Thunk>> while_body_thunks;
+  ThunkSequence while_body_thunks;
   while_body_thunks.push_back(std::move(while_body_fake_thunk));
   while_body_thunks.push_back(std::move(conditional_thunk));
   auto while_thunk = std::make_unique<WhileThunk>(
@@ -385,7 +385,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   //    ]
   // 3. CustomCallThunk (buffer debug log dump)
 
-  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
       new_thunks,
       ElementsAre(
@@ -509,7 +509,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
           BufferUse::Scratch(slice_scratch, arg_shape),
       });
   Thunk* fake_thunk_ptr = fake_thunk.get();
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
   auto root_thunk =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
@@ -526,7 +526,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   //    1. FakeThunk
   //    2. BuffersDebugFloatCheckThunk (float check output buffers)
   // 3. CustomCallThunk (buffer debug log dump)
-  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(new_thunks, SizeIs(3));
   EXPECT_EQ(new_thunks[0]->kind(), Thunk::Kind::kCustomCall);
   EXPECT_EQ(new_thunks[1]->kind(), Thunk::Kind::kSequential);
@@ -542,7 +542,7 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   EXPECT_EQ(buffer_debug_dump_thunk.target_name(),
             "xla_gpu_buffer_debug_float_check");
 
-  const std::vector<std::unique_ptr<Thunk>>& sub_thunks =
+  const ThunkSequence& sub_thunks =
       static_cast<const SequentialThunk&>(*new_thunks[1]).thunks();
   EXPECT_THAT(sub_thunks, SizeIs(2));
   EXPECT_THAT(sub_thunks[0], Pointer(fake_thunk_ptr));
@@ -576,7 +576,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
   Thunk::ThunkInfo fake_thunk_info;
   fake_thunk_info.thunk_id = kTestThunkId;
 
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::make_unique<FakeThunk>(
       fake_thunk_info,
       Thunk::BufferUses{
@@ -601,7 +601,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
   // 1. SequentialThunk
   //    1. FakeThunk
   //    2. CustomCall (buffer saver)
-  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
       new_thunks,
       ElementsAre(IsSequentialThunkWith(ElementsAre(
@@ -637,7 +637,7 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
       Thunk::BufferUses{BufferUse::Read(slice2_io, slice_shape)});
   Thunk* fake_thunk1_ptr = fake_thunk1.get();
   Thunk* fake_thunk2_ptr = fake_thunk2.get();
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
   auto root_thunk =
@@ -657,7 +657,7 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
   //    2. FakeThunk2
   //    3. BuffersDebugChecksumThunk (checksum output buffers)
   // 4. CustomCallThunk (buffer debug log dump)
-  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
       new_thunks,
       ElementsAre(
@@ -709,7 +709,7 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
   Thunk* fake_thunk1_ptr = fake_thunk1.get();
   Thunk* fake_thunk2_ptr = fake_thunk2.get();
   Thunk* fake_thunk3_ptr = fake_thunk3.get();
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
   thunks.push_back(std::move(fake_thunk3));
@@ -736,7 +736,7 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
   // ]
   // 3. FakeThunk3 (not instrumented)
   // 4. CustomCallThunk (buffer debug log dump)
-  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
       new_thunks,
       ElementsAre(
@@ -800,7 +800,7 @@ TEST_F(ThunkBufferDebugPassTest,
   Thunk* fake_thunk1_ptr = fake_thunk1.get();
   Thunk* fake_thunk2_ptr = fake_thunk2.get();
   Thunk* fake_thunk3_ptr = fake_thunk3.get();
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
   thunks.push_back(std::move(fake_thunk3));
@@ -822,7 +822,7 @@ TEST_F(ThunkBufferDebugPassTest,
   //    2. FakeThunk3
   //    3. BuffersDebugChecksumThunk (checksum output buffers)
   // 5. CustomCallThunk (buffer debug log dump)
-  const std::vector<std::unique_ptr<Thunk>>& new_thunks = root_thunk->thunks();
+  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
       new_thunks,
       ElementsAre(

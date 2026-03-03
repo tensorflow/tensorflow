@@ -37,8 +37,7 @@ namespace gpu {
 class CollectiveGroupThunk : public Thunk {
  public:
   CollectiveGroupThunk(
-      ThunkInfo thunk_info, Thunk::Kind kind,
-      std::vector<std::unique_ptr<Thunk>> thunks,
+      ThunkInfo thunk_info, Thunk::Kind kind, ThunkSequence thunks,
       std::shared_ptr<CollectiveThunk::AsyncEvents> async_events =
           std::make_shared<CollectiveThunk::AsyncEvents>());
   absl::Status Prepare(const PrepareParams& params) override;

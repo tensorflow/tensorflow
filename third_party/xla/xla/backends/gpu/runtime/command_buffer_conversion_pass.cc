@@ -393,7 +393,7 @@ GetSynchronizationMode(
 
 absl::StatusOr<std::unique_ptr<CommandBufferThunk>>
 ConvertThunksToCommandBuffer(
-    std::vector<std::unique_ptr<Thunk>> thunks_to_convert,
+    ThunkSequence thunks_to_convert,
     CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
@@ -431,8 +431,8 @@ ConvertThunksToCommandBuffer(
 absl::Status FlushCommandBuffer(
     CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options,
-    std::vector<std::unique_ptr<Thunk>>& current_command_buffer_thunks,
-    std::vector<std::unique_ptr<Thunk>>& new_thunks, bool& changed) {
+    ThunkSequence& current_command_buffer_thunks, ThunkSequence& new_thunks,
+    bool& changed) {
   // If we don't have enough thunks to form a command buffer, we just add
   // them to the new thunks sequence as is.
   if (current_command_buffer_thunks.size() <
@@ -495,8 +495,8 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
 
   bool changed = false;
 
-  std::vector<std::unique_ptr<Thunk>> current_command_buffer_thunks;
-  std::vector<std::unique_ptr<Thunk>> new_thunks;
+  ThunkSequence current_command_buffer_thunks;
+  ThunkSequence new_thunks;
 
   auto flush_command_buffer = [&]() -> absl::Status {
     return FlushCommandBuffer(synchronization_mode, debug_options,

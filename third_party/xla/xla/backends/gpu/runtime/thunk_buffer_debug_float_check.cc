@@ -166,7 +166,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
   VLOG(1) << "Wrapping thunk " << thunk->thunk_info().thunk_id
           << " with float check thunk due to presence of buffers: "
           << buffers_to_check.size();
-  std::vector<std::unique_ptr<Thunk>> thunk_and_checks;
+  ThunkSequence thunk_and_checks;
   Thunk* thunk_ptr = thunk.get();
   thunk_and_checks.push_back(std::move(thunk));
   auto buffer_debug_float_check_thunk =

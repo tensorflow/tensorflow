@@ -609,11 +609,13 @@ ThunkMetadataProto Thunk::ToMetadataProto() const {
 }
 
 ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
-    const Thunk& root_thunk) {
+    const ThunkSequence& thunk_sequence) {
   ThunkMetadataListProto metadata_list_proto;
-  root_thunk.Walk([&metadata_list_proto](const Thunk* thunk) {
-    *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
-  });
+  for (auto& thunk : thunk_sequence) {
+    thunk->Walk([&metadata_list_proto](const Thunk* thunk) {
+      *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
+    });
+  }
   return metadata_list_proto;
 }
 

@@ -41,8 +41,7 @@ namespace xla {
 namespace gpu {
 
 CollectiveGroupThunk::CollectiveGroupThunk(
-    ThunkInfo thunk_info, Thunk::Kind kind,
-    std::vector<std::unique_ptr<Thunk>> thunks,
+    ThunkInfo thunk_info, Thunk::Kind kind, ThunkSequence thunks,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
     : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {
   for (auto& thunk : thunks) {

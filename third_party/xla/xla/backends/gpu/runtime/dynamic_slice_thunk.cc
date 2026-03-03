@@ -708,7 +708,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
         BufferAllocation::FromProto(fake_allocation_proto));
   }
 
-  std::vector<std::unique_ptr<Thunk>> embedded_thunks;
+  ThunkSequence embedded_thunks;
   for (const auto& thunk_proto : proto.embedded_thunk().thunks()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> embedded_thunk,
                         deserializer(thunk_proto, fake_allocations));

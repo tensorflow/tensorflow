@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/backends/gpu/runtime/thunk_executor.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -20,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
@@ -39,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
-#include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -104,20 +106,19 @@ TEST(SequentialThunkProgressTrackerTest, TrackProgress) {
   outer_sequence.push_back(std::make_unique<SequentialThunk>(
       ThunkInfo("nested"), std::move(nested_sequence)));
 
-  SequentialThunk outer(Thunk::ThunkInfo{}, std::move(outer_sequence));
+  ThunkExecutor executor(std::move(outer_sequence));
+  ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedProgressTracker tracker,
+                       InstallProgressTracker(stream_executor, executor));
 
-  ASSERT_OK_AND_ASSIGN(SequentialThunk::ScopedProgressTracker tracker,
-                       InstallProgressTracker(stream_executor, outer));
-
-  static constexpr size_t kTotal = 2 + kLength * 2;  // 2 nested sequences
-  EXPECT_EQ(tracker.num_thunks(), kTotal);
+  static constexpr size_t kTotal = 1 + kLength * 2;  // 1 nested sequences
+  ASSERT_EQ(tracker.num_thunks(), kTotal);
 
   // Before execution, no thunks have been launched so both queries return
   // empty results (thunks with InfinitePast executed time are filtered out).
   EXPECT_THAT(tracker.LastCompletedThunks(5), testing::IsEmpty());
   EXPECT_THAT(tracker.FirstPendingThunks(5), testing::IsEmpty());
 
-  ASSERT_OK(outer.ExecuteOnStream(params));
+  ASSERT_OK(executor.ExecuteOnStream(params));
 
   // After synchronization all executed thunks must be completed.
   ASSERT_OK(stream->BlockHostUntilDone());

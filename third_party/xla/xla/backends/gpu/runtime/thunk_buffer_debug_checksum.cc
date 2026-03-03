@@ -105,7 +105,7 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
     return thunk;
   }
 
-  std::vector<std::unique_ptr<Thunk>> thunk_and_checks;
+  ThunkSequence thunk_and_checks;
   if (!buffers_to_check_before.empty()) {
     auto buffer_debug_before_thunk =
         std::make_unique<BuffersDebugChecksumThunk>(

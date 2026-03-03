@@ -446,10 +446,6 @@ TEST(GpuExecutableTest, DumpsMetadataListProto) {
 
   EXPECT_THAT(metadata_list_proto, EqualsProto(R"pb(
                 thunk_metadata {
-                  thunk_info { thunk_id: 789 }
-                  thunk_kind: "kSequential"
-                }
-                thunk_metadata {
                   thunk_info { thunk_id: 123 }
                   thunk_kind: "kKernel"
                 }

@@ -45,8 +45,8 @@ class TestPass : public ThunkPassInterface {
                            const HloModule* hlo_module,
                            const se::DeviceDescription& device_info,
                            ThunkPassBufferAllocator& /*allocator*/) override {
-    root_thunk->thunks().push_back(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>()));
+    root_thunk->thunks().push_back(
+        std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
     return true;
   }
 };
@@ -62,8 +62,8 @@ TEST(ThunkPassPipelineTest, PipelineRunsPass) {
   ThunkPassPipeline pipeline("test-pipeline");
   pipeline.AddPass(std::make_unique<TestPass>());
 
-  auto root_thunk = std::make_unique<SequentialThunk>(
-      Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>());
+  auto root_thunk =
+      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence());
   DebugOptions debug_options;
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
