@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/Support/MathExtras.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/primitive_util.h"
@@ -70,7 +71,7 @@ static constexpr auto kAddBF16Tags =
 static constexpr auto kOrPredTags = TagRegistry<bool, ReductionKind::MAX>{};
 // Heuristic maxima after some benchmarking.
 static constexpr int64_t kMaxBlocksPerGrid = 24;
-static constexpr int64_t kMaxThreadsPerBlock = 512;
+static constexpr uint64_t kMaxThreadsPerBlock = 512;
 static constexpr int64_t kWarpSize = 32;
 
 template <typename TagType>
@@ -191,7 +192,10 @@ LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
   // Maximum number of threads such that each thread has elements to process.
   const int64_t total_threads =
       RoundUpTo(elements_per_rank / se::gpu::kNumElementsPerThread, kWarpSize);
-  threads_per_block = std::min(kMaxThreadsPerBlock, total_threads);
+  // Triton expects power of 2 for threads_per_block / threads_per_warp.
+  // Since threads_per_warp is 32 for all NVIDIA GPUs, power of 2 is guaranteed.
+  threads_per_block =
+      std::min(kMaxThreadsPerBlock, llvm::PowerOf2Ceil(total_threads));
   blocks_per_grid = std::min(kMaxBlocksPerGrid,
                              CeilOfRatio(total_threads, threads_per_block));
   return LaunchDimensions(blocks_per_grid, threads_per_block);

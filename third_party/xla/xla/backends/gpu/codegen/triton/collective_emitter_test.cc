@@ -215,6 +215,15 @@ INSTANTIATE_TEST_SUITE_P(
                             num_ctas: 1
                             num_stages: 1
                             output_tiles { sizes: 256 sizes: 16 }
+                          )pb"},
+                      AllReduceBlockLevelConfigTestCase{
+                          /* .test_name= */ "F32_1040",
+                          /* .shape= */ ShapeUtil::MakeShape(F32, {1040}),
+                          /* .expected_proto= */ R"pb(
+                            num_warps: 16
+                            num_ctas: 1
+                            num_stages: 1
+                            output_tiles { sizes: 2048 }
                           )pb"}),
     [](const ::testing::TestParamInfo<
         CollectiveBlockLevelConfigParameterizedTest::ParamType>& info) {
