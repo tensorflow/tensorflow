@@ -180,6 +180,7 @@ cc_library(
     deps = [
         "//xla/pjrt:pjrt_abi_version",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -198,6 +199,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_default_version_accessor",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:serdes_week_4_old_version_accessor",
         "//xla/tsl/platform:errors",
@@ -399,6 +401,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":basic_string_array",
+        ":executable_metadata_proto_cc",
         ":pjrt_attribute_map_util",
         ":pjrt_dtype",
         ":pjrt_layout",
