@@ -25,7 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -84,7 +84,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
-#include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
@@ -110,6 +109,7 @@ limitations under the License.
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/service/llvm_ir/error_handler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -340,13 +340,21 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
   VLOG(3) << fusion->fused_instructions_computation()->ToString(
       HloPrintOptions::ShortParsable());
 
+  const auto error_handler = [fusion]() -> void {
+    LOG(ERROR) << "Fusion: "
+               << fusion->ToString(HloPrintOptions::ShortParsable());
+    LOG(ERROR) << "Computation: "
+               << fusion->fused_instructions_computation()->ToString(
+                      HloPrintOptions::ShortParsable());
+  };
+
   // Compile Triton kernel to LLVM.
   const HloModule* hlo_module = fusion->GetModule();
-  return CompileTritonToLLVM(fn_name, *hlo_module, device_info,
-                             block_level_parameters, triton_module.get(),
-                             target_triple, data_layout, llvm_context,
-                             mlir_context,
-                             /*is_xla_fusion=*/true);
+  return CompileTritonToLLVM(
+      fn_name, *hlo_module, device_info, block_level_parameters,
+      triton_module.get(), target_triple, data_layout, llvm_context,
+      mlir_context,
+      /*is_xla_fusion=*/true, /*emit_kernel=*/true, error_handler);
 }
 
 absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
@@ -355,7 +363,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const BlockLevelParameters& block_level_parameters,
     mlir::ModuleOp triton_module, const llvm::Triple& target_triple,
     const std::string& data_layout, llvm::LLVMContext& llvm_context,
-    mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel) {
+    mlir::MLIRContext& mlir_context, bool is_xla_fusion, bool emit_kernel,
+    absl::AnyInvocable<void()> error_handler) {
   const auto& gpu_cc = device_info.gpu_compute_capability();
   TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
   std::string arch_name = gpu_cc.ToString();
@@ -394,7 +403,19 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   // llvm::Linker::linkModules() segfaults if we don't strip locations.
   pm.addPass(mlir::createStripDebugInfoPass());
 
+  // Register handler to capture LLVM-level fatal errors
+  XlaScopedFatalErrorHandler fatal_error_handler([&error_handler](
+                                                     absl::string_view reason) {
+    LOG(ERROR) << "LLVM Fatal Error while compiling Triton kernel: " << reason;
+    if (error_handler) {
+      error_handler();
+    }
+  });
+
   if (failed(pm.run(triton_module))) {
+    if (error_handler) {
+      error_handler();
+    }
     return Internal("Failed to compile Triton kernel.");
   }
 
