@@ -258,23 +258,22 @@ class Command {
 
   // Type predicate for `Walk` callback.
   template <typename F, typename Arg>
-  using Walker = std::enable_if_t<std::is_invocable_v<F, Arg> ||
-                                  std::is_invocable_r_v<absl::Status, F, Arg>>;
+  using WalkCallback =
+      std::enable_if_t<std::is_invocable_v<F, Arg> ||
+                       std::is_invocable_r_v<absl::Status, F, Arg>>;
 
   // Recursively walks all the commands nested inside *this one and calls
-  // the user provided callback on every command. Always starts traversal with
+  // the user-provided callback on every command. Always starts traversal with
   // *this.
-  template <typename F, Walker<F, Command*>* = nullptr>
+  template <typename F, WalkCallback<F, Command*>* = nullptr>
   std::invoke_result_t<F, Command*> Walk(F&& callback);
-  template <typename F, Walker<F, const Command*>* = nullptr>
+  template <typename F, WalkCallback<F, const Command*>* = nullptr>
   std::invoke_result_t<F, const Command*> Walk(F&& callback) const;
 
  protected:
   // Walks all nested commands and calls `callback` for them.
-  virtual absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Command*)> callback) {
-    return absl::OkStatus();
-  }
+  using Walker = absl::FunctionRef<absl::Status(Command*)>;
+  virtual absl::Status WalkNested(Walker callback) { return absl::OkStatus(); }
 
  private:
   std::string profile_annotation_;
@@ -301,7 +300,7 @@ inline bool IsCollectiveCommand(const Command& cmd) {
 // Command templates implementation.
 //===----------------------------------------------------------------------===//
 
-template <typename F, Command::Walker<F, Command*>*>
+template <typename F, Command::WalkCallback<F, Command*>*>
 std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
   if constexpr (std::is_void_v<std::invoke_result_t<F, Command*>>) {
     Walk([f = std::forward<F>(callback)](Command* command) {
@@ -313,7 +312,7 @@ std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
   }
 }
 
-template <typename F, Command::Walker<F, const Command*>*>
+template <typename F, Command::WalkCallback<F, const Command*>*>
 std::invoke_result_t<F, const Command*> Command::Walk(F&& callback) const {
   return const_cast<Command*>(this)->Walk(  // NOLINT
       std::forward<F>(callback));

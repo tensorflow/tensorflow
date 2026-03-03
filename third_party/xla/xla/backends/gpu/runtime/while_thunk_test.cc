@@ -380,7 +380,7 @@ TEST(WhileThunkTest, FromProto) {
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
-TEST(WhileThunkTest, TransformAllNestedThunks) {
+TEST(WhileThunkTest, TransformNested) {
   BufferAllocation::Slice slice;
   auto condition_thunk_sequence =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence());
@@ -393,7 +393,7 @@ TEST(WhileThunkTest, TransformAllNestedThunks) {
       /*body_thunk_sequence_=*/std::move(body_thunk_sequence),
       /*trip_count=*/3);
 
-  TF_EXPECT_OK(while_thunk->TransformAllNestedThunks([](auto) {
+  TF_EXPECT_OK(while_thunk->TransformNested([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
   }));
 

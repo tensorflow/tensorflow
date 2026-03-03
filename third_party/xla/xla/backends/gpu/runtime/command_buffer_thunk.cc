@@ -380,8 +380,7 @@ void CommandBufferThunk::EvictCommandBuffers() {
   }
 }
 
-absl::Status CommandBufferThunk::WalkNested(
-    absl::FunctionRef<absl::Status(Thunk*)> callback) {
+absl::Status CommandBufferThunk::WalkNested(Walker callback) {
   if (thunks_ != nullptr) {
     TF_RETURN_IF_ERROR(thunks_->Walk(callback));
   }

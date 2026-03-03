@@ -186,26 +186,21 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status WhileThunk::WalkNested(
-    absl::FunctionRef<absl::Status(Thunk*)> callback) {
+absl::Status WhileThunk::WalkNested(Walker callback) {
   TF_RETURN_IF_ERROR(condition_thunk_sequence_->Walk(callback));
   return body_thunk_sequence_->Walk(callback);
 }
 
-absl::Status WhileThunk::TransformAllNestedThunks(
-    absl::FunctionRef<
-        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-        fn) {
-  TF_RETURN_IF_ERROR(condition_thunk_sequence_->TransformAllNestedThunks(fn));
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
-                      fn(std::move(condition_thunk_sequence_)));
+absl::Status WhileThunk::TransformNested(Transformer callback) {
+  TF_RETURN_IF_ERROR(condition_thunk_sequence_->TransformNested(callback));
+  TF_ASSIGN_OR_RETURN(auto thunk,
+                      callback(std::move(condition_thunk_sequence_)));
   condition_thunk_sequence_ = SequentialThunk::FromThunk(std::move(thunk));
 
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->TransformAllNestedThunks(fn));
-
-  TF_ASSIGN_OR_RETURN(thunk, fn(std::move(body_thunk_sequence_)));
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->TransformNested(callback));
+  TF_ASSIGN_OR_RETURN(thunk, callback(std::move(body_thunk_sequence_)));
   body_thunk_sequence_ = SequentialThunk::FromThunk(std::move(thunk));
+
   return absl::OkStatus();
 }
 

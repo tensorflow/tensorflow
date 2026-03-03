@@ -101,7 +101,7 @@ absl::Status RunDebugSaverInserter(SequentialThunk& root_thunk,
     return absl::OkStatus();
   }
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  return root_thunk.TransformAllNestedThunks(
+  return root_thunk.TransformNested(
       [&](std::unique_ptr<Thunk> thunk)
           -> absl::StatusOr<std::unique_ptr<Thunk>> {
         if (thunk_filter(*thunk) == InstrumentAction::kSkip) {

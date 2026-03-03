@@ -164,21 +164,17 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status SequentialThunk::WalkNested(
-    absl::FunctionRef<absl::Status(Thunk*)> callback) {
+absl::Status SequentialThunk::WalkNested(Walker callback) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     TF_RETURN_IF_ERROR(thunk->Walk(callback));
   }
   return absl::OkStatus();
 }
 
-absl::Status SequentialThunk::TransformAllNestedThunks(
-    absl::FunctionRef<
-        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-        fn) {
+absl::Status SequentialThunk::TransformNested(Transformer callback) {
   for (std::unique_ptr<Thunk>& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
-    TF_ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
+    TF_RETURN_IF_ERROR(thunk->TransformNested(callback));
+    TF_ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
   }
   return absl::OkStatus();
 }

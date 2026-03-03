@@ -57,13 +57,8 @@ class SequentialThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Thunk*)> callback) override;
-
-  absl::Status TransformAllNestedThunks(
-      absl::FunctionRef<
-          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-          fn) override;
+  absl::Status WalkNested(Walker callback) override;
+  absl::Status TransformNested(Transformer callback) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
