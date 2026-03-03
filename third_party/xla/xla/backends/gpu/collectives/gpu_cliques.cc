@@ -420,6 +420,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     }
 
     if (!created_comms.ok()) {
+      LOG(ERROR) << "Failed to initialize GPU clique " << clique_key << ": "
+                 << created_comms.status();
       return created_comms.status();
     }
 

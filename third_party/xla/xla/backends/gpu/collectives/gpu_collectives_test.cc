@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/core/collectives/clique_id.h"
 #include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/core/collectives/symmetric_memory.h"
@@ -67,6 +68,16 @@ static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
     TF_ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
   }
   return executors;
+}
+
+static std::vector<std::unique_ptr<GpuCommunicator>> DowncastComms(
+    std::vector<std::unique_ptr<Communicator>> comms) {
+  std::vector<std::unique_ptr<GpuCommunicator>> gpu_comms;
+  gpu_comms.reserve(comms.size());
+  for (size_t i = 0; i < comms.size(); ++i) {
+    gpu_comms.emplace_back(dynamic_cast<GpuCommunicator*>(comms[i].release()));
+  }
+  return gpu_comms;
 }
 
 // Creates communicators for the given executors.
@@ -107,14 +118,49 @@ CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
                       collectives->CreateCommunicatorsWithCancel(
                           clique_key, clique_ids, device_ranks, config,
                           std::make_shared<CancellationToken>()));
-  CHECK_EQ(comms.size(), executors.size());
+  return DowncastComms(std::move(comms));
+}
 
-  std::vector<std::unique_ptr<GpuCommunicator>> gpu_comms;
-  gpu_comms.reserve(comms.size());
-  for (size_t i = 0; i < comms.size(); ++i) {
-    gpu_comms.emplace_back(dynamic_cast<GpuCommunicator*>(comms[i].release()));
+// Splits communicators from existing ones.
+static absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
+SplitCommunicators(
+    absl::Span<se::StreamExecutor* const> executors,
+    absl::Span<const std::unique_ptr<GpuCommunicator>> existing_comms,
+    std::vector<GlobalDeviceId> device_ids, bool blocking = true) {
+  CHECK_EQ(executors.size(), device_ids.size());
+
+  GpuCollectives* collectives = GpuCollectives::Default("GPU");
+
+  std::vector<GpuCollectives::Device> devices;
+  devices.reserve(executors.size());
+  for (se::StreamExecutor* executor : executors) {
+    devices.emplace_back(executor);
   }
-  return gpu_comms;
+
+  std::vector<GpuCollectives::DeviceRank> device_ranks;
+  device_ranks.reserve(devices.size());
+  for (size_t i = 0; i < devices.size(); ++i) {
+    device_ranks.emplace_back(&devices[i], RankId(i));
+  }
+
+  GpuCollectives::Config config;
+  config.blocking_communicators = blocking;
+  config.async_execution = !blocking;
+
+  // We do a fake split by splitting with the same color and keys corresponding
+  // to ranks. This tests the very basics of the GpuCollectives implementation.
+  std::vector<RankId> keys(existing_comms.size());
+  std::vector<const Communicator*> existing_comms_ptrs(existing_comms.size());
+  for (size_t i = 0; i < existing_comms.size(); ++i) {
+    keys[i] = RankId(i);
+    existing_comms_ptrs[i] = existing_comms[i].get();
+  }
+
+  TF_ASSIGN_OR_RETURN(auto comms,
+                      collectives->SplitCommunicatorsWithCancel(
+                          existing_comms_ptrs, /*color=*/0, keys, config,
+                          device_ranks, std::make_shared<CancellationToken>()));
+  return DowncastComms(std::move(comms));
 }
 
 // Creates memory allocators that allocate physical memory in the collective
@@ -196,6 +242,30 @@ TEST(GpuCollectivesTest, CreateWithMultipleIds) {
   EXPECT_TRUE(comms[1]->platform_comm().handle);
 }
 
+TEST(GpuCollectivesTest, SplitCommunicators) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1},
+                                                       /*blocking=*/true));
+
+  EXPECT_TRUE(comms[0]->platform_comm().handle);
+  EXPECT_TRUE(comms[1]->platform_comm().handle);
+
+  ASSERT_OK_AND_ASSIGN(
+      auto split_comms,
+      SplitCommunicators(executors, comms, {kD0, kD1}, /*blocking=*/true));
+  EXPECT_TRUE(split_comms[0]->platform_comm().handle);
+  EXPECT_TRUE(split_comms[1]->platform_comm().handle);
+}
+
 TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   ASSERT_OK_AND_ASSIGN(se::Platform * platform,
                        se::PlatformManager::PlatformWithName("CUDA"));
@@ -213,7 +283,7 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   EXPECT_TRUE(comms[1]->platform_comm().handle);
 
   if (!absl::c_all_of(comms, [](auto& c) { return c->SupportsDeviceComm(); })) {
-    GTEST_SKIP() << "GPU communicators do not suppoort symmetric memory";
+    GTEST_SKIP() << "GPU communicators do not support symmetric memory";
   }
 
   ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
@@ -288,7 +358,7 @@ TEST(GpuCollectivesTest, CreateDeviceComm) {
   ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
 
   if (!comms[0]->SupportsDeviceComm() || !comms[1]->SupportsDeviceComm()) {
-    GTEST_SKIP() << "GPU communicators do not suppoort device-initiated comms";
+    GTEST_SKIP() << "GPU communicators do not support device-initiated comms";
   }
 
   GpuDeviceCommunicator::Requirements reqs;
