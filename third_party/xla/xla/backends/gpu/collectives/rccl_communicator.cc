@@ -82,12 +82,15 @@ static size_t ToNcclCount(PrimitiveType dtype, size_t count) {
   return primitive_util::IsComplexType(dtype) ? count * 2 : count;
 }
 
-static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
-                                                     bool is_reduction_op) {
+static absl::StatusOr<ncclDataType_t> ToNcclDataType(
+    PrimitiveType dtype, bool is_reduction_op,
+    se::RocmComputeCapability rocm_cc) {
   switch (dtype) {
-    case S8:
     case F8E5M2:
+      return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e5m2 : ncclInt8;
     case F8E4M3FN:
+      return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e4m3 : ncclInt8;
+    case S8:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
     case F8E8M0FNU:
@@ -554,7 +557,11 @@ absl::Status RcclCommunicator::LaunchAllReduce(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, reduction_kind, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/true,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllReduce(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
@@ -582,7 +589,11 @@ absl::Status RcclCommunicator::LaunchBroadcast(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, root.value(), comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
@@ -610,7 +621,11 @@ absl::Status RcclCommunicator::LaunchReduceScatter(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, reduction_kind, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/true,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclReduceScatter(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
@@ -637,7 +652,11 @@ absl::Status RcclCommunicator::LaunchAllGather(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
@@ -684,7 +703,11 @@ absl::Status RcclCommunicator::LaunchAllToAll(
         send_buffers.size(), num_ranks);
   }
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < send_buffers.size(); ++i) {
@@ -725,7 +748,11 @@ absl::Status RcclCommunicator::LaunchCollectivePermute(
       source_rank ? absl::StrCat(source_rank->value()) : "<empty>",
       absl::StrJoin(target_ranks, ", ", rank_formatter), count, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   // Short-circuit if there is no source or target rank.
   if (!source_rank && target_ranks.empty()) {
@@ -767,7 +794,11 @@ absl::Status RcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
@@ -794,7 +825,11 @@ absl::Status RcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,

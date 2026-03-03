@@ -592,6 +592,7 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tsl/concurrency:executor",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",

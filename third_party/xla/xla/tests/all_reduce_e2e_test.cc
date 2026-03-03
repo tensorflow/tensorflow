@@ -91,9 +91,10 @@ class AllReduceTestNoParams : public CollectiveOpsWithFlagsBase {
 
   void SetUp() override {
     CollectiveOpsE2ETestBase::SetUp();
-    if (!IsAmpereAndHigher()) {
-      GTEST_SKIP() << "Test requires Ampere or newer architecture since it's "
-                      "using triton.";
+    // Check for Triton support: Ampere+ for CUDA, any supported GPU for ROCm
+    if (Capability().IsCuda() && !IsAmpereAndHigher()) {
+      GTEST_SKIP() << "Test requires Ampere or newer architecture for CUDA "
+                      "since it's using triton.";
     }
   }
 };
@@ -426,9 +427,17 @@ TEST_P(AllReduceTest, F32_8GPUs_2ReplicasPerGroup) {
 
 // FP8 vs FP16 training step comparison.
 TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
-  if (!Capability().IsCuda() ||
-      !Capability().cuda_compute_capability()->IsAtLeast(9, 0)) {
-    GTEST_SKIP() << "FP8 requires CUDA with Hopper or newer architecture.";
+  bool has_fp8_support = false;
+  if (Capability().IsCuda()) {
+    has_fp8_support = Capability().cuda_compute_capability()->IsAtLeast(9, 0);
+  } else if (Capability().IsRocm()) {
+    has_fp8_support =
+        Capability().rocm_compute_capability()->has_ocp_fp8_support();
+  }
+
+  if (!has_fp8_support) {
+    GTEST_SKIP() << "FP8 requires GPU with OCP FP8 support (CUDA Hopper+ or "
+                    "ROCm MI350/gfx12xx with ROCm 7.0+).";
   }
 
   // FP16 baseline
@@ -550,11 +559,18 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
   EXPECT_GT(max_abs_diff, 1e-3f);
 }
 
-// Test that FP8 all-reduce fails on pre-Hopper GPUs.
-TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_FailsOnPreHopper) {
+// Test that FP8 all-reduce fails on pre-Hopper CUDA GPUs without FP8 support.
+// Note: ROCm is skipped because it has a fallback to ncclInt8 for all GPUs.
+TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_FailsOnUnsupportedGPUs) {
+  if (Capability().IsRocm()) {
+    GTEST_SKIP()
+        << "Test is CUDA-only. ROCm has fallback to ncclInt8 for all GPUs.";
+  }
+
   if (!Capability().IsCuda()) {
     GTEST_SKIP() << "Test requires CUDA.";
   }
+
   if (Capability().cuda_compute_capability()->IsAtLeast(9, 0)) {
     GTEST_SKIP() << "Test requires pre-Hopper GPU (compute capability < 9.0).";
   }
