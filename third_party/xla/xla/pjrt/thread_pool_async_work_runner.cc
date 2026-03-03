@@ -57,7 +57,15 @@ class ThreadPoolAsyncWorkRunner : public AsyncWorkRunner {
   explicit ThreadPoolAsyncWorkRunner(tsl::thread::ThreadPool* pool)
       : pool_(pool) {}
 
-  void Execute(Task task) final { EnqueueWork(pool_, std::move(task)); }
+  void Schedule(absl::AnyInvocable<void() &&> work) override {
+    EnqueueWork(pool_, std::move(work));
+  }
+
+  void ScheduleWhenReady(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
+      absl::AnyInvocable<void() &&> work) override {
+    EnqueueWorkWhenReady(pool_, values, std::move(work));
+  }
 
  private:
   tsl::thread::ThreadPool* pool_;
@@ -69,12 +77,21 @@ class UnboundedAsyncWorkRunner : public AsyncWorkRunner {
                            const tsl::ThreadOptions& thread_options)
       : queue_(tsl::Env::Default(), name, thread_options) {}
 
-  void Execute(Task task) final {
-    // UnboundedWorkQueue expects std::function that must be copyable, so we are
-    // forced to do a little bit of manual memory management here.
-    queue_.Schedule([ptr = new Task(std::move(task))] {
-      std::move (*ptr)();
-      delete ptr;
+  void Schedule(absl::AnyInvocable<void() &&> work) override {
+    // `tsl::UnboundedWorkQueue` expects std::function that must be copyable, so
+    // we are forced to do a little bit of manual memory management here.
+    queue_.Schedule(
+        [ptr = new absl::AnyInvocable<void() &&>(std::move(work))]() {
+          std::move (*ptr)();
+          delete ptr;
+        });
+  }
+
+  void ScheduleWhenReady(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
+      absl::AnyInvocable<void() &&> work) override {
+    tsl::RunWhenReady(values, [this, work = std::move(work)]() mutable {
+      Schedule([work = std::move(work)]() mutable { std::move(work)(); });
     });
   }
 

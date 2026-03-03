@@ -765,6 +765,10 @@ pywrap_tensorflow_macro(
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         ":_pywrap_library_dependency_enforcer",
+    ] + select({
+        "//tools/cc_target_os:gce": [],
+        "//conditions:default": ["//learning/brain/google/data/service/data_transfer_protocols/void"],
+    }) + [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",

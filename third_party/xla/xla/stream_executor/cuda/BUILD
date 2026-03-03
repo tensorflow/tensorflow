@@ -2188,6 +2188,7 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/cuda",  # buildcleaner: keep
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",

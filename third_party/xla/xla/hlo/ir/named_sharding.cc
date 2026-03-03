@@ -249,7 +249,7 @@ std::string NamedSharding::ToString(bool include_metadata) const {
     return result;
   }
 
-  if (IsMaximal()) {
+  if (IsSingleDevice()) {
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
