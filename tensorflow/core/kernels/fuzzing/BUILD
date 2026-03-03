@@ -11,9 +11,11 @@ cc_library(
     name = "fuzz_session",
     hdrs = ["fuzz_session.h"],
     deps = [
+        "//tensorflow/cc:array_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
