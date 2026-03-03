@@ -484,18 +484,18 @@ absl::StatusOr<PjRtDevice*> PjRtCApiClient::LookupAddressableDevice(
 }
 
 void PjRtCApiClient::UpdateGlobalProcessInfo(
-    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
-  auto translate_state = [](tensorflow::CoordinatedTaskState state) {
+    absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) {
+  auto translate_state = [](xla::coordination::CoordinatedTaskState state) {
     switch (state) {
-      case tensorflow::CoordinatedTaskState::TASKSTATE_UNSPECIFIED:
+      case xla::coordination::CoordinatedTaskState::TASKSTATE_UNSPECIFIED:
         return PJRT_ProcessState_kUnspecified;
-      case tensorflow::CoordinatedTaskState::TASKSTATE_UNINITIALIZED:
+      case xla::coordination::CoordinatedTaskState::TASKSTATE_UNINITIALIZED:
         return PJRT_ProcessState_kUninitialized;
-      case tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED:
+      case xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED:
         return PJRT_ProcessState_kDisconnected;
-      case tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED:
+      case xla::coordination::CoordinatedTaskState::TASKSTATE_CONNECTED:
         return PJRT_ProcessState_kConnected;
-      case tensorflow::CoordinatedTaskState::TASKSTATE_ERROR:
+      case xla::coordination::CoordinatedTaskState::TASKSTATE_ERROR:
         return PJRT_ProcessState_kError;
       default:
         LOG(FATAL) << "Unexpected CoordinatedTaskState " << state;
@@ -504,7 +504,7 @@ void PjRtCApiClient::UpdateGlobalProcessInfo(
   };
 
   std::vector<PJRT_ProcessInfo> process_infos;
-  for (const tensorflow::CoordinatedTaskStateInfo& info : infos) {
+  for (const xla::coordination::CoordinatedTaskStateInfo& info : infos) {
     PJRT_ProcessInfo process_info;
     process_info.struct_size = PJRT_ProcessInfo_STRUCT_SIZE;
     process_info.task_id = info.task().task_id();

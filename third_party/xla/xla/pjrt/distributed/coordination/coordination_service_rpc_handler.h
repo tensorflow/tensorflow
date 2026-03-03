@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace xla {
@@ -32,65 +32,72 @@ class CoordinationServiceRpcHandler {
 
   void SetServiceInstance(CoordinationService* service);
 
-  void RegisterTaskAsync(const tensorflow::RegisterTaskRequest* request,
-                         tensorflow::RegisterTaskResponse* response,
+  void RegisterTaskAsync(const xla::coordination::RegisterTaskRequest* request,
+                         xla::coordination::RegisterTaskResponse* response,
                          tsl::StatusCallback done);
 
-  void HeartbeatAsync(const tensorflow::HeartbeatRequest* request,
-                      tensorflow::HeartbeatResponse* response,
+  void HeartbeatAsync(const xla::coordination::HeartbeatRequest* request,
+                      xla::coordination::HeartbeatResponse* response,
                       tsl::StatusCallback done);
 
-  void ShutdownTaskAsync(const tensorflow::ShutdownTaskRequest* request,
-                         tensorflow::ShutdownTaskResponse* response,
+  void ShutdownTaskAsync(const xla::coordination::ShutdownTaskRequest* request,
+                         xla::coordination::ShutdownTaskResponse* response,
                          tsl::StatusCallback done);
 
-  void ResetTaskAsync(const tensorflow::ResetTaskRequest* request,
-                      tensorflow::ResetTaskResponse* response,
+  void ResetTaskAsync(const xla::coordination::ResetTaskRequest* request,
+                      xla::coordination::ResetTaskResponse* response,
                       tsl::StatusCallback done);
 
-  void WatchJobStateAsync(const tensorflow::WatchJobStateRequest* request,
-                          tensorflow::WatchJobStateResponse* response,
-                          tsl::StatusCallback done);
+  void WatchJobStateAsync(
+      const xla::coordination::WatchJobStateRequest* request,
+      xla::coordination::WatchJobStateResponse* response,
+      tsl::StatusCallback done);
 
-  void InsertKeyValueAsync(const tensorflow::InsertKeyValueRequest* request,
-                           tensorflow::InsertKeyValueResponse* response,
-                           tsl::StatusCallback done);
+  void InsertKeyValueAsync(
+      const xla::coordination::InsertKeyValueRequest* request,
+      xla::coordination::InsertKeyValueResponse* response,
+      tsl::StatusCallback done);
 
-  void GetKeyValueAsync(const tensorflow::GetKeyValueRequest* request,
-                        tensorflow::GetKeyValueResponse* response,
+  void GetKeyValueAsync(const xla::coordination::GetKeyValueRequest* request,
+                        xla::coordination::GetKeyValueResponse* response,
                         tsl::StatusCallback done);
 
   void IncrementKeyValueAsync(
-      const tensorflow::IncrementKeyValueRequest* request,
-      tensorflow::IncrementKeyValueResponse* response,
+      const xla::coordination::IncrementKeyValueRequest* request,
+      xla::coordination::IncrementKeyValueResponse* response,
       tsl::StatusCallback done);
 
-  void TryGetKeyValueAsync(const tensorflow::TryGetKeyValueRequest* request,
-                           tensorflow::TryGetKeyValueResponse* response,
-                           tsl::StatusCallback done);
+  void TryGetKeyValueAsync(
+      const xla::coordination::TryGetKeyValueRequest* request,
+      xla::coordination::TryGetKeyValueResponse* response,
+      tsl::StatusCallback done);
 
-  void GetKeyValueDirAsync(const tensorflow::GetKeyValueDirRequest* request,
-                           tensorflow::GetKeyValueDirResponse* response,
-                           tsl::StatusCallback done);
+  void GetKeyValueDirAsync(
+      const xla::coordination::GetKeyValueDirRequest* request,
+      xla::coordination::GetKeyValueDirResponse* response,
+      tsl::StatusCallback done);
 
-  void DeleteKeyValueAsync(const tensorflow::DeleteKeyValueRequest* request,
-                           tensorflow::DeleteKeyValueResponse* response,
-                           tsl::StatusCallback done);
+  void DeleteKeyValueAsync(
+      const xla::coordination::DeleteKeyValueRequest* request,
+      xla::coordination::DeleteKeyValueResponse* response,
+      tsl::StatusCallback done);
 
-  void BarrierAsync(const tensorflow::BarrierRequest* request,
-                    tensorflow::BarrierResponse* response,
+  void BarrierAsync(const xla::coordination::BarrierRequest* request,
+                    xla::coordination::BarrierResponse* response,
                     tsl::StatusCallback done);
 
-  void CancelBarrierAsync(const tensorflow::CancelBarrierRequest* request,
-                          tensorflow::CancelBarrierResponse* response,
-                          tsl::StatusCallback done);
+  void CancelBarrierAsync(
+      const xla::coordination::CancelBarrierRequest* request,
+      xla::coordination::CancelBarrierResponse* response,
+      tsl::StatusCallback done);
 
-  void GetAliveTasksAsync(const tensorflow::GetAliveTasksRequest* request,
-                          tensorflow::GetAliveTasksResponse* response,
-                          tsl::StatusCallback done);
+  void GetAliveTasksAsync(
+      const xla::coordination::GetAliveTasksRequest* request,
+      xla::coordination::GetAliveTasksResponse* response,
+      tsl::StatusCallback done);
 
-  void PollForErrorAsync(const tensorflow::PollForErrorRequest* request,
-                         tensorflow::PollForErrorResponse* response,
+  void PollForErrorAsync(const xla::coordination::PollForErrorRequest* request,
+                         xla::coordination::PollForErrorResponse* response,
                          tsl::StatusCallback done);
 
  private:

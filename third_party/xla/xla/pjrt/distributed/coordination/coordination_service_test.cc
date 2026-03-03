@@ -35,15 +35,14 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
-#include "xla/pjrt/distributed/coordination/test_device.pb.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "tsl/platform/random.h"
 
@@ -61,11 +60,9 @@ using ::testing::status::StatusIs;
 using ::tsl::proto_testing::EqualsProto;
 
 using tensorflow::CoordinatedJob;
-using tensorflow::CoordinatedTask;
 using tensorflow::CoordinationServiceConfig;
-using tensorflow::DeviceInfo;
-using tensorflow::KeyValueEntry;
-using xla::TestDevice;
+using xla::coordination::CoordinatedTask;
+using xla::coordination::KeyValueEntry;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
@@ -218,14 +215,6 @@ class CoordinateTwoTasksTest : public ::testing::Test {
   TestCoordinationClient client_1_;
   std::unique_ptr<CoordinationService> coord_service_;
 };
-
-// Construct fake device protos.
-TestDevice CreateTestDevice(absl::string_view name, int local_id = 0) {
-  TestDevice device;
-  device.set_name(name);
-  device.set_local_id(local_id);
-  return device;
-}
 
 TEST_F(CoordinateTwoTasksTest, TestStandaloneService) {
   EnableCoordinationService();
@@ -449,10 +438,10 @@ TEST_F(CoordinateTwoTasksTest, TestTaskRestart) {
   EXPECT_THAT(s, StatusIs(absl::StatusCode::kAborted));
 }
 
-tensorflow::CoordinatedTaskStateInfo info(
+xla::coordination::CoordinatedTaskStateInfo info(
     CoordinationService::TaskId task, IncarnationId incarnation_id,
-    tensorflow::CoordinatedTaskState state) {
-  tensorflow::CoordinatedTaskStateInfo info;
+    xla::coordination::CoordinatedTaskState state) {
+  xla::coordination::CoordinatedTaskStateInfo info;
   info.mutable_task()->set_task_id(task);
   info.set_incarnation(incarnation_id.value());
   info.set_state(state);
@@ -471,10 +460,10 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateSucceeds) {
   absl::Notification done;
   coord_service_->WatchJobState(
       std::nullopt,
-      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
                 int64_t version_number) {
-        using State = tensorflow::CoordinatedTaskState;
-        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
         want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
         want[1] = info(1, incarnation_1_, State::TASKSTATE_CONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
@@ -498,10 +487,10 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateReturnsDisconnected) {
   absl::Notification done;
   coord_service_->WatchJobState(
       std::nullopt,
-      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
                 int64_t version_number) {
-        using State = tensorflow::CoordinatedTaskState;
-        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
         want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
         want[1] = info(1, incarnation_1_, State::TASKSTATE_DISCONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
@@ -525,10 +514,10 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateReturnsNewIncarnation) {
   absl::Notification done;
   coord_service_->WatchJobState(
       std::nullopt,
-      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
                 int64_t version_number) {
-        using State = tensorflow::CoordinatedTaskState;
-        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
         want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
         want[1] = info(1, incarnation_1_ + 1, State::TASKSTATE_CONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
@@ -553,7 +542,8 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateBlocksUntilChange) {
   int64_t version_number = -1;
   coord_service_->WatchJobState(
       std::nullopt,
-      [&](std::vector<tensorflow::CoordinatedTaskStateInfo> got, int64_t v) {
+      [&](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
+          int64_t v) {
         EXPECT_THAT(v, Ge(0));
         version_number = v;
         done_1.Notify();
@@ -564,10 +554,10 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateBlocksUntilChange) {
   absl::Notification done_2;
   coord_service_->WatchJobState(
       version_number,
-      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
                 int64_t v) {
-        using State = tensorflow::CoordinatedTaskState;
-        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
         want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
         want[1] = info(1, incarnation_1_, State::TASKSTATE_DISCONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
@@ -595,10 +585,10 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateAfterTwoStateChanges) {
   int64_t version_number = -1;
   coord_service_->WatchJobState(
       std::nullopt,
-      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
                 int64_t v) {
-        using State = tensorflow::CoordinatedTaskState;
-        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
         want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
         want[1] = info(1, incarnation_1_, State::TASKSTATE_CONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
@@ -619,10 +609,10 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateAfterTwoStateChanges) {
   absl::Notification done_2;
   coord_service_->WatchJobState(
       version_number,
-      [&, this](std::vector<tensorflow::CoordinatedTaskStateInfo> got,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
                 int64_t v) {
-        using State = tensorflow::CoordinatedTaskState;
-        std::vector<tensorflow::CoordinatedTaskStateInfo> want(2);
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
         want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
         want[1] = info(1, incarnation_1_ + 1, State::TASKSTATE_CONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
