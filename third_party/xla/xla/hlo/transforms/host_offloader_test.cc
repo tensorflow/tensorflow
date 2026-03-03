@@ -4701,6 +4701,48 @@ TEST_F(HostOffloaderTest,
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(a_copy));
 }
 
+TEST_F(HostOffloaderTest, MoveToHostTuple) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  param_0 = f32[2048] parameter(0)
+  param_1 = f32[2048] parameter(1)
+  tuple = (f32[2048], f32[2048]) tuple(param_0, param_1)
+  offload_custom_call = (f32[2048], f32[2048]) custom-call(tuple), custom_call_target="MoveToHost"
+  ROOT load_custom_call = (f32[2048], f32[2048]) custom-call(offload_custom_call), custom_call_target="MoveToDevice"
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  HloInstruction* tuple;
+  HloInstruction* copy_to_host;
+  HloInstruction* copy_to_device;
+
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Copy(
+                  &copy_to_device,
+                  m::Copy(&copy_to_host, m::Tuple(&tuple, m::Op(), m::Op())))));
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {0}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(tuple->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(copy_to_host->shape(), {0}),
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(copy_to_host->shape(), {1}),
+                          Layout::kHostMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(copy_to_device->shape(), {0}),
+                          Layout::kDefaultMemorySpace);
+  TestShapeHasMemorySpace(ShapeUtil::GetSubshape(copy_to_device->shape(), {1}),
+                          Layout::kDefaultMemorySpace);
+
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 }  // namespace
 
 }  // namespace xla

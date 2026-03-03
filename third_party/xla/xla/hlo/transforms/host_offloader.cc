@@ -64,8 +64,11 @@ namespace {
 using ::xla::host_offload_utils::InstructionAndShapeIndex;
 
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
-  CHECK(shape->has_layout());
-  shape->mutable_layout()->set_memory_space(memory_space_color);
+  ShapeUtil::ForEachMutableLeafShape(
+      shape, [memory_space_color](Shape* subshape, const ShapeIndex& index) {
+        CHECK(subshape->has_layout());
+        subshape->mutable_layout()->set_memory_space(memory_space_color);
+      });
 }
 
 bool SetBuffersToMemorySpaceColor(
@@ -79,12 +82,7 @@ bool SetBuffersToMemorySpaceColor(
     Shape* shape = ShapeUtil::GetMutableSubshape(
         instr_and_shape.instruction->mutable_shape(),
         instr_and_shape.shape_index);
-    CHECK(shape->has_layout()) << "Instruction's shape has no layout: "
-                               << instr_and_shape.instruction->ToString();
-    SetMemorySpace(ShapeUtil::GetMutableSubshape(
-                       instr_and_shape.instruction->mutable_shape(),
-                       instr_and_shape.shape_index),
-                   memory_space_color);
+    SetMemorySpace(shape, memory_space_color);
     changed = true;
   }
   return changed;
