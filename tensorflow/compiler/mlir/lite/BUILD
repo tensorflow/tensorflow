@@ -587,9 +587,11 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":canonicalize_boundary_value",
+        ":canonicalize_scalar_tensor",
         ":cleanup_optimization_barrier",
         ":converter_inc",
         ":cost_estimators",
+        ":downcast_x64",
         ":elements_attr_roundtrip_pass",
         ":optimize_broadcast_like_pass",
         ":optimize_broadcast_like_pass_options",
@@ -1019,6 +1021,47 @@ cc_library(
 )
 
 cc_library(
+    name = "downcast_x64",
+    srcs = [
+        "transforms/downcast_x64_pass.cc",
+    ],
+    hdrs = [
+        "transforms/downcast_x64_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "canonicalize_scalar_tensor",
+    srcs = [
+        "transforms/canonicalize_scalar_tensor_pass.cc",
+    ],
+    hdrs = [
+        "transforms/canonicalize_scalar_tensor_pass.h",
+    ],
+    deps = [
+        ":pass",
+        ":pass_options",
+        ":tensorflow_lite_ops",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tensorflow_lite_legalize_tf_analyze_variables",
     srcs = [
         "transforms/tf_legalizations/analyze_variables_pass.cc",
@@ -1162,9 +1205,11 @@ cc_library(
     ],
     deps = [
         ":attribute_utils",
+        ":canonicalize_scalar_tensor",
         ":constant_utils",
         ":convert_type",
         ":cost_estimators",
+        ":downcast_x64",
         ":elements_attr_roundtrip_pass",
         ":fake_quant_utils",
         ":lstm_utils",
@@ -1433,6 +1478,8 @@ cc_library(
     ],
     deps = [
         "convert_type",
+        ":canonicalize_scalar_tensor",
+        ":downcast_x64",
         ":elements_attr_roundtrip_pass",
         ":op_quant_spec_getters_inc",
         ":optimize_broadcast_like_pass_options",
@@ -1988,9 +2035,11 @@ cc_library(
         "tf_tfl_passes.h",
     ],
     deps = [
+        ":canonicalize_scalar_tensor",
         ":common",
         ":converter_flags_proto_cc",
         ":converter_pass_options_setter",
+        ":downcast_x64",
         ":elements_attr_roundtrip_pass",
         ":fake_quant_utils",
         ":optimize_broadcast_like_pass",
