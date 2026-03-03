@@ -565,7 +565,7 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
   if (types.empty()) {
     // This case is for ops with 0 results, which corresponds to tuple<> in
     // which case it can have replicated or maximal sharding.
-    CHECK(hloSharding.IsReplicatedOrSingleDevice());
+    CHECK(hloSharding.IsTileMaximal());
     if (hloSharding.IsReplicated()) {
       return TensorShardingPerValueAttr::get(
           context,
@@ -584,6 +584,15 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
   CHECK_EQ(types.size(), 1);
   return TensorShardingPerValueAttr::get(
       context, convertToSdyShardingAttr(hloSharding, types[0], context));
+}
+
+StringRef getOriginalFuncName(FuncOp funcOp) {
+  if (auto originalFuncName =
+          funcOp->getAttrOfType<StringAttr>(kOriginalFuncName);
+      originalFuncName) {
+    return originalFuncName.getValue();
+  }
+  return funcOp.getName();
 }
 
 }  // namespace sdy

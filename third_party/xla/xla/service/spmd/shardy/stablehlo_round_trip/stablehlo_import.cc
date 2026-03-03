@@ -590,7 +590,7 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
   pm.addPass(createStablehloRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm);
+  addCommonPostImportPasses(pm, /*enableNativeNonFlatSupport=*/false);
 }
 
 void registerStablehloImportPipeline() {

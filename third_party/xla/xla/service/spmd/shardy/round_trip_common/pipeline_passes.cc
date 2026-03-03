@@ -54,10 +54,11 @@ void addCommonPreImportPasses(mlir::OpPassManager& pm,
   }
 }
 
-void addCommonPostImportPasses(mlir::OpPassManager& pm) {
+void addCommonPostImportPasses(mlir::OpPassManager& pm,
+                               bool enableNativeNonFlatSupport) {
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
-  pm.addPass(createImportFuncCallsPass());
+  pm.addPass(createImportFuncCallsPass(enableNativeNonFlatSupport));
 }
 
 }  // namespace sdy
