@@ -112,20 +112,22 @@ tsl::Future<LoadedExecutableRef> PjRtCompiler::CompileAndLoad(
         "PjRtCompiler must be constructed with a Client to call "
         "CompileAndLoad.");
   }
-  const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
-  if (xla_program == nullptr) {
+  if (!llvm::isa_and_nonnull<HloProgram>(program.get())) {
     return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
   }
+  std::unique_ptr<HloProgram> xla_program =
+      llvm::cast<HloProgram>(std::move(program));
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));
   TF_RETURN_IF_ERROR(
       TranslateDeviceIds(client_, xla_compile_options->compile_options));
-  auto compile = [client = client_, program = std::move(program), xla_program,
+  auto compile = [client = client_, program = std::move(program),
+                  xla_program = std::move(xla_program),
                   xla_compile_options = std::move(xla_compile_options),
                   user_context = UserContextScope::current()]() mutable {
     UserContextScope scope(std::move(user_context));
     return PjRtLoadedExecutable::Create(
-        client, xla_program->mlir_module(),
+        client, std::move(*xla_program).ToMaybeOwningMlirModule(),
         std::move(xla_compile_options->compile_options),
         std::move(xla_compile_options->loaded_host_callbacks),
         std::move(xla_compile_options->devices));
@@ -140,10 +142,11 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
-  const auto* xla_program = llvm::dyn_cast<HloProgram>(program.get());
-  if (xla_program == nullptr) {
+  if (!llvm::isa_and_nonnull<HloProgram>(program.get())) {
     return absl::InvalidArgumentError("PjRtCompiler requires an HloProgram");
   }
+  std::unique_ptr<HloProgram> xla_program =
+      llvm::cast<HloProgram>(std::move(program));
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));
   if (client_ != nullptr) {
@@ -156,16 +159,16 @@ tsl::Future<ExecutableRef> PjRtCompiler::Compile(
   if (pjrt_topology == nullptr) {
     return absl::InvalidArgumentError("PjRtCompiler requires a PjRtTopology");
   }
-  auto compile = [program = std::move(program), xla_program,
-                  xla_compile_options = std::move(xla_compile_options),
-                  pjrt_topology,
-                  user_context = UserContextScope::current()]() mutable {
-    UserContextScope scope(std::move(user_context));
-    return PjRtExecutable::Create(
-        xla_program->mlir_module(),
-        std::move(xla_compile_options->compile_options),
-        *pjrt_topology->description());
-  };
+  auto compile =
+      [program = std::move(program), xla_program = std::move(xla_program),
+       xla_compile_options = std::move(xla_compile_options), pjrt_topology,
+       user_context = UserContextScope::current()]() mutable {
+        UserContextScope scope(std::move(user_context));
+        return PjRtExecutable::Create(
+            std::move(*xla_program).ToMaybeOwningMlirModule(),
+            std::move(xla_compile_options->compile_options),
+            *pjrt_topology->description());
+      };
   if (thread_pool_.has_value()) {
     return tsl::MakeFutureOn(*thread_pool_->AsExecutor(), std::move(compile));
   }

@@ -399,24 +399,24 @@ char PjRtExecutable::ID = 0;
 char PjRtLoadedExecutable::ID = 0;
 
 absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
-    mlir::ModuleOp module, xla::CompileOptions compile_options,
+    xla::MaybeOwningMlirModule module, xla::CompileOptions compile_options,
     const xla::PjRtTopologyDescription& topology) {
   const bool is_portable = compile_options.compile_portable_executable;
 
   // We have to do process the MLIR before the compile call, since the latter
   // will use the MLIR as scratch space, or possibly even deallocate it.
-  TF_ASSIGN_OR_RETURN(std::vector<int> donatable_input_indices,
-                      GetDonatableInputIndicesFromMlirModule(module));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int> donatable_input_indices,
+      GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(
       const std::vector<xla::Shape> mlir_module_output_xla_shapes,
-      ResultShapesOfModule(module));
+      ResultShapesOfModule(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
-                      GetOutputLayoutModes(module));
+                      GetOutputLayoutModes(module.mlir_module()));
 
   TF_ASSIGN_OR_RETURN(
       auto pjrt_executable,
-      PjRtCompile(std::move(compile_options),
-                  MaybeOwningMlirModule(std::move(module)), topology,
+      PjRtCompile(std::move(compile_options), std::move(module), topology,
                   /*client=*/nullptr));
 
   TF_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
@@ -741,32 +741,32 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
 }
 
 absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
-    PjRtClient* client, mlir::ModuleOp module,
+    PjRtClient* client, xla::MaybeOwningMlirModule module,
     xla::CompileOptions compile_options,
     std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
     DeviceListRef executable_devices) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
   if (VLOG_IS_ON(3)) {
-    module.dump();
+    module.mlir_module().dump();
   }
   VLOG(3) << compile_options.ToProto()->DebugString();
 
   const bool is_portable = compile_options.compile_portable_executable;
   // We have to do process the MLIR before the compile call, since the latter
   // will use the MLIR as scratch space, or possibly even deallocate it.
-  TF_ASSIGN_OR_RETURN(std::vector<int> donatable_input_indices,
-                      GetDonatableInputIndicesFromMlirModule(module));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int> donatable_input_indices,
+      GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(
       const std::vector<xla::Shape> mlir_module_output_xla_shapes,
-      ResultShapesOfModule(module));
+      ResultShapesOfModule(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
-                      GetOutputLayoutModes(module));
+                      GetOutputLayoutModes(module.mlir_module()));
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      client->pjrt_client()->CompileAndLoad(
-          MaybeOwningMlirModule(std::move(module)),
-          std::move(compile_options)));
+      client->pjrt_client()->CompileAndLoad(std::move(module),
+                                            std::move(compile_options)));
 
   TF_ASSIGN_OR_RETURN(
       executable_devices,

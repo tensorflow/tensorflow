@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -96,7 +97,7 @@ class PjRtExecutable final
   // Creates PjRtExecutable from an MLIR module. Internally, it compiles the
   // provided MLIR module into an `xla::PjRtExecutable`.
   static absl::StatusOr<ExecutableRef> Create(
-      mlir::ModuleOp module, xla::CompileOptions compile_options,
+      xla::MaybeOwningMlirModule module, xla::CompileOptions compile_options,
       const xla::PjRtTopologyDescription& topology);
 
   // PjRtCompatibleExecutable implementation.
@@ -241,7 +242,7 @@ class PjRtLoadedExecutable final
   // that `xla::PjRtLoadedExecutable` has fixed output dtypes/shapes/shardings;
   // these properties will be computed in `Create()`.
   static absl::StatusOr<LoadedExecutableRef> Create(
-      PjRtClient* client, mlir::ModuleOp module,
+      PjRtClient* client, xla::MaybeOwningMlirModule module,
       xla::CompileOptions compile_options,
       std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks,
       DeviceListRef executable_devices);
