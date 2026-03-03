@@ -1706,11 +1706,29 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
   RecvDeviceMemoryFunction recv_device_memory =
       ConvertRecvCallbacksToRecvFunction(replica_, options);
 
+  // The choice of where we wait is arbitrary; the reason for the wait is
+  // pacing to avoid problems such as memory fragmentation and running ahead
+  // too far, not for correctness. Placing it before the executable launch
+  // allows the inputs for the next executable to be fetched even if the
+  // launch is delayed.
+  std::shared_ptr<Semaphore::ScopedReservation> compute_reservation;
+  {
+    Semaphore& compute_semaphore = device_state->compute_semaphore();
+    tsl::profiler::TraceMe traceme([&] {
+      return absl::StrFormat("ComputeSemaphoreAcquire [capacity=%d, value=%d]",
+                             compute_semaphore.capacity(),
+                             compute_semaphore.value());
+    });
+    compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
+        compute_semaphore.ScopedAcquire(1));
+  }
+
   auto launch_on_device =
       [device_state, gpu_run_options = client_->gpu_run_options(options),
        launch_id = options.launch_id, run_id = run_id_,
        context = options.context, client = client_, device = device_,
        device_assignment = device_assignment_,
+       compute_reservation = std::move(compute_reservation),
        send_device_memory = std::move(send_device_memory),
        recv_device_memory = std::move(recv_device_memory),
        inputs = std::vector<tsl::RCReference<CommonPjRtRawBuffer>>(
@@ -1759,22 +1777,6 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     }
     if (context != nullptr) {
       run_options.set_ffi_execution_context(&context->ffi_context());
-    }
-    // The choice of where we wait is arbitrary; the reason for the wait is
-    // pacing to avoid problems such as memory fragmentation and running ahead
-    // too far, not for correctness. Placing it before the executable launch
-    // allows the inputs for the next executable to be fetched even if the
-    // launch is delayed.
-    std::shared_ptr<Semaphore::ScopedReservation> compute_reservation;
-    {
-      Semaphore& compute_semaphore = device_state->compute_semaphore();
-      tsl::profiler::TraceMe traceme([&] {
-        return absl::StrFormat(
-            "ComputeSemaphoreAcquire [capacity=%d, value=%d]",
-            compute_semaphore.capacity(), compute_semaphore.value());
-      });
-      compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
-          compute_semaphore.ScopedAcquire(1));
     }
 
     absl::Status predetermined_error;
