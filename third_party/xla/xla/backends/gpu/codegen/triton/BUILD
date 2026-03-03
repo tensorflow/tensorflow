@@ -382,7 +382,6 @@ xla_test(
 
 xla_test(
     name = "fusion_emitter_int4_device_test",
-    size = "large",
     srcs = ["fusion_emitter_int4_device_test.cc"],
     backends = [
         "a100",
@@ -391,12 +390,7 @@ xla_test(
         "amdgpu_any",
     ],
     shard_count = 10,
-    tags = [
-        "large",
-        "no_mac",
-        "pjrt_migration_candidate",
-    ],
-    use_legacy_runtime = True,
+    tags = ["no_mac"],
     deps = [
         "//xla:autotuning_proto_cc",
         "//xla:error_spec",
@@ -404,13 +398,13 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/stream_executor:device_description",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
-        "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:path",
     ],
 )

@@ -23,15 +23,15 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -39,10 +39,10 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TritonTest : public GpuCodegenTest {
+class TritonTest : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     // Do not fall back to cuBLAS, we are testing Triton.
     debug_options.set_xla_gpu_cublas_fallback(false);
     // Do not autotune split-k by default, since this prevents deterministically
@@ -54,12 +54,6 @@ class TritonTest : public GpuCodegenTest {
         .set_xla_gpu_experimental_enable_subchannel_dequantisation_fusion(true);
     return debug_options;
   }
-
- protected:
-  const stream_executor::DeviceDescription& device_desc() {
-    return backend().default_stream_executor()->GetDeviceDescription();
-  }
-  mlir::MLIRContext mlir_context_;
 };
 
 // The following tests are for the channel and subchannel dequantization
@@ -138,13 +132,28 @@ TEST_F(TritonTest, FuseSubchannelDequantizationWithTranspose) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
-  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+  std::string pattern =
+      R"(
     CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(
     CHECK:    %[[broadcast:.*]] = {{.*}} broadcast(%[[transpose]])
     CHECK:    multiply({{.*}}, %[[broadcast]])
     CHECK:    ENTRY
     CHECK:    __triton_nested_gemm_fusion
-  )"));
+  )";
+  if (device_description().cuda_compute_capability().IsAmpere()) {
+    // On A100, multiply with bf16 is not supported, so we have an additional
+    // convert op that we need to match.
+    pattern =
+        R"(
+    CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(
+    CHECK:    %[[broadcast:.*]] = {{.*}} broadcast(%[[transpose]])
+    CHECK:    %[[convert:.*]] = {{.*}} convert(%[[broadcast]])
+    CHECK:    multiply({{.*}}, %[[convert]])
+    CHECK:    ENTRY
+    CHECK:    __triton_nested_gemm_fusion
+  )";
+  }
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), pattern));
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module), ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -221,6 +230,10 @@ TEST_F(TritonTest, FuseChannelDequantization) {
                           GetOptimizedModule(kHloText));
   EXPECT_TRUE(
       *RunFileCheck(module->ToString(), "CHECK: __triton_nested_gemm_fusion"));
+  // TODO(b/489371055): On Ampere we get wrong results.
+  if (device_description().cuda_compute_capability().IsAmpere()) {
+    GTEST_SKIP();
+  }
   EXPECT_TRUE(RunAndCompareNoHloPasses(
       std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
@@ -391,7 +404,7 @@ TEST_F(TritonTest, DISABLED_FuseMultiplyInEpilogue) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutInt4) {
-  if (device_desc().cuda_compute_capability().IsBlackwell()) {
+  if (device_description().cuda_compute_capability().IsBlackwell()) {
     GTEST_SKIP() << "Skipping flaky test for Blackwell GPUs (b/476375458).";
   }
   constexpr absl::string_view kHloText = R"(
@@ -408,8 +421,8 @@ TEST_F(TritonTest, NonstandardLayoutInt4) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   EXPECT_TRUE(
       *RunFileCheck(module->ToString(), "CHECK: __triton_nested_gemm_fusion"));
-  EXPECT_TRUE(RunAndCompare(std::move(module),
-                            ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 using ::testing::TestParamInfo;
@@ -623,7 +636,7 @@ TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDims) {
 }
 
 TEST_F(TritonTest, NonstandardLayoutWithManyNonContractingDimsReversedLayout) {
-  if (device_desc().cuda_compute_capability().IsBlackwell()) {
+  if (device_description().cuda_compute_capability().IsBlackwell()) {
     GTEST_SKIP() << "Skipping flaky test for Blackwell GPUs (b/476375458).";
   }
   // We cannot do triton_gemm and we use cuBLAS instead.
