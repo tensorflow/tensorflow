@@ -212,7 +212,6 @@ cc_library(
         ":collective_emitter",
         ":compilation_pipeline",
         ":lowering_util",
-        ":support",
         "//xla:autotuning_proto_cc",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -252,6 +251,7 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -290,6 +290,7 @@ cc_library(
         "@triton//:TritonDialects",
         "@triton//:TritonTransforms",
         "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:stacktrace",
     ],
 )
 
