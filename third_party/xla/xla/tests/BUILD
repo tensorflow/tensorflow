@@ -1629,13 +1629,10 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-<<<<<<< HEAD
     tags = [
+        "cuda-only",
         "test_migrated_to_hlo_runner_pjrt",
     ],
-=======
-    tags = ["cuda-only"],
->>>>>>> upstream/master
     deps = [
         ":client_library_test_runner_mixin",
         ":hlo_pjrt_interpreter_reference_mixin",

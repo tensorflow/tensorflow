@@ -531,16 +531,12 @@ cc_library(
 xla_cc_test(
     name = "gpu_test_kernels_fatbin_test",
     srcs = ["gpu_test_kernels_fatbin_test.cc"],
-<<<<<<< HEAD
-    tags = ["gpu"],
-    data = [":gpu_test_kernels_fatbin"],
-=======
     tags = [
         "gpu",
         # TODO(intel-tf): Enable this test once oneAPI fatbin is supported for :gpu_test_kernels.
         "no-oneapi",
     ],
->>>>>>> upstream/master
+    data = [":gpu_test_kernels_fatbin"],
     deps = [
         ":gpu_test_kernels_fatbin",
         "//xla/stream_executor:platform",
@@ -593,13 +589,8 @@ xla_test(
     name = "gpu_command_buffer_test",
     srcs = ["gpu_command_buffer_test.cc"],
     backends = ["gpu"],
-<<<<<<< HEAD
     # TODO(ybaturina): Re-enable once the CUDA driver version is updated in RBE.
     tags = ["manual"],
-=======
-    # TODO(intel-tf): Implement gpu command buffer for oneAPI and enable this test.
-    tags = ["no-oneapi"],
->>>>>>> upstream/master
     deps = [
         ":gpu_test_kernels",
         "//xla/service:platform_util",

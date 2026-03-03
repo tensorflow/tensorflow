@@ -2087,7 +2087,6 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
                   Contains(Property(&HloInstruction::name,
                                     StrEq("constant_source_8_user_2.remat")))));
 }
-<<<<<<< HEAD
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,
        PeakFirstRematerializationWorks) {
@@ -2340,7 +2339,5 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
   }
 }
 
-=======
->>>>>>> upstream/master
 }  // namespace
 }  // namespace xla

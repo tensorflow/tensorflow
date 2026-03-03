@@ -81,7 +81,12 @@ struct TestParams {
   int64_t num_elements;
 };
 
-<<<<<<< HEAD
+struct PtrFormatter {
+  void operator()(std::string* out, const void* ptr) const {
+    absl::StrAppend(out, absl::StrFormat("%p", ptr));
+  }
+};
+
 template <typename T>
 std::vector<T> ToVector(const Array<T>& array) {
   std::vector<T> result;
@@ -90,13 +95,6 @@ std::vector<T> ToVector(const Array<T>& array) {
       [&](absl::Span<const int64_t> indices, T val) { result.push_back(val); });
   return result;
 }
-=======
-struct PtrFormatter {
-  void operator()(std::string* out, const void* ptr) const {
-    absl::StrAppend(out, absl::StrFormat("%p", ptr));
-  }
-};
->>>>>>> upstream/master
 
 class AllReduceKernelTest : public ::testing::Test,
                             public ::testing::WithParamInterface<TestParams> {

@@ -66,14 +66,10 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool liftAndDedupMeshes,
                                    bool enableHloShardingV3) {
   addCommonPreImportPasses(pm, enableConstantImport);
-<<<<<<< HEAD
-  pm.addPass(createSdyRoundTripImportShardyAttrsPass());
+  pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
   // TODO(b/430894772): Drop the pass and handle cloning inside shard map import
   // pass.
   pm.addPass(createSdyRoundTripCloneManualComputationCallsPass());
-=======
-  pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
->>>>>>> upstream/master
   pm.addPass(createSdyRoundTripShardMapImportPass());
   addCommonPostImportPasses(pm, importFuncCalls);
   if (liftAndDedupMeshes) {

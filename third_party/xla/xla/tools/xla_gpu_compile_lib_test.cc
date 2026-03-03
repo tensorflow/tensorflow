@@ -71,13 +71,6 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
 }
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
-<<<<<<< HEAD
-  auto path = tsl::testing::XlaSrcRoot();
-  path = path.erase(path.length() - 4);
-  const std::string target_config_path =
-      tsl::io::JoinPath(path, "external/xla/xla",
-                        "backends/gpu/target_config/specs", "h100_sxm.txtpb");
-=======
   const std::string spec_file =
       test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)
           ? "mi200.txtpb"
@@ -85,7 +78,6 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
                         "backends/gpu/target_config/specs", spec_file);
->>>>>>> upstream/master
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));

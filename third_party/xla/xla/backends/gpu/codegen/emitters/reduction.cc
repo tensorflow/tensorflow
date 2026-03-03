@@ -843,12 +843,7 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis,
     : ReductionFusion(analysis, mlir_context) {
   CHECK(reduction_dimensions_.is_row_reduction);
   Vector3 shape = reduction_dimensions_.dimensions;
-<<<<<<< HEAD
-  int64_t kMinorReducedElementsPerThread = 8;
-  auto rt_ver = analysis.device_info().runtime_version();
-=======
   int64_t kMinorReducedElementsPerThread = 16;
->>>>>>> upstream/master
 
   int64_t num_threads_kept = 1;
   // Number of threads doing the reduction.
@@ -893,21 +888,6 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis,
       std::min(kMinorReducedElementsPerThread / vector_size,
                CeilOfRatio(input_shape_[2], num_threads_[1]));
 
-<<<<<<< HEAD
-    tile_sizes_per_thread_ = {shape[0], minor_reduced_tile_size, vector_size};
-    tile_sizes_per_block_ = {num_threads_kept,
-                             minor_reduced_tile_size * num_threads_reduced};
-    num_blocks_ = {CeilOfRatio(input_shape_[1], tile_sizes_per_block_[0]),
-                   CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
-    /* ROCm hipModuleLaunchKernel limitation
-     * https://rocm.docs.amd.com/projects/HIP/en/latest/doxygen/html/group___module.html#ga2e4de5937aa8171e9eda16c881ed0674
-     */
-  } while ((xla::PlatformUtil::CanonicalPlatformName("gpu").value() == "rocm" &&
-            (rt_ver < stream_executor::SemanticVersion{6, 4, 0})) &&
-           kMinorReducedElementsPerThread < 65536 &&
-           ((Product(num_blocks_) * Product(num_threads_)) >
-            std::numeric_limits<uint32_t>::max()));
-=======
   tile_sizes_per_thread_ = {shape[0], minor_reduced_tile_size, vector_size};
   tile_sizes_per_block_ = {num_threads_kept,
                            minor_reduced_tile_size * num_threads_reduced};
@@ -915,7 +895,6 @@ RowReductionFusion::RowReductionFusion(const HloFusionAnalysis& analysis,
                  CeilOfRatio(input_shape_[2], tile_sizes_per_block_[1])};
   gpu_blocks_ = MaybeSplitGridDimensionX(
       Product(num_threads_), Product(num_blocks_), analysis_.device_info());
->>>>>>> upstream/master
 
   VLOG(3) << absl::StrFormat(
       "RowReductionFusion selected parameters: num_threads "

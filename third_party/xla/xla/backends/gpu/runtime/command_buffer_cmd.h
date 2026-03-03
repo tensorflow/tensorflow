@@ -136,19 +136,6 @@ class EmptyCmd : public Command {
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
-<<<<<<< HEAD
-
-  BufferUseVector buffers() const override { return {}; }
-
-  bool IsAsync() const { return async_events_ != nullptr; }
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
-
- private:
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-=======
->>>>>>> upstream/master
 };
 
 //===----------------------------------------------------------------------===//
