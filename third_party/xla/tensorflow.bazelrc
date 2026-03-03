@@ -310,8 +310,6 @@ common:icpx_clang --copt=-fclang-abi-compat=17
 # Hermetic SYCL Configuration
 common:sycl_hermetic --config=sycl
 common:sycl_hermetic --repo_env=SYCL_BUILD_HERMETIC=1
-common:sycl_hermetic --repo_env=ONEAPI_VERSION=2025.1
-common:sycl_hermetic --repo_env=OS=ubuntu_24.10
 
 # Options to disable default on features
 common:nonccl --define=no_nccl_support=true
