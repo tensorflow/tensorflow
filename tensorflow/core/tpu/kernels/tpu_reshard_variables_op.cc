@@ -147,7 +147,7 @@ absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
   tsl::profiler::TraceMe trace_me_init("TPUReshardVariablesOpKernel::Init",
                                        /*level=*/2);
 
-  string rendezvous_key_base;
+  std::string rendezvous_key_base;
   std::unique_ptr<tpu::CompilationCacheEntryRef> entry_ref;
   TF_RETURN_IF_ERROR(reshard_util::GetComputationCacheEntry(
       format_key, &rendezvous_key_base, &entry_ref, fetch_target));
@@ -196,10 +196,11 @@ absl::Status TPUReshardVariablesOpKernel::DoTpuExecute(
                                               backend, device_ordinal, stream));
   xla::ShapedBuffer shaped_buffer(std::move(host_shape), input_buffers.shape(),
                                   device_ordinal);
-  shaped_buffer.set_buffers(input_buffers.Map<se::DeviceMemoryBase>(
-      [](const xla::MaybeOwningDeviceAddress& buffer) {
-        return buffer.AsDeviceAddress();
-      }));
+  shaped_buffer.set_buffers(
+      input_buffers.Map<stream_executor::DeviceAddressBase>(
+          [](const xla::MaybeOwningDeviceAddress& buffer) {
+            return buffer.AsDeviceAddress();
+          }));
 
   // Write input root tuple.
   TF_ASSIGN_OR_RETURN(auto transfer_stream_ptr,

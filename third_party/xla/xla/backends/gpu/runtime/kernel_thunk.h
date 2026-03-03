@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/kernel.h"
@@ -68,7 +69,8 @@ class KernelThunk : public Thunk {
               const emitters::KernelArguments& kernel_arguments,
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
-              stream_executor::gpu::TmaMetadata tma_metadata);
+              stream_executor::gpu::TmaMetadata tma_metadata,
+              std::vector<int64_t> zeroed_output_buffer_indices = {});
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -83,9 +85,7 @@ class KernelThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  const std::vector<BufferAllocation::Slice>& arguments() const {
-    return args_;
-  }
+  const std::vector<ShapedSlice>& arguments() const { return args_; }
   const std::vector<bool>& written() const { return written_; }
 
   const std::string& kernel_name() const { return kernel_name_; }
@@ -106,10 +106,12 @@ class KernelThunk : public Thunk {
 
  private:
   // Buffer slices passed to the kernel as arguments.
-  std::vector<BufferAllocation::Slice> args_;
-  std::vector<Shape> args_shape_;
+  std::vector<ShapedSlice> args_;
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;
+
+  // Buffer indices that should be zeroed before the kernel is launched.
+  std::vector<int64_t> zeroed_output_buffer_indices_;
 
   // Entry kernel name for the computation.
   const std::string kernel_name_;

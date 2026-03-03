@@ -898,22 +898,6 @@ bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
   return false;
 }
 
-std::optional<double> GetCustomCallLatencyMetadata(
-    const HloInstruction* instr) {
-  if (instr->opcode() == HloOpcode::kCustomCall &&
-      instr->has_frontend_attributes()) {
-    auto it = instr->frontend_attributes().map().find("latency_metadata");
-    if (it != instr->frontend_attributes().map().end()) {
-      int64_t latency_metadata_ns = 0;
-      CHECK(absl::SimpleAtoi(it->second, &latency_metadata_ns))
-          << "Failed to parse latency from custom call for " << instr->name()
-          << " from latency_metadata:" << it->second;
-      return static_cast<double>(latency_metadata_ns) / 1000.0;
-    }
-  }
-  return std::nullopt;
-}
-
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();

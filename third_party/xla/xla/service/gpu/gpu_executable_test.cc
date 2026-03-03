@@ -579,18 +579,13 @@ TEST(GpuExecutableTest, GpuExecutableDump) {
       ReadSplitProto(std::move(executable_reader), gpu_executable_proto));
   ASSERT_THAT(gpu_executable_proto, Partially(EqualsProto(R"pb(
                 module_name: "test_module"
-                thunk {
-                  thunk_info { thunk_id: 789 }
-                  sequential_thunk: {
-                    thunks: {
-                      thunk_info: { thunk_id: 123 }
-                      kernel_thunk: { kernel_name: "test_kernel" }
-                    }
-                    thunks: {
-                      thunk_info: { thunk_id: 456 }
-                      device_to_device_copy_thunk: {}
-                    }
-                  }
+                thunks: {
+                  thunk_info: { thunk_id: 123 }
+                  kernel_thunk: { kernel_name: "test_kernel" }
+                }
+                thunks: {
+                  thunk_info: { thunk_id: 456 }
+                  device_to_device_copy_thunk: {}
                 }
               )pb")));
 }
@@ -605,34 +600,29 @@ TEST(GpuExecutableTest, FromProtoWithSymbolResolver) {
     gpu_compute_capability: {
       cuda_compute_capability: { major: 9 minor: 0 feature_extension: NONE }
     }
-    thunk {
-      thunk_info { thunk_id: 1 }
-      sequential_thunk {
-        thunks {
-          thunk_info { thunk_id: 2 }
-          custom_kernel_thunk {
-            custom_kernel {
-              kernel_spec {
-                in_process_symbol { persistent_name: "persistent_kernel_name" }
-                kernel_name: "kernel_name"
-                arity: 42
-                kernel_args_packing_spec {
-                  kernel_arguments {
-                    relocations {
-                      kind: KIND_BITS64_ABSOLUTE
-                      argument_index: 0
-                      offset: 0
-                    }
-                    data: "\x00\x00\x00\x00\x00\x00\x00\x00"
-                  }
-                  kernel_arguments { data: "\x34\x12\x00\x00" }
+    thunks {
+      thunk_info { thunk_id: 2 }
+      custom_kernel_thunk {
+        custom_kernel {
+          kernel_spec {
+            in_process_symbol { persistent_name: "persistent_kernel_name" }
+            kernel_name: "kernel_name"
+            arity: 42
+            kernel_args_packing_spec {
+              kernel_arguments {
+                relocations {
+                  kind: KIND_BITS64_ABSOLUTE
+                  argument_index: 0
+                  offset: 0
                 }
+                data: "\x00\x00\x00\x00\x00\x00\x00\x00"
               }
-              block_dims { coordinates { x: 1 y: 1 z: 1 } }
-              thread_dims { coordinates { x: 1 y: 1 z: 1 } }
-              cluster_dim { coordinates { x: 1 y: 1 z: 1 } }
+              kernel_arguments { data: "\x34\x12\x00\x00" }
             }
           }
+          block_dims { coordinates { x: 1 y: 1 z: 1 } }
+          thread_dims { coordinates { x: 1 y: 1 z: 1 } }
+          cluster_dim { coordinates { x: 1 y: 1 z: 1 } }
         }
       }
     }
@@ -734,8 +724,7 @@ TEST(GpuExecutableTest, ToProtoReturnsUnchangedThunkGraph) {
   // The proto should be a straight dump of the thunk graph, without any
   // transformation.
   TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
-  ASSERT_TRUE(proto.thunk().has_sequential_thunk());
-  EXPECT_THAT(proto.thunk().sequential_thunk().thunks(), SizeIs(5));
+  EXPECT_THAT(proto.thunks(), SizeIs(5));
 }
 
 TEST(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
@@ -768,14 +757,9 @@ TEST(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
         }
       }
     }
-    thunk {
-      thunk_info { thunk_id: 1 }
-      sequential_thunk {
-        thunks {
-          thunk_info { thunk_id: 2 }
-          host_send_done_thunk { channel_id: 123 async_events_unique_id: 1 }
-        }
-      }
+    thunks {
+      thunk_info { thunk_id: 2 }
+      host_send_done_thunk { channel_id: 123 async_events_unique_id: 1 }
     }
   )pb");
 

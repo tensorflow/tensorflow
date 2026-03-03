@@ -1510,6 +1510,11 @@ static absl::StatusOr<std::unique_ptr<YnnFusionThunk>> YnnFusionThunkFromProto(
     if (capture_rhs) {
       captured_arguments_ids = kCapturedIds;
     }
+  } else if (hlo->opcode() == HloOpcode::kConvolution) {
+    const HloConvolutionInstruction* convolution =
+        Cast<HloConvolutionInstruction>(hlo);
+    // Construct YNNPACK subgraph builder from the convolution instruction.
+    TF_ASSIGN_OR_RETURN(builder, EmitYnnConvolutionBuilder(convolution));
   } else {
     auto* fusion = Cast<HloFusionInstruction>(hlo);
     const HloComputation* computation =

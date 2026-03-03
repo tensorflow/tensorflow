@@ -88,17 +88,17 @@ bool AllValuesAre(const TensorProto& proto, const T& value) {
 // Add new_input as a control input to node if it does not already depend on it.
 // TODO(rmlarsen): Move the following two utility functions to utils.{h,cc} and
 // clean up code that should be using them.
-bool MaybeAddControlInput(const string& ctrl_input, NodeDef* node,
+bool MaybeAddControlInput(const std::string& ctrl_input, NodeDef* node,
                           GraphDef* graph, NodeMap* node_map) {
   bool already_exists = false;
-  for (const string& input : node->input()) {
+  for (const std::string& input : node->input()) {
     if (input == ctrl_input || AsControlDependency(input) == ctrl_input) {
       already_exists = true;
       break;
     }
   }
   if (!already_exists) {
-    const string ctrl_dep =
+    const std::string ctrl_dep =
         ConstantFolding::AddControlDependency(ctrl_input, graph, node_map);
     node->add_input(ctrl_dep);
     node_map->AddOutput(NodeName(ctrl_input), node->name());
@@ -107,13 +107,14 @@ bool MaybeAddControlInput(const string& ctrl_input, NodeDef* node,
 }
 
 // Remove old_input as a control input to node.
-bool MaybeRemoveControlInput(const string& old_input, NodeDef* node,
+bool MaybeRemoveControlInput(const std::string& old_input, NodeDef* node,
                              GraphDef* graph, NodeMap* node_map) {
   bool removed_input = false;
   bool update_node_map = true;
-  const string old_input_ctrl_dep = AsControlDependency(NodeName(old_input));
+  const std::string old_input_ctrl_dep =
+      AsControlDependency(NodeName(old_input));
   for (int i = 0; i < node->input_size(); ++i) {
-    const string& input = node->input(i);
+    const std::string& input = node->input(i);
     if (old_input_ctrl_dep == input) {
       if (IsControlInput(input)) {
         node->mutable_input()->SwapElements(i, node->input_size() - 1);
@@ -213,9 +214,9 @@ ConstantFolding::ConstantFolding(DeviceBase* cpu_device,
                       fold_quantization_ops) {}
 
 // static
-string ConstantFolding::AddControlDependency(const string& input_name,
-                                             GraphDef* graph,
-                                             NodeMap* node_map) {
+std::string ConstantFolding::AddControlDependency(const std::string& input_name,
+                                                  GraphDef* graph,
+                                                  NodeMap* node_map) {
   if (IsControlInput(input_name)) {
     return input_name;
   }
@@ -243,8 +244,8 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // We haven't found an existing node where we can anchor the control
     // dependency: add a new identity node.
     int port = 0;
-    string ctrl_dep_name = ParseNodeName(input_name, &port);
-    strings::StrAppend(&ctrl_dep_name, "_", port);
+    std::string ctrl_dep_name = ParseNodeName(input_name, &port);
+    absl::StrAppend(&ctrl_dep_name, "_", port);
     ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
     const DataType output_type = node->attr().at("T").type();
 
@@ -278,7 +279,7 @@ bool ConstantFolding::ForwardInputs(NodeDef* node,
   const std::vector<NodeDef*> consumers(tmp.begin(), tmp.end());
   bool updated_graph = false;
   for (int input_idx : inputs_to_forward) {
-    const string& input = node->input(input_idx);
+    const std::string& input = node->input(input_idx);
     if (IsControlInput(input) && consumers.size() > 1) {
       continue;
     }
@@ -292,7 +293,7 @@ bool ConstantFolding::ForwardInputs(NodeDef* node,
       bool add_dep = false;
       for (int consumer_input_idx = 0;
            consumer_input_idx < consumer->input_size(); ++consumer_input_idx) {
-        const string& consumer_input = consumer->input(consumer_input_idx);
+        const std::string& consumer_input = consumer->input(consumer_input_idx);
         if (IsControlInput(consumer_input)) {
           break;
         }
@@ -302,7 +303,7 @@ bool ConstantFolding::ForwardInputs(NodeDef* node,
           break;
         }
         int output_idx;
-        const string input_node_name =
+        const std::string input_node_name =
             ParseNodeName(consumer_input, &output_idx);
         if (input_node_name == node->name() && output_idx == input_idx) {
           consumer->set_input(consumer_input_idx, input);
@@ -336,7 +337,7 @@ static absl::Status PutValueIntoTensor(const int64_t value,
     if (value >= INT_MAX) {
       return absl::Status(absl::StatusCode::kInvalidArgument, "int32 overflow");
     }
-    tensor->flat<int32>()(index) = static_cast<int32>(value);
+    tensor->flat<int32_t>()(index) = static_cast<int32_t>(value);
   } else {
     tensor->flat<int64_t>()(index) = value;
   }
@@ -345,7 +346,7 @@ static absl::Status PutValueIntoTensor(const int64_t value,
 
 // Writes the given tensor shape into the given tensor.
 // Op is assumed to be Shape, ShapeN, Size or Rank.
-static absl::Status ConvertShapeToConstant(const string& op,
+static absl::Status ConvertShapeToConstant(const std::string& op,
                                            const DataType& type,
                                            const PartialTensorShape& shp,
                                            Tensor* tensor) {
@@ -375,9 +376,9 @@ bool ConstantFolding::OptimizedNodeExists(const NodeDef& node,
   return node_map_->NodeExists(OptimizedNodeName(node, suffix));
 }
 
-string ConstantFolding::OptimizedNodeName(const NodeDef& node,
-                                          absl::string_view suffix) const {
-  return AddPrefixToNodeName(strings::StrCat(node.name(), suffix),
+std::string ConstantFolding::OptimizedNodeName(const NodeDef& node,
+                                               absl::string_view suffix) const {
+  return AddPrefixToNodeName(absl::StrCat(node.name(), suffix),
                              kConstantFoldingConst);
 }
 
@@ -390,8 +391,8 @@ bool ConstantFolding::IsReallyConstant(const NodeDef& node) const {
 }
 
 // TODO(rmlarsen): Refactor to shared util.
-bool ConstantFolding::GetTensorFromConstNode(const string& node_name_or_input,
-                                             Tensor* tensor) {
+bool ConstantFolding::GetTensorFromConstNode(
+    const std::string& node_name_or_input, Tensor* tensor) {
   const NodeDef* node = node_map_->GetNode(node_name_or_input);
   return node != nullptr && IsReallyConstant(*node) &&
          CheckAttrExists(*node, "value").ok() &&
@@ -407,7 +408,7 @@ absl::Status ConstantFolding::MaterializeShapes(
   const int node_count = graph_->node_size();
   for (int node_idx = 0; node_idx < node_count; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
-    const string op = node->op();
+    const std::string op = node->op();
     if (op != "Shape" && op != "Size" && op != "Rank" && op != "ShapeN" &&
         op != "TensorArraySizeV3") {
       continue;
@@ -458,7 +459,7 @@ absl::Status ConstantFolding::MaterializeShapes(
       // ensure that the constant value will only be run in the
       // cases where the shape/rank/size would have been run in
       // the original graph.
-      string ctrl_dep =
+      std::string ctrl_dep =
           AddControlDependency(node->input(0), graph_, node_map_.get());
       node_map_->UpdateInput(node->name(), node->input(0), ctrl_dep);
       node->set_input(0, ctrl_dep);
@@ -489,7 +490,7 @@ absl::Status ConstantFolding::MaterializeShapes(
         if (!value.FromProto(raw_val)) {
           continue;
         }
-        if (value.flat<int32>()(0) == 0) {
+        if (value.flat<int32_t>()(0) == 0) {
           continue;
         }
 
@@ -532,11 +533,11 @@ absl::Status ConstantFolding::MaterializeShapes(
         bool direct_edges_exist = false;
         for (int k = 0; k < output->input_size(); ++k) {
           int port;
-          const string node_name = ParseNodeName(output->input(k), &port);
+          const std::string node_name = ParseNodeName(output->input(k), &port);
           if (node_name == shape_n_node->name() && port == port_idx) {
             // Create a const node as ShapeN's output if not already.
-            const string const_name = OptimizedNodeName(
-                *shape_n_node, strings::StrCat("-matshapes-", port_idx));
+            const std::string const_name = OptimizedNodeName(
+                *shape_n_node, absl::StrCat("-matshapes-", port_idx));
             if (node_map_->GetNode(const_name) == nullptr) {
               NodeDef* added_node = graph_->add_node();
               added_node->set_name(const_name);
@@ -549,8 +550,8 @@ absl::Status ConstantFolding::MaterializeShapes(
               // We add a control dependency to the original ShapeN node,
               // so that the node will only be run if all inputs of the
               // original ShapeN node are run.
-              string ctrl_dep = AddControlDependency(shape_n_node->name(),
-                                                     graph_, node_map_.get());
+              std::string ctrl_dep = AddControlDependency(
+                  shape_n_node->name(), graph_, node_map_.get());
               *added_node->add_input() = ctrl_dep;
               node_map_->AddOutput(NodeName(ctrl_dep), added_node->name());
             }
@@ -699,13 +700,13 @@ absl::Status ConstantFolding::MaterializeBroadcastGradientArgs(
     Tensor value(type, TensorShape({reduction_indices}));
     for (int i = 0; i < reduction_indices; ++i) {
       if (type == DT_INT32) {
-        value.vec<int32>()(i) = reduce_dims[j][i];
+        value.vec<int32_t>()(i) = reduce_dims[j][i];
       } else {
         value.vec<int64_t>()(i) = reduce_dims[j][i];
       }
     }
-    string const_name =
-        OptimizedNodeName(node, strings::StrCat("-bcastargs-", j));
+    std::string const_name =
+        OptimizedNodeName(node, absl::StrCat("-bcastargs-", j));
     out[j] = node_map_->GetNode(const_name);
     if (out[j] == nullptr) {
       out[j] = graph_->add_node();
@@ -713,7 +714,7 @@ absl::Status ConstantFolding::MaterializeBroadcastGradientArgs(
           CreateNodeDef(const_name, TensorValue(&value), out[j]));
       out[j]->set_device(node.device());
       node_map_->AddNode(const_name, out[j]);
-      string ctrl_dep =
+      std::string ctrl_dep =
           AddControlDependency(node.name(), graph_, node_map_.get());
       *out[j]->add_input() = ctrl_dep;
       node_map_->AddOutput(NodeName(ctrl_dep), const_name);
@@ -725,7 +726,7 @@ absl::Status ConstantFolding::MaterializeBroadcastGradientArgs(
   for (NodeDef* output : outputs) {
     for (int k = 0; k < output->input_size(); ++k) {
       int port;
-      string node_name = ParseNodeName(output->input(k), &port);
+      std::string node_name = ParseNodeName(output->input(k), &port);
       if (node_name == node.name() && port >= 0 && port < 2 && out[port]) {
         *output->mutable_input(k) = out[port]->name();
         node_map_->UpdateInput(output->name(), node_name, out[port]->name());
@@ -810,7 +811,7 @@ absl::Status ConstantFolding::MaterializeReductionIndices(
 
   // We know it's a full reduction. We can generate the full set of indices to
   // reduce as a constant node.
-  string const_name = OptimizedNodeName(*node, "-reduction_indices");
+  std::string const_name = OptimizedNodeName(*node, "-reduction_indices");
   if (node_map_->GetNode(const_name)) {
     return absl::OkStatus();
   }
@@ -818,7 +819,7 @@ absl::Status ConstantFolding::MaterializeReductionIndices(
   Tensor value(dtype, TensorShape({input_rank}));
   for (int i = 0; i < input_rank; ++i) {
     if (dtype == DT_INT32) {
-      value.vec<int32>()(i) = i;
+      value.vec<int32_t>()(i) = i;
     } else {
       value.vec<int64_t>()(i) = i;
     }
@@ -827,7 +828,7 @@ absl::Status ConstantFolding::MaterializeReductionIndices(
       CreateNodeDef(const_name, TensorValue(&value), reduction_indices));
 
   reduction_indices->set_device(node->device());
-  string ctrl_dep =
+  std::string ctrl_dep =
       AddControlDependency(node->input(1), graph_, node_map_.get());
   *reduction_indices->add_input() = ctrl_dep;
   node_map_->AddNode(const_name, reduction_indices);
@@ -891,7 +892,7 @@ absl::Status ConstantFolding::MaterializeConstantValuedNode(
     node->set_op("Const");
     for (int i = 0; i < 2; i++) {
       // Change inputs to a control inputs.
-      const string ctrl_dep = AsControlDependency(node->input(i));
+      const std::string ctrl_dep = AsControlDependency(node->input(i));
       node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
       node->set_input(i, ctrl_dep);
     }
@@ -940,7 +941,7 @@ absl::Status ConstantFolding::MaterializeConstants(
   const int node_count = graph_->node_size();
   for (int i = 0; i < node_count; ++i) {
     NodeDef& node = *graph_->mutable_node(i);
-    const string& op = node.op();
+    const std::string& op = node.op();
     if (op == "BroadcastGradientArgs") {
       TF_RETURN_IF_ERROR(MaterializeBroadcastGradientArgs(node, properties));
     } else if (IsReduction(node)) {
@@ -956,7 +957,7 @@ absl::Status ConstantFolding::MaterializeConstants(
 
 bool ConstantFolding::IsFoldable(const NodeDef& node,
                                  const GraphProperties* properties) {
-  string key = strings::StrCat(node.name(), "/", node.op());
+  std::string key = absl::StrCat(node.name(), "/", node.op());
   auto it = maybe_foldable_nodes_.find(key);
   if (it == maybe_foldable_nodes_.end()) {
     it = maybe_foldable_nodes_
@@ -1100,12 +1101,14 @@ bool ConstantFolding::MaybeFoldable(const NodeDef& node,
     return false;
   }
 
-  const string& op = node.op();
-  if (op.find("Save") != string::npos || op.find("Restore") != string::npos ||
-      op.find("Reader") != string::npos) {
+  const std::string& op = node.op();
+  if (op.find("Save") != std::string::npos ||
+      op.find("Restore") != std::string::npos ||
+      op.find("Reader") != std::string::npos) {
     return false;
   }
-  if (op.find("Quantized") != string::npos || absl::StartsWith(op, "Sparse")) {
+  if (op.find("Quantized") != std::string::npos ||
+      absl::StartsWith(op, "Sparse")) {
     return false;
   }
 
@@ -1161,27 +1164,27 @@ absl::Status CreateConstantTensorAttrValue(DataType type, double value,
   switch (type) {
     case DT_HALF:
       t->add_half_val(
-          Eigen::numext::bit_cast<uint16>(static_cast<Eigen::half>(value)));
+          Eigen::numext::bit_cast<uint16_t>(static_cast<Eigen::half>(value)));
       break;
     case DT_BFLOAT16:
       t->add_half_val(
-          Eigen::numext::bit_cast<uint16>(static_cast<bfloat16>(value)));
+          Eigen::numext::bit_cast<uint16_t>(static_cast<bfloat16>(value)));
       break;
       SET_TENSOR_VAL_CASE(DT_FLOAT, float, float);
       SET_TENSOR_VAL_CASE(DT_DOUBLE, double, double);
       SET_TENSOR_VAL_CASE(DT_INT64, int64_t, int64);
       SET_TENSOR_VAL_CASE(DT_UINT64, int64_t, int64);
-      SET_TENSOR_VAL_CASE(DT_INT32, int32, int);
-      SET_TENSOR_VAL_CASE(DT_UINT32, int32, int);
-      SET_TENSOR_VAL_CASE(DT_INT16, int32, int);
-      SET_TENSOR_VAL_CASE(DT_UINT16, int32, int);
-      SET_TENSOR_VAL_CASE(DT_INT8, int32, int);
-      SET_TENSOR_VAL_CASE(DT_UINT8, int32, int);
-      SET_TENSOR_VAL_CASE(DT_QINT32, int32, int);
-      SET_TENSOR_VAL_CASE(DT_QINT16, int32, int);
-      SET_TENSOR_VAL_CASE(DT_QUINT16, int32, int);
-      SET_TENSOR_VAL_CASE(DT_QINT8, int32, int);
-      SET_TENSOR_VAL_CASE(DT_QUINT8, int32, int);
+      SET_TENSOR_VAL_CASE(DT_INT32, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_UINT32, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_INT16, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_UINT16, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_INT8, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_UINT8, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_QINT32, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_QINT16, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_QUINT16, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_QINT8, int32_t, int);
+      SET_TENSOR_VAL_CASE(DT_QUINT8, int32_t, int);
       SET_TENSOR_VAL_CASE(DT_BOOL, bool, bool);
     default:
       return absl::InvalidArgumentError(
@@ -1214,7 +1217,7 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
 // Checks whether the shape of the const input of the Mul op is valid to perform
 // the MulConvPushDown optimization.
 bool IsValidConstShapeForMulConvPushDown(
-    const string& data_format, const TensorShapeProto& filter_shape,
+    const std::string& data_format, const TensorShapeProto& filter_shape,
     const TensorShapeProto& mul_const_input_shape) {
   // If the const is a scalar, or it has fewer or same number of dimensions
   // than the filter and it only has single element, the optimization should
@@ -1251,7 +1254,7 @@ bool IsValidConstShapeForMulConvPushDown(
 }  // namespace
 
 // static
-absl::Status ConstantFolding::CreateNodeDef(const string& name,
+absl::Status ConstantFolding::CreateNodeDef(const std::string& name,
                                             const TensorValue& tensor,
                                             NodeDef* node,
                                             size_t original_size) {
@@ -1309,11 +1312,11 @@ absl::Status ConstantFolding::CreateNodeDef(const string& name,
       case DT_INT16:
         POPULATE_TENSOR_PROTO(tensor, t, int16_t, int);
       case DT_UINT16:
-        POPULATE_TENSOR_PROTO(tensor, t, uint16, int);
+        POPULATE_TENSOR_PROTO(tensor, t, uint16_t, int);
       case DT_INT8:
         POPULATE_TENSOR_PROTO(tensor, t, int8_t, int);
       case DT_UINT8:
-        POPULATE_TENSOR_PROTO(tensor, t, uint8, int);
+        POPULATE_TENSOR_PROTO(tensor, t, uint8_t, int);
       case DT_BOOL:
         POPULATE_TENSOR_PROTO(tensor, t, bool, bool);
       default:
@@ -1382,9 +1385,8 @@ absl::Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     if (raw_val.dtype() == DT_INVALID) {
       return absl::Status(
           absl::StatusCode::kInvalidArgument,
-          strings::StrCat("A tensor in the input node, with TensorId of ",
-                          input_tensor.ToString(),
-                          " has a dtype of DT_INVALID."));
+          absl::StrCat("A tensor in the input node, with TensorId of ",
+                       input_tensor.ToString(), " has a dtype of DT_INVALID."));
     }
     if (IsRefType(raw_val.dtype())) {
       return absl::InvalidArgumentError(absl::StrCat(
@@ -1410,9 +1412,9 @@ absl::Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 
   outputs->resize(output_tensors.size());
   for (size_t i = 0; i < output_tensors.size(); i++) {
-    string node_name = OptimizedNodeName(node, "-folded");
+    std::string node_name = OptimizedNodeName(node, "-folded");
     if (output_tensors.size() > 1) {
-      node_name = strings::StrCat(node_name, "-", i);
+      node_name = absl::StrCat(node_name, "-", i);
     }
     if (output_tensors[i].tensor) {
       absl::Status s = CreateNodeDef(node_name, output_tensors[i],
@@ -1456,7 +1458,7 @@ absl::Status ConstantFolding::FoldMergeNode(NodeDef* node,
       continue;
     }
     bool valid_input = true;
-    for (const string& fanin_of_input : input_node->input()) {
+    for (const std::string& fanin_of_input : input_node->input()) {
       if (IsControlInput(fanin_of_input)) {
         valid_input = false;
         break;
@@ -1467,14 +1469,14 @@ absl::Status ConstantFolding::FoldMergeNode(NodeDef* node,
       continue;
     }
 
-    string const_out_name = OptimizedNodeName(*node, "_const");
-    string const_index_name = OptimizedNodeName(*node, "_index");
+    std::string const_out_name = OptimizedNodeName(*node, "_const");
+    std::string const_index_name = OptimizedNodeName(*node, "_index");
     if (node_map_->GetNode(const_out_name) ||
         node_map_->GetNode(const_index_name)) {
       // Intended name already exists.
       return absl::AlreadyExistsError(
-          strings::StrCat(const_out_name, " or ", const_index_name,
-                          " already present in the graph"));
+          absl::StrCat(const_out_name, " or ", const_index_name,
+                       " already present in the graph"));
     }
 
     NodeDef* const_out = output_graph->add_node();
@@ -1488,7 +1490,7 @@ absl::Status ConstantFolding::FoldMergeNode(NodeDef* node,
     NodeDef* const_index = output_graph->add_node();
     const_index->set_op("Const");
     Tensor index(DT_INT32, TensorShape({}));
-    index.flat<int32>()(0) = input_index;
+    index.flat<int32_t>()(0) = input_index;
     (*const_index->mutable_attr())["dtype"].set_type(DT_INT32);
     index.AsProtoTensorContent(
         (*const_index->mutable_attr())["value"].mutable_tensor());
@@ -1503,7 +1505,7 @@ absl::Status ConstantFolding::FoldMergeNode(NodeDef* node,
     for (NodeDef* output : outputs) {
       for (int i = 0; i < output->input_size(); i++) {
         int port;
-        string node_name = ParseNodeName(output->input(i), &port);
+        std::string node_name = ParseNodeName(output->input(i), &port);
         if (node_name == node->name()) {
           if (port == 0) {
             *output->mutable_input(i) = const_out->name();
@@ -1548,13 +1550,14 @@ absl::Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
     }
 
     // Returns `true` iff `const_node` already has control input named `input`.
-    const auto is_duplicate_control_input = [&](const string& input) -> bool {
+    const auto is_duplicate_control_input =
+        [&](const std::string& input) -> bool {
       auto it = absl::c_find(const_node->input(), input);
       return it != const_node->input().end();
     };
 
     // Forward control dependencies.
-    for (const string& input : node->input()) {
+    for (const std::string& input : node->input()) {
       // Forward control dependencies from folded node.
       if (IsControlInput(input)) {
         if (!is_duplicate_control_input(input)) {
@@ -1565,7 +1568,7 @@ absl::Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
       // Forward control dependencies from constant inputs to folded node.
       if (!IsControlInput(input)) {
         NodeDef* input_node = node_map_->GetNode(input);
-        for (const string& fanin_of_input : input_node->input()) {
+        for (const std::string& fanin_of_input : input_node->input()) {
           if (!is_duplicate_control_input(fanin_of_input)) {
             *const_node->add_input() = fanin_of_input;
           }
@@ -1591,8 +1594,8 @@ absl::Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
     } else {
       if (node_map_->GetNode(const_node->name())) {
         // Intended name already exists.
-        return absl::AlreadyExistsError(strings::StrCat(
-            const_node->name(), " already present in the graph"));
+        return absl::AlreadyExistsError(
+            absl::StrCat(const_node->name(), " already present in the graph"));
       }
       NodeDef* added_node = output_graph->add_node();
       *added_node = *const_node;
@@ -1614,7 +1617,7 @@ absl::Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
     for (NodeDef* output : outputs) {
       for (int i = 0; i < output->input_size(); i++) {
         int port;
-        string node_name = ParseNodeName(output->input(i), &port);
+        std::string node_name = ParseNodeName(output->input(i), &port);
         if (node_name == node->name()) {
           if (port < 0) {
             // Propagate control dependencies if possible. If not, we'll just
@@ -1651,10 +1654,10 @@ absl::Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
 
 absl::Status ConstantFolding::FoldGraph(
     const GraphProperties& properties, GraphDef* optimized_graph,
-    absl::flat_hash_set<string>* nodes_to_not_simplify) {
+    absl::flat_hash_set<std::string>* nodes_to_not_simplify) {
   // We build a new optimized_graph by inserting the folded nodes into it, then
   // copy other nodes that might be needed at the end of this function.
-  absl::flat_hash_set<string> processed_nodes;
+  absl::flat_hash_set<std::string> processed_nodes;
   std::deque<NodeDef*> queue;
   for (int i = 0; i < graph_->node_size(); i++) {
     const NodeDef& node = graph_->node(i);
@@ -1770,9 +1773,9 @@ absl::Status ConstantFolding::IsSimplifiableReshape(
 
   PartialTensorShape new_dims;
   if (outputs[0]->dtype() == DT_INT32) {
-    std::vector<int32> shp;
+    std::vector<int32_t> shp;
     for (int i = 0; i < outputs[0]->NumElements(); ++i) {
-      int32_t dim = outputs[0]->flat<int32>()(i);
+      int32_t dim = outputs[0]->flat<int32_t>()(i);
       shp.push_back(dim);
     }
     s = TensorShapeUtils::MakeShape(shp, &new_dims);
@@ -1895,8 +1898,8 @@ bool ConstantFolding::ReplaceOperationWithBroadcastTo(
     return false;
   }
   // Create constant node with shape.
-  const string const_name = OptimizedNodeName(
-      *node, strings::StrCat("-broadcastto_shape-", input_to_broadcast));
+  const std::string const_name = OptimizedNodeName(
+      *node, absl::StrCat("-broadcastto_shape-", input_to_broadcast));
   if (node_map_->GetNode(const_name) != nullptr) {
     return false;
   }
@@ -1916,8 +1919,8 @@ bool ConstantFolding::ReplaceOperationWithBroadcastTo(
   for (int i = 0; i < node->input_size(); ++i) {
     if (i != input_to_broadcast) {
       // Add a control input on the unused input.
-      string ctrl_dep = AddControlDependency(NodeName(node->input(i)), graph,
-                                             node_map_.get());
+      std::string ctrl_dep = AddControlDependency(NodeName(node->input(i)),
+                                                  graph, node_map_.get());
       *const_node->add_input() = ctrl_dep;
       node_map_->AddOutput(NodeName(ctrl_dep), const_name);
     }
@@ -1935,7 +1938,7 @@ bool ConstantFolding::ReplaceOperationWithBroadcastTo(
     if (IsControlInput(node->input(i))) {
       break;
     }
-    const string ctrl_dep =
+    const std::string ctrl_dep =
         AddControlDependency(node->input(i), graph, node_map_.get());
     node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
     node->set_input(i, ctrl_dep);
@@ -1965,7 +1968,7 @@ void ConstantFolding::ReplaceOperationWithIdentity(
     if (IsControlInput(node->input(i))) {
       break;
     }
-    const string ctrl_dep =
+    const std::string ctrl_dep =
         AddControlDependency(node->input(i), graph, node_map_.get());
     node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
     node->set_input(i, ctrl_dep);
@@ -1996,7 +1999,7 @@ void ConstantFolding::ReplaceOperationWithSnapshot(
     if (IsControlInput(node->input(i))) {
       break;
     }
-    const string ctrl_dep =
+    const std::string ctrl_dep =
         AddControlDependency(node->input(i), graph, node_map_.get());
     node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
     node->set_input(i, ctrl_dep);
@@ -2020,7 +2023,7 @@ void ConstantFolding::ReplaceOperationWithNoOp(NodeDef* node,
     if (IsControlInput(node->input(i))) {
       break;
     }
-    const string ctrl_dep =
+    const std::string ctrl_dep =
         AddControlDependency(node->input(i), graph, node_map_.get());
     node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
     node->set_input(i, ctrl_dep);
@@ -2043,7 +2046,7 @@ void ConstantFolding::ReplaceDivisionOfOnesByReciprocal(NodeDef* node,
                                                         GraphDef* graph) {
   node->set_op("Reciprocal");
   node->mutable_input()->SwapElements(0, 1);
-  const string ctrl_dep =
+  const std::string ctrl_dep =
       AddControlDependency(node->input(1), graph, node_map_.get());
   node_map_->UpdateInput(node->name(), node->input(1), ctrl_dep);
   node->set_input(1, ctrl_dep);
@@ -2054,7 +2057,7 @@ void ConstantFolding::ReplaceSubtractionFromZeroByNegation(NodeDef* node,
                                                            GraphDef* graph) {
   node->set_op("Neg");
   node->mutable_input()->SwapElements(0, 1);
-  const string ctrl_dep =
+  const std::string ctrl_dep =
       AddControlDependency(node->input(1), graph, node_map_.get());
   node_map_->UpdateInput(node->name(), node->input(1), ctrl_dep);
   node->set_input(1, ctrl_dep);
@@ -2073,7 +2076,7 @@ absl::Status ConstantFolding::ReplaceOperationWithConstantTensor(
     if (IsControlInput(node->input(i))) {
       break;
     }
-    const string ctrl_dep =
+    const std::string ctrl_dep =
         AddControlDependency(node->input(i), graph, node_map_.get());
     node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
     node->set_input(i, ctrl_dep);
@@ -2104,7 +2107,7 @@ absl::Status ConstantFolding::ReplaceOperationWithConstant(
 
 absl::Status ConstantFolding::SimplifyGraph(
     GraphDef* optimized_graph, GraphProperties* properties,
-    absl::flat_hash_set<string>* nodes_to_not_simplify) {
+    absl::flat_hash_set<std::string>* nodes_to_not_simplify) {
   for (int i = 0; i < optimized_graph->node_size(); ++i) {
     NodeDef* node = optimized_graph->mutable_node(i);
     // TODO(lyandy): Move nodes to not simplify check into SimplifyNode and
@@ -2456,7 +2459,7 @@ absl::Status ConstantFolding::SimplifyPad(const GraphProperties& properties,
     // The node is replaceable iff all values in paddings are 0.
     bool replaceable = true;
     if (paddings.dtype() == DT_INT32) {
-      const auto flatten = paddings.flat<int32>();
+      const auto flatten = paddings.flat<int32_t>();
       for (int j = 0; replaceable && j < flatten.size(); ++j) {
         replaceable &= flatten(j) == 0;
       }
@@ -2496,7 +2499,7 @@ void ConstantFolding::SimplifySqueeze(const GraphProperties& properties,
 }
 
 bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
-  const string axis_node_name = OptimizedNodeName(*node, "_const_axis");
+  const std::string axis_node_name = OptimizedNodeName(*node, "_const_axis");
   if (!IsPack(*node) || NumNonControlInputs(*node) != 1 ||
       node_map_->NodeExists(axis_node_name)) {
     return false;
@@ -2522,7 +2525,7 @@ bool ConstantFolding::SimplifyPack(GraphDef* optimized_graph, NodeDef* node) {
   axis_node->set_name(axis_node_name);
   node_map_->AddNode(axis_node->name(), axis_node);
   // Add a control dependency to make sure axis_node is in the right frame.
-  const string ctrl_dep = ConstantFolding::AddControlDependency(
+  const std::string ctrl_dep = ConstantFolding::AddControlDependency(
       node->input(0), optimized_graph, node_map_.get());
   axis_node->add_input(ctrl_dep);
   axis_node->set_device(node->device());
@@ -2621,27 +2624,27 @@ bool ConstantFolding::SimplifySelect(const GraphProperties& properties,
 
 void ConstantFolding::RemoveRedundantVariableUpdates(
     GraphProperties* properties, GraphDef* optimized_graph, NodeDef* node) {
-  static const absl::flat_hash_set<string>* kVariableReadOps =
-      new absl::flat_hash_set<string>{"AssignAddVariableOp",
-                                      "AssignSubVariableOp",
-                                      "AssignAdd",
-                                      "AssignSub",
-                                      "ScatterAdd",
-                                      "ScatterSub",
-                                      "ScatterMul",
-                                      "ScatterDiv",
-                                      "ScatterNdAdd",
-                                      "ScatterNdSub",
-                                      "ScatterNdMul",
-                                      "ScatterNdDiv",
-                                      "ResourceScatterAdd",
-                                      "ResourceScatterSub",
-                                      "ResourceScatterMul",
-                                      "ResourceScatterDiv",
-                                      "ResourceScatterNdAdd",
-                                      "ResourceScatterNdSub",
-                                      "ResourceScatterNdMul",
-                                      "ResourceScatterNdDiv"};
+  static const absl::flat_hash_set<std::string>* kVariableReadOps =
+      new absl::flat_hash_set<std::string>{"AssignAddVariableOp",
+                                           "AssignSubVariableOp",
+                                           "AssignAdd",
+                                           "AssignSub",
+                                           "ScatterAdd",
+                                           "ScatterSub",
+                                           "ScatterMul",
+                                           "ScatterDiv",
+                                           "ScatterNdAdd",
+                                           "ScatterNdSub",
+                                           "ScatterNdMul",
+                                           "ScatterNdDiv",
+                                           "ResourceScatterAdd",
+                                           "ResourceScatterSub",
+                                           "ResourceScatterMul",
+                                           "ResourceScatterDiv",
+                                           "ResourceScatterNdAdd",
+                                           "ResourceScatterNdSub",
+                                           "ResourceScatterNdMul",
+                                           "ResourceScatterNdDiv"};
   if (kVariableReadOps == nullptr ||
       kVariableReadOps->find(node->op()) == kVariableReadOps->end())
     return;
@@ -2670,7 +2673,7 @@ bool ConstantFolding::MoveConstantsPastEnter(GraphDef* optimized_graph,
       !node->attr().at("is_constant").b()) {
     return false;
   }
-  const string& node_name = node->name();
+  const std::string& node_name = node->name();
   const NodeDef* input = node_map_->GetNode(node->input(0));
   if (input == nullptr || !IsReallyConstant(*input) ||
       OptimizedNodeExists(*input, "_enter")) {
@@ -2764,12 +2767,12 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
 
       // Add controls from the switch ports to the constants, and connect the
       // constants to the original switch outputs.
-      const string false_port = node->name();
-      const string true_port = strings::StrCat(node->name(), ":1");
-      const string false_ctrl_dep =
+      const std::string false_port = node->name();
+      const std::string true_port = absl::StrCat(node->name(), ":1");
+      const std::string false_ctrl_dep =
           AddControlDependency(false_port, optimized_graph, node_map_.get());
       false_node->add_input(false_ctrl_dep);
-      const string true_ctrl_dep =
+      const std::string true_ctrl_dep =
           AddControlDependency(true_port, optimized_graph, node_map_.get());
       true_node->add_input(true_ctrl_dep);
 
@@ -2780,7 +2783,7 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
 
       for (NodeDef* consumer : consumers) {
         for (int i = 0; i < consumer->input_size(); ++i) {
-          const string& input = consumer->input(i);
+          const std::string& input = consumer->input(i);
           if (input == false_port) {
             consumer->set_input(i, false_node->name());
             node_map_->UpdateInput(consumer->name(), false_port,
@@ -2868,7 +2871,7 @@ bool ConstantFolding::IsReductionSimplifiableToIdentity(
   for (int i = 0; i < output_size; ++i) {
     int64_t dim;
     if (reduction_indices_vector[0]->dtype() == DT_INT32) {
-      dim = reduction_indices_vector[0]->flat<int32>()(i);
+      dim = reduction_indices_vector[0]->flat<int32_t>()(i);
     } else {
       dim = reduction_indices_vector[0]->flat<int64_t>()(i);
     }
@@ -2921,7 +2924,7 @@ bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
   }
 
   // Get the reduction indices.
-  string reduction_indices_input = node->input(1);
+  std::string reduction_indices_input = node->input(1);
   NodeDef* reduction_indices = node_map_->GetNode(reduction_indices_input);
   TensorVector reduction_indices_vector;
   auto outputs_cleanup = gtl::MakeCleanup([&reduction_indices_vector] {
@@ -3144,7 +3147,7 @@ bool ConstantFolding::ReduceDivToReciprocalMul(GraphDef* optimized_graph,
   // will be constant folded to Mul(x, 1.0/const).
   if (node->input_size() >= 2 &&
       (IsDiv(*node) || IsRealDiv(*node) || IsXdivy(*node))) {
-    const string& const_input = node->input(1);
+    const std::string& const_input = node->input(1);
     const NodeDef* denom = node_map_->GetNode(const_input);
     CHECK(denom != nullptr);
     if (!IsReallyConstant(*denom)) {
@@ -3467,14 +3470,14 @@ bool ConstantFolding::ConstantPushDown(GraphProperties* properties,
   }
 
   // Get the node names corresponding to X, Y, and C.
-  const string input_x =
+  const std::string input_x =
       ctx.left_leaf_is_const ? ctx.op_child->input(1) : ctx.op_child->input(0);
-  const string input_y = input_x == ctx.op_child->input(0)
-                             ? ctx.op_child->input(1)
-                             : ctx.op_child->input(0);
-  const string input_c =
+  const std::string input_y = input_x == ctx.op_child->input(0)
+                                  ? ctx.op_child->input(1)
+                                  : ctx.op_child->input(0);
+  const std::string input_c =
       ctx.left_child_is_const ? node->input(0) : node->input(1);
-  const string input_op =
+  const std::string input_op =
       ctx.left_child_is_const ? node->input(1) : node->input(0);
   VLOG(1) << "input_c = " << input_c << "\ninput_x = " << input_x;
 
@@ -3521,8 +3524,8 @@ bool ConstantFolding::ConstantPushDown(GraphProperties* properties,
       bool child_negated = !is_symmetric && (ctx.left_child_is_const);
       return leaf_negated != child_negated;
     };
-    const string symmetric_op = (is_add || is_sub) ? "Add" : "Mul";
-    const string nonsymmetric_op = (is_add || is_sub) ? "Sub" : "Div";
+    const std::string symmetric_op = (is_add || is_sub) ? "Add" : "Mul";
+    const std::string nonsymmetric_op = (is_add || is_sub) ? "Sub" : "Div";
     bool neg_c = !is_symmetric && !ctx.left_child_is_const;
     bool neg_x = is_leaf_negated(ctx.left_leaf_is_const);
     bool neg_y = is_leaf_negated(!ctx.left_leaf_is_const);
@@ -3624,13 +3627,14 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
     return false;
   }
 
-  string mul_new_name = AddPrefixToNodeName("merged_input", conv_node->name());
+  std::string mul_new_name =
+      AddPrefixToNodeName("merged_input", conv_node->name());
   if (node_map_->NodeExists(mul_new_name)) {
     return false;
   }
   // Make sure we don't introduce loops in the graph by removing control
   // dependencies from the conv2d node to c2.
-  string conv_const_input =
+  std::string conv_const_input =
       conv_left_is_constant ? conv_node->input(0) : conv_node->input(1);
   if (MaybeRemoveControlInput(conv_node->name(), const_node, optimized_graph,
                               node_map_.get())) {
@@ -3668,7 +3672,7 @@ bool ConstantFolding::PartialConstPropThroughIdentityN(NodeDef* node) {
 
   std::vector<int> inputs_to_forward;
   for (int input_idx = 0; input_idx < node->input_size(); ++input_idx) {
-    const string& input = node->input(input_idx);
+    const std::string& input = node->input(input_idx);
     if (IsControlInput(input)) {
       return false;
     }
@@ -3702,7 +3706,7 @@ bool ConstantFolding::PartialAssocOpConstFolding(GraphDef* optimized_graph,
   std::vector<int> const_inputs;
   std::vector<int> nonconst_inputs;
   for (int i = 0; i < node->input_size(); ++i) {
-    const string& input = node->input(i);
+    const std::string& input = node->input(i);
     const NodeDef* input_node = node_map_->GetNode(NodeName(input));
     if (input_node == nullptr) return false;
     if (!IsControlInput(input) && IsReallyConstant(*input_node)) {
@@ -3721,8 +3725,8 @@ bool ConstantFolding::PartialAssocOpConstFolding(GraphDef* optimized_graph,
     node->mutable_attr()->erase("shape");
     return true;
   }
-  const string new_node_name = OptimizedNodeName(
-      *node, strings::StrCat("_partial_split_", const_inputs_size));
+  const std::string new_node_name = OptimizedNodeName(
+      *node, absl::StrCat("_partial_split_", const_inputs_size));
   if (const_inputs_size > 1 && const_inputs_size < num_non_control_inputs &&
       !node_map_->NodeExists(new_node_name)) {
     NodeDef* added_node = optimized_graph->add_node();
@@ -3770,7 +3774,7 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
   // we have to preserve order and can only push consecutive runs of constant
   // inputs into sub-nodes.
   if (!IsConcat(*node) ||
-      node->name().rfind("_partial_split_") != string::npos) {
+      node->name().rfind("_partial_split_") != std::string::npos) {
     return false;
   }
   const int num_non_control_inputs = NumNonControlInputs(*node);
@@ -3822,9 +3826,9 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
   for (auto interval : constant_input_runs) {
     // Push the constant inputs in the interval to a child node than can be
     // constant folded.
-    string new_node_name = OptimizedNodeName(*node, "_partial_split");
+    std::string new_node_name = OptimizedNodeName(*node, "_partial_split");
     do {
-      new_node_name += strings::StrCat("_", interval.first);
+      new_node_name += absl::StrCat("_", interval.first);
     } while (node_map_->NodeExists(new_node_name));
 
     NodeDef* added_node = optimized_graph->add_node();
@@ -3850,7 +3854,7 @@ bool ConstantFolding::PartialConcatConstFolding(GraphDef* optimized_graph,
   }
   if (!inputs_to_delete.empty()) {
     // Fix up the inputs to the original node.
-    protobuf::RepeatedPtrField<string> tmp;
+    protobuf::RepeatedPtrField<std::string> tmp;
     tmp.Swap(node->mutable_input());
     for (int i = 0; i < tmp.size(); ++i) {
       if (inputs_to_delete.find(i) == inputs_to_delete.end()) {
@@ -3880,7 +3884,7 @@ bool ConstantFolding::GetConcatAxis(const NodeDef& node, int* axis) {
   }
   *axis = axis_tensor.dtype() == DT_INT64
               ? static_cast<int>(axis_tensor.scalar<int64_t>()())
-              : axis_tensor.scalar<int32>()();
+              : axis_tensor.scalar<int32_t>()();
   return true;
 }
 
@@ -3917,8 +3921,8 @@ bool ConstantFolding::MergeConcat(bool use_shape_info,
   // device() fields set, and if different inputs are on different tasks.  If
   // so, this concat of concats may have been carefully constructed to be a
   // two-stage concat, and we don't want to undo that here.
-  string task, device;
-  absl::flat_hash_set<string> unique_input_tasks;
+  std::string task, device;
+  absl::flat_hash_set<std::string> unique_input_tasks;
   const int n_parent_inputs = NumNonControlInputs(*parent);
   // Iterate over the real inputs to concatenate [0..n_parent_inputs - 1).  The
   // input at n_parent_inputs - 1 is the concat axis argument for a ConcatV2
@@ -3937,7 +3941,7 @@ bool ConstantFolding::MergeConcat(bool use_shape_info,
     }
   }
 
-  protobuf::RepeatedPtrField<string> parent_inputs;
+  protobuf::RepeatedPtrField<std::string> parent_inputs;
   parent_inputs.Swap(parent->mutable_input());
   // TODO(rmlarsen): IF the child occurs more than once, is it beneficial to
   // collapse it into the parent multiple times? Probably not.
@@ -3970,7 +3974,7 @@ bool ConstantFolding::MergeConcat(bool use_shape_info,
 absl::Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
     NodeDef* node, GraphDef* optimized_graph) {
   auto add_quantized_out = [this, node, optimized_graph](
-                               const string& out_const_name, int index) {
+                               const std::string& out_const_name, int index) {
     NodeDef* out_node = optimized_graph->add_node();
     graph_modified_ = true;
     Tensor value(DT_FLOAT, TensorShape({}));
@@ -3985,12 +3989,12 @@ absl::Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
     out_node->set_device(node->device());
     // Copy all inputs from node.
     out_node->mutable_input()->CopyFrom(node->input());
-    for (const string& input : out_node->input()) {
+    for (const std::string& input : out_node->input()) {
       node_map_->AddOutput(NodeName(input), out_const_name);
     }
 
     // Update output nodes consuming node:index to new const node.
-    string old_input = absl::StrCat(node->name(), ":", index);
+    std::string old_input = absl::StrCat(node->name(), ":", index);
     int old_node_count = 0;
     // We make a copy since the set might change.
     auto outputs = node_map_->GetOutputs(node->name());
@@ -4010,9 +4014,9 @@ absl::Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
 
     return absl::OkStatus();
   };
-  const string min_out_const_name =
+  const std::string min_out_const_name =
       OptimizedNodeName(*node, "-quantized_matmul_min_out");
-  const string max_out_const_name =
+  const std::string max_out_const_name =
       OptimizedNodeName(*node, "-quantized_matmul_max_out");
   if (node_map_->GetNode(min_out_const_name) == nullptr &&
       node_map_->GetNode(max_out_const_name) == nullptr) {
@@ -4049,7 +4053,7 @@ absl::Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
     }
   }
 
-  absl::flat_hash_set<string> nodes_to_not_simplify;
+  absl::flat_hash_set<std::string> nodes_to_not_simplify;
   if (properties->has_properties()) {
     TF_RETURN_IF_ERROR(MaterializeShapes(*properties));
     TF_RETURN_IF_ERROR(MaterializeConstants(*properties));

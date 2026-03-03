@@ -104,6 +104,10 @@ cc_library(
     name = "device_address_handle",
     srcs = ["device_address_handle.cc"],
     hdrs = ["device_address_handle.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":device_address",
         ":stream_executor_h",
@@ -386,12 +390,20 @@ cc_library(
 )
 
 cc_library(
+    name = "platform_id",
+    hdrs = ["platform_id.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "platform",
     srcs = ["platform.cc"],
     hdrs = ["platform.h"],
     deps = [
         ":device_description",
-        "@com_google_absl//absl/base",
+        ":platform_id",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -513,6 +525,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -736,6 +749,7 @@ xla_cc_test(
         ":device_address",
         ":kernel_args",
         ":kernel_args_packing_spec",
+        ":kernel_args_packing_spec_proto_cc",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",

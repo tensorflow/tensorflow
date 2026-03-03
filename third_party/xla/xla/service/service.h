@@ -318,7 +318,7 @@ class Service {
       Executable* executable,
       absl::Span<const std::vector<const ShapedBuffer*>> arguments,
       Backend* backend, const DeviceHandle& device_handle,
-      const std::string& result_tag, ExecutionProfile* profile);
+      absl::string_view result_tag, ExecutionProfile* profile);
 
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that

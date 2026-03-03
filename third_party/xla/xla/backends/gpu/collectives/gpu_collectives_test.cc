@@ -22,10 +22,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/cancellation_token.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -53,15 +55,40 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-// Creates a pair of communicators for the given executors.
+static constexpr GlobalDeviceId kD0(0);
+static constexpr GlobalDeviceId kD1(1);
+static constexpr GlobalDeviceId kD2(2);
+static constexpr GlobalDeviceId kD3(2);
+
+static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
+    se::Platform* platform, size_t n) {
+  std::vector<se::StreamExecutor*> executors(n);
+  for (size_t d = 0; d < n; ++d) {
+    TF_ASSIGN_OR_RETURN(executors[d], platform->ExecutorForDevice(d));
+  }
+  return executors;
+}
+
+// Creates communicators for the given executors.
 static absl::StatusOr<std::vector<std::unique_ptr<GpuCommunicator>>>
-CreateCommunicators(se::StreamExecutor* executor0,
-                    se::StreamExecutor* executor1, bool blocking = true,
-                    size_t num_ids = 1) {
-  GpuCollectives::Device device0(executor0);
-  GpuCollectives::Device device1(executor1);
+CreateCommunicators(absl::Span<se::StreamExecutor* const> executors,
+                    std::vector<GlobalDeviceId> device_ids,
+                    bool blocking = true, size_t num_ids = 1) {
+  CHECK_EQ(executors.size(), device_ids.size());
 
   GpuCollectives* collectives = GpuCollectives::Default("GPU");
+
+  std::vector<GpuCollectives::Device> devices;
+  devices.reserve(executors.size());
+  for (se::StreamExecutor* executor : executors) {
+    devices.emplace_back(executor);
+  }
+
+  std::vector<GpuCollectives::DeviceRank> device_ranks;
+  device_ranks.reserve(devices.size());
+  for (size_t i = 0; i < devices.size(); ++i) {
+    device_ranks.emplace_back(&devices[i], RankId(i));
+  }
 
   CliqueIds clique_ids;
   for (size_t i = 0; i < num_ids; ++i) {
@@ -70,11 +97,7 @@ CreateCommunicators(se::StreamExecutor* executor0,
     clique_ids.Add(clique_id);
   }
 
-  GpuCliqueKey clique_key({GlobalDeviceId(0), GlobalDeviceId(1)},
-                          /*num_local_participants=*/2);
-
-  Collectives::DeviceRank rank0(&device0, RankId(0));
-  Collectives::DeviceRank rank1(&device1, RankId(1));
+  GpuCliqueKey clique_key(device_ids, executors.size());
 
   GpuCollectives::Config config;
   config.blocking_communicators = blocking;
@@ -82,14 +105,76 @@ CreateCommunicators(se::StreamExecutor* executor0,
 
   TF_ASSIGN_OR_RETURN(auto comms,
                       collectives->CreateCommunicatorsWithCancel(
-                          clique_key, clique_ids, {rank0, rank1}, config,
+                          clique_key, clique_ids, device_ranks, config,
                           std::make_shared<CancellationToken>()));
-  CHECK_EQ(comms.size(), 2);
+  CHECK_EQ(comms.size(), executors.size());
 
   std::vector<std::unique_ptr<GpuCommunicator>> gpu_comms;
-  gpu_comms.emplace_back(dynamic_cast<GpuCommunicator*>(comms[0].release()));
-  gpu_comms.emplace_back(dynamic_cast<GpuCommunicator*>(comms[1].release()));
+  gpu_comms.reserve(comms.size());
+  for (size_t i = 0; i < comms.size(); ++i) {
+    gpu_comms.emplace_back(dynamic_cast<GpuCommunicator*>(comms[i].release()));
+  }
   return gpu_comms;
+}
+
+// Creates memory allocators that allocate physical memory in the collective
+// memory space, which makes them compatible with symmetric memory requirements.
+static absl::StatusOr<std::vector<std::unique_ptr<se::MemoryAllocator>>>
+CreateMemoryAllocators(absl::Span<se::StreamExecutor* const> executors) {
+  std::vector<std::unique_ptr<se::MemoryAllocator>> allocators;
+  allocators.reserve(executors.size());
+  for (se::StreamExecutor* executor : executors) {
+    TF_ASSIGN_OR_RETURN(
+        allocators.emplace_back(),
+        executor->CreateMemoryAllocator(se::MemorySpace::kCollective));
+  }
+  return allocators;
+}
+
+// Allocate `num_bytes` on each allocator.
+static absl::StatusOr<std::vector<std::unique_ptr<se::MemoryAllocation>>>
+Allocate(absl::Span<const std::unique_ptr<se::MemoryAllocator>> allocators,
+         size_t num_bytes) {
+  std::vector<std::unique_ptr<se::MemoryAllocation>> allocations;
+  allocations.reserve(allocators.size());
+  for (auto& allocator : allocators) {
+    TF_ASSIGN_OR_RETURN(allocations.emplace_back(),
+                        allocator->Allocate(num_bytes));
+  }
+  return allocations;
+}
+
+// Create symmetric memory with given comms and allocations.
+static std::vector<Future<std::unique_ptr<SymmetricMemory>>>
+CreateSymmetricMemory(
+    tsl::Executor& exec,
+    absl::Span<const std::unique_ptr<GpuCommunicator>> comms,
+    absl::Span<const std::unique_ptr<se::MemoryAllocation>> allocs) {
+  CHECK_EQ(comms.size(), allocs.size());
+
+  std::vector<Future<std::unique_ptr<SymmetricMemory>>> futures;
+  futures.reserve(allocs.size());
+  for (size_t i = 0; i < comms.size(); ++i) {
+    futures.emplace_back(MakeFutureOn(exec, [=] {
+      return comms[i]->CreateSymmetricMemory(allocs[i]->address());
+    }));
+  }
+
+  return futures;
+}
+
+// Wait for symmetric memory futures to become available.
+static absl::StatusOr<std::vector<std::unique_ptr<SymmetricMemory>>>
+AwaitSymmetricMemory(
+    std::vector<Future<std::unique_ptr<SymmetricMemory>>> futures) {
+  std::vector<std::unique_ptr<SymmetricMemory>> symm;
+  symm.reserve(futures.size());
+
+  for (auto& future : futures) {
+    TF_ASSIGN_OR_RETURN(symm.emplace_back(), std::move(future).Await());
+  }
+
+  return symm;
 }
 
 TEST(GpuCollectivesTest, CreateWithMultipleIds) {
@@ -100,13 +185,11 @@ TEST(GpuCollectivesTest, CreateWithMultipleIds) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
   }
 
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor0,
-                       platform->ExecutorForDevice(0));
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor1,
-                       platform->ExecutorForDevice(1));
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
 
   ASSERT_OK_AND_ASSIGN(
-      auto comms, CreateCommunicators(executor0, executor1, /*blocking=*/true,
+      auto comms, CreateCommunicators(executors, {kD0, kD1}, /*blocking=*/true,
                                       /*num_ids=*/2));
 
   EXPECT_TRUE(comms[0]->platform_comm().handle);
@@ -121,35 +204,20 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
   }
 
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor0,
-                       platform->ExecutorForDevice(0));
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor1,
-                       platform->ExecutorForDevice(1));
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
 
-  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executor0, executor1));
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
 
   EXPECT_TRUE(comms[0]->platform_comm().handle);
   EXPECT_TRUE(comms[1]->platform_comm().handle);
 
-  if (!comms[0]->SupportsDeviceComm() || !comms[1]->SupportsDeviceComm()) {
+  if (!absl::c_all_of(comms, [](auto& c) { return c->SupportsDeviceComm(); })) {
     GTEST_SKIP() << "GPU communicators do not suppoort symmetric memory";
   }
 
-  // Create memory allocators that allocate physical memory in the collective
-  // memory space, which makes them compatible with symmetric memory
-  // requirements.
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<se::MemoryAllocator> allocator0,
-      executor0->CreateMemoryAllocator(se::MemorySpace::kCollective));
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<se::MemoryAllocator> allocator1,
-      executor1->CreateMemoryAllocator(se::MemorySpace::kCollective));
-
-  // Allocate device memory on each participating rank.
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::MemoryAllocation> alloc0,
-                       allocator0->Allocate(1024));
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::MemoryAllocation> alloc1,
-                       allocator1->Allocate(1024));
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto allocs, Allocate(allocators, 1024));
 
   // Because creating symmetric memory is a collective operation, we must call
   // it from a thead pool to avoid deadlocks.
@@ -157,15 +225,53 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   tsl::Executor& exec = *pool.AsExecutor();
 
   // Register allocated buffers as symmetric memory.
-  auto fsymm0 = MakeFutureOn(
-      exec, [&] { return comms[0]->CreateSymmetricMemory(alloc0->address()); });
-  auto fsymm1 = MakeFutureOn(
-      exec, [&] { return comms[1]->CreateSymmetricMemory(alloc1->address()); });
+  auto fsymm = CreateSymmetricMemory(exec, comms, allocs);
+  ASSERT_OK_AND_ASSIGN(auto symm, AwaitSymmetricMemory(std::move(fsymm)));
+}
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<SymmetricMemory> symm0,
-                       std::move(fsymm0).Await());
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<SymmetricMemory> symm1,
-                       std::move(fsymm1).Await());
+TEST(GpuCollectivesTest, CreateSymmetricMemoryOnDifferentComms) {
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 4) {
+    GTEST_SKIP() << "Test requires at least 4 GPUs";
+  }
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors_vec,
+                       CreateExecutors(platform, 4));
+  absl::Span<se::StreamExecutor*> executors(executors_vec);
+
+  ASSERT_OK_AND_ASSIGN(auto comms0123,
+                       CreateCommunicators(executors, {kD0, kD1, kD2, kD3}));
+  ASSERT_OK_AND_ASSIGN(auto comms01,
+                       CreateCommunicators(executors.first(2), {kD0, kD1}));
+  ASSERT_OK_AND_ASSIGN(auto comms23,
+                       CreateCommunicators(executors.last(2), {kD2, kD3}));
+
+  ASSERT_OK_AND_ASSIGN(auto allocators, CreateMemoryAllocators(executors));
+  ASSERT_OK_AND_ASSIGN(auto allocs_vec, Allocate(allocators, 1024));
+  auto allocs = absl::MakeSpan(allocs_vec);
+
+  // Because creating symmetric memory is a collective operation, we must call
+  // it from a thead pool to avoid deadlocks.
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 4);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  // In the test below we create multiple symmetric allocation on different
+  // groups of communicators from the same physical memory.
+
+  // Create symmetric memory on [0,1,2,3].
+  auto fsymm0123 = CreateSymmetricMemory(exec, comms0123, allocs);
+  ASSERT_OK_AND_ASSIGN(auto symm0123,
+                       AwaitSymmetricMemory(std::move(fsymm0123)));
+
+  // Create symmetric memory on [0,1].
+  auto fsymm01 = CreateSymmetricMemory(exec, comms01, allocs.first(2));
+  ASSERT_OK_AND_ASSIGN(auto symm01, AwaitSymmetricMemory(std::move(fsymm01)));
+
+  // Create symmetric memory on [2,3].
+  auto fsymm23 = CreateSymmetricMemory(exec, comms23, allocs.last(2));
+  ASSERT_OK_AND_ASSIGN(auto symm23, AwaitSymmetricMemory(std::move(fsymm23)));
 }
 
 TEST(GpuCollectivesTest, CreateDeviceComm) {
@@ -176,12 +282,10 @@ TEST(GpuCollectivesTest, CreateDeviceComm) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
   }
 
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor0,
-                       platform->ExecutorForDevice(0));
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor1,
-                       platform->ExecutorForDevice(1));
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
 
-  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executor0, executor1));
+  ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
 
   if (!comms[0]->SupportsDeviceComm() || !comms[1]->SupportsDeviceComm()) {
     GTEST_SKIP() << "GPU communicators do not suppoort device-initiated comms";
@@ -230,13 +334,11 @@ TEST_P(GpuAbortCollectivesTest, Abort) {
     GTEST_SKIP() << "Test requires at least 2 GPUs";
   }
 
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor0,
-                       platform->ExecutorForDevice(0));
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor1,
-                       platform->ExecutorForDevice(1));
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
 
   ASSERT_OK_AND_ASSIGN(auto comms,
-                       CreateCommunicators(executor0, executor1, blocking));
+                       CreateCommunicators(executors, {kD0, kD1}, blocking));
 
   // First time we call Abort it must succeed.
   ASSERT_OK(comms[0]->Abort());

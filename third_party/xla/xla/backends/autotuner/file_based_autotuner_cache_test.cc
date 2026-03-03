@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -106,11 +107,10 @@ class FileBasedAutotunerCacheTest : public ::testing::Test {
 // Matcher for Config.
 MATCHER_P(ConfigEq, expected_config, "") {
   const Config& actual_config = arg;
-  if (actual_config.codegen_backend_name !=
-      expected_config.codegen_backend_name) {
+  if (actual_config.codegen_backend != expected_config.codegen_backend) {
     *result_listener << "codegen_backend mismatch: expected "
-                     << expected_config.codegen_backend_name << ", got "
-                     << actual_config.codegen_backend_name;
+                     << expected_config.codegen_backend << ", got "
+                     << actual_config.codegen_backend;
     return false;
   }
   // Compare backend_config (google::protobuf::Any)
@@ -145,7 +145,7 @@ TEST_F(FileBasedAutotunerCacheTest, InsertAndLookup) {
                                 FileBasedCacheConfig::CacheMode::READ_WRITE)));
   auto instr = CreateDummyInstr("hlo1");
   Config config;
-  config.codegen_backend_name = "TestBackend";
+  config.codegen_backend = autotuner::UNSPECIFIED_BACKEND;
   config.backend_config = CreateDummyBackendConfig();
 
   TF_ASSERT_OK(cache->Insert(instr.get(), config));
@@ -155,7 +155,7 @@ TEST_F(FileBasedAutotunerCacheTest, InsertAndLookup) {
 TEST_F(FileBasedAutotunerCacheTest, SaveAndLoad) {
   auto instr = CreateDummyInstr("hlo2");
   Config config;
-  config.codegen_backend_name = "TestBackend";
+  config.codegen_backend = autotuner::UNSPECIFIED_BACKEND;
   config.backend_config = CreateDummyBackendConfig();
 
   // Create cache, insert, and let it save.
@@ -180,7 +180,7 @@ TEST_F(FileBasedAutotunerCacheTest, SaveAndLoad) {
 TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentDevice) {
   auto instr = CreateDummyInstr("hlo2");
   Config config;
-  config.codegen_backend_name = "TestBackend";
+  config.codegen_backend = autotuner::UNSPECIFIED_BACKEND;
   config.backend_config = CreateDummyBackendConfig();
 
   // Create cache, insert, and let it save.
@@ -205,7 +205,7 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentDevice) {
 TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentVersion) {
   auto instr = CreateDummyInstr("hlo2");
   Config config;
-  config.codegen_backend_name = "TestBackend";
+  config.codegen_backend = autotuner::UNSPECIFIED_BACKEND;
   config.backend_config = CreateDummyBackendConfig();
 
   // Create cache, insert, and let it save.
@@ -231,7 +231,7 @@ TEST_F(FileBasedAutotunerCacheTest, LoadWithDifferentVersion) {
 TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
   auto instr = CreateDummyInstr("hlo3");
   Config config;
-  config.codegen_backend_name = "TestBackend";
+  config.codegen_backend = autotuner::UNSPECIFIED_BACKEND;
   config.backend_config = CreateDummyBackendConfig();
 
   // Create in READ_WRITE mode to pre-populate the cache file.
@@ -254,7 +254,7 @@ TEST_F(FileBasedAutotunerCacheTest, ReadOnlyMode) {
   // Insert a new entry.
   auto instr2 = CreateDummyInstr("hlo4");
   Config config2;
-  config2.codegen_backend_name = "AnotherBackend";
+  config2.codegen_backend = autotuner::UNSPECIFIED_BACKEND;
   config2.backend_config = CreateDummyBackendConfig();
   TF_ASSERT_OK(cache->Insert(instr2.get(), config2));
   EXPECT_THAT(cache->Lookup(instr2.get()), Eq(std::nullopt));
@@ -278,13 +278,13 @@ TEST_F(FileBasedAutotunerCacheTest, OverwriteEntry) {
   auto instr = CreateDummyInstr("hlo5");
 
   Config config1;
-  config1.codegen_backend_name = "BackendV1";
+  config1.codegen_backend = autotuner::UNSPECIFIED_BACKEND;
   config1.backend_config = CreateDummyBackendConfig();
   TF_ASSERT_OK(cache->Insert(instr.get(), config1));
   EXPECT_THAT(cache->Lookup(instr.get()), Optional(ConfigEq(config1)));
 
   Config config2;
-  config2.codegen_backend_name = "BackendV2";
+  config2.codegen_backend = autotuner::TRITON;
   config2.backend_config = CreateDummyBackendConfig();
   TF_ASSERT_OK(cache->Insert(instr.get(), config2));
   EXPECT_THAT(cache->Lookup(instr.get()), Optional(ConfigEq(config2)));

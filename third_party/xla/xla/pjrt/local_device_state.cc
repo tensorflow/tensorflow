@@ -48,13 +48,11 @@ limitations under the License.
 
 namespace xla {
 
-LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
-                                   LocalClient* client,
-                                   AllocationModel allocation_model,
-                                   int max_inflight_computations,
-                                   bool allow_event_reuse,
-                                   bool use_callback_stream, int device_ordinal,
-                                   std::optional<StreamOptions> stream_options)
+LocalDeviceState::LocalDeviceState(
+    se::StreamExecutor* executor, LocalClient* client,
+    AllocationModel allocation_model, int max_inflight_computations,
+    bool allow_event_reuse, bool use_callback_stream, int device_ordinal,
+    std::optional<StreamOptions> stream_options, bool schedule_async)
     : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
       compute_semaphore_(
@@ -126,12 +124,18 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
     external_ready_event_streams_.emplace_back(
         create_stream(absl::StrFormat("External ready event #%d", i)));
   }
-  execute_thread_ =
-      std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_execute");
-  callback_thread_ =
-      std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_callback");
-  cleanup_thread_ =
-      std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_cleanup");
+  tsl::ThreadOptions thread_options;
+  thread_options.numa_node = executor->numa_node();
+  execute_thread_ = std::make_unique<WorkerThread>(
+      tsl::Env::Default(), thread_options, "py_xla_execute");
+  if (schedule_async) {
+    async_dispatch_thread_ = std::make_unique<WorkerThread>(
+        tsl::Env::Default(), thread_options, "py_xla_dispatch");
+  }
+  callback_thread_ = std::make_unique<WorkerThread>(
+      tsl::Env::Default(), thread_options, "py_xla_callback");
+  cleanup_thread_ = std::make_unique<WorkerThread>(
+      tsl::Env::Default(), thread_options, "py_xla_cleanup");
 }
 
 LocalDeviceState::~LocalDeviceState() {

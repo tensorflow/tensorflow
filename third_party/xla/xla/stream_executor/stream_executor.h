@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/tensor_map.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+#include "tsl/platform/numa.h"
 
 // TODO(ezhulenev): Remove this once transitive dependencies are fixed.
 #include "xla/stream_executor/device_memory.h"
@@ -90,6 +91,9 @@ class StreamExecutor {
 
   // Returns the device ordinal.
   virtual int device_ordinal() const { return -1; }
+
+  // Returns the NUMA node of the device.
+  virtual int numa_node() const { return tsl::port::kNUMANoAffinity; }
 
   // Creates and initializes a Stream.
   virtual absl::StatusOr<std::unique_ptr<Stream>> CreateStream(

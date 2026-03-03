@@ -52,7 +52,7 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
     delete file_;
   }
 
-  bool Get(const string& key, string* value) override {
+  bool Get(const std::string& key, std::string* value) override {
     std::unique_ptr<table::Iterator> iter(table_->NewIterator());
     iter->Seek(key);
     if (iter->Valid() && iter->key() == key) {
@@ -70,14 +70,14 @@ class TensorSliceReaderTable : public TensorSliceReader::Table {
 };
 }  // namespace
 
-absl::Status OpenTableTensorSliceReader(const string& fname,
+absl::Status OpenTableTensorSliceReader(const std::string& fname,
                                         TensorSliceReader::Table** result) {
   *result = nullptr;
   Env* env = Env::Default();
   std::unique_ptr<RandomAccessFile> f;
   absl::Status s = env->NewRandomAccessFile(fname, &f);
   if (s.ok()) {
-    uint64 file_size;
+    uint64_t file_size;
     s = env->GetFileSize(fname, &file_size);
     if (s.ok()) {
       table::Options options;
@@ -99,16 +99,16 @@ absl::Status OpenTableTensorSliceReader(const string& fname,
   return s;
 }
 
-TensorSliceReader::TensorSliceReader(const string& filepattern)
+TensorSliceReader::TensorSliceReader(const std::string& filepattern)
     : TensorSliceReader(filepattern, OpenTableTensorSliceReader,
                         kLoadAllShards) {}
 
-TensorSliceReader::TensorSliceReader(const string& filepattern,
+TensorSliceReader::TensorSliceReader(const std::string& filepattern,
                                      OpenTableFunction open_function)
     : TensorSliceReader(filepattern, std::move(open_function), kLoadAllShards) {
 }
 
-TensorSliceReader::TensorSliceReader(const string& filepattern,
+TensorSliceReader::TensorSliceReader(const std::string& filepattern,
                                      OpenTableFunction open_function,
                                      int preferred_shard)
     : filepattern_(filepattern), open_function_(std::move(open_function)) {
@@ -146,9 +146,9 @@ void TensorSliceReader::LoadShard(int shard) const {
   if (sss_[shard] || !status_.ok()) {
     return;  // Already loaded, or invalid.
   }
-  string value;
+  std::string value;
   SavedTensorSlices sts;
-  const string fname = fnames_[shard];
+  const std::string fname = fnames_[shard];
   VLOG(1) << "Reading meta data from file " << fname << "...";
   Table* table;
   absl::Status s = open_function_(fname, &table);
@@ -194,8 +194,8 @@ void TensorSliceReader::LoadAllShards() const {
 }
 
 const TensorSliceSet* TensorSliceReader::FindTensorSlice(
-    const string& name, const TensorSlice& slice,
-    std::vector<std::pair<TensorSlice, string>>* details) const {
+    const std::string& name, const TensorSlice& slice,
+    std::vector<std::pair<TensorSlice, std::string>>* details) const {
   const TensorSliceSet* tss = gtl::FindPtrOrNull(tensors_, name);
   if (tss && !tss->QueryMeta(slice, details)) {
     return nullptr;
@@ -210,7 +210,7 @@ TensorSliceReader::~TensorSliceReader() {
   tensors_.clear();
 }
 
-bool TensorSliceReader::HasTensor(const string& name, TensorShape* shape,
+bool TensorSliceReader::HasTensor(const std::string& name, TensorShape* shape,
                                   DataType* type) const {
   mutex_lock l(mu_);
   const TensorSliceSet* tss = gtl::FindPtrOrNull(tensors_, name);
@@ -234,7 +234,8 @@ bool TensorSliceReader::HasTensor(const string& name, TensorShape* shape,
 }
 
 absl::Status TensorSliceReader::GetTensor(
-    const string& name, std::unique_ptr<tensorflow::Tensor>* out_tensor) const {
+    const std::string& name,
+    std::unique_ptr<tensorflow::Tensor>* out_tensor) const {
   DataType type;
   TensorShape shape;
   TensorSlice slice;
@@ -320,8 +321,8 @@ TensorSliceReader::GetVariableToDataTypeMap() const {
   return name_to_dtype;
 }
 
-const string TensorSliceReader::DebugString() const {
-  string shape_str;
+const std::string TensorSliceReader::DebugString() const {
+  std::string shape_str;
   if (status().ok()) {
     for (const auto& e : Tensors()) {
       strings::StrAppend(&shape_str, e.first, " (",

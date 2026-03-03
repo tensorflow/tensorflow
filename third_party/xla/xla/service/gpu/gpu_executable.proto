@@ -12,11 +12,11 @@ import "xla/xla_data.proto";
 
 // Serialized representation of a GPU executable, used for AOT compilation.
 //
-// There's a legacy and a new verions of this proto, see
+// There's a legacy and a new version of this proto, see
 // `xla::gpu::LegacyGpuAotCompilationResult` and
 // `xla::gpu::GpuAotCompilationResult` respectively for more details.
 //
-// If `thunk` is set, then this is the new format. Otherwise, it's the legacy
+// If `thunks` is set, then this is the new format. Otherwise, it's the legacy
 // format.
 message GpuExecutableProto {
   // The HLO module of the executable - for debugging purposes only.
@@ -50,9 +50,9 @@ message GpuExecutableProto {
   // The target compute capability of the executable.
   stream_executor.GpuComputeCapabilityProto gpu_compute_capability = 6;
 
-  // The thunk tree of the executable.
-  // Not set in the legacy format.
-  optional ThunkProto thunk = 7;
+  // The top level thunk sequence of the executable. Corresponds to thunks
+  // emitted for the ENTRY HLO computation. Not set in the legacy format.
+  repeated ThunkProto thunks = 13;
 
   // The name of the HLO module - for debugging purposes only.
   string module_name = 8;
@@ -92,4 +92,6 @@ message GpuExecutableProto {
 
   // The constants used by the executable.
   repeated ConstantInfoProto constants = 12;
+
+  reserved 7;
 }

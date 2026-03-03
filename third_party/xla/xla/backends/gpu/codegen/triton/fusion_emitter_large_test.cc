@@ -66,23 +66,12 @@ ENTRY e {
   const char* kHloTextTest = R"(
 HloModule t
 
-lhs {
-  ROOT p0 = f16[65536,32800] parameter(0)
-}
-
-rhs {
-  ROOT p1 = f16[32800,32] parameter(0)
-}
-
 triton_dot_computation {
   p0 = f16[65536,32800] parameter(0)
   p1 = f16[32800,32] parameter(1)
-  lhs = f16[65536,32800] fusion(p0), kind=kCustom, calls=lhs,
-    backend_config="{\"fusion_backend_config\":{\"kind\":\"__triton_nested_gemm_fusion\",\"block_level_fusion_config\":{\"output_tiles\":[{\"sizes\":[\"32\",\"32\"]}]}}}"
-  rhs = f16[32800,32] fusion(p1), kind=kCustom, calls=rhs,
-    backend_config="{\"fusion_backend_config\":{\"kind\":\"__triton_nested_gemm_fusion\",\"block_level_fusion_config\":{\"output_tiles\":[{\"sizes\":[\"32\",\"32\"]}]}}}"
-  ROOT dot = f16[65536,32] dot(lhs, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot = f16[65536,32] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -171,7 +160,7 @@ ENTRY main {
   ROOT fusion = f16[65538,32768]{1,0} fusion(param_0), kind=kCustom,
     calls=triton_fusion_computation, backend_config={
       "fusion_backend_config":{
-        "kind":"__triton", 
+        "kind":"__triton",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["1","32768"]}],
           "num_warps":"1",

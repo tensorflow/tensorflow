@@ -52,12 +52,12 @@ class HloRunnerPjRt : public HloRunnerInterface {
   // Transfers data between the host and device, using the given parameter
   // layouts.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  TransferLiteralsToDevice(absl::Span<const ShapeLayout> layouts,
-                           absl::Span<const Literal* const> literals);
+  TransferLiteralsToDefaultDevice(absl::Span<const ShapeLayout> layouts,
+                                  absl::Span<const Literal* const> literals);
   // Transfers data between the host and device, using the layout of each
   // literal itself.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  TransferLiteralsToDevice(absl::Span<const Literal* const> literals);
+  TransferLiteralsToDefaultDevice(absl::Span<const Literal* const> literals);
   absl::StatusOr<Literal> TransferLiteralsFromDevice(
       absl::Span<const std::unique_ptr<PjRtBuffer>> output_buffers,
       bool untuple_result);
@@ -154,6 +154,13 @@ class HloRunnerPjRt : public HloRunnerInterface {
       absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
+
+  // Transfers data between the host and device, using the given parameter
+  // layouts.
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  TransferLiteralsToDevice(absl::Span<const ShapeLayout> layouts,
+                           absl::Span<const Literal* const> literals,
+                           PjRtDevice* absl_nonnull device);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
       const Literal& literal, PjRtMemorySpace* absl_nonnull memory_space,

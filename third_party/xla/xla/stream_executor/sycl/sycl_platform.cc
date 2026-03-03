@@ -22,10 +22,12 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/sycl/sycl_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 
 namespace stream_executor {
@@ -38,35 +40,46 @@ SyclPlatform::~SyclPlatform() {}
 Platform::Id SyclPlatform::id() const { return kSyclPlatformId; }
 
 int SyclPlatform::VisibleDeviceCount() const {
-  // Initialized in a thread-safe manner the first time this is run.
-  static const int num_devices = [] { return 0; }();
-  return num_devices;
+  auto status = SyclDevicePool::GetDeviceCount();
+  if (status.ok()) {
+    return status.value();
+  }
+  LOG(ERROR) << "Failed to get device count: " << status;
+  return -1;  // Return -1 as a sentinel on internal failure.
 }
 
 const std::string& SyclPlatform::Name() const { return name_; }
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 SyclPlatform::DescriptionForDevice(int ordinal) const {
-  return absl::UnimplementedError(
-      "DescriptionForDevice is unimplemented for SYCL platform.");
+  return SyclExecutor::CreateDeviceDescription(ordinal);
 }
 
 absl::StatusOr<StreamExecutor*> SyclPlatform::ExecutorForDevice(int ordinal) {
-  return absl::UnimplementedError(
-      "ExecutorForDevice is unimplemented for SYCL platform.");
+  return executor_cache_.GetOrCreate(
+      ordinal, [this, ordinal]() { return GetUncachedExecutor(ordinal); });
+}
+
+absl::StatusOr<StreamExecutor*> SyclPlatform::FindExisting(int ordinal) {
+  return executor_cache_.Get(ordinal);
 }
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 SyclPlatform::GetUncachedExecutor(int ordinal) {
-  return absl::UnimplementedError(
-      "GetUncachedExecutor is unimplemented for SYCL platform.");
+  auto executor = std::make_unique<SyclExecutor>(this, ordinal);
+  TF_RETURN_IF_ERROR(executor->Init());
+  return std::move(executor);
 }
 
 }  // namespace sycl
 
+// Initializes and registers the SYCL platform if it is not already registered.
 static void InitializeSyclPlatform() {
-  CHECK_OK(PlatformManager::RegisterPlatform(
-      std::make_unique<sycl::SyclPlatform>()));
+  auto status = PlatformManager::PlatformWithName("SYCL");
+  if (!status.ok()) {
+    TF_CHECK_OK(PlatformManager::RegisterPlatform(
+        std::make_unique<sycl::SyclPlatform>()));
+  }
 }
 
 }  // namespace stream_executor

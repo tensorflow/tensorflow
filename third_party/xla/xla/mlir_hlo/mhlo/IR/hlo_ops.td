@@ -2595,9 +2595,25 @@ def MHLO_CompositeOp : MHLO_Op<"composite", [DeclareOpInterfaceMethods<SymbolUse
     FlatSymbolRefAttr:$decomposition,
     DefaultValuedOptionalAttr<I32Attr, "0">:$version
   );
+  let regions = (region VariadicRegion<AnyRegion>:$composite_regions);
   let results = (outs Variadic<MHLO_TensorOrTokenOrTuple>);
+
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::TypeRange":$resultTypes, "::mlir::ValueRange":$inputs,
+      "::mlir::StringRef":$name, "::mlir::DictionaryAttr":$attributes,
+      "::mlir::StringRef":$decomposition, "uint32_t":$version
+    ), [{
+      build($_builder, $_state, resultTypes, inputs, name, attributes,
+            decomposition, version, /*regionsCount=*/0);
+    }]>
+  ];
+
   let hasCustomHLOConverter = 1;
-  let assemblyFormat = "$name $inputs attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = [{
+    $name operands (` ` `(` $composite_regions^ `)`)? attr-dict
+    `:` functional-type(operands, results)
+  }];
 }
 
 def MHLO_ConvolutionOp : MHLO_Op<"convolution", [Pure]> {

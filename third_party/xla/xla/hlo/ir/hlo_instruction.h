@@ -419,7 +419,8 @@ class HloInstruction {
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      const PrecisionConfig& precision_config);
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config = {});
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -1841,6 +1842,19 @@ class HloInstruction {
   absl::InlinedVector<int64_t, 4> OperandIndices(
       const HloInstruction* operand) const;
 
+  // Returns the dimension index of the operand that corresponds to the given
+  // output dimension index, if the instruction is a "transparent" unary
+  // operation (e.g., Broadcast, Bitcast, Reshape, Elementwise Unary).
+  //
+  // Returns std::nullopt if:
+  // 1. The operation is not supported or not unary.
+  // 2. The output dimension is "new" (e.g., created by Broadcast or Reshape
+  // insertion).
+  // 3. The reshape is not a "trivial" reshape (i.e., not just
+  // inserting/deleting 1-sized dims).
+  std::optional<int64_t> MapUnaryOutputDimToOperandDim(
+      int64_t output_dim_idx) const;
+
   // Convenience helper for ShapeUtil::InsertedOrDeleted1SizedDimensions. If
   // this reshape merely inserts or deletes 1-sized dimensions, return the input
   // indices of the deleted dimensions and the output indices of the inserted
@@ -2152,6 +2166,13 @@ class HloInstruction {
       const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
       const HloInstruction& sorted_instruction);
 
+  // Sorts the users of this instruction using the given comparison function.
+  void SortUsers(
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+          compare) {
+    users_.SortInstructionUsers(compare);
+  }
+
   // Old methods kept for smooth subclassing transition BEGIN.
   // NOTE: Refrain from adding more delegates, prefer down casting to subclasses
   // rather than using these methods.
@@ -2421,6 +2442,10 @@ class HloInstruction {
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
 
+  // Delegates to HloConvolutionInstruction::sparsity_config.
+  const SparsityConfig& sparsity_config() const;
+  void set_sparsity_config(const SparsityConfig& config);
+
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
   bool IsAsynchronous() const;
@@ -2686,6 +2711,9 @@ class HloInstruction {
     void RemoveUser(HloInstruction* user);       // REQUIRES: Contains(user)
     int64_t UserId(HloInstruction* user);
     void SortInstructionUsers(
+        absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+            compare);
+    void SortInstructionUsers(
         const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
         const Users& sorted_instruction_users);
     bool CheckInvariants();
@@ -2806,6 +2834,7 @@ std::string RaggedDotDimensionNumbersToString(
     const RaggedDotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
+std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);

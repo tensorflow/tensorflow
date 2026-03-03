@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
@@ -63,14 +65,21 @@ namespace {
 using CommandBufferConfig = CommandBufferConversionPass::CommandBufferConfig;
 
 CommandBufferConfig GetCommandBufferConfig(
-    const DebugOptions& debug_options,
-    const se::DeviceDescription& device_info) {
+    const DebugOptions& debug_options, const se::DeviceDescription& device_info,
+    const HloModule* hlo_module) {
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> commands;
   for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
 
-  CommandBufferConfig config{std::move(commands), device_info};
+  // Extract slice_size (partition_size) from HloModule config if available.
+  int64_t num_local_devices = 0;
+  if (hlo_module != nullptr) {
+    num_local_devices = hlo_module->config().partition_size();
+  }
+
+  CommandBufferConfig config{std::move(commands), device_info,
+                             num_local_devices};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -141,10 +150,11 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::CUBLAS;
     case Thunk::kAllGatherStart:
     case Thunk::kAllReduceStart:
-    case Thunk::kReduceScatterStart:
     case Thunk::kAllToAllStart:
     case Thunk::kCollectiveBroadcastStart:
     case Thunk::kCollectivePermuteStart:
+    case Thunk::kRaggedAllToAllStart:
+    case Thunk::kReduceScatterStart:
     case Thunk::kRecv:
     case Thunk::kSend:
       return DebugOptions::COLLECTIVES;
@@ -207,6 +217,45 @@ bool IsConvertible(const CustomCallThunk& custom_call_thunk,
              : false;
 }
 
+// Returns true if the RaggedAllToAllStartThunk is convertible to a command
+// buffer operation.
+// This requires the one-shot barrier kernel to be explicitly enabled.
+bool IsConvertible(const RaggedAllToAllStartThunk& ra2a_thunk,
+                   const CommandBufferConfig& config) {
+  // 1. Check flags
+  bool flags_enabled = ra2a_thunk.is_one_shot_kernel_enabled() &&
+                       ra2a_thunk.use_multi_gpu_barrier_in_one_shot_kernel();
+  if (!flags_enabled) {
+    return false;
+  }
+
+  // 2. Check kernel support (types, limits)
+  if (!ra2a_thunk.IsOneShotKernelSupported()) {
+    return false;
+  }
+
+  // 3. Check Topology
+  // If we know the slice size (devices per node), we MUST verify that
+  // the collective is local. If it spans across nodes, the one-shot
+  // kernel (and P2P) cannot be used.
+  if (config.num_local_devices > 0) {
+    bool is_local = IsAllReplicasLocal(
+        config.num_local_devices, ra2a_thunk.ragged_all_to_all_config().config);
+    if (!is_local) {
+      VLOG(2) << "Skipping RaggedAllToAll Command Buffer conversion: "
+                 "Operation requires multi-host communication "
+              << "(num_local_devices=" << config.num_local_devices
+              << "), but one-shot kernel only supports "
+                 "local (intra-node) cliques.";
+      return false;
+    }
+  }
+
+  // If slice_size is unknown (0), we optimistically assume it's convertible
+  // and let the runtime Initialize/Record safety checks fail if we are wrong.
+  return true;
+}
+
 // Returns true if the given Thunk is convertible to a command buffer operation
 // based on the provided `config`.
 bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
@@ -237,6 +286,11 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
 
   if (thunk.kind() == Thunk::kCustomCall) {
     return IsConvertible(static_cast<const CustomCallThunk&>(thunk), config);
+  }
+
+  if (thunk.kind() == Thunk::kRaggedAllToAllStart) {
+    return IsConvertible(static_cast<const RaggedAllToAllStartThunk&>(thunk),
+                         config);
   }
   return true;
 }
@@ -349,8 +403,14 @@ ConvertThunksToCommandBuffer(
           thunks_to_convert,
           ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
 
+  std::string profile_annotation = absl::StrCat(
+      "command_buffer",
+      !thunks_to_convert.empty()
+          ? absl::StrCat("_", thunks_to_convert.front()->thunk_info().thunk_id)
+          : "");
+
   Thunk::ThunkInfo thunk_info;
-  thunk_info.profile_annotation = "command_buffer";
+  thunk_info.profile_annotation = profile_annotation;
   if (tsl::profiler::ProfilerLock::HasActiveSession() &&
       !debug_options.xla_enable_command_buffers_during_profiling()) {
     thunk_info.profile_annotation += " (disabled for profiling)";
@@ -425,7 +485,7 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
   tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
 
   CommandBufferConfig config =
-      GetCommandBufferConfig(debug_options, device_info);
+      GetCommandBufferConfig(debug_options, device_info, hlo_module);
   VLOG(1) << "Module " << module_name_
           << " CommandBufferConfig: " << config.ToString();
   TF_ASSIGN_OR_RETURN(

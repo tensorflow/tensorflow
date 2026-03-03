@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -47,8 +47,8 @@ class HipblasLtBackend : public GpuCodegenBackend {
                             const DebugOptions* debug_options,
                             Compiler* compiler,
                             const Compiler::GpuTargetConfig* target_config)
-      : GpuCodegenBackend("HipblasLt", debug_options, compiler, target_config,
-                          stream_executor) {}
+      : GpuCodegenBackend(autotuner::Backend::HIPBLASLT, debug_options,
+                          compiler, target_config, stream_executor) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;

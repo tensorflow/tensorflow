@@ -32,7 +32,7 @@ void AssertTypeEq() {
 }
 
 TEST(CleanupTest, BasicLambda) {
-  string s = "active";
+  std::string s = "active";
   {
     auto s_cleaner = gtl::MakeCleanup([&s] { s.assign("cleaned"); });
     EXPECT_EQ("active", s);
@@ -43,7 +43,7 @@ TEST(CleanupTest, BasicLambda) {
 TEST(FinallyTest, NoCaptureLambda) {
   // Noncapturing lambdas are just structs and use aggregate initializers.
   // Make sure MakeCleanup is compatible with that kind of initialization.
-  static string& s = *new string;
+  static std::string& s = *new std::string;
   s.assign("active");
   {
     auto s_cleaner = gtl::MakeCleanup([] { s.append(" clean"); });
@@ -53,7 +53,7 @@ TEST(FinallyTest, NoCaptureLambda) {
 }
 
 TEST(CleanupTest, Release) {
-  string s = "active";
+  std::string s = "active";
   {
     auto s_cleaner = gtl::MakeCleanup([&s] { s.assign("cleaned"); });
     EXPECT_EQ("active", s);
@@ -63,7 +63,7 @@ TEST(CleanupTest, Release) {
 }
 
 TEST(FinallyTest, TypeErasedWithoutFactory) {
-  string s = "active";
+  std::string s = "active";
   {
     AnyCleanup s_cleaner([&s] { s.append(" clean"); });
     EXPECT_EQ("active", s);
@@ -72,14 +72,14 @@ TEST(FinallyTest, TypeErasedWithoutFactory) {
 }
 
 struct Appender {
-  Appender(string* s, const string& msg) : s_(s), msg_(msg) {}
+  Appender(std::string* s, const std::string& msg) : s_(s), msg_(msg) {}
   void operator()() const { s_->append(msg_); }
-  string* s_;
-  string msg_;
+  std::string* s_;
+  std::string msg_;
 };
 
 TEST(CleanupTest, NonLambda) {
-  string s = "active";
+  std::string s = "active";
   {
     auto c = gtl::MakeCleanup(Appender(&s, " cleaned"));
     AssertTypeEq<decltype(c), gtl::Cleanup<Appender>>();
@@ -89,7 +89,7 @@ TEST(CleanupTest, NonLambda) {
 }
 
 TEST(CleanupTest, Assign) {
-  string s = "0";
+  std::string s = "0";
   {
     auto clean1 = gtl::MakeCleanup(Appender(&s, " 1"));
     auto clean2 = gtl::MakeCleanup(Appender(&s, " 2"));
@@ -102,7 +102,7 @@ TEST(CleanupTest, Assign) {
 
 TEST(CleanupTest, AssignAny) {
   // Check that implicit conversions can happen in assignment.
-  string s = "0";
+  std::string s = "0";
   {
     auto clean1 = gtl::MakeCleanup(Appender(&s, " 1"));
     AnyCleanup clean2 = gtl::MakeCleanup(Appender(&s, " 2"));
@@ -114,7 +114,7 @@ TEST(CleanupTest, AssignAny) {
 }
 
 TEST(CleanupTest, AssignFromReleased) {
-  string s = "0";
+  std::string s = "0";
   {
     auto clean1 = gtl::MakeCleanup(Appender(&s, " 1"));
     auto clean2 = gtl::MakeCleanup(Appender(&s, " 2"));
@@ -127,7 +127,7 @@ TEST(CleanupTest, AssignFromReleased) {
 }
 
 TEST(CleanupTest, AssignToReleased) {
-  string s = "0";
+  std::string s = "0";
   {
     auto clean1 = gtl::MakeCleanup(Appender(&s, " 1"));
     auto clean2 = gtl::MakeCleanup(Appender(&s, " 2"));
@@ -141,7 +141,7 @@ TEST(CleanupTest, AssignToReleased) {
 }
 
 TEST(CleanupTest, AssignToDefaultInitialized) {
-  string s = "0";
+  std::string s = "0";
   {
     auto clean1 = gtl::MakeCleanup(Appender(&s, " 1"));
     {
@@ -199,7 +199,7 @@ TEST_F(CleanupReferenceTest, FunctionPointer) {
 }
 
 TEST_F(CleanupReferenceTest, AssignLvalue) {
-  string s = "0";
+  std::string s = "0";
   Appender app1(&s, "1");
   Appender app2(&s, "2");
   {

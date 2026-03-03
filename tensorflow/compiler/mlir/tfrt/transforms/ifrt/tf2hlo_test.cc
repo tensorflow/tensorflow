@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/layout.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
@@ -121,8 +123,8 @@ TEST_F(Tf2HloTest, Empty) {
 
   const xla::CpuTopologyDescription cpu_topology(
       xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-      /*cpu_devices=*/{},
-      /*machine_attributes=*/std::vector<std::string>{});
+      xla::CpuTopology(
+          {}, xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
@@ -170,8 +172,8 @@ TEST_F(Tf2HloTest, Tuple) {
 
   const xla::CpuTopologyDescription cpu_topology(
       xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-      /*cpu_devices=*/{},
-      /*machine_attributes=*/std::vector<std::string>{});
+      xla::CpuTopology(
+          {}, xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
@@ -231,8 +233,8 @@ TEST_P(Tf2HloSpmdTest, SpmdTest) {
 
   const xla::CpuTopologyDescription cpu_topology(
       xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-      /*cpu_devices=*/{},
-      /*machine_attributes=*/std::vector<std::string>{});
+      xla::CpuTopology(
+          {}, xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
@@ -357,8 +359,8 @@ TEST_F(Tf2HloTest, UsingDefaultDeviceAssignment) {
 
   const xla::CpuTopologyDescription cpu_topology(
       xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-      /*cpu_devices=*/{},
-      /*machine_attributes=*/std::vector<std::string>{});
+      xla::CpuTopology(
+          {}, xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
@@ -469,8 +471,8 @@ TEST_F(Tf2HloTest, XlaCallHostCallback) {
 
   const xla::CpuTopologyDescription cpu_topology(
       xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-      /*cpu_devices=*/{},
-      /*machine_attributes=*/std::vector<std::string>{});
+      xla::CpuTopology(
+          {}, xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
@@ -577,8 +579,8 @@ TEST_F(Tf2HloTest, SameArgProduceSameKeyFingerprint) {
 
   const xla::CpuTopologyDescription cpu_topology(
       xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-      /*cpu_devices=*/{},
-      /*machine_attributes=*/std::vector<std::string>{});
+      xla::CpuTopology(
+          {}, xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
@@ -640,8 +642,8 @@ TEST_F(Tf2HloTest, DifferentCompileMetadataProduceDifferentKeyFingerprint) {
 
   const xla::CpuTopologyDescription cpu_topology(
       xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-      /*cpu_devices=*/{},
-      /*machine_attributes=*/std::vector<std::string>{});
+      xla::CpuTopology(
+          {}, xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 
@@ -703,8 +705,8 @@ TEST_F(Tf2HloTest,
 
   const xla::CpuTopologyDescription cpu_topology(
       xla::CpuId(), xla::CpuName(), /*platform_version=*/"",
-      /*cpu_devices=*/{},
-      /*machine_attributes=*/std::vector<std::string>{});
+      xla::CpuTopology(
+          {}, xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   std::shared_ptr<xla::CpuTopologyDescription> cpu_topology_ptr =
       std::make_shared<xla::CpuTopologyDescription>(cpu_topology);
 

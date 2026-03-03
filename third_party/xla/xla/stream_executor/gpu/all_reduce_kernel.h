@@ -35,7 +35,8 @@ enum class AllReduceStrategy : uint32_t {
   // construct a final result.
   kTwoShot,
   // With multimem strategy single GPU uses multimem instructions to perform
-  // reduce+broadcast in one-shot.
+  // reduce+broadcast directly on source and destination buffers that were
+  // pre-mapped to multimem addresses.
   kMultimem,
 };
 

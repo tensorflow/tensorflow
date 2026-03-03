@@ -55,10 +55,6 @@ def ChloPreserveHighLevelOpsPass : Pass<"stablehlo-ext-chlo-preserve-high-level-
     pure StableHLO implementaiton of the CHLO op's semantics.
   }];
   let dependentDialects = ["stablehlo::StablehloDialect", "chlo::ChloDialect"];
-  let options = [
-    Option<"useDeprecatedCustomCallEncoding", "use-custom-call-encoding", "bool", /*default=*/"true",
-           "Use the deprecated custom call encoding for TopK, to be removed for composites after 12w.">,
-  ];
 }
 
 def ChloRecomposeOpsPass : Pass<"stablehlo-ext-chlo-recompose-ops", "mlir::func::FuncOp"> {

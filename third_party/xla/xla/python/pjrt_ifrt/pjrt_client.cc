@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/distributed/topology_util.h"
@@ -176,7 +177,7 @@ struct GlobalTopology {
   int my_process_index;
   // Mapping from IFRT device ID to PjRt global device ID. Made for the devices
   // that are accessible via `pjrt_client_->devices()`.
-  absl::flat_hash_map<DeviceId, xla::PjRtGlobalDeviceId>
+  absl::flat_hash_map<DeviceId, xla::GlobalDeviceId>
       ifrt_device_id_to_pjrt_global_device_id;
 };
 
@@ -190,7 +191,7 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
   int num_processes;
   // Mapping from IFRT device ID to PjRt global device ID. Made for the
   // devices that are accessible via `pjrt_client->devices()`.
-  absl::flat_hash_map<DeviceId, xla::PjRtGlobalDeviceId>
+  absl::flat_hash_map<DeviceId, xla::GlobalDeviceId>
       ifrt_device_id_to_pjrt_global_device_id;
   // Process index to IFRT device IDs. Made for all IFRT devices.
   std::vector<std::vector<DeviceId>> process_index_to_ifrt_device_ids;
@@ -275,7 +276,7 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
     });
 
     for (xla::PjRtDevice* pjrt_device : pjrt_devices) {
-      const xla::PjRtGlobalDeviceId pjrt_global_device_id =
+      const xla::GlobalDeviceId pjrt_global_device_id =
           pjrt_device->global_device_id();
       DeviceId ifrt_device_id;
       if (pjrt_device->IsAddressable()) {
@@ -312,7 +313,7 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
 
     process_index_to_ifrt_device_ids.resize(num_processes);
     for (xla::PjRtDevice* pjrt_device : pjrt_client->devices()) {
-      const xla::PjRtGlobalDeviceId pjrt_global_device_id =
+      const xla::GlobalDeviceId pjrt_global_device_id =
           pjrt_device->global_device_id();
       // Use PjRt device ID as IFRT device ID.
       const DeviceId ifrt_device_id = DeviceId(pjrt_global_device_id.value());
@@ -327,8 +328,8 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
   // information.
   GlobalTopologyProto global_topology_proto;
   for (int process_index = 0; process_index < num_processes; ++process_index) {
-    LocalTopologyProto& node = *global_topology_proto.add_nodes();
-    node.set_node_id(process_index);
+    LocalTopologyProto& node = *global_topology_proto.add_processes();
+    node.set_process_id(process_index);
 
     const std::vector<DeviceId>& process_device_ids =
         process_index_to_ifrt_device_ids[process_index];
@@ -395,15 +396,27 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyFromPjRtClient(
 LocalTopologyProto MakeLocalTopologyFromPjRtClient(
     xla::PjRtClient* pjrt_client, const PjRtClient::CreateOptions& options) {
   LocalTopologyProto local_topology_proto;
-  local_topology_proto.set_node_id(options.process_id);
-  std::string boot_id_str;
-  auto boot_id_str_or_status = GetBootIdString();
-  if (!boot_id_str_or_status.ok()) {
-    LOG(INFO) << boot_id_str_or_status.status();
+  local_topology_proto.set_process_id(options.process_id);
+
+  // Boot id is optional, we leave it empty if we can't get it at run time.
+  absl::StatusOr<std::string> boot_id = GetBootIdString();
+  if (boot_id.ok()) {
+    local_topology_proto.set_boot_id(*boot_id);
   } else {
-    boot_id_str = boot_id_str_or_status.value();
+    LOG(INFO) << "Failed to get boot id: " << boot_id.status();
   }
-  local_topology_proto.set_boot_id(boot_id_str);
+
+  // Network nodes also optional, they are needed for global device assignment
+  // optimized for network locality.
+  absl::StatusOr<std::vector<std::string>> network_nodes = GetNetworkNodes();
+  if (network_nodes.ok()) {
+    for (auto& network_node : *network_nodes) {
+      *local_topology_proto.add_network_nodes() = std::move(network_node);
+    }
+  } else {
+    LOG(INFO) << "Failed to get network nodes: " << network_nodes.status();
+  }
+
   // We ignore any non-addressable devices. We're going to do our own topology
   // exchange, so we don't care what devices any given client things that some
   // other process has.
@@ -436,28 +449,30 @@ absl::StatusOr<GlobalTopology> MakeGlobalTopologyWithLocalTopology(
       /*assign_global_device_ids=*/false));
 
   std::optional<int> my_process_index;
-  absl::flat_hash_map<DeviceId, xla::PjRtGlobalDeviceId>
+  absl::flat_hash_map<DeviceId, xla::GlobalDeviceId>
       ifrt_device_id_to_pjrt_global_device_id;
   for (int process_index = 0;
-       process_index < global_topology_proto.nodes_size(); ++process_index) {
-    const LocalTopologyProto& node = global_topology_proto.nodes(process_index);
-    if (node.node_id() == options.process_id) {
+       process_index < global_topology_proto.processes_size();
+       ++process_index) {
+    const LocalTopologyProto& process =
+        global_topology_proto.processes(process_index);
+    if (process.process_id() == options.process_id) {
       if (my_process_index.has_value()) {
         if (*my_process_index != process_index) {
           return InvalidArgument(
-              "GlobalTopologyProto contains multiple nodes with the same "
+              "GlobalTopologyProto contains multiple processes with the same "
               "process ID");
         }
       } else {
         my_process_index = process_index;
       }
     }
-    for (const DeviceProto& device_proto : node.devices()) {
+    for (const DeviceProto& device_proto : process.devices()) {
       // Use the same PjRt global device ID as IFRT device ID when topology
       // exchange is used.
       ifrt_device_id_to_pjrt_global_device_id.insert(
           {DeviceId(device_proto.global_device_id()),
-           xla::PjRtGlobalDeviceId(device_proto.global_device_id())});
+           xla::GlobalDeviceId(device_proto.global_device_id())});
     }
   }
 
@@ -482,10 +497,10 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
   int next_partition_index = 0;
   absl::flat_hash_map<std::string, int> boot_id_to_partition_index;
   for (int process_index = 0;
-       process_index < global_topology.global_topology_proto.nodes_size();
+       process_index < global_topology.global_topology_proto.processes_size();
        ++process_index) {
     const LocalTopologyProto& node =
-        global_topology.global_topology_proto.nodes(process_index);
+        global_topology.global_topology_proto.processes(process_index);
     int64_t partition_index = -1;
     if (!node.boot_id().empty()) {
       // Every new boot_id seen is treated as a new host/partition.
@@ -520,7 +535,7 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
       std::string to_string(device_proto.to_string());
       std::string debug_string(device_proto.debug_string());
       if (node_is_me) {
-        xla::PjRtGlobalDeviceId pjrt_global_device_id =
+        xla::GlobalDeviceId pjrt_global_device_id =
             global_topology.ifrt_device_id_to_pjrt_global_device_id.at(
                 ifrt_device_id);
         TF_ASSIGN_OR_RETURN(pjrt_device,
@@ -534,6 +549,9 @@ MakePjRtDevicesFromGlobalTopology(PjRtClient* client,
                           "[PjRtIFRTDeviceId=", ifrt_device_id.value(), "]");
           absl::StrAppend(&debug_string,
                           "[PjRtIFRTDeviceId=", ifrt_device_id.value(), "]");
+        }
+        for (const auto& [name, value] : pjrt_device->Attributes()) {
+          attributes[name] = value;
         }
       }
       auto ifrt_device = std::make_unique<PjRtDevice>(
@@ -962,7 +980,7 @@ absl::StatusOr<PjRtCompatibleMemory*> PjRtClient::LookupPjRtMemory(
   return it->second;
 }
 
-absl::StatusOr<xla::PjRtGlobalDeviceId> PjRtClient::GetPjRtGlobalDeviceId(
+absl::StatusOr<xla::GlobalDeviceId> PjRtClient::GetGlobalDeviceId(
     DeviceId device_id) const {
   auto it = ifrt_device_id_to_pjrt_global_device_id_.find(device_id);
   if (it == ifrt_device_id_to_pjrt_global_device_id_.end()) {
@@ -988,7 +1006,7 @@ absl::StatusOr<Device*> PjRtClient::LookupAddressableDevice(
   DCHECK(this);
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                       pjrt_client_->LookupAddressableDevice(
-                          xla::PjRtLocalDeviceId(local_hardware_id)));
+                          xla::LocalDeviceId(local_hardware_id)));
   return LookupPjRtDevice(pjrt_device);
 }
 
@@ -1406,11 +1424,10 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       } else {
         // Create vector of (remote) dst devices; we send each array to
         // dst_devices->devices()[i].
-        TF_ASSIGN_OR_RETURN(
-            xla::PjRtGlobalDeviceId dst_global_device_id,
-            GetPjRtGlobalDeviceId(dst_devices->devices()[i]->Id()));
-        std::vector<PjRtGlobalDeviceId> dst_global_device_ids(
-            arrays.size(), dst_global_device_id);
+        TF_ASSIGN_OR_RETURN(xla::GlobalDeviceId dst_global_device_id,
+                            GetGlobalDeviceId(dst_devices->devices()[i]->Id()));
+        std::vector<GlobalDeviceId> dst_global_device_ids(arrays.size(),
+                                                          dst_global_device_id);
 
         // If the PJRT plugin implements the `CrossHostSendBuffers` API, use it.
         // Otherwise, call this class's `CrossHostSendBuffers` method to use the
@@ -1453,19 +1470,17 @@ PjRtClient::CopyArraysForCrossHost(absl::Span<ArrayRef> arrays,
       }
 
       // Get the dst device we receive into.
-      TF_ASSIGN_OR_RETURN(
-          xla::PjRtGlobalDeviceId pjrt_global_device_id,
-          GetPjRtGlobalDeviceId(dst_devices->devices()[i]->Id()));
+      TF_ASSIGN_OR_RETURN(xla::GlobalDeviceId pjrt_global_device_id,
+                          GetGlobalDeviceId(dst_devices->devices()[i]->Id()));
       TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
                           pjrt_client_->LookupDevice(pjrt_global_device_id));
 
       // Create vector of src devices; we receive each array from
       // src_devices->devices()[i].
-      TF_ASSIGN_OR_RETURN(
-          xla::PjRtGlobalDeviceId src_global_device_id,
-          GetPjRtGlobalDeviceId(src_devices->devices()[i]->Id()));
-      std::vector<PjRtGlobalDeviceId> src_global_device_ids(
-          arrays.size(), src_global_device_id);
+      TF_ASSIGN_OR_RETURN(xla::GlobalDeviceId src_global_device_id,
+                          GetGlobalDeviceId(src_devices->devices()[i]->Id()));
+      std::vector<GlobalDeviceId> src_global_device_ids(arrays.size(),
+                                                        src_global_device_id);
 
       // If the PJRT plugin implements the `CrossHostReceiveBuffers` API, use
       // it. Otherwise, call this class's `CrossHostReceiveBuffers` method to
@@ -1545,21 +1560,20 @@ CrossHostTransferKey PjRtClient::CreateNewTransferKey() {
 
 absl::Status PjRtClient::WatchGlobalProcessInfo(
     xla::CoordinationServiceAgent& agent) {
-  TF_ASSIGN_OR_RETURN(tensorflow::CoordinatedTask task, agent.GetOwnTask());
-  VLOG(3) << "Watching global process info for task "
-          << task.ShortDebugString();
+  CoordinationService::TaskId task_id = agent.task_id();
+  VLOG(3) << "Watching global process info for task " << task_id;
 
   int64_t version_number = -1;  // latest job state version
   while (true) {
     // Call WatchJobStateAsync.
-    VLOG(3) << "Calling WatchJobStateAsync for task " << task.ShortDebugString()
+    VLOG(3) << "Calling WatchJobStateAsync for task " << task_id
             << " with version number " << version_number;
-    absl::StatusOr<tensorflow::WatchJobStateResponse> response;
+    absl::StatusOr<xla::coordination::WatchJobStateResponse> response;
     bool done = false;
     std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchJobStateAsync(
-        task.job_name(), version_number,
+        version_number,
         [this, &response,
-         &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
+         &done](absl::StatusOr<xla::coordination::WatchJobStateResponse> r) {
           response = std::move(r);
           absl::MutexLock lock(shutting_down_mu_);
           done = true;
@@ -1577,8 +1591,7 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 
       if (shutting_down_) {
         // Cancel the call the WatchJobStateAsync and wait for it to terminate.
-        VLOG(3) << "WatchGlobalProcessInfo shutting down for task "
-                << task.ShortDebugString();
+        VLOG(3) << "WatchGlobalProcessInfo shutting down for task " << task_id;
         call_opts->StartCancel();
         shutting_down_mu_.Await(absl::Condition(&done));
         return absl::OkStatus();
@@ -1588,8 +1601,8 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
         // Sleep to avoid repeatedly issuing a request that fails immediately.
         //
         // TODO: mwhittaker - Perform exponential backoff.
-        LOG(WARNING) << "WatchJobStateAsync failed for task "
-                     << task.ShortDebugString() << ": " << response.status();
+        LOG(WARNING) << "WatchJobStateAsync failed for task " << task_id << ": "
+                     << response.status();
         shutting_down_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
                                            absl::Seconds(1));
         continue;
@@ -1598,17 +1611,18 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 
     // Parse the response.
     version_number = response->version_number();
-    std::vector<tensorflow::CoordinatedTaskStateInfo> state(
+    std::vector<xla::coordination::CoordinatedTaskStateInfo> state(
         response->task_state().begin(), response->task_state().end());
-    absl::c_sort(state,
-                 [](const tensorflow::CoordinatedTaskStateInfo& x,
-                    const tensorflow::CoordinatedTaskStateInfo& y) -> bool {
-                   return x.task().task_id() < y.task().task_id();
-                 });
+    absl::c_sort(
+        state,
+        [](const xla::coordination::CoordinatedTaskStateInfo& x,
+           const xla::coordination::CoordinatedTaskStateInfo& y) -> bool {
+          return x.task().task_id() < y.task().task_id();
+        });
 
     // Pretty print the job state, if VLOG is on.
     if (VLOG_IS_ON(3)) {
-      VLOG(3) << "Job state for task " << task.ShortDebugString() << ":";
+      VLOG(3) << "Job state for task " << task_id << ":";
       for (const auto& info : state) {
         VLOG(3) << "- " << info.DebugString();
       }
@@ -1713,6 +1727,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
     const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics semantics) {
   return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  return Unimplemented("BitcastArrays not available with pjrt-ifrt client.");
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(

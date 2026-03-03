@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -59,7 +60,9 @@ class TiledHloInstruction {
       llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
-      std::optional<IndexingMap> tile_offsets_indexing);
+      std::optional<IndexingMap> tile_offsets_indexing,
+      llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>>
+          regions = {});
 
   // Returns the original HLO instruction.
   const HloInstruction* hlo() const { return hlo_; }
@@ -100,9 +103,21 @@ class TiledHloInstruction {
       return absl::FailedPreconditionError(
           "tile_offsets_indexing was not computed. It is likely that "
           "`compute_all_tile_offset_indexing_maps` should be set to true in "
-          "`SymbolicTileAnalysis::ComputeTiledHloInstructions`.");
+          "`SymbolicTileAnalysis::ComputeTiledComputation`.");
     }
     return *tile_offsets_indexing_;
+  }
+
+  // List of "regions" (i.e. loop bodies or conditional branches) that are
+  // part of this instruction. Regions represent control flow that will be used
+  // later by the emitter. Interpretation of the contents depends on the HLO
+  // opcode.
+  // - dot has a single region for the entire dot loop body (including all its
+  //   operands);
+  // - concatenation has a region per operand.
+  absl::Span<const std::vector<std::unique_ptr<TiledHloInstruction>>> regions()
+      const {
+    return regions_;
   }
 
   std::string ToString() const;
@@ -120,13 +135,16 @@ class TiledHloInstruction {
       llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
       llvm::SmallVector<int64_t> tile_sizes,
       llvm::SmallVector<int64_t> tile_strides,
-      std::optional<IndexingMap> tile_offsets_indexing)
+      std::optional<IndexingMap> tile_offsets_indexing,
+      llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>>
+          regions = {})
       : hlo_(hlo),
         operands_(std::move(operands)),
         runtime_variables_(std::move(runtime_variables)),
         tile_sizes_(std::move(tile_sizes)),
         tile_strides_(std::move(tile_strides)),
-        tile_offsets_indexing_(std::move(tile_offsets_indexing)) {
+        tile_offsets_indexing_(std::move(tile_offsets_indexing)),
+        regions_(std::move(regions)) {
     if (tile_offsets_indexing_.has_value()) {
       CHECK_EQ(tile_offsets_indexing_->GetDimVarsCount(), 1);
       CHECK_EQ(tile_offsets_indexing_->GetRTVarsCount(),
@@ -148,6 +166,8 @@ class TiledHloInstruction {
 
   // See comment for `tile_offsets_indexing()`.
   std::optional<IndexingMap> tile_offsets_indexing_;
+
+  llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>> regions_;
 };
 
 inline bool operator==(const TiledHloInstruction& lhs,

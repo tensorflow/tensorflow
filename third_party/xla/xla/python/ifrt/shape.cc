@@ -88,14 +88,14 @@ void Shape::ToProto(ShapeProto& proto, SerDesVersion version) const {
 
 int64_t Shape::num_elements() const {
   int64_t count = 1;
-  for (int64_t d : dims_) {
+  for (int64_t d : *dims_) {
     count *= d;
   }
   return count;
 }
 
 std::string Shape::DebugString() const {
-  return absl::StrCat("[", absl::StrJoin(dims_, ","), "]");
+  return absl::StrCat("[", absl::StrJoin(*dims_, ","), "]");
 }
 
 absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(

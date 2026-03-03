@@ -552,14 +552,14 @@ absl::Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
         "size range",
         length);
   }
-  int32_t length_32 = static_cast<int32_t>(length);
+  auto length_32 = static_cast<int32_t>(length);
 
   int32_t shape_length;
   TF_ASSIGN_OR_RETURN(
       llvm::Value * shape_ptr,
       llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, b()));
 
-  const char* acquire_func_name =
+  absl::string_view acquire_func_name =
       kind == XfeedKind::kInfeed
           ? runtime::kAcquireInfeedBufferForDequeueSymbolName
           : runtime::kAcquireOutfeedBufferForPopulationSymbolName;
@@ -596,7 +596,7 @@ absl::Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
     }
   }
 
-  const char* release_func_name =
+  absl::string_view release_func_name =
       kind == XfeedKind::kInfeed
           ? runtime::kReleaseInfeedBufferAfterDequeueSymbolName
           : runtime::kReleaseOutfeedBufferAfterPopulationSymbolName;
@@ -911,7 +911,7 @@ absl::Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
 
       // TODO(b/78639006) Singlethread MKL conv2d is not implemented due to the
       // potential race condition by setting the omp_num_threads.
-      const char* fn_name;
+      absl::string_view fn_name;
       if (input_dims.size() == 2) {
         fn_name =
             primitive_type == F16
@@ -2824,7 +2824,7 @@ llvm::Value* IrEmitter::EmitPrintfToStderr(
 }
 
 llvm::Value* IrEmitter::EmitCallToFunc(
-    std::string func_name, const std::vector<llvm::Value*>& arguments,
+    absl::string_view func_name, const std::vector<llvm::Value*>& arguments,
     llvm::Type* return_type, bool does_not_throw, bool only_accesses_arg_memory,
     bool only_accesses_inaccessible_mem_or_arg_mem) {
   std::vector<llvm::Type*> types;
@@ -2834,7 +2834,10 @@ llvm::Value* IrEmitter::EmitCallToFunc(
   llvm::FunctionType* func_type =
       llvm::FunctionType::get(return_type, types, /*isVarArg=*/false);
   auto func = llvm::dyn_cast<llvm::Function>(
-      module_->getOrInsertFunction(func_name, func_type).getCallee());
+      module_
+          ->getOrInsertFunction(
+              llvm::StringRef(func_name.data(), func_name.size()), func_type)
+          .getCallee());
   func->setCallingConv(llvm::CallingConv::C);
   if (does_not_throw) {
     func->setDoesNotThrow();
@@ -3384,7 +3387,7 @@ void IrEmitter::TracingState::EmitTracingStart(llvm::IRBuilderBase* b,
 
   llvm::Function* function = b->GetInsertBlock()->getParent();
   llvm::Module* module = function->getParent();
-  const char* fn_name = runtime::kTracingStartSymbolName;
+  absl::string_view fn_name = runtime::kTracingStartSymbolName;
   llvm::FunctionCallee trace_func =
       module->getOrInsertFunction(fn_name, fn_type);
   if (auto* fn = llvm::dyn_cast<llvm::Function>(trace_func.getCallee())) {
@@ -3415,7 +3418,7 @@ void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilderBase* b,
 
   llvm::Function* function = b->GetInsertBlock()->getParent();
   llvm::Module* module = function->getParent();
-  const char* fn_name = runtime::kTracingEndSymbolName;
+  absl::string_view fn_name = runtime::kTracingEndSymbolName;
   llvm::FunctionCallee trace_func =
       module->getOrInsertFunction(fn_name, fn_type);
   if (auto* fn = llvm::dyn_cast<llvm::Function>(trace_func.getCallee())) {

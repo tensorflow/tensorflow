@@ -82,6 +82,10 @@ int OverflowExponent(PrimitiveType type) {
 }
 
 int ExponentBias(PrimitiveType type) {
+  // e8m0 does not have denormals so its bias is 1 less than for other types.
+  if (type == F8E8M0FNU) {
+    return 1 - UnderflowExponent(type);
+  }
   return (1 - UnderflowExponent(type)) + 1;
 }
 

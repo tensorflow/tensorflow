@@ -1,0 +1,23 @@
+This patch fixes issues that broke internal benchmarks as well as individual
+fusions reported.
+
+--- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
+@@ -250,6 +250,16 @@ getWarpsPerTile(DotOpInterface dotOp, const ArrayRef<int64_t> shape,
+ }
+ 
+ static bool bwdFilter(Operation *op) {
++  // Dot operand layout assignment to Predicates are not currently supported
++  // during lowering from TritonGPU to LLVM in Triton for MMA cases. This
++  // condition limits visibility of the original bit-width so that predicate
++  // are not considered, hence, kwidth can never be = 32.
++  if (isa<arith::UIToFPOp>(op)) {
++    Type srcType = getElementTypeOrSelf(op->getOperand(0));
++    if (srcType.isInteger(1))
++      return false;
++  }
++
+   return (op->hasTrait<OpTrait::Elementwise>() && isMemoryEffectFree(op)) ||
+          isView(op) ||
+          isa<Fp4ToFpOp, LoadOp, DescriptorLoadOp, BroadcastOp, ConvertLayoutOp>(
+

@@ -19,18 +19,29 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/logging.h"
+#include "tsl/platform/stacktrace.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace internal {
 
+// Logs the stack traces of all threads to help debugging deadlocks.
+static void DumpAllThreadStacksToLog() {
+  std::string stack_traces = tsl::GetAllThreadStacks();
+  LOG(ERROR) << "All thread stack traces (if supported on this platform):";
+  for (absl::string_view line : absl::StrSplit(stack_traces, '\n')) {
+    LOG(ERROR) << line;
+  }
+}
 // Waits for the rendezvous to be ready with a timeout. Returns true if the
 // rendezvous is ready, false if the timeout is exceeded.
 static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
@@ -136,6 +147,7 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
   is_all_participants_arrived = state.ack.load() == state.num_threads;
 
   if (is_all_participants_arrived) {
+    DumpAllThreadStacksToLog();
     LOG(FATAL) << absl::StreamFormat(
         "[id=%d] Termination timeout for `%s` of %d seconds exceeded. Exiting "
         "to ensure a consistent program state. All %d threads joined the "
@@ -144,6 +156,7 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
         id, name, absl::ToInt64Seconds(terminate_timeout), state.num_threads);
 
   } else {
+    DumpAllThreadStacksToLog();
     LOG(FATAL) << absl::StreamFormat(
         "[id=%d] Termination timeout for `%s` of %d seconds exceeded. Exiting "
         "to ensure a consistent program state. Expected %d threads to join the "

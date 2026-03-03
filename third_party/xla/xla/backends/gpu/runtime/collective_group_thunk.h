@@ -44,12 +44,9 @@ class CollectiveGroupThunk : public Thunk {
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
-  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
-  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
-  absl::Status TransformAllNestedThunks(
-      absl::FunctionRef<
-          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-          fn) override;
+
+  absl::Status WalkNested(Walker callback) override;
+  absl::Status TransformNested(Transformer callback) override;
 
   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
     return async_events_;

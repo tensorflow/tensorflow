@@ -417,6 +417,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, std::move(shape),
                       /*byte_strides=*/std::nullopt, std::move(sharding),
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 

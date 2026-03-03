@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
-#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/shape_util.h"
@@ -227,11 +226,8 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
   if (!xla_hlo_sharding_.IsTiled()) {
     return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
   }
-  for (const xla::OpSharding::Type subgroup_type :
-       xla_hlo_sharding_.subgroup_types()) {
-    if (subgroup_type != xla::OpSharding::REPLICATED) {
-      return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
-    }
+  if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
+    return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
   }
 
   const int64_t tiled_data_rank = xla_hlo_sharding_.TiledDataRank();

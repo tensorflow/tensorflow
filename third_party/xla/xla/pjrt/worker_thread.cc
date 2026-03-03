@@ -21,12 +21,16 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 
-WorkerThread::WorkerThread(tsl::Env* env, const std::string& name) {
-  thread_.reset(
-      env->StartThread(tsl::ThreadOptions(), name, [this]() { WorkLoop(); }));
+WorkerThread::WorkerThread(tsl::Env* env, const std::string& name)
+    : WorkerThread(env, tsl::ThreadOptions(), name) {}
+
+WorkerThread::WorkerThread(tsl::Env* env, const tsl::ThreadOptions& options,
+                           const std::string& name) {
+  thread_.reset(env->StartThread(options, name, [this]() { WorkLoop(); }));
 }
 
 WorkerThread::~WorkerThread() {

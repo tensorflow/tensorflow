@@ -28,13 +28,13 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -605,19 +605,9 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::NodeCost(
   // custom call is 1000, the LHS will try to schedule approximately 5 of
   // these in between each start/end pair.
   if (instr->opcode() == HloOpcode::kCustomCall) {
-    if (instr->has_frontend_attributes() &&
-        instr->frontend_attributes().map().contains("latency_metadata")) {
-      int64_t latency_metadata_ns = 0;
-      CHECK(absl::SimpleAtoi(
-          instr->frontend_attributes().map().at("latency_metadata"),
-          &latency_metadata_ns))
-          << "Failed to parse latency from custom call for " << instr->name()
-          << " from latency_metadata:"
-          << instr->frontend_attributes().map().at("latency_metadata");
-      VLOG(10) << "NodeCost: Returning latency from custom call for "
-               << instr->name() << ": " << latency_metadata_ns / 1000.0
-               << " ns";
-      return (LatencyEstimator::TimeCost)latency_metadata_ns / 1000.0;
+    if (const std::optional<TimeCost> latency =
+            GetLatencyFromMetadata(*instr)) {
+      return *latency;
     }
     if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
       return ApproximateLatencyEstimator::kMediumCost;

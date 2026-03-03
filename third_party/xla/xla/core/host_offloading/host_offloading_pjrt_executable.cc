@@ -110,7 +110,8 @@ void SetHostOffloadingHloModuleConfig(HloModuleConfig& config) {
   debug_options.set_xla_cpu_copy_insertion_use_region_analysis(true);
   // TODO(b/374556751): Megascale custom calls do not have correct data
   // dependencies and can be scheduled in wrong order.
-  debug_options.set_xla_cpu_enable_concurrency_optimized_scheduler(false);
+  debug_options.set_xla_cpu_scheduler_type(
+      DebugOptions::CPU_SCHEDULER_TYPE_MEMORY_OPTIMIZED);
 }
 
 // A mutex for a global PJRT CPU client initialization.

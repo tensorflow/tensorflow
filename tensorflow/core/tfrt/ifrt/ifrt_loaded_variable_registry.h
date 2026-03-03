@@ -16,22 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 #define TENSORFLOW_CORE_TFRT_IFRT_IFRT_LOADED_VARIABLE_REGISTRY_H_
 
+#include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
+#include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/concurrency/ref_count.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
@@ -50,22 +54,85 @@ class IfrtLoadedVariableRegistry {
     std::vector<int> device_ids;
     std::string input_name;
     xla::HloSharding hlo_sharding;
+    // Use pointer instead of value to avoid copy when building the key.
+    std::shared_ptr<xla::Shape> shape_on_device;
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
       h = H::combine(std::move(h), key.input_name, key.device_ids,
                      key.hlo_sharding);
+      if (key.shape_on_device != nullptr) {
+        h = H::combine(std::move(h), *key.shape_on_device);
+      }
       return h;
     }
 
     friend bool operator==(const Key& x, const Key& y) {
-      return x.input_name == y.input_name && x.device_ids == y.device_ids &&
-             x.hlo_sharding == y.hlo_sharding;
+      return KeyView(x) == KeyView(y);
     }
 
     std::string ToString() const {
-      return absl::StrCat(input_name, ":", absl::StrJoin(device_ids, ","), ":",
-                          hlo_sharding.ToString());
+      return absl::StrCat(
+          input_name, ":", absl::StrJoin(device_ids, ","), ":",
+          hlo_sharding.ToString(), ":",
+          (shape_on_device ? shape_on_device->ToString() : "nullptr"));
     }
+  };
+
+  // A view of Key that references the data without owning it. This is used for
+  // efficient lookups in the LoadedVariable map without constructing a full Key
+  // object.
+  struct KeyView {
+    KeyView(const Key& key)  // NOLINT
+        : device_ids(key.device_ids),
+          input_name(key.input_name),
+          hlo_sharding(key.hlo_sharding),
+          shape_on_device(key.shape_on_device) {}
+
+    KeyView(absl::Span<const int> device_ids, absl::string_view input_name,
+            const xla::HloSharding& hlo_sharding,
+            std::shared_ptr<xla::Shape> shape_on_device)
+        : device_ids(device_ids),
+          input_name(input_name),
+          hlo_sharding(hlo_sharding),
+          shape_on_device(std::move(shape_on_device)) {}
+
+    absl::Span<const int> device_ids;
+    absl::string_view input_name;
+    const xla::HloSharding& hlo_sharding;
+    std::shared_ptr<xla::Shape> shape_on_device;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const KeyView& key) {
+      h = H::combine(std::move(h), key.input_name, key.device_ids,
+                     key.hlo_sharding);
+      if (key.shape_on_device != nullptr) {
+        h = H::combine(std::move(h), *key.shape_on_device);
+      }
+      return h;
+    }
+
+    friend bool operator==(const KeyView& x, const KeyView& y) {
+      bool xla_shape_equal = false;
+      if (x.shape_on_device == nullptr && y.shape_on_device == nullptr) {
+        xla_shape_equal = true;
+      } else if (x.shape_on_device != nullptr && y.shape_on_device != nullptr) {
+        xla_shape_equal = *x.shape_on_device == *y.shape_on_device;
+      }
+      return x.input_name == y.input_name && x.device_ids == y.device_ids &&
+             x.hlo_sharding == y.hlo_sharding && xla_shape_equal;
+    }
+  };
+
+  struct KeyEq {
+    using is_transparent = void;
+    bool operator()(const KeyView& lhs, const KeyView& rhs) const {
+      return rhs == lhs;
+    }
+  };
+
+  struct KeyHash {
+    using is_transparent = void;
+    size_t operator()(const KeyView& key) const { return absl::HashOf(key); }
   };
 
   struct LoadedVariable {
@@ -83,12 +150,12 @@ class IfrtLoadedVariableRegistry {
       const Key& key, LoadedVariableConstructor&& loaded_variable_constructor)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  absl::StatusOr<LoadedVariable> GetLoadedVariable(const Key& key) const
+  absl::StatusOr<LoadedVariable> GetLoadedVariable(KeyView key_view) const
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<Key, LoadedVariable> loaded_variable_map_
+  absl::flat_hash_map<Key, LoadedVariable, KeyHash, KeyEq> loaded_variable_map_
       ABSL_GUARDED_BY(mutex_);
 };
 

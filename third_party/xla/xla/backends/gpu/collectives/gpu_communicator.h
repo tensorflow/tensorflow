@@ -91,7 +91,7 @@ class GpuDeviceCommunicator {
 
   // A packed kernel argument type for passing device communicator to device
   // kernels (byte storage appropriately sized to fit platform-specific handle).
-  using PackedKernelArg = std::array<std::byte, 200>;
+  using PackedKernelArg = std::array<std::byte, 256>;
   virtual PackedKernelArg PackKernelArg() const = 0;
 
   template <typename Sink>

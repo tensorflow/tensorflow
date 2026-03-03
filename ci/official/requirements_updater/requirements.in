@@ -1,7 +1,8 @@
-# Note that numpy 2.1.0 does not support python 3.9
-numpy >= 2.0.0, < 2.2.0
+numpy >= 2.0.0, < 2.2.0 ; python_version <= "3.13"
+numpy>=2.2.6 ; python_version == "3.14"
 wheel ~= 0.41.2
-h5py >= 3.11.0, < 3.15.0
+h5py >= 3.11.0, < 3.15.0 ; python_version <= "3.13"
+h5py ~= 3.15.1 ; python_version == "3.14"
 lit ~= 17.0.2
 opt_einsum == 3.3.0
 astunparse == 1.6.3
@@ -25,10 +26,12 @@ tb-nightly ~= 2.20.0.a
 # More info at https://protobuf.dev/support/cross-version-runtime-guarantee/
 protobuf >= 5.28.0, < 7.0
 # Test dependencies
-grpcio >= 1.68.1, < 2.0
+grpcio >= 1.68.1, < 2.0 ; python_version <= "3.13"
+grpcio >= 1.78.0 ; python_version == "3.14"
 portpicker == 1.6.0
 # Scipy 15.x and above have misc.derivative removed, but we still use it
-scipy >= 1.13.0, < 1.15.0
+scipy >= 1.13.0, < 1.15.0 ; python_version <= "3.13"
+scipy >=1.15.0 ; python_version == "3.14"
 requests >= 2.31.0
 packaging==23.2
 setuptools==78.1.1

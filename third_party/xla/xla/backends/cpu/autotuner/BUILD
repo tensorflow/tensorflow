@@ -85,6 +85,7 @@ cc_library(
     deps = [
         ":cpu_codegen_backend",
         "//xla:util",
+        "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",

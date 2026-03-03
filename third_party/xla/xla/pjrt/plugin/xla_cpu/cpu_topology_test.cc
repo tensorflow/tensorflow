@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
+#include "xla/runtime/device_id.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -31,32 +34,31 @@ TEST(CpuTopology, FromProto) {
       R"pb(
         cpu_devices:
         [ { process_index: 2, local_hardware_id: 3 }]
-        machine_attributes: [ "x86_64", "Intel" ]
+        target_machine_options { features: "+x86_64,+Intel" }
       )pb",
       &msg));
 
-  std::unique_ptr<const CpuTopology> cpu_topology = CpuTopology::FromProto(msg);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const CpuTopology> cpu_topology,
+                       CpuTopology::FromProto(msg));
   EXPECT_EQ(cpu_topology->devices().size(), 1);
   EXPECT_EQ(cpu_topology->devices()[0].process_id, 2);
   EXPECT_EQ(cpu_topology->devices()[0].local_device_id, 3);
-  EXPECT_EQ(cpu_topology->machine_attributes().size(), 2);
-  EXPECT_EQ(cpu_topology->machine_attributes()[0], "x86_64");
-  EXPECT_EQ(cpu_topology->machine_attributes()[1], "Intel");
+  EXPECT_EQ(cpu_topology->target_machine_options().GetTargetMachineFeatures(),
+            "+Intel,+x86_64");
 }
 
 TEST(CpuTopology, ToProto) {
-  CpuTopology cpu_topology({{2, 3}}, {"ab", "cd"});
+  CpuTopology cpu_topology({{2, 3}},
+                           cpu::TargetMachineOptions("", "", "+ab,+cd"));
   CpuTopologyProto msg = cpu_topology.ToProto();
   EXPECT_EQ(msg.cpu_devices_size(), 1);
   EXPECT_EQ(msg.cpu_devices(0).process_index(), 2);
   EXPECT_EQ(msg.cpu_devices(0).local_hardware_id(), 3);
-  EXPECT_EQ(msg.machine_attributes_size(), 2);
-  EXPECT_EQ(msg.machine_attributes(0), "ab");
-  EXPECT_EQ(msg.machine_attributes(1), "cd");
+  EXPECT_EQ(msg.target_machine_options().features(), "+ab,+cd");
 }
 
 TEST(PackCpuDeviceId, PackAndUnpack) {
-  PjRtGlobalDeviceId device_id = PackCpuDeviceId(2, 3);
+  GlobalDeviceId device_id = PackCpuDeviceId(2, 3);
   EXPECT_EQ(UnpackCpuProcessIndex(device_id), 2);
   EXPECT_EQ(UnpackCpuLocalDeviceId(device_id), 3);
 }

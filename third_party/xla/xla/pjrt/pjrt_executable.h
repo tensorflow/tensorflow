@@ -234,7 +234,7 @@ struct ExecuteOptions {
   const ExecuteContext* context = nullptr;
   // If true, check that the PjRtBuffer argument shapes match the compiled
   // shapes. Otherwise, any shape with the right size on device may be passed.
-  bool strict_shape_checking = true;
+  bool strict_shape_checking = false;
 
   // Set multi_slice_config when the computation spans multiple slices. The
   // config should match what was used during compilation to generate this
@@ -301,6 +301,21 @@ struct ExecuteOptions {
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
+
+  // Pretty-printing for ExecutionMode enum.
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ExecutionMode& mode) {
+    absl::Format(&sink, "%s", [&] {
+      switch (mode) {
+        case ExecutionMode::kDefault:
+          return "default";
+        case ExecutionMode::kSynchronous:
+          return "synchronous";
+        case ExecutionMode::kAsynchronous:
+          return "asynchronous";
+      }
+    }());
+  }
 };
 
 // Static memory usage for a compiled program.

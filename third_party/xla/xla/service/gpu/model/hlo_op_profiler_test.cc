@@ -15,12 +15,11 @@ limitations under the License.
 
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 
-#include <unordered_set>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
@@ -29,7 +28,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class HloOpProfilerTest : public HloTestBase {
+class HloOpProfilerTest : public HloPjRtGpuTestBase {
   void SetUp() override {
 #ifndef GOOGLE_CUDA
     GTEST_SKIP() << "Not built with --config=cuda";
@@ -38,7 +37,7 @@ class HloOpProfilerTest : public HloTestBase {
 };
 
 TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
-  HloOpProfiler profiler(test_runner_as_hlo_runner());
+  HloOpProfiler profiler(&test_runner(), &device_description());
   // f32 is fast but measurable.
   EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kAdd, F32)
                 .value()
@@ -57,13 +56,13 @@ TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
 }
 
 TEST_F(HloOpProfilerTest, UnsupportedCombinationsDoNotCrash) {
-  HloOpProfiler profiler(test_runner_as_hlo_runner());
+  HloOpProfiler profiler(&test_runner(), &device_description());
   EXPECT_THAT(profiler.MeasureClockCyclesPerOp(HloOpcode::kCbrt, S8),
               absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT));
 }
 
 TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
-  std::unordered_set<HloOpcode> FloatTypes = {
+  absl::flat_hash_set<HloOpcode> FloatTypes = {
       // go/keep-sorted start
       HloOpcode::kAtan2,
       HloOpcode::kCbrt,
@@ -88,7 +87,7 @@ TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
       HloOpcode::kTanh
       // go/keep-sorted end
   };
-  std::unordered_set<HloOpcode> MeasurebleInFloat = {
+  absl::flat_hash_set<HloOpcode> MeasurebleInFloat = {
       // go/keep-sorted start
       HloOpcode::kAdd,
       HloOpcode::kMultiply,
@@ -97,7 +96,7 @@ TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
   };
 
   FloatTypes.insert(MeasurebleInFloat.begin(), MeasurebleInFloat.end());
-  HloOpProfiler profiler(test_runner_as_hlo_runner());
+  HloOpProfiler profiler(&test_runner(), &device_description());
   for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
     if (!HloOpProfiler::TooFastToMeasure().count(op) &&
         !HloOpProfiler::Unsupported().count(op)) {

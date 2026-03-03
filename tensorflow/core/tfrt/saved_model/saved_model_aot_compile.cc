@@ -329,7 +329,7 @@ absl::StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
   TF_ASSIGN_OR_RETURN(auto client,
                       xla::GetStreamExecutorGpuClient(xla::GpuClientOptions()));
   auto se_client = absl::WrapUnique(
-      tensorflow::down_cast<xla::StreamExecutorGpuClient*>(client.release()));
+      absl::down_cast<xla::StreamExecutorGpuClient*>(client.release()));
 
   XlaCompiler::Options options;
   TF_RETURN_IF_ERROR(CompileTfGraphToHlo(

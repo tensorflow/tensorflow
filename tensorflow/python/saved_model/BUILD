@@ -1060,7 +1060,10 @@ tf_py_strict_test(
 #
 # tf_cc_test(
 #     name = "lineage_logging_test",
+#     size = "large",
+#     timeout = "long",
 #     srcs = ["lineage_logging_test.cc"],
+#     tags = ["cpu:4"],
 #     deps = [
 #         "//learning/brain/contrib/hub/public:client",
 #         "//learning/brain/contrib/hub/public:handle",

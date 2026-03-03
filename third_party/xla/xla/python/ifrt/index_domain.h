@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_INDEX_DOMAIN_H_
 #define XLA_PYTHON_IFRT_INDEX_DOMAIN_H_
 
-#include <cstdint>
 #include <ostream>
 #include <string>
 #include <utility>

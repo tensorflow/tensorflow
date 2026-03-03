@@ -84,3 +84,100 @@ diff --git a/xprof/convert/trace_viewer/trace_events.cc b/xprof/convert/trace_vi
        } else {
          return std::make_pair(kLayerResolutions[i], kLayerResolutions[i - 1]);
        }
+diff --git a/xprof/utils/hlo_module_map.h b/xprof/utils/hlo_module_map.h
+--- a/xprof/utils/hlo_module_map.h	2025-06-10 16:15:37.000000000 +0000
++++ b/xprof/utils/hlo_module_map.h	2026-02-17 17:36:03.348162869 +0000
+@@ -29,6 +29,7 @@
+ #include "absl/strings/string_view.h"
+ #include "xla/hlo/ir/hlo_instruction.h"
+ #include "xla/hlo/ir/hlo_module.h"
++#include "xla/hlo/ir/hlo_module_metadata.h"
+ #include "xla/hlo/ir/hlo_opcode.h"
+ #include "xla/service/hlo.pb.h"
+ #include "xla/service/hlo_cost_analysis.h"
+@@ -61,7 +62,7 @@
+ 
+   virtual void ProcessXlaCostAnalysis(
+       const xla::HloCostAnalysis* cost_analysis) = 0;
+-  virtual std::string OpLocationStack(int32_t frame_id) const = 0;
++  virtual std::string OpLocationStack(xla::StackFrameId frame_id) const = 0;
+   virtual tsl::profiler::OpSourceInfo SourceInfo() const = 0;
+   virtual const ::tensorflow::profiler::PerformanceInfoWrapper*
+   GetPerformanceInfoWrapper() const = 0;
+@@ -127,7 +128,7 @@
+     return fused_children_;
+   }
+ 
+-  std::string OpLocationStack(int32_t frame_id) const override {
++  std::string OpLocationStack(xla::StackFrameId frame_id) const override {
+     return GetOpLocationStack(frame_id, *instr_);
+   }
+ 
+diff --git a/xprof/utils/hlo_module_utils.h b/xprof/utils/hlo_module_utils.h
+--- a/xprof/utils/hlo_module_utils.h	2025-06-10 16:15:37.000000000 +0000
++++ b/xprof/utils/hlo_module_utils.h	2026-02-17 17:34:31.356254501 +0000
+@@ -26,9 +26,18 @@
+ #include "xla/hlo/ir/hlo_computation.h"
+ #include "xla/hlo/ir/hlo_instruction.h"
+ #include "xla/hlo/ir/hlo_module.h"
++#include "xla/hlo/ir/hlo_module_metadata.h"
+ #include "xla/hlo/ir/hlo_print_options.h"
+ #include "xla/tsl/profiler/convert/xla_op_utils.h"
+ 
++// This is a temporary hack to work around version skew between XLA and xprof.
++// This may be removed after XLA is updated past Feb 16, 2026.
++#ifndef XLA_HAVE_STACK_FRAME_ID
++namespace xla {
++using StackFrameId = int;
++}  // namespace xla
++#endif
++
+ namespace tensorflow {
+ namespace profiler {
+ 
+@@ -84,11 +93,15 @@
+   return expression;
+ }
+ 
+-inline std::string GetOpLocationStack(int32_t frame_id,
++inline std::string GetOpLocationStack(xla::StackFrameId frame_id,
+                                       const xla::HloInstruction& instr) {
+   std::string stack_lines;
+   xla::HloModule* hlo_module = instr.GetModule();
++#ifdef XLA_HAVE_STACK_FRAME_ID
++  while (frame_id.valid()) {
++#else
+   while (frame_id != 0) {
++#endif
+     xla::HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
+     if (frame.empty()) {
+       break;
+@@ -107,6 +120,6 @@
+   return {.source_file = instr.metadata().source_file(),
+           .source_line = instr.metadata().source_line(),
+           .stack_frame = stack_frame_id != 0
+-                             ? GetOpLocationStack(stack_frame_id, instr)
++                             ? GetOpLocationStack(xla::StackFrameId{static_cast<int>(stack_frame_id)}, instr)
+                              : ""};
+ }
+ 
+diff --git a/xprof/utils/hlo_module_utils_test.cc b/xprof/utils/hlo_module_utils_test.cc
+--- a/xprof/utils/hlo_module_utils_test.cc	2025-06-10 16:15:37.000000000 +0000
++++ b/xprof/utils/hlo_module_utils_test.cc	2026-02-17 17:32:56.336350473 +0000
+@@ -22,6 +22,7 @@
+ #include "xla/hlo/ir/hlo_computation.h"
+ #include "xla/hlo/ir/hlo_instruction.h"
+ #include "xla/hlo/ir/hlo_module.h"
++#include "xla/hlo/ir/hlo_module_metadata.h"
+ #include "xla/tests/hlo_test_base.h"
+ #include "xla/tsl/platform/statusor.h"
+ 
+@@ -83,7 +84,7 @@
+       GetModuleWithStackFrames());
+   const auto* root_instruction =
+       module_with_stack_frames->entry_computation()->root_instruction();
+-  EXPECT_EQ(GetOpLocationStack(1, *root_instruction), "main.py:10:5\n");
++  EXPECT_EQ(GetOpLocationStack(xla::StackFrameId{1}, *root_instruction), "main.py:10:5\n");
+ }
+ 
+ TEST_F(HloModuleUtilsTest, TestGetSourceInfo) {

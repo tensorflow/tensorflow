@@ -98,9 +98,8 @@ bool StreamExecutorAllocator::SupportsCoalescing() const { return false; }
 tsl::AllocatorMemoryType StreamExecutorAllocator::GetMemoryType() const {
   if (memory_type_ == MemorySpace::kHost) {
     return tsl::AllocatorMemoryType::kHostPinned;
-  } else {
-    return tsl::AllocatorMemoryType::kDevice;
   }
+  return tsl::AllocatorMemoryType::kDevice;
 }
 
 }  // namespace stream_executor

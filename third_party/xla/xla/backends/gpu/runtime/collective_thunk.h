@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
@@ -154,7 +155,6 @@ class CollectiveThunk : public Thunk {
   }
 
   bool IsP2PCollective() const { return is_p2p_; }
-  absl::StatusOr<CollectiveThunkProto> ToCollectiveThunkProto() const;
 
  protected:
   // Run collective operation on a given stream and return if the first call
@@ -274,7 +274,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 // Helper over GetGpuCliqueKey that builds clique key.
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
-    bool include_participant_groups = true);
+    bool is_p2p);
 
 struct DeviceBufferPair {
   PrimitiveType element_type;
@@ -284,11 +284,6 @@ struct DeviceBufferPair {
   int64_t source_memory_space;
   int64_t destination_memory_space;
 };
-
-absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
-    const Thunk::ExecuteParams& params,
-    const std::vector<CollectiveThunk::Buffer>& buffers,
-    const std::vector<PrimitiveType>& element_types);
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,

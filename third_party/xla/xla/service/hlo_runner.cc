@@ -651,12 +651,6 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           const std::vector<absl::Span<const ShapedBuffer* const>>&
               argument_buffer_slices)
           -> absl::StatusOr<std::vector<ScopedShapedBuffer>> {
-        std::vector<ScopedShapedBuffer> results;
-        if (!options.use_threads) {
-          TF_ASSIGN_OR_RETURN(
-              results, executable->ExecuteOnStreams(service_run_options,
-                                                    argument_buffer_slices));
-        } else {
           absl::Mutex mutex;
           std::vector<absl::StatusOr<ScopedShapedBuffer>> thread_results(
               options.num_devices);
@@ -677,13 +671,14 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             // Note: the thread pool destructor guarantees it completes all
             // work before we leave this scope.
           }
-          for (auto& thread_result : thread_results) {
+          std::vector<ScopedShapedBuffer> results;
+          for (absl::StatusOr<ScopedShapedBuffer>& thread_result :
+               thread_results) {
             if (!thread_result.ok()) {
               return thread_result.status();
             }
             results.push_back(std::move(thread_result).value());
           }
-        }
         return results;
       },
       [&](int64_t replica) { return options.arguments.size(); },
@@ -710,7 +705,6 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           const std::vector<absl::Span<const ShapedBuffer* const>>&
               argument_buffer_slices)
           -> absl::StatusOr<std::vector<ScopedShapedBuffer>> {
-        TF_RET_CHECK(options.use_threads);
         std::vector<ScopedShapedBuffer> results;
         absl::Mutex mutex;
         std::vector<absl::StatusOr<ScopedShapedBuffer>> thread_results(

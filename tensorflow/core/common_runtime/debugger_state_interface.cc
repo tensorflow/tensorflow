@@ -25,7 +25,7 @@ DebuggerStateFactory* DebuggerStateRegistry::factory_ = nullptr;
 // static
 DebugGraphDecoratorFactory* DebugGraphDecoratorRegistry::factory_ = nullptr;
 
-const string SummarizeDebugTensorWatches(
+string SummarizeDebugTensorWatches(
     const protobuf::RepeatedPtrField<DebugTensorWatch>& watches) {
   std::ostringstream oss;
 

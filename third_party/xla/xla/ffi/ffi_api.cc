@@ -17,42 +17,34 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
-#include <exception>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "absl/base/optimization.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/executable_run_options.h"
-#include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
-#include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_internal_api.h"
+#include "xla/ffi/ffi_interop.h"
+#include "xla/ffi/ffi_registry.h"
 #include "xla/ffi/ffi_structs.h"
+#include "xla/ffi/invoke.h"
 #include "xla/ffi/type_registry.h"
-#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
-#include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 #define EIGEN_USE_THREADS
@@ -60,403 +52,23 @@ limitations under the License.
 
 namespace xla::ffi {
 
-// The minimum XLA:FFI API version that XLA runtime supports.
-static constexpr std::pair<int32_t, int32_t> kMinSupportedApiVersion = {
-    /*major=*/0,
-    /*minor=*/1,
-};
+// Forward declare XLA:FFI API access defined below. This API is available
+// publicly via the `xla/ffi/ffi.h` or `xla/ffi/api/ffi.h` header. In this
+// translation unit we implement it, and it is critical that this translation
+// unit linked exactly one time into the main binary. It must not be linked
+// into FFI handler implementations as it will lead to duplicate static
+// registries in multiple object files.
+const XLA_FFI_Api* GetXlaFfiApi();
 
-// The maximum XLA:FFI API version that XLA runtime supports.
-static constexpr std::pair<int32_t, int32_t> kMaxSupportedApiVersion = {
-    XLA_FFI_API_MAJOR,
-    XLA_FFI_API_MINOR,
-};
-
-static bool IsSupportedApiVersion(const XLA_FFI_Api_Version& api_version) {
-  std::pair<int32_t, int32_t> version = {api_version.major_version,
-                                         api_version.minor_version};
-  return version >= kMinSupportedApiVersion &&
-         version <= kMaxSupportedApiVersion;
-}
-
-bool IsCommandBufferCompatible(const XLA_FFI_Metadata& metadata) {
-  return metadata.traits & XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE;
-}
-
-static XLA_FFI_ExecutionContext CreateExecutionContext(
-    const CallOptions& options) {
-  using BackendContext = XLA_FFI_ExecutionContext::BackendContext;
-
-  // Converts CallOptions to corresponding backend context.
-  struct BackendVisitor {
-    BackendContext operator()(const std::monostate&) const {
-      return std::monostate{};
-    }
-
-    BackendContext operator()(const CallOptions::CpuOptions& options) const {
-      return XLA_FFI_ExecutionContext::CpuContext{options.intra_op_thread_pool};
-    }
-
-    BackendContext operator()(const CallOptions::GpuOptions& options) const {
-      return XLA_FFI_ExecutionContext::GpuContext{
-          options.stream,
-          options.allocator,
-          options.collective_params,
-          options.collective_clique_requests,
-          options.collective_memory_requests,
-          options.collective_multimem_requests,
-          options.collective_multimem_provider,
-          options.collective_cliques,
-          options.gpu_compute_capability};
-    }
-  };
-
-  return XLA_FFI_ExecutionContext{
-      options.run_id,
-      options.device_ordinal,
-      std::visit(BackendVisitor{}, options.backend_options),
-      options.called_computation,
-      internal::ScopedExecutionContext::GetCallExecutionContext(options),
-      options.execution_state,
-  };
-}
-
-//===----------------------------------------------------------------------===//
-// Calling XLA FFI handlers
-//===----------------------------------------------------------------------===//
-
-absl::Status TakeStatus(XLA_FFI_Error* error) {
-  if (ABSL_PREDICT_TRUE(error == nullptr)) {
-    return absl::OkStatus();
-  }
-  absl::Status status = std::move(error->status);
-  delete error;
-  return status;
-}
-
-tsl::AsyncValueRef<tsl::Chain> TakeFuture(XLA_FFI_Future* future) {
-  // Non-reference-counted async value ref for synchronous FFI handlers.
-  static tsl::AsyncValueOwningRef<tsl::Chain>* chain = [] {
-    auto* storage = new tsl::internal::AsyncValueStorage<tsl::Chain>();
-    return new tsl::AsyncValueOwningRef<tsl::Chain>(
-        tsl::MakeAvailableAsyncValueRef<tsl::Chain>(*storage));
-  }();
-
-  if (ABSL_PREDICT_TRUE(future == nullptr)) {
-    return chain->AsRef();
-  }
-
-  // If the future is already completed, immediately return the underlying
-  // async value and delete the XLA_FFI_Future.
-  if (ABSL_PREDICT_TRUE(future->async_value.IsAvailable())) {
-    tsl::AsyncValueRef<tsl::Chain> async_value = std::move(future->async_value);
-    delete future;
-    return async_value;
-  }
-
-  // If the future is not completed, return a copy of the underlying async
-  // value and keep XLA_FFI_Future alive until it is completed.
-  tsl::AsyncValueRef<tsl::Chain> async_value = future->async_value;
-  async_value.AndThen([future] { delete future; });
-  return async_value;
-}
-
-template <typename Handler>
-static absl::StatusOr<XLA_FFI_Future*> Call(Handler& handler,
-                                            CallFrame& call_frame,
-                                            const CallOptions& options,
-                                            ExecutionStage stage) {
-  XLA_FFI_ExecutionContext ctx = CreateExecutionContext(options);
-  XLA_FFI_CallFrame ffi_call_frame = call_frame.Build(
-      GetXlaFfiApi(), &ctx, static_cast<XLA_FFI_ExecutionStage>(stage));
-
-  XLA_FFI_Error* error = nullptr;
-
-  // FFI handlers might be defined in external libraries and use exceptions, so
-  // take extra care to catch them and convert to a status.
-  try {
-    if constexpr (std::is_same_v<Handler, Ffi>) {
-      error = handler.Call(&ffi_call_frame);
-    } else if constexpr (std::is_same_v<Handler, XLA_FFI_Handler*>) {
-      error = (*handler)(&ffi_call_frame);
-    } else {
-      static_assert(sizeof(Handler) == 0, "Unsupported handler type");
-    }
-  } catch (std::exception& e) {
-    return Unknown("XLA FFI call failed: %s", e.what());
-  }
-
-  // If FFI handler returned synchronous error, it must not launch any
-  // asynchronous work that can also return an error.
-  if (error != nullptr) {
-    DCHECK_EQ(ffi_call_frame.future, nullptr)
-        << "Error must not be used together with a future";
-    return TakeStatus(error);
-  }
-
-  return ffi_call_frame.future;
-}
-
-static absl::Status BlockUntilReady(XLA_FFI_Future* future) {
-  if (ABSL_PREDICT_TRUE(future == nullptr)) {
-    return absl::OkStatus();
-  }
-
-  tsl::AsyncValueRef<tsl::Chain> av = TakeFuture(future);
-  tsl::BlockUntilReady(av);
-  return ABSL_PREDICT_FALSE(av.IsError()) ? av.GetError() : absl::OkStatus();
-}
-
-absl::Status Call(Ffi& handler, CallFrame& call_frame,
-                  const CallOptions& options, ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
-                      Call<Ffi>(handler, call_frame, options, stage));
-  return BlockUntilReady(future);
-}
-
-absl::Status Call(XLA_FFI_Handler* handler, CallFrame& call_frame,
-                  const CallOptions& options, XLA_FFI_ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(
-      XLA_FFI_Future * future,
-      Call<XLA_FFI_Handler*>(handler, call_frame, options,
-                             static_cast<ExecutionStage>(stage)));
-  return BlockUntilReady(future);
-}
-
-tsl::AsyncValueRef<tsl::Chain> CallAsync(Ffi& handler, CallFrame& call_frame,
-                                         const CallOptions& options,
-                                         ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(XLA_FFI_Future * future,
-                      Call<Ffi>(handler, call_frame, options, stage));
-  return TakeFuture(future);
-}
-
-tsl::AsyncValueRef<tsl::Chain> CallAsync(XLA_FFI_Handler* handler,
-                                         CallFrame& call_frame,
-                                         const CallOptions& options,
-                                         XLA_FFI_ExecutionStage stage) {
-  TF_ASSIGN_OR_RETURN(
-      XLA_FFI_Future * future,
-      Call<XLA_FFI_Handler*>(handler, call_frame, options,
-                             static_cast<ExecutionStage>(stage)));
-  return TakeFuture(future);
-}
-
-static XLA_FFI_Metadata PrepareMetadata() {
-  return XLA_FFI_Metadata{XLA_FFI_Metadata_STRUCT_SIZE,
-                          XLA_FFI_Api_Version{XLA_FFI_Api_Version_STRUCT_SIZE}};
-}
-
-static XLA_FFI_Metadata_Extension PrepareMetadataExtension(
-    XLA_FFI_Metadata* metadata) {
-  return XLA_FFI_Metadata_Extension{
-      XLA_FFI_Extension_Base{XLA_FFI_Metadata_Extension_STRUCT_SIZE,
-                             XLA_FFI_Extension_Metadata},
-      metadata};
-}
-
-static XLA_FFI_CallFrame PrepareMetadataCallFrame(
-    XLA_FFI_Metadata_Extension* extension) {
-  return XLA_FFI_CallFrame{
-      XLA_FFI_CallFrame_STRUCT_SIZE,
-      &extension->extension_base,
-      /*api=*/GetXlaFfiApi(),
-      /*context=*/nullptr,
-      /*stage=*/XLA_FFI_ExecutionStage_EXECUTE,
-      /*args=*/XLA_FFI_Args{XLA_FFI_Args_STRUCT_SIZE},
-      /*rets=*/XLA_FFI_Rets{XLA_FFI_Rets_STRUCT_SIZE},
-      /*attrs=*/XLA_FFI_Attrs{XLA_FFI_Attrs_STRUCT_SIZE},
-  };
-}
-
-absl::StatusOr<XLA_FFI_Metadata> GetMetadata(Ffi& handler) {
-  XLA_FFI_Metadata metadata = PrepareMetadata();
-  XLA_FFI_Metadata_Extension extension = PrepareMetadataExtension(&metadata);
-  XLA_FFI_CallFrame call_frame = PrepareMetadataCallFrame(&extension);
-  XLA_FFI_Error* error = nullptr;
-  try {
-    error = handler.Call(&call_frame);
-  } catch (std::exception& e) {
-    return Unknown("Fetching XLA FFI metadata failed: %s", e.what());
-  }
-  if (error != nullptr) {
-    return TakeStatus(error);
-  }
-  return metadata;
-}
-
-absl::StatusOr<XLA_FFI_Metadata> GetMetadata(XLA_FFI_Handler* handler) {
-  XLA_FFI_Metadata metadata = PrepareMetadata();
-  XLA_FFI_Metadata_Extension extension = PrepareMetadataExtension(&metadata);
-  XLA_FFI_CallFrame call_frame = PrepareMetadataCallFrame(&extension);
-  XLA_FFI_Error* error = nullptr;
-  try {
-    error = (*handler)(&call_frame);
-  } catch (std::exception& e) {
-    return Unknown("Fetching XLA FFI metadata failed: %s", e.what());
-  }
-  if (error != nullptr) {
-    return TakeStatus(error);
-  }
-  return metadata;
-}
-
-namespace internal {
-static thread_local const ExecutionContext* scoped_execution_context = nullptr;
-
-ScopedExecutionContext::ScopedExecutionContext(const ExecutionContext* context)
-    : recover_(scoped_execution_context) {
-  scoped_execution_context = context;
-}
-
-ScopedExecutionContext::~ScopedExecutionContext() {
-  scoped_execution_context = recover_;
-}
-
-const ExecutionContext* ScopedExecutionContext::GetCallExecutionContext(
-    const CallOptions& options) {
-  if (scoped_execution_context != nullptr) {
-    return scoped_execution_context;
-  }
-  return options.execution_context;
-}
-}  // namespace internal
-
-//===----------------------------------------------------------------------===//
-// XLA FFI registry
-//===----------------------------------------------------------------------===//
-
-using HandlerKey = std::pair<std::string, std::string>;
-using HandlerRegistry = absl::flat_hash_map<HandlerKey, HandlerRegistration>;
-
-static HandlerKey MakeHandlerKey(absl::string_view name,
-                                 absl::string_view platform) {
-  return std::make_pair(std::string(name), absl::AsciiStrToLower(platform));
-}
-
-static HandlerRegistry& GetHandlerRegistry() {
-  static auto* const registry = new HandlerRegistry();
-  return *registry;
-}
-
-static std::vector<std::string> GetHandlerStages(
-    const XLA_FFI_Handler_Bundle& bundle) {
-  std::vector<std::string> stages;
-  if (bundle.instantiate != nullptr) {
-    stages.push_back("instantiate");
-  }
-  if (bundle.prepare != nullptr) {
-    stages.push_back("prepare");
-  }
-  if (bundle.initialize != nullptr) {
-    stages.push_back("initialize");
-  }
-  if (bundle.execute != nullptr) {
-    stages.push_back("execute");
-  }
-  return stages;
-}
-
-static absl::Status RegisterHandler(absl::string_view name,
-                                    absl::string_view platform,
-                                    XLA_FFI_Handler_Bundle bundle,
-                                    XLA_FFI_Handler_Traits traits) {
-  TF_ASSIGN_OR_RETURN(std::string canonical_platform,
-                      PlatformUtil::CanonicalPlatformName(platform));
-
-  if (bundle.execute == nullptr) {
-    return InvalidArgument(
-        "FFI handler for %s on a platform %s must provide an execute "
-        "implementation",
-        name, platform);
-  }
-
-  // Check the API version that FFI handler was compiled with is supported.
-  TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata metadata, GetMetadata(bundle.execute));
-  if (!IsSupportedApiVersion(metadata.api_version)) {
-    return InvalidArgument(
-        "XLA FFI handler registration for %s on platform %s (canonical %s) "
-        "failed because the handler's API version (%d.%d) is incompatible "
-        "with "
-        "the framework's API version (%d.%d). Minimum supported API version "
-        "is "
-        "(%d.%d).",
-        name, platform, canonical_platform, metadata.api_version.major_version,
-        metadata.api_version.minor_version, kMaxSupportedApiVersion.first,
-        kMaxSupportedApiVersion.second, kMinSupportedApiVersion.first,
-        kMinSupportedApiVersion.second);
-  }
-
-  // Incorporate handler traits passed explicitly via handler registration API.
-  metadata.traits |= traits;
-
-  // Incorporate state type id from the instantiate implementation if present.
-  if (bundle.instantiate) {
-    TF_ASSIGN_OR_RETURN(XLA_FFI_Metadata instantiate_metadata,
-                        GetMetadata(bundle.instantiate));
-    metadata.state_type_id = instantiate_metadata.state_type_id;
-  }
-
-  VLOG(2) << absl::StreamFormat(
-      "Register XLA FFI handler for '%s'; platform=%s (canonical=%s), "
-      "stages=[%s], metadata=%v",
-      name, platform, canonical_platform,
-      absl::StrJoin(GetHandlerStages(bundle), ", "), metadata);
-
-  HandlerRegistration registration{metadata, bundle};
-  auto [it, emplaced] = GetHandlerRegistry().try_emplace(
-      MakeHandlerKey(name, canonical_platform), registration);
-
-  // We might accidentally link the same FFI library multiple times (because
-  // linking shared libraries is hard), and we choose to ignore this problem as
-  // long as we register exactly the same handler.
-  if (!emplaced) {
-    const HandlerRegistration& existing = it->second;
-    if (existing.metadata != metadata) {
-      return InvalidArgument(
-          "Duplicate FFI handler registration for %s on platform %s "
-          "(canonical %s) with different metadata: %v vs %v",
-          name, platform, canonical_platform, existing.metadata, metadata);
-    }
-    if (existing.bundle != bundle) {
-      return InvalidArgument(
-          "Duplicate FFI handler registration for %s on platform %s "
-          "(canonical %s) with different bundle addresses",
-          name, platform, canonical_platform);
-    }
-  }
-
-  return absl::OkStatus();
-}
-
-absl::StatusOr<HandlerRegistration> FindHandler(absl::string_view name,
-                                                absl::string_view platform) {
-  TF_ASSIGN_OR_RETURN(std::string canonical_platform,
-                      PlatformUtil::CanonicalPlatformName(platform));
-
-  auto it = GetHandlerRegistry().find(MakeHandlerKey(name, canonical_platform));
-  if (it == GetHandlerRegistry().end()) {
-    return NotFound(
-        "No FFI handler registered for %s on a platform %s (canonical %s)",
-        name, platform, canonical_platform);
-  }
-  return it->second;
-}
-
-absl::StatusOr<absl::flat_hash_map<std::string, HandlerRegistration>>
-StaticRegisteredHandlers(absl::string_view platform) {
-  TF_ASSIGN_OR_RETURN(std::string canonical_platform,
-                      PlatformUtil::CanonicalPlatformName(platform));
-
-  absl::flat_hash_map<std::string, HandlerRegistration> calls;
-  for (const auto& [metadata, handler] : GetHandlerRegistry()) {
-    if (canonical_platform == metadata.second) {
-      calls[metadata.first] = handler;
-    }
-  }
-
-  return calls;
-}
+// This is an implementation of XLA FFI API defined in `api/c_api.h` header. It
+// should be linked statically into the "main" XLA binary, and third party FFI
+// handlers can be linked and registered dynamically. When we build JAX PjRt
+// plugins we essentially have a full copy of XLA in each plugin and each
+// plugin has a separate FFI API implementation (and separate handler and type
+// registries).
+//
+// FFI handlers built from the same XLA commit with the same toolchain can also
+// use `api/c_api_internal.h` to get access to various internal data structures.
 
 //===----------------------------------------------------------------------===//
 // XLA FFI Api Implementation
@@ -602,7 +214,7 @@ static XLA_FFI_Error* XLA_FFI_Handler_Register(
       args->struct_size));
 
   if (auto status = RegisterHandler(
-          absl::string_view(args->name.ptr, args->name.len),
+          GetXlaFfiApi(), absl::string_view(args->name.ptr, args->name.len),
           absl::string_view(args->platform.ptr, args->platform.len),
           args->bundle, args->traits);
       !status.ok()) {
@@ -666,8 +278,7 @@ static XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args) {
   // If type_id is unknown, we are registering a new type and XLA will assign
   // a unique type id to it.
   if (type_id == TypeRegistry::kUnknownTypeId) {
-    auto assigned_type_id =
-        TypeRegistry::AssignExternalTypeId(type_name, type_info);
+    auto assigned_type_id = TypeRegistry::AssignTypeId(type_name, type_info);
     if (!assigned_type_id.ok()) {
       return new XLA_FFI_Error{std::move(assigned_type_id).status()};
     }
@@ -678,7 +289,7 @@ static XLA_FFI_Error* XLA_FFI_Type_Register(XLA_FFI_Type_Register_Args* args) {
 
   // If type_id is set, we are relying on the caller-provided unique type id.
   auto registered_type_id =
-      TypeRegistry::RegisterExternalTypeId(type_name, type_id, type_info);
+      TypeRegistry::RegisterTypeId(type_name, type_id, type_info);
   if (!registered_type_id.ok()) {
     return new XLA_FFI_Error{std::move(registered_type_id)};
   }
@@ -703,14 +314,60 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
   return nullptr;
 }
 
+static ExecutionState* GetExecutionState(XLA_FFI_ExecutionContext* ctx,
+                                         XLA_FFI_ExecutionStage stage) {
+  switch (stage) {
+    case XLA_FFI_ExecutionStage_INSTANTIATE:
+      return ctx->state_context.instantiate;
+    case XLA_FFI_ExecutionStage_PREPARE:
+      return ctx->state_context.prepare;
+    case XLA_FFI_ExecutionStage_INITIALIZE:
+      return ctx->state_context.initialize;
+    case XLA_FFI_ExecutionStage_EXECUTE:
+      DCHECK(false) << "Execution stage doesn't have a state";
+      return nullptr;
+  }
+}
+
+namespace {
+// This is a struct declaration for `XLA_FFI_State_Set/Get_Args` in XLA:FFI
+// version 0.2. We use this struct to detect older XLA:FFI clients for backward
+// compatibility reasons. This can be removed 15 Feb 2027.
+struct XLA_FFI_State_Args_V02 {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_TypeId* type_id;
+  void* state;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Args_V02, state);
+}  // namespace
+
 static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
+  // If struct size matches the legacy struct layout, always assume that we set
+  // the state for instantiation stage.
+  if (args->struct_size == XLA_FFI_State_Args_V02_STRUCT_SIZE) {
+    auto* v02 = reinterpret_cast<XLA_FFI_State_Args_V02*>(args);
+
+    XLA_FFI_State_Set_Args compat = {XLA_FFI_State_Set_Args_STRUCT_SIZE};
+    compat.ctx = v02->ctx;
+    compat.stage = XLA_FFI_ExecutionStage_INSTANTIATE;
+    compat.type_id = v02->type_id;
+    compat.state = v02->state;
+
+    return XLA_FFI_State_Set(&compat);
+  }
+
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_State_Set_Args", XLA_FFI_State_Set_Args_STRUCT_SIZE,
       args->struct_size));
 
-  DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
+  ExecutionState* execution_state = GetExecutionState(args->ctx, args->stage);
+  DCHECK(execution_state) << "ExecutionState must be set";
 
-  absl::Status status = args->ctx->execution_state->Set(
+  absl::Status status = execution_state->Set(
       TypeRegistry::TypeId(args->type_id->type_id), args->state);
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
@@ -720,13 +377,29 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
 }
 
 static XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args) {
+  // If struct size matches the legacy struct layout, always assume that we get
+  // the state for instantiation stage.
+  if (args->struct_size == XLA_FFI_State_Args_V02_STRUCT_SIZE) {
+    auto* v02 = reinterpret_cast<XLA_FFI_State_Args_V02*>(args);
+
+    XLA_FFI_State_Get_Args compat = {XLA_FFI_State_Set_Args_STRUCT_SIZE};
+    compat.ctx = v02->ctx;
+    compat.stage = XLA_FFI_ExecutionStage_INSTANTIATE;
+    compat.type_id = v02->type_id;
+    compat.state = v02->state;
+
+    return XLA_FFI_State_Get(&compat);
+  }
+
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_State_Get_Args", XLA_FFI_State_Get_Args_STRUCT_SIZE,
       args->struct_size));
 
-  DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
-  absl::StatusOr<void*> state = args->ctx->execution_state->Get(
-      TypeRegistry::TypeId(args->type_id->type_id));
+  ExecutionState* execution_state = GetExecutionState(args->ctx, args->stage);
+  DCHECK(execution_state) << "ExecutionState must be set";
+
+  absl::StatusOr<void*> state =
+      execution_state->Get(TypeRegistry::TypeId(args->type_id->type_id));
   if (!state.ok()) {
     return new XLA_FFI_Error{std::move(state).status()};
   }

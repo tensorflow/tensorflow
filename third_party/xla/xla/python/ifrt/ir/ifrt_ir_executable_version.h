@@ -16,24 +16,23 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_IFRT_IR_EXECUTABLE_VERSION_H_
 #define XLA_PYTHON_IFRT_IR_IFRT_IR_EXECUTABLE_VERSION_H_
 
+#include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.pb.h"
 #include "xla/python/ifrt/ir/version.h"
-#include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 namespace ifrt {
+
+TSL_LIB_GTL_DEFINE_INT_TYPE(IfrtIrLogicalDeviceId, int32_t);
 
 struct IfrtIrExecutableVersionDeserializeOptions
     : llvm::RTTIExtends<IfrtIrExecutableVersionDeserializeOptions,
@@ -57,7 +56,8 @@ struct IfrtIrExecutableVersion
   // it is to be used on.
   struct AtomExecutableVersion {
     std::shared_ptr<const xla::ifrt::ExecutableVersion> runtime_abi_version;
-    std::vector<xla::ifrt::DeviceId> devices;
+    // Logical device indices into device_assignments vector in IFRT IR MLIR.
+    std::vector<IfrtIrLogicalDeviceId> logical_device_ids;
   };
 
   IfrtIrExecutableVersion() = default;
@@ -81,7 +81,6 @@ struct IfrtIrExecutableVersion
   // and the runtime ABI version is compatible with the given client on the
   // given devices.
   absl::Status IsCompatibleWith(xla::ifrt::Client& client,
-                                const xla::ifrt::DeviceListRef& devices,
                                 const ExecutableVersion& other) const;
 
   absl::StatusOr<IfrtIrExecutableVersionProto> ToProto(

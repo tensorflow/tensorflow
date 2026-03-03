@@ -105,7 +105,7 @@ cc_library(
     name = "cuda_platform_id",
     srcs = ["cuda_platform_id.cc"],
     hdrs = ["cuda_platform_id.h"],
-    deps = ["//xla/stream_executor:platform"],
+    deps = ["//xla/stream_executor:platform_id"],
 )
 
 cuda_only_cc_library(
@@ -484,6 +484,7 @@ cuda_library(
         "//xla/stream_executor/gpu:buffer_debug_float_check_kernel",
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "@com_google_absl//absl/base",
+        "@eigen_archive//:eigen3",
         "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = True,
@@ -498,6 +499,7 @@ xla_test(
         ":buffer_debug_float_check_kernel_cuda",
         "//xla:types",
         "//xla/backends/gpu/runtime:buffer_debug_log_structs",
+        "//xla/backends/gpu/runtime:buffer_debug_log_structs_test_matchers",
         "//xla/backends/gpu/runtime:thunk_id",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_description",
@@ -505,8 +507,8 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor:typed_kernel_factory",
         "//xla/stream_executor/gpu:buffer_debug_float_check_kernel",
         "//xla/stream_executor/gpu:buffer_debug_log",
@@ -1414,6 +1416,10 @@ xla_test(
     name = "cuda_executor_multigpu_test",
     srcs = ["cuda_executor_multigpu_test.cc"],
     backend_tags = {
+        "h100": [
+            "full",
+            "multi_gpu",
+        ],
         "gpu": [
             "multi_gpu",
         ],
@@ -1695,6 +1701,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/debugging:leak_check",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

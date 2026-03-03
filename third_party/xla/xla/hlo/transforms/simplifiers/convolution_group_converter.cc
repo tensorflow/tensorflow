@@ -315,7 +315,8 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
             activation, filter, convolution->feature_group_count(),
             /*batch_group_count=*/1, window, dim_numbers,
             convolution->precision_config(),
-            /*preferred_element_type=*/convolution->shape().element_type())
+            /*preferred_element_type=*/convolution->shape().element_type(),
+            convolution->sparsity_config())
             .value();
     convolution->SetupDerivedInstruction(new_convolution);
     CHECK_OK(computation_->ReplaceInstruction(
@@ -344,10 +345,13 @@ absl::Status ConvolutionVisitor::HandleBatchGroupCount(
     VLOG(2) << "New output shape of convolution "
             << expanded_filter_shape.ToString();
 
+    CHECK(!convolution->sparsity_config().has_lhs() &&
+          !convolution->sparsity_config().has_rhs());
     auto new_convolution = add(HloInstruction::CreateConvolve(
         expanded_filter_shape, activation, filter,
         /*feature_group_count=*/1, /*batch_group_count=*/1,
-        convolution->window(), dim_numbers, convolution->precision_config()));
+        convolution->window(), dim_numbers, convolution->precision_config(),
+        convolution->sparsity_config()));
 
     VLOG(2) << "Expanded convolution " << new_convolution->ToString();
 
@@ -672,7 +676,8 @@ absl::Status ConvolutionVisitor::HandleConvolution(
           activation, filter, /*feature_group_count=*/1,
           /*batch_group_count=*/1, window, dim_numbers,
           convolution->precision_config(),
-          /*preferred_element_type=*/convolution->shape().element_type())
+          /*preferred_element_type=*/convolution->shape().element_type(),
+          convolution->sparsity_config())
           .value();
   convolution->SetupDerivedInstruction(new_convolution);
   changed_ = true;

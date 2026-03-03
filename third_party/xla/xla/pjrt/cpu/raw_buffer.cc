@@ -335,17 +335,10 @@ absl::StatusOr<xla::Shape> MakeDefaultCpuBufferShape(
     shape.mutable_layout()->set_element_size_in_bits(
         primitive_util::BitWidth(element_type));
   }
-  if (layout) {
-    auto layout_copy = *layout;
-    if (primitive_util::IsSubByteNonPredType(element_type)) {
-      layout_copy.set_element_size_in_bits(
-          primitive_util::BitWidth(element_type));
-    }
-    if (layout_copy != shape.layout()) {
-      return absl::UnimplementedError(
-          absl::StrCat("PjRt CPU buffers do not support non-default layout. ",
-                       shape.ToString(), " vs ", layout_copy.ToString()));
-    }
+  if (layout && *layout != shape.layout()) {
+    return absl::UnimplementedError(
+        absl::StrCat("PjRt CPU buffers only support default layout. ",
+                     shape.ToString(), " vs ", layout->ToString()));
   }
   return shape;
 }

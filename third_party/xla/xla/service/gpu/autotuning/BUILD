@@ -1,22 +1,16 @@
 # Description:
 #   Components that implement GPU autotuning.
 
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
-)
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load(
-    "//xla/tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("//xla/util:build_defs.bzl", "embed_files")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -32,6 +26,7 @@ package_group(
 )
 
 cc_library(
+<<<<<<< HEAD
     name = "gemm_fusion_autotuner_cuda",
     srcs = [
         "gemm_fusion_autotuner.h",
@@ -314,6 +309,8 @@ xla_test(
 )
 
 cc_library(
+=======
+>>>>>>> upstream/master
     name = "dot_search_space",
     srcs = ["dot_search_space.cc"],
     hdrs = ["dot_search_space.h"],
@@ -371,6 +368,7 @@ xla_test(
         "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotuner_cache_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
+        "//xla/backends/autotuner:profiler",
         "//xla/backends/gpu/autotuner:cublas",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -664,18 +662,43 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "all_default_configs",
+    data = glob(["default_configs/*.txtpb"]),
+)
+
+exports_files(glob([
+    "default_configs/*.txtpb",
+]))
+
+embed_files(
+    name = "embed_default_configs",
+    srcs = glob(["default_configs/*.txtpb"]),
+    compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
+    cpp_namespace = "xla::gpu::configs",
+)
+
 cc_library(
     name = "triton_configs",
     srcs = ["triton_configs.cc"],
     hdrs = ["triton_configs.h"],
     deps = [
+        ":embed_default_configs",
         "//xla:autotuning_proto_cc",
         "//xla/service/gpu:matmul_utils",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf",
+    ],
+)
+
+xla_cc_test(
+    name = "triton_configs_test",
+    srcs = ["triton_configs_test.cc"],
+    deps = [
+        ":triton_configs",
+        "@com_google_googletest//:gtest_main",
     ],
 )

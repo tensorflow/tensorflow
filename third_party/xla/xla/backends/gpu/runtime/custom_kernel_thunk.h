@@ -29,12 +29,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -57,9 +58,7 @@ class CustomKernelThunk : public Thunk {
 
   const CustomKernel& custom_kernel() const { return custom_kernel_; }
 
-  const std::vector<BufferAllocation::Slice>& arguments() const {
-    return args_;
-  }
+  const std::vector<ShapedSlice>& arguments() const { return args_; }
 
   absl::string_view custom_kernel_name() const { return custom_kernel_.name(); }
 
@@ -85,12 +84,10 @@ class CustomKernelThunk : public Thunk {
  private:
   // Private constructor for deserialization.
   CustomKernelThunk(Thunk::ThunkInfo thunk_info, CustomKernel custom_kernel,
-                    std::vector<BufferAllocation::Slice> args,
-                    std::vector<bool> written);
+                    std::vector<ShapedSlice> args, std::vector<bool> written);
 
   // Buffer slices passed to the kernel as arguments.
-  std::vector<BufferAllocation::Slice> args_;
-  std::vector<Shape> args_shape_;
+  std::vector<ShapedSlice> args_;
 
   // args_[i] is written iff (written_[i] == true).
   std::vector<bool> written_;

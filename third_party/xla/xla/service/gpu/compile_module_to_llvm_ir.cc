@@ -69,7 +69,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -79,6 +78,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -91,33 +91,6 @@ using tsl::profiler::ScopedAnnotation;
 static mlir::LogicalResult DiagnosticHandler(mlir::Diagnostic& diag) {
   VLOG(2) << diag.str();
   return mlir::failure();
-}
-
-// Removes all globals from the given module that are both uninitialized and
-// have no uses within that module.
-void RemoveUnusedAndUninitializedGlobals(
-    se::Platform::Id platform_id, const DebugOptions& options,
-    llvm::Module* llvm_module,
-    const std::vector<GpuExecutable::ConstantInfo>& constants) {
-  bool supports_runtime_managed_constants =
-      platform_id != se::rocm::kROCmPlatformId &&
-      options.xla_gpu_enable_shared_constants();
-  if (!supports_runtime_managed_constants) {
-    return;
-  }
-
-  for (const auto& info : constants) {
-    // Empty content means the constant is initialized in the LLVM IR, so we
-    // must not remove it.
-    if (!info.content.span().empty()) {
-      llvm::GlobalVariable* global =
-          llvm_module->getGlobalVariable(info.symbol_name);
-      CHECK(global != nullptr);
-      if (global->use_empty()) {
-        global->eraseFromParent();
-      }
-    }
-  }
 }
 
 CompileModuleResults InitializeResults(const HloModule* hlo_module) {
@@ -157,9 +130,8 @@ std::string Phase(absl::string_view phase_name, const HloModule* module) {
                          module->name(), module->unique_id());
 }
 
-bool UseCache(const DebugOptions& options, bool split_constants_module) {
-  return split_constants_module &&
-         options.xla_gpu_enable_llvm_module_compilation_parallelism() &&
+bool UseCache(const DebugOptions& options) {
+  return options.xla_gpu_enable_llvm_module_compilation_parallelism() &&
          !options.xla_gpu_kernel_cache_file().empty();
 }
 
@@ -232,11 +204,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     se::Platform::Id platform_id, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
-    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
-    bool split_constants_module) {
+    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
-  const bool use_cache =
-      UseCache(hlo_module->config().debug_options(), split_constants_module);
+  const bool use_cache = UseCache(hlo_module->config().debug_options());
 
   CompileModuleResults results = InitializeResults(hlo_module);
 
@@ -275,29 +245,17 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-  TF_ASSIGN_OR_RETURN(auto sequential_thunk,
-                      thunk_emitter.EmitHloEntryComputation(hlo_module));
+  ASSIGN_OR_RETURN(auto sequential_thunk,
+                   thunk_emitter.EmitHloEntryComputation(hlo_module));
   results.executable = std::move(sequential_thunk);
 
-  // Assemble the LLVM module with all kernels.
-  results.llvm_module =
-      split_constants_module
-          ? ir_emitter_context.CreateLLVMModule(hlo_module->name())
-          : thunk_emitter.ConsumeConstantsModule();
-  llvm::Linker linker(*results.llvm_module);
-  for (auto& kernel_module : thunk_emitter.ConsumeKernelModules()) {
-    CHECK(!linker.linkInModule(std::move(kernel_module),
-                               llvm::Linker::Flags::OverrideFromSrc));
-  }
-  if (split_constants_module) {
-    results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
+  results.llvm_modules = thunk_emitter.ConsumeKernelModules();
+  if (results.llvm_modules.empty()) {
+    results.llvm_modules.push_back(
+        ir_emitter_context.CreateLLVMModule(hlo_module->name()));
   }
 
-  RemoveUnusedAndUninitializedGlobals(platform_id, options,
-                                      split_constants_module
-                                          ? results.llvm_module_constants.get()
-                                          : results.llvm_module.get(),
-                                      ir_emitter_context.constants());
+  results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).
@@ -311,6 +269,18 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   }
 
   return results;
+}
+
+void LinkLlvmModulesInPlace(
+    std::vector<std::unique_ptr<llvm::Module>>& llvm_modules) {
+  CHECK(!llvm_modules.empty());
+
+  llvm::Linker linker(*llvm_modules[0]);
+  for (int i = 1; i < llvm_modules.size(); i++) {
+    CHECK(!linker.linkInModule(std::move(llvm_modules[i]),
+                               llvm::Linker::Flags::OverrideFromSrc));
+  }
+  llvm_modules.resize(1);
 }
 
 }  // namespace xla::gpu

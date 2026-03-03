@@ -45,7 +45,8 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
   // effect the op will have a replicated sharding for all results.
   pm.addPass(createExportStablehloShardingsPass(
       /*addMissingShardingToControlFlow=*/options
-          .addMissingShardingToControlFlow));
+          .addMissingShardingToControlFlow,
+      /*enableHloShardingV3=*/options.enableHloShardingV3));
   pm.addPass(createStablehloRoundTripExportCallbackCustomCallsPass());
 }
 

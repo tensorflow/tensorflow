@@ -81,18 +81,28 @@ bool GpuFloatSupport::IsSupported(const HloInstruction& hlo) const {
       // lower it to a dot + multiply for unsupported types.
       return true;
     case HloOpcode::kDot:  // Handled by Triton GEMM.
-      using TypeAndCC =
-          std::pair<PrimitiveType, stream_executor::CudaComputeCapability>;
-      for (auto [type, cc] :
-           {TypeAndCC(F8E4M3FN, se::CudaComputeCapability::Ampere()),
-            TypeAndCC(F8E5M2, se::CudaComputeCapability::Hopper())}) {
-        if (LowPrecisionType() == type) {
-          auto* cuda_compute_capability =
-              compute_capability_.cuda_compute_capability();
-          // Do not normalize supported types inside Triton fused computations.
-          return cuda_compute_capability &&
-                 cuda_compute_capability->SupportsAllFeaturesOf(cc) &&
-                 IsTritonFusedComputation(*hlo.parent());
+      // Do not normalize supported types inside Triton fused computations.
+      if (IsTritonFusedComputation(*hlo.parent())) {
+        if (auto* cuda_compute_capability =
+                compute_capability_.cuda_compute_capability()) {
+          using TypeAndCC =
+              std::pair<PrimitiveType, stream_executor::CudaComputeCapability>;
+          for (auto [type, cc] :
+               {TypeAndCC(F8E4M3FN, se::CudaComputeCapability::Ampere()),
+                TypeAndCC(F8E5M2, se::CudaComputeCapability::Hopper())}) {
+            if (LowPrecisionType() == type) {
+              return cuda_compute_capability->SupportsAllFeaturesOf(cc);
+            }
+          }
+        } else if (auto* rocm_cc =
+                       compute_capability_.rocm_compute_capability()) {
+          PrimitiveType low_prec = LowPrecisionType();
+          if (low_prec == F8E4M3FN || low_prec == F8E5M2) {
+            return rocm_cc->has_ocp_fp8_support();
+          }
+          if (low_prec == F8E4M3FNUZ || low_prec == F8E5M2FNUZ) {
+            return rocm_cc->has_nanoo_fp8_support();
+          }
         }
       }
       return LowPrecisionType() == BF16;

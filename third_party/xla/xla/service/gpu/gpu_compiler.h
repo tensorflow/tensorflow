@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/compilation_stats.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
@@ -142,17 +143,17 @@ class GpuCompiler : public LLVMCompiler {
       const CompiledModule& aot_result,
       const se::DeviceDescription& device_description) override;
 
-  static std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
-      const stream_executor::DeviceDescription& device_description,
-      bool enable_cublaslt = false);
-
-  static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
-      const stream_executor::DeviceDescription& device_description);
-
   // Returns the LLVM command line options that we use for compilation.
   // THey need to be set globally whenever we call into LLVM.
   virtual std::vector<std::string> GetLLVMCommandLineOptions(
       const DebugOptions& debug_options) const = 0;
+
+  absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
+  GetAutotunerBackends(se::StreamExecutor* stream_exec,
+                       const Compiler::GpuTargetConfig* target_config,
+                       const AliasInfo* alias_info,
+                       const DebugOptions& debug_options,
+                       mlir::MLIRContext* mlir_context);
 
  protected:
   struct BackendCompileResult {
@@ -162,6 +163,13 @@ class GpuCompiler : public LLVMCompiler {
     ModuleStats module_stats;
   };
 
+  static std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
+      const stream_executor::DeviceDescription& device_description,
+      bool enable_cublaslt = false);
+
+  static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
+      const stream_executor::DeviceDescription& device_description);
+
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.
@@ -169,7 +177,8 @@ class GpuCompiler : public LLVMCompiler {
   virtual absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool);
+      const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+      CompilationStats* compilation_stats);
 
   // Add autotuning passes for convolution and gemm.
   // target_config must outlive the pipeline.
@@ -184,25 +193,14 @@ class GpuCompiler : public LLVMCompiler {
       const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn);
 
-  virtual absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-  GetCodegenBackends(se::StreamExecutor* stream_exec,
-                     const Compiler::GpuTargetConfig* target_config,
-                     const AliasInfo* alias_info,
-                     const DebugOptions& debug_options,
-                     mlir::MLIRContext* mlir_context) {
-    return std::vector<std::unique_ptr<CodegenBackend>>();
-  }
-
   // target_config must outlive the pipeline.
-  virtual absl::Status AddFusionAutotuningPass(
+  absl::Status AddFusionAutotuningPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
       stream_executor::StreamExecutor* stream_executor,
       const GpuTargetConfig* target_config,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      const MultiProcessKeyValueStore& key_value_store) {
-    return absl::OkStatus();
-  }
+      const MultiProcessKeyValueStore& key_value_store);
 
   // Runs cuDNN fusion and custom call compiler passes.
   virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
@@ -244,7 +242,8 @@ class GpuCompiler : public LLVMCompiler {
       HloModule* module, const se::DeviceDescription& gpu_device_info,
       const GpuAliasInfo* alias_info);
   absl::Status RunCollectiveScheduleLinearizerPasses(
-      HloModule* hlo_module, se::StreamExecutor* stream_exec);
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      CompilationStats* compilation_stats);
 
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
@@ -253,12 +252,14 @@ class GpuCompiler : public LLVMCompiler {
                                  se::StreamExecutor* stream_exec,
                                  const CompileOptions& options,
                                  const GpuTargetConfig& gpu_target_config,
-                                 const GpuAliasInfo* alias_info);
+                                 const GpuAliasInfo* alias_info,
+                                 CompilationStats* compilation_stats);
 
   virtual absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
       se::dnn::VersionInfo dnn_version,
-      const se::SemanticVersion& toolkit_version) = 0;
+      const se::SemanticVersion& toolkit_version,
+      CompilationStats* compilation_stats) = 0;
 
   // TODO(timshen): Replace `debug_module` with some portable debug information
   // that accommodates both HLO and MLIR.

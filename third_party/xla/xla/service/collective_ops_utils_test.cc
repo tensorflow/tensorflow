@@ -532,40 +532,6 @@ TEST(HasDuplicateSourcesOrTargetsTest, DuplicateTargets) {
   EXPECT_TRUE(HasDuplicateSourcesOrTargets(pairs));
 }
 
-TEST(CollectiveOpsUtilsTest, GetCustomCallLatencyMetadata) {
-  HloComputation::Builder builder("GetCustomCallLatencyMetadata");
-  HloInstruction* param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {}), "param"));
-  HloInstruction* custom_call =
-      builder.AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeShape(F32, {}), {param}, "SomeCustomCall"));
-  EXPECT_FALSE(GetCustomCallLatencyMetadata(custom_call).has_value());
-
-  FrontendAttributes attributes;
-  (*attributes.mutable_map())["latency_metadata"] = "12345";
-  custom_call->set_frontend_attributes(attributes);
-  std::optional<double> latency = GetCustomCallLatencyMetadata(custom_call);
-  ASSERT_TRUE(latency.has_value());
-  EXPECT_EQ(*latency, 12.345);
-}
-
-TEST(CollectiveOpsUtilsDeathTest, GetCustomCallLatencyMetadataInvalid) {
-  HloComputation::Builder builder("GetCustomCallLatencyMetadataInvalid");
-  HloInstruction* param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {}), "param"));
-  HloInstruction* custom_call =
-      builder.AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeShape(F32, {}), {param}, "SomeCustomCall"));
-  FrontendAttributes attributes;
-  (*attributes.mutable_map())["latency_metadata"] = "invalid";
-  custom_call->set_frontend_attributes(attributes);
-  EXPECT_DEATH(
-      { GetCustomCallLatencyMetadata(custom_call); },
-      "Failed to parse latency from custom call");
-}
-
 }  // namespace
 
 // Tests for GetCollectOpGroupMode

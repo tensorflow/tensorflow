@@ -194,6 +194,7 @@ tf_gen_op_strict_wrapper_private_py(
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/examples/speech_commands:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/summary:__pkg__",
     ],
 )
 

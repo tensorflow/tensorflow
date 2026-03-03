@@ -1,8 +1,8 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index e83a237a5397..462b6b60f5b2 100644
+index 0102a20b28..0102a295f2 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -232,19 +232,19 @@ write_file(
+@@ -232,19 +232,19 @@
  config_setting(
      name = "is_windows_clang_mingw",
      constraint_values = ["@platforms//os:windows"],
@@ -25,7 +25,7 @@ index e83a237a5397..462b6b60f5b2 100644
  )
  
  config_setting(
-@@ -253,7 +253,7 @@ config_setting(
+@@ -253,7 +253,7 @@
          "@platforms//cpu:x86_64",
          "@platforms//os:windows",
      ],
@@ -33,38 +33,20 @@ index e83a237a5397..462b6b60f5b2 100644
 +    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
  )
  
- # TODO(zbarsky): Is there a better way to express this?
-@@ -327,12 +327,14 @@ cc_library(
+ BLAKE3_x86_64_ASM_SOURCE_PATTERNS = [
+@@ -305,7 +305,8 @@
+         "@platforms//cpu:aarch64": [
              "lib/Support/BLAKE3/blake3_neon.c",
          ],
-         ":is_x86_64_windows_clang_mingw": [
--            pattern % "windows_gnu"
--            for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
-+            # TODO(b/234415414): temporary disabled
-+            # pattern % "windows_gnu"
-+            # for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
-         ],
-         ":is_x86_64_non_windows": [
--            pattern % "unix"
--            for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
-+            # TODO(b/234415414): temporary disabled
-+            # pattern % "unix"
-+            # for pattern in BLAKE3_x86_64_ASM_SOURCE_PATTERNS
-         ],
-         "//conditions:default": [
-         ],
-@@ -358,14 +360,16 @@ cc_library(
-     ],
-     copts = llvm_copts,
-     defines = select({
--        "@platforms//cpu:aarch64": [
--        ],
+-        "@platforms//cpu:x86_64": [":blake3_x86_64_asm"],
 +        # TODO(b/234415414): temporary disabled
-+        #"@platforms//cpu:aarch64": [
-+        #],
++        # "@platforms//cpu:x86_64": [":blake3_x86_64_asm"],
          "//conditions:default": [
-             "BLAKE3_USE_NEON=0",
          ],
+     }),
+@@ -334,8 +335,9 @@
+         ],
+         "//conditions:default": ["BLAKE3_USE_NEON=0"],
      }) + select({
 -        "@platforms//cpu:x86_64": [
 -        ],

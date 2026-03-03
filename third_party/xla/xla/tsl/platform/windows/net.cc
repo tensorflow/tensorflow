@@ -19,9 +19,11 @@ limitations under the License.
 #include <winsock2.h>
 
 #include <cstdint>
+#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/windows/error_windows.h"  // IWYU pragma: keep
@@ -29,11 +31,9 @@ limitations under the License.
 #undef ERROR
 
 namespace tsl {
-namespace internal {
+namespace net {
 
-namespace {
-
-bool IsPortAvailable(int* port, bool is_tcp) {
+bool IsPortAvailable(int* port, bool is_tcp, std::string* error) {
   const int protocol = is_tcp ? IPPROTO_TCP : 0;
   SOCKET sock = socket(AF_INET, is_tcp ? SOCK_STREAM : SOCK_DGRAM, protocol);
 
@@ -44,8 +44,13 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   CHECK_GE(*port, 0);
   CHECK_LE(*port, 65535);
   if (sock == INVALID_SOCKET) {
-    LOG(ERROR) << "socket() failed: "
-               << tsl::internal::WindowsWSAGetLastErrorMessage();
+    std::string msg = absl::StrCat(
+        "socket() failed: ", tsl::internal::WindowsWSAGetLastErrorMessage());
+    if (error) {
+      *error = msg;
+    } else {
+      LOG(ERROR) << msg;
+    }
     return false;
   }
 
@@ -54,8 +59,14 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   int result = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
                           reinterpret_cast<const char*>(&one), sizeof(one));
   if (result == SOCKET_ERROR) {
-    LOG(ERROR) << "setsockopt() failed: "
-               << tsl::internal::WindowsWSAGetLastErrorMessage();
+    std::string msg =
+        absl::StrCat("setsockopt() failed: ",
+                     tsl::internal::WindowsWSAGetLastErrorMessage());
+    if (error) {
+      *error = msg;
+    } else {
+      LOG(ERROR) << msg;
+    }
     closesocket(sock);
     return false;
   }
@@ -66,8 +77,14 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   addr.sin_port = htons((uint16_t)*port);
   result = bind(sock, (struct sockaddr*)&addr, sizeof(addr));
   if (result == SOCKET_ERROR) {
-    LOG(WARNING) << "bind(port=" << *port << ") failed: "
-                 << tsl::internal::WindowsWSAGetLastErrorMessage();
+    std::string msg = absl::StrCat(
+        "bind(port=", *port,
+        ") failed: ", tsl::internal::WindowsWSAGetLastErrorMessage());
+    if (error) {
+      *error = msg;
+    } else {
+      LOG(WARNING) << msg;
+    }
     closesocket(sock);
     return false;
   }
@@ -75,8 +92,14 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   // Get the bound port number.
   result = getsockname(sock, (struct sockaddr*)&addr, &addr_len);
   if (result == SOCKET_ERROR) {
-    LOG(WARNING) << "getsockname() failed: "
-                 << tsl::internal::WindowsWSAGetLastErrorMessage();
+    std::string msg =
+        absl::StrCat("getsockname() failed: ",
+                     tsl::internal::WindowsWSAGetLastErrorMessage());
+    if (error) {
+      *error = msg;
+    } else {
+      LOG(WARNING) << msg;
+    }
     closesocket(sock);
     return false;
   }
@@ -94,6 +117,7 @@ bool IsPortAvailable(int* port, bool is_tcp) {
   return true;
 }
 
+namespace {
 // Manages the set of ports that have been chosen by PickUnusedPort().
 // This class is a singleton and is thread-safe.
 class ChosenPorts {
@@ -167,14 +191,14 @@ int PickUnusedPort() {
     if (ChosenPorts::GetChosenPorts().Contains(port)) {
       continue;
     }
-    if (!IsPortAvailable(&port, is_tcp)) {
+    if (!IsPortAvailable(&port, is_tcp, nullptr)) {
       continue;
     }
 
     if (port <= 0) {
       return -1;
     }
-    if (!IsPortAvailable(&port, !is_tcp)) {
+    if (!IsPortAvailable(&port, !is_tcp, nullptr)) {
       is_tcp = !is_tcp;
       continue;
     }
@@ -197,5 +221,5 @@ void RecycleUnusedPort(int port) {
   }
 }
 
-}  // namespace internal
+}  // namespace net
 }  // namespace tsl

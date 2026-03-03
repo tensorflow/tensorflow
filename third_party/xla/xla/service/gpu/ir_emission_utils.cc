@@ -146,11 +146,25 @@ bool IsCustomCallToPtxKernel(const HloInstruction& hlo) {
          hlo.custom_call_target() == "__gpu$xla.gpu.ptx";
 }
 
-bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          (hlo.custom_call_target() == "mosaic_gpu" ||
-          hlo.custom_call_target() == "mosaic_gpu_v2") &&
+          hlo.custom_call_target() == "mosaic_gpu_v2");
+}
+
+bool IsMosaicWithNvshmem(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
          absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
+}
+
+bool IsMosaicWithMultimem(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
+         absl::StrContains(hlo.raw_backend_config_string(),
+                           "xla_multimem_parameters");
+}
+
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+  return IsMosaicWithNvshmem(hlo) || IsMosaicWithMultimem(hlo);
 }
 
 static bool IsContiguousSlice(

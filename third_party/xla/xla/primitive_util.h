@@ -765,6 +765,16 @@ inline constexpr int BitWidth(PrimitiveType type) {
   return internal::WidthForType<internal::kBitWidths>(type);
 }
 
+// Returns the number of bits in the storage representation for a given type.
+// Currently this is the same as BitWidth() except for PRED type. Crashes if the
+// type is not an array type.
+inline constexpr int StorageBitWidth(PrimitiveType type) {
+  if (type == PRED) {
+    return 8;
+  }
+  return BitWidth(type);
+}
+
 // Returns the number of bytes in the representation for a given type. Crashes
 // if the type is not an array type.
 inline constexpr int ByteWidth(PrimitiveType type) {

@@ -35,6 +35,7 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -313,8 +314,12 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
         arrays[i]->sharding().WithDeviceAssignment(devices, memory_kind));
     auto* proxy_array = llvm::cast<xla::ifrt::proxy::Array>(arrays[i].get());
     CHECK(proxy_array != nullptr);
-    TF_ASSIGN_OR_RETURN(std::shared_ptr<const xla::PjRtLayout> layout,
-                        proxy_array->pjrt_layout());
+    std::shared_ptr<const xla::PjRtLayout> layout;
+    // "Unpinned_host" memory only supports the default layout.
+    if (!memory_kind.has_value() ||
+        memory_kind->memory_kind() != xla::UnpinnedHostMemorySpace::kKind) {
+      TF_ASSIGN_OR_RETURN(layout, proxy_array->pjrt_layout());
+    }
     uint64_t result_handle = rpc_helper_->NextHandle();
     new_arrays.push_back(
         tsl::MakeRef<Array>(this, rpc_helper_, arrays[i]->dtype(),
@@ -332,6 +337,13 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::RemapArrays(
     const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics semantics) {
   return Array::RemapArrays(this, rpc_helper_, plan, arrays, semantics);
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::BitcastArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  return Array::BitcastArrays(this, rpc_helper_, arrays, specs, semantics);
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(

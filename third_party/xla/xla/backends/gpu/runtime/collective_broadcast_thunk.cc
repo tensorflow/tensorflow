@@ -29,13 +29,13 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -130,9 +130,9 @@ absl::StatusOr<ThunkProto> CollectiveBroadcastStartThunk::ToProto() const {
 absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
     const ExecuteParams& params, const GpuCliqueKey& clique_key,
     se::Stream& stream, Communicator& comm) {
-  ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, buffers_, config_.operand_element_type));
+  ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
+                   ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+                                          config_.operand_element_type));
   RETURN_IF_ERROR(
       ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm));
   return true;

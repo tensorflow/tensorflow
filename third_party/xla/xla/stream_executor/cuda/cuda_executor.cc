@@ -1812,6 +1812,16 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   absl::StatusOr<int> mem_bus_width_bits = GetDeviceAttribute(
       CU_DEVICE_ATTRIBUTE_GLOBAL_MEMORY_BUS_WIDTH, device_ordinal);
   if (mem_clock_khz.ok() && mem_bus_width_bits.ok()) {
+    // Temporary fix when driver reports 0.
+    // Affected CUDA 13.1, driver r590, should be fixed in later releases.
+    if (mem_clock_khz.value() == 0 || mem_bus_width_bits.value() == 0) {
+      LOG(WARNING) << "Memory clock rate or bus width is 0";
+      if (cc.major == 11 && cc.minor == 0) {  // Thor
+        LOG(WARNING) << "Using hardcoded values for Thor";
+        mem_clock_khz = 4266000;
+        mem_bus_width_bits = 256;
+      }
+    }
     // Times 2 because HBM is DDR memory; it gets two data bits per each data
     // lane.
     desc.set_memory_bandwidth(2 * int64_t{mem_clock_khz.value()} * 1000 *
@@ -2148,7 +2158,11 @@ absl::StatusOr<void*> CudaExecutor::CudaMulticastMemory::MapMemory(
 
   absl::MutexLock subscription_lock(mapped_devices_mu_);
   mapped_devices_.emplace(cuda_executor->device_, multicast_device_ptr);
-  return reinterpret_cast<void*>(multicast_device_ptr);
+  void* multicast_address = reinterpret_cast<void*>(multicast_device_ptr);
+  XLA_VLOG_DEVICE(3, cuda_executor->device_ordinal())
+      << "Mapped address: " << location.opaque()
+      << " to multimem address: " << multicast_address;
+  return multicast_address;
 }
 
 }  // namespace gpu

@@ -27,13 +27,14 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -172,9 +173,19 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   }
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
   std::vector<const Shape*> argument_layout_pointers;
+  const ExecutableBuildOptions& build_options =
+      options.executable_build_options;
+  const bool allow_auto_layout =
+      build_options.has_debug_options() &&
+      build_options.debug_options().xla_pjrt_allow_auto_layout_in_hlo();
   TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
       computation,
-      [](Shape shape) { return LayoutUtil::GetWithDefaultLayout(shape); },
+      [allow_auto_layout](Shape shape) {
+        if (allow_auto_layout && !shape.has_layout()) {
+          return shape;
+        }
+        return LayoutUtil::GetWithDefaultLayout(shape);
+      },
       options.argument_layouts, &options.executable_build_options,
       &argument_layout_pointers));
 
@@ -186,6 +197,9 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(hlo_module_proto, *hlo_config));
+  hlo_module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_pjrt_allow_auto_layout_in_hlo(true);
   UpdateEntryComputationLayout(
       hlo_module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
                                   gpu_compiler, std::placeholders::_1));
@@ -217,7 +231,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(CompileOptions options,
-                                   mlir::ModuleOp module,
+                                   MaybeOwningMlirModule module,
                                    const PjRtTopologyDescription& topology,
                                    PjRtClient* client) {
   if (!options.gpu_target_config && client != nullptr) {
@@ -225,17 +239,19 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
         << "GPU compilation requires a GPU PjRt client.";
     TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                        client->Compile(module, options));
+                        client->Compile(std::move(module), options));
     return executable;
   }
 
   XlaComputation xla_computation;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
-      module, xla_computation,
+      module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false,
       /*exec_build_options=*/&options.executable_build_options,
       mlir::mhlo::getGpuChloToHighLevelMhloOptions()));
+  // MLIR module no longer required - release any memory if owned.
+  module = MaybeOwningMlirModule();
   return Compile(std::move(options), xla_computation, topology, client);
 }
 }  // namespace xla

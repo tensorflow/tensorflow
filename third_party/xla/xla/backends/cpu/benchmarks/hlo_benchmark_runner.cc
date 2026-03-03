@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -211,8 +212,9 @@ absl::Status RunHloBenchmarkImpl(benchmark::State* absl_nullable state,
   } else {
     if (expected_arg_count != args.size()) {
       return absl::InvalidArgumentError(
-          "Number of arguments does not match the number of parameters in "
-          "the HLO module.");
+          absl::StrCat("Number of arguments ", args.size(),
+                       " does not match the number of parameters ",
+                       expected_arg_count, " in the HLO module."));
     }
 
     for (auto& args_buffers : execution_args_buffers) {

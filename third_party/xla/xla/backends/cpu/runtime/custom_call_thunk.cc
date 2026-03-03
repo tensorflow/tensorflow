@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "unsupported/Eigen/CXX11/Tensor"
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -44,7 +43,9 @@ limitations under the License.
 #include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_state.h"
-#include "xla/ffi/ffi_api.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_registry.h"
+#include "xla/ffi/invoke.h"
 #include "xla/primitive_util.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -100,10 +101,11 @@ static absl::Status InstantiateHandlerState(
     builder.AddAttributes(attrs.Build());
     ffi::CallFrame instantiate_call_frame = builder.Build();
 
-    ffi::CallOptions options;
-    options.execution_state = execution_state;
-    TF_RETURN_IF_ERROR(Call(handler.bundle.instantiate, instantiate_call_frame,
-                            options, XLA_FFI_ExecutionStage_INSTANTIATE));
+    ffi::InvokeContext invoke_context;
+    invoke_context.state_context = {execution_state};
+    TF_RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), handler.bundle.instantiate,
+                              instantiate_call_frame, invoke_context,
+                              XLA_FFI_ExecutionStage_INSTANTIATE));
   }
 
   return absl::OkStatus();
@@ -336,16 +338,17 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
 
   // Forward ExecutableRunOptions to the FFI handlers via the call options.
   CustomCallExecuteParams* custom_call_params = params.custom_call_params;
-  ffi::CallOptions call_options = {
+  ffi::InvokeContext invoke_context = {
       custom_call_params->run_id,
       custom_call_params->device_ordinal,
-      ffi::CallOptions::CpuOptions{custom_call_params->intra_op_thread_pool},
+      ffi::InvokeContext::CpuContext{custom_call_params->intra_op_thread_pool},
+      ffi::InvokeContext::StateContext{execution_state_.get()},
       /*called_computation=*/nullptr,
-      custom_call_params->ffi_execution_context,
-      execution_state_.get()};
+      custom_call_params->ffi_execution_context};
 
   ffi::HandlerRegistration& handler = std::get<1>(target_);
-  return ffi::CallAsync(handler.bundle.execute, *call_frame, call_options);
+  return ffi::InvokeAsync(ffi::GetXlaFfiApi(), handler.bundle.execute,
+                          *call_frame, invoke_context);
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallUntypedAPI(

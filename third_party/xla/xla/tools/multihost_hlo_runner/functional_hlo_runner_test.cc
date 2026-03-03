@@ -529,7 +529,7 @@ void CompileAndFilecheck(
     std::vector<std::string> ir_paths;
     TF_ASSERT_OK(fs->GetMatchingPaths(fs->JoinPath(dump_dir, "*ir-no-opt.ll"),
                                       &ir_paths));
-    ASSERT_THAT(ir_paths, SizeIs(1));
+    ASSERT_THAT(ir_paths, SizeIs(testing::Ge(1)));
   }
 }
 
@@ -658,7 +658,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   TF_RET_CHECK(env.client->addressable_device_count() == 1);
 
   // The logic for exchanging autotuning results is tested using mocks in
-  // gemm_fusion_autotuner_test.cc. Here, we just check that compilation
+  // autotuner_test.cc. Here, we just check that compilation
   // actually succeeds, and that the autotuner runs correctly ends up storing
   // results for each node in the key-value store.
   TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
@@ -1209,6 +1209,24 @@ TEST_F(FunctionalHloRunnerTest, ProfileMultipleRepeatsSessionPerRepeat) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
       *client, debug_options, preproc_options, compile_options, running_options,
       {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomData) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomNormalInputs;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
 }  // namespace

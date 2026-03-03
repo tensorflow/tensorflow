@@ -21,6 +21,7 @@ limitations under the License.
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <optional>
@@ -656,11 +657,18 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
 // floating point format. (floating point format only)
 // 'max_bits_of_precision' sets the data to have the given number of bits or
 // less and are not NaNs (integer or floating point formats only).
+// 'float_generator' is a function that generates a floating point value. If
+// null, the values are generated using the engine and the distribution suitable
+// for the type.
+// 'index_alignment' indicates that generated data is aligned to the given
+// number (integer formats only).
 absl::StatusOr<Literal> MakeFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
-    std::optional<int64_t> max_bits_of_precision);
+    std::optional<int64_t> max_bits_of_precision,
+    std::optional<int64_t> index_alignment = std::nullopt,
+    std::function<double(std::minstd_rand0*)> float_generator = nullptr);
 
 }  // namespace xla
 

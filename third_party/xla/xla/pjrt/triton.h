@@ -18,15 +18,26 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <variant>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 
 namespace xla::triton {
 
+struct AsmText {
+  std::string value;
+};
+struct HsacoPath {
+  std::string value;
+};
 struct CompilationResult {
-  std::string asm_text;
+  std::variant<AsmText, HsacoPath> compiled_output;
   int64_t smem_bytes;
+  int32_t global_scratch_size;
+  int cluster_dim_x;
+  int cluster_dim_y;
+  int cluster_dim_z;
 };
 
 absl::StatusOr<CompilationResult> Compile(absl::string_view module,

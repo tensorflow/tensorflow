@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -80,6 +81,9 @@ void EnableFeaturesIfAVX512(std::vector<std::string>& features) {
   if (prefer_no_gather_it == features.end()) {
     features.push_back("prefer-no-gather");
   }
+
+  // Maintain sorted order.
+  absl::c_sort(features);
 }
 
 std::pair<std::vector<std::string>, std::vector<std::string>>
@@ -93,10 +97,17 @@ GetEnabledAndDisabledFeatures(const std::vector<std::string>& features) {
       disabled_features.push_back(feature.substr(1));
     }
   }
+  absl::c_sort(enabled_features);
+  absl::c_sort(disabled_features);
   return std::make_pair(enabled_features, disabled_features);
 }
 
 }  // namespace
+
+TargetMachineOptions::TargetMachineOptions() {
+  triple_ = llvm::sys::getDefaultTargetTriple();
+  cpu_ = llvm::sys::getHostCPUName();
+}
 
 TargetMachineOptions::TargetMachineOptions(const DebugOptions& debug_options) {
   triple_ = llvm::sys::getDefaultTargetTriple();
@@ -124,6 +135,12 @@ TargetMachineOptions::TargetMachineOptions(absl::string_view triple,
   std::tie(enabled_features_, disabled_features_) =
       GetEnabledAndDisabledFeatures(features_vec);
   EnableFeaturesIfAVX512(enabled_features_);
+}
+
+bool TargetMachineOptions::operator==(const TargetMachineOptions& other) const {
+  return triple_ == other.triple_ && cpu_ == other.cpu_ &&
+         enabled_features_ == other.enabled_features_ &&
+         disabled_features_ == other.disabled_features_;
 }
 
 std::vector<std::string> TargetMachineOptions::GetTargetMachineFeaturesVector()

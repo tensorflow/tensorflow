@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -41,11 +41,9 @@ namespace xla {
 inline constexpr size_t kMB = 1024LL * 1024LL;
 inline constexpr size_t kGB = 1024LL * kMB;
 
-class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
+class CollectiveOpsE2ETestBase : public gpu::HloPjRtGpuTestBase {
  public:
-  CollectiveOpsE2ETestBase(size_t memory_size, size_t collectives_memory_size) {
-    SetupHloRunner(memory_size, collectives_memory_size);
-  }
+  CollectiveOpsE2ETestBase(size_t memory_size, size_t collectives_memory_size);
 
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options =
@@ -80,8 +78,8 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
       const std::vector<std::vector<Literal*>>& arguments,
       bool run_hlo_passes = true);
 
-  const se::GpuComputeCapability& Capability() {
-    return gpu_compute_capability_;
+  const se::GpuComputeCapability& Capability() const {
+    return device_description().gpu_compute_capability();
   }
 
   bool IsHopperAndHigher() {
@@ -93,13 +91,6 @@ class CollectiveOpsE2ETestBase : public HloHardwareIndependentTestBase {
     return Capability().IsCuda() &&
            Capability().cuda_compute_capability()->IsAtLeastAmpere();
   }
-
- protected:
-  std::unique_ptr<HloRunnerPjRt> hlo_runner_;
-  se::GpuComputeCapability gpu_compute_capability_;
-
- private:
-  void SetupHloRunner(size_t memory_size, size_t collectives_memory_size);
 };
 
 // E2E tests for collective ops. These will generally verify some HLO transform
@@ -120,6 +111,7 @@ class CollectiveOpsWithFlagsBase : public CollectiveOpsE2ETestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override;
 
+  using HloPjRtGpuTestBase::CreateExecutable;
   absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
       absl::string_view hlo_string, int64_t num_replicas);
 

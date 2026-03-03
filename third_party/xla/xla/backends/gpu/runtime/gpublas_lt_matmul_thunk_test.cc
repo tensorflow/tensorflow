@@ -36,6 +36,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -45,8 +46,8 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -122,31 +122,34 @@ class GpuBlasLtThunkBuilder {
     TF_ASSIGN_OR_RETURN(
         auto epilogue, gpublas_lt::AsBlasLtEpilogue(backend_config.epilogue()));
 
-    std::vector<BufferAllocation::Slice> slices;
-    std::vector<size_t> buf_sizes;
+    std::vector<Shape> buf_shapes;
     for (auto op : gemm->operands()) {
-      auto size = ShapeUtil::ByteSizeOf(op->shape());
-      buf_sizes.push_back(size);
+      buf_shapes.push_back(op->shape());
     }
     const auto& output_shape =
         gemm->shape().IsTuple() ? gemm->shape().tuple_shapes(0) : gemm->shape();
-    buf_sizes.push_back(ShapeUtil::ByteSizeOf(output_shape));
+    buf_shapes.push_back(output_shape);
 
     size_t idx = allocs_.size();
-    slices.reserve(buf_sizes.size());
-    for (auto size : buf_sizes) {
+
+    std::vector<ShapedSlice> slices;
+    slices.reserve(buf_shapes.size());
+    for (const Shape& shape : buf_shapes) {
+      int64_t size = ShapeUtil::ByteSizeOf(shape);
       mem_buffers_.emplace_back();
       TF_ASSIGN_OR_RETURN(mem_buffers_.back(),
                           allocator_.Allocate(exec_->device_ordinal(), size));
       allocs_.emplace_back(/*index=*/idx++, size, /*color=*/0);
-      slices.emplace_back(&allocs_.back(), /*offset*/ 0, size);
+      slices.push_back(
+          {BufferAllocation::Slice{&allocs_.back(), /*offset*/ 0, size},
+           shape});
     }
     // we need at least 3 buffers: lhs, rhs and output
     EXPECT_EQ(slices.size(),
               3 + size_t{has_matrix_bias} + size_t{has_vector_bias});
     TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm, gpu_comp_));
 
-    BufferAllocation::Slice bias;
+    std::optional<ShapedSlice> bias;
     if (has_vector_bias) {
       bias = slices[has_matrix_bias ? 3 : 2];
     }
@@ -161,12 +164,8 @@ class GpuBlasLtThunkBuilder {
         epilogue,
         /*algorithm_idx*/ 0, backend_config.autotune_workspace_size(),
         slices[0], slices[1], has_matrix_bias ? slices[2] : slices.back(),
-        slices.back(), bias, BufferAllocation::Slice{} /* aux */,
-        BufferAllocation::Slice{} /* a_scale */,
-        BufferAllocation::Slice{} /* b_scale */,
-        BufferAllocation::Slice{} /* c_scale */,
-        BufferAllocation::Slice{} /* d_scale */,
-        BufferAllocation::Slice{} /* d_amax */, std::nullopt /* workspace */);
+        slices.back(), bias, std::nullopt, std::nullopt, std::nullopt,
+        std::nullopt, std::nullopt, std::nullopt, std::nullopt /* workspace */);
   }
 
   std::unique_ptr<BufferAllocations> buffer_allocations() {
@@ -215,7 +214,7 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
 
   auto thread_func = [&](se::Stream* stream) -> absl::Status {
     auto thunk_params = Thunk::ExecuteParams::Create(
-        run_options, *allocs, stream, stream, nullptr, nullptr);
+        run_options, *allocs, stream, stream, nullptr, nullptr, nullptr);
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
     for (auto& thunk : gemm_thunks) {
@@ -425,10 +424,22 @@ TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerialization) {
     }
     epilogue: EPILOGUE_DEFAULT
     canonical_hlo: "(f32[101,400]{1,0}, s8[33554432]{0}) custom-call(f32[101,407]{1,0}, f32[407,400]{1,0}), custom_call_target=\"__cublas$lt$matmul\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"41107\",\"rhs_stride\":\"162800\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false},\"force_earliest_schedule\":false,\"reification_cost\":[]}"
-    a { size: 164428 buffer_allocation_index: 3 }
-    b { size: 651200 buffer_allocation_index: 4 }
-    c { size: 161600 buffer_allocation_index: 5 }
-    d { size: 161600 buffer_allocation_index: 5 }
+    a {
+      slice { size: 164428 buffer_allocation_index: 3 }
+      shape {}
+    }
+    b {
+      slice { size: 651200 buffer_allocation_index: 4 }
+      shape {}
+    }
+    c {
+      slice { size: 161600 buffer_allocation_index: 5 }
+      shape {}
+    }
+    d {
+      slice { size: 161600 buffer_allocation_index: 5 }
+      shape {}
+    }
   )pb";
 
   Thunk::ThunkInfo thunk_info;

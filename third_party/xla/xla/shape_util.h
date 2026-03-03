@@ -29,6 +29,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -179,6 +180,8 @@ class ShapeUtil {
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
   static int64_t ByteSizeOf(const Shape& shape, int64_t pointer_size = -1);
+
+  static int64_t ByteSizeOfElementsRecursive(const Shape& shape);
 
   // Returns the number of bytes used to store the primitive_type.
   //

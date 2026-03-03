@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/env.h"
 
 namespace xla {
@@ -33,6 +34,8 @@ class WorkerThread {
  public:
   // 'name' is a name for the thread for debugging purposes.
   WorkerThread(tsl::Env* env, const std::string& name);
+  WorkerThread(tsl::Env* env, const tsl::ThreadOptions& thread_options,
+               const std::string& name);
 
   // Blocks until all enqueued closures have completed.
   ~WorkerThread();

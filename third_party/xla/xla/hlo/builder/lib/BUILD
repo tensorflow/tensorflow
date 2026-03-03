@@ -42,7 +42,6 @@ cc_library(
 xla_test(
     name = "arithmetic_test",
     srcs = ["arithmetic_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":arithmetic",
         "//xla:shape_util",
@@ -78,7 +77,6 @@ cc_library(
 xla_test(
     name = "comparators_test",
     srcs = ["comparators_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":comparators",
         ":constants",
@@ -139,7 +137,6 @@ cc_library(
 xla_test(
     name = "constants_test",
     srcs = ["constants_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":constants",
         "//xla:shape_util",
@@ -243,7 +240,6 @@ xla_test(
     name = "math_test",
     timeout = "long",
     srcs = ["math_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":constants",
         ":math",
@@ -297,7 +293,6 @@ cc_library(
 xla_test(
     name = "matrix_test",
     srcs = ["matrix_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":constants",
         ":matrix",
@@ -350,7 +345,6 @@ cc_library(
 xla_test(
     name = "pooling_test",
     srcs = ["pooling_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":pooling",
         "//xla:error_spec",
@@ -389,7 +383,6 @@ cc_library(
 xla_test(
     name = "prng_test",
     srcs = ["prng_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":constants",
         ":prng",
@@ -555,7 +548,6 @@ cc_library(
 xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         ":sorting",
         "//xla:array",
@@ -631,10 +623,7 @@ xla_test(
     srcs = ["self_adjoint_eig_test.cc"],
     real_hardware_only = True,
     shard_count = 5,
-    tags = [
-        "optonly",
-        "test_migrated_to_hlo_runner_pjrt",
-    ],
+    tags = ["optonly"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -693,10 +682,7 @@ xla_test(
     srcs = ["svd_test.cc"],
     real_hardware_only = True,
     shard_count = 10,
-    tags = [
-        "optonly",
-        "test_migrated_to_hlo_runner_pjrt",
-    ],
+    tags = ["optonly"],
     deps = [
         ":arithmetic",
         ":constants",
@@ -745,10 +731,7 @@ xla_test(
     srcs = ["tridiagonal_test.cc"],
     real_hardware_only = True,
     shard_count = 10,
-    tags = [
-        "optonly",
-        "test_migrated_to_hlo_runner_pjrt",
-    ],
+    tags = ["optonly"],
     deps = [
         ":slicing",
         ":tridiagonal",
@@ -790,10 +773,7 @@ cc_library(
 xla_test(
     name = "logdet_test",
     srcs = ["logdet_test.cc"],
-    tags = [
-        "optonly",
-        "test_migrated_to_hlo_runner_pjrt",
-    ],
+    tags = ["optonly"],
     deps = [
         ":logdet",
         "//xla:array2d",

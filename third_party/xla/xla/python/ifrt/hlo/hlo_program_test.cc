@@ -21,7 +21,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -109,6 +111,24 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
   TF_ASSERT_OK_AND_ASSIGN(auto serialized, program->ToBytes());
   TF_ASSERT_OK_AND_ASSIGN(auto deserialized, HloProgram::FromBytes(serialized));
   EXPECT_EQ(program->Fingerprint(), deserialized->Fingerprint());
+}
+
+TEST(HloProgramTest, ToMaybeOwningMlirModule) {
+  static constexpr absl::string_view kModule = R"(
+module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  mlir::ModuleOp mlir_module = program->mlir_module();
+
+  xla::MaybeOwningMlirModule module =
+      std::move(*program).ToMaybeOwningMlirModule();
+  EXPECT_EQ(module.mlir_module(), mlir_module);
 }
 
 }  // namespace

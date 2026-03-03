@@ -45,6 +45,21 @@ TEST(SessionManagerTest, OptionsWithoutSessionIdTest) {
   EXPECT_EQ(options.profiler_options().session_id().empty(), true);
 }
 
+TEST(SessionManagerTest, MultiHostDefaultDelayTest) {
+  absl::string_view service_addresses = "host1:123,host2:456";
+  absl::string_view logdir = "/tmp/logdir";
+  absl::flat_hash_map<std::string, std::variant<bool, int, std::string>> opts;
+  bool is_cloud_tpu_session;
+
+  RemoteProfilerSessionManagerOptions options =
+      GetRemoteSessionManagerOptionsLocked(service_addresses, logdir,
+                                           /*worker_list=*/"",
+                                           /*include_dataset_ops=*/false,
+                                           /*duration_ms=*/100, opts,
+                                           &is_cloud_tpu_session);
+  EXPECT_EQ(options.delay_ms(), 3000);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

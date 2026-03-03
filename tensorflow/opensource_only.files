@@ -213,6 +213,8 @@ tf_staging/third_party/fft2d/fft2d.BUILD:
 tf_staging/third_party/fft2d/fft2d.h:
 tf_staging/third_party/gif.BUILD:
 tf_staging/third_party/gif_fix_strtok_r.patch:
+tf_staging/third_party/git/BUILD.tpl:
+tf_staging/third_party/git/git_configure.bzl:
 tf_staging/third_party/googleapis/build_rules.bzl:
 tf_staging/third_party/googleapis/googleapis.BUILD:
 tf_staging/third_party/googleapis/repository_rules.bzl:

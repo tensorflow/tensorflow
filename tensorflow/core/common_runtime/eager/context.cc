@@ -344,11 +344,11 @@ absl::Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
       *device_type_list, ndef, &supported_devs, &HostCPU()->parsed_name()));
   if (supported_devs.empty()) {
-    return errors::NotFound("Could not find device for node: ",
-                            errors::FormatNodeNameForError(ndef.name()), " = ",
-                            ndef.op(), "[", SummarizeAttrs(ndef), "]",
-                            "\nAll kernels registered for op ", ndef.op(),
-                            ":\n", KernelsRegisteredForOp(ndef.op()));
+    return absl::NotFoundError(absl::StrCat(
+        "Could not find device for node: ",
+        errors::FormatNodeNameForError(ndef.name()), " = ", ndef.op(), "[",
+        SummarizeAttrs(ndef), "]", "\nAll kernels registered for op ",
+        ndef.op(), ":\n", KernelsRegisteredForOp(ndef.op())));
   }
 
   // Select the first matching registered device from the supported device
@@ -376,20 +376,21 @@ absl::Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
   }
 
   if (DeviceNameUtils::HasSomeDetails(preferred)) {
-    return errors::InvalidArgument(
-        "Could not satisfy device specification '", preferred,
-        "'. enable_soft_placement=", AllowSoftPlacement(),
-        ". Supported device types [",
-        absl::StrJoin(DeviceTypesToString(supported_devs), ", "),
-        "]. All available devices [",
-        absl::StrJoin(DevicesToString(existing), ", "), "].");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not satisfy device specification '",
+                     DeviceNameUtils::ParsedNameToString(preferred),
+                     "'. enable_soft_placement=", AllowSoftPlacement(),
+                     ". Supported device types [",
+                     absl::StrJoin(DeviceTypesToString(supported_devs), ", "),
+                     "]. All available devices [",
+                     absl::StrJoin(DevicesToString(existing), ", "), "]."));
   }
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(absl::StrCat(
       "No supported device found in available devices [",
       absl::StrJoin(DevicesToString(existing), ", "),
       "]. enable_soft_placement=", AllowSoftPlacement(),
       ". Supported devices types [",
-      absl::StrJoin(DeviceTypesToString(supported_devs), ", "), "].");
+      absl::StrJoin(DeviceTypesToString(supported_devs), ", "), "]."));
 }
 
 void EagerContext::ResetClusterFLR(
@@ -1020,16 +1021,17 @@ absl::Status EagerContext::AddFunctionRecord(
       const FunctionDef* prev_fdef =
           func_lib_def_.Find(fdef.signature().name());
       if (prev_fdef == nullptr) {
-        return errors::Internal("Function: ", fdef.signature().name(),
-                                " is in the cache but not in the library");
+        return absl::InternalError(
+            absl::StrCat("Function: ", fdef.signature().name(),
+                         " is in the cache but not in the library"));
       }
       if (!FunctionDefsEqual(fdef, *prev_fdef)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Attempting to add a duplicate function with name: ",
             fdef.signature().name(), " where the previous and current ",
             "definitions differ. Previous definition: ",
             prev_fdef->DebugString(),
-            " and current definition: ", fdef.DebugString());
+            " and current definition: ", fdef.DebugString()));
       }
       registered_function->Ref();
     }
@@ -1134,8 +1136,8 @@ absl::Status EagerContext::RemoveFunction(const std::string& func) {
     mutex_lock l(cache_mu_);
     auto* registered_function = gtl::FindPtrOrNull(registered_functions_, func);
     if (registered_function == nullptr) {
-      return errors::InvalidArgument("Tried to remove non-existent function '",
-                                     func, "'.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Tried to remove non-existent function '", func, "'."));
     }
     is_last_ref = registered_function->RefCountIsOne();
     if (is_last_ref) {
@@ -1309,7 +1311,8 @@ absl::Status EagerContext::FindCompositeDeviceFromName(
       return absl::OkStatus();
     }
   }
-  return errors::NotFound("Unknown composite device: ", device_name);
+  return absl::NotFoundError(
+      absl::StrCat("Unknown composite device: ", device_name));
 }
 
 bool EagerContext::IsCustomDevice(const std::string& device_name) {
@@ -1322,8 +1325,8 @@ absl::Status EagerContext::RegisterCustomDevice(
     const std::string& device_name, std::unique_ptr<CustomDevice> device) {
   Device* existing_physical_device = nullptr;
   if (FindDeviceFromName(device_name.c_str(), &existing_physical_device).ok()) {
-    return errors::AlreadyExists(device_name,
-                                 " already registered as a physical device.");
+    return absl::AlreadyExistsError(
+        absl::StrCat(device_name, " already registered as a physical device."));
   }
   return custom_device_op_handler_.RegisterCustomDevice(device_name,
                                                         std::move(device));
@@ -1414,7 +1417,8 @@ namespace {
 absl::Status GetTaskName(Device* d, std::string* task_name) {
   std::string ignored;
   if (!DeviceNameUtils::SplitDeviceName(d->name(), task_name, &ignored)) {
-    return errors::InvalidArgument("Unable to parse device name: ", d->name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to parse device name: ", d->name()));
   }
 
   return absl::OkStatus();
@@ -1432,24 +1436,24 @@ absl::Status EagerContext::GetClient(
     core::RefCountPtr<eager::EagerClient>* client) {
   std::string device_task_name;
   if (!DeviceNameUtils::GetTaskName(device_name, &device_task_name)) {
-    return errors::InvalidArgument(
-        "Task is not fully specified in device name: ",
-        DeviceNameUtils::ParsedNameToString(device_name));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Task is not fully specified in device name: ",
+                     DeviceNameUtils::ParsedNameToString(device_name)));
   }
 
   {
     tf_shared_lock l(remote_state_mu_);
     if (remote_eager_workers_ == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(
           "Haven't set up remote eager worker in this eager context yet.");
     }
     TF_RETURN_IF_ERROR(
         remote_eager_workers_->GetClient(device_task_name, client));
 
     if (*client == nullptr) {
-      return errors::InvalidArgument(
-          "Unable to find eager client corresponding to device ",
-          DeviceNameUtils::ParsedNameToString(device_name));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Unable to find eager client corresponding to device ",
+                       DeviceNameUtils::ParsedNameToString(device_name)));
     }
     if (std::find(remote_contexts_.begin(), remote_contexts_.end(),
                   device_task_name) == remote_contexts_.end()) {
@@ -1467,15 +1471,15 @@ absl::Status EagerContext::GetClient(
   {
     tf_shared_lock l(remote_state_mu_);
     if (remote_eager_workers_ == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(
           "Haven't set up remote eager worker in this eager context yet.");
     }
     TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(remote_task, client));
   }
 
   if (*client == nullptr) {
-    return errors::InvalidArgument(
-        "Unable to find eager client corresponding to target ", remote_task);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unable to find eager client corresponding to target ", remote_task));
   }
   return absl::OkStatus();
 }
@@ -1556,16 +1560,17 @@ absl::Status EagerContext::SetRemoteDeviceFilters(
   std::string remote_worker_task_name;
   DeviceNameUtils::ParsedName pw;
   if (!DeviceNameUtils::ParseFullName(remote_worker, &pw)) {
-    return tensorflow::errors::InvalidArgument(
-        "Remote worker task name is invalid ", remote_worker);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Remote worker task name is invalid ", remote_worker));
   }
   // Force set a replica as the key in cluster device filters map. I.e., if the
   // remote worker is `/job:worker/task:0` it then becomes
   // `/job:worker/replica:0/task:0`.
   pw.has_replica = true;
   if (!DeviceNameUtils::GetTaskName(pw, &remote_worker_task_name)) {
-    return tensorflow::errors::InvalidArgument(
-        "Job name and task index must be specified for worker ", remote_worker);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Job name and task index must be specified for worker ",
+                     remote_worker));
   }
 
   std::vector<DeviceNameUtils::ParsedName> parsed_filters;
@@ -1574,7 +1579,8 @@ absl::Status EagerContext::SetRemoteDeviceFilters(
     if (DeviceNameUtils::ParseFullName(filter, &parsed_filter)) {
       parsed_filters.emplace_back(parsed_filter);
     } else {
-      return tensorflow::errors::InvalidArgument("Invalid filter: ", filter);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Invalid filter: ", filter));
     }
   }
 
@@ -1647,8 +1653,8 @@ absl::Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
   if (context_id == kInvalidContextId) {
-    return errors::InvalidArgument(
-        "Failed to initialize remote for master context due to invalid ",
+    return absl::InvalidArgumentError(
+        "Failed to initialize remote for master context due to invalid "
         "context id");
   }
 
@@ -1675,9 +1681,9 @@ absl::Status EagerContext::UpdateRemoteMaster(
   {
     tf_shared_lock l(remote_state_mu_);
     if (context_id != context_id_) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Failed to update remote master context due to invalid context id. ",
-          "Request id = ", context_id, " but current id = ", context_id_);
+          "Request id = ", context_id, " but current id = ", context_id_));
     }
   }
 
@@ -1868,16 +1874,16 @@ absl::Status EagerContext::InitializeRemoteWorker(
         remote_mgr,
     std::function<void()> resource_deallocator) {
   if (context_id == kInvalidContextId) {
-    return errors::InvalidArgument(
-        "Failed to initialize remote for worker context due to invalid ",
+    return absl::InvalidArgumentError(
+        "Failed to initialize remote for worker context due to invalid "
         "context id");
   }
   mutex_lock l(remote_state_mu_);
 
   if (remote_device_manager_.Owned() || server_ != nullptr ||
       keep_alive_thread_ != nullptr) {
-    return errors::FailedPrecondition(
-        "EagerContext::InitializeRemoteWorker Failed. ",
+    return absl::FailedPreconditionError(
+        "EagerContext::InitializeRemoteWorker Failed. "
         "Already initialized remote as a master context.");
   }
   is_master_ = false;
@@ -1919,10 +1925,10 @@ absl::Status EagerContext::UpdateRemoteWorker(
   {
     mutex_lock l(remote_state_mu_);
     if (context_id != context_id_) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Failed to update remote for worker context due to invalid ",
           "context id. Request id = ", context_id,
-          " but current id = ", context_id_);
+          " but current id = ", context_id_));
     }
     context_view_id_++;
 
@@ -1935,7 +1941,7 @@ absl::Status EagerContext::UpdateRemoteWorker(
   // No need to update remote_device_manager_ since it's not owned for remote
   // worker context (owned by the corresponding worker session).
   if (remote_device_manager_.Owned()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "EagerContext::UpdateRemoteWorker failed because the context was "
         "initialized as a master context.");
   }

@@ -15,21 +15,19 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
-#include <tuple>
-#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -103,24 +101,6 @@ using ::mlir::sdy::SdyDialect;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
-// The information of a sub-dimension in IotaTileAssignment. One tile dimension
-// in tile assignment may correspond to multiple sub-dimensions. See
-// getOrderedSubDimsFromIotaTileAssignment() for an example.
-struct SubDimInfo {
-  int64_t tileDimIndex;     // The tile assignment dimension that this
-                            // sub-dimension belongs to.
-  int64_t tileSubDimIndex;  // The sub-dimension index, whose order is minor to
-                            // major.
-  int64_t reshapeDimIndex;  // The reshape dimension that this sub-dimension
-                            // belongs to.
-  int64_t size;             // The size of this sub-dimension.
-};
-
-struct AnalyzeTileAssignmentResult {
-  SmallVector<SubDimInfo> subDims;
-  SmallVector<int64_t> localMesh;
-};
-
 }  // namespace
 
 // Parse the string `sharding` to obtain a `xla::HloSharding`.
@@ -135,182 +115,6 @@ xla::HloSharding parseShardingFromString(const StringAttr& sharding) {
 }
 
 namespace {
-
-// Given a vector of integers, we can factorize its elements into a product of
-// smaller factors. For example, with the input vector of [4, 8], we can
-// decompose the element 4 into 2x2, and decompose the element 8 into 4x2. Thus,
-// we have a factorization of [2, 2, 4, 2]. Other valid factorizations include
-// [4, 4, 2], [2, 2, 8], [2, 2, 2, 2, 2], etc. We ignore the element 1 in the
-// input vectors.
-//
-// This function finds the shortest common factorization of two input vectors.
-// For example,
-// 1. f([2, 3], [3, 2]) = empty vector since they have no common factorizations.
-// 2. f([4, 8], [8, 4]) = [4, 2, 4]
-// 3. f([4, 8], [4, 2, 4]) = [4, 2, 4]
-// 4. f([4, 8], [4, 4, 2]) = [4, 4, 2]
-// 5. f([2, 2, 2, 2, 2], [4, 4, 2]) = [2, 2, 2, 2, 2]
-// 6. f([6, 1, 4], [2, 6, 2]) = [2, 3, 2, 2]. We skip the element 1.
-SmallVector<int64_t> shortestCommonFactorization(ArrayRef<int64_t> array1,
-                                                 ArrayRef<int64_t> array2) {
-  SmallVector<int64_t> result;
-  result.reserve(std::max(array1.size(), array2.size()));
-
-  auto nextIndexWithNonOneElement = [](ArrayRef<int64_t> array,
-                                       int64_t index) -> int64_t {
-    while (index < array.size() && array[index] == 1) {
-      index++;
-    }
-    return index;
-  };
-
-  int64_t index1 = nextIndexWithNonOneElement(array1, 0);
-  int64_t index2 = nextIndexWithNonOneElement(array2, 0);
-  int64_t nextStride1 = 1;
-  int64_t nextStride2 = 1;
-  int64_t accumulatedFactor = 1;
-
-  while (index1 < array1.size() || index2 < array2.size()) {
-    if (index1 < array1.size() && nextStride1 == accumulatedFactor) {
-      nextStride1 *= array1[index1++];
-    }
-    if (index2 < array2.size() && nextStride2 == accumulatedFactor) {
-      nextStride2 *= array2[index2++];
-    }
-
-    const auto [smallFactor, largeFactor] = std::minmax(
-        {nextStride1 / accumulatedFactor, nextStride2 / accumulatedFactor});
-
-    if (largeFactor % smallFactor != 0 || smallFactor == 1) {
-      return {};
-    }
-
-    result.push_back(smallFactor);
-    accumulatedFactor *= smallFactor;
-    CHECK_EQ(accumulatedFactor, Product(result));
-
-    index1 = nextIndexWithNonOneElement(array1, index1);
-    index2 = nextIndexWithNonOneElement(array2, index2);
-  }
-
-  return result;
-}
-
-// Create ordered SubDimInfo based on IotaTileAssignment (dims, reshape_dims,
-// and transpose_perm) in three steps.
-// 1. Find shortest common factorization of (1) dims and (2) reshape_dims
-// reordered by transpose_perm.
-// 2. Construct the SubDimInfo based on the common factorization, which
-// represents the common axes.
-// 3. Sort the vector of SubDimInfo based on tuple (reshapeDimIndex,
-// tileDimIndex).
-//
-// Take {devices=[6,35]<=[7,10,3]T(2,1,0)} as an example. It has
-// * dims = [6,35]
-// * reshape_dims = [7,10,3]
-// * transpose_perm = [2,1,0].
-// We find the shortest common factorization between (1) [6,35], and (2)
-// [7,10,3] reordered by [2,1,0], which is [3,10,7]. The common factorization
-// [3,2,5,7] is then used to create a sorted vector of SubDimInfo.
-//
-// index tileDimIndex tileSubDimIndex reshapeDimIndex size
-//   0        1              0               0         7
-//   1        0              0               1         2
-//   2        1              1               1         5
-//   3        0              1               2         3
-//
-// The 0-th sub-dimension with size 7 corresponds to dims[1] (which is 35), and
-// reshape_dims[0] (which is 7). The dims[1] (which is 35) is decomposed into
-// two sub-dimensions 7 and 5. Thus the sub-dimensions with size 7 and 5 share
-// the same tileDimIndex of 1 and have different tileSubDimIndex 0 and 1. 7 is
-// on the right of 5 in the common factorization [3,2,5,7] and the
-// tileSubDimIndex is ordered minor to major.
-//
-// If the input is not compatible with the mesh-based sharding, the function
-// returns an empty vector, such as {devices=[2,3]<=[2,3]T(1,0)}.
-SmallVector<SubDimInfo> getOrderedSubDimsFromIotaTileAssignment(
-    const xla::IotaTileAssignment& iota) {
-  SmallVector<int64_t> deviceShape;
-  deviceShape.reserve(iota.transpose_perm().size());
-  for (const int permIndex : iota.transpose_perm()) {
-    deviceShape.emplace_back(iota.reshape_dims()[permIndex]);
-  }
-
-  const SmallVector<int64_t> axisSizes = shortestCommonFactorization(
-      ArrayRef<int64_t>(iota.dims().begin(), iota.dims().end()), deviceShape);
-  if (axisSizes.empty()) {
-    return {};
-  }
-
-  SmallVector<SubDimInfo> subDims;
-  subDims.reserve(axisSizes.size());
-
-  int64_t tileDimIndex = iota.ndims() - 1;
-  int64_t transPermIndex = iota.transpose_perm().size() - 1;
-  int64_t accTileSize = 1;
-  int64_t accDeviceSize = 1;
-  int64_t subDim = 0;
-
-  for (const int64_t axisSize : llvm::reverse(axisSizes)) {
-    while (iota.dim(tileDimIndex) == 1) {
-      tileDimIndex--;
-    }
-    subDims.push_back(SubDimInfo{
-        /* .tileDimIndex = */ tileDimIndex,
-        /* .tileSubDimIndex = */ subDim++,
-        /* .reshapeDimIndex = */ iota.transpose_perm()[transPermIndex],
-        /* .size = */ axisSize,
-    });
-    accTileSize *= axisSize;
-    accDeviceSize *= axisSize;
-    if (iota.dim(tileDimIndex) == accTileSize) {
-      tileDimIndex--;
-      accTileSize = 1;
-      subDim = 0;
-    }
-    if (deviceShape[transPermIndex] == accDeviceSize) {
-      accDeviceSize = 1;
-      transPermIndex--;
-    }
-  }
-
-  // We use sort instead of stable_sort, since the sub dimensions have different
-  // tuple (reshapeDimIndex, tileDimIndex).
-  absl::c_sort(subDims, [](const SubDimInfo& a, const SubDimInfo& b) {
-    return std::forward_as_tuple(a.reshapeDimIndex, a.tileDimIndex) <
-           std::forward_as_tuple(b.reshapeDimIndex, b.tileDimIndex);
-  });
-  return subDims;
-}
-
-// Analyze the input tile assignment to obtain the information on the mesh and
-// sub dimensions.
-AnalyzeTileAssignmentResult analyzeTileAssignment(
-    const TileAssignment& tileAssignment) {
-  // If the input has iota tile assignment (the corresponding HloSharding is in
-  // V2 format), we use getOrderedSubDimsFromIotaTileAssignment.
-  // TODO(zixuanjiang). We may handle HloShardingV1 in the future.
-  const std::optional<IotaTileAssignment>& iota = tileAssignment.iota();
-  CHECK(iota.has_value()) << "tile assignment: " << tileAssignment.ToString();
-  const SmallVector<SubDimInfo> subDims =
-      getOrderedSubDimsFromIotaTileAssignment(*iota);
-
-  // TODO(zixuanjiang). We cannot handle the sharding that needs to specify the
-  // device list. For example, we cannot handle the V2 sharding
-  // {devices=[2,3]<=[2,3]T(1,0)}, which is equivalent to
-  // {devices=[2,3]0,3,1,4,2,5}.
-  CHECK(!subDims.empty()) << "tile assignment: " << tileAssignment.ToString();
-
-  SmallVector<int64_t> mesh;
-  mesh.reserve(subDims.size());
-  for (SubDimInfo subDimInfo : subDims) {
-    mesh.push_back(subDimInfo.size);
-  }
-  return AnalyzeTileAssignmentResult{
-      /* .subDims = */ std::move(subDims),
-      /* .localMesh = */ std::move(mesh),
-  };
-}
 
 // Collect shardings with the attr name kXlaShardingAttr in the `moduleOp`.
 absl::flat_hash_set<xla::HloSharding> collectXlaHloShardings(
@@ -379,11 +183,23 @@ MeshAxesAndIds findMeshAxesAndIds(
     }
 
     CHECK(hloSharding.IsTiled());
-    const AnalyzeTileAssignmentResult result =
-        analyzeTileAssignment(hloSharding.tile_assignment());
+    std::optional<xla::AnalyzeTileAssignmentResult> result =
+        xla::AnalyzeTileAssignment(hloSharding.tile_assignment());
 
-    axes = (axes.empty()) ? result.localMesh
-                          : shortestCommonFactorization(result.localMesh, axes);
+    // TODO(zixuanjiang). We cannot handle the sharding that needs to specify
+    // the device list. For example, we cannot handle the V2 sharding
+    // {devices=[2,3]<=[2,3]T(1,0)}, which is equivalent to
+    // {devices=[2,3]0,3,1,4,2,5}.
+    CHECK(result.has_value())
+        << "tile assignment: " << hloSharding.tile_assignment().ToString();
+
+    if (axes.empty()) {
+      axes.assign(result->local_mesh.begin(), result->local_mesh.end());
+    } else {
+      std::vector<int64_t> commonFactors = xla::ExtractCommonFactorSequence(
+          absl::MakeConstSpan(result->local_mesh), absl::MakeConstSpan(axes));
+      axes.assign(commonFactors.begin(), commonFactors.end());
+    }
     CHECK(!axes.empty());
     // TODO(zixuanjiang). Support cases without common factorizations.
   }
@@ -413,7 +229,15 @@ MeshAxesAndIds findMeshAxesAndIds(ModuleOp moduleOp) {
 }  // namespace
 
 SmallVector<int64_t> getAxisSizes(const TileAssignment& tileAssignment) {
-  return analyzeTileAssignment(tileAssignment).localMesh;
+  std::optional<xla::AnalyzeTileAssignmentResult> result =
+      xla::AnalyzeTileAssignment(tileAssignment);
+  // TODO(zixuanjiang). We cannot handle the sharding that needs to specify the
+  // device list. For example, we cannot handle the V2 sharding
+  // {devices=[2,3]<=[2,3]T(1,0)}, which is equivalent to
+  // {devices=[2,3]0,3,1,4,2,5}.
+  CHECK(result.has_value()) << "tile assignment: " << tileAssignment.ToString();
+  return SmallVector<int64_t>(result->local_mesh.begin(),
+                              result->local_mesh.end());
 }
 
 std::string convertToSdySharding(const xla::OpSharding& opSharding,
@@ -495,16 +319,23 @@ TensorShardingAttr convertToSdySharding(
   }
 
   CHECK(hloSharding.IsTiled());
-  const AnalyzeTileAssignmentResult result =
-      analyzeTileAssignment(hloSharding.tile_assignment());
+  std::optional<xla::AnalyzeTileAssignmentResult> result =
+      xla::AnalyzeTileAssignment(hloSharding.tile_assignment());
+
+  // TODO(zixuanjiang). We cannot handle the sharding that needs to specify the
+  // device list. For example, we cannot handle the V2 sharding
+  // {devices=[2,3]<=[2,3]T(1,0)}, which is equivalent to
+  // {devices=[2,3]0,3,1,4,2,5}.
+  CHECK(result.has_value())
+      << "tile assignment: " << hloSharding.tile_assignment().ToString();
 
   // 1. Create a mapping from local axis to global axis refs.
-  CHECK_EQ(Product(result.localMesh), globalMesh.getTotalSize());
+  CHECK_EQ(Product(result->local_mesh), globalMesh.getTotalSize());
   SmallVector<SmallVector<AxisRefAttr>> localAxisIndexToGlobalAxes;
-  localAxisIndexToGlobalAxes.reserve(result.localMesh.size());
+  localAxisIndexToGlobalAxes.reserve(result->local_mesh.size());
   ArrayRef<MeshAxisAttr> remainingGlobalAxes = globalMesh.getAxes();
   int64_t globalAxisPreSize = 1;
-  for (int64_t localAxisRemainingSize : result.localMesh) {
+  for (int64_t localAxisRemainingSize : result->local_mesh) {
     SmallVector<AxisRefAttr>& globalAxes =
         localAxisIndexToGlobalAxes.emplace_back();
     // The local axis size can correspond to multiple global axes or sub-axes.
@@ -537,17 +368,17 @@ TensorShardingAttr convertToSdySharding(
 
   // 2. Create a mapping from dim and nested sub-dim to local axis index.
   SmallVector<SmallVector<int64_t>> dimToSubDimToLocalAxisIndex(rank);
-  for (auto [localAxisIndex, subDimInfo] : llvm::enumerate(result.subDims)) {
-    if (subDimInfo.tileDimIndex >= rank) {
+  for (auto [localAxisIndex, subDimInfo] : llvm::enumerate(result->sub_dims)) {
+    if (subDimInfo.tile_dim_index >= rank) {
       // This is the last tile dimension that is replicated.
       continue;
     }
     SmallVector<int64_t>& subDimToLocalAxisIndex =
-        dimToSubDimToLocalAxisIndex[subDimInfo.tileDimIndex];
-    if (subDimInfo.tileSubDimIndex >= subDimToLocalAxisIndex.size()) {
-      subDimToLocalAxisIndex.resize(subDimInfo.tileSubDimIndex + 1);
+        dimToSubDimToLocalAxisIndex[subDimInfo.tile_dim_index];
+    if (subDimInfo.tile_sub_dim_index >= subDimToLocalAxisIndex.size()) {
+      subDimToLocalAxisIndex.resize(subDimInfo.tile_sub_dim_index + 1);
     }
-    subDimToLocalAxisIndex[subDimInfo.tileSubDimIndex] = localAxisIndex;
+    subDimToLocalAxisIndex[subDimInfo.tile_sub_dim_index] = localAxisIndex;
   }
 
   // 3. Finally, create the new sharding by flattening
@@ -744,8 +575,10 @@ std::unique_ptr<mlir::Pass> createImportShardingsPass(
 }
 
 void registerStablehloImportShardingsPass() {
-  mlir::registerPass(std::bind(createImportShardingsPass, ArrayRef<bool>(),
-                               ArrayRef<bool>(), false));
+  mlir::registerPass([]() {
+    return createImportShardingsPass(ArrayRef<bool>(), ArrayRef<bool>(),
+                                     /*inlineMesh=*/false);
+  });
 }
 
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
@@ -765,8 +598,11 @@ void registerStablehloImportPipeline() {
       "xla-sdy-stablehlo-import-pipeline",
       "Run passes to import a StableHLO module with `mhlo.shardings` into the "
       "SDY (Shardy) dialect.",
-      std::bind(addStablehloImportPipeline, std::placeholders::_1,
-                ArrayRef<bool>(), ArrayRef<bool>(), true));
+      [](mlir::OpPassManager& pm) {
+        addStablehloImportPipeline(
+            pm, ArrayRef<bool>(), ArrayRef<bool>(),
+            /*enableStablehloCanonicalizeFromHloImport=*/true);
+      });
 }
 
 }  // namespace sdy

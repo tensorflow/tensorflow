@@ -236,7 +236,7 @@ absl::Status RunChecksumPassInternal(SequentialThunk* root_thunk,
 
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
   TF_RETURN_IF_ERROR(
-      root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
+      root_thunk->TransformNested([&](std::unique_ptr<Thunk> thunk) {
         if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
           return thunk;
         }

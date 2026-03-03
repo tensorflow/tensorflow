@@ -91,6 +91,10 @@ class AlgebraicSimplifierOptions {
     conv_is_lowerable_callback_ = std::move(conv_is_lowerable_callback);
   }
 
+  ConvIsLowerableCallback conv_is_lowerable_callback() const {
+    return conv_is_lowerable_callback_;
+  }
+
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.
   void set_is_layout_sensitive(bool is_layout_sensitive) {
@@ -371,6 +375,14 @@ class AlgebraicSimplifierOptions {
     enable_conditional_simplification_ = value;
   }
 
+  bool enable_hoist_transpose_of_reshape() const {
+    return enable_hoist_transpose_of_reshape_;
+  }
+
+  void set_enable_hoist_transpose_of_reshape(bool value) {
+    enable_hoist_transpose_of_reshape_ = value;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplifierOptions that can be later used in an
@@ -419,6 +431,7 @@ class AlgebraicSimplifierOptions {
   bool run_to_fixed_point_{true};
   bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
   bool enable_conditional_simplification_{false};
+  bool enable_hoist_transpose_of_reshape_{false};
   Metadata metadata_;
 };
 
@@ -610,9 +623,13 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   }
 
  protected:
-  // Allow backend targets to amend user-guided fusion attributes based on
-  // various criteria.
-  virtual void AmendUserGuidedFusionAttr(HloInstruction* inst) {}
+  // A method that allows various backends to specialize the propagation of
+  // various attributes to the new instruction.
+  virtual void SetupDerivedInstruction(HloInstruction* old_inst,
+                                       HloInstruction* new_inst,
+                                       bool preserve_user_fusion_attr) {
+    old_inst->SetupDerivedInstruction(new_inst);
+  }
 
  protected:
   // The backend-specific options selected for the algebraic simplifier.

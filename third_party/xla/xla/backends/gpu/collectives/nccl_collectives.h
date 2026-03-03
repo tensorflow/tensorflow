@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COLLECTIVES_H_
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -41,6 +42,8 @@ class NcclCollectives : public GpuCollectives {
   bool IsImplemented() const final { return true; }
 
   bool SupportsDeviceComm() const final;
+
+  size_t SymmetricMemoryAlignment() const final;
 
   absl::StatusOr<CliqueId> CreateUniqueCliqueId() const final;
 

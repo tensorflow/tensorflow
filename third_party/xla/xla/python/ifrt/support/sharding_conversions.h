@@ -18,10 +18,8 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -37,23 +35,14 @@ namespace support {
 // not supported.
 absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding);
 
-// Converts ShardingParam and a device_mapping to OpSharding.
+// Converts ShardingParam to OpSharding.
 //
-// The function assumes that `sharding_param` is valid. The logical device
-// ids from `sharding_param` are used as indices into the device_mapping to
-// obtain the device ids to create the OpSharding.
-//
-// Returns error when `device_mapping` can't map the logical devices in
-// `sharding_param`.
-absl::StatusOr<OpSharding> ToOpSharding(
-    const ShardingParam& sharding_param,
-    const xla::ifrt::DeviceListRef& device_mapping);
+// The function assumes that `sharding_param` is valid.
+absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param);
 
 // Converts ShardingParam to HloSharding.
 //
 // This assumes that `sharding_param` is valid.
-// The returned HloSharding uses the same logical device ids as the
-// given ShardingParam.
 absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param);
 
 // Converts HloSharding to ShardingParam.

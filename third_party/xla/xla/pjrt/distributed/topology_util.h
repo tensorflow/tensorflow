@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PJRT_DISTRIBUTED_TOPOLOGY_UTIL_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,6 +33,12 @@ namespace xla {
 // Retrieve content of /proc/sys/kernel/random/boot_id as a string.
 // Empty on non-Linux platforms.
 absl::StatusOr<std::string> GetBootIdString();
+
+// Retrieve the network nodes topology that describes the shape of the network
+// for the distributed process (see `LocalTopologyProto` documentation for more
+// details). This information passed to JAX/XLA by the user with via the
+// environment variable and it is empty by default.
+absl::StatusOr<std::vector<std::string>> GetNetworkNodes();
 
 // Performs a distributed exchange of topologies using a KV store. Each process
 // provides its local topology, and the local topologies are exchanged to

@@ -126,7 +126,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 98
+// Next ID: 99
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -424,6 +424,9 @@ message HloInstructionProto {
 
   // Conv type (fprop, dgrad, wgrad)
   ConvolutionKind conv_kind = 97;
+
+  // Convolution sparsity config.
+  SparsityConfig sparsity_config = 98;
 }
 
 // Serialization of HloComputation.
@@ -579,6 +582,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
+// Next ID: 22
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -661,6 +665,9 @@ message HloModuleProto {
   xla.FrontendAttributes frontend_attributes = 19;
 
   xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
+
+  // The type of the device that the module is targeted for.
+  string device_type = 21;
 
   reserved 9;
   reserved "dynamic_parameter_binding";

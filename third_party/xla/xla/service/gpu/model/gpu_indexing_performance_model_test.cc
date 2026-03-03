@@ -599,13 +599,12 @@ ENTRY main {
   auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
       *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{1, 128}});
 
-  // Currently SymbolicTileAnalysis fails for concatenate. Once the analysis
-  // gets support of concatenate, this test should fail with an error from
-  // `EstimateRunTimeForTiledHloComputation` that propagation of the number of
-  // blocks is not supported (b/351342921).
-  EXPECT_THAT(result,
-              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition,
-                                     HasSubstr("SymbolicTileAnalysis failed")));
+  EXPECT_THAT(
+      result,
+      absl_testing::StatusIs(
+          absl::StatusCode::kFailedPrecondition,
+          HasSubstr(
+              "Concatenate is not supported by the indexing cost model")));
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
@@ -859,7 +858,7 @@ ENTRY main {
 
   TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
                           std::get<SymbolicTileAnalysis>(analysis_or_error)
-                              .ComputeTiledHloInstructions(Tiling(
+                              .ComputeTiledComputation(Tiling(
                                   {{fusion_root, FlatTiling({9, 9, 9})}})));
 
   LaunchDimensions launch_dimensions = GpuPerformanceModelWithIndexingAnalysis::
@@ -907,10 +906,10 @@ ENTRY main {
           /*emitter_specific_constraints_builder=*/nullptr);
   ASSERT_TRUE(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
 
-  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
-                          std::get<SymbolicTileAnalysis>(analysis_or_error)
-                              .ComputeTiledHloInstructions(
-                                  Tiling({{fusion_root, FlatTiling({1})}})));
+  TF_ASSERT_OK_AND_ASSIGN(
+      TiledHloComputation tiled_hlo_computation,
+      std::get<SymbolicTileAnalysis>(analysis_or_error)
+          .ComputeTiledComputation(Tiling({{fusion_root, FlatTiling({1})}})));
 
   LaunchDimensions launch_dimensions = GpuPerformanceModelWithIndexingAnalysis::
       GetLaunchDimensionsForTiledFusion(tiled_hlo_computation, device_info_);

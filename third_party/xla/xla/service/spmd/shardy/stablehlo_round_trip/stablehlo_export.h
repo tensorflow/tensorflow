@@ -46,6 +46,11 @@ struct StablehloExportPipelineOptions
       llvm::cl::desc(
           "Whether to add a sharding to a control flow op without one."),
       llvm::cl::init(true)};
+  Option<bool> enableHloShardingV3{
+      *this, "enable-hlo-sharding-v3",
+      llvm::cl::desc("Whether to enable HloShardingV3 which is the mesh and "
+                     "axis based sharding representation."),
+      llvm::cl::init(false)};
 };
 
 // Register the xla-sdy-stablehlo-export-pipeline.

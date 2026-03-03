@@ -45,6 +45,9 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_converter.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -53,35 +56,23 @@ namespace {
 using llvm::ArrayRef;
 using llvm::SmallBitVector;
 using llvm::SmallVector;
-using mlir::AffineBinaryOpExpr;
-using mlir::AffineConstantExpr;
-using mlir::AffineDimExpr;
 using mlir::AffineExpr;
-using mlir::AffineExprKind;
 using mlir::AffineMap;
-using mlir::AffineSymbolExpr;
-using mlir::getAffineConstantExpr;
-using mlir::getAffineDimExpr;
 using mlir::MLIRContext;
 
-AffineExpr GetLhs(AffineExpr e) {
-  return mlir::cast<AffineBinaryOpExpr>(e).getLHS();
-}
+SymbolicExpr GetLhs(SymbolicExpr e) { return e.GetLHS(); }
 
-AffineExpr GetRhs(AffineExpr e) {
-  return mlir::cast<AffineBinaryOpExpr>(e).getRHS();
-}
+SymbolicExpr GetRhs(SymbolicExpr e) { return e.GetRHS(); }
 
 // Rewrites summands in arbitrarily nested sums (e.g, ((a+b)+c)) by applying
 // `fn` to each one. In the example, the result is fn(a)+fn(b)+fn(c).
 template <typename Fn>
-AffineExpr MapSummands(AffineExpr expr, const Fn& fn) {
-  if (expr.getKind() == AffineExprKind::Add) {
-    auto add = mlir::cast<AffineBinaryOpExpr>(expr);
-    auto lhs = MapSummands(add.getLHS(), fn);
-    auto rhs = MapSummands(add.getRHS(), fn);
-    if (lhs == add.getLHS() && rhs == add.getRHS()) {
-      return add;
+SymbolicExpr MapSummands(SymbolicExpr expr, const Fn& fn) {
+  if (expr.GetType() == SymbolicExprType::kAdd) {
+    auto lhs = MapSummands(expr.GetLHS(), fn);
+    auto rhs = MapSummands(expr.GetRHS(), fn);
+    if (lhs == expr.GetLHS() && rhs == expr.GetRHS()) {
+      return expr;
     }
     return lhs + rhs;
   }
@@ -90,8 +81,8 @@ AffineExpr MapSummands(AffineExpr expr, const Fn& fn) {
 
 // Calls `visit` for each summand in an arbitrarily nested sum.
 template <typename Fn>
-void VisitSummands(mlir::AffineExpr expr, const Fn& visit) {
-  if (expr.getKind() == AffineExprKind::Add) {
+void VisitSummands(SymbolicExpr expr, const Fn& visit) {
+  if (expr.GetType() == SymbolicExprType::kAdd) {
     VisitSummands(GetLhs(expr), visit);
     VisitSummands(GetRhs(expr), visit);
   } else {
@@ -99,22 +90,22 @@ void VisitSummands(mlir::AffineExpr expr, const Fn& visit) {
   }
 }
 
-class AffineExprSimplifier {
+class SymbolicExprSimplifier {
  public:
-  explicit AffineExprSimplifier(
+  explicit SymbolicExprSimplifier(
       RangeEvaluator* range_evaluator,
       IndexingMap::SimplifyPointDimensions simplify_point_dimensions =
           IndexingMap::SimplifyPointDimensions::kReplace)
       : range_evaluator_(range_evaluator),
-        zero_(getAffineConstantExpr(0, range_evaluator_->GetMLIRContext())),
+        zero_(CreateSymbolicConstant(0, range_evaluator_->GetMLIRContext())),
         simplify_point_dimensions_(simplify_point_dimensions) {}
 
   // Simplifies the map as much as possible.
-  mlir::AffineMap Simplify(mlir::AffineMap affine_map);
+  SymbolicMap Simplify(SymbolicMap symbolic_map);
 
-  mlir::AffineExpr Simplify(mlir::AffineExpr expr);
+  SymbolicExpr Simplify(SymbolicExpr expr);
 
-  // Performs AffineExpr simplification for all constraints.
+  // Performs SymbolicExpr simplification for all constraints.
   // Returns true if simplification was performed.
   bool SimplifyConstraintExprs(IndexingMap& map);
 
@@ -123,11 +114,10 @@ class AffineExprSimplifier {
   bool SimplifyConstraintRanges(IndexingMap& map);
 
  private:
-  std::optional<int64_t> GetConstantRhs(mlir::AffineExpr expr,
-                                        AffineExprKind kind);
-  std::pair<mlir::AffineExpr, int64_t> ExtractMultiplier(
-      mlir::AffineExpr expr) {
-    if (auto mul = GetConstantRhs(expr, AffineExprKind::Mul)) {
+  std::optional<int64_t> GetConstantRhs(SymbolicExpr expr,
+                                        SymbolicExprType type);
+  std::pair<SymbolicExpr, int64_t> ExtractMultiplier(SymbolicExpr expr) {
+    if (auto mul = GetConstantRhs(expr, SymbolicExprType::kMul)) {
       return {GetLhs(expr), *mul};
     }
     return {expr, 1};
@@ -136,51 +126,51 @@ class AffineExprSimplifier {
   // Simplifier for mod.
   // - Rewrites (a * 100 + ...) % 100 to (...) % 100
   // - Rewrites a % b to a if a is known to be less than b.
-  mlir::AffineExpr RewriteMod(mlir::AffineBinaryOpExpr mod);
+  SymbolicExpr RewriteMod(SymbolicExpr mod);
 
   // Simplifier for floordiv. Uses all the rules defined below.
-  mlir::AffineExpr RewriteFloorDiv(mlir::AffineBinaryOpExpr div);
+  SymbolicExpr RewriteFloorDiv(SymbolicExpr div);
 
   // Rewrites `(c % ab) // a` to `(c // a) % b`. Returns nullptr on mismatch.
-  AffineExpr SimplifyModDiv(AffineExpr dividend, int64_t divisor);
+  SymbolicExpr SimplifyModDiv(SymbolicExpr dividend, int64_t divisor);
 
   // Rewrites `a // b // c` to `a // (b * c)` if `c` is positive. Returns
   // nullptr on mismatch.
-  AffineExpr SimplifyDivDiv(AffineExpr dividend, int64_t divisor);
+  SymbolicExpr SimplifyDivDiv(SymbolicExpr dividend, int64_t divisor);
 
   // Rewrites `a // b` where a may be a sum.
-  AffineExpr SimplifySumDiv(AffineExpr dividend, int64_t divisor);
+  SymbolicExpr SimplifySumDiv(SymbolicExpr dividend, int64_t divisor);
 
   // Simplifier for mul.
   // - Distributes multiplications with constants over sums.
-  mlir::AffineExpr RewriteMul(mlir::AffineBinaryOpExpr mul);
+  SymbolicExpr RewriteMul(SymbolicExpr mul);
 
   // Simplifier for sums.
-  mlir::AffineExpr RewriteSum(mlir::AffineBinaryOpExpr sum);
+  SymbolicExpr RewriteSum(SymbolicExpr sum);
 
   // Attempts to simplify the expression, but doesn't attempt to simplify the
   // result further.
-  mlir::AffineExpr SimplifyOnce(mlir::AffineExpr expr);
+  SymbolicExpr SimplifyOnce(SymbolicExpr expr);
 
   // Simplifies the expression using MLIR's simplifier, except for mods.
-  mlir::AffineExpr SimplifyWithMlir(mlir::AffineExpr expr, int num_dims,
-                                    int num_symbols);
+  SymbolicExpr SimplifyWithMlir(SymbolicExpr expr, int num_dims,
+                                int num_symbols);
 
-  bool SimplifyConstraintRangeOnce(AffineExpr* expr, Interval* range);
-  bool SimplifyConstraintRange(AffineExpr* expr, Interval* range);
-  bool SimplifyAddConstraint(AffineExpr* add, Interval* range);
+  bool SimplifyConstraintRangeOnce(SymbolicExpr* expr, Interval* range);
+  bool SimplifyConstraintRange(SymbolicExpr* expr, Interval* range);
+  bool SimplifyAddConstraint(SymbolicExpr* add, Interval* range);
 
   // Splits a nested sum into a * gcd + b.
-  std::tuple<AffineExpr /*a*/, int64_t /*gcd*/, AffineExpr /*b*/> SplitSumByGcd(
-      AffineExpr sum);
+  std::tuple<SymbolicExpr /*a*/, int64_t /*gcd*/, SymbolicExpr /*b*/>
+  SplitSumByGcd(SymbolicExpr sum);
 
   RangeEvaluator* range_evaluator_;
-  AffineExpr zero_;
+  SymbolicExpr zero_;
   IndexingMap::SimplifyPointDimensions simplify_point_dimensions_;
 };
 
-AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
-  auto rhs = range_evaluator_->ComputeExpressionRange(mod.getRHS());
+SymbolicExpr SymbolicExprSimplifier::RewriteMod(SymbolicExpr mod) {
+  auto rhs = range_evaluator_->ComputeExpressionRange(mod.GetRHS());
 
   // The logic below assumes we have a constant RHS.
   if (!rhs.IsPoint()) {
@@ -192,7 +182,7 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
     return zero_;
   }
 
-  auto lhs_simplified = SimplifyOnce(mod.getLHS());
+  auto lhs_simplified = SimplifyOnce(mod.GetLHS());
   auto lhs = range_evaluator_->ComputeExpressionRange(lhs_simplified);
 
   // Offset to add to lhs so the lower bound is between 0 and m-1.
@@ -208,18 +198,18 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
   // = c * a - c // b * ab
   // = (c - c // b * b) * a
   // = (c % b) * a
-  if (auto mul = GetConstantRhs(lhs_simplified, AffineExprKind::Mul);
+  if (auto mul = GetConstantRhs(lhs_simplified, SymbolicExprType::kMul);
       mul && *mul > 0 && (m % *mul == 0)) {
     return (GetLhs(lhs_simplified) % (m / *mul)) * *mul;
   }
 
   int64_t extracted_constant = 0;
-  auto new_lhs = MapSummands(lhs_simplified, [&](AffineExpr expr) {
-    if (auto cst = mlir::dyn_cast<AffineConstantExpr>(expr)) {
-      extracted_constant += cst.getValue();
+  auto new_lhs = MapSummands(lhs_simplified, [&](SymbolicExpr expr) {
+    if (expr.GetType() == SymbolicExprType::kConstant) {
+      extracted_constant += expr.GetValue();
       return zero_;
     }
-    if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul);
+    if (auto multiplier = GetConstantRhs(expr, SymbolicExprType::kMul);
         multiplier && (*multiplier % m == 0)) {
       return zero_;
     }
@@ -244,46 +234,47 @@ AffineExpr AffineExprSimplifier::RewriteMod(AffineBinaryOpExpr mod) {
         // * 1.
         new_lhs = multiplied;
       } else if (multiplier_mod_gcd > 1) {
-        new_lhs = MapSummands(
-            multiplied, [&, multiplier_gcd = multiplier_gcd](AffineExpr expr) {
-              return expr * (multiplier_gcd / multiplier_mod_gcd);
-            });
+        new_lhs = MapSummands(multiplied, [&, multiplier_gcd = multiplier_gcd](
+                                              SymbolicExpr expr) {
+          return expr * (multiplier_gcd / multiplier_mod_gcd);
+        });
       }
       return (new_lhs % (m / multiplier_mod_gcd)) * multiplier_mod_gcd;
     }
     if (Interval{0, multiplier_gcd - 1}.Contains(not_multiplied_range)) {
       // Remove everything that doesn't have a multiplier.
       new_lhs = multiplied * multiplier_gcd;
-      return new_lhs % mod.getRHS() + not_multiplied;
+      return new_lhs % mod.GetRHS() + not_multiplied;
     }
   }
 
-  return new_lhs == mod.getLHS() ? mod : (new_lhs % m);
+  return new_lhs == mod.GetLHS() ? mod : (new_lhs % m);
 }
 
-AffineExpr AffineExprSimplifier::SimplifyModDiv(AffineExpr dividend,
-                                                int64_t divisor) {
-  if (auto mod = GetConstantRhs(dividend, AffineExprKind::Mod);
+SymbolicExpr SymbolicExprSimplifier::SimplifyModDiv(SymbolicExpr dividend,
+                                                    int64_t divisor) {
+  if (auto mod = GetConstantRhs(dividend, SymbolicExprType::kMod);
       mod && (*mod % divisor == 0)) {
     return GetLhs(dividend).floorDiv(divisor) % (*mod / divisor);
   }
   return nullptr;
 }
 
-AffineExpr AffineExprSimplifier::SimplifyDivDiv(AffineExpr dividend,
-                                                int64_t divisor) {
+SymbolicExpr SymbolicExprSimplifier::SimplifyDivDiv(SymbolicExpr dividend,
+                                                    int64_t divisor) {
   // The inner divisor here can be negative.
-  if (auto inner_divisor = GetConstantRhs(dividend, AffineExprKind::FloorDiv)) {
+  if (auto inner_divisor =
+          GetConstantRhs(dividend, SymbolicExprType::kFloorDiv)) {
     return GetLhs(dividend).floorDiv(divisor * *inner_divisor);
   }
   return nullptr;
 }
 
-AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
-                                                int64_t divisor) {
-  AffineExpr extracted = zero_;
-  auto new_dividend = MapSummands(dividend, [&](AffineExpr expr) {
-    if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
+SymbolicExpr SymbolicExprSimplifier::SimplifySumDiv(SymbolicExpr dividend,
+                                                    int64_t divisor) {
+  SymbolicExpr extracted = zero_;
+  auto new_dividend = MapSummands(dividend, [&](SymbolicExpr expr) {
+    if (auto multiplier = GetConstantRhs(expr, SymbolicExprType::kMul)) {
       // We can extract summands whose factor is a multiple of the divisor.
       if (*multiplier % divisor == 0) {
         int64_t factor = *multiplier / divisor;
@@ -334,16 +325,16 @@ AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
   // there is more than one division.
   std::optional<int64_t> inner_divisor = std::nullopt;
   int num_inner_divisors = 0;
-  VisitSummands(new_dividend, [&](AffineExpr summand) {
-    if (auto divisor = GetConstantRhs(summand, AffineExprKind::FloorDiv)) {
+  VisitSummands(new_dividend, [&](SymbolicExpr summand) {
+    if (auto divisor = GetConstantRhs(summand, SymbolicExprType::kFloorDiv)) {
       inner_divisor = divisor;
       ++num_inner_divisors;
     }
   });
   if (num_inner_divisors == 1) {
-    new_dividend = MapSummands(new_dividend, [&](AffineExpr summand) {
+    new_dividend = MapSummands(new_dividend, [&](SymbolicExpr summand) {
       if (auto inner_divisor =
-              GetConstantRhs(summand, AffineExprKind::FloorDiv)) {
+              GetConstantRhs(summand, SymbolicExprType::kFloorDiv)) {
         return GetLhs(summand);
       }
       return summand * *inner_divisor;
@@ -357,11 +348,11 @@ AffineExpr AffineExprSimplifier::SimplifySumDiv(AffineExpr dividend,
   return nullptr;
 }
 
-AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
-  auto rhs_range = range_evaluator_->ComputeExpressionRange(div.getRHS());
-  auto lhs_simplified = SimplifyOnce(div.getLHS());
+SymbolicExpr SymbolicExprSimplifier::RewriteFloorDiv(SymbolicExpr div) {
+  auto rhs_range = range_evaluator_->ComputeExpressionRange(div.GetRHS());
+  auto lhs_simplified = SimplifyOnce(div.GetLHS());
   if (!rhs_range.IsPoint()) {
-    return lhs_simplified.floorDiv(SimplifyOnce(div.getRHS()));
+    return lhs_simplified.floorDiv(SimplifyOnce(div.GetRHS()));
   }
 
   int64_t d = rhs_range.lower;
@@ -382,12 +373,11 @@ AffineExpr AffineExprSimplifier::RewriteFloorDiv(AffineBinaryOpExpr div) {
       return result;
     }
   }
-  return lhs_simplified != div.getLHS() ? lhs_simplified.floorDiv(d) : div;
+  return lhs_simplified != div.GetLHS() ? lhs_simplified.floorDiv(d) : div;
 }
 
-mlir::AffineExpr AffineExprSimplifier::RewriteMul(
-    mlir::AffineBinaryOpExpr mul) {
-  auto rhs_range = range_evaluator_->ComputeExpressionRange(mul.getRHS());
+SymbolicExpr SymbolicExprSimplifier::RewriteMul(SymbolicExpr mul) {
+  auto rhs_range = range_evaluator_->ComputeExpressionRange(mul.GetRHS());
 
   // The logic below assumes we have a constant RHS.
   if (!rhs_range.IsPoint()) {
@@ -395,95 +385,46 @@ mlir::AffineExpr AffineExprSimplifier::RewriteMul(
   }
 
   int64_t multiplier = rhs_range.lower;
-  auto lhs = SimplifyOnce(mul.getLHS());
-  if (lhs.getKind() == AffineExprKind::Add) {
+  auto lhs = SimplifyOnce(mul.GetLHS());
+  if (lhs.GetType() == SymbolicExprType::kAdd) {
     return MapSummands(
-        lhs, [&](AffineExpr summand) { return summand * rhs_range.lower; });
+        lhs, [&](SymbolicExpr summand) { return summand * multiplier; });
   }
 
   if (multiplier == 1) {
     return lhs;
   }
-  if (lhs == mul.getLHS()) {
+  if (lhs == mul.GetLHS()) {
     return mul;
   }
   return lhs * multiplier;
 }
 
-std::optional<int64_t> AffineExprSimplifier::GetConstantRhs(
-    AffineExpr expr, AffineExprKind kind) {
-  if (expr.getKind() != kind) {
+std::optional<int64_t> SymbolicExprSimplifier::GetConstantRhs(
+    SymbolicExpr expr, SymbolicExprType type) {
+  if (expr.GetType() != type) {
     return std::nullopt;
   }
-  auto bound = range_evaluator_->ComputeExpressionRange(
-      mlir::cast<AffineBinaryOpExpr>(expr).getRHS());
+  auto bound = range_evaluator_->ComputeExpressionRange(expr.GetRHS());
   if (!bound.IsPoint()) {
     return std::nullopt;
   }
   return bound.lower;
 }
 
-// Compares the two expression by their AST. The ordering is arbitrary but
-// similar to what MLIR's simplifier does.
-int CompareExprs(AffineExpr a, AffineExpr b) {
-  if ((b.getKind() == AffineExprKind::Constant) !=
-      (a.getKind() == AffineExprKind::Constant)) {
-    return a.getKind() == AffineExprKind::Constant ? 1 : -1;
-  }
-  if (a.getKind() < b.getKind()) {
-    return -1;
-  }
-  if (a.getKind() > b.getKind()) {
-    return 1;
-  }
-  assert(a.getKind() == b.getKind());
-  int64_t a_value = 0;
-  int64_t b_value = 0;
-  switch (a.getKind()) {
-    case AffineExprKind::Add:
-    case AffineExprKind::FloorDiv:
-    case AffineExprKind::CeilDiv:
-    case AffineExprKind::Mul:
-    case AffineExprKind::Mod: {
-      auto lhs = CompareExprs(GetLhs(a), GetLhs(b));
-      if (lhs != 0) {
-        return lhs;
-      }
-      return CompareExprs(GetRhs(a), GetRhs(b));
-    }
-    case AffineExprKind::Constant: {
-      a_value = mlir::cast<AffineConstantExpr>(a).getValue();
-      b_value = mlir::cast<AffineConstantExpr>(b).getValue();
-      break;
-    }
-    case AffineExprKind::SymbolId: {
-      a_value = mlir::cast<AffineSymbolExpr>(a).getPosition();
-      b_value = mlir::cast<AffineSymbolExpr>(b).getPosition();
-      break;
-    }
-    case AffineExprKind::DimId: {
-      a_value = mlir::cast<AffineDimExpr>(a).getPosition();
-      b_value = mlir::cast<AffineDimExpr>(b).getPosition();
-      break;
-    }
-  }
-  return a_value < b_value ? -1 : (a_value > b_value ? 1 : 0);
-}
-
-mlir::AffineExpr AffineExprSimplifier::RewriteSum(
-    mlir::AffineBinaryOpExpr sum) {
+SymbolicExpr SymbolicExprSimplifier::RewriteSum(SymbolicExpr sum) {
   // TODO(jreiffers): Split this up more.
   // Rewrite `(x % c) * d + (x // c) * (c * d)` to `x * d`. We have to do it
   // in this rather convoluted way because we distribute multiplications.
-  SmallVector<std::pair<AffineExpr, int64_t /*multiplier*/>> mods;
-  SmallVector<std::pair<AffineExpr, int64_t /*multiplier*/>> divs;
-  llvm::SmallDenseMap<AffineExpr, int64_t /* multiplier */> summands;
-  VisitSummands(sum, [&](AffineExpr expr) {
-    AffineExpr simplified = SimplifyOnce(expr);
+  SmallVector<std::pair<SymbolicExpr, int64_t /*multiplier*/>> mods;
+  SmallVector<std::pair<SymbolicExpr, int64_t /*multiplier*/>> divs;
+  llvm::SmallDenseMap<SymbolicExpr, int64_t /* multiplier */> summands;
+  VisitSummands(sum, [&](SymbolicExpr expr) {
+    SymbolicExpr simplified = SimplifyOnce(expr);
     auto [lhs, multiplier] = ExtractMultiplier(simplified);
-    if (lhs.getKind() == AffineExprKind::Mod) {
+    if (lhs.GetType() == SymbolicExprType::kMod) {
       mods.push_back({lhs, multiplier});
-    } else if (lhs.getKind() == AffineExprKind::FloorDiv) {
+    } else if (lhs.GetType() == SymbolicExprType::kFloorDiv) {
       divs.push_back({lhs, multiplier});
     } else {
       summands[lhs] += multiplier;
@@ -502,7 +443,7 @@ mlir::AffineExpr AffineExprSimplifier::RewriteSum(
   if (!divs.empty()) {
     for (int mod_i = 0; mod_i < mods.size(); ++mod_i) {
       auto [mod, mod_mul] = mods[mod_i];
-      auto mod_c = GetConstantRhs(mod, AffineExprKind::Mod);
+      auto mod_c = GetConstantRhs(mod, SymbolicExprType::kMod);
       if (!mod_c) {
         continue;
       }
@@ -513,7 +454,7 @@ mlir::AffineExpr AffineExprSimplifier::RewriteSum(
       //    ((x // c0) % c1) * d + (x // (c0 * c1)) * (c1 * d)`
       // `x // (c0 * c1)` will be simplified, so we we may not even have
       // `c0 * c1` in the expression, if `x` contains a multiplier.
-      AffineExpr simplified_mod = Simplify(GetLhs(mod).floorDiv(*mod_c));
+      SymbolicExpr simplified_mod = Simplify(GetLhs(mod).floorDiv(*mod_c));
       for (int div_i = 0; div_i < divs.size(); ++div_i) {
         auto [div, div_mul] = divs[div_i];
         if (simplified_mod != div) {
@@ -537,14 +478,14 @@ mlir::AffineExpr AffineExprSimplifier::RewriteSum(
       if (!div || div_mul > 0) {
         continue;
       }
-      auto div_c = GetConstantRhs(div, AffineExprKind::FloorDiv);
+      auto div_c = GetConstantRhs(div, SymbolicExprType::kFloorDiv);
       if (!div_c || *div_c < 0 || (div_mul % *div_c)) {
         continue;
       }
 
       int64_t b = div_mul / *div_c;
       auto x = GetLhs(div);
-      VisitSummands(x, [&](AffineExpr summand) { summands[summand] += b; });
+      VisitSummands(x, [&](SymbolicExpr summand) { summands[summand] += b; });
       mods.push_back({x % *div_c, -b});
       // Erase the div.
       divs[div_i].first = nullptr;
@@ -562,21 +503,21 @@ mlir::AffineExpr AffineExprSimplifier::RewriteSum(
     }
   }
 
-  SmallVector<AffineExpr, 4> expanded_summands;
+  SmallVector<SymbolicExpr, 4> expanded_summands;
   for (auto [expr, mul] : summands) {
     expanded_summands.push_back(expr * mul);
   }
   llvm::sort(expanded_summands,
-             [](AffineExpr a, AffineExpr b) { return CompareExprs(a, b) < 0; });
-  AffineExpr result = zero_;
+             [](SymbolicExpr a, SymbolicExpr b) { return a < b; });
+  SymbolicExpr result = zero_;
   for (auto expr : expanded_summands) {
     result = result + expr;
   }
   return result;
 }
 
-AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
-  if (expr.getKind() == AffineExprKind::Constant) {
+SymbolicExpr SymbolicExprSimplifier::SimplifyOnce(SymbolicExpr expr) {
+  if (expr.GetType() == SymbolicExprType::kConstant) {
     return expr;
   }
 
@@ -584,26 +525,26 @@ AffineExpr AffineExprSimplifier::SimplifyOnce(AffineExpr expr) {
       IndexingMap::SimplifyPointDimensions::kReplace) {
     auto bounds = range_evaluator_->ComputeExpressionRange(expr);
     if (bounds.IsPoint()) {
-      return getAffineConstantExpr(bounds.lower,
-                                   range_evaluator_->GetMLIRContext());
+      return CreateSymbolicConstant(bounds.lower,
+                                    range_evaluator_->GetMLIRContext());
     }
   }
 
-  switch (expr.getKind()) {
-    case AffineExprKind::Mul:
-      return RewriteMul(mlir::cast<AffineBinaryOpExpr>(expr));
-    case AffineExprKind::Add:
-      return RewriteSum(mlir::cast<AffineBinaryOpExpr>(expr));
-    case AffineExprKind::Mod:
-      return RewriteMod(mlir::cast<AffineBinaryOpExpr>(expr));
-    case AffineExprKind::FloorDiv:
-      return RewriteFloorDiv(mlir::cast<AffineBinaryOpExpr>(expr));
+  switch (expr.GetType()) {
+    case SymbolicExprType::kMul:
+      return RewriteMul(expr);
+    case SymbolicExprType::kAdd:
+      return RewriteSum(expr);
+    case SymbolicExprType::kMod:
+      return RewriteMod(expr);
+    case SymbolicExprType::kFloorDiv:
+      return RewriteFloorDiv(expr);
     default:
       return expr;
   }
 }
 
-AffineExpr AffineExprSimplifier::Simplify(AffineExpr expr) {
+SymbolicExpr SymbolicExprSimplifier::Simplify(SymbolicExpr expr) {
   while (true) {
     auto simplified = SimplifyOnce(expr);
     if (simplified == expr) {
@@ -613,19 +554,19 @@ AffineExpr AffineExprSimplifier::Simplify(AffineExpr expr) {
   }
 }
 
-AffineMap AffineExprSimplifier::Simplify(AffineMap affine_map) {
-  SmallVector<AffineExpr, 4> results;
-  results.reserve(affine_map.getNumResults());
-  for (AffineExpr expr : affine_map.getResults()) {
+SymbolicMap SymbolicExprSimplifier::Simplify(SymbolicMap symbolic_map) {
+  SmallVector<SymbolicExpr, 4> results;
+  results.reserve(symbolic_map.GetNumResults());
+  for (SymbolicExpr expr : symbolic_map.GetResults()) {
     results.push_back(Simplify(expr));
   }
-  return AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
-                        results, affine_map.getContext());
+  return SymbolicMap::Get(symbolic_map.GetContext(), symbolic_map.GetNumDims(),
+                          symbolic_map.GetNumSymbols(), std::move(results));
 }
 
-bool AffineExprSimplifier::SimplifyAddConstraint(AffineExpr* add,
-                                                 Interval* range) {
-  if (add->getKind() != AffineExprKind::Add) {
+bool SymbolicExprSimplifier::SimplifyAddConstraint(SymbolicExpr* add,
+                                                   Interval* range) {
+  if (add->GetType() != SymbolicExprType::kAdd) {
     return false;
   }
 
@@ -666,28 +607,26 @@ bool AffineExprSimplifier::SimplifyAddConstraint(AffineExpr* add,
 
 // Simplifies a constraint range, e.g. a constraint d0 + x in [lb, ub] will
 // become d0 in [lb - x, ub - x]. Also supports *, floorDiv.
-bool AffineExprSimplifier::SimplifyConstraintRangeOnce(AffineExpr* expr,
-                                                       Interval* range) {
-  switch (expr->getKind()) {
-    case AffineExprKind::DimId:
-    case AffineExprKind::SymbolId:
+bool SymbolicExprSimplifier::SimplifyConstraintRangeOnce(SymbolicExpr* expr,
+                                                         Interval* range) {
+  switch (expr->GetType()) {
+    case SymbolicExprType::kVariable:
       // do the trick with constant
-    case AffineExprKind::Constant: {
+    case SymbolicExprType::kConstant: {
       return false;
     }
-    case AffineExprKind::Add:
+    case SymbolicExprType::kAdd:
       return SimplifyAddConstraint(expr, range);
     default: {
-      auto binary_op = mlir::cast<AffineBinaryOpExpr>(*expr);
-      CHECK(binary_op);
-      auto lhs = binary_op.getLHS();
-      auto rhs_range = range_evaluator_->ComputeExpressionRange(GetRhs(*expr));
+      SymbolicExpr lhs = expr->GetLHS();
+      CHECK(lhs);
+      auto rhs_range = range_evaluator_->ComputeExpressionRange(expr->GetRHS());
       if (!rhs_range.IsPoint()) {
         return false;
       }
       int64_t rhs_cst = rhs_range.lower;
-      switch (expr->getKind()) {
-        case AffineExprKind::Mul: {
+      switch (expr->GetType()) {
+        case SymbolicExprType::kMul: {
           int64_t factor = rhs_cst;
           if (factor < 0) {
             factor *= -1;
@@ -700,7 +639,7 @@ bool AffineExprSimplifier::SimplifyConstraintRangeOnce(AffineExpr* expr,
           *expr = lhs;
           return true;
         }
-        case AffineExprKind::FloorDiv: {
+        case SymbolicExprType::kFloorDiv: {
           int64_t divisor = rhs_cst;
           if (divisor < 0) {
             divisor *= -1;
@@ -722,8 +661,8 @@ bool AffineExprSimplifier::SimplifyConstraintRangeOnce(AffineExpr* expr,
 }
 
 // Repeatedly simplifies the range of the constraint.
-bool AffineExprSimplifier::SimplifyConstraintRange(AffineExpr* expr,
-                                                   Interval* range) {
+bool SymbolicExprSimplifier::SimplifyConstraintRange(SymbolicExpr* expr,
+                                                     Interval* range) {
   bool is_simplified = false;
   while (SimplifyConstraintRangeOnce(expr, range)) {
     is_simplified = true;
@@ -736,16 +675,16 @@ bool AffineExprSimplifier::SimplifyConstraintRange(AffineExpr* expr,
 // to
 // [range_vars(second)|range_vars(first)|rt_vars(second)|rt_vars(first)].
 // If an empty vector is returned, no replacement is needed.
-SmallVector<AffineExpr, 4> GetComposedSymbolsPermutationToCorrectOrder(
-    const IndexingMap& first, const IndexingMap& second) {
+SmallVector<SymbolicExpr, 4> GetComposedSymbolsPermutationToCorrectOrder(
+    const IndexingMap& first, const IndexingMap& second, int64_t num_dims) {
   // No permutation is needed if the second map has no RTVars.
   if (second.GetRTVarsCount() == 0) {
     return {};
   }
-  SmallVector<AffineExpr, 4> symbol_replacements;
-  MLIRContext* mlir_context = first.GetMLIRContext();
+  SmallVector<SymbolicExpr, 4> symbol_replacements;
+  MLIRContext* context = first.GetMLIRContext();
   for (int id = 0; id < second.GetRangeVarsCount(); ++id) {
-    symbol_replacements.push_back(getAffineSymbolExpr(id, mlir_context));
+    symbol_replacements.push_back(CreateSymbolExpr(id, num_dims, context));
   }
   int64_t first_range_vars_count = first.GetRangeVarsCount();
   int64_t second_range_vars_count = second.GetRangeVarsCount();
@@ -755,18 +694,18 @@ SmallVector<AffineExpr, 4> GetComposedSymbolsPermutationToCorrectOrder(
       first_range_vars_count + second_range_vars_count;
   for (int64_t id = 0; id < second_rt_vars_count; ++id) {
     symbol_replacements.push_back(
-        getAffineSymbolExpr(rt_vars_second_start++, mlir_context));
+        CreateSymbolExpr(rt_vars_second_start++, num_dims, context));
   }
   int64_t range_vars_first_start = second_range_vars_count;
   for (int64_t id = 0; id < first_range_vars_count; ++id) {
     symbol_replacements.push_back(
-        getAffineSymbolExpr(range_vars_first_start++, mlir_context));
+        CreateSymbolExpr(range_vars_first_start++, num_dims, context));
   }
   int64_t rt_vars_first_start =
       first_range_vars_count + second_range_vars_count + second_rt_vars_count;
   for (int64_t id = 0; id < first_rt_vars_count; ++id) {
     symbol_replacements.push_back(
-        getAffineSymbolExpr(rt_vars_first_start++, mlir_context));
+        CreateSymbolExpr(rt_vars_first_start++, num_dims, context));
   }
   return symbol_replacements;
 }
@@ -775,21 +714,22 @@ SmallVector<AffineExpr, 4> GetComposedSymbolsPermutationToCorrectOrder(
 // [range_vars(map)|rt_vars(map)]
 // to
 // [range_vars(second)|range_vars(first)|rt_vars(second)|rt_vars(first)].
-SmallVector<AffineExpr, 4> MapSymbolsToComposedSymbolsList(
+SmallVector<SymbolicExpr, 4> MapSymbolsToComposedSymbolsList(
     const IndexingMap& map, const IndexingMap& composed) {
-  SmallVector<AffineExpr, 4> symbol_replacements;
+  SmallVector<SymbolicExpr, 4> symbol_replacements;
 
-  MLIRContext* mlir_context = map.GetMLIRContext();
+  MLIRContext* context = map.GetMLIRContext();
+  int64_t num_dims = map.GetSymbolicMap().GetNumDims();
   int64_t range_vars_start =
       composed.GetRangeVarsCount() - map.GetRangeVarsCount();
   for (int64_t id = 0; id < map.GetRangeVarsCount(); ++id) {
     symbol_replacements.push_back(
-        getAffineSymbolExpr(range_vars_start++, mlir_context));
+        CreateSymbolExpr(range_vars_start++, num_dims, context));
   }
   int64_t rt_vars_start = composed.GetSymbolCount() - map.GetRTVarsCount();
   for (int64_t id = 0; id < map.GetRTVarsCount(); ++id) {
     symbol_replacements.push_back(
-        getAffineSymbolExpr(rt_vars_start++, mlir_context));
+        CreateSymbolExpr(rt_vars_start++, num_dims, context));
   }
   return symbol_replacements;
 }
@@ -898,12 +838,51 @@ std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
   return DimVarsFromTensorSizes(tensor_sizes);
 }
 
+// TODO: b/446858351 - Remove this constructor after migrating all users to the
+// symbolic map constructor.
 IndexingMap::IndexingMap(
     AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
     absl::Span<std::pair<AffineExpr, Interval> const> constraints)
     : affine_map_(affine_map),
+      dim_vars_(std::move(dimensions)),
+      range_vars_(std::move(range_vars)),
+      rt_vars_(std::move(rt_vars)) {
+  symbolic_map_ = AffineMapToSymbolicMap(affine_map);
+  for (const auto& [expr, range] : constraints) {
+    AddConstraint(expr, range);
+  }
+  if (!VerifyVariableIntervals()) {
+    ResetToKnownEmpty();
+  }
+}
+
+// TODO (b/446858351): Remove this constructor after migrating all users to the
+// symbolic map constructor.
+IndexingMap::IndexingMap(
+    AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
+    std::vector<IndexingMap::Variable> range_vars,
+    std::vector<IndexingMap::Variable> rt_vars,
+    const llvm::MapVector<AffineExpr, Interval>& constraints)
+    : affine_map_(affine_map),
+      dim_vars_(std::move(dimensions)),
+      range_vars_(std::move(range_vars)),
+      rt_vars_(std::move(rt_vars)) {
+  symbolic_map_ = AffineMapToSymbolicMap(affine_map);
+  constraints_ = ConvertAffineConstraintsToSymbolicConstraints(
+      constraints, affine_map.getNumDims());
+  if (!VerifyVariableIntervals() || !VerifyConstraintIntervals()) {
+    ResetToKnownEmpty();
+  }
+}
+
+IndexingMap::IndexingMap(
+    SymbolicMap symbolic_map, std::vector<IndexingMap::Variable> dimensions,
+    std::vector<IndexingMap::Variable> range_vars,
+    std::vector<IndexingMap::Variable> rt_vars,
+    absl::Span<std::pair<SymbolicExpr, Interval> const> constraints)
+    : symbolic_map_(symbolic_map),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
       rt_vars_(std::move(rt_vars)) {
@@ -917,11 +896,11 @@ IndexingMap::IndexingMap(
 }
 
 IndexingMap::IndexingMap(
-    AffineMap affine_map, std::vector<IndexingMap::Variable> dimensions,
+    SymbolicMap symbolic_map, std::vector<IndexingMap::Variable> dimensions,
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
-    const llvm::MapVector<AffineExpr, Interval>& constraints)
-    : affine_map_(affine_map),
+    const llvm::MapVector<SymbolicExpr, Interval>& constraints)
+    : symbolic_map_(symbolic_map),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
       rt_vars_(std::move(rt_vars)),
@@ -932,10 +911,20 @@ IndexingMap::IndexingMap(
   }
 }
 
+// TODO (b/446858351): Remove this constructor once all the users are migrated
+// to the symbolic map constructor.
 IndexingMap IndexingMap::FromTensorSizes(
     AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
     absl::Span<const int64_t> symbol_upper_bounds) {
   return IndexingMap{affine_map, DimVarsFromTensorSizes(dim_upper_bounds),
+                     RangeVarsFromTensorSizes(symbol_upper_bounds),
+                     /*rt_vars=*/{}};
+}
+
+IndexingMap IndexingMap::FromTensorSizes(
+    SymbolicMap symbolic_map, absl::Span<const int64_t> dim_upper_bounds,
+    absl::Span<const int64_t> symbol_upper_bounds) {
+  return IndexingMap{symbolic_map, DimVarsFromTensorSizes(dim_upper_bounds),
                      RangeVarsFromTensorSizes(symbol_upper_bounds),
                      /*rt_vars=*/{}};
 }
@@ -954,7 +943,7 @@ Interval& IndexingMap::GetMutableDimensionBound(int64_t dim_id) {
 
 std::vector<Interval> IndexingMap::GetDimensionBounds() const {
   std::vector<Interval> bounds;
-  bounds.reserve(affine_map_.getNumDims());
+  bounds.reserve(symbolic_map_.GetNumDims());
   for (const auto& dim : dim_vars_) {
     bounds.push_back(dim.bounds);
   }
@@ -962,7 +951,7 @@ std::vector<Interval> IndexingMap::GetDimensionBounds() const {
 }
 
 const Interval& IndexingMap::GetSymbolBound(int64_t symbol_id) const {
-  // Because affine map symbols are packed like [range_vars, rt_vars],
+  // Because symbolic map symbols are packed like [range_vars, rt_vars],
   // we have to pick the correct bounds.
   int64_t range_var_count = GetRangeVarsCount();
   return symbol_id < range_var_count
@@ -971,7 +960,7 @@ const Interval& IndexingMap::GetSymbolBound(int64_t symbol_id) const {
 }
 
 Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
-  // Because affine map symbols are packed like [range_vars, rt_vars],
+  // Because symbolic map symbols are packed like [range_vars, rt_vars],
   // we have to pick the correct bounds.
   int64_t range_var_count = GetRangeVarsCount();
   return symbol_id < range_var_count
@@ -981,7 +970,7 @@ Interval& IndexingMap::GetMutableSymbolBound(int64_t symbol_id) {
 
 std::vector<Interval> IndexingMap::GetSymbolBounds() const {
   std::vector<Interval> bounds;
-  bounds.reserve(affine_map_.getNumSymbols());
+  bounds.reserve(symbolic_map_.GetNumSymbols());
   for (const auto& range_var : range_vars_) {
     bounds.push_back(range_var.bounds);
   }
@@ -991,7 +980,25 @@ std::vector<Interval> IndexingMap::GetSymbolBounds() const {
   return bounds;
 }
 
+// TODO: b/446856820 - Remove this function once all the users are migrated to
+// the symbolic map constructor.
+llvm::MapVector<mlir::AffineExpr, Interval> IndexingMap::GetConstraints()
+    const {
+  llvm::MapVector<mlir::AffineExpr, Interval> affine_constraints;
+  for (const auto& [expr, range] : constraints_) {
+    affine_constraints[SymbolicExprToAffineExpr(
+        expr, symbolic_map_.GetNumDims())] = range;
+  }
+  return affine_constraints;
+}
+
+// TODO: b/446856820 - Remove this function once all the users are migrated to
+// the symbolic map constructor.
 void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
+  AddConstraint(AffineExprToSymbolicExpr(expr, GetDimensionCount()), range);
+}
+
+void IndexingMap::AddConstraint(SymbolicExpr expr, Interval range) {
   // Do not add the constraint if the domain is already empty.
   if (IsKnownEmpty()) {
     return;
@@ -1001,24 +1008,26 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
     ResetToKnownEmpty();
     return;
   }
-  if (auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr)) {
-    Interval& current_range = GetMutableDimensionBound(dim_expr.getPosition());
+  int64_t num_dims = GetDimVarsCount();
+  if (IsDimension(expr, num_dims)) {
+    Interval& current_range = GetMutableDimensionBound(expr.GetValue());
     current_range = current_range.Intersect(range);
     if (!current_range.IsFeasible()) {
       ResetToKnownEmpty();
     }
     return;
   }
-  if (auto symbol_expr = mlir::dyn_cast<AffineSymbolExpr>(expr)) {
-    Interval& current_range = GetMutableSymbolBound(symbol_expr.getPosition());
+  if (IsSymbol(expr, num_dims)) {
+    Interval& current_range =
+        GetMutableSymbolBound(GetSymbolIndex(expr, num_dims));
     current_range = current_range.Intersect(range);
     if (!current_range.IsFeasible()) {
       ResetToKnownEmpty();
     }
     return;
   }
-  if (auto constant_expr = mlir::dyn_cast<AffineConstantExpr>(expr)) {
-    if (!range.Contains(constant_expr.getValue())) {
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    if (!range.Contains(expr.GetValue())) {
       ResetToKnownEmpty();
     }
     return;
@@ -1032,23 +1041,33 @@ void IndexingMap::AddConstraint(mlir::AffineExpr expr, Interval range) {
   }
 }
 
-void IndexingMap::EraseConstraint(mlir::AffineExpr expr) {
+void IndexingMap::EraseConstraint(SymbolicExpr expr) {
   constraints_.erase(expr);
 }
 
+// TODO: b/446856820  - Remove this function once all the users are migrated to
+// the symbolic map getters.
 bool IndexingMap::ConstraintsSatisfied(
-    ArrayRef<AffineExpr> dim_const_exprs,
-    ArrayRef<AffineExpr> symbol_const_exprs) const {
-  CHECK(dim_const_exprs.size() == affine_map_.getNumDims());
-  CHECK(symbol_const_exprs.size() == affine_map_.getNumSymbols());
+    ArrayRef<mlir::AffineExpr> dim_const_exprs,
+    ArrayRef<mlir::AffineExpr> symbol_const_exprs) const {
+  return ConstraintsSatisfied(
+      AffineExprsToSymbolicExprs(dim_const_exprs, symbolic_map_.GetNumDims()),
+      AffineExprsToSymbolicExprs(symbol_const_exprs,
+                                 symbolic_map_.GetNumDims()));
+}
+
+bool IndexingMap::ConstraintsSatisfied(
+    ArrayRef<SymbolicExpr> dim_const_exprs,
+    ArrayRef<SymbolicExpr> symbol_const_exprs) const {
+  CHECK(dim_const_exprs.size() == symbolic_map_.GetNumDims());
+  CHECK(symbol_const_exprs.size() == symbolic_map_.GetNumSymbols());
   if (IsKnownEmpty()) {
     return false;
   }
   for (auto& [expr, range] : constraints_) {
     int64_t expr_value =
-        mlir::cast<AffineConstantExpr>(
-            expr.replaceDimsAndSymbols(dim_const_exprs, symbol_const_exprs))
-            .getValue();
+        expr.ReplaceDimsAndSymbols(dim_const_exprs, symbol_const_exprs)
+            .GetValue();
     if (expr_value < range.lower || expr_value > range.upper) {
       return false;
     }
@@ -1057,22 +1076,23 @@ bool IndexingMap::ConstraintsSatisfied(
 }
 
 SmallVector<int64_t, 4> IndexingMap::Evaluate(
-    ArrayRef<AffineExpr> dim_const_exprs,
-    ArrayRef<AffineExpr> symbol_const_exprs) const {
+    ArrayRef<SymbolicExpr> dim_const_exprs,
+    ArrayRef<SymbolicExpr> symbol_const_exprs) const {
   CHECK(dim_const_exprs.size() == GetDimensionCount());
   CHECK(symbol_const_exprs.size() == GetSymbolCount());
-  AffineMap eval = affine_map_.replaceDimsAndSymbols(
-      dim_const_exprs, symbol_const_exprs, dim_const_exprs.size(),
+  SymbolicMap eval = symbolic_map_.ReplaceDimsAndSymbols(
+      dim_const_exprs, symbol_const_exprs, GetDimensionCount(),
       symbol_const_exprs.size());
-  return eval.getConstantResults();
+  return eval.GetConstantResults();
 }
 
 bool IndexingMap::IsSymbolConstrained(int64_t symbol_id) const {
+  int64_t num_dims = GetDimVarsCount();
   for (const auto& [expr, _] : constraints_) {
     bool result = false;
-    expr.walk([&](mlir::AffineExpr leaf) {
-      auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(leaf);
-      if (sym && sym.getPosition() == symbol_id) {
+    expr.Walk([&](SymbolicExpr leaf) {
+      if (IsSymbol(leaf, num_dims) &&
+          (GetSymbolIndex(leaf, num_dims) == symbol_id)) {
         result = true;
       }
     });
@@ -1095,42 +1115,50 @@ RangeEvaluator::RangeEvaluator(const IndexingMap& indexing_map,
       use_constraints_(use_constraints) {}
 
 bool RangeEvaluator::IsAlwaysPositiveOrZero(mlir::AffineExpr expr) {
+  return IsAlwaysPositiveOrZero(
+      AffineExprToSymbolicExpr(expr, indexing_map_.GetDimensionCount()));
+}
+
+bool RangeEvaluator::IsAlwaysPositiveOrZero(SymbolicExpr expr) {
   return ComputeExpressionRange(expr).lower >= 0;
 }
 
-bool RangeEvaluator::IsAlwaysNegativeOrZero(mlir::AffineExpr expr) {
-  return ComputeExpressionRange(expr).upper <= 0;
+Interval RangeEvaluator::ComputeExpressionRange(mlir::AffineExpr expr) {
+  return ComputeExpressionRange(
+      AffineExprToSymbolicExpr(expr, indexing_map_.GetDimensionCount()));
 }
 
-Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
-  switch (expr.getKind()) {
-    case AffineExprKind::Constant: {
-      int64_t value = mlir::cast<AffineConstantExpr>(expr).getValue();
+Interval RangeEvaluator::ComputeExpressionRange(SymbolicExpr expr) {
+  switch (expr.GetType()) {
+    case SymbolicExprType::kConstant: {
+      int64_t value = expr.GetValue();
       return Interval{value, value};
     }
-    case AffineExprKind::DimId:
-      return indexing_map_.GetDimensionBound(
-          mlir::cast<AffineDimExpr>(expr).getPosition());
-    case AffineExprKind::SymbolId:
-      return indexing_map_.GetSymbolBound(
-          mlir::cast<AffineSymbolExpr>(expr).getPosition());
+    case SymbolicExprType::kVariable: {
+      int64_t num_dims = indexing_map_.GetDimensionCount();
+      if (IsDimension(expr, num_dims)) {
+        int64_t dim_id = GetDimensionIndex(expr, num_dims);
+        return indexing_map_.GetDimensionBound(dim_id);
+      }
+      int64_t symbol_id = GetSymbolIndex(expr, num_dims);
+      return indexing_map_.GetSymbolBound(symbol_id);
+    }
     default:
       break;
   }
-  auto binary_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr);
-  CHECK(binary_op);
-  auto lhs = ComputeExpressionRange(binary_op.getLHS());
-  auto rhs = ComputeExpressionRange(binary_op.getRHS());
+  CHECK(expr.IsBinaryOp());
+  auto lhs = ComputeExpressionRange(expr.GetLHS());
+  auto rhs = ComputeExpressionRange(expr.GetRHS());
 
   Interval result;
-  switch (expr.getKind()) {
-    case AffineExprKind::Add:
+  switch (expr.GetType()) {
+    case SymbolicExprType::kAdd:
       result = lhs + rhs;
       break;
-    case AffineExprKind::Mul:
+    case SymbolicExprType::kMul:
       result = lhs * rhs;
       break;
-    case AffineExprKind::Mod: {
+    case SymbolicExprType::kMod: {
       CHECK(rhs.IsPoint()) << "RHS of mod must be a constant";
       int64_t m = rhs.lower;
       if (0 <= lhs.lower && lhs.upper < m) {
@@ -1140,7 +1168,7 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
       }
       break;
     }
-    case AffineExprKind::FloorDiv: {
+    case SymbolicExprType::kFloorDiv: {
       CHECK(rhs.IsPoint()) << "RHS of floor_div must be a constant";
       int64_t d = rhs.lower;
       // TODO(jreiffers): Implement saturating semantics.
@@ -1151,11 +1179,12 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
     }
     default:
       // We don't use ceildiv, so we don't support it.
-      LOG(FATAL) << "Unsupported expression";
+      LOG(FATAL) << "Unsupported expression type: "
+                 << static_cast<int>(expr.GetType());
   }
 
   if (use_constraints_) {
-    auto constraints_map = indexing_map_.GetConstraints();
+    auto constraints_map = indexing_map_.GetSymbolicConstraints();
     auto constraint = constraints_map.find(expr);
     if (constraint != constraints_map.end()) {
       return result.Intersect(constraint->second);
@@ -1165,12 +1194,12 @@ Interval RangeEvaluator::ComputeExpressionRange(AffineExpr expr) {
 }
 
 MLIRContext* IndexingMap::GetMLIRContext() const {
-  return IsUndefined() ? nullptr : affine_map_.getContext();
+  return IsUndefined() ? nullptr : symbolic_map_.GetContext();
 }
 
 namespace {
-bool EqualConstraints(const llvm::MapVector<mlir::AffineExpr, Interval>& lhs,
-                      const llvm::MapVector<mlir::AffineExpr, Interval>& rhs) {
+bool EqualConstraints(const llvm::MapVector<SymbolicExpr, Interval>& lhs,
+                      const llvm::MapVector<SymbolicExpr, Interval>& rhs) {
   if (lhs.size() != rhs.size()) {
     return false;
   }
@@ -1187,11 +1216,12 @@ bool EqualConstraints(const llvm::MapVector<mlir::AffineExpr, Interval>& lhs,
 }  // namespace
 
 bool operator==(const IndexingMap& lhs, const IndexingMap& rhs) {
-  return lhs.GetAffineMap() == rhs.GetAffineMap() &&
+  return lhs.GetSymbolicMap() == rhs.GetSymbolicMap() &&
          lhs.GetDimVars() == rhs.GetDimVars() &&
          lhs.GetRangeVars() == rhs.GetRangeVars() &&
          lhs.GetRTVars() == rhs.GetRTVars() &&
-         EqualConstraints(lhs.GetConstraints(), rhs.GetConstraints());
+         EqualConstraints(lhs.GetSymbolicConstraints(),
+                          rhs.GetSymbolicConstraints());
 }
 
 IndexingMap operator*(const IndexingMap& lhs, const IndexingMap& rhs) {
@@ -1202,19 +1232,19 @@ bool IndexingMap::Verify(std::ostream& out) const {
   if (IsUndefined()) {
     return true;
   }
-  if (affine_map_.getNumDims() != dim_vars_.size()) {
+  if (symbolic_map_.GetNumDims() != dim_vars_.size()) {
     out << absl::StrCat(
         "number of dim vars (", dim_vars_.size(),
-        ") must match the number of dimensions in the affine map (",
-        affine_map_.getNumDims(), ")");
+        ") must match the number of dimensions in the symbolic map (",
+        symbolic_map_.GetNumDims(), ")");
     return false;
   }
-  if (affine_map_.getNumSymbols() != range_vars_.size() + rt_vars_.size()) {
+  if (symbolic_map_.GetNumSymbols() != range_vars_.size() + rt_vars_.size()) {
     out << absl::StrCat(
         "number of range (", range_vars_.size(), ") + runtime (",
         rt_vars_.size(),
-        ") variables must match the number of symbols in the affine map (",
-        affine_map_.getNumSymbols(), ")");
+        ") variables must match the number of symbols in the symbolic map (",
+        symbolic_map_.GetNumSymbols(), ")");
     return false;
   }
   return true;
@@ -1222,12 +1252,12 @@ bool IndexingMap::Verify(std::ostream& out) const {
 
 // Simplification of IndexingMap has two main parts.
 // At first we optimized constraints to make the domain as small and simple as
-// possible. And only then we simplify the affine_map, because its
+// possible. And only then we simplify the symbolic_map, because its
 // simplification relies on lower/upper bounds of dimensions and symbols.
 
 // Constraint simplification is performed in two stages repeated until
 // convergence.
-//   1. Simplify affine expressions in all constraints.
+//   1. Simplify symbolic expressions in all constraints.
 //   2. Simplify constraint ranges for all constraints.
 // We don't optimize every constraint separately to avoid re-initialization of
 // RangeEvaluator for every constraint. Note that we start with "expr"
@@ -1241,11 +1271,11 @@ bool IndexingMap::Simplify(SimplifyPointDimensions simplify_point_dimensions) {
   // Simplify constraints to shrink the lower/upper bounds of dims and symbols.
   bool constraints_were_simplified = false;
 
-  // Simplify affine_map using the optimized ranges.
+  // Simplify symbolic_map using the optimized ranges.
   // Potentially, we can be smarter about recreating the range_evaluator.
   RangeEvaluator constraint_range_evaluator(*this, GetMLIRContext(),
                                             /*use_constraints=*/false);
-  AffineExprSimplifier constraint_simplifier(&constraint_range_evaluator);
+  SymbolicExprSimplifier constraint_simplifier(&constraint_range_evaluator);
   while (true) {
     bool did_simplify = false;
     did_simplify |= constraint_simplifier.SimplifyConstraintExprs(*this);
@@ -1255,26 +1285,32 @@ bool IndexingMap::Simplify(SimplifyPointDimensions simplify_point_dimensions) {
     }
     constraints_were_simplified = true;
   }
+
   // Simplify dependent constraints.
   constraints_were_simplified |= MergeModConstraints();
   RangeEvaluator range_evaluator(*this, GetMLIRContext(),
                                  /*use_constraints=*/true);
-  AffineMap simplified_affine_map =
-      AffineExprSimplifier(&range_evaluator, simplify_point_dimensions)
-          .Simplify(affine_map_);
-  bool affine_map_was_simplified = simplified_affine_map != affine_map_;
-  if (affine_map_was_simplified) {
-    affine_map_ = simplified_affine_map;
+  SymbolicMap simplified_symbolic_map =
+      SymbolicExprSimplifier(&range_evaluator, simplify_point_dimensions)
+          .Simplify(symbolic_map_);
+  bool symbolic_map_was_simplified = simplified_symbolic_map != symbolic_map_;
+  if (symbolic_map_was_simplified) {
+    symbolic_map_ = simplified_symbolic_map;
+    // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
+    // This forces GetAffineMap() to recompute it from the updated symbolic_map_
+    // the next time it's called. This mechanism will be removed after the
+    // migration to SymbolicMap is complete and GetAffineMap() is removed.
+    affine_map_ = AffineMap();
   }
-  return affine_map_was_simplified || constraints_were_simplified;
+  return symbolic_map_was_simplified || constraints_were_simplified;
 }
 
-bool AffineExprSimplifier::SimplifyConstraintExprs(IndexingMap& map) {
-  // Simplify affine expression in the constraints_.
-  std::vector<AffineExpr> to_remove;
-  std::vector<std::pair<AffineExpr, Interval>> to_add;
-  for (const auto& [expr, range] : map.GetConstraints()) {
-    AffineExpr simplified = Simplify(expr);
+bool SymbolicExprSimplifier::SimplifyConstraintExprs(IndexingMap& map) {
+  // Simplify symbolic expression in the constraints_.
+  std::vector<SymbolicExpr> to_remove;
+  std::vector<std::pair<SymbolicExpr, Interval>> to_add;
+  for (const auto& [expr, range] : map.GetSymbolicConstraints()) {
+    SymbolicExpr simplified = Simplify(expr);
 
     // Skip constraints that are always satisfied.
     Interval evaluated_range =
@@ -1299,11 +1335,11 @@ bool AffineExprSimplifier::SimplifyConstraintExprs(IndexingMap& map) {
   return !to_add.empty();
 }
 
-bool AffineExprSimplifier::SimplifyConstraintRanges(IndexingMap& map) {
-  std::vector<AffineExpr> to_remove;
-  std::vector<std::pair<AffineExpr, Interval>> to_add;
-  for (const auto& [expr, range] : map.GetConstraints()) {
-    AffineExpr simplified_expr = expr;
+bool SymbolicExprSimplifier::SimplifyConstraintRanges(IndexingMap& map) {
+  std::vector<SymbolicExpr> to_remove;
+  std::vector<std::pair<SymbolicExpr, Interval>> to_add;
+  for (const auto& [expr, range] : map.GetSymbolicConstraints()) {
+    SymbolicExpr simplified_expr = expr;
     Interval simplified_range = range;
     if (SimplifyConstraintRange(&simplified_expr, &simplified_range)) {
       to_add.push_back({simplified_expr, simplified_range});
@@ -1319,12 +1355,12 @@ bool AffineExprSimplifier::SimplifyConstraintRanges(IndexingMap& map) {
   return !to_add.empty();
 }
 
-std::tuple<AffineExpr, int64_t, AffineExpr> AffineExprSimplifier::SplitSumByGcd(
-    AffineExpr sum) {
+std::tuple<SymbolicExpr, int64_t, SymbolicExpr>
+SymbolicExprSimplifier::SplitSumByGcd(SymbolicExpr sum) {
   std::optional<int64_t> multiplier_gcd = std::nullopt;
-  AffineExpr no_multiplier = zero_;
-  VisitSummands(sum, [&](AffineExpr expr) {
-    if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
+  SymbolicExpr no_multiplier = zero_;
+  VisitSummands(sum, [&](SymbolicExpr expr) {
+    if (auto multiplier = GetConstantRhs(expr, SymbolicExprType::kMul)) {
       if (multiplier_gcd.has_value()) {
         multiplier_gcd = std::gcd(*multiplier_gcd, *multiplier);
       } else {
@@ -1338,8 +1374,8 @@ std::tuple<AffineExpr, int64_t, AffineExpr> AffineExprSimplifier::SplitSumByGcd(
     return {zero_, 1, sum};
   }
 
-  auto scaled = MapSummands(sum, [&](AffineExpr expr) {
-    if (auto multiplier = GetConstantRhs(expr, AffineExprKind::Mul)) {
+  auto scaled = MapSummands(sum, [&](SymbolicExpr expr) {
+    if (auto multiplier = GetConstantRhs(expr, SymbolicExprType::kMul)) {
       // Rescale the multiplier.
       return GetLhs(expr) * (*multiplier / *multiplier_gcd);
     }
@@ -1358,26 +1394,26 @@ struct UsedParameters {
   llvm::DenseSet<int64_t> symbol_ids;
 };
 
-void GetUsedParametersImpl(const AffineExpr& expr,
-                           UsedParameters& used_parameters) {
-  if (auto dim_expr = mlir::dyn_cast<AffineDimExpr>(expr)) {
-    used_parameters.dimension_ids.insert(dim_expr.getPosition());
+void GetUsedParametersImpl(const SymbolicExpr& expr,
+                           UsedParameters& used_parameters, int64_t num_dims) {
+  if (IsDimension(expr, num_dims)) {
+    used_parameters.dimension_ids.insert(GetDimensionIndex(expr, num_dims));
     return;
   }
-  if (auto symbol_expr = mlir::dyn_cast<AffineSymbolExpr>(expr)) {
-    used_parameters.symbol_ids.insert(symbol_expr.getPosition());
+  if (IsSymbol(expr, num_dims)) {
+    used_parameters.symbol_ids.insert(GetSymbolIndex(expr, num_dims));
     return;
   }
-  if (auto binary_expr = mlir::dyn_cast<AffineBinaryOpExpr>(expr)) {
-    GetUsedParametersImpl(binary_expr.getLHS(), used_parameters);
-    GetUsedParametersImpl(binary_expr.getRHS(), used_parameters);
+  if (expr.IsBinaryOp()) {
+    GetUsedParametersImpl(expr.GetLHS(), used_parameters, num_dims);
+    GetUsedParametersImpl(expr.GetRHS(), used_parameters, num_dims);
   }
 }
 
-// Returns IDs of dimensions and symbols that participate in AffineExpr.
-UsedParameters GetUsedParameters(const mlir::AffineExpr& expr) {
+// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
+UsedParameters GetUsedParameters(const SymbolicExpr& expr, int64_t num_dims) {
   UsedParameters used_parameters;
-  GetUsedParametersImpl(expr, used_parameters);
+  GetUsedParametersImpl(expr, used_parameters, num_dims);
   return used_parameters;
 }
 
@@ -1408,29 +1444,30 @@ bool IsFunctionOfUnusedVarsOnly(const UsedParameters& used_parameters,
 struct UnusedVariables {
   SmallBitVector unused_dims;
   SmallBitVector unused_symbols;
-  SmallVector<AffineExpr> constraints_with_unused_vars_only;
+  SmallVector<SymbolicExpr> constraints_with_unused_vars_only;
 };
 
 // Detects unused dimensions and symbols in the inde
 UnusedVariables DetectUnusedVariables(const IndexingMap& indexing_map,
                                       bool removing_dims,
                                       bool removing_symbols) {
-  AffineMap affine_map = indexing_map.GetAffineMap();
+  SymbolicMap symbolic_map = indexing_map.GetSymbolicMap();
 
   UnusedVariables unused_vars;
-  // Find unused dimensions and symbols in the affine_map.
-  unused_vars.unused_dims = mlir::getUnusedDimsBitVector({affine_map});
-  unused_vars.unused_symbols = mlir::getUnusedSymbolsBitVector({affine_map});
+  // Find unused dimensions and symbols in the symbolic_map.
+  unused_vars.unused_dims = GetUnusedDimensionsBitVector(symbolic_map);
+  unused_vars.unused_symbols = GetUnusedSymbolsBitVector(symbolic_map);
 
-  // Check if the symbols that are unused in `affine_map` are also unused in
+  // Check if the symbols that are unused in `symbolic_map` are also unused in
   // expressions.
-  SmallVector<std::pair<AffineExpr, UsedParameters>, 2>
+  SmallVector<std::pair<SymbolicExpr, UsedParameters>, 2>
       unused_constraints_candidates;
-  for (const auto& [expr, range] : indexing_map.GetConstraints()) {
-    UsedParameters used_parameters = GetUsedParameters(expr);
-    // If the expression uses only symbols that are unused in `affine_map`, then
-    // we can remove it (because we will remove the symbols as well). Note that
-    // the same is not true for dimensions, because of the existence of the
+  for (const auto& [expr, range] : indexing_map.GetSymbolicConstraints()) {
+    UsedParameters used_parameters =
+        GetUsedParameters(expr, indexing_map.GetDimensionCount());
+    // If the expression uses only symbols that are unused in `symbolic_map`,
+    // then we can remove it (because we will remove the symbols as well). Note
+    // that the same is not true for dimensions, because of the existence of the
     // `RemoveUnusedSymbols` function.
     if (IsFunctionOfUnusedVarsOnly(used_parameters, unused_vars.unused_dims,
                                    unused_vars.unused_symbols, removing_dims,
@@ -1483,33 +1520,43 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
 
   unsigned num_dims_before = GetDimensionCount();
   unsigned num_symbols_before = GetSymbolCount();
+  unsigned num_dims_after = num_dims_before - unused_dims.count();
 
   // Compress DimVars.
-  SmallVector<AffineExpr, 2> dim_replacements;
+  SmallVector<SymbolicExpr> dim_replacements;
   if (num_dims_changed) {
-    affine_map_ = mlir::compressDims(affine_map_, unused_dims);
+    symbolic_map_ = CompressDims(symbolic_map_, unused_dims);
+    // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
+    // This forces GetAffineMap() to recompute it from the updated symbolic_map_
+    // the next time it's called. This mechanism will be removed after the
+    // migration to SymbolicMap is complete and GetAffineMap() is removed.
+    affine_map_ = AffineMap();
     std::vector<IndexingMap::Variable> compressed_dim_vars;
-    dim_replacements = SmallVector<AffineExpr, 2>(
-        num_dims_before, getAffineConstantExpr(0, mlir_context));
+    dim_replacements = SmallVector<SymbolicExpr, 2>(
+        num_dims_before, CreateSymbolicConstant(0, mlir_context));
     int64_t used_dims_count = 0;
     for (int i = 0; i < unused_dims.size(); ++i) {
       if (!unused_dims[i]) {
         compressed_dim_vars.push_back(dim_vars_[i]);
-        dim_replacements[i] = getAffineDimExpr(used_dims_count++, mlir_context);
+        dim_replacements[i] = CreateDimExpr(used_dims_count++, mlir_context);
       }
     }
     dim_vars_ = std::move(compressed_dim_vars);
   }
 
   // Compress RangeVars and RTVars.
-  SmallVector<AffineExpr, 2> symbol_replacements;
+  SmallVector<SymbolicExpr> symbol_replacements;
   if (num_symbols_changed) {
-    affine_map_ = mlir::compressSymbols(affine_map_, unused_symbols);
-    symbol_replacements = SmallVector<AffineExpr, 2>(
-        num_symbols_before, getAffineConstantExpr(0, mlir_context));
+    symbolic_map_ = CompressSymbols(symbolic_map_, unused_symbols);
+    // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
+    // This forces GetAffineMap() to recompute it from the updated symbolic_map_
+    // the next time it's called. This mechanism will be removed after the
+    // migration to SymbolicMap is complete and GetAffineMap() is removed.
+    affine_map_ = AffineMap();
+    symbol_replacements = SmallVector<SymbolicExpr, 2>(
+        num_symbols_before, CreateSymbolicConstant(0, mlir_context));
     std::vector<IndexingMap::Variable> compressed_range_vars;
     std::vector<IndexingMap::Variable> compressed_rt_vars;
-    MLIRContext* mlir_context = GetMLIRContext();
     int64_t used_symbols_count = 0;
     auto range_vars_count = range_vars_.size();
     for (int i = 0; i < unused_symbols.size(); ++i) {
@@ -1519,8 +1566,8 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
         } else {
           compressed_rt_vars.push_back(rt_vars_[i - range_vars_count]);
         }
-        symbol_replacements[i] =
-            getAffineSymbolExpr(used_symbols_count++, mlir_context);
+        symbol_replacements[i] = CreateSymbolExpr(used_symbols_count++,
+                                                  num_dims_after, mlir_context);
       }
     }
     range_vars_ = std::move(compressed_range_vars);
@@ -1528,11 +1575,13 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
   }
 
   // Remove constraints.
-  std::vector<AffineExpr> to_remove;
-  std::vector<std::pair<AffineExpr, Interval>> to_add;
+  std::vector<SymbolicExpr> to_remove;
+  std::vector<std::pair<SymbolicExpr, Interval>> to_add;
   for (const auto& [expr, range] : constraints_) {
     auto updated_expr =
-        expr.replaceDimsAndSymbols(dim_replacements, symbol_replacements);
+        (num_dims_changed
+             ? expr.ReplaceDimsAndSymbols(dim_replacements, symbol_replacements)
+             : expr.ReplaceSymbols(symbol_replacements, num_dims_before));
     if (updated_expr == expr) {
       continue;
     }
@@ -1554,7 +1603,7 @@ SmallBitVector IndexingMap::RemoveUnusedSymbols() {
   }
   UnusedVariables unused_vars = DetectUnusedVariables(
       *this, /*removing_dims=*/false, /*removing_symbols=*/true);
-  for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
+  for (SymbolicExpr expr : unused_vars.constraints_with_unused_vars_only) {
     constraints_.erase(expr);
   }
   if (!CompressVars(/*unused_dims=*/{}, unused_vars.unused_symbols)) {
@@ -1564,11 +1613,16 @@ SmallBitVector IndexingMap::RemoveUnusedSymbols() {
 }
 
 void IndexingMap::ResetToKnownEmpty() {
-  auto zero = getAffineConstantExpr(0, GetMLIRContext());
-  affine_map_ = AffineMap::get(
-      affine_map_.getNumDims(), affine_map_.getNumSymbols(),
-      llvm::SmallVector<AffineExpr>(affine_map_.getNumResults(), zero),
-      GetMLIRContext());
+  auto zero = CreateSymbolicConstant(0, GetMLIRContext());
+  // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
+  // This forces GetAffineMap() to recompute it from the updated symbolic_map_
+  // the next time it's called. This mechanism will be removed after the
+  // migration to SymbolicMap is complete and GetAffineMap() is removed.
+  affine_map_ = AffineMap();
+  symbolic_map_ = SymbolicMap::Get(
+      GetMLIRContext(), symbolic_map_.GetNumDims(),
+      symbolic_map_.GetNumSymbols(),
+      llvm::SmallVector<SymbolicExpr>(symbolic_map_.GetNumResults(), zero));
   for (auto& dim_var : dim_vars_) {
     dim_var.bounds = Interval{0, -1};
   }
@@ -1607,7 +1661,7 @@ SmallBitVector IndexingMap::RemoveUnusedVars() {
 
   UnusedVariables unused_vars = DetectUnusedVariables(
       *this, /*removing_dims=*/true, /*removing_symbols=*/true);
-  for (AffineExpr expr : unused_vars.constraints_with_unused_vars_only) {
+  for (SymbolicExpr expr : unused_vars.constraints_with_unused_vars_only) {
     constraints_.erase(expr);
   }
   if (!CompressVars(unused_vars.unused_dims, unused_vars.unused_symbols)) {
@@ -1623,19 +1677,19 @@ bool IndexingMap::MergeModConstraints() {
   bool did_simplify = false;
 
   // Group constraints by LHS.
-  llvm::MapVector<AffineExpr, llvm::SmallVector<AffineBinaryOpExpr, 2>>
+  llvm::MapVector<SymbolicExpr, llvm::SmallVector<SymbolicExpr, 2>>
       grouped_constraints;
   for (const auto& [expr, _] : constraints_) {
-    if (expr.getKind() != AffineExprKind::Mod) continue;
-    auto binop = mlir::cast<AffineBinaryOpExpr>(expr);
-    grouped_constraints[binop.getLHS()].push_back(binop);
+    if (expr.GetType() != SymbolicExprType::kMod) {
+      continue;
+    }
+    grouped_constraints[expr.GetLHS()].push_back(expr);
   }
 
   // Merge constraints of type MOD.
   // (X mod 3 == 0) & (X mod 2 == 0) => (X mod 6 == 0)
   for (const auto& [lhs, binops] : grouped_constraints) {
-    llvm::MapVector<int64_t, llvm::SmallVector<AffineBinaryOpExpr, 2>>
-        mod_groups;
+    llvm::MapVector<int64_t, llvm::SmallVector<SymbolicExpr, 2>> mod_groups;
     for (const auto& binop : binops) {
       Interval mod_result = constraints_[binop];
       if (mod_result.IsPoint()) {
@@ -1646,19 +1700,19 @@ bool IndexingMap::MergeModConstraints() {
 
     // Update domain for dimensions and symbols only.
     Interval* interval_to_update = nullptr;
-    if (lhs.getKind() == AffineExprKind::DimId) {
+    if (IsDimension(lhs, GetDimensionCount())) {
       interval_to_update = &GetMutableDimensionBound(
-          mlir::cast<AffineDimExpr>(lhs).getPosition());
-    } else if (lhs.getKind() == AffineExprKind::SymbolId) {
-      interval_to_update = &GetMutableSymbolBound(
-          mlir::cast<AffineSymbolExpr>(lhs).getPosition());
+          GetDimensionIndex(lhs, GetDimensionCount()));
+    } else if (IsSymbol(lhs, GetDimensionCount())) {
+      interval_to_update =
+          &GetMutableSymbolBound(GetSymbolIndex(lhs, GetDimensionCount()));
     }
     for (const auto& [res, ops] : mod_groups) {
       // Calculate least common multiple for the divisors.
       int64_t div = 1;
       for (const auto& op : ops) {
         int64_t rhs_value =
-            range_evaluator.ComputeExpressionRange(op.getRHS()).lower;
+            range_evaluator.ComputeExpressionRange(op.GetRHS()).lower;
         div = std::lcm(div, rhs_value);
       }
       // Replace multiple constraints with a merged one.
@@ -1699,9 +1753,10 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     return IndexingMap::GetUndefined();
   }
   MLIRContext* mlir_context = first.GetMLIRContext();
-  AffineMap producer_affine_map = second.GetAffineMap();
-  AffineMap composed_map = producer_affine_map.compose(first.GetAffineMap());
-
+  SymbolicMap producer_symbolic_map = second.GetSymbolicMap();
+  SymbolicMap composed_map =
+      producer_symbolic_map.Compose(first.GetSymbolicMap());
+  int64_t composed_dims = composed_map.GetNumDims();
   // The symbols in the composed map, i.e. combined
   // producer_map.compose(consumer_map) are packed as
   // [range_vars(second)|rt_vars(second)|range_vars(first)|rt_vars(first)].
@@ -1722,12 +1777,12 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   }
   // The symbols in the composed map have to be permuted to keep the invariant
   // that range_vars go before rt_vars in the composed affine map symbols list.
-  SmallVector<AffineExpr, 4> symbol_replacements =
-      GetComposedSymbolsPermutationToCorrectOrder(first, second);
+  SmallVector<SymbolicExpr, 4> symbol_replacements =
+      GetComposedSymbolsPermutationToCorrectOrder(first, second, composed_dims);
   if (!symbol_replacements.empty()) {
-    composed_map = composed_map.replaceDimsAndSymbols(
-        /*dimReplacements=*/{}, symbol_replacements, composed_map.getNumDims(),
-        composed_map.getNumSymbols());
+    composed_map = composed_map.ReplaceDimsAndSymbols(
+        /*dim_replacements=*/{}, symbol_replacements, composed_dims,
+        composed_map.GetNumSymbols());
   }
   IndexingMap composed_indexing_map(composed_map, first.GetDimVars(),
                                     std::move(combined_range_vars),
@@ -1739,39 +1794,44 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
   // create an AffineMap
   // (dims of producer_affine_map)[symbols_of_producer_affine_map] =
   //   (constraint_1, ..., constraint_N) and then compose.
-  std::vector<AffineExpr> constraints;
-  std::vector<Interval> constraints_ranges;
-  for (const auto& [expr, range] : second.GetConstraints()) {
+  llvm::SmallVector<SymbolicExpr> constraints;
+  llvm::SmallVector<Interval> constraints_ranges;
+  for (const auto& [expr, range] : second.GetSymbolicConstraints()) {
     constraints.push_back(expr);
     constraints_ranges.push_back(range);
   }
-  auto constraints_map = AffineMap::get(producer_affine_map.getNumDims(),
-                                        producer_affine_map.getNumSymbols(),
-                                        constraints, mlir_context);
+  auto constraints_map =
+      SymbolicMap::Get(mlir_context, producer_symbolic_map.GetNumDims(),
+                       producer_symbolic_map.GetNumSymbols(), constraints);
   auto remapped_constraints =
-      constraints_map.compose(first.GetAffineMap())
-          .replaceDimsAndSymbols(/*dimReplacements=*/{}, symbol_replacements,
+      constraints_map.Compose(first.GetSymbolicMap())
+          .ReplaceDimsAndSymbols(/*dim_replacements=*/{}, symbol_replacements,
                                  composed_indexing_map.GetDimensionCount(),
                                  composed_indexing_map.GetSymbolCount());
   for (const auto& [expr, range] :
-       llvm::zip(remapped_constraints.getResults(), constraints_ranges)) {
+       llvm::zip(remapped_constraints.GetResults(), constraints_ranges)) {
     composed_indexing_map.AddConstraint(expr, range);
   }
   // Remap symbol ids and add constraints that are already present in the
   // consumer_map.
-  SmallVector<AffineExpr, 4> first_map_symbols_to_composed_symbols =
+  SmallVector<SymbolicExpr, 4> first_map_symbols_to_composed_symbols =
       MapSymbolsToComposedSymbolsList(first, composed_indexing_map);
-  for (const auto& [expr, range] : first.GetConstraints()) {
+  for (const auto& [expr, range] : first.GetSymbolicConstraints()) {
     composed_indexing_map.AddConstraint(
-        expr.replaceSymbols(first_map_symbols_to_composed_symbols), range);
+        expr.ReplaceSymbols(first_map_symbols_to_composed_symbols,
+                            composed_dims),
+        range);
   }
   // Add constraints for consumer's codomain w.r.t. producer's domain.
-  for (auto [index, expr] :
-       llvm::enumerate(first.GetAffineMap().getResults())) {
+
+  for (int64_t index = 0; index < first.GetSymbolicMap().GetNumResults();
+       ++index) {
+    auto expr = first.GetSymbolicMap().GetResult(index);
     Interval producer_dim_range =
         second.GetDimensionBound(static_cast<int64_t>(index));
     composed_indexing_map.AddConstraint(
-        expr.replaceSymbols(first_map_symbols_to_composed_symbols),
+        expr.ReplaceSymbols(first_map_symbols_to_composed_symbols,
+                            composed_dims),
         producer_dim_range);
   }
   return composed_indexing_map;
@@ -1780,8 +1840,8 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
 bool IndexingMap::RescaleSymbols() {
   MergeModConstraints();
 
-  llvm::DenseSet<AffineExpr> to_delete;
-  llvm::DenseMap<AffineExpr, AffineExpr> to_replace;
+  llvm::DenseSet<SymbolicExpr> to_delete;
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> to_replace;
 
   for (const auto& [expr, range] : constraints_) {
     if (range.lower != range.upper) {
@@ -1789,26 +1849,26 @@ bool IndexingMap::RescaleSymbols() {
     }
     auto shift_value = range.lower;
 
-    if (expr.getKind() != AffineExprKind::Mod) {
+    if (expr.GetType() != SymbolicExprType::kMod) {
       continue;
     }
-    auto mod_expr = mlir::cast<AffineBinaryOpExpr>(expr);
+    auto mod_expr = expr;
 
-    auto constant_expr = mlir::dyn_cast<AffineConstantExpr>(mod_expr.getRHS());
-    if (!constant_expr) {
+    auto constant_expr = mod_expr.GetRHS();
+    if (constant_expr.GetType() != SymbolicExprType::kConstant) {
       continue;
     }
 
     // We don't rescale mod expressions with non-positive divisors.
-    if (constant_expr.getValue() <= 0) {
+    if (constant_expr.GetValue() <= 0) {
       continue;
     }
-    auto scaling_factor = constant_expr.getValue();
+    auto scaling_factor = constant_expr.GetValue();
 
-    if (mod_expr.getLHS().getKind() != AffineExprKind::SymbolId) {
+    if (!IsSymbol(mod_expr.GetLHS(), GetDimensionCount())) {
       continue;
     }
-    auto symbol_expr = mlir::cast<AffineSymbolExpr>(mod_expr.getLHS());
+    SymbolicExpr symbol_expr = mod_expr.GetLHS();
 
     // In case there are two mod constraints which were not merged, we only
     // support rescaling by one.
@@ -1821,19 +1881,24 @@ bool IndexingMap::RescaleSymbols() {
     to_replace[symbol_expr] = constant_expr * symbol_expr + shift_value;
     to_delete.insert(expr);
 
-    affine_map_ = affine_map_.replace(
-        symbol_expr, constant_expr * symbol_expr + shift_value,
-        affine_map_.getNumDims(), affine_map_.getNumSymbols());
+    symbolic_map_ = symbolic_map_.Replace(
+        symbol_expr, constant_expr * symbol_expr + shift_value);
+    // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
+    // This forces GetAffineMap() to recompute it from the updated symbolic_map_
+    // the next time it's called. This mechanism will be removed after the
+    // migration to SymbolicMap is complete and GetAffineMap() is removed.
+    affine_map_ = AffineMap();
 
-    auto& symbol_range = range_vars_[symbol_expr.getPosition()].bounds;
+    auto& symbol_range =
+        range_vars_[GetSymbolIndex(symbol_expr, GetDimensionCount())].bounds;
     symbol_range.lower = (symbol_range.lower - shift_value) / scaling_factor;
     symbol_range.upper = (symbol_range.upper - shift_value) / scaling_factor;
   }
 
-  llvm::MapVector<mlir::AffineExpr, Interval> new_constraints;
+  llvm::MapVector<SymbolicExpr, Interval> new_constraints;
   for (const auto& [expr, range] : constraints_) {
     if (!to_delete.contains(expr)) {
-      new_constraints[expr.replace(to_replace)] = range;
+      new_constraints[expr.Replace(to_replace)] = range;
     }
   }
   constraints_ = std::move(new_constraints);
@@ -1841,14 +1906,14 @@ bool IndexingMap::RescaleSymbols() {
   return !to_delete.empty();
 }
 
-bool IndexingMap::IsRangeVarSymbol(mlir::AffineSymbolExpr symbol) const {
-  unsigned int position = symbol.getPosition();
+bool IndexingMap::IsRangeVarSymbol(SymbolicExpr symbol) const {
+  unsigned int position = GetSymbolIndex(symbol, GetDimensionCount());
   CHECK_LE(position, GetSymbolCount());
   return position < range_vars_.size();
 }
 
-bool IndexingMap::IsRTVarSymbol(mlir::AffineSymbolExpr symbol) const {
-  unsigned int position = symbol.getPosition();
+bool IndexingMap::IsRTVarSymbol(SymbolicExpr symbol) const {
+  unsigned int position = GetSymbolIndex(symbol, GetDimensionCount());
   CHECK_LE(position, GetSymbolCount());
   return position >= range_vars_.size();
 }
@@ -1870,23 +1935,23 @@ IndexingMap IndexingMap::ConvertSymbolsToDimensions() const {
   llvm::append_range(new_dim_vars, GetDimVars());
 
   // Capture the existing symbols as dims.
-  SmallVector<AffineExpr> syms_replacements;
+  SmallVector<SymbolicExpr> syms_replacements;
   int64_t symbol_id = num_dims;
   for (const IndexingMap::Variable& var :
        llvm::concat<const IndexingMap::Variable>(range_vars_, rt_vars_)) {
-    syms_replacements.push_back(getAffineDimExpr(symbol_id++, mlir_context));
+    syms_replacements.push_back(CreateDimExpr(symbol_id++, mlir_context));
     new_dim_vars.push_back(IndexingMap::Variable{var.bounds});
   }
 
   // Update constraints.
-  SmallVector<std::pair<AffineExpr, Interval>, 4> new_constraints;
+  SmallVector<std::pair<SymbolicExpr, Interval>, 4> new_constraints;
   for (const auto& [expr, range] : constraints_) {
-    new_constraints.push_back(
-        std::make_pair(expr.replaceSymbols(syms_replacements), range));
+    new_constraints.push_back(std::make_pair(
+        expr.ReplaceSymbols(syms_replacements, num_dims), range));
   }
 
-  AffineMap canonical_map =
-      affine_map_.replaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
+  SymbolicMap canonical_map =
+      symbolic_map_.ReplaceDimsAndSymbols({}, syms_replacements, num_vars, 0);
   IndexingMap new_indexing_map(canonical_map, new_dim_vars, /*range_vars=*/{},
                                /*rt_vars=*/{}, new_constraints);
   return new_indexing_map;
@@ -1896,50 +1961,56 @@ IndexingMap ConvertRangeVariablesToDimensions(
     const IndexingMap& map, ArrayRef<int64_t> range_var_indices) {
   CHECK(std::is_sorted(range_var_indices.begin(), range_var_indices.end()));
   auto* mlir_context = map.GetMLIRContext();
-
-  AffineMap affine_map = map.GetAffineMap();
-  // Update the affine map and the variables.
+  SymbolicMap symbolic_map = map.GetSymbolicMap();
+  int64_t num_dims = symbolic_map.GetNumDims();
+  int64_t num_symbols = symbolic_map.GetNumSymbols();
+  int64_t num_result_dims = num_dims + range_var_indices.size();
+  int64_t num_result_symbols = num_symbols - range_var_indices.size();
+  // Update the symbolic map and the variables.
   std::vector<IndexingMap::Variable> dims = map.GetDimVars();
   std::vector<IndexingMap::Variable> range_vars;
-  SmallVector<AffineExpr, 4> symbol_replacements;
-  symbol_replacements.reserve(affine_map.getNumSymbols());
+  SmallVector<SymbolicExpr> symbol_replacements;
+  symbol_replacements.reserve(num_symbols);
   int64_t updated_count = 0;
   int64_t range_var_indices_count = range_var_indices.size();
   for (int i = 0; i < map.GetRangeVarsCount(); ++i) {
     auto range_var = map.GetRangeVar(i);
     if (updated_count < range_var_indices_count &&
         i == range_var_indices[updated_count]) {
-      symbol_replacements.push_back(getAffineDimExpr(
-          affine_map.getNumDims() + updated_count, mlir_context));
+      symbol_replacements.push_back(
+          CreateDimExpr(num_dims + updated_count, mlir_context));
       dims.push_back(range_var);
       updated_count++;
     } else {
       symbol_replacements.push_back(
-          getAffineSymbolExpr(i - updated_count, mlir_context));
+          CreateSymbolExpr(i - updated_count, num_result_dims, mlir_context));
       range_vars.push_back(range_var);
     }
   }
   CHECK_EQ(updated_count, range_var_indices_count)
       << "Not all replacements were used";
   for (int i = 0; i < map.GetRTVarsCount(); ++i) {
-    symbol_replacements.push_back(getAffineSymbolExpr(
-        map.GetRangeVarsCount() - range_var_indices_count + i, mlir_context));
+    symbol_replacements.push_back(
+        CreateSymbolExpr(map.GetRangeVarsCount() - range_var_indices_count + i,
+                         num_result_dims, mlir_context));
   }
-  CHECK_EQ(symbol_replacements.size(), affine_map.getNumSymbols())
+  CHECK_EQ(symbol_replacements.size(), symbolic_map.GetNumSymbols())
       << "All symbols must be updated";
-  AffineMap converted_affine_map = affine_map.replaceDimsAndSymbols(
-      /*dimReplacements=*/{}, symbol_replacements,
-      /*numResultDims=*/affine_map.getNumDims() + range_var_indices_count,
-      /*numResultSyms=*/affine_map.getNumSymbols() - range_var_indices_count);
+
+  SymbolicMap converted_symbolic_map = symbolic_map.ReplaceDimsAndSymbols(
+      /*dim_replacements=*/{}, symbol_replacements,
+      /*num_result_dims=*/num_result_dims,
+      /*num_result_symbols=*/num_result_symbols);
 
   // Update the constraints.
-  std::vector<std::pair<AffineExpr, Interval>> constraints;
+  std::vector<std::pair<SymbolicExpr, Interval>> constraints;
   constraints.reserve(map.GetConstraintsCount());
-  for (auto constraint : map.GetConstraints()) {
-    constraints.push_back({constraint.first.replaceSymbols(symbol_replacements),
-                           constraint.second});
+  for (auto constraint : map.GetSymbolicConstraints()) {
+    constraints.push_back(
+        {constraint.first.ReplaceSymbols(symbol_replacements, num_dims),
+         constraint.second});
   }
-  return IndexingMap{converted_affine_map, std::move(dims),
+  return IndexingMap{converted_symbolic_map, std::move(dims),
                      std::move(range_vars), map.GetRTVars(), constraints};
 }
 

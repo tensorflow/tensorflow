@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow:py.default.bzl", "py_library")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 load("//tensorflow/compiler/mlir/lite:symlink_files.bzl", "symlink_inputs")
 
 package(

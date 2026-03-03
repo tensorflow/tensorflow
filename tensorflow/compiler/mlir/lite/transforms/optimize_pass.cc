@@ -1077,6 +1077,165 @@ struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
   }
 };
 
+// Optimizes gather_nd to slice when indices represent a single contiguous
+// range.
+struct OptimizeGatherNdToSlice : public OpRewritePattern<TFL::GatherNdOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::GatherNdOp op,
+                                PatternRewriter& rewriter) const override {
+    auto params = op.getParams();
+    auto indices = op.getIndices();
+    auto params_type = mlir::dyn_cast<RankedTensorType>(params.getType());
+    auto indices_type = mlir::dyn_cast<RankedTensorType>(indices.getType());
+
+    if (!params_type || !indices_type || !params_type.hasStaticShape() ||
+        !indices_type.hasStaticShape() || indices_type.getRank() < 1)
+      return failure();
+
+    DenseIntElementsAttr indices_attr;
+    if (!matchPattern(indices, m_Constant(&indices_attr))) return failure();
+
+    // Check if indices represent a single contiguous block of the leading
+    // dimension.
+    // Index shape [N, 1], values: [[start], [start+1], ..., [start+N-1]]
+    if (indices_type.getRank() != 2 || indices_type.getDimSize(1) != 1)
+      return failure();
+
+    int64_t n = indices_type.getDimSize(0);
+    auto indices_values = indices_attr.getValues<APInt>();
+    if (indices_values.begin() == indices_values.end()) return failure();
+
+    int64_t first_val = (*indices_values.begin()).getSExtValue();
+    int64_t expected = first_val;
+    for (const auto& v : indices_values) {
+      if (v.getSExtValue() != expected) return failure();
+      expected++;
+    }
+
+    // Replace with a single SliceOp.
+    Location loc = op.getLoc();
+    SmallVector<int32_t, 8> begin_values;
+    begin_values.push_back(static_cast<int32_t>(first_val));
+    for (size_t i = 1; i < params_type.getRank(); ++i)
+      begin_values.push_back(0);
+
+    SmallVector<int32_t, 8> size_values;
+    size_values.push_back(static_cast<int32_t>(n));
+    for (size_t i = 1; i < params_type.getRank(); ++i) {
+      size_values.push_back(static_cast<int32_t>(params_type.getDimSize(i)));
+    }
+
+    auto begin_const = TFL::ConstOp::create(
+        rewriter, loc, rewriter.getI32TensorAttr(begin_values));
+    auto size_const = TFL::ConstOp::create(
+        rewriter, loc, rewriter.getI32TensorAttr(size_values));
+
+    auto slice_op = rewriter.create<TFL::SliceOp>(loc, op.getType(), params,
+                                                  begin_const, size_const);
+    rewriter.replaceOp(op, slice_op.getResult());
+    return success();
+  }
+};
+
+// Optimizes gather_nd to slice when indices represent a sliding window.
+struct OptimizeGatherNdSlidingWindow
+    : public OpRewritePattern<TFL::GatherNdOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::GatherNdOp op,
+                                PatternRewriter& rewriter) const override {
+    auto params = op.getParams();
+    auto indices = op.getIndices();
+    auto params_type = mlir::dyn_cast<RankedTensorType>(params.getType());
+    auto indices_type = mlir::dyn_cast<RankedTensorType>(indices.getType());
+
+    if (!params_type || !indices_type || !params_type.hasStaticShape() ||
+        !indices_type.hasStaticShape())
+      return failure();
+
+    // Pattern: indices shape [N, W, 1], values: indices[i, j, 0] = i + j
+    if (indices_type.getRank() != 3 || indices_type.getDimSize(2) != 1)
+      return failure();
+
+    DenseIntElementsAttr indices_attr;
+    if (!matchPattern(indices, m_Constant(&indices_attr))) return failure();
+
+    int64_t n = indices_type.getDimSize(0);
+    int64_t w = indices_type.getDimSize(1);
+
+    // Limit window size to avoid excessive slicing.
+    if (w > 16) return failure();
+
+    // Check sliding window pattern indices[i, j, 0] = i + j
+    auto indices_values = indices_attr.getValues<APInt>();
+    auto it = indices_values.begin();
+    for (int64_t i = 0; i < n; ++i) {
+      for (int64_t j = 0; j < w; ++j) {
+        if (it == indices_values.end() || (*it).getSExtValue() != i + j)
+          return failure();
+        ++it;
+      }
+    }
+
+    Location loc = op.getLoc();
+    SmallVector<Value, 4> reshaped_slices;
+
+    // Prepare common slice size: [N, params_shape[1:]...]
+    SmallVector<int64_t, 8> slice_shape;
+    slice_shape.push_back(n);
+    for (int64_t dim : params_type.getShape().drop_front()) {
+      slice_shape.push_back(dim);
+    }
+
+    auto slice_size_attr = rewriter.getI32TensorAttr(
+        SmallVector<int32_t>(slice_shape.begin(), slice_shape.end()));
+    Value slice_size_const =
+        TFL::ConstOp::create(rewriter, loc, slice_size_attr);
+
+    // Prepare reshaped slice shape: [N, 1, params_shape[1:]...]
+    SmallVector<int64_t, 8> reshaped_shape;
+    reshaped_shape.push_back(n);
+    reshaped_shape.push_back(1);
+    for (int64_t dim : params_type.getShape().drop_front()) {
+      reshaped_shape.push_back(dim);
+    }
+    auto reshaped_type =
+        RankedTensorType::get(reshaped_shape, params_type.getElementType());
+    auto reshaped_shape_attr = rewriter.getI32TensorAttr(
+        SmallVector<int32_t>(reshaped_shape.begin(), reshaped_shape.end()));
+    Value reshaped_shape_const =
+        TFL::ConstOp::create(rewriter, loc, reshaped_shape_attr);
+
+    for (int64_t j = 0; j < w; ++j) {
+      SmallVector<int32_t, 8> begin_values;
+      begin_values.push_back(static_cast<int32_t>(j));
+      for (size_t k = 1; k < params_type.getRank(); ++k) {
+        begin_values.push_back(0);
+      }
+      auto begin_attr = rewriter.getI32TensorAttr(begin_values);
+      Value begin_const = TFL::ConstOp::create(rewriter, loc, begin_attr);
+
+      auto slice_result_type =
+          RankedTensorType::get(slice_shape, params_type.getElementType());
+      auto slice_op = rewriter.create<TFL::SliceOp>(
+          loc, slice_result_type, params, begin_const, slice_size_const);
+
+      auto reshape_op = rewriter.create<TFL::ReshapeOp>(
+          loc, reshaped_type, slice_op.getResult(), reshaped_shape_const);
+      reshaped_slices.push_back(reshape_op.getResult());
+    }
+
+    // Concatenate reshaped slices along axis 1
+    auto concat_op = TFL::ConcatenationOp::create(
+        rewriter, loc, op.getType(), reshaped_slices,
+        rewriter.getI32IntegerAttr(1), rewriter.getStringAttr("NONE"));
+
+    rewriter.replaceOp(op, concat_op.getResult());
+    return success();
+  }
+};
+
 struct Convert2DUpscalingToResizeNearestNeighor
     : public OpRewritePattern<TFL::GatherNdOp> {
   using OpRewritePattern<TFL::GatherNdOp>::OpRewritePattern;
@@ -3156,7 +3315,8 @@ void OptimizePass::runOnOperation() {
   // following ops in a second pattern match.
   TFL::populateWithGenerated(patterns);
   patterns
-      .add<Convert2DUpscalingToResizeNearestNeighor, FuseFullyConnectedAndAdd,
+      .add<OptimizeGatherNdToSlice, OptimizeGatherNdSlidingWindow,
+           Convert2DUpscalingToResizeNearestNeighor, FuseFullyConnectedAndAdd,
            FuseAddAndFullyConnected, FuseFullyConnectedAndMul,
            FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
            FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,

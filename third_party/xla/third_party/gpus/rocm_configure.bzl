@@ -62,8 +62,10 @@ _TMPDIR = "TMPDIR"
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 _TF_ROCM_MULTIPLE_PATHS = "TF_ROCM_MULTIPLE_PATHS"
 _TF_ROCM_RBE_DOCKER_IMAGE = "TF_ROCM_RBE_DOCKER_IMAGE"
+_TF_ROCM_RBE_POOL = "TF_ROCM_RBE_POOL"
 _TF_ROCM_RBE_SINGLE_GPU_POOL = "TF_ROCM_RBE_SINGLE_GPU_POOL"
 _TF_ROCM_RBE_MULTI_GPU_POOL = "TF_ROCM_RBE_MULTI_GPU_POOL"
+_DEFAULT_TF_ROCM_RBE_POOL = "default"
 _DEFAULT_TF_ROCM_RBE_SINGLE_GPU_POOL = "linux_x64_gpu"
 _DEFAULT_TF_ROCM_RBE_MULTI_GPU_POOL = "linux_x64_multigpu"
 
@@ -666,6 +668,7 @@ def _create_local_rocm_repository(repository_ctx):
         "%{rocm_root}": rocm_toolkit_path,
         "%{rocm_toolkit_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
         "%{rocm_rbe_docker_image}": repository_ctx.os.environ.get(_TF_ROCM_RBE_DOCKER_IMAGE, _DEFAULT_TF_ROCM_RBE_DOCKER_IMAGE),
+        "%{rocm_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_POOL, _DEFAULT_TF_ROCM_RBE_POOL),
     }
 
     tf_sysroot = _tf_sysroot(repository_ctx)
@@ -888,6 +891,7 @@ _ENVIRONS = [
     _ROCM_DISTRO_HASH,
     _ROCM_DISTRO_LINKS,
     _TF_ROCM_RBE_DOCKER_IMAGE,
+    _TF_ROCM_RBE_POOL,
     _TF_ROCM_RBE_SINGLE_GPU_POOL,
     _TF_ROCM_RBE_MULTI_GPU_POOL,
     _TF_ROCM_MULTIPLE_PATHS,

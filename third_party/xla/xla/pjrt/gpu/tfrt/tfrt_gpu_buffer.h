@@ -95,6 +95,10 @@ class TfrtGpuBuffer final : public PjRtBuffer {
             /*sends_were_enqueued=*/false);
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
+      PrimitiveType element_type, absl::Span<int64_t const> dims,
+      const Layout* device_layout) override;
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
       Future<> dependency) override;
 

@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/numeric/bits.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -50,6 +51,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/transforms/simplifiers/conv_operand_swapper.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
@@ -816,7 +819,8 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
     return false;
   }
   return ReplaceInstruction(old_instruction, new_instruction,
-                            /*preserve_sharding=*/true)
+                            /*preserve_sharding=*/true,
+                            /*preserve_frontend_attributes=*/true)
       .value();
 }
 
@@ -849,7 +853,8 @@ bool AlgebraicSimplifierVisitor::ReplaceInstructionIfCompatible(
     }
   }
   return ReplaceInstruction(old_instruction, MaybeMakeTuple(new_instructions),
-                            /*preserve_sharding=*/true)
+                            /*preserve_sharding=*/true,
+                            /*preserve_frontend_attributes=*/true)
       .value();
 }
 
@@ -1302,6 +1307,34 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcast(
     return absl::OkStatus();
   }
 
+  auto not_tiled = [](const HloInstruction& instr) {
+    return !instr.shape().has_layout() ||
+           instr.shape().layout().tiles().empty();
+  };
+
+  // Simplify bitcast(unary_elementwise(bitcast(x))) to
+  // bitcast(unary_elementwise(x)).
+  if (HloInstruction* unary_op, * inner_bitcast;
+      Match(bitcast,
+            m::Bitcast(m::Op(&unary_op)
+                           .WithPredicate([](const HloInstruction* instr) {
+                             return instr->IsElementwise() &&
+                                    instr->operand_count() == 1 &&
+                                    instr->user_count() == 1;
+                           })
+                           .WithOperand(0, m::Bitcast(&inner_bitcast)))) &&
+      ShapeUtil::SameElementType(bitcast->shape(), unary_op->shape()) &&
+      ShapeUtil::SameElementType(unary_op->shape(), inner_bitcast->shape()) &&
+      ShapeUtil::SameElementType(inner_bitcast->shape(),
+                                 inner_bitcast->operand(0)->shape()) &&
+      not_tiled(*inner_bitcast) && not_tiled(*inner_bitcast->operand(0))) {
+    auto new_unary = unary_op->parent()->AddInstruction(
+        unary_op->CloneWithNewOperands(inner_bitcast->operand(0)->shape(),
+                                       {inner_bitcast->mutable_operand(0)}));
+    return ReplaceWithNewInstruction(
+        bitcast, HloInstruction::CreateBitcast(bitcast->shape(), new_unary));
+  }
+
   // If a bitcast feeds a bitcast, make it a single bitcast.
   // Make sure the whole chain of bitcasts is optimized.
   if (bitcast->operand(0)->opcode() == HloOpcode::kBitcast) {
@@ -1644,7 +1677,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcastConvert(
       if (!ShapeUtil::LastDimIsMinorMost(shape)) {
         return false;
       }
-      const int type_bit_width = primitive_util::BitWidth(shape.element_type());
+      const int type_bit_width =
+          primitive_util::StorageBitWidth(shape.element_type());
       if (!shape.has_layout() || shape.layout().element_size_in_bits() == 0) {
         return type_bit_width % 8 == 0;
       }
@@ -2721,15 +2755,11 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::MoveDotParamToRhs(
   }
   TF_ASSIGN_OR_RETURN(HloInstruction * new_transpose,
                       MakeTransposeHlo(new_dot, permutation));
-  dot->SetupDerivedInstruction(new_dot);
-  dot->SetupDerivedInstruction(new_transpose);
-  TF_RETURN_IF_ERROR(ReplaceInstruction(dot, new_transpose));
-  // Don't propagate the user-guided fusion attribute to the new auto-generated
-  // transpose if it is not an intervening instruction before another must-fuse
-  // instruction.
-  // Note: This is used for backend-specific optimization. In the future, we
-  // should find a better way that does not expose it to the third-party.
-  AmendUserGuidedFusionAttr(new_transpose);
+  SetupDerivedInstruction(dot, new_dot, /*preserve_user_fusion_attr=*/true);
+  SetupDerivedInstruction(dot, new_transpose,
+                          /*preserve_user_fusion_attr=*/false);
+  TF_RETURN_IF_ERROR(ReplaceInstruction(
+      dot, new_transpose, /*preserve_frontend_attributes=*/false));
   return true;
 }
 
@@ -4021,7 +4051,14 @@ absl::Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
 
   if (dot->user_count() == 1 &&
       dot->users().front()->IsCustomCall("Sharding")) {
-    return absl::OkStatus();
+    const HloInstruction* user = dot->users().front();
+    if (user->has_frontend_attributes()) {
+      std::optional<std::string> sharding_attr =
+          user->get_frontend_attribute(HloSharding::kShardingFrontendAttrName);
+      if (sharding_attr && absl::StrContains(*sharding_attr, "unreduced")) {
+        return absl::OkStatus();
+      }
+    }
   }
 
   // Reorder nested dots with associativity using flops as a heuristic
@@ -5274,14 +5311,6 @@ std::optional<std::vector<Chunk>> FindContiguousChunks(
   auto factors =
       CommonFactors(reshape_shape.dimensions(), transpose_shape.dimensions());
 
-  if (factors.empty() ||
-      factors.back() !=
-          std::make_pair(
-              static_cast<int64_t>(reshape_shape.dimensions().size()),
-              static_cast<int64_t>(transpose_shape.dimensions().size()))) {
-    return std::nullopt;
-  }
-
   std::vector<Chunk> chunks;
   chunks.reserve(factors.size() - 1);
 
@@ -6462,7 +6491,8 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
   // Delete no-op reshapes, i.e. where shape = operand shape.
   if (SameShape(reshape, operand)) {
     VLOG(3) << "deleting no-op reshape";
-    return ReplaceInstruction(reshape, operand);
+    return ReplaceInstruction(reshape, operand,
+                              /*preserve_frontend_attributes=*/false);
   }
 
   // Merge reshapes.
@@ -6483,7 +6513,10 @@ absl::Status AlgebraicSimplifierVisitor::HandleReshape(
     return absl::OkStatus();
   }
 
-  if (!options_.is_layout_sensitive()) {
+  if (!options_.is_layout_sensitive() &&
+      // TODO: b/480285332 - Remove the flag once we can enable on all
+      // accelerators.
+      options_.enable_hoist_transpose_of_reshape()) {
     ASSIGN_OR_RETURN(bool hoisted, TryHoistTransposeOfReshape(reshape));
     if (hoisted) {
       return absl::OkStatus();
@@ -9698,136 +9731,14 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   if (!options_.enable_conv_operand_swap() || options_.is_layout_sensitive()) {
     return false;
   }
-  if (convolution->feature_group_count() > 1 ||
-      convolution->batch_group_count() > 1) {
-    return false;
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      SwapConvolutionOperandsIfBeneficial(
+                          DynCast<HloConvolutionInstruction>(convolution),
+                          options_.conv_is_lowerable_callback()));
+  if (changed) {
+    MarkAsChanged();
   }
-
-  const auto& dnums = convolution->convolution_dimension_numbers();
-  const auto& window_dims = convolution->window().dimensions();
-  Window swapped_window;
-
-  HloInstruction *input = convolution->mutable_operand(0),
-                 *kernel = convolution->mutable_operand(1);
-  int64_t kernel_product = 1;
-  int64_t swapped_kernel_product = 1;
-  DimensionVector reverse_dimensions;
-  for (int64_t spatial_dim = 0;
-       spatial_dim < dnums.input_spatial_dimensions_size(); ++spatial_dim) {
-    const int64_t kernel_size = window_dims[spatial_dim].size();
-    const bool can_be_group_or_contraction =
-        !window_dims[spatial_dim].window_reversal() &&
-        window_dims[spatial_dim].padding_low() == 0 &&
-        window_dims[spatial_dim].padding_high() == 0 &&
-        window_dims[spatial_dim].window_dilation() == 1;
-    const bool is_group_dim =
-        can_be_group_or_contraction &&
-        window_dims[spatial_dim].base_dilation() == kernel_size &&
-        window_dims[spatial_dim].stride() == kernel_size - 1;
-    const int64_t input_size =
-        input->shape().dimensions(dnums.input_spatial_dimensions(spatial_dim));
-    const bool is_pure_contraction_dim =
-        kernel_size == input_size && can_be_group_or_contraction &&
-        window_dims[spatial_dim].base_dilation() == 1 &&
-        window_dims[spatial_dim].stride() == 1;
-    if (is_group_dim || is_pure_contraction_dim) {
-      *(swapped_window.add_dimensions()) = window_dims[spatial_dim];
-      continue;
-    }
-
-    const int64_t dilated_kernel_size =
-        1 + (kernel_size - 1) * window_dims[spatial_dim].window_dilation();
-    const int64_t dilated_input_size =
-        1 + (input_size - 1) * window_dims[spatial_dim].base_dilation();
-
-    // Don't decide to swap if the input size is one, since many convolution
-    // implementations can easily hand that special case efficiently.
-    kernel_product *= kernel_size;
-    swapped_kernel_product *=
-        input_size == 1 && window_dims[spatial_dim].stride() == 1 &&
-                window_dims[spatial_dim].window_dilation() == 1 &&
-                window_dims[spatial_dim].padding_high() == kernel_size - 1 &&
-                window_dims[spatial_dim].padding_low() == kernel_size - 1
-            ? kernel_size
-            : input_size;
-
-    auto new_dim = swapped_window.add_dimensions();
-    new_dim->set_size(input_size);
-    // If the kernel is not reversed, the activations must be manually reversed.
-    if (!window_dims[spatial_dim].window_reversal()) {
-      reverse_dimensions.push_back(
-          dnums.kernel_spatial_dimensions(spatial_dim));
-    }
-    // The input is not originally reversed so it must be reversed to move the
-    // kernel.
-    new_dim->set_window_reversal(true);
-    // Base dilation and window dilation switch places.
-    new_dim->set_base_dilation(window_dims[spatial_dim].window_dilation());
-    new_dim->set_window_dilation(window_dims[spatial_dim].base_dilation());
-    new_dim->set_stride(window_dims[spatial_dim].stride());
-    new_dim->set_padding_low(dilated_input_size +
-                             window_dims[spatial_dim].padding_low() -
-                             dilated_kernel_size);
-    new_dim->set_padding_high(dilated_input_size +
-                              window_dims[spatial_dim].padding_high() -
-                              dilated_kernel_size);
-  }
-
-  // Don't transform if a naive convolution implementation would not have fewer
-  // flops.
-  if (kernel_product <= swapped_kernel_product) {
-    return false;
-  }
-  ConvolutionDimensionNumbers swapped_dnums;
-  *swapped_dnums.mutable_output_spatial_dimensions() =
-      dnums.output_spatial_dimensions();
-  // Swap batch and output feature of the output.
-  swapped_dnums.set_output_batch_dimension(dnums.output_feature_dimension());
-  swapped_dnums.set_output_feature_dimension(dnums.output_batch_dimension());
-
-  // Swap input dnums with kernel dnums
-  *swapped_dnums.mutable_input_spatial_dimensions() =
-      dnums.kernel_spatial_dimensions();
-  swapped_dnums.set_input_batch_dimension(
-      dnums.kernel_output_feature_dimension());
-  swapped_dnums.set_input_feature_dimension(
-      dnums.kernel_input_feature_dimension());
-
-  // Swap kernel dnums with input dnums
-  *swapped_dnums.mutable_kernel_spatial_dimensions() =
-      dnums.input_spatial_dimensions();
-  swapped_dnums.set_kernel_output_feature_dimension(
-      dnums.input_batch_dimension());
-  swapped_dnums.set_kernel_input_feature_dimension(
-      dnums.input_feature_dimension());
-
-  PrecisionConfig precision_config;
-  precision_config.add_operand_precision(
-      convolution->precision_config().operand_precision(1));
-  precision_config.add_operand_precision(
-      convolution->precision_config().operand_precision(0));
-  if (!reverse_dimensions.empty()) {
-    TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
-  }
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_convolution,
-      MakeConvolveHlo(
-          kernel, input, /*feature_group_count=*/1,
-          /*batch_group_count=*/1, swapped_window, swapped_dnums,
-          precision_config,
-          /*preferred_element_type=*/convolution->shape().element_type()));
-
-  // If we're running on GPU we need to check that we can actually lower the
-  // conv with the given reverse_dims (either none, or rank 2 and all)
-  if (!options_.ConvIsLowerable(new_convolution)) {
-    TF_RETURN_IF_ERROR(kernel->parent()->RemoveInstruction(new_convolution));
-    return false;
-  }
-
-  convolution->SetupDerivedInstruction(new_convolution);
-  TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));
-
-  return true;
+  return changed;
 }
 
 absl::StatusOr<bool>

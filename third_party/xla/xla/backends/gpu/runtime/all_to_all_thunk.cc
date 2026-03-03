@@ -38,12 +38,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -128,12 +128,11 @@ AllToAllStartThunk::AllToAllStartThunk(
 
 absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  device_count_ = params.local_device_count;
-  CHECK_GT(device_count_, 0);
+  CHECK_GT(params.local_device_count, 0);
   XLA_VLOG_DEVICE(5, params.executor->device_ordinal())
-      << "Local device count : " << device_count_;
+      << "Local device count : " << params.local_device_count;
 
-  if (is_local() && p2p_memcpy_enabled_) {
+  if (is_local(params.local_device_count) && p2p_memcpy_enabled_) {
     TF_ASSIGN_OR_RETURN(
         GpuCliqueKey clique_key,
         GetGpuCliqueKey(*params.collective_params, config().replica_groups,
@@ -227,10 +226,11 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
     se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, buffers_,
+      ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
                              config_.config.operand_element_type));
 
-  if (is_local() && p2p_memcpy_enabled_) {
+  if (is_local(params.collective_params->local_device_count) &&
+      p2p_memcpy_enabled_) {
     uint64_t* receive_pointer_map = nullptr;
     {
       absl::MutexLock lock(pointer_maps_mutex_);
@@ -261,12 +261,12 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
   return true;
 }
 
-bool AllToAllStartThunk::is_local() const {
+bool AllToAllStartThunk::is_local(int device_count) const {
   for (const auto& replica_group : config_.config.replica_groups) {
-    const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
+    const int64_t node_id = replica_group.replica_ids().at(0) / device_count;
     if (!absl::c_all_of(replica_group.replica_ids(),
-                        [this, node_id](const int64_t rank) {
-                          return rank / device_count_ == node_id;
+                        [node_id, device_count](const int64_t rank) {
+                          return rank / device_count == node_id;
                         })) {
       return false;
     }

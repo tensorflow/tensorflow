@@ -1070,12 +1070,12 @@ void DumpHloModuleMetadataIfEnabled(HloModule* module) {
 
 absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   const std::string& directory,
-                                  const std::string& file_name,
+                                  absl::string_view file_name,
                                   std::string* full_path) {
   tsl::Env* env = tsl::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
   TF_RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
-  std::string safe_file_name = SanitizeFileName(file_name) + ".pb";
+  std::string safe_file_name = SanitizeFileName(std::string(file_name)) + ".pb";
   std::string full_path_impl;
   if (!full_path) {
     full_path = &full_path_impl;

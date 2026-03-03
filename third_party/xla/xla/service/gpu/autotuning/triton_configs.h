@@ -20,8 +20,7 @@ limitations under the License.
 
 #include "xla/service/gpu/matmul_utils.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 enum class TritonConfigsPlatform {
   kAmpere,
@@ -34,7 +33,6 @@ enum class TritonConfigsPlatform {
 const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
     TritonConfigsPlatform);
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_AUTOTUNING_TRITON_CONFIGS_H_

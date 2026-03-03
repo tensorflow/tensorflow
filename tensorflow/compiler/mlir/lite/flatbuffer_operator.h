@@ -100,24 +100,24 @@ class VhloToStablehloTypeConverter : public vhlo::VhloTypeConverter {
 };
 
 // Returns true if the op_code belongs to a stablehlo operation.
-bool IsStablehloOp(const tflite::OperatorCodeT &op_code);
+bool IsStablehloOp(const tflite::OperatorCodeT& op_code);
 
 // Returns the MLIR op name for the flatbuffer operator corresponding to
 // `op_code`.
-std::string GetMlirOpNameFromOpCode(const ::tflite::OperatorCodeT &op_code);
+std::string GetMlirOpNameFromOpCode(const ::tflite::OperatorCodeT& op_code);
 
 // Returns the builtin op code for the given MLIR operation on success; emits
 // error and returns std::nullopt on failure.
-std::optional<tflite::BuiltinOperator> GetBuiltinOpCode(Operation *mlir_op);
+std::optional<tflite::BuiltinOperator> GetBuiltinOpCode(Operation* mlir_op);
 
 // Packs the given MLIR operation into a TFLite FlatBuffer operator object.
 // Returns the FlatBuffer offset for the operator on success; emits error and
 // returns std::nullopt on failure.
 std::optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
-    Operation *mlir_op, uint32_t opcode_index,
-    const std::vector<int32_t> &operands, const std::vector<int32_t> &results,
-    const std::vector<int32_t> &intermediates,
-    flatbuffers::FlatBufferBuilder *fbb,
+    Operation* mlir_op, uint32_t opcode_index,
+    const std::vector<int32_t>& operands, const std::vector<int32_t>& results,
+    const std::vector<int32_t>& intermediates,
+    flatbuffers::FlatBufferBuilder* fbb,
     std::optional<int> debug_metadata_index = -1);
 
 // Populates the array of mlir::NamedAttributes corresponding to the given
@@ -126,7 +126,7 @@ std::optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
 void BuiltinOptionsToAttributes(
     tflite::BuiltinOptionsUnion op_union, mlir::Builder builder,
     // NOLINTNEXTLINE
-    llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes);
+    llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes);
 
 // While the last several tensors could be optional tensors for an tfl op, the
 // number of input operands could vary. This function gets the min/max number of
@@ -138,16 +138,16 @@ llvm::MinMax OperandNumbersMinMax(llvm::StringRef op_name);
 // `custom_options` are opaque attribute used to store infomations for this
 // custom op.
 absl::Status CustomOptionsToAttributes(
-    const std::string &custom_code, const std::vector<uint8_t> &custom_options,
+    const std::string& custom_code, llvm::ArrayRef<uint8_t> custom_options,
     mlir::Builder builder,
     // NOLINTNEXTLINE
-    Location loc, llvm::SmallVectorImpl<mlir::NamedAttribute> *attributes);
+    Location loc, llvm::SmallVectorImpl<mlir::NamedAttribute>* attributes);
 
 // TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
 // these in the future
 void BuiltinOptions2ToAttributes(
     tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
-    llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes);
+    llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes);
 
 // Function calls with a non-specialized type will result to a linker error.
 template <typename T>
@@ -297,7 +297,7 @@ static inline std::vector<T> GetOptionalVector(
 template <typename T>
 static inline std::vector<T> GetVector(
     vhlo::TensorV1Attr elements,
-    mlir::vhlo::VhloTypeConverter &vhlo_type_converter) {
+    mlir::vhlo::VhloTypeConverter& vhlo_type_converter) {
   return GetOptionalVector<T>(mlir::DenseIntElementsAttr::getFromRawBuffer(
       mlir::cast<mlir::ShapedType>(
           vhlo_type_converter.convertType(elements.getType())),

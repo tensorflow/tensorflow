@@ -158,15 +158,23 @@ func.func public @scan_recompose_composite(%arg0: tensor<2xf64>, %arg1: tensor<4
   %0 = stablehlo.broadcast_in_dim %arg0, dims = [1] : (tensor<2xf64>) -> tensor<5x2xf64>
   // CHECK: chlo.scan(%0, %arg2) inits (%arg1) dimension=0
   // CHECK-NOT: stablehlo.composite
-  %1:2 = stablehlo.composite "chlo.scan" %0, %arg2, %arg1 {
+  %1:2 = stablehlo.composite "chlo.scan" %0, %arg2, %arg1 ({
+  ^bb0(%b0: tensor<2xf64>, %b1: tensor<3xf64>, %b2: tensor<4xf64>):
+    %2 = stablehlo.add %b2, %b2 : tensor<4xf64>
+    %3 = stablehlo.constant dense<0.000000e+00> : tensor<f64>
+    stablehlo.return %3, %2 : tensor<f64>, tensor<4xf64>
+  }) {
     composite_attributes = {
-      dimension = 0 : i64
+      dimension = 0 : i64,
+      operandSegmentSizes = array<i32: 2, 1>,
+      resultSegmentSizes = array<i32: 1, 1>
     },
     decomposition = @chlo.scan.impl,
     version = 1 : i32
   } : (tensor<5x2xf64>, tensor<5x3xf64>, tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>)
   return %1#1, %1#0 : tensor<4xf64>, tensor<5xf64>
 }
+
 // CHECK-NOT: @chlo.scan.impl
 func.func private @chlo.scan.impl(%arg0: tensor<5x2xf64>, %arg1: tensor<5x3xf64>, %arg2: tensor<4xf64>) -> (tensor<5xf64>, tensor<4xf64>) {
   %0:2 = chlo.scan(%arg0, %arg1) inits(%arg2) dimension=0 {

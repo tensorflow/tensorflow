@@ -53,54 +53,9 @@ bool IsTriangularSolve(const HloInstruction& hlo) {
          hlo.custom_call_target() == kTriangularSolveCallTarget;
 }
 
-const absl::string_view kGemmCallTarget = "__cublas$gemm";
-const absl::string_view kCublasLtMatmulCallTarget = "__cublas$lt$matmul";
-const absl::string_view kCublasLtMatmulF8CallTarget = "__cublas$lt$matmul$f8";
-const absl::string_view kTriangularSolveCallTarget = "__cublas$triangularSolve";
-
-const absl::string_view kCudnnConvBackwardInputCallTarget =
-    "__cudnn$convBackwardInput";
-const absl::string_view kCudnnConvBackwardFilterCallTarget =
-    "__cudnn$convBackwardFilter";
-const absl::string_view kCudnnConvBiasActivationForwardCallTarget =
-    "__cudnn$convBiasActivationForward";
-const absl::string_view kCudnnConvForwardCallTarget = "__cudnn$convForward";
-const absl::string_view kCudnnConvForwardGraphCallTarget =
-    "__cudnn$convForwardGraph";
-const absl::string_view kCudnnConvReorderFilterCallTarget =
-    "__cudnn$convReorderFilter";
-const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
-    "__cudnn$convReorderFilterAndBias";
-
-const absl::string_view kCudnnNormCallTarget = "__cudnn$norm";
-const absl::string_view kCudnnBlockScaledDotCallTarget =
-    "__cudnn$blockScaledDot";
-
 // fMHA forward call targets.
-const absl::string_view kCudnnfMHASoftmaxF8CallTarget = "__cudnn$fmhaSoftmaxF8";
-const absl::string_view kCudnnfMHASoftmaxCallTarget = "__cudnn$fmhaSoftmax";
-const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget =
-    "__cudnn$fmhaScaleBiasSoftmaxDropout";
-const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget =
-    "__cudnn$fmhaScaleBiasSoftmax";
-const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget =
-    "__cudnn$fmhaSoftmaxDropout";
 
 // fMHA backward call targets.
-const absl::string_view kCudnnfMHASoftmaxBackwardF8CallTarget =
-    "__cudnn$fmhaSoftmaxBackwardF8";
-const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget =
-    "__cudnn$fmhaSoftmaxBackward";
-const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget =
-    "__cudnn$fmhaScaleBiasSoftmaxDropoutBackward";
-const absl::string_view kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget =
-    "__cudnn$fmhaScaleBiasSoftmaxBackward";
-const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget =
-    "__cudnn$fmhaSoftmaxDropoutBackward";
-
-const absl::string_view kCubDeviceRadixSortTarget = "__cub$DeviceRadixSort";
-const absl::string_view kCubDeviceRadixSortUnassignedScratchSizeTarget =
-    "__cub$DeviceRadixSortUnassignedScratchSize";
 
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {

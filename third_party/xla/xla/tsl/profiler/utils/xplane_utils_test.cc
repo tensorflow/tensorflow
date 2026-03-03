@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
@@ -913,6 +915,17 @@ TEST(XplaneUtilsTest, TestDenormalizeTimestamps) {
   DenormalizeTimestamps(&xspace, 90);
   EXPECT_EQ(l1.TimestampNs(), 100);
   EXPECT_EQ(l2.TimestampNs(), 100);
+}
+
+TEST(XplaneUtilsTest, TaskEnvPlaneIsNotEmpty) {
+  XSpace xspace;
+  XPlaneBuilder task(xspace.add_planes());
+  task.SetName(kTaskEnvPlaneName);
+  task.AddStatValue(*task.GetOrCreateStatMetadata(GetTaskEnvStatTypeStr(
+                        TaskEnvStatType::kEnvProfileStartTime)),
+                    absl::ToUnixNanos(absl::Now()));
+  RemoveEmptyPlanes(&xspace);
+  EXPECT_THAT(xspace.planes(), SizeIs(1));
 }
 
 }  // namespace

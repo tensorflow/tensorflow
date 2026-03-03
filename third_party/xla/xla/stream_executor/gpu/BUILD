@@ -335,6 +335,8 @@ xla_test(
     name = "redzone_allocator_test",
     srcs = ["redzone_allocator_test.cc"],
     backends = ["gpu"],
+    # TODO(intel-tf): Implement redzone allocator for oneAPI and enable this test.
+    tags = ["no-oneapi"],
     deps = [
         ":gpu_init",
         ":redzone_allocator",
@@ -484,6 +486,7 @@ cc_library(
     linkstatic = True,
     tags = [
         "gpu",
+        # TODO(intel-tf): Implement gpu test kernels for oneAPI and enable this library.
         "no-oneapi",
     ],
     deps = [
@@ -528,8 +531,16 @@ cc_library(
 xla_cc_test(
     name = "gpu_test_kernels_fatbin_test",
     srcs = ["gpu_test_kernels_fatbin_test.cc"],
+<<<<<<< HEAD
     tags = ["gpu"],
     data = [":gpu_test_kernels_fatbin"],
+=======
+    tags = [
+        "gpu",
+        # TODO(intel-tf): Enable this test once oneAPI fatbin is supported for :gpu_test_kernels.
+        "no-oneapi",
+    ],
+>>>>>>> upstream/master
     deps = [
         ":gpu_test_kernels_fatbin",
         "//xla/stream_executor:platform",
@@ -544,6 +555,8 @@ xla_test(
     name = "gpu_kernel_test",
     srcs = ["gpu_kernel_test.cc"],
     backends = ["gpu"],
+    # TODO(intel-tf): Enable this test once oneAPI fatbin is supported for :gpu_test_kernels.
+    tags = ["no-oneapi"],
     deps = [
         ":gpu_test_kernels",
         ":gpu_test_kernels_fatbin",
@@ -580,8 +593,13 @@ xla_test(
     name = "gpu_command_buffer_test",
     srcs = ["gpu_command_buffer_test.cc"],
     backends = ["gpu"],
+<<<<<<< HEAD
     # TODO(ybaturina): Re-enable once the CUDA driver version is updated in RBE.
     tags = ["manual"],
+=======
+    # TODO(intel-tf): Implement gpu command buffer for oneAPI and enable this test.
+    tags = ["no-oneapi"],
+>>>>>>> upstream/master
     deps = [
         ":gpu_test_kernels",
         "//xla/service:platform_util",
@@ -674,6 +692,8 @@ xla_test(
     srcs = ["gpu_device_info_test.cc"],
     backends = ["gpu"],
     data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
+    # TODO(intel-tf): Implement device description for oneAPI and enable this test.
+    tags = ["no-oneapi"],
     deps = [
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
@@ -844,6 +864,10 @@ cc_library(
 cc_library(
     name = "collective_kernel_metadata",
     hdrs = ["collective_kernel_metadata.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
 )
 
 cc_library(
@@ -869,6 +893,8 @@ xla_test(
     srcs = ["repeat_buffer_kernel_test.cc"],
     backends = ["gpu"],
     disabled_backends = [],
+    # TODO(intel-tf): Implement repeat buffer kernel for oneAPI and enable this test.
+    tags = ["no-oneapi"],
     deps = [
         ":gpu_kernel_registry",
         ":repeat_buffer_kernel",
@@ -936,6 +962,8 @@ xla_test(
     name = "buffer_debug_log_test",
     srcs = ["buffer_debug_log_test.cc"],
     backends = ["gpu"],
+    # TODO(intel-tf): Implement buffer debug log for oneAPI and enable this test.
+    tags = ["no-oneapi"],
     deps = [
         ":buffer_debug_log",
         "//xla/backends/gpu/runtime:buffer_debug_log_proto_cc",

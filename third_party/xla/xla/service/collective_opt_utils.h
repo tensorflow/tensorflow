@@ -203,6 +203,26 @@ std::optional<PartitionOffsetSpec> ExtractPartitionOffsetSpec(
 bool MatchDsPadAllGather(HloInstruction* ds_hlo, HloInstruction** pad_hlo,
                          HloInstruction** ag_hlo);
 
+// Find the canonical send/recv start op for one of send, recv, send-done, or
+// recv-done. For trivial cases send/recv and send-done/recv-done come in pairs
+// and the canonical start op is the send/recv op of the pair. If send/recv is
+// partially pipelined, we will use the send/recv leading into the while loop as
+// the canonical start op.
+//
+// Example:
+//   ```
+//   send_ctx = send(src, ...)  <-- canonical start op
+//   send_ctx_final = while(send_ctx) {
+//     send_ctx_in = parameter(0)
+//     send-done(send_ctx_in)
+//     ...
+//     ROOT send_ctx_out = send(next_src, ...)
+//   }
+//   send-done(send_ctx_final)
+// ```
+//
+const HloInstruction* FindCanonicalSendRecvStartOp(const HloInstruction* hlo);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_OPT_UTILS_H_

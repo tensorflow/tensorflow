@@ -173,6 +173,17 @@ void HloInstruction::Users::RemoveUser(HloInstruction* user) {
 }
 
 void HloInstruction::Users::SortInstructionUsers(
+    absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+        compare) {
+  absl::c_sort(users_, compare);
+  if (user_map_ != nullptr) {
+    user_map_->clear();
+    RebuildMap();
+  }
+  DCHECK(CheckInvariants());
+}
+
+void HloInstruction::Users::SortInstructionUsers(
     const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
     const Users& sorted_instruction_users) {
   using Sorter = MappedPtrContainerSorter<HloInstruction>;
@@ -975,11 +986,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      instruction = CreateConvolve(
-          shape, operands(0), operands(1),
-          std::max<int64_t>(proto.feature_group_count(), 1),
-          std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
-          proto.convolution_dimension_numbers(), precision_config);
+      instruction =
+          CreateConvolve(shape, operands(0), operands(1),
+                         std::max<int64_t>(proto.feature_group_count(), 1),
+                         std::max<int64_t>(proto.batch_group_count(), 1),
+                         proto.window(), proto.convolution_dimension_numbers(),
+                         precision_config, proto.sparsity_config());
       if (proto.conv_kind() != CONVOLUTION_KIND_UNSET) {
         HloConvolutionInstruction::ConvKind conv_kind =
             HloConvolutionInstruction::ConvKind::UNSET;
@@ -1637,10 +1649,11 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config) {
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config) {
   return std::make_unique<HloConvolutionInstruction>(
       shape, lhs, rhs, feature_group_count, batch_group_count, window,
-      dimension_numbers, precision_config);
+      dimension_numbers, precision_config, sparsity_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -3038,6 +3051,44 @@ HloInstruction::InstructionVector HloInstruction::unique_operands() const {
   return unique;
 }
 
+std::optional<int64_t> HloInstruction::MapUnaryOutputDimToOperandDim(
+    int64_t output_dim_idx) const {
+  if (operand_count() != 1) {
+    return std::nullopt;
+  }
+  if (IsElementwise()) {
+    return output_dim_idx;
+  }
+  switch (opcode()) {
+    case HloOpcode::kBroadcast: {
+      // dimensions() maps operand dim -> output dim.
+      const auto& bcast_dims = dimensions();
+      auto it = absl::c_find(bcast_dims, output_dim_idx);
+      if (it == bcast_dims.end()) {
+        return std::nullopt;
+      }
+      return std::distance(bcast_dims.begin(), it);
+    }
+    case HloOpcode::kReshape:
+    case HloOpcode::kBitcast: {
+      if (!ShapeUtil::InsertedOrDeleted1SizedDimensions(operand(0)->shape(),
+                                                        shape())) {
+        return std::nullopt;
+      }
+      auto unmodified_dims = ShapeUtil::DimensionsUnmodifiedByReshape(
+          operand(0)->shape(), shape());
+      for (const auto& [input_dim, output_dim] : unmodified_dims) {
+        if (output_dim == output_dim_idx) {
+          return input_dim;
+        }
+      }
+      return std::nullopt;
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
 absl::Status HloInstruction::AddControlDependencyTo(
     HloInstruction* instruction) {
   TF_RET_CHECK(instruction->parent() == parent());
@@ -3980,8 +4031,9 @@ bool HloInstruction::IsElementwiseImpl(
     return operand_idx.has_value() && operand_idx.value() == 0;
   }
   if (opcode_ == HloOpcode::kBitcastConvert &&
-      primitive_util::BitWidth(shape().element_type()) !=
-          primitive_util::BitWidth(operands_[0]->shape().element_type())) {
+      primitive_util::StorageBitWidth(shape().element_type()) !=
+          primitive_util::StorageBitWidth(
+              operands_[0]->shape().element_type())) {
     return false;
   }
   return IsOpElementwise(opcode_);
@@ -4092,7 +4144,8 @@ void HloInstruction::PrintWithCanonicalNameMap(
         metadata_->stack_frame_id() != 0 && GetModule() != nullptr) {
       OpMetadata metadata = *metadata_;
       metadata.set_stack_frame_id(0);
-      auto frame = GetModule()->get_stack_frame(metadata_->stack_frame_id());
+      auto frame = GetModule()->get_stack_frame(
+          StackFrameId{metadata_->stack_frame_id()});
       if (!frame.empty()) {
         metadata.set_source_file(frame.file_name);
         metadata.set_source_line(frame.line);
@@ -5420,6 +5473,27 @@ std::string RaggedDotDimensionNumbersToString(
   return StrJoin(result, ", ");
 }
 
+std::string SparsityConfigToString(const SparsityConfig& sparsity_config) {
+  std::vector<std::string> result;
+  if (sparsity_config.has_lhs()) {
+    std::string sparsity_str =
+        absl::StrCat(sparsity_config.lhs().num_non_zero(), "x",
+                     sparsity_config.lhs().block_size());
+    result.push_back(StrCat("lhs={sparsity=", sparsity_str,
+                            " dimension=", sparsity_config.lhs().dimension(),
+                            " stride=", sparsity_config.lhs().stride(), "}"));
+  }
+  if (sparsity_config.has_rhs()) {
+    std::string sparsity_str =
+        absl::StrCat(sparsity_config.rhs().num_non_zero(), "x",
+                     sparsity_config.rhs().block_size());
+    result.push_back(StrCat("rhs={sparsity=", sparsity_str,
+                            " dimension=", sparsity_config.rhs().dimension(),
+                            " stride=", sparsity_config.rhs().stride(), "}"));
+  }
+  return StrJoin(result, " ");
+}
+
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
   auto len_required = [](int64_t a, int64_t b, absl::Span<const int64_t> cs) {
@@ -6050,6 +6124,15 @@ const RaggedDotDimensionNumbers& HloInstruction::ragged_dot_dimension_numbers()
   return Cast<HloRaggedDotInstruction>(this)->ragged_dot_dimension_numbers();
 }
 
+const SparsityConfig& HloInstruction::sparsity_config() const {
+  return Cast<HloConvolutionInstruction>(this)->sparsity_config();
+}
+
+void HloInstruction::set_sparsity_config(
+    const SparsityConfig& sparsity_config) {
+  Cast<HloConvolutionInstruction>(this)->set_sparsity_config(sparsity_config);
+}
+
 const DomainMetadata& HloInstruction::operand_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->operand_side_metadata();
 }
@@ -6168,8 +6251,8 @@ std::vector<HloStackFrame> HloInstruction::GetStackTraceFromMetadata() const {
     return frames;
   }
 
-  int frame_id = metadata.stack_frame_id();
-  while (frame_id != 0) {
+  StackFrameId frame_id = {metadata.stack_frame_id()};
+  while (frame_id.valid()) {
     HloStackFrame frame = hlo_module->get_stack_frame(frame_id);
     if (frame.empty()) {
       break;

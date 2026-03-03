@@ -452,8 +452,8 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
   if (operand_dims.size() > instr_dims.size()) {
     return false;
   }
-  int operand_idx = static_cast<int>(operand_dims.size()) - 1;
-  int instr_idx = static_cast<int>(instr_dims.size()) - 1;
+  auto operand_idx = static_cast<int>(operand_dims.size()) - 1;
+  auto instr_idx = static_cast<int>(instr_dims.size()) - 1;
   for (; operand_idx >= 0; --operand_idx, --instr_idx) {
     if (operand_dims[operand_idx] != 1 &&
         operand_dims[operand_idx] != instr_dims[instr_idx]) {

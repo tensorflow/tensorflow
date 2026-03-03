@@ -23,9 +23,9 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/tools/run_hlo_module.pb.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 

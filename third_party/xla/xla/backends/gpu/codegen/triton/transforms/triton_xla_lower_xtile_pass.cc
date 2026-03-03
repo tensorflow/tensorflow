@@ -17,10 +17,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -77,56 +75,6 @@ llvm::SmallVector<mlir::Type> GetTransformedArgTypes(
   mlir::TypeRange opaque_args(entry_op.getOpaqueArgs());
   arg_types.append(opaque_args.begin(), opaque_args.end());
   return arg_types;
-}
-
-// Function to get the permutation vector from a MemRefType.
-// The motivation for extracting it from getStridesAndOffset vs directly from
-// xtile.layout is that when we fold memrefs (such as in a transpose) it
-// will have a generic strided layout that does not directly encode the
-// permutation.
-absl::StatusOr<llvm::SmallVector<int64_t>> getPermutationMinorToMajor(
-    mlir::MemRefType memref) {
-  llvm::SmallVector<int64_t> strides;
-  int64_t offset;
-  if (memref.getStridesAndOffset(strides, offset).failed()) {
-    // This can fail if the layout is not strided (e.g., has dynamic strides).
-    return absl::InvalidArgumentError("Failed to get strides and offset");
-  }
-
-  llvm::SmallVector<int64_t> permutation;
-  permutation.resize(strides.size());
-  absl::c_iota(permutation, 0);
-
-  absl::c_sort(permutation, [&](int64_t lhs_dim, int64_t rhs_dim) {
-    int64_t lhs_stride = strides[lhs_dim];
-    int64_t rhs_stride = strides[rhs_dim];
-    if (lhs_stride != rhs_stride) {
-      return lhs_stride < rhs_stride;
-    }
-
-    // If the strides are the same, we need to ensure that the unit dimension is
-    // the more minor.
-    int64_t lhs_size = memref.getDimSize(lhs_dim);
-    int64_t rhs_size = memref.getDimSize(rhs_dim);
-    if (lhs_size != rhs_size) {
-      return lhs_size < rhs_size;
-    }
-
-    // If all else fails just sort in the canonical order.
-    return lhs_dim > rhs_dim;
-  });
-
-  // Check that the strides actually represent a permutation,
-  // this could happen for example with padded buffers.
-  int64_t size_product = 1;
-  for (int64_t dim : permutation) {
-    if (strides[dim] != size_product) {
-      return absl::InvalidArgumentError("Layout is not a valid permutation");
-    }
-    size_product *= memref.getDimSize(dim);
-  }
-
-  return permutation;
 }
 
 MemrefToPtrOp CreateMemrefToPtr(mlir::OpBuilder& builder,
@@ -235,7 +183,7 @@ class XTileExtractToTriton
     }
 
     absl::StatusOr<SmallVector<int64_t>> minor_to_major_or =
-        getPermutationMinorToMajor(source_type);
+        ::xla::xtile::GetPermutationMinorToMajor(source_type);
     if (!minor_to_major_or.ok()) {
       return rewriter.notifyMatchFailure(extract_op,
                                          minor_to_major_or.status().ToString());
@@ -276,7 +224,7 @@ class XTileInsertToTriton
     }
 
     absl::StatusOr<SmallVector<int64_t>> minor_to_major_or =
-        getPermutationMinorToMajor(destination_type);
+        ::xla::xtile::GetPermutationMinorToMajor(destination_type);
     if (!minor_to_major_or.ok()) {
       return rewriter.notifyMatchFailure(insert_op,
                                          minor_to_major_or.status().ToString());

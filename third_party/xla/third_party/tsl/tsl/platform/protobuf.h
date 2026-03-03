@@ -30,24 +30,26 @@ limitations under the License.
 // TensorFlow code should use the ::tensorflow::protobuf namespace to
 // refer to all protobuf APIs.
 
-#include "google/protobuf/descriptor.pb.h"         // IWYU pragma: keep
-#include "google/protobuf/arena.h"                // IWYU pragma: keep
-#include "google/protobuf/descriptor.h"           // IWYU pragma: keep
-#include "google/protobuf/dynamic_message.h"      // IWYU pragma: keep
-#include "google/protobuf/io/coded_stream.h"      // IWYU pragma: keep
-#include "google/protobuf/io/tokenizer.h"         // IWYU pragma: keep
-#include "google/protobuf/io/zero_copy_stream.h"  // IWYU pragma: keep
-#include "google/protobuf/io/zero_copy_stream_impl_lite.h"  // IWYU pragma: keep
-#include "google/protobuf/map.h"                 // IWYU pragma: keep
-#include "google/protobuf/message.h"             // IWYU pragma: keep
-#include "google/protobuf/repeated_field.h"      // IWYU pragma: keep
-#include "google/protobuf/repeated_ptr_field.h"  // IWYU pragma: keep
-#include "google/protobuf/text_format.h"         // IWYU pragma: keep
-#include "google/protobuf/util/delimited_message_util.h"  // IWYU pragma: keep
-#include "google/protobuf/util/field_comparator.h"     // IWYU pragma: keep
-#include "google/protobuf/util/json_util.h"            // IWYU pragma: keep
-#include "google/protobuf/util/message_differencer.h"  // IWYU pragma: keep
-#include "google/protobuf/util/type_resolver_util.h"   // IWYU pragma: keep
+// IWYU pragma: begin_exports
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/arena.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/dynamic_message.h"
+#include "google/protobuf/io/coded_stream.h"
+#include "google/protobuf/io/tokenizer.h"
+#include "google/protobuf/io/zero_copy_stream.h"
+#include "google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "google/protobuf/map.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/repeated_field.h"
+#include "google/protobuf/repeated_ptr_field.h"
+#include "google/protobuf/text_format.h"
+#include "google/protobuf/util/delimited_message_util.h"
+#include "google/protobuf/util/field_comparator.h"
+#include "google/protobuf/util/json_util.h"
+#include "google/protobuf/util/message_differencer.h"
+#include "google/protobuf/util/type_resolver_util.h"
+// IWYU pragma: end_exports
 #include "tsl/platform/tstring.h"
 
 #if !TSL_IS_IN_OSS

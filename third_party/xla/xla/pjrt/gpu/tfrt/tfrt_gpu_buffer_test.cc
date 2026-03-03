@@ -54,7 +54,7 @@ class TfrtGpuBufferTest : public ::testing::Test {
  protected:
   void SetUp() override {
     ASSERT_OK_AND_ASSIGN(client_, GetTfrtGpuClient(GpuClientOptions()));
-    tfrt_gpu_client_ = tensorflow::down_cast<TfrtGpuClient*>(client_.get());
+    tfrt_gpu_client_ = absl::down_cast<TfrtGpuClient*>(client_.get());
   }
 
   TfrtGpuThreadChecker thread_checker_;
@@ -65,7 +65,7 @@ class TfrtGpuBufferTest : public ::testing::Test {
 TEST_F(TfrtGpuBufferTest, CreateBuffer) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
+      absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
@@ -137,7 +137,7 @@ TEST_F(TfrtGpuBufferTest, AcquireExternalReference) {
 TEST_F(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
+      absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
@@ -181,7 +181,7 @@ TEST_F(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipNoWait) {
 TEST_F(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
+      absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
@@ -246,7 +246,7 @@ TEST_F(TfrtGpuBufferTest, ReleaseDeviceMemoryOwnershipWait) {
 TEST_F(TfrtGpuBufferTest, Delete) {
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
+      absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
@@ -321,6 +321,38 @@ TEST_F(TfrtGpuBufferTest, CopyPoisonedBuffer) {
                   absl_testing::StatusIs(absl::StatusCode::kInternal, errmsg));
     }
   }
+}
+
+TEST_F(TfrtGpuBufferTest, Bitcast) {
+  std::vector<int32_t> data{3};
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+  TF_ASSERT_OK_AND_ASSIGN(
+      *shape.mutable_layout(),
+      client_->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+
+  Shape new_shape = ShapeUtil::MakeShape(S32, {1});
+  TF_ASSERT_OK_AND_ASSIGN(*new_shape.mutable_layout(),
+                          client_->GetDefaultLayout(new_shape.element_type(),
+                                                    new_shape.dimensions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client_->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client_->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto bitcast_buffer,
+      buffer->Bitcast(new_shape.element_type(), new_shape.dimensions(),
+                      &new_shape.layout()));
+  EXPECT_TRUE(buffer->IsDeleted());
+  ASSERT_EQ(bitcast_buffer->on_device_shape(), new_shape);
+
+  auto future = bitcast_buffer->ToLiteral();
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
+  std::vector<int32_t> expected = {3};
+  EXPECT_EQ(shared_literal->data<int32_t>(), expected);
 }
 
 // TODO: b/382117736 - Add test for logical shape when shape is dynamic after

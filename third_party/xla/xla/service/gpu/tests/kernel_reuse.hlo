@@ -55,21 +55,15 @@ ENTRY main {
 
 HloModule t, is_scheduled=true
 
-c0 {
-  p0 = f16[15,19]{1,0} parameter(0)
-  ROOT r = f16[15,19]{1,0} copy(p0)
-}
-c1 {
-  p0 = s8[19,17]{1,0} parameter(0)
-  c = f16[19,17]{1,0} convert(p0)
-  ROOT r = f16[19,17]{1,0} copy(c)
-}
 triton_gemm_dot0 {
-  parameter_1 = f16[15,19]{1,0} parameter(1)
-  parameter_0 = s8[19,17]{1,0} parameter(0)
-  a = f16[15,19] fusion(parameter_1), kind=kCustom, calls=c0, backend_config="{\"fusion_backend_config\": {kind: \"__triton_nested_gemm_fusion\", block_level_fusion_config: {\"output_tiles\":[{\"sizes\":[\"16\",\"16\"]}]}}}"
-  b = f16[19,17] fusion(parameter_0), kind=kCustom, calls=c1, backend_config="{\"fusion_backend_config\": {kind: \"__triton_nested_gemm_fusion\", block_level_fusion_config: {\"output_tiles\":[{\"sizes\":[\"16\",\"16\"]}]}}}"
-  ROOT dot0.1 = f16[15,17]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p0 = s8[19,17]{1,0} parameter(0)
+  p1 = f16[15,19]{1,0} parameter(1)
+  c = f16[19,17]{1,0} convert(p0)
+  rhs = f16[19,17]{1,0} copy(c)
+  lhs = f16[15,19]{1,0} copy(p1)
+  ROOT dot0.1 = f16[15,17]{1,0} dot(lhs, rhs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 
 c2 {
@@ -84,9 +78,12 @@ c3 {
 triton_gemm_dot1 {
   parameter_1.1 = f16[15,19]{1,0} parameter(1)
   parameter_0.1 = s8[19,17]{1,0} parameter(0)
-  a = f16[15,19] fusion(parameter_1.1), kind=kCustom, calls=c2, backend_config="{\"fusion_backend_config\": {kind: \"__triton_nested_gemm_fusion\", block_level_fusion_config: {\"output_tiles\":[{\"sizes\":[\"16\",\"16\"]}]}}}"
-  b = f16[19,17] fusion(parameter_0.1), kind=kCustom, calls=c3, backend_config="{\"fusion_backend_config\": {kind: \"__triton_nested_gemm_fusion\", block_level_fusion_config: {\"output_tiles\":[{\"sizes\":[\"16\",\"16\"]}]}}}"
-  ROOT dot1.1 = f16[15,17]{1,0} dot(a, b), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  a = f16[15,19]{1,0} copy(parameter_1.1)
+  c = f16[19,17]{1,0} convert(parameter_0.1)
+  b = f16[19,17]{1,0} copy(c)
+  ROOT dot1.1 = f16[15,17]{1,0} dot(a, b),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 
 ENTRY e {

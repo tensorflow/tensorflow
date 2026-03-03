@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tensorflow/lite/logger.h"
@@ -53,20 +54,24 @@ void MemoryUsageMonitor::Start() {
     // Note we retrieve the memory usage at the very beginning of the thread.
     while (true) {
       const auto mem_info = sampler_->GetMemoryUsage();
-      int64_t current_peak_bytes = mem_info.mem_footprint_kb * 1024;
-      if (current_peak_bytes > peak_mem_footprint_bytes_) {
-        peak_mem_footprint_bytes_ = current_peak_bytes;
+      {
+        absl::MutexLock lock(mutex_);
+        int64_t current_peak_bytes = mem_info.mem_footprint_kb * 1024;
+        if (current_peak_bytes > peak_mem_footprint_bytes_) {
+          peak_mem_footprint_bytes_ = current_peak_bytes;
+        }
+        int64_t current_in_use_bytes =
+            static_cast<int64_t>(mem_info.in_use_allocated_bytes);
+        if (current_in_use_bytes > peak_in_use_mem_bytes_) {
+          peak_in_use_mem_bytes_ = current_in_use_bytes;
+        }
+        int64_t current_private_footprint_bytes =
+            mem_info.private_footprint_bytes;
+        if (current_private_footprint_bytes > peak_private_footprint_bytes_) {
+          peak_private_footprint_bytes_ = current_private_footprint_bytes;
+        }
       }
-      int64_t current_in_use_bytes =
-          static_cast<int64_t>(mem_info.in_use_allocated_bytes);
-      if (current_in_use_bytes > peak_in_use_mem_bytes_) {
-        peak_in_use_mem_bytes_ = current_in_use_bytes;
-      }
-      int64_t current_private_footprint_bytes =
-          mem_info.private_footprint_bytes;
-      if (current_private_footprint_bytes > peak_private_footprint_bytes_) {
-        peak_private_footprint_bytes_ = current_private_footprint_bytes;
-      }
+
       if (stop_signal_->HasBeenNotified()) break;
       sampler_->SleepFor(sampling_interval_);
     }

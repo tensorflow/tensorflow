@@ -328,7 +328,7 @@ cc_library(
     name = "rocm_platform_id",
     srcs = ["rocm_platform_id.cc"],
     hdrs = ["rocm_platform_id.h"],
-    deps = ["//xla/stream_executor:platform"],
+    deps = ["//xla/stream_executor:platform_id"],
 )
 
 cc_library(
@@ -829,6 +829,7 @@ cc_library(
         ":hipfft_plugin",
         ":make_batch_pointers_kernel_rocm",
         ":miopen_plugin",
+        ":multi_gpu_barrier_kernel_rocm",
         ":ragged_all_to_all_kernel_rocm",
         ":redzone_allocator_kernel_rocm",
         ":repeat_buffer_kernel_rocm",

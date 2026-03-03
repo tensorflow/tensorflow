@@ -30,18 +30,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/pjrt/pjrt_client.h"
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
-#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
@@ -55,29 +52,11 @@ namespace {
 
 constexpr absl::string_view kInterpreter = "interpreter";
 
-// Returns either an HloRunner or HloRunnerPjRt implementation depending on
-// whether there exists a registered PjRtClientFactory.
 std::tuple<std::unique_ptr<HloRunnerInterface>,
            HloRunnerAgnosticTestBase::DeviceShapeRepresentationFn,
            HloRunnerAgnosticTestBase::DeviceShapeSizeFn>
 GetHloRunnerAndFunctionsForTest(se::Platform* test_platform) {
-  if (ShouldUsePjRt()) {
-    PjRtClientTestFactoryRegistry& pjrt_registry =
-        GetGlobalPjRtClientTestFactory();
-    absl::StatusOr<std::unique_ptr<PjRtClient>> client = pjrt_registry.Get()();
-    CHECK_OK(client.status())
-        << "Failed to create PjRt client. " << client.status();
-    PjRtClientTestFactoryRegistry::DeviceShapeRepresentationFn
-        device_shape_representation_fn =
-            pjrt_registry.GetDeviceShapeRepresentationFn(client->get());
-    PjRtClientTestFactoryRegistry::DeviceShapeSizeFn device_shape_size_fn =
-        pjrt_registry.GetDeviceShapeSizeFn(client->get());
-
-    return std::make_tuple(std::make_unique<HloRunnerPjRt>(*std::move(client)),
-                           device_shape_representation_fn,
-                           device_shape_size_fn);
-  }
-
+  CHECK(!ShouldUsePjRt());
   auto runner = std::make_unique<HloRunner>(test_platform);
   Compiler* const absl_nonnull compiler = runner->backend().compiler();
   return std::make_tuple(

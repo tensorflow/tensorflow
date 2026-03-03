@@ -39,10 +39,10 @@ namespace xla {
 namespace gpu {
 
 absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
-                                             const HloInstruction* instr,
+                                             int64_t instr_id,
                                              std::unique_ptr<se::Event> event) {
-  Key key = {executor, instr};
-  absl::MutexLock lock(&mutex_);
+  Key key = {executor, instr_id};
+  absl::MutexLock lock(mutex_);
   VLOG(3) << "Emplace event " << event.get();
   if (auto [it, inserted] = events_.try_emplace(key, std::move(event));
       inserted) {
@@ -52,8 +52,8 @@ absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
 }
 
 absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
-    se::StreamExecutor* executor, const HloInstruction* instr) {
-  Key key = {executor, instr};
+    se::StreamExecutor* executor, int64_t instr_id) {
+  Key key = {executor, instr_id};
   absl::MutexLock lock(mutex_);
   if (auto event = events_.extract(key)) {
     VLOG(3) << "Extract event " << event.mapped().get();

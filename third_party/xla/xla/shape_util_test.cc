@@ -344,6 +344,17 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
 }
 
+TEST(ShapeUtilTest, ByteSizeOfElementsRecursive) {
+  EXPECT_EQ(
+      4 * 2,
+      ShapeUtil::ByteSizeOfElementsRecursive(ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})})));
+  EXPECT_EQ(4 * 16 * 32 * 64 + 16 * 32 * 64,
+            ShapeUtil::ByteSizeOfElementsRecursive(ShapeUtil::MakeTupleShape(
+                {ShapeUtil::MakeShape(S32, {16, 32, 64}),
+                 ShapeUtil::MakeShape(S8, {16, 32, 64})})));
+}
+
 TEST(ShapeUtilTest, UnpackedByteStrides) {
   Shape shape1 = ShapeUtil::MakeShape(F32, {3, 5, 7});
   Shape shape2 = ShapeUtil::MakeShape(F16, {5, 7, 9});

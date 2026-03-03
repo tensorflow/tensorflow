@@ -30,18 +30,19 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-void ExpectHasSubstr(const string& s, const string& expected) {
+void ExpectHasSubstr(const std::string& s, const std::string& expected) {
   EXPECT_TRUE(absl::StrContains(s, expected))
       << "'Generated ops '" << s << "' does not contain '" << expected << "'";
 }
 
-void ExpectDoesNotHaveSubstr(const string& s, const string& expected) {
+void ExpectDoesNotHaveSubstr(const std::string& s,
+                             const std::string& expected) {
   EXPECT_FALSE(absl::StrContains(s, expected))
       << "'Generated ops contains '" << expected << "'";
 }
 
-void ExpectSubstrOrder(const string& s, const string& before,
-                       const string& after) {
+void ExpectSubstrOrder(const std::string& s, const std::string& before,
+                       const std::string& after) {
   int before_pos = s.find(before);
   int after_pos = s.find(after);
   ASSERT_NE(std::string::npos, before_pos);
@@ -55,7 +56,7 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
 
   ApiDefMap api_def_map(ops);
 
-  string code =
+  std::string code =
       GetPythonOps(ops, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
@@ -80,12 +81,12 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
       "\"_atypes.UInt8\", "
       "\"_atypes.Variant\")";
 
-  const string fake_param_typevar =
+  const std::string fake_param_typevar =
       "TV_FakeParam_dtype = TypeVar(\"TV_FakeParam_dtype\"" + all_types;
-  const string fake_param =
+  const std::string fake_param =
       "def fake_param_eager_fallback(dtype: TV_FakeParam_dtype, shape, name, "
       "ctx) -> Annotated[Any, TV_FakeParam_dtype]:";
-  const string fake_param_fallback =
+  const std::string fake_param_fallback =
       "def fake_param_eager_fallback(dtype: TV_FakeParam_dtype, shape, name, "
       "ctx) -> Annotated[Any, TV_FakeParam_dtype]:";
 
@@ -93,13 +94,13 @@ TEST(PythonOpGen, TypeAnnotateAllOps) {
   ExpectHasSubstr(code, fake_param);
   ExpectHasSubstr(code, fake_param_fallback);
 
-  const string to_bool_typevar =
+  const std::string to_bool_typevar =
       "TV_ToBool_T = TypeVar(\"TV_ToBool_T\"" + all_types;
-  const string to_bool_ =
+  const std::string to_bool_ =
       "def to_bool(input: Annotated[Any, TV_ToBool_T], "
       "name=None) -> "
       "Annotated[Any, _atypes.Bool]:";
-  const string to_bool_fallback =
+  const std::string to_bool_fallback =
       "def to_bool_eager_fallback(input: "
       "Annotated[Any, TV_ToBool_T], name, ctx) "
       "-> Annotated[Any, _atypes.Bool]:";
@@ -135,17 +136,17 @@ TEST(PythonOpGen, TypeAnnotateSingleTypeTensor) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code =
+  std::string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
-  const string typed_bar =
+  const std::string typed_bar =
       "def bar(x: Annotated[Any, _atypes.String], y: "
       "Annotated[Any, _atypes.QInt8], "
       "name=None) -> Annotated[Any, _atypes.Bool]:";
   ExpectHasSubstr(code, typed_bar);
 
-  const string untyped_bar = "def bar(x, y, name=None):";
+  const std::string untyped_bar = "def bar(x, y, name=None):";
   ExpectDoesNotHaveSubstr(code, untyped_bar);
 }
 
@@ -196,11 +197,11 @@ TEST(PythonOpGen, TypeAnnotateMultiTypeTensor) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code =
+  std::string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
-  const string typed_foo =
+  const std::string typed_foo =
       "def foo(x: Annotated[Any, TV_Foo_T], y: "
       "Annotated[Any, TV_Foo_T2], name=None) "
       "-> Annotated[Any, TV_Foo_T]:";
@@ -254,11 +255,11 @@ TEST(PythonOpGen, GenerateCorrectTypeVars) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code =
+  std::string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
-  const string typevars_foo = R"(
+  const std::string typevars_foo = R"(
 TV_Foo_T = TypeVar("TV_Foo_T", "_atypes.Int8", "_atypes.UInt8")
 TV_Foo_T2 = TypeVar("TV_Foo_T2", "_atypes.Float32", "_atypes.Float64", "_atypes.String")
 )";
@@ -313,11 +314,11 @@ TEST(PythonOpGen, TypeAnnotateFallback) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code =
+  std::string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
-  const string typed_foo_fallback =
+  const std::string typed_foo_fallback =
       "def foo_eager_fallback(x: Annotated[Any, TV_Foo_T], y: "
       "Annotated[Any, TV_Foo_T2], name, ctx) -> "
       "Annotated[Any, TV_Foo_T]:";
@@ -371,12 +372,12 @@ TEST(PythonOpGen, GenerateTypeVarAboveOp) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code =
+  std::string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
-  const string typevar_foo = "TV_Foo_";
-  const string def_foo = "def foo";
+  const std::string typevar_foo = "TV_Foo_";
+  const std::string def_foo = "def foo";
   ExpectSubstrOrder(code, typevar_foo, def_foo);
 }
 
@@ -426,15 +427,15 @@ TEST(PythonOpGen, TypeAnnotateDefaultParams) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code =
+  std::string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
-  const string params =
+  const std::string params =
       "def foo_bar(x: Annotated[Any, _atypes.Float32], t: "
       "TV_FooBar_t, "
       "var1:bool=False, var2:int=0, name=None)";
-  const string params_fallback =
+  const std::string params_fallback =
       "def foo_bar_eager_fallback(x: "
       "Annotated[Any, _atypes.Float32], t: "
       "TV_FooBar_t, var1: bool, var2: int, name, ctx)";
@@ -477,29 +478,29 @@ TEST(PythonOpGen, NoTypingSequenceTensors) {
   protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);
   ApiDefMap api_def_map(op_defs);
 
-  string code =
+  std::string code =
       GetPythonOps(op_defs, api_def_map, OpRegOffsets(), /* hidden_ops= */ {},
                    /* source_file_list= */ {});
 
-  const string baz_def_line = "def baz(inputs, name=None):";
+  const std::string baz_def_line = "def baz(inputs, name=None):";
 
   ExpectHasSubstr(code, baz_def_line);
 }
 
 TEST(PythonOpGen, InsertCommentsForSourceFileLocation) {
-  std::vector<string> source_file_list{"some_ops.cc", "another_ops.cc"};
+  std::vector<std::string> source_file_list{"some_ops.cc", "another_ops.cc"};
   OpList op_defs;
   ApiDefMap api_def_map(op_defs);
-  string code = GetPythonOps(op_defs, api_def_map, OpRegOffsets(),
-                             /* hidden_ops= */ {}, source_file_list);
+  std::string code = GetPythonOps(op_defs, api_def_map, OpRegOffsets(),
+                                  /* hidden_ops= */ {}, source_file_list);
 
   ExpectHasSubstr(code,
                   "Original C++ source file: some_ops.cc, another_ops.cc");
 }
 
-GeneratedCodeInfo DecodeAnnotation(string anno) {
-  std::vector<string> sp = absl::StrSplit(anno, ':');
-  string gci_str;
+GeneratedCodeInfo DecodeAnnotation(std::string anno) {
+  std::vector<std::string> sp = absl::StrSplit(anno, ':');
+  std::string gci_str;
   absl::Base64Unescape(sp[1], &gci_str);
   GeneratedCodeInfo gci;
   gci.ParseFromString(gci_str);
@@ -525,11 +526,11 @@ TEST(PythonOpGen, GenerateMetadataWhenOpRegOffsetsIsPresent) {
   offset->set_start(0);
   offset->set_end(3);
 
-  string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
+  std::string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
   int target_begin = code.find(absl::StrCat("def baz")) + 4;
   int target_end = target_begin + 3;
 
-  std::vector<string> sp = absl::StrSplit(code, '\n');
+  std::vector<std::string> sp = absl::StrSplit(code, '\n');
   std::string last_line = sp.back();
   ASSERT_TRUE(absl::StrContains(last_line,
                                 "# kythe.proto.metadata.GeneratedCodeInfo:"));
@@ -569,12 +570,12 @@ TEST(PythonOpGen, GenerateMetadataForMultipleOutputOp) {
   offset->set_start(0);
   offset->set_end(3);
 
-  string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
+  std::string code = GetPythonOps(op_defs, api_def_map, offsets, {}, {});
   int target_begin = code.find(absl::StrCat("def baz")) + 4;
   int target_end = target_begin + 3;
 
-  std::vector<string> sp = absl::StrSplit(code, '\n');
-  string last_line = sp.back();
+  std::vector<std::string> sp = absl::StrSplit(code, '\n');
+  std::string last_line = sp.back();
   ASSERT_TRUE(absl::StrContains(last_line,
                                 "# kythe.proto.metadata.GeneratedCodeInfo:"));
   GeneratedCodeInfo gci = DecodeAnnotation(last_line);
@@ -589,7 +590,7 @@ TEST(PythonOpGen, GenerateMetadataForMultipleOutputOp) {
 TEST(PythonOpGen, NotGenerateMetadataWhenOpRegOffsetsIsEmpty) {
   OpList op_defs;
   ApiDefMap api_def_map(op_defs);
-  string code = GetPythonOps(op_defs, api_def_map, OpRegOffsets(), {}, {});
+  std::string code = GetPythonOps(op_defs, api_def_map, OpRegOffsets(), {}, {});
 
   ExpectDoesNotHaveSubstr(code, "# kythe.proto.metadata.GeneratedCodeInfo:");
 }

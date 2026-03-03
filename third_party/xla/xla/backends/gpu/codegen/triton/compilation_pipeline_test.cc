@@ -15,14 +15,11 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 
-#include <iterator>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
-#include "absl/strings/str_join.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -33,9 +30,7 @@ namespace gpu {
 
 using ::testing::Contains;
 
-TEST(CompilationPipelineTest, UnswitchLoopsAfterLICM) {
-  // As the loop unswitcher relies on loop invariant code to be outside of the
-  // loop, we need to check that LICM runs before the loop unswitcher.
+TEST(CompilationPipelineTest, ContainsUnswitchLoopsCompositePass) {
   mlir::MLIRContext ctx;
   mlir::PassManager pm(&ctx);
 
@@ -48,20 +43,7 @@ TEST(CompilationPipelineTest, UnswitchLoopsAfterLICM) {
   for (const mlir::Pass& pass : pm.getPasses()) {
     pass_names.push_back(pass.getName().str());
   }
-  ASSERT_THAT(pass_names, Contains("LoopInvariantCodeMotion"));
-  ASSERT_THAT(pass_names, Contains("TritonXLAUnswitchLoopsPass"));
-  int licm_index = std::distance(
-      pass_names.begin(), absl::c_find(pass_names, "LoopInvariantCodeMotion"));
-  int unswitch_index =
-      std::distance(pass_names.begin(),
-                    absl::c_find(pass_names, "TritonXLAUnswitchLoopsPass"));
-  // There is no hard requirement to run LICM **immediately** before the loop
-  // unswitcher but you should consider if the newly added pass might interact
-  // with the loop unswitcher.
-  EXPECT_EQ(unswitch_index, licm_index + 1)
-      << "TritonXLAUnswitchLoopsPass is expected to run right after "
-         "LoopInvariantCodeMotionPass. Got passes: "
-      << absl::StrJoin(pass_names, ", ");
+  ASSERT_THAT(pass_names, Contains("TritonXLAUnswitchLoopsComposite"));
 }
 
 }  // namespace gpu

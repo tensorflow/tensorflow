@@ -384,7 +384,7 @@ cc_library(
     srcs = ["utils/attribute_utils.cc"],
     hdrs = ["utils/attribute_utils.h"],
     deps = [
-        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -478,6 +478,7 @@ cc_library(
         "ir/tfl_ops.h",
     ],
     deps = [
+        ":attribute_utils",
         ":converter_inc",
         ":cost_estimators",
         ":shape_and_size_utils",
@@ -497,11 +498,13 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -587,6 +590,7 @@ cc_library(
         ":cleanup_optimization_barrier",
         ":converter_inc",
         ":cost_estimators",
+        ":elements_attr_roundtrip_pass",
         ":optimize_broadcast_like_pass",
         ":optimize_broadcast_like_pass_options",
         ":optimize_pass_options",
@@ -741,12 +745,59 @@ cc_library(
 )
 
 cc_library(
+    name = "elements_attr_roundtrip_pass",
+    srcs = [
+        "transforms/utilities/elements_attr_roundtrip_pass.cc",
+    ],
+    hdrs = [
+        "transforms/utilities/elements_attr_roundtrip_pass.h",
+    ],
+    deps = [
+        ":pass",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "low_bit_utils",
     srcs = [
         "utils/low_bit_utils.cc",
     ],
     hdrs = [
         "utils/low_bit_utils.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "low_bit_utils_test",
+    size = "small",
+    srcs = ["utils/low_bit_utils_test.cc"],
+    deps = [
+        ":low_bit_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -1114,6 +1165,7 @@ cc_library(
         ":constant_utils",
         ":convert_type",
         ":cost_estimators",
+        ":elements_attr_roundtrip_pass",
         ":fake_quant_utils",
         ":lstm_utils",
         ":nms_utils",
@@ -1381,6 +1433,7 @@ cc_library(
     ],
     deps = [
         "convert_type",
+        ":elements_attr_roundtrip_pass",
         ":op_quant_spec_getters_inc",
         ":optimize_broadcast_like_pass_options",
         ":shape_and_size_utils",
@@ -1606,6 +1659,7 @@ cc_library(
         "flatbuffer_export_flags.h",
     ],
     deps = [
+        ":const_tensor_utils",
         ":control_edges",
         ":convert_type",
         ":converter_flags_proto_cc",
@@ -1648,7 +1702,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@flatbuffers",
@@ -1938,6 +1991,7 @@ cc_library(
         ":common",
         ":converter_flags_proto_cc",
         ":converter_pass_options_setter",
+        ":elements_attr_roundtrip_pass",
         ":fake_quant_utils",
         ":optimize_broadcast_like_pass",
         ":pass",

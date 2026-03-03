@@ -132,6 +132,9 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
       batcher_options.use_global_scheduler = true;
       batcher_options.rank_queues = true;
     }
+    if (options.enable_priority_aware_batch_scheduler) {
+      batcher_options.rank_queues = true;
+    }
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 
@@ -155,7 +158,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_batch_timeout_micros,
             options.low_priority_max_enqueued_batches,
             options.low_priority_allowed_batch_sizes,
-            options.mixed_priority_batching_policy),
+            options.mixed_priority_batching_policy,
+            options.enable_priority_aware_batch_scheduler),
         options.allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -330,7 +334,8 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   results.resize(bef_func_->result_types().size());
   assert(results.size() > 1);
   assert(bef_func_->result_types().front().GetName() == "!tfrt.chain");
-  auto& exec_ctx = down_cast<const FallbackBatchTask&>(last_task).tfrt_exec_ctx;
+  auto& exec_ctx =
+      absl::down_cast<const FallbackBatchTask&>(last_task).tfrt_exec_ctx;
 
   auto statusor =
       SetUpRequestContext(host_ctx_, resource_context_, runner_table_,
@@ -464,6 +469,7 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("Tout: list(type)")
     .Attr("enable_large_batch_splitting: bool = false")
     .Attr("disable_padding: bool = false")
+    .Attr("enable_priority_aware_batch_scheduler: bool = false")
     // An opaque function handle for the batch function.
     .Attr("opaque_function_handle: int")
     .SetShapeFn(shape_inference::UnknownShape);

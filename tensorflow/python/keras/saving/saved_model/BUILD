@@ -16,7 +16,7 @@
 # Description:
 #   Keras saving and loading files for SavedModel.
 
-load("//tensorflow:py.default.bzl", "py_library")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],

@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
@@ -225,6 +226,12 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
+    const RaggedAllToAllStartThunk& thunk) {
+  return std::make_unique<RaggedAllToAllCmd>(
+      thunk.ragged_all_to_all_config(), thunk.buffers(), thunk.async_events());
+}
+
+static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const RecvThunk& thunk) {
   return std::make_unique<RecvCmd>(thunk.config(), thunk.p2p_config(),
                                    thunk.buffer(), thunk.async_events());
@@ -272,7 +279,8 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
   if (auto bundle = thunk.bundle(); bundle.has_value()) {
     return std::make_unique<CustomCallCmd>(
         thunk.target_name(), bundle->execute, thunk.operands(), thunk.results(),
-        *thunk.call_frame(), thunk.execution_state(),
+        *thunk.call_frame(), thunk.thunk_info().thunk_id,
+        thunk.execution_state(),
         /*called_computation=*/nullptr);  // TODO(b/342285364)
   }
   return std::make_unique<CustomCallCmd>(thunk.target_name(),
@@ -357,6 +365,8 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return append(Convert<CollectiveBroadcastStartThunk>(thunk));
     case Thunk::Kind::kCollectivePermuteStart:
       return append(Convert<CollectivePermuteStartThunk>(thunk));
+    case Thunk::Kind::kRaggedAllToAllStart:
+      return append(Convert<RaggedAllToAllStartThunk>(thunk));
     case Thunk::Kind::kRecv:
       return append(Convert<RecvThunk>(thunk));
     case Thunk::Kind::kSend:
@@ -384,6 +394,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     case Thunk::Kind::kAllToAllDone:
     case Thunk::Kind::kCollectiveBroadcastDone:
     case Thunk::Kind::kCollectivePermuteDone:
+    case Thunk::Kind::kRaggedAllToAllDone:
     case Thunk::Kind::kRecvDone:
     case Thunk::Kind::kSendDone:
     case Thunk::Kind::kReduceScatterDone:

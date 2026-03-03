@@ -169,12 +169,8 @@ class DynamicSliceThunk : public Thunk {
     return offset_primitive_types_;
   }
 
-  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
-  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
-  absl::Status TransformAllNestedThunks(
-      absl::FunctionRef<
-          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-          fn) override;
+  absl::Status WalkNested(Walker callback) override;
+  absl::Status TransformNested(Transformer callback) override;
 
   BufferUses buffer_uses() const override;
 

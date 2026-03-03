@@ -3016,7 +3016,8 @@ absl::Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
           activations_new, /*rhs=*/convolution->mutable_operand(1),
           convolution->feature_group_count(), convolution->batch_group_count(),
           new_window, new_dim_numbers, convolution->precision_config(),
-          /*preferred_element_type=*/convolution->shape().element_type()));
+          /*preferred_element_type=*/convolution->shape().element_type(),
+          convolution->sparsity_config()));
   convolution->SetupDerivedInstruction(new_conv);
 
   old_to_new_instrs_[convolution] = new_conv;
@@ -3767,7 +3768,8 @@ absl::Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
           activations_new, kernel_new, convolution->feature_group_count(),
           convolution->batch_group_count(), new_window, new_dim_numbers,
           convolution->precision_config(),
-          /*preferred_element_type=*/convolution->shape().element_type()));
+          /*preferred_element_type=*/convolution->shape().element_type(),
+          convolution->sparsity_config()));
   convolution->SetupDerivedInstruction(new_conv);
 
   VLOG(2) << "New backprop filter convolution " << new_conv->ToString();
@@ -4134,7 +4136,8 @@ absl::Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
           convolution->feature_group_count(), convolution->batch_group_count(),
           new_window, new_dim_numbers, convolution->precision_config(),
           /*preferred_element_type=*/convolution->shape().element_type(),
-          &convolution->metadata(), &convolution->frontend_attributes()));
+          /*sparsity_config=*/SparsityConfig(), &convolution->metadata(),
+          &convolution->frontend_attributes()));
   convolution->SetupDerivedInstruction(new_conv);
 
   // If the activations were to be batch-to-spaced again, simply use the

@@ -43,7 +43,7 @@ using ::testing::Truly;
 class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
  public:
   GpuCostModelStatsCollection cost_model_stats_{
-      TestGpuDeviceInfo::RTXH100SXMDeviceInfo(),
+      TestGpuDeviceInfo::H100SXMDeviceInfo(),
       GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
       &mlir_context_};
 

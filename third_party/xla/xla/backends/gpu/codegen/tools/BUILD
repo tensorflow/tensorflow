@@ -54,7 +54,7 @@ xla_cc_binary(
     deps = [
         ":test_lib",
         "//xla/codegen/tools:test_lib",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
@@ -80,7 +80,7 @@ xla_cc_binary(
         "//xla/codegen/tools:test_lib",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:indexing_test_utils",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/service:gpu_plugin",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",

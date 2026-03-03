@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <tuple>
@@ -61,34 +60,32 @@ CollectiveStreamId GetCollectiveStreamId(bool is_async,
   return stream_id;
 }
 
-GpuCliqueKey::GpuCliqueKey(
-    std::vector<GlobalDeviceId> devices, int64_t num_local_participants,
-    bool is_p2p, std::vector<std::vector<GlobalDeviceId>> participant_groups,
-    std::vector<IncarnationId> incarnations)
+std::string HumanReadableDeviceGroups(
+    absl::Span<const std::vector<GlobalDeviceId>> device_groups,
+    absl::string_view separator, size_t first, size_t last) {
+  auto fmt = [&](std::string* out, absl::Span<const GlobalDeviceId> group) {
+    absl::StrAppendFormat(out, "[%s]",
+                          HumanReadableDevices(group, separator, 3, 1));
+  };
+
+  if (device_groups.size() > first + last) {
+    return absl::StrCat(
+        absl::StrJoin(device_groups.first(first), separator, fmt), "...",
+        absl::StrJoin(device_groups.last(last), separator, fmt));
+  }
+
+  return absl::StrJoin(device_groups, separator, fmt);
+}
+
+GpuCliqueKey::GpuCliqueKey(std::vector<GlobalDeviceId> devices,
+                           int64_t num_local_participants, bool is_p2p,
+                           std::vector<IncarnationId> incarnations)
     : CliqueKey(std::move(devices)),
       num_local_participants_(num_local_participants),
       is_p2p_(is_p2p),
-      participant_groups_(std::move(participant_groups)),
-      incarnations_(std::move(incarnations)) {
-  for (std::vector<GlobalDeviceId>& group : participant_groups_) {
-    absl::c_sort(group);
-  }
-  // Compare the groups by their first element.
-  auto compare_groups = [](const std::vector<GlobalDeviceId>& lhs,
-                           const std::vector<GlobalDeviceId>& rhs) {
-    CHECK(!lhs.empty());
-    CHECK(!rhs.empty());
-    return lhs[0] < rhs[0];
-  };
-  absl::c_sort(participant_groups_, compare_groups);
-}
+      incarnations_(std::move(incarnations)) {}
 
 bool GpuCliqueKey::is_p2p() const { return is_p2p_; }
-
-std::vector<std::vector<GlobalDeviceId>> GpuCliqueKey::ParticipantGroups()
-    const {
-  return participant_groups_;
-};
 
 bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
   auto* other_gpu = tsl::down_cast<const GpuCliqueKey*>(&other);
@@ -126,19 +123,9 @@ std::vector<GlobalDeviceId> GpuCliqueKey::GetRootDevices(int64_t nroots) const {
 }
 
 std::string GpuCliqueKey::ToString() const {
-  std::string group_string = "";
-  if (!participant_groups_.empty()) {
-    std::vector<std::string> values;
-    values.reserve(participant_groups_.size());
-    for (const auto& group : participant_groups_) {
-      values.push_back(absl::StrFormat("[%s]", HumanReadableDevices(group)));
-    }
-    group_string = absl::StrFormat("; groups=[%s]", absl::StrJoin(values, ","));
-  }
   return absl::StrFormat(
-      "devices=%d:[%s]; is_p2p=%v%s; local_participants=%lld; "
-      "incarnations=[%s]",
-      devices().size(), HumanReadableDevices(devices()), is_p2p_, group_string,
+      "devices=%d:[%s]; is_p2p=%v; local_participants=%lld; incarnations=[%s]",
+      devices().size(), HumanReadableDevices(devices()), is_p2p_,
       num_local_participants_,
       absl::StrJoin(incarnations_, ", ",
                     [](std::string* out, IncarnationId id) {
@@ -147,13 +134,11 @@ std::string GpuCliqueKey::ToString() const {
 }
 
 void GpuCliqueKey::HashValue(absl::HashState state) const {
-  absl::HashState::combine(std::move(state), devices(), participant_groups_,
-                           incarnations_);
+  absl::HashState::combine(std::move(state), devices(), incarnations_);
 }
 
 bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b) {
   return a.devices() == b.devices() &&
-         a.participant_groups_ == b.participant_groups_ &&
          a.num_local_participants_ == b.num_local_participants_ &&
          a.incarnations_ == b.incarnations_;
 }

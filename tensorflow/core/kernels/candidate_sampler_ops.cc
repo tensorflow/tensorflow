@@ -110,8 +110,8 @@ class BaseCandidateSamplerOp : public OpKernel {
   void set_sampler(RangeSampler* sampler) { sampler_.reset(sampler); }
 
  private:
-  int32 num_true_;
-  int32 num_sampled_;
+  int32_t num_true_;
+  int32_t num_sampled_;
   bool unique_;
   std::unique_ptr<RangeSampler> sampler_;
   GuardedPhiloxRandom generator_;
@@ -161,7 +161,7 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
-    string vocab_file;
+    std::string vocab_file;
     OP_REQUIRES_OK(context, context->GetAttr("vocab_file", &vocab_file));
     std::vector<float> unigrams;
     OP_REQUIRES_OK(context, context->GetAttr("unigrams", &unigrams));
@@ -260,7 +260,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
             2, TensorShape({static_cast<int>(weights.size())}), &out_weights));
 
     for (size_t i = 0; i < indices.size(); ++i) {
-      out_indices->vec<int32>()(i) = indices[i];
+      out_indices->vec<int32_t>()(i) = indices[i];
       out_ids->vec<int64_t>()(i) = ids[i];
       out_weights->vec<float>()(i) = weights[i];
     }

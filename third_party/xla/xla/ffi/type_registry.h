@@ -22,15 +22,22 @@ limitations under the License.
 #include <type_traits>
 
 #include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/gtl/int_type.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/util.h"
 
 namespace xla::ffi {
+
+namespace internal {
+struct TypeRegistrationMap;  // Forward declare.
+}  // namespace internal
 
 // XLA FFI has a several APIs that can take ownership of an opaque user data,
 // and then passes it back to the FFI handler via the execution context:
@@ -49,13 +56,31 @@ namespace xla::ffi {
 //    of time and explicitly get a unique type id for them.
 //
 // 2. Internal type id. When FFI handler defined in the same binary we rely
-//    on a global static registry to automatically assign type ids.
+//    on the automatic type registration in the global static registry.
 //
 // TypeInfo defines a set of functions that allow XLA runtime to manipulate
 // external types. For user data, that is forwarded to FFI handlers, they all
 // can be `nullptr` as XLA runtime doesn't manage their lifetime. For stateful
 // handlers, XLA runtime at least must know how to destroy the state when XLA
 // executable is destroyed.
+//
+// WARNING: Some of the APIs accept external `TypeRegistrationMap` argument, and
+// this is an internal implementation detail of how JAX and XLA work when they
+// linked dynamically. For XLA:FFI to work correctly the XLA runtime and FFI
+// handlers implementations should agree on the instance of type registry,
+// otherwise XLA runtime can try to destroy FFI state using incorrect deleter,
+// and it will lead to hard to debug run time crashes. `XLA_FFI_InternalApi`
+// provides access to static instances of type and handler registries that are
+// linked onto the object file that defines the XLA:FFI API itself, and `ffi.h`
+// implementation carefully uses these instances when it works with types.
+//
+// All of these linking intricacies are gone when XLA and JAX linked statically
+// into single binary as all global static objects are automatically deduped
+// (this is how Google works internally). And we jumping through hoops here only
+// to be able to "safely" use internal FFI headers in OSS projects. Safely put
+// in quotes because it's still unsafe as the user should guarantee that they
+// build from the same commit as XLA and JAX with exactly the same toolchain,
+// but if they do that, everything should just work!
 class TypeRegistry {
  public:
   // Unique (within a process) identifier for a type.
@@ -70,9 +95,21 @@ class TypeRegistry {
     using Deserializer =
         absl::StatusOr<std::unique_ptr<void, Deleter>> (*)(absl::string_view);
 
+    bool operator==(const TypeInfo& other) const {
+      return deleter == other.deleter && serializer == other.serializer &&
+             deserializer == other.deserializer;
+    }
+    bool operator!=(const TypeInfo& other) const { return !(*this == other); }
+
     Deleter deleter = nullptr;
     Serializer serializer = nullptr;
     Deserializer deserializer = nullptr;
+  };
+
+  // A type registration record.
+  struct TypeRegistration {
+    TypeId type_id;
+    TypeInfo type_info;
   };
 
   // To declare a type `T` as serializable and deserializable, define a
@@ -100,17 +137,16 @@ class TypeRegistry {
   // registered. Works for both external and internal type ids.
   static absl::StatusOr<TypeInfo> GetTypeInfo(TypeId type_id);
 
-  // Assigns a unique type id to an external type with a given name. Returns an
-  // error if a type with a given name is already registered in the process.
-  static absl::StatusOr<TypeId> AssignExternalTypeId(absl::string_view name,
-                                                     TypeInfo type_info);
-
-  // Registers external type with a given name and type id. Type id is provided
-  // by the caller, and must be unique. Returns an error if a type with a given
-  // name is already registered with a different type id.
-  static absl::Status RegisterExternalTypeId(absl::string_view name,
-                                             TypeId type_id,
+  // Assigns a unique type id to a type with a given name. Returns an error if a
+  // type with a given name is already registered in the process.
+  static absl::StatusOr<TypeId> AssignTypeId(absl::string_view name,
                                              TypeInfo type_info);
+
+  // Registers type with a given name and type id. Type id is provided by the
+  // caller, and must be unique. Returns an error if a type with a given name is
+  // already registered with a different type id.
+  static absl::Status RegisterTypeId(absl::string_view name, TypeId type_id,
+                                     TypeInfo type_info);
 
   // Returns a type name for a given type. For internal type ids only.
   template <typename T>
@@ -132,9 +168,43 @@ class TypeRegistry {
   template <typename T>
   static absl::StatusOr<std::unique_ptr<T>> Deserialize(absl::string_view data);
 
+  // WARNING: Internal APIs that accept custom type registration map.
+
+  // Returns already assigned type id for a given type name or assigns a new
+  // one. Returns an error if a type with a given name is already registered in
+  // the process and it has a different type info.
+  static absl::StatusOr<TypeId> GetOrAssignTypeId(
+      internal::TypeRegistrationMap& registry, absl::string_view name,
+      TypeInfo type_info);
+
+  // A template that automatically infers type name and info for `T`.
+  template <typename T>
+  static absl::StatusOr<TypeId> GetOrAssignTypeId(
+      internal::TypeRegistrationMap& registry);
+
  private:
   static TypeId GetNextTypeId();
 };
+
+namespace internal {
+
+// `TypeRegistry` is implemented on top of the `TypeRegistrationMap` that
+// holds registrations for all types in the process. It is critical that
+// FFI handlers and XLA runtime share the same instance of this map.
+struct TypeRegistrationMap {
+  absl::Mutex mu;
+  absl::flat_hash_map<std::string, TypeRegistry::TypeRegistration> map
+      ABSL_GUARDED_BY(mu);
+};
+
+// Returns a reference to a static instance of a type registration map.
+TypeRegistrationMap& StaticTypeRegistrationMap();
+
+}  // namespace internal
+
+//===---------------------------------------------------------------------===///
+// TypeRegistry templates implementation.
+//===---------------------------------------------------------------------===///
 
 template <typename T>
 absl::string_view TypeRegistry::GetTypeName() {
@@ -143,10 +213,8 @@ absl::string_view TypeRegistry::GetTypeName() {
 
 template <typename T>
 TypeRegistry::TypeId TypeRegistry::GetTypeId() {
-  // We always register internal types in the static type registry, because we
-  // want to be able to lookup them by name.
   static const absl::NoDestructor<absl::StatusOr<TypeId>> id(
-      AssignExternalTypeId(GetTypeName<T>(), GetTypeInfo<T>()));
+      AssignTypeId(GetTypeName<T>(), GetTypeInfo<T>()));
   return **id;
 }
 
@@ -199,6 +267,12 @@ absl::StatusOr<std::unique_ptr<T>> TypeRegistry::Deserialize(
   }
   TF_ASSIGN_OR_RETURN(auto ptr, type_info.deserializer(data));
   return std::unique_ptr<T>(tsl::safe_reinterpret_cast<T*>(ptr.release()));
+}
+
+template <typename T>
+absl::StatusOr<TypeRegistry::TypeId> TypeRegistry::GetOrAssignTypeId(
+    internal::TypeRegistrationMap& registry) {
+  return GetOrAssignTypeId(registry, GetTypeName<T>(), GetTypeInfo<T>());
 }
 
 }  // namespace xla::ffi

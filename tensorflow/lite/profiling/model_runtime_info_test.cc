@@ -304,8 +304,9 @@ ModelRuntimeDetails CreateExpectedModelRuntimeDetails(
   edge->set_layout_type(Edge::UNKNOWN);
   edge->set_allocation_type("kTfLiteArenaRwPersistent");
 
-#if __ANDROID__ && (__aarch64__ || __arm__ || __aarch32__)
-  //  On Android Arm builds, the Conv2D op uses im2col.
+#if (__ANDROID__ && (__aarch64__ || __arm__ || __aarch32__)) || \
+    (defined(__APPLE__) && TARGET_OS_IPHONE)
+  //  On Android Arm and iOS builds, the Conv2D op uses im2col.
   edge->set_name("");
   edge->set_size(is_xnnpack_delegate ? 0 : 400);
   edge->add_shape(1);

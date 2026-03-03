@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -98,25 +98,22 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
                                               int64_t tensor_size,
                                               int num_hosts) {
     Shape shape;
-    CollectiveDeviceList device_list;
+
     switch (opcode) {
       case HloOpcode::kAllReduce:
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kAllToAll:
-        device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
         shape = ShapeUtil::MakeShape(PrimitiveType::F32, {tensor_size / 4});
         break;
-      case HloOpcode::kReduceScatter:
-        device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
+      case HloOpcode::kReduceScatter: {
+        auto iota_list = CommToDeviceList(comm, num_hosts);
         shape = ShapeUtil::MakeShape(
             PrimitiveType::F32,
-            {tensor_size /
-             (4 *
-              device_list.iota_replica_group_list()->num_devices_per_group())});
+            {tensor_size / (4 * iota_list.num_devices_per_group())});
         break;
+      }
       case HloOpcode::kAllGather:
       case HloOpcode::kAllGatherStart:
-        device_list = CollectiveDeviceList(CommToDeviceList(comm, num_hosts));
         shape = ShapeUtil::MakeShape(PrimitiveType::F32, {tensor_size / 4});
         break;
       default:
@@ -125,8 +122,8 @@ class CollectiveInterpolationTest : public TestWithParam<ParametrizedTestCase> {
     HloInstructionProfile profile;
     *profile.mutable_instruction()->mutable_opcode() = HloOpcodeString(opcode);
     *profile.mutable_instruction()->mutable_shape() = shape.ToProto();
-    *profile.mutable_instruction()->mutable_collective_device_list() =
-        device_list.ToProto();
+    *profile.mutable_instruction()->mutable_iota_collective_device_list() =
+        CommToDeviceList(comm, num_hosts).ToProto();
     profile.mutable_instruction()->set_use_global_device_ids(true);
     profile.mutable_instruction()->set_channel_id(1);
     return profile;
@@ -1035,7 +1032,9 @@ class CollectiveInterpolationWithDefaultProfileTest
 
 TEST_P(CollectiveInterpolationWithDefaultProfileTest, LoadsDefaultProfile) {
   const auto& [test_name, cc, expected_duration] = GetParam();
-  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(cc);
+  auto device_info = test_name == "B200"
+                         ? TestGpuDeviceInfo::B200SXMDeviceInfo(cc)
+                         : TestGpuDeviceInfo::RTXA6000DeviceInfo(cc);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveInterpolator> interpolator,
       CollectiveInterpolator::Create(kNumGpusPerHost, device_info));

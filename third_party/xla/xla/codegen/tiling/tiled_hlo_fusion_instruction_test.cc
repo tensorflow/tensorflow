@@ -21,8 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/shape_util.h"
@@ -49,8 +49,8 @@ TEST_F(TiledHloFusionInstructionTest,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
-                     &mlir_context_),
+      ParseSymbolicMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
+                       &mlir_context_),
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 

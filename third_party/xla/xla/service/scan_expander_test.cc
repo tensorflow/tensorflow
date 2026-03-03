@@ -42,7 +42,7 @@ TEST_F(ScanExpanderTest, ExpandsScan) {
     ENTRY Scan {
       input = f32[4]{0} parameter(0)
       init = f32[] constant(0)
-      ROOT scan = (f32[4]{0}, f32[]) scan(input, init), dimensions={0}, is_reverse=false, to_apply=add
+      ROOT scan = (f32[4]{0}, f32[]) scan(input, init), dimensions={0}, num_carries=1, is_reverse=false, to_apply=add
     }
   )";
 
@@ -80,7 +80,7 @@ TEST_F(ScanExpanderTest, ExpandsScanComplex) {
       init2 = u64[] constant(0)
       ROOT scan = (f32[8,6], f64[8], u16[], u32[5], u64[])
                   scan(in0, in1, in2, in3, init0, init1, init2),
-                  dimensions={0}, to_apply=body
+                  dimensions={0}, num_carries=3, to_apply=body
     }
   )";
 

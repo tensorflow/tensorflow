@@ -15,17 +15,29 @@ limitations under the License.
 
 #include <cstddef>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/target_config/target_config.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/service/pjrt_gpu_utils.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tools/matmul_perf_table_gen.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -267,6 +279,31 @@ MatmulPerfTableGen::Config CreateConfig(
   return cfg;
 }
 
+namespace xla::gpu {
+namespace {
+
+std::pair<std::unique_ptr<HloRunnerInterface>,
+          stream_executor::DeviceDescription>
+MakeRunnerAndGetDeviceDescription() {
+  GpuAllocatorConfig gpu_config;
+  gpu_config.kind = GpuAllocatorConfig::Kind::kDefault;
+  gpu_config.preallocate = false;
+  gpu_config.collective_memory_size = 0;
+  GpuClientOptions options;
+  options.allocator_config = std::move(gpu_config);
+  options.use_tfrt_gpu_client = true;
+
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client =
+      GetXlaPjrtGpuClient(options);
+  CHECK_OK(client);
+  GpuTargetConfig gpu_target_config = GetGpuTargetConfig(client->get());
+  return {std::make_unique<HloRunnerPjRt>(*std::move(client)),
+          gpu_target_config.device_description};
+}
+
+}  // namespace
+}  // namespace xla::gpu
+
 // TODO(b/390097558): Sweep through minor and major dimensions for dots.
 int main(int argc, char* argv[]) {
   std::string b_spec;
@@ -329,7 +366,11 @@ int main(int argc, char* argv[]) {
 
   MatmulPerfTableGen::Config cfg = CreateConfig(
       b_spec, m_spec, n_spec, k_spec, dtypes, out, hlo_scan_path, dry_run);
-  MatmulPerfTableGen table_gen(std::move(cfg));
+
+  auto [runner, device_description] =
+      xla::gpu::MakeRunnerAndGetDeviceDescription();
+  MatmulPerfTableGen table_gen(runner.get(), &device_description,
+                               std::move(cfg));
 
   if (!merge_files.empty()) {
     LOG(INFO) << "Merging matmul perf tables...";

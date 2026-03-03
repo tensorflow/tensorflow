@@ -153,6 +153,8 @@ enum class ModuleArgumentMode {
   // constraints on the range). This drastically reduces
   // the host memory usage and the startup time.
   kUninitialized,
+  // Use random values from a normal distribution as arguments.
+  kUseRandomNormalInputs,
 };
 
 bool AbslParseFlag(absl::string_view text, ModuleArgumentMode* argument_mode,

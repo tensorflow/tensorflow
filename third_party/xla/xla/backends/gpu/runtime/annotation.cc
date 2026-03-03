@@ -170,10 +170,10 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
     if (!op_name.empty() && op_name.front() == '/') {
       op_name = op_name.substr(1);
     }
-    if (int frame_id = meta.stack_frame_id(); frame_id != 0) {
+    if (StackFrameId frame_id{meta.stack_frame_id()}; frame_id.valid()) {
       std::vector<StackFrame> call_stack{};
       HloModule const* const hlo_module = inst->parent()->parent();
-      while (frame_id != 0) {
+      while (frame_id.valid()) {
         HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
         if (frame.empty()) {
           break;

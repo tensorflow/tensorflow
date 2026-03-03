@@ -67,10 +67,10 @@ static Graph* Conv2DBackpropFilter(int batch, int height, int width,
                 {batch, out_depth, conv2d_dims.out_rows, conv2d_dims.out_cols});
 
   Tensor filter_dims_t(DT_INT32, TensorShape({4}));
-  filter_dims_t.flat<int32>()(0) = filter_h;
-  filter_dims_t.flat<int32>()(1) = filter_w;
-  filter_dims_t.flat<int32>()(2) = in_depth;
-  filter_dims_t.flat<int32>()(3) = out_depth;
+  filter_dims_t.flat<int32_t>()(0) = filter_h;
+  filter_dims_t.flat<int32_t>()(1) = filter_w;
+  filter_dims_t.flat<int32_t>()(2) = in_depth;
+  filter_dims_t.flat<int32_t>()(3) = out_depth;
 
   Node* input = test::graph::Constant(graph, input_t, "input");
   Node* filter_dims =

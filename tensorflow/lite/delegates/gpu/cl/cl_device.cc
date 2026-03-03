@@ -475,10 +475,10 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
       status = clGetDeviceInfo(devices[d], CL_DEVICE_MAX_COMPUTE_UNITS,
                                sizeof(max_comp_units), &max_comp_units, NULL);
       if (status != CL_SUCCESS) max_comp_units = 1;
-      cl_uint max_clock_freq;
+      cl_uint max_clock_freq = 0;
       status = clGetDeviceInfo(devices[d], CL_DEVICE_MAX_CLOCK_FREQUENCY,
                                sizeof(max_clock_freq), &max_clock_freq, NULL);
-      if (status != CL_SUCCESS) max_clock_freq = 1;
+      if (status != CL_SUCCESS || max_clock_freq == 0) max_clock_freq = 1;
       cl_uint perf_indicator = max_comp_units * max_clock_freq;
       // Bookmark fastest indicated GPU and its platform
       if (perf_indicator > perf_indicator_fastest) {

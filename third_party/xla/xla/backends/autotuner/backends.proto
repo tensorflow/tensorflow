@@ -1,0 +1,28 @@
+edition = "2023";
+
+package xla.autotuner;
+
+option java_multiple_files = true;
+option java_outer_classname = "Backends";
+
+// Code generation backends implemented for autotuning across XLA GPU and CPU.
+//
+// When adding a fission backend for a backend X, it should be named X_FISSION.
+enum Backend {
+  UNSPECIFIED_BACKEND = 0;
+  CUDNN = 1;
+  TRITON = 2;
+  CUBLAS = 3;
+  CUBLASLT = 4;
+  ROCBLAS = 5;
+  HIPBLASLT = 6;
+  MIOPEN = 7;
+  CUSTOM_KERNEL = 8;
+  BLOCK_LEVEL_EMITTER = 9;
+  NATIVE_EMITTER = 10;
+  LLVM_KERNEL_EMITTER = 11;
+  CUBLAS_FISSION = 12;
+  CUBLASLT_FISSION = 13;
+  CUSTOM_KERNEL_FISSION = 14;
+  ROCBLAS_FISSION = 15;
+}

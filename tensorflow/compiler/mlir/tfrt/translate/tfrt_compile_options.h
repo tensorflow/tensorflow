@@ -154,6 +154,10 @@ struct TfrtCompileOptions {
   // batching function using this number of global threads.
   int64_t batch_queue_global_prioritization_num_threads = 0;
 
+  // If true, the queue implementation will have a separate subqueue for each
+  // criticality.
+  bool enable_priority_aware_batch_scheduler = false;
+
   // The policy used by a BatchScheduler to pad (or split) batches.
   std::string batch_padding_policy;
 

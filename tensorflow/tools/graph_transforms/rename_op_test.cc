@@ -78,13 +78,13 @@ class RenameOpTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"mul_node1"};
-    context.params.insert(std::pair<string, std::vector<string>>(
-        {"old_op_name", {string("Mul")}}));
-    context.params.insert(std::pair<string, std::vector<string>>(
-        {"new_op_name", {string("Multiply")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"old_op_name", {std::string("Mul")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"new_op_name", {std::string("Multiply")}}));
     TF_ASSERT_OK(RenameOp(graph_def, context, &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     EXPECT_EQ(1, node_lookup.count("mul_node1"));
     EXPECT_EQ("Multiply", node_lookup.at("mul_node1")->op());

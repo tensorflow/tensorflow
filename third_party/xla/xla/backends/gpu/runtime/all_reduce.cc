@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
@@ -231,9 +231,13 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
         << "Number of elements is not aligned to the alignment requirement.";
     return false;
   }
-
-  // The kernel is only supported for up to 8 devices.
-  return num_ranks <= stream_executor::gpu::kMaxNumAllReduceInputPtrs;
+  if (num_ranks > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
+    VLOG(3) << "AllReduce XLA implementation does not support more than "
+            << se::gpu::kMaxNumAllReduceInputPtrs << " ranks."
+            << " Required number of ranks: " << num_ranks;
+    return false;
+  }
+  return true;
 }
 
 absl::Status RunAllReduceKernel(

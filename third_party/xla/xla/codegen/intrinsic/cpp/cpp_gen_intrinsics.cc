@@ -68,7 +68,7 @@ llvm::Function* GetCppGenFunction(llvm::Module* module,
 }
 
 std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
-    llvm::LLVMContext& context, absl::string_view bitcode,
+    llvm::LLVMContext& context, const std::string& bitcode,
     absl::string_view source_name) {
   if (bitcode.empty()) {
     LOG_FIRST_N(WARNING, 1)

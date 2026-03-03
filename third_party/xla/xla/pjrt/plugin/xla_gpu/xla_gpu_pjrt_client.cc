@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 
+#include <cstdlib>
 #include <memory>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -27,7 +29,14 @@ namespace xla {
 
 absl::StatusOr<std::unique_ptr<PjRtClient>> GetXlaPjrtGpuClient(
     GpuClientOptions options) {
-  if (options.use_tfrt_gpu_client) {
+  bool use_tfrt_gpu_client = options.use_tfrt_gpu_client;
+  // Enabled by default.
+  if (const char* v = std::getenv("ENABLE_TFRT_GPU_CLIENT")) {
+    if (absl::string_view(v) == "0") {
+      use_tfrt_gpu_client = false;
+    }
+  }
+  if (use_tfrt_gpu_client) {
     return GetTfrtGpuClient(options);
   }
   return GetStreamExecutorGpuClient(options);

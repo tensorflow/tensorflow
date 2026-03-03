@@ -69,8 +69,13 @@ class SyclExecutor : public gpu::GpuExecutor {
   absl::StatusOr<std::shared_ptr<DeviceMemoryBase>> CreateOrShareConstant(
       Stream* stream, absl::Span<const uint8_t> content) override;
 
+  // Allocates memory of the given size (in bytes) in the specified memory
+  // space. Returns a DeviceMemoryBase for the allocation, or a null pointer
+  // on failure. Caller must deallocate using Deallocate().
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
 
+  // Deallocates memory previously allocated with Allocate().
+  // Does nothing if the pointer is null.
   void Deallocate(DeviceMemoryBase* mem) override;
 
   // Synchronizes all device activity.
@@ -89,6 +94,7 @@ class SyclExecutor : public gpu::GpuExecutor {
                                  const DeviceMemoryBase& gpu_src,
                                  uint64_t size) override;
 
+  // TODO(intel-tf): Implement GetPointerMemorySpace for SYCL.
   // Returns the Stream for the given raw GPU stream pointer, or nullptr if
   // not found.
   Stream* FindAllocatedStream(void* gpu_stream) override {
@@ -122,6 +128,8 @@ class SyclExecutor : public gpu::GpuExecutor {
   // Creates a new SYCL event.
   absl::StatusOr<std::unique_ptr<Event>> CreateEvent() override;
 
+  // Allocates host memory of the given size (in bytes).
+  // Returns a unique_ptr to the allocation or an error on failure.
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> HostMemoryAllocate(
       uint64_t size) override;
 
@@ -144,6 +152,11 @@ class SyclExecutor : public gpu::GpuExecutor {
 
   // Returns the SyclKernel for the given Kernel, or NotFound error.
   absl::StatusOr<const SyclKernel*> GetSyclKernel(const Kernel* kernel);
+
+  // Returns a memory allocator for the given memory type, or an error if
+  // unsupported.
+  absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
+      MemoryType type) override;
 
   // Return by value since sycl::device is a lightweight object.
   ::sycl::device GetDevice() const { return device_; }

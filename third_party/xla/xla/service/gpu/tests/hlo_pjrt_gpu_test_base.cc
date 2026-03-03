@@ -18,23 +18,22 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/service/compiler.h"
+#include "xla/service/pjrt_gpu_utils.h"
+#include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/tests/aot_utils.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -60,32 +59,16 @@ HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
   return new_options;
 }
 
-absl::StatusOr<GpuTargetConfig> GetGpuTargetConfig(PjRtClient* const client) {
-  ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
-                   client->GetTopologyDescription());
-  auto it = topology->Attributes().find("target_config");
-  if (it == topology->Attributes().end()) {
-    return absl::InvalidArgumentError(
-        "Topology description does not contain target config");
-  }
-  if (!std::holds_alternative<std::string>(it->second)) {
-    return absl::InvalidArgumentError(
-        "Target config is not a string in topology description");
-  }
-  stream_executor::GpuTargetConfigProto target_config_proto;
-  if (!tsl::protobuf::TextFormat::ParseFromString(
-          std::get<std::string>(it->second), &target_config_proto)) {
-    return absl::InvalidArgumentError(
-        "Failed to parse target config from topology description");
-  }
-  return gpu::GpuTargetConfig::FromProto(target_config_proto);
-}
-
-stream_executor::DeviceDescription GetDeviceDescription(
-    PjRtClient* const client) {
-  absl::StatusOr<GpuTargetConfig> target_config = GetGpuTargetConfig(client);
-  CHECK_OK(target_config.status());
-  return std::move(target_config)->device_description;
+std::unique_ptr<Compiler> GetGpuCompiler() {
+  absl::StatusOr<std::string> name = PlatformUtil::CanonicalPlatformName("gpu");
+  CHECK_OK(name);
+  absl::StatusOr<stream_executor::Platform::Id> platform_id =
+      PlatformUtil::GetPlatformIdFromCanonicalName(*name);
+  CHECK_OK(platform_id);
+  absl::StatusOr<std::unique_ptr<Compiler>> compiler =
+      Compiler::GetForPlatform(*platform_id);
+  CHECK_OK(compiler);
+  return std::move(*compiler);
 }
 }  // namespace
 
@@ -99,18 +82,18 @@ HloPjRtGpuTestBase::HloPjRtGpuTestBase(PjRtClient* client,
           GetGlobalPjRtClientTestFactory().GetDeviceShapeRepresentationFn(
               client),
           GetGlobalPjRtClientTestFactory().GetDeviceShapeSizeFn(client),
-          GetDeviceDescription(client), absl::WrapUnique(client),
+          GetGpuTargetConfig(client), absl::WrapUnique(client),
           std::move(options)) {}
 
 HloPjRtGpuTestBase::HloPjRtGpuTestBase(
     DeviceShapeRepresentationFn device_shape_representation_fn,
-    DeviceShapeSizeFn device_shape_size_fn,
-    stream_executor::DeviceDescription device_description,
+    DeviceShapeSizeFn device_shape_size_fn, GpuTargetConfig gpu_target_config,
     std::unique_ptr<PjRtClient> client, HloPjRtTestBaseOptions options)
     : HloRunnerAgnosticTestBase(MakeHloRunnerPjRtAotAware(std::move(client)),
                                 std::move(device_shape_representation_fn),
                                 std::move(device_shape_size_fn),
                                 BuildOptions(std::move(options))),
-      device_description_(std::move(device_description)) {}
+      gpu_target_config_(std::move(gpu_target_config)),
+      compiler_(GetGpuCompiler()) {}
 
 }  // namespace xla::gpu

@@ -42,9 +42,10 @@ limitations under the License.
 namespace tensorflow {
 namespace gif {
 
-uint8* Decode(const void* srcdata, int datasize,
-              const std::function<uint8*(int, int, int, int)>& allocate_output,
-              string* error_string, bool expand_animations = true);
+uint8_t* Decode(
+    const void* srcdata, int datasize,
+    const std::function<uint8_t*(int, int, int, int)>& allocate_output,
+    std::string* error_string, bool expand_animations = true);
 
 }  // namespace gif
 }  // namespace tensorflow

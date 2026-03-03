@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
@@ -66,29 +67,27 @@ Literal GetRandomLiteral(PrimitiveType type, const Shape& shape,
   LOG(FATAL) << "Unsupported type";
 }
 
-static void Conv2DBenchmark(benchmark::State& state,
-                            const HloBenchmarkOptions& options, int batch,
-                            int height, int width, int input_channels,
-                            int kernel_h, int kernel_w, int stride,
-                            int output_channels, int64_t feature_group_count,
-                            int padding_mode, int type_config_idx) {
+static void ConvBenchmark(benchmark::State& state,
+                          const HloBenchmarkOptions& options,
+                          int num_spatial_dims, int64_t batch,
+                          absl::Span<const int64_t> spatial_dims,
+                          int64_t input_channels,
+                          absl::Span<const int64_t> kernel_dims, int64_t stride,
+                          int64_t output_channels, int64_t feature_group_count,
+                          int padding_mode, int type_config_idx) {
   const auto& types = GetTypeConfigs()[type_config_idx];
-  int padding_h, padding_w;
-  int output_h, output_w;
+  std::vector<int64_t> padding(num_spatial_dims);
+  std::vector<int64_t> output_spatial_dims(num_spatial_dims);
 
-  if (padding_mode == kSamePadding) {
-    // Padding values for 'SAME' padding. Only odd kernel sizes are supported.
-    CHECK(IsOdd(kernel_h) && IsOdd(kernel_w));
-    padding_h = (kernel_h - 1) / 2;
-    padding_w = (kernel_w - 1) / 2;
-    output_h = (height + stride - 1) / stride;
-    output_w = (width + stride - 1) / stride;
-  } else {
-    // Padding values for 'VALID' padding.
-    padding_h = 0;
-    padding_w = 0;
-    output_h = (height - kernel_h) / stride + 1;
-    output_w = (width - kernel_w) / stride + 1;
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    if (padding_mode == kSamePadding) {
+      CHECK(IsOdd(kernel_dims[i]));
+      padding[i] = (kernel_dims[i] - 1) / 2;
+      output_spatial_dims[i] = (spatial_dims[i] + stride - 1) / stride;
+    } else {
+      padding[i] = 0;
+      output_spatial_dims[i] = (spatial_dims[i] - kernel_dims[i]) / stride + 1;
+    }
   }
 
   const int64_t filter_channels = input_channels / feature_group_count;
@@ -101,63 +100,120 @@ static void Conv2DBenchmark(benchmark::State& state,
       %p1 = $kernel_shape parameter(1)
       ROOT conv = $output_shape convolution(p0, p1),
         window={size=$window_size stride=$window_stride pad=$padding},
-          dim_labels=b01f_01io->b01f, feature_group_count=$feature_group_count
+          dim_labels=$dim_labels, feature_group_count=$feature_group_count
     }
   )";
 
   std::minstd_rand0 engine;
 
-  // Input format is NHWC.
-  auto input_shape =
-      ShapeUtil::MakeShape(types.input, {batch, height, width, input_channels});
-  // Filter format is HWIO.
-  auto kernel_shape = ShapeUtil::MakeShape(
-      types.kernel, {kernel_h, kernel_w, filter_channels, output_channels});
-  auto output_shape = ShapeUtil::MakeShape(
-      types.output, {batch, output_h, output_w, output_channels});
+  std::vector<int64_t> input_shape_dims = {batch};
+  for (int64_t d : spatial_dims) {
+    input_shape_dims.push_back(d);
+  }
+  input_shape_dims.push_back(input_channels);
+  auto input_shape = ShapeUtil::MakeShape(types.input, input_shape_dims);
+
+  std::vector<int64_t> kernel_shape_dims;
+  for (int64_t d : kernel_dims) {
+    kernel_shape_dims.push_back(d);
+  }
+  kernel_shape_dims.push_back(filter_channels);
+  kernel_shape_dims.push_back(output_channels);
+  auto kernel_shape = ShapeUtil::MakeShape(types.kernel, kernel_shape_dims);
+
+  std::vector<int64_t> output_shape_dims = {batch};
+  for (int64_t d : output_spatial_dims) {
+    output_shape_dims.push_back(d);
+  }
+  output_shape_dims.push_back(output_channels);
+  auto output_shape = ShapeUtil::MakeShape(types.output, output_shape_dims);
 
   auto input = GetRandomLiteral(types.input, input_shape, engine);
   auto kernel = GetRandomLiteral(types.kernel, kernel_shape, engine);
   std::vector<const Literal*> args = {&input, &kernel};
+
+  std::string window_size = absl::StrJoin(kernel_dims, "x");
+  std::string window_stride =
+      absl::StrJoin(std::vector<int64_t>(num_spatial_dims, stride), "x");
+
+  std::vector<std::string> padding_strs;
+  for (int64_t p : padding) {
+    padding_strs.push_back(absl::StrCat(p, "_", p));
+  }
+  std::string padding_str = absl::StrJoin(padding_strs, "x");
+
+  std::string dim_labels;
+  if (num_spatial_dims == 1) {
+    dim_labels = "b0f_0io->b0f";
+  } else {
+    dim_labels = "b01f_01io->b01f";
+  }
 
   CHECK_OK(RunHloBenchmark(
       state, hlo_module, args,
       {{"$input_shape", input_shape.ToString()},
        {"$kernel_shape", kernel_shape.ToString()},
        {"$output_shape", output_shape.ToString()},
-       {"$window_size", absl::StrCat(kernel_h, "x", kernel_w)},
-       {"$window_stride", absl::StrCat(stride, "x", stride)},
-       {"$padding", absl::StrCat(padding_h, "_", padding_h, "x", padding_w, "_",
-                                 padding_w)},
+       {"$window_size", window_size},
+       {"$window_stride", window_stride},
+       {"$padding", padding_str},
+       {"$dim_labels", dim_labels},
        {"$feature_group_count", std::to_string(feature_group_count)}},
       options));
 }
 
 static void BM_Conv2D(benchmark::State& state,
                       const HloBenchmarkOptions& options, int type_config_idx) {
-  Conv2DBenchmark(state, options, /*batch=*/state.range(0),
-                  /*height=*/state.range(1), /*width=*/state.range(2),
-                  /*input_channels=*/state.range(3),
-                  /*kernel_h=*/state.range(4), /*kernel_w=*/state.range(5),
-                  /*stride=*/state.range(6),
-                  /*output_channels=*/state.range(7),
-                  /*feature_group_count=*/1,
-                  /*padding_mode=*/state.range(8),
-                  /*type_config_idx=*/type_config_idx);
+  ConvBenchmark(state, options, 2, /*batch=*/state.range(0),
+                /*spatial_dims=*/{state.range(1), state.range(2)},
+                /*input_channels=*/state.range(3),
+                /*kernel_dims=*/{state.range(4), state.range(5)},
+                /*stride=*/state.range(6),
+                /*output_channels=*/state.range(7),
+                /*feature_group_count=*/1,
+                /*padding_mode=*/state.range(8),
+                /*type_config_idx=*/type_config_idx);
 }
 
 static void BM_GroupedConv2D(benchmark::State& state,
                              const HloBenchmarkOptions& options,
                              int type_config_idx) {
-  Conv2DBenchmark(state, options, /*batch=*/state.range(0),
-                  /*height=*/state.range(1), /*width=*/state.range(2),
-                  /*input_channels=*/state.range(3),
-                  /*kernel_h=*/state.range(4),
-                  /*kernel_w=*/state.range(5), /*stride=*/state.range(6),
-                  /*output_channels=*/state.range(7),
-                  /*feature_group_count=*/state.range(8),
-                  /*padding_mode=*/kSamePadding,
-                  /*type_config_idx=*/type_config_idx);
+  ConvBenchmark(state, options, 2, /*batch=*/state.range(0),
+                /*spatial_dims=*/{state.range(1), state.range(2)},
+                /*input_channels=*/state.range(3),
+                /*kernel_dims=*/{state.range(4), state.range(5)},
+                /*stride=*/state.range(6),
+                /*output_channels=*/state.range(7),
+                /*feature_group_count=*/state.range(8),
+                /*padding_mode=*/kSamePadding,
+                /*type_config_idx=*/type_config_idx);
+}
+
+static void BM_Conv1D(benchmark::State& state,
+                      const HloBenchmarkOptions& options, int type_config_idx) {
+  ConvBenchmark(state, options, 1, /*batch=*/state.range(0),
+                /*spatial_dims=*/{state.range(1)},
+                /*input_channels=*/state.range(2),
+                /*kernel_dims=*/{state.range(3)},
+                /*stride=*/state.range(4),
+                /*output_channels=*/state.range(5),
+                /*feature_group_count=*/1,
+                /*padding_mode=*/state.range(6),
+                /*type_config_idx=*/type_config_idx);
+}
+
+static void BM_GroupedConv1D(benchmark::State& state,
+                             const HloBenchmarkOptions& options,
+                             int type_config_idx) {
+  ConvBenchmark(state, options, 1, /*batch=*/state.range(0),
+                /*spatial_dims=*/{state.range(1)},
+                /*input_channels=*/state.range(2),
+                /*kernel_dims=*/{state.range(3)},
+                /*stride=*/state.range(4),
+                /*output_channels=*/state.range(5),
+                /*feature_group_count=*/state.range(6),
+                /*padding_mode=*/kSamePadding,
+                /*type_config_idx=*/type_config_idx);
 }
 
 // Regular strided 1D convolution. Shapes come from an actual use case.
@@ -493,6 +549,24 @@ void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
   add_args({32, 56, 56, 64, 3, 3, 2, 64, kSamePadding});
 }
 
+void AddConv1DArgs(::benchmark::internal::Benchmark* b) {
+  auto add_args = [&](const std::vector<int64_t>& shape_args) {
+    b->Args(shape_args);
+  };
+  add_args({8, 128, 4, 1, 1, 32, kSamePadding});
+  add_args({8, 128, 4, 3, 1, 32, kSamePadding});
+  add_args({32, 256, 4, 3, 1, 16, kSamePadding});
+  add_args({32, 256, 4, 3, 1, 16, kValidPadding});
+}
+
+void AddGroupedConv1DArgs(::benchmark::internal::Benchmark* b) {
+  auto add_args = [&](const std::vector<int64_t>& shape_args) {
+    b->Args(shape_args);
+  };
+  add_args({16, 112, 32, 3, 1, 32, 32});
+  add_args({16, 112, 64, 3, 2, 64, 64});
+}
+
 void AddGroupedConv2DArgs(::benchmark::internal::Benchmark* b) {
   auto add_args = [&](const std::vector<int64_t>& shape_args) {
     b->Args(shape_args);
@@ -545,6 +619,38 @@ void RegisterBenchmarks() {
     b->MeasureProcessCPUTime();
     b->ArgNames({"b", "h", "w", "i", "kh", "kw", "s", "o", "g"});
     AddGroupedConv2DArgs(b);
+  }
+
+  for (int i = 0; i < configs.size(); ++i) {
+    const auto& config = configs[i];
+    std::string name = absl::StrFormat(
+        "BM_Conv1D_%s_%s_%s",
+        primitive_util::LowercasePrimitiveTypeName(config.input),
+        primitive_util::LowercasePrimitiveTypeName(config.kernel),
+        primitive_util::LowercasePrimitiveTypeName(config.output));
+    auto* b = benchmark::RegisterBenchmark(
+        name.c_str(), [i](benchmark::State& state) {
+          BM_Conv1D(state, HloBenchmarkOptions(), i);
+        });
+    b->MeasureProcessCPUTime();
+    b->ArgNames({"b", "w", "i", "kw", "s", "o", "pad"});
+    AddConv1DArgs(b);
+  }
+
+  for (int i = 0; i < configs.size(); ++i) {
+    const auto& config = configs[i];
+    std::string name = absl::StrFormat(
+        "BM_GroupedConv1D_%s_%s_%s",
+        primitive_util::LowercasePrimitiveTypeName(config.input),
+        primitive_util::LowercasePrimitiveTypeName(config.kernel),
+        primitive_util::LowercasePrimitiveTypeName(config.output));
+    auto* b = benchmark::RegisterBenchmark(
+        name.c_str(), [i](benchmark::State& state) {
+          BM_GroupedConv1D(state, HloBenchmarkOptions(), i);
+        });
+    b->MeasureProcessCPUTime();
+    b->ArgNames({"b", "w", "i", "kw", "s", "o", "g"});
+    AddGroupedConv1DArgs(b);
   }
 }
 

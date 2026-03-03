@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -124,6 +124,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
             split_tensor.data(), dtype, ToIfrtShape(split_tensor.shape()),
             GetByteStrides(split_tensor.dtype(), split_tensor.shape()),
             std::move(single_device_sharding),
+            /*layout=*/nullptr,
             xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/{}));
     split_arrays.push_back(std::move(array));
@@ -131,6 +132,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
 
   auto ifrt_sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), GetParam().sharding);
+  xla::ifrt::ShardingRef ifrt_sharding_ref = std::move(ifrt_sharding);
   xla::ifrt::ArrayRef assembled_array;
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -138,7 +140,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
       client->AssembleArrayFromSingleDeviceArrays(
           split_arrays[0]->dtype(),
           ToIfrtShape(GetParam().expected_out_tensor.shape()),
-          std::move(ifrt_sharding), absl::MakeSpan(split_arrays),
+          ifrt_sharding_ref, absl::MakeSpan(split_arrays),
           xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
           xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
@@ -403,10 +405,30 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
+      auto device_list,
+      xla::ifrt::test_util::GetDevices(client.get(), GetParam().device_ids));
+  xla::ifrt::ShardingRef sharding;
+  if (device_list->size() == 1 || (GetParam().sharding.IsTileMaximal() &&
+                                   !GetParam().sharding.IsReplicated())) {
+    int unique_device_id = 0;
+    if (GetParam().sharding.IsTileMaximal() &&
+        !GetParam().sharding.IsReplicated()) {
+      unique_device_id = GetParam().sharding.GetUniqueDevice();
+    }
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto device,
+        client->LookupDevice(xla::ifrt::DeviceId(unique_device_id)));
+    sharding = xla::ifrt::SingleDeviceSharding::Create(device,
+                                                       xla::ifrt::MemoryKind());
+  } else {
+    sharding = xla::ifrt::HloSharding::Create(
+        device_list, xla::ifrt::MemoryKind(), GetParam().sharding);
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
       auto assembled_array,
       MakeArrayFromTensor(*client, input_tensor,
                           absl::MakeSpan(GetParam().device_ids),
-                          GetParam().sharding, thread_pool,
+                          std::move(sharding), thread_pool,
                           /*xla_input_layout=*/ifrt_layout));
 
   if (ifrt_layout) {
@@ -718,15 +740,75 @@ TEST(ShardingUtilsTest, MismatchRank) {
       auto device_list, xla::ifrt::test_util::GetDevices(client.get(), {0, 1}));
 
   xla::HloSharding sharding = Tile({2, 1});
+  auto ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
+      device_list, xla::ifrt::MemoryKind(), sharding));
 
   EXPECT_THAT(MakeArrayFromTensor(*client, input_tensor, device_list,
-                                  std::move(sharding), thread_pool,
+                                  std::move(ifrt_sharding), thread_pool,
                                   /*xla_input_layout*/ nullptr),
               absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   "shape must have 2 dimensions, but has 3 dimensions: "
                   "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));
 }
+
+struct ToIfrtShardingTestParam {
+  std::vector<int> device_indices;
+  xla::HloSharding sharding;
+  bool expect_single_device_sharding;
+};
+
+using ToIfrtShardingTest = ::testing::TestWithParam<ToIfrtShardingTestParam>;
+
+TEST_P(ToIfrtShardingTest, ToIfrtSharding) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list,
+                          xla::ifrt::test_util::GetDevices(
+                              client.get(), GetParam().device_indices));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto ifrt_sharding,
+      ToIfrtSharding(*client, GetParam().sharding, device_list));
+
+  if (GetParam().expect_single_device_sharding) {
+    EXPECT_TRUE(
+        llvm::isa<xla::ifrt::SingleDeviceSharding>(ifrt_sharding.get()));
+    EXPECT_EQ(ifrt_sharding->devices()->devices().front(),
+              device_list->devices().front());
+  } else {
+    EXPECT_TRUE(llvm::isa<xla::ifrt::HloSharding>(ifrt_sharding.get()));
+    EXPECT_EQ(ifrt_sharding->devices()->size(), device_list->size());
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ToIfrtShardingTests, ToIfrtShardingTest,
+                         ::testing::ValuesIn<ToIfrtShardingTestParam>({
+                             // SingleDeviceList
+                             {
+                                 .device_indices = {0},
+                                 .sharding = Maximal(0),
+                                 .expect_single_device_sharding = true,
+                             },
+                             // Maximal
+                             {
+                                 .device_indices = {0, 1},
+                                 .sharding = Maximal(0),
+                                 .expect_single_device_sharding = true,
+                             },
+                             // Replicated
+                             {
+                                 .device_indices = {0, 1},
+                                 .sharding = Replicate(),
+                                 .expect_single_device_sharding = false,
+                             },
+                             // Tiled
+                             {
+                                 .device_indices = {0, 1},
+                                 .sharding = Tile({2, 1}),
+                                 .expect_single_device_sharding = false,
+                             },
+                         }));
 
 }  // namespace
 }  // namespace ifrt_serving

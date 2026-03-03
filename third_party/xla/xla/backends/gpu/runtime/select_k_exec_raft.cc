@@ -73,7 +73,7 @@ class OwningScratchAllocator {
   }
 
   // Deallocate tracked memory; safe no-op if pointer not found
-  absl::Status DeallocateBytes(void* ptr) {
+  absl::Status DeallocateBytes(void* ptr) noexcept {
     auto it = buffers_.find(ptr);
     if (it != buffers_.end()) {
       buffers_.erase(it);  // RAII frees memory
@@ -121,7 +121,7 @@ class XlaDeviceMemoryResource : public rmm::mr::device_memory_resource {
   }
 
   void do_deallocate(void* ptr, std::size_t bytes,
-                     rmm::cuda_stream_view stream) override {
+                     rmm::cuda_stream_view stream) noexcept override {
     auto status = scratch_allocator_.DeallocateBytes(ptr);
     if (!status.ok()) {
       // do_deallocate should be noexcept. Don’t throw; just log.

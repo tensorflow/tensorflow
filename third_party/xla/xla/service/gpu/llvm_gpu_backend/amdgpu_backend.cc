@@ -21,6 +21,7 @@ limitations under the License.
 #include <fstream>
 #include <functional>
 #include <ios>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -29,6 +30,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
@@ -87,6 +89,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/rocm_rocdl_path.h"
@@ -156,8 +159,9 @@ struct HsacoCache {
 
 static HsacoCache g_hsacoCache;  // NOLINT: static/global vars forbidden
 
-// Structure to hold register spilling and stack information from HSACO metadata
-struct RegisterSpillInfo {
+// Per-kernel register spilling and stack information from HSACO metadata.
+struct KernelSpillInfo {
+  std::string name;
   uint64_t sgpr_spill_count = 0;
   uint64_t vgpr_spill_count = 0;
   uint64_t private_segment_size = 0;
@@ -170,6 +174,62 @@ struct RegisterSpillInfo {
   bool HasStackUsage() const {
     return private_segment_size > 0 || uses_dynamic_stack;
   }
+};
+
+// Aggregated register spilling information across all kernels in a module.
+struct RegisterSpillInfo {
+  std::vector<KernelSpillInfo> kernels;
+
+  bool HasSpilling() const {
+    return absl::c_any_of(
+        kernels, [](const KernelSpillInfo& k) { return k.HasSpilling(); });
+  }
+
+  bool HasStackUsage() const {
+    return absl::c_any_of(
+        kernels, [](const KernelSpillInfo& k) { return k.HasStackUsage(); });
+  }
+
+  // Convert to ModuleStats format for autotuner filtering.
+  //
+  // Only kernels with private_segment_size > 0 (i.e. spills that use
+  // stack scratch memory) are included. SGPR spills that are saved to
+  // VGPRs rather than memory do not increase private_segment_size and are
+  // not reported here. This means that neither the autotuner's filter
+  // (xla_gpu_filter_kernels_spilling_registers_on_autotuning) nor the
+  // hard-fail path (xla_gpu_fail_ptx_compilation_on_register_spilling) will
+  // discard kernels whose SGPR spills stay in VGPRs. The only difference
+  // between these two paths is that the hard-fail path also discards
+  // kernels with dynamic stack usage, via HasStackUsage() in
+  // EmitModuleToHsaco.
+  //
+  // AMD metadata does not distinguish load vs store spill bytes, so we use
+  // private_segment_size as a conservative proxy for both fields. The
+  // autotuner only checks whether the values are > 0, so the exact
+  // magnitude does not affect filtering behavior.
+  ModuleStats ToModuleStats() const {
+    ModuleStats stats;
+    for (const KernelSpillInfo& k : kernels) {
+      if (k.private_segment_size > 0) {
+        KernelStats ks;
+        ks.store_bytes_spilled = static_cast<int>(
+            std::min(k.private_segment_size,
+                     static_cast<uint64_t>(std::numeric_limits<int>::max())));
+        ks.load_bytes_spilled = static_cast<int>(
+            std::min(k.private_segment_size,
+                     static_cast<uint64_t>(std::numeric_limits<int>::max())));
+        stats[k.name] = ks;
+      }
+    }
+    return stats;
+  }
+};
+
+// Internal result from EmitModuleToHsaco that includes both path and spill
+// info.
+struct EmitResult {
+  std::string hsaco_path;
+  RegisterSpillInfo spill_info;
 };
 
 // Parse NT_AMDGPU_METADATA note contents and extract register spill counts.
@@ -201,67 +261,54 @@ RegisterSpillInfo ParseAMDGPUMetadataForSpills(llvm::StringRef metadata) {
 
   llvm::msgpack::ArrayDocNode kernels_array = kernels_it->second.getArray();
 
-  // Iterate through each kernel
+  // Iterate through each kernel, collecting per-kernel spill info.
   for (auto& kernel_node : kernels_array) {
-    uint64_t kernel_sgpr_spill = 0;
-    uint64_t kernel_vgpr_spill = 0;
-    uint64_t kernel_sgpr_count = 0;
-    uint64_t kernel_vgpr_count = 0;
-    uint64_t kernel_private_size = 0;
-    bool kernel_uses_dynamic = false;
-
     if (!kernel_node.isMap()) continue;
 
     llvm::msgpack::MapDocNode kernel_map = kernel_node.getMap();
+    KernelSpillInfo kernel_info;
 
     // Look for ".sgpr_spill_count"
     auto sgpr_it = kernel_map.find(".sgpr_spill_count");
     if (sgpr_it != kernel_map.end() &&
         sgpr_it->second.getKind() == llvm::msgpack::Type::UInt) {
-      kernel_sgpr_spill = sgpr_it->second.getUInt();
-      spill_info.sgpr_spill_count =
-          std::max(spill_info.sgpr_spill_count, kernel_sgpr_spill);
+      kernel_info.sgpr_spill_count = sgpr_it->second.getUInt();
     }
 
     // Look for ".vgpr_spill_count"
     auto vgpr_it = kernel_map.find(".vgpr_spill_count");
     if (vgpr_it != kernel_map.end() &&
         vgpr_it->second.getKind() == llvm::msgpack::Type::UInt) {
-      kernel_vgpr_spill = vgpr_it->second.getUInt();
-      spill_info.vgpr_spill_count =
-          std::max(spill_info.vgpr_spill_count, kernel_vgpr_spill);
+      kernel_info.vgpr_spill_count = vgpr_it->second.getUInt();
     }
 
     // Look for ".private_segment_fixed_size"
     auto priv_it = kernel_map.find(".private_segment_fixed_size");
     if (priv_it != kernel_map.end() &&
         priv_it->second.getKind() == llvm::msgpack::Type::UInt) {
-      kernel_private_size = priv_it->second.getUInt();
-      spill_info.private_segment_size =
-          std::max(spill_info.private_segment_size, kernel_private_size);
+      kernel_info.private_segment_size = priv_it->second.getUInt();
     }
 
     // Look for ".uses_dynamic_stack"
     auto dyn_it = kernel_map.find(".uses_dynamic_stack");
     if (dyn_it != kernel_map.end() &&
         dyn_it->second.getKind() == llvm::msgpack::Type::Boolean) {
-      kernel_uses_dynamic = dyn_it->second.getBool();
-      spill_info.uses_dynamic_stack =
-          spill_info.uses_dynamic_stack || kernel_uses_dynamic;
+      kernel_info.uses_dynamic_stack = dyn_it->second.getBool();
     }
 
-    // Helper to get kernel name for logging (only when needed)
-    auto get_kernel_name = [&kernel_map]() -> std::string {
-      auto name_it = kernel_map.find(".name");
-      if (name_it != kernel_map.end() &&
-          name_it->second.getKind() == llvm::msgpack::Type::String) {
-        return name_it->second.getString().str();
-      }
-      return "unknown";
-    };
+    // Get kernel name
+    auto name_it = kernel_map.find(".name");
+    if (name_it != kernel_map.end() &&
+        name_it->second.getKind() == llvm::msgpack::Type::String) {
+      kernel_info.name = name_it->second.getString().str();
+    } else {
+      kernel_info.name = "unknown";
+    }
 
     // Log per-kernel spill information with register usage
-    if (kernel_sgpr_spill > 0 || kernel_vgpr_spill > 0) {
+    if (kernel_info.HasSpilling()) {
+      uint64_t kernel_sgpr_count = 0;
+      uint64_t kernel_vgpr_count = 0;
       // Look for ".sgpr_count" (total SGPRs used)
       auto sgpr_count_it = kernel_map.find(".sgpr_count");
       if (sgpr_count_it != kernel_map.end() &&
@@ -276,18 +323,21 @@ RegisterSpillInfo ParseAMDGPUMetadataForSpills(llvm::StringRef metadata) {
         kernel_vgpr_count = vgpr_count_it->second.getUInt();
       }
 
-      VLOG(2) << "Kernel '" << get_kernel_name() << "' has register spilling: "
-              << "SGPR=" << kernel_sgpr_spill << ", VGPR=" << kernel_vgpr_spill
+      VLOG(2) << "Kernel '" << kernel_info.name << "' has register spilling: "
+              << "SGPR=" << kernel_info.sgpr_spill_count
+              << ", VGPR=" << kernel_info.vgpr_spill_count
               << ". Register count: SGPR=" << kernel_sgpr_count
               << ", VGPR=" << kernel_vgpr_count;
     }
 
     // Log per-kernel stack usage
-    if (kernel_private_size > 0 || kernel_uses_dynamic) {
-      VLOG(2) << "Kernel '" << get_kernel_name() << "' stack usage: "
-              << "private=" << kernel_private_size
-              << ", dynamic=" << (kernel_uses_dynamic ? "true" : "false");
+    if (kernel_info.HasStackUsage()) {
+      VLOG(2) << "Kernel '" << kernel_info.name << "' stack usage: "
+              << "private=" << kernel_info.private_segment_size << ", dynamic="
+              << (kernel_info.uses_dynamic_stack ? "true" : "false");
     }
+
+    spill_info.kernels.push_back(std::move(kernel_info));
   }
 
   return spill_info;
@@ -425,10 +475,14 @@ void HsacoCache::Add(const std::string& ir, uint64_t hash,
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
-absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
+absl::StatusOr<EmitResult> EmitModuleToHsaco(
     llvm::Module* module, llvm::TargetMachine* target_machine,
+<<<<<<< HEAD
     const DebugOptions& debug_options,
     llvm_ir::LLVMCommandLineOptionsLock& llvm_lock) {
+=======
+    const DebugOptions& debug_options, bool keep_tempfiles) {
+>>>>>>> upstream/master
   auto* env = tsl::Env::Default();
   std::vector<std::string> tempdir_vector;
   env->GetLocalTempDirectories(&tempdir_vector);
@@ -439,9 +493,6 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   std::string tempdir_name = tempdir_vector.front();
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
-  bool keep_tempfiles = false;
-  CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
-                                   /*default_val=*/false, &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
   std::string random_number = std::to_string(tsl::random::New64());
@@ -571,19 +622,28 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     // We can have SGPR spills without stack being used. They are saved to
     // VGPRs. In that case, we don't want to discard such kernel, so just
     // report such cases.
-    VLOG(1) << "Register spilling (SGPR: " << spill_info.sgpr_spill_count
-            << ", VGPR: " << spill_info.vgpr_spill_count << ") detected in "
-            << module->getModuleIdentifier();
+    for (const KernelSpillInfo& k : spill_info.kernels) {
+      if (k.HasSpilling()) {
+        VLOG(1) << "Register spilling in kernel '" << k.name
+                << "' (SGPR: " << k.sgpr_spill_count
+                << ", VGPR: " << k.vgpr_spill_count << ") in "
+                << module->getModuleIdentifier();
+      }
+    }
   } else {
     VLOG(2) << "No register spilling detected in "
             << module->getModuleIdentifier();
   }
 
   if (spill_info.HasStackUsage()) {
-    VLOG(1) << "Stack usage (private: " << spill_info.private_segment_size
-            << ", dynamic: "
-            << (spill_info.uses_dynamic_stack ? "true" : "false")
-            << ") detected in " << module->getModuleIdentifier();
+    for (const KernelSpillInfo& k : spill_info.kernels) {
+      if (k.HasStackUsage()) {
+        VLOG(1) << "Stack usage in kernel '" << k.name
+                << "' (private: " << k.private_segment_size
+                << ", dynamic: " << (k.uses_dynamic_stack ? "true" : "false")
+                << ") in " << module->getModuleIdentifier();
+      }
+    }
 
     // Filter out kernels with register spilling during autotuning
     // This matches NVIDIA's behavior in ptx_compiler_impl.cc
@@ -604,9 +664,8 @@ absl::StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   if (!keep_tempfiles) {
     remove(ir_path.c_str());
     remove(isabin_path.c_str());
-    remove(hsaco_path.c_str());
   }
-  return hsaco;
+  return EmitResult{hsaco_path, spill_info};
 }
 
 absl::Status AMDGPUTargetModuleLinker(
@@ -867,16 +926,10 @@ std::vector<std::string> GetAMDGPUBackendOptions(
   return backend_llvm_opts;
 }
 
-absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
+absl::StatusOr<HsacoResult> CompileToHsaco(
     llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     const std::string& module_config_cache_key) {
-  static absl::once_flag backend_init_flag;
-  // TODO(rocm) Ideally this would be refreshed if xla_gpu_cuda_data_dir
-  // changes.
-  static std::string rocdl_dir_path;  // NOLINT: static/global vars forbidden
-  absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options,
-                  rocdl_dir_path);
   auto llvm_opts = GetAMDGPUBackendOptions(debug_options);
 
   VLOG(2) << "CompileToHsaco called for module: "
@@ -884,8 +937,6 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
 
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
 
-  std::vector<uint8_t> hsaco;
-  std::unique_ptr<llvm::TargetMachine> target_machine;
   std::string str;
   llvm::raw_string_ostream stream(str);
   stream << *module;
@@ -904,17 +955,13 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     }
   }
   str += module_config_cache_key;
-  {
-    tsl::profiler::TraceMe activity(
-        [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
-        tsl::profiler::TraceMeLevel::kInfo);
-    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
-    auto compute_capability = gpu_version.rocm_compute_capability();
-    if (!compute_capability) {
-      return xla::Internal("Incompatible compute capability was specified.");
-    }
+  tsl::profiler::TraceMe activity(
+      [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
+      tsl::profiler::TraceMeLevel::kInfo);
+  XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
+<<<<<<< HEAD
     std::string gcn_arch_name = compute_capability->gcn_arch_name();
 
     uint64_t hash;
@@ -949,8 +996,88 @@ absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
     TF_ASSIGN_OR_RETURN(
         hsaco, EmitModuleToHsaco(module, target_machine.get(), debug_options, llvm_lock));
     HsacoCache::Add(str, hash, gcn_arch_name, hsaco);
+=======
+  auto compute_capability = gpu_version.rocm_compute_capability();
+  if (!compute_capability) {
+    return xla::Internal("Incompatible compute capability was specified.");
+>>>>>>> upstream/master
   }
-  return hsaco;
+
+  std::string gcn_arch_name = compute_capability->gcn_arch_name();
+
+  uint64_t hash;
+  std::vector<uint8_t> hsaco;
+  if (HsacoCache::Find(str, hash, gcn_arch_name, hsaco)) {
+    VLOG(1) << "HSACO cache hit for module '" << module->getModuleIdentifier()
+            << "' (arch=" << gcn_arch_name << ", hash=" << hash
+            << ", size=" << hsaco.size() << " bytes)";
+    // Extract spill info from the cached HSACO binary so that the autotuner's
+    // spill-filtering logic works correctly even on cache hits.
+    RegisterSpillInfo spill_info = ExtractRegisterSpillingFromHsaco(hsaco);
+    return HsacoResult{std::move(hsaco), spill_info.ToModuleStats()};
+  }
+  VLOG(1) << "HSACO cache miss for module '" << module->getModuleIdentifier()
+          << "' (arch=" << gcn_arch_name << ")";
+  bool dump_lls = false;
+  if (dump_lls) {
+    static int hsaco_count = 0;
+    std::string name = "/tmp/" + std::to_string(hsaco_count) + ".ll";
+    hsaco_count++;
+    std::ofstream ofs(name);
+    ofs << str;
+    ofs.close();
+  }
+
+  bool keep_tempfiles = false;
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
+                                      /*default_val=*/false, &keep_tempfiles));
+  TF_ASSIGN_OR_RETURN(HsacoFileResult file_result,
+                      CompileToHsacoAndReturnFilePath(
+                          module, gpu_version, debug_options, keep_tempfiles));
+
+  // Read HSACO.
+  std::ifstream hsaco_file(file_result.hsaco_path,
+                           std::ios::binary | std::ios::ate);
+  std::ifstream::pos_type hsaco_file_size = hsaco_file.tellg();
+  hsaco.resize(hsaco_file_size);
+  hsaco_file.seekg(0, std::ios::beg);
+  hsaco_file.read(reinterpret_cast<char*>(hsaco.data()), hsaco_file_size);
+  hsaco_file.close();
+  if (!keep_tempfiles) {
+    remove(file_result.hsaco_path.c_str());
+  }
+  HsacoCache::Add(str, hash, gcn_arch_name, hsaco);
+
+  return HsacoResult{std::move(hsaco), std::move(file_result.module_stats)};
+}
+
+absl::StatusOr<HsacoFileResult> CompileToHsacoAndReturnFilePath(
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options, bool keep_tempfiles) {
+  static absl::once_flag backend_init_flag;
+  // TODO(rocm) Ideally this would be refreshed if xla_gpu_cuda_data_dir
+  // changes.
+  static std::string rocdl_dir_path;  // NOLINT: static/global vars forbidden
+  absl::call_once(backend_init_flag, AMDGPUBackendInit, debug_options,
+                  rocdl_dir_path);
+
+  llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");
+  // Construct LLVM TargetMachine for AMDGPU.
+  std::unique_ptr<llvm::TargetMachine> target_machine =
+      AMDGPUGetTargetMachine(default_target_triple, gpu_version, debug_options);
+
+  // Link with ROCm-Device-Libs, and optimize the LLVM module.
+  TF_RETURN_IF_ERROR(gpu::LinkAndOptimizeModule(
+      module, gpu_version, debug_options, rocdl_dir_path,
+      AMDGPUTargetModuleLinker, default_target_triple, target_machine.get(),
+      kAMDGPUInlineThreshold));
+
+  // Lower optimized LLVM module to HSA code object.
+  TF_ASSIGN_OR_RETURN(EmitResult emit_result,
+                      EmitModuleToHsaco(module, target_machine.get(),
+                                        debug_options, keep_tempfiles));
+  return HsacoFileResult{std::move(emit_result.hsaco_path),
+                         emit_result.spill_info.ToModuleStats()};
 }
 
 }  // namespace amdgpu

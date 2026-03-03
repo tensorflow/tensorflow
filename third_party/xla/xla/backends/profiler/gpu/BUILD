@@ -66,6 +66,7 @@ cc_library(
         ":rocm_collector",
         ":rocm_tracer",
         ":rocm_tracer_utils",
+        "//xla:debug_options_flags",
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
@@ -886,12 +887,10 @@ cc_library(
         "gpu",
     ],
     deps = [
-        "//xla/tsl/profiler/utils:xplane_builder",
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/tsl/profiler/utils:xplane_schema",
-        "//xla/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )

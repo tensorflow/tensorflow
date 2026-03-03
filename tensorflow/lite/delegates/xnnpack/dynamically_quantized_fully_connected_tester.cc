@@ -98,10 +98,8 @@ void DynamicallyQuantizedFullyConnectedTester::Test(
   }
 }
 
-void DynamicallyQuantizedFullyConnectedTester::Test(
-    TfLiteDelegate* delegate) const {
-  std::vector<char> buffer = CreateTfLiteModel();
-  const Model* model = GetModel(buffer.data());
+void DynamicallyQuantizedFullyConnectedTester::Test(TfLiteDelegate* delegate) {
+  const Model* model = GetModel();
 
   std::unique_ptr<Interpreter> delegate_interpreter;
   ASSERT_EQ(
@@ -133,7 +131,7 @@ void DynamicallyQuantizedFullyConnectedTester::Test(
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
   if (weights_cache_ != nullptr) {
-    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+    TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(weights_cache_);
   }
 
   Test(delegate_interpreter.get(), default_interpreter.get());

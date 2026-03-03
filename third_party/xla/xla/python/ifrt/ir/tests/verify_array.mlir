@@ -46,6 +46,24 @@ func.func @good_array_with_memory_kind_and_layout() {
 
 // -----
 
+func.func @good_array_with_unreduced_axis() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<6xi32>, #ifrt.sharding_param<2 to [0,1] on 2x2
+                  unreduced [1]>, [0,1,2,3]>
+  return
+}
+
+// -----
+
+func.func @good_array_with_multiple_unreduced_axes() {
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<2x1 to [1,2,0] on 3x2x2
+                  unreduced [1,2]>, [0,1,2,3,4,5,6,7,8,9,10,11]>
+  return
+}
+
+// -----
+
 func.func @array_with_bad_layout() {
   // expected-error@+4 {{Invalid layout mode}}
   %0 = builtin.unrealized_conversion_cast to
@@ -135,5 +153,38 @@ func.func @array_requires_non_empty_permutation() {
   %0 = builtin.unrealized_conversion_cast to
        !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<2x2 to [] on>,
                    [0,1,2,3]>
+  return
+}
+
+// -----
+
+func.func @array_requires_unique_unreduced_axes() {
+  // expected-error@+3 {{`unreduced_axes` has duplicate value: 0}}
+  // expected-error@+3 {{failed to parse Ifrt_ArrayType parameter 'sharding_attr'}}
+  %0 = builtin.unrealized_conversion_cast to
+       !ifrt.array<tensor<4x4xi32>, #ifrt.sharding_param<1x2 to [0,1] on 2x2
+                    unreduced [0,0]>, [0,1,2,3]>
+  return
+}
+
+// -----
+
+func.func @array_requires_unreduced_axis_not_to_be_sharded() {
+  // expected-error@+3 {{`unreduced_axes` contains an axis (=0) with more than one shard (=2)}}
+  // expected-error@+3 {{failed to parse Ifrt_ArrayType parameter 'sharding_attr'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<4x6xi32>, #ifrt.sharding_param<2x1 to [0,2,1] on 2x2x2
+                  unreduced [0,2]>, [0,1,2,3,4,5,6,7]>
+  return
+}
+
+// -----
+
+func.func @array_requires_unreduced_axis_in_bounds() {
+  // expected-error@+3 {{`unreduced_axes` must contain non-negative values less than the number of mesh dimensions (=3). Saw: 3}}
+  // expected-error@+3 {{failed to parse Ifrt_ArrayType parameter 'sharding_attr'}}
+  %0 = builtin.unrealized_conversion_cast to
+      !ifrt.array<tensor<6xi32>, #ifrt.sharding_param<2 to [0,2,1] on 2x1x2
+                  unreduced [3]>, [0,1,2,3]>
   return
 }

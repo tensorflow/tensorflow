@@ -44,9 +44,9 @@ class SessionRef : public Session {
                       const GraphDef& graph) override;
   absl::Status Extend(const RunOptions& run_options,
                       const GraphDef& graph) override;
-  absl::Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
-                   const std::vector<string>& output_tensor_names,
-                   const std::vector<string>& target_node_names,
+  absl::Status Run(const std::vector<std::pair<std::string, Tensor> >& inputs,
+                   const std::vector<std::string>& output_tensor_names,
+                   const std::vector<std::string>& target_node_names,
                    std::vector<Tensor>* outputs) override;
 
   absl::Status ListDevices(std::vector<DeviceAttributes>* response) override;
@@ -55,20 +55,20 @@ class SessionRef : public Session {
   absl::Status Close(const RunOptions& run_options) override;
 
   absl::Status Run(const RunOptions& run_options,
-                   const std::vector<std::pair<string, Tensor> >& inputs,
-                   const std::vector<string>& output_tensor_names,
-                   const std::vector<string>& target_node_names,
+                   const std::vector<std::pair<std::string, Tensor> >& inputs,
+                   const std::vector<std::string>& output_tensor_names,
+                   const std::vector<std::string>& target_node_names,
                    std::vector<Tensor>* outputs,
                    RunMetadata* run_metadata) override;
 
-  absl::Status PRunSetup(const std::vector<string>& input_names,
-                         const std::vector<string>& output_names,
-                         const std::vector<string>& target_nodes,
-                         string* handle) override;
+  absl::Status PRunSetup(const std::vector<std::string>& input_names,
+                         const std::vector<std::string>& output_names,
+                         const std::vector<std::string>& target_nodes,
+                         std::string* handle) override;
 
-  absl::Status PRun(const string& handle,
-                    const std::vector<std::pair<string, Tensor> >& inputs,
-                    const std::vector<string>& output_names,
+  absl::Status PRun(const std::string& handle,
+                    const std::vector<std::pair<std::string, Tensor> >& inputs,
+                    const std::vector<std::string>& output_names,
                     std::vector<Tensor>* outputs) override;
 
   absl::Status MakeCallable(const CallableOptions& callable_options,
@@ -84,7 +84,7 @@ class SessionRef : public Session {
  private:
   mutex run_lock_;
   condition_variable run_finished_;
-  uint64 run_count_ TF_GUARDED_BY(run_lock_) = {0};
+  uint64_t run_count_ TF_GUARDED_BY(run_lock_) = {0};
   std::shared_ptr<Session> session_;
 
   // Borrowed reference to global session logger.

@@ -145,7 +145,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
     shapes.push_back(std::move(shape));
   }
 
-  std::vector<xla::PjRtGlobalDeviceId> src_global_device_ids;
+  std::vector<xla::GlobalDeviceId> src_global_device_ids;
   src_global_device_ids.reserve(args->num_shapes);
 
   std::vector<xla::CrossHostTransferKey> transfer_keys;
@@ -175,7 +175,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(
     buffers.push_back(args->buffers[i]->buffer.get());
   }
 
-  std::vector<xla::PjRtGlobalDeviceId> dst_global_device_ids;
+  std::vector<xla::GlobalDeviceId> dst_global_device_ids;
   dst_global_device_ids.reserve(args->num_buffers);
 
   std::vector<xla::CrossHostTransferKey> transfer_keys;

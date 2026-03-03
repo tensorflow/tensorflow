@@ -4720,16 +4720,17 @@ class RocmFusedConvRunner : public dnn::FusedConvRunner {
       auto status = wrap::miopenFusionPlanGetWorkSpaceSize(
           miopen.handle(), fusion_plan.fusion_plan_, &workspace_size_,
           miopenConvolutionFwdAlgoImplicitGEMM);
-      constexpr bool miopenFusionPlanGetWorkSpaceSize_is_broken = true;
-
-      if (miopenFusionPlanGetWorkSpaceSize_is_broken) {
-        return absl::InternalError("Cannot reliably query workspace size");
-      }
 
       if (status != miopenStatusSuccess) {
         return absl::InternalError(
             "call to miopenFusionPlanGetWorkSpaceSize failed: " +
             stream_executor::gpu::ToString(status));
+      }
+
+      constexpr bool miopenFusionPlanGetWorkSpaceSize_is_broken = true;
+
+      if (miopenFusionPlanGetWorkSpaceSize_is_broken) {
+        return absl::InternalError("Cannot reliably query workspace size");
       }
     }
 

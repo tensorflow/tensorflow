@@ -87,6 +87,7 @@ def _gen_mlir_op_impl(ctx):
             )
         ),
         use_default_shell_env = True,
+        mnemonic = "GenMlirOp",
     )
 
 _gen_mlir_op_rule = rule(

@@ -24,21 +24,42 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu::amdgpu {
+
+// Result of compiling an LLVM module to HSACO format (in-memory bytes).
+struct HsacoResult {
+  std::vector<uint8_t> hsaco;
+  ModuleStats module_stats;
+};
+
+// Result of compiling an LLVM module to HSACO format (on-disk file).
+struct HsacoFileResult {
+  std::string hsaco_path;
+  ModuleStats module_stats;
+};
+
 // Links ROCm-Device-Libs into the given module if the module needs it.
 absl::Status LinkROCDLIfNecessary(llvm::Module* module,
                                   const std::string& gfx_version,
                                   const DebugOptions& debug_options,
                                   const std::string& rocdl_dir_path);
+
 // Compiles the argument module and returns it with LLVM AMDGPU backend.
 // rocdl_dir_path is the parent directory of ROCm-Device-Libs bitcode libraries.
 // The contents of the module may be changed.
-absl::StatusOr<std::vector<uint8_t>> CompileToHsaco(
+absl::StatusOr<HsacoResult> CompileToHsaco(
     llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     const std::string& module_config_cache_key);
+
+// Compiles the argument module and returns path of compiled Hsaco file
+// along with register spill information.
+absl::StatusOr<HsacoFileResult> CompileToHsacoAndReturnFilePath(
+    llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options, bool keep_tempfiles);
 
 // Returns the LLVM command line flags that we use for compilation.
 std::vector<std::string> GetAMDGPUBackendOptions(

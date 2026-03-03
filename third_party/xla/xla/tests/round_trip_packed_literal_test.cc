@@ -20,30 +20,30 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/client/local_client.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/packed_literal_reader.h"
 #include "xla/service/service.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/local_client_test_base.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-class RoundTripPackedLiteralTest : public ClientLibraryTestBase {
+class RoundTripPackedLiteralTest : public LocalClientTestBase {
  protected:
   // Sends the literal to the server and retrieves it back.
-  Literal RoundTripToServer(const Literal& original) {
-    std::unique_ptr<GlobalData> data =
-        client_->TransferToServer(original).value();
-    return client_->Transfer(*data).value();
+  absl::StatusOr<Literal> RoundTripToServer(const Literal& original) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
+                        local_client_->TransferToServer(original));
+    return local_client_->Transfer(*data);
   }
 };
 
@@ -59,7 +59,8 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
   std::unique_ptr<tsl::RandomAccessFile> f;
   CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2})).value();
+  TF_ASSERT_OK_AND_ASSIGN(Literal actual,
+                          reader.Read(ShapeUtil::MakeShape(F32, {2})));
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0, actual.Get<float>({0}));
@@ -84,8 +85,8 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   std::unique_ptr<tsl::RandomAccessFile> f;
   CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual =
-      reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal actual, reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout));
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0f, actual.Get<float>({0, 0}));
@@ -93,7 +94,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
   EXPECT_EQ(64.0f, actual.Get<float>({1, 0}));
   EXPECT_EQ(46.0f, actual.Get<float>({1, 1}));
 
-  Literal round_tripped = RoundTripToServer(actual);
+  TF_ASSERT_OK_AND_ASSIGN(Literal round_tripped, RoundTripToServer(actual));
   EXPECT_TRUE(LiteralTestUtil::Equal(round_tripped, actual));
 }
 
@@ -115,8 +116,8 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   std::unique_ptr<tsl::RandomAccessFile> f;
   CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
-  Literal actual =
-      reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal actual, reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout));
   EXPECT_TRUE(reader.IsExhausted());
 
   EXPECT_EQ(42.0f, actual.Get<float>({0, 0}));
@@ -124,7 +125,7 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
   EXPECT_EQ(64.0f, actual.Get<float>({0, 1}));
   EXPECT_EQ(46.0f, actual.Get<float>({1, 1}));
 
-  Literal round_tripped = RoundTripToServer(actual);
+  TF_ASSERT_OK_AND_ASSIGN(Literal round_tripped, RoundTripToServer(actual));
   EXPECT_TRUE(LiteralTestUtil::Equal(round_tripped, actual));
 }
 

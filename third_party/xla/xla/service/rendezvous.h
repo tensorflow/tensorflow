@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {

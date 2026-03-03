@@ -747,6 +747,10 @@ def tflite_custom_c_library(
         **kwargs
     )
 
+def _is_bzlmod_enabled():
+    """Check if with bzlmod enabled"""
+    return str(Label("@//:BUILD.bazel")).startswith("@@")
+
 # TODO(b/254126721): Move tflite_combine_cc_tests macro to lite/testing/build_def.bzl.
 def tflite_combine_cc_tests(
         name,
@@ -806,7 +810,11 @@ def tflite_combine_cc_tests(
 
     if combined_test_srcs:
         # Using native.existing_rule to combine cc_test's deps duplicates link_extra_lib. Remove it.
-        combined_test_deps.pop("@@rules_cc" + "//:link_extra_lib", None)
+        if _is_bzlmod_enabled():
+            combined_test_deps.pop(str(Label("@rules_cc" + "//:link_extra_lib")), None)
+        else:
+            combined_test_deps.pop("@@rules_cc" + "//:link_extra_lib", None)
+
         cc_test(
             name = name,
             size = "large",

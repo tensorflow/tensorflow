@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/debugging/leak_check.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -640,13 +641,9 @@ absl::Status CudaCommandBuffer::Trace(
       cuda::ToStatus(cuStreamEndCapture(stream_handle, &captured_graph),
                      "Failed to end stream capture"));
   DCHECK(captured_graph == graph_) << "Stream capture should update graph_";
+  TF_RETURN_IF_ERROR(traced);
+
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
-
-  if (!traced.ok()) {
-    return absl::InternalError(
-        absl::StrCat("Failed to capture gpu graph: ", traced.message()));
-  }
-
   VLOG(5) << "Traced into the GPU command buffer graph " << graph_ << " (took "
           << (end_nanos - start_nanos) / 1000 << " μs)";
 
@@ -670,6 +667,10 @@ absl::Status CudaCommandBuffer::Trace(
 absl::Status CudaCommandBuffer::LaunchGraph(Stream* stream) {
   VLOG(3) << "Launch command buffer executable graph " << graph_exec()
           << " on a stream: " << stream;
+  // [GPU] Memory leak in Collective Ops when using Command Buffer github #36487
+  // https://github.com/openxla/xla/issues/36487
+  // Disable the leak check temporarily.
+  absl::LeakCheckDisabler disabler;
   return cuda::ToStatus(
       cuGraphLaunch(
           graph_exec(),

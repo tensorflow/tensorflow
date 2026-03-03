@@ -24,6 +24,10 @@ load(
     "if_rocm",
 )
 load(
+    "@local_config_sycl//sycl:build_defs.bzl",
+    "if_sycl",
+)
+load(
     "//xla/tsl/platform:rules_cc.bzl",
     "cc_binary",
     "cc_library",
@@ -340,6 +344,7 @@ def tsl_copts(
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) +
+        if_sycl(["-DTENSORFLOW_USE_SYCL=1"]) +
         # Compile in oneDNN based ops when building for x86 platforms
         if_onednn(["-DXLA_ONEDNN"]) +
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
@@ -414,7 +419,7 @@ def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs
             "@local_config_rocm//rocm:hip",
             "@local_config_rocm//rocm:rocm_headers",
         ]),
-        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_onednn(["-DXLA_ONEDNN"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_sycl(["-DTENSORFLOW_USE_SYCL=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_onednn(["-DXLA_ONEDNN"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
 
@@ -583,6 +588,7 @@ def tsl_pybind_extension_opensource(
         deprecation = None,
         enable_stub_generation = False,  # @unused
         features = [],
+        local_defines = [],
         licenses = None,
         linkopts = [],
         pytype_deps = [],
@@ -650,6 +656,7 @@ def tsl_pybind_extension_opensource(
                 ],
             }),
             defines = defines,
+            local_defines = local_defines,
             features = features + ["-use_header_modules"],
             restricted_to = restricted_to,
             testonly = testonly,
@@ -726,6 +733,7 @@ def tsl_pybind_extension_opensource(
                 version_script_file,
             ],
             defines = defines,
+            local_defines = local_defines,
             features = features + ["-use_header_modules"],
             linkshared = 1,
             testonly = testonly,

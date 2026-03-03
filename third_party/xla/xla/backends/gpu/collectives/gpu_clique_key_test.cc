@@ -36,11 +36,7 @@ namespace xla::gpu {
 static GpuCliqueKey GetBaseCliqueKey() {
   return GpuCliqueKey(/*devices=*/{GlobalDeviceId(0), GlobalDeviceId(1)},
                       /*num_local_participants=*/2,
-                      /*is_p2p=*/false,
-                      /*participant_groups=*/
-                      std::vector<std::vector<GlobalDeviceId>>{
-                          {GlobalDeviceId(0), GlobalDeviceId(1)},
-                          {GlobalDeviceId(2), GlobalDeviceId(3)}});
+                      /*is_p2p=*/false);
 }
 
 TEST(GpuCliqueKeyTest, IsSubsetOf) {
@@ -105,49 +101,6 @@ TEST(GpuCliqueKeyTest, Compare) {
   EXPECT_GT(key1, key0);
 }
 
-TEST(GpuCliqueKeyTest, CompareWithParticipantGroups) {
-  GlobalDeviceId id0 = GlobalDeviceId(0);
-  GlobalDeviceId id1 = GlobalDeviceId(1);
-  GlobalDeviceId id2 = GlobalDeviceId(2);
-  GlobalDeviceId id3 = GlobalDeviceId(3);
-
-  // The keys are not equal because the replica groups are different.
-  GpuCliqueKey key0({id0, id1}, /*num_local_participants=*/1, false,
-                    std::vector<std::vector<GlobalDeviceId>>{{id0, id1}});
-  GpuCliqueKey key1(
-      {id0, id1}, /*num_local_participants=*/1, false,
-      std::vector<std::vector<GlobalDeviceId>>{{id0, id1}, {id2, id3}});
-  EXPECT_FALSE(key0 == key1);
-
-  // With no replica groups, the keys are equal
-  GpuCliqueKey key0_nogroups({id0, id1}, /*num_local_participants=*/1, false);
-  GpuCliqueKey key1_nogroups({id0, id1}, /*num_local_participants=*/1, false);
-  EXPECT_EQ(key0_nogroups, key1_nogroups);
-}
-
-TEST(GpuCliqueKeyTest, CompareWithPermutedParticipantGroups) {
-  GlobalDeviceId id0 = GlobalDeviceId(0);
-  GlobalDeviceId id1 = GlobalDeviceId(1);
-  GlobalDeviceId id2 = GlobalDeviceId(2);
-  GlobalDeviceId id3 = GlobalDeviceId(3);
-
-  // The keys are equal because the replica groups are same up to permutation.
-  GpuCliqueKey key0(
-      {id0, id1},
-      /*num_local_participants=*/1, false,
-      std::vector<std::vector<GlobalDeviceId>>{{id3, id2}, {id0, id1}});
-  GpuCliqueKey key1(
-      {id0, id1},
-      /*num_local_participants=*/1, false,
-      std::vector<std::vector<GlobalDeviceId>>{{id0, id1}, {id2, id3}});
-  EXPECT_EQ(key0, key1);
-
-  GpuCliqueKey key_other(
-      {id0, id1}, /*num_local_participants=*/1, false,
-      std::vector<std::vector<GlobalDeviceId>>{{id0, id2}, {id1, id3}});
-  EXPECT_FALSE(key0 == key_other);
-}
-
 TEST(GpuCliqueKeyTest, BtreeIterationOrder) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);
@@ -185,7 +138,7 @@ TEST(GpuCliqueKeyGettersTest, IsP2P) {
 
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
-            "devices=2:[0,1]; is_p2p=false; groups=[[0,1],[2,3]]; "
+            "devices=2:[0,1]; is_p2p=false; "
             "local_participants=2; incarnations=[]");
 }
 
@@ -199,7 +152,7 @@ TEST(GpuCliqueKeyGetterTest, ToStringManyDevices) {
   GpuCliqueKey key(devices, 100, /*is_p2p=*/false);
 
   EXPECT_EQ(key.ToString(),
-            "devices=100:[0,1,2,3,4,5,6,7,8,9...96,97,98,99]; is_p2p=false; "
+            "devices=100:[0,1,2,3,4,5,6,7...98,99]; is_p2p=false; "
             "local_participants=100; incarnations=[]");
 }
 

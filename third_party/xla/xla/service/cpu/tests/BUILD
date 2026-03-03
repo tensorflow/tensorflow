@@ -150,7 +150,6 @@ xla_test(
     name = "cpu_ffi_test",
     srcs = ["cpu_ffi_test.cc"],
     backends = ["cpu"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:debug_options_flags",
         "//xla:shape_util",

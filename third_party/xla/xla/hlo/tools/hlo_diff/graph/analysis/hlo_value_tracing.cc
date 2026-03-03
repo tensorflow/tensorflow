@@ -107,7 +107,6 @@ HloValue* HloValueTracing::NewHloValue(HloInstruction* instruction,
                                     value_id, instruction, index, is_phi)});
   CHECK(result.second);
 
-
   return result.first->second.get();
 }
 
@@ -1124,7 +1123,6 @@ absl::Status HloValueTracing::InitializeInstructionValueSets() {
           }
 
           if (instruction->operand_count() > 1) {
-            CHECK_EQ(instruction->operand_count(), 4);
             if (instruction->operand(1)->shape().IsTuple()) {
               for (int i = 0; i < ShapeUtil::TupleElementCount(
                                       instruction->operand(1)->shape());

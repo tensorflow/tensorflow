@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/iterator_util.h"
 #include "xla/online_topsort.h"
 #include "xla/printer.h"
@@ -813,24 +814,28 @@ class HloModule {
   // Describes a stack frame.
   using StackFrame = HloStackFrame;
 
-  // Getter for the specific stack frame. Argument is a 1-based index.
-  HloStackFrame get_stack_frame(int id) const;
+  // Getter for the specific stack frame.
+  HloStackFrame get_stack_frame(StackFrameId id) const;
 
-  // Setter for the stack frame index.
-  void set_stack_frame_index(StackFrameIndexProto stack_frame_index) {
-    stack_frame_index_ = std::move(stack_frame_index);
+  // Setter for the stack frame DAG.
+  void set_stack_frames(StackFrames stack_frames) {
+    stack_frames_ = std::move(stack_frames);
   }
 
-  // Getter for the stack frame index.
-  const std::optional<StackFrameIndexProto>& stack_frame_index() const {
-    return stack_frame_index_;
-  }
+  // Getter for the stack frame DAG.
+  const StackFrames& stack_frames() const { return stack_frames_; }
+  StackFrames& mutable_stack_frames() { return stack_frames_; }
 
   // Finalizes this module by destroying internal data structures that might be
   // used for building or modifying the module. It is undefined behavior to
   // modify the module (add computations or instructions) after the call. Should
   // be called once, after HLO module is compiled to executable.
   void Finalize();
+
+  // Populates the stack_frames metadata from `index_proto`. Canonicalizes
+  // the stack frame IDs and remaps any stack frame IDs in the module's
+  // instructions' metadata to refer to the canonical `StackFrameId`s.
+  void CanonicalizeStackFrameIds(const StackFrameIndexProto& index_proto);
 
  private:
   friend class HloComputation;
@@ -964,8 +969,8 @@ class HloModule {
   // environment variables).
   std::unique_ptr<CompilationEnvironments> comp_envs_;
 
-  // Stack frame indexes flat representation.
-  std::optional<StackFrameIndexProto> stack_frame_index_;
+  // Stack frame representation.
+  StackFrames stack_frames_;
 
   // Topological ordering of the computations in this module.
   // The topological order only contains computations whose parent() is this

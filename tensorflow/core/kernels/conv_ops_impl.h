@@ -742,8 +742,8 @@ extern template struct Conv2DOp<CPUDevice, int32>;
 template <typename T>
 void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
                       const Tensor& input_param, const Tensor& filter,
-                      const gtl::InlinedVector<int64_t, 3>& dilations,
-                      const gtl::InlinedVector<int64_t, 3>& strides,
+                      const absl::InlinedVector<int64_t, 3UL>& dilations,
+                      const absl::InlinedVector<int64_t, 3UL>& strides,
                       const Padding& padding,
                       const std::vector<int64_t>& explicit_paddings,
                       TensorFormat data_format, Tensor* output) {
@@ -795,10 +795,11 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   if (!is_grouped_convolution && one_filter && one_dilations && one_stride &&
       data_format == FORMAT_NHWC && (padding == VALID || padding == SAME)) {
     // 1x1 filter, so call cublas directly.
-    const uint64 m = in_batch * std::accumulate(in_dims.begin(), in_dims.end(),
-                                                1, std::multiplies<>{});
-    const uint64 k = in_depth;
-    const uint64 n = out_depth;
+    const uint64_t m =
+        in_batch *
+        std::accumulate(in_dims.begin(), in_dims.end(), 1, std::multiplies<>{});
+    const uint64_t k = in_depth;
+    const uint64_t n = out_depth;
 
     auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                 input.template flat<T>().size());
@@ -817,10 +818,11 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
              data_format == FORMAT_NHWC) {
     // The input data and filter have the same spatial dimensions, so call
     // cublas directly.
-    const uint64 m = in_batch;
-    const uint64 k = in_depth * std::accumulate(in_dims.begin(), in_dims.end(),
-                                                1, std::multiplies<>{});
-    const uint64 n = out_depth;
+    const uint64_t m = in_batch;
+    const uint64_t k =
+        in_depth *
+        std::accumulate(in_dims.begin(), in_dims.end(), 1, std::multiplies<>{});
+    const uint64_t n = out_depth;
 
     auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                 input.template flat<T>().size());
@@ -1205,7 +1207,7 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
   auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, context);
-  Status cudnn_launch_status = LaunchAutotunedConv(
+  absl::Status cudnn_launch_status = LaunchAutotunedConv(
       autotune_entry, &scratch_allocator, se::dnn::ConvolutionKind::FORWARD,
       stream, input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
       output_desc, output_ptr);
@@ -1236,14 +1238,14 @@ void LaunchConvOpImpl(OpKernelContext* context, bool cudnn_use_autotune,
 template <typename T>
 void LaunchConvOp<GPUDevice, T>::operator()(
     OpKernelContext* context, bool cudnn_use_autotune, const Tensor& input,
-    const Tensor& filter, const std::vector<int64>& dilations,
-    const std::vector<int64>& strides, const Padding padding,
+    const Tensor& filter, const std::vector<int64_t>& dilations,
+    const std::vector<int64_t>& strides, const Padding padding,
     const std::vector<int64_t>& explicit_paddings, TensorFormat data_format,
     Tensor* output) {
   // Get spatial dims for dilations and strides.
   int spatial_dims = input.dims() - 2;
-  gtl::InlinedVector<int64_t, 3> strides_spatial(spatial_dims);
-  gtl::InlinedVector<int64_t, 3> dilations_spatial(spatial_dims);
+  absl::InlinedVector<int64_t, 3UL> strides_spatial(spatial_dims);
+  absl::InlinedVector<int64_t, 3UL> dilations_spatial(spatial_dims);
   for (int i = 0; i < spatial_dims; ++i) {
     strides_spatial[i] =
         GetTensorDim(strides, data_format, static_cast<char>(i + '0'));
@@ -1263,9 +1265,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     const std::vector<int64_t>& explicit_paddings, Tensor* output,
     TensorFormat data_format) {
   // Cast strides and dilations.
-  gtl::InlinedVector<int64_t, 3> casted_strides = {row_stride, col_stride};
-  gtl::InlinedVector<int64_t, 3> casted_dilations = {row_dilation,
-                                                     col_dilation};
+  absl::InlinedVector<int64_t, 3UL> casted_strides = {row_stride, col_stride};
+  absl::InlinedVector<int64_t, 3UL> casted_dilations = {row_dilation,
+                                                        col_dilation};
   LaunchConvOpImpl<T>(ctx, cudnn_use_autotune, input_param, filter,
                       casted_dilations, casted_strides, padding,
                       explicit_paddings, data_format, output);

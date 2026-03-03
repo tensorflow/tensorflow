@@ -206,7 +206,7 @@ TEST_F(SyclGpuRuntimeTest, TestStreamPoolDestroy_Negative) {
 
 TEST_F(SyclGpuRuntimeTest, TestMaxStreamsPerDevice) {
   // Ensure that the maximum number of streams per device is respected.
-  constexpr int kMaxStreams = 8;
+  constexpr int kMaxStreams = kMaxStreamsPerDevice;
   std::vector<StreamPtr> streams(kMaxStreams);
   for (int i = 0; i < kMaxStreams - 1; ++i) {
     TF_ASSERT_OK_AND_ASSIGN(streams[i], SyclStreamPool::GetOrCreateStream(

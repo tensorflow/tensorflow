@@ -197,9 +197,117 @@ void GatherScatterDims::FillOutputDimsWithIndicesDims(
   }
 }
 
+namespace {
+
+bool VerifyDimensionAxesAlignment(const NamedSharding& sub_named_sharding,
+                                  const NamedSharding& named_sharding) {
+  const Mesh& sub_mesh = sub_named_sharding.mesh();
+  const Mesh& mesh = named_sharding.mesh();
+
+  for (int64_t i = 0; i < named_sharding.num_dimensions(); ++i) {
+    if (!named_sharding.dim_sharding(i).IsPrefixOf(
+            sub_named_sharding.dim_sharding(i), mesh, sub_mesh)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool VerifySubTilingDataContainment(const Shape& potential_sharded_shape,
+                                    const NamedSharding& potential_subsharding,
+                                    const NamedSharding& sharding) {
+  // Verify that the data in each tile of the sub-sharding is a subset of the
+  // data in the corresponding tile of the sharding.
+  for (int64_t i = 0; i < potential_sharded_shape.dimensions().size(); ++i) {
+    int64_t shape_dim = potential_sharded_shape.dimensions(i);
+    int64_t sub_shards = i < potential_subsharding.num_dimensions()
+                             ? potential_subsharding.dimension(i)
+                             : 1;
+    int64_t shards = i < sharding.num_dimensions() ? sharding.dimension(i) : 1;
+    if (sub_shards == shards) {
+      continue;
+    }
+    // Ensures that sub_shards is a multiple of shards.
+    int64_t ratio = sub_shards / shards;
+    int64_t sub_shard_size = CeilOfRatio(shape_dim, sub_shards);
+    int64_t shard_size = CeilOfRatio(shape_dim, shards);
+
+    // If the sub-shards align perfectly with the shards (i.e. no uneven
+    // splitting issues), we can skip the detailed element-wise check.
+    if (sub_shards % shards == 0 && shard_size == ratio * sub_shard_size) {
+      continue;
+    }
+
+    for (int64_t j = 0; j < sub_shards; ++j) {
+      int64_t sub_start = j * sub_shard_size;
+      int64_t sub_end = std::min(shape_dim, (j + 1) * sub_shard_size);
+      // Skip sub-shards that are entirely within the padding region.
+      if (sub_start >= sub_end) {
+        continue;
+      }
+
+      // Identify which larger shard this sub-shard belongs to.
+      int64_t shard_index = j / ratio;
+      int64_t shard_start = shard_index * shard_size;
+      int64_t shard_end = std::min(shape_dim, (shard_index + 1) * shard_size);
+
+      // Verify that the sub-shard is strictly contained within the bounds of
+      // the parent shard.
+      if (sub_start < shard_start || sub_end > shard_end) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool IsSubTilingOrEqualNamedSharding(const Shape& potential_sharded_shape,
+                                     const NamedSharding& potential_subsharding,
+                                     const NamedSharding& sharding) {
+  if (sharding.IsTileMaximal()) {
+    return true;
+  }
+  if (potential_subsharding.IsTileMaximal()) {
+    return false;
+  }
+
+  const Mesh& sub_mesh = potential_subsharding.mesh();
+  const Mesh& mesh = sharding.mesh();
+
+  if (!potential_subsharding.manual_axes().empty() ||
+      !sharding.manual_axes().empty()) {
+    return false;
+  }
+  CHECK(sub_mesh.DeviceAssignmentEquals(mesh));
+
+  CHECK_EQ(potential_subsharding.num_dimensions(), sharding.num_dimensions());
+
+  // We implicitly treat the remaining dimensions as unsharded.
+  CHECK_LE(potential_subsharding.num_dimensions(),
+           potential_sharded_shape.dimensions().size());
+
+  return VerifyDimensionAxesAlignment(potential_subsharding, sharding) &&
+         VerifySubTilingDataContainment(potential_sharded_shape,
+                                        potential_subsharding, sharding);
+}
+
+}  // namespace
+
 bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
                                 const HloSharding& potential_subsharding,
                                 const HloSharding& sharding) {
+  if (potential_subsharding.UseNamedShardingLeaf() &&
+      sharding.UseNamedShardingLeaf()) {
+    return IsSubTilingOrEqualNamedSharding(
+        potential_sharded_shape, potential_subsharding.named_sharding(),
+        sharding.named_sharding());
+  }
+
+  CHECK_EQ(potential_subsharding.UseNamedShardingLeaf(),
+           sharding.UseNamedShardingLeaf())
+      << "IsSubTilingOrEqualSharding called with named and non-named "
+         "shardings.";
+
   // Some early exit cases.
   // If any manual sharding return false.
   if (potential_subsharding.IsManual() || sharding.IsManual()) {
@@ -1089,7 +1197,15 @@ HloSharding ReverseSharding(const HloSharding& sharding,
     return sharding;
   }
 
-  Array<int64_t> new_tile_assignment(sharding.dimensions());
+  // Supporting reverse operation on NamedSharding would require reversing
+  // mesh's device assignment, creating multiple meshes. Instead it's better to
+  // convert to tile-based sharding.
+  HloSharding tile_based_sharding =
+      sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(sharding.named_sharding())
+          : sharding;
+
+  Array<int64_t> new_tile_assignment(tile_based_sharding.dimensions());
   new_tile_assignment.Each(
       [&](absl::Span<const int64_t> indices, int64_t* device) {
         std::vector<int64_t> original_indices(indices.begin(), indices.end());
@@ -1097,14 +1213,14 @@ HloSharding ReverseSharding(const HloSharding& sharding,
           original_indices[d] =
               new_tile_assignment.dim(d) - 1 - original_indices[d];
         }
-        *device = sharding.tile_assignment()(original_indices);
+        *device = tile_based_sharding.tile_assignment()(original_indices);
       });
-  return sharding.ReplicateOnLastTileDim()
+  return tile_based_sharding.ReplicateOnLastTileDim()
              ? HloSharding::PartialTile(new_tile_assignment,
-                                        sharding.metadata())
+                                        tile_based_sharding.metadata())
              : HloSharding::Subgroup(new_tile_assignment,
-                                     sharding.subgroup_types(),
-                                     sharding.metadata());
+                                     tile_based_sharding.subgroup_types(),
+                                     tile_based_sharding.metadata());
 }
 
 HloSharding PropagateShardingAlongDimsAndReplicateOthers(
@@ -2887,6 +3003,85 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape) {
     result_shape.set_dimensions(i, shape.dimensions(i) / sharding.dimension(i));
   }
   return result_shape;
+}
+
+namespace {
+bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
+  if (!sharding.IsTiled()) {
+    return true;
+  }
+  if (sharding.IsTuple()) {
+    for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      if (!EvenlyPartitions(ShapeUtil::GetTupleElementShape(shape, i),
+                            sharding.GetSubSharding(shape, {i}))) {
+        return false;
+      }
+    }
+    return true;
+  }
+  for (int64_t i = 0; i < shape.dimensions().size(); ++i) {
+    if (shape.dimensions(i) % sharding.dimension(i) != 0) {
+      return false;
+    }
+  }
+  return true;
+};
+}  // namespace
+
+void ReplicateBoundaryShardingsIfIndivisible(
+    HloModule* module, absl::Span<const bool> process_output,
+    absl::Span<const bool> process_parameters) {
+  auto params = module->entry_computation()->parameter_instructions();
+  if (process_parameters.size() == params.size()) {
+    for (int64_t i = 0; i < params.size(); ++i) {
+      if (params[i]->has_sharding() && process_parameters[i] &&
+          !EvenlyPartitions(params[i]->shape(), params[i]->sharding())) {
+        params[i]->set_sharding(HloSharding::Replicate());
+      }
+    }
+  } else if (params.size() == 1 && params[0]->shape().IsTuple() &&
+             params[0]->has_sharding() &&
+             params[0]->shape().tuple_shapes().size() ==
+                 process_parameters.size()) {
+    HloSharding param_sharding = params[0]->sharding();
+    for (int64_t i = 0; i < params[0]->shape().tuple_shapes().size(); ++i) {
+      if (process_parameters[i] &&
+          !EvenlyPartitions(
+              params[0]->shape().tuple_shapes(i),
+              params[0]->sharding().GetSubSharding(params[0]->shape(), {i}))) {
+        param_sharding.tuple_elements()[i] = HloSharding::Replicate();
+      }
+    }
+    params[0]->set_sharding(std::move(param_sharding));
+  }
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  if (!root->has_sharding()) {
+    return;
+  }
+
+  if (root->shape().IsTuple()) {
+    if (process_output.size() == root->shape().tuple_shapes().size()) {
+      // The output shape is a tuple and sharding propagation is allowed for
+      // at least one of its elements.
+      HloSharding root_sharding = root->sharding();
+      for (int64_t i = 0; i < root->shape().tuple_shapes().size(); ++i) {
+        if (process_output[i] &&
+            !EvenlyPartitions(root->shape().tuple_shapes(i),
+                              root_sharding.tuple_elements()[i])) {
+          root_sharding.tuple_elements()[i] = HloSharding::Replicate();
+        }
+      }
+      root->set_sharding(std::move(root_sharding));
+    }
+    return;
+  }
+
+  CHECK_EQ(process_output.size(), 1);
+  if (process_output.front() &&
+      !EvenlyPartitions(root->shape(), root->sharding())) {
+    root->set_sharding(HloSharding::Replicate());
+  }
 }
 
 absl::Status CanonicalizeLayoutAfterShardingPropagation(

@@ -140,7 +140,7 @@ struct SpmdPartitionerOptions {
 // transformation.
 class SpmdBuilder : public HloComputation::Builder {
  public:
-  SpmdBuilder(const std::string& name, HloInstruction* hlo)
+  SpmdBuilder(absl::string_view name, HloInstruction* hlo)
       : HloComputation::Builder(name) {
     visiting_hlo_ = hlo;
   }
@@ -746,11 +746,6 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Common handle for HLOs that runs on a single device.
   absl::Status HandleSingleDevice(const HloInstruction* hlo);
 
-  // CustomCall handlers per call target.
-  absl::Status HandleCustomCallTopK(HloInstruction* hlo);
-  // Convenient custom ops defined by the partitioner itself.
-  absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
-
   virtual std::unique_ptr<SpmdPartitioningVisitor> Clone() const;
 
   // Returns the PartitionedHlo that corresponds to the original hlo.
@@ -905,6 +900,14 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);
+
+  // Handlers for specific custom call targets.
+  // go/keep-sorted start
+  absl::Status HandleCustomCallSPMDInternal_MultiRotate(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_Wrap(HloInstruction* hlo);
+  absl::Status HandleCustomCallTopK(HloInstruction* hlo);
+  // go/keep-sorted end
 };
 
 }  // namespace spmd

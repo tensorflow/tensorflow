@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 
+#include <cassert>
+
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 
 namespace xla::gpu {
 
@@ -59,10 +62,13 @@ void CreateTritonXlaPipeline(
   // Lower xla_gpu.apply_indexing into arithmetic ops.
   pm->addPass(emitters::CreateSimplifyAffinePass());
   pm->addPass(CreateConvertIndexTypePass());
-  // We need LICM before unswitching loops because loop unswitcher relies on
-  // having loop invariant code to be outside of the loop.
-  pm->addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
+  pm->addPass(mlir::createCompositeFixedPointPass(
+      "TritonXLAUnswitchLoopsComposite", [](mlir::OpPassManager& pm) {
+        // Loop unswitcher needs loop invariant code to be outside of the loop.
+        pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+        pm.addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
+        pm.addPass(mlir::createCanonicalizerPass());
+      }));
 }
 
 void CreateTritonCudaPipeline(

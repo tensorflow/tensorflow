@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -51,7 +52,7 @@ TEST(HostToDeviceCopyThunkTest, ToProto) {
                               {dst_slice, shape},
                               /*mem_size=*/256,
                               /*events=*/nullptr,
-                              /*instr=*/nullptr);
+                              /*instr_id=*/-1);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info {
@@ -86,6 +87,7 @@ TEST(HostToDeviceCopyThunkTest, ToProto) {
                     }
                     mem_size: 256
                   }
+                  instr_id: -1
                 }
               )pb"));
 }
@@ -135,11 +137,12 @@ TEST(HostToDeviceCopyThunkTest, FromProto) {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
       BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0)};
   Shape shape = ShapeUtil::MakeShape(S32, {64});
+  CopyThunk::AsyncEventsMap async_events_map;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HostToDeviceCopyThunk> thunk,
-      HostToDeviceCopyThunk::FromProto(
-          thunk_info, proto.host_to_device_copy_thunk(), buffer_allocations));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HostToDeviceCopyThunk> thunk,
+                          HostToDeviceCopyThunk::FromProto(
+                              thunk_info, proto.host_to_device_copy_thunk(),
+                              buffer_allocations, async_events_map));
 
   EXPECT_EQ(*thunk.get(),
             HostToDeviceCopyThunk(
@@ -152,7 +155,7 @@ TEST(HostToDeviceCopyThunkTest, FromProto) {
                  shape},
                 /*mem_size=*/256,
                 /*events=*/nullptr,
-                /*instr=*/nullptr));
+                /*instr_id=*/-1));
 }
 
 }  // namespace

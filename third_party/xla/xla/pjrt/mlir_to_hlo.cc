@@ -118,7 +118,11 @@ absl::Status MlirToXlaComputation(
     // no-op if the module is already pure StableHLO.
     // NOTE: we don't use `use_shardy` because it isn't guaranteed to be true if
     // the module has Shardy artifacts.
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
+    bool enable_hlo_sharding_v3 =
+        exec_build_options && exec_build_options->has_debug_options() &&
+        exec_build_options->debug_options().xla_enable_hlo_sharding_v3();
+    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
+                                            enable_hlo_sharding_v3);
 
     // CHLO -> MHLO for high level ops (TopK, Erf, RaggedDot, etc.)
     // CHLO -> StableHLO otherwise

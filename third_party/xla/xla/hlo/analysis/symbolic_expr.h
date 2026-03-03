@@ -70,16 +70,21 @@ class SymbolicExpr {
   SymbolicExpr GetRHS() const;
   int64_t GetValue() const;
   // If num_dims is provided, then the first num_dims variables are dimensions,
-  // and the rest are symbols.
-  std::string ToString(int64_t num_dims = -1) const;
+  // and the rest are symbols. If variable names are provided, then they are
+  // used instead of numbers.
+  std::string ToString(std::optional<int64_t> num_dims = std::nullopt) const;
+  std::string ToString(absl::Span<const std::string> var_names) const;
+  std::string ToString(absl::Span<const std::string> dim_names,
+                       absl::Span<const std::string> sym_names) const;
   int64_t Evaluate(absl::Span<const int64_t> variable_values) const;
   SymbolicExpr ReplaceVariables(
       absl::Span<const SymbolicExpr> substitutions) const;
-  // TODO(karupayun): These methods are needed for IndexingMap, but dimensions
-  // and symbols are SymbolicMap specific. We should remove them once we have a
-  // better way to integrate SymbolicExpr with IndexingMap. It is assuming that
-  // dimensions are the first (0...num_dims-1) variables and symbols are the
-  // rest.
+  // TODO: b/459357586 - These methods are needed for IndexingMap, but
+  // dimensions and symbols are SymbolicMap specific. We should remove them once
+  // we have a better way to integrate SymbolicExpr with IndexingMap. It is
+  // assuming that dimensions are the first (0...num_dims-1) variables and
+  // symbols are the rest.
+  SymbolicExpr ReplaceDims(absl::Span<const SymbolicExpr> replacements) const;
   SymbolicExpr ReplaceSymbols(absl::Span<const SymbolicExpr> replacements,
                               int64_t num_dims) const;
   SymbolicExpr ReplaceDimsAndSymbols(
@@ -100,9 +105,15 @@ class SymbolicExpr {
 
   void GetUsedVariables(llvm::DenseSet<VariableID>& used_vars) const;
 
+  // Returns true if this expression depends on the given variable.
+  bool IsFunctionOfVariable(VariableID var_id) const;
+
   // Traverses the expression tree and calls the callback for each
   // subexpression in postorder.
   void Walk(const std::function<void(SymbolicExpr)>& callback) const;
+
+  // Return true if the expression is a multiple of `factor`.
+  bool IsMultipleOf(int64_t factor) const;
 
   SymbolicExpr operator+(int64_t v) const;
   SymbolicExpr operator+(SymbolicExpr other) const;
@@ -143,6 +154,9 @@ class SymbolicExpr {
   const ImplType* impl_ = nullptr;
 };
 
+SymbolicExpr operator+(int64_t lhs, SymbolicExpr rhs);
+SymbolicExpr operator*(int64_t lhs, SymbolicExpr rhs);
+
 inline ::llvm::hash_code hash_value(SymbolicExpr expr) {
   return ::llvm::hash_value(expr.GetImpl());
 }
@@ -167,24 +181,6 @@ SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
                                     mlir::MLIRContext* mlir_context);
 llvm::SmallVector<SymbolicExpr> CreateSymbolicConstantExprs(
     llvm::ArrayRef<int64_t> constants, mlir::MLIRContext* mlir_context);
-
-// Parse a symbolic expression from `expr_str`. `num_dims` specifies the
-// number of dimension variables. It is used to determine a variable index from
-// a symbol id. For example, if `num_dims` is 2, 's0' parses to variable index
-// 2, 's1' to 3, etc.
-SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
-                               mlir::MLIRContext* mlir_context,
-                               std::optional<int64_t> num_dims = std::nullopt);
-// Parses a symbolic expression from `expr_str`. Advances `expr_str` past the
-// parsed expression. Returns the parsed expression or null if parsing failed.
-SymbolicExpr ParseSymbolicExprAndAdvance(
-    absl::string_view* expr_str, mlir::MLIRContext* mlir_context,
-    std::optional<int64_t> num_dims = std::nullopt);
-// Uses `variable_map` to resolve variable names to symbolic expressions. If a
-// variable name is found in the map, the corresponding SymbolicExpr is used.
-SymbolicExpr ParseSymbolicExprAndAdvance(
-    absl::string_view* expr_str, mlir::MLIRContext* mlir_context,
-    const llvm::DenseMap<llvm::StringRef, SymbolicExpr>& variable_map);
 
 }  // namespace xla
 

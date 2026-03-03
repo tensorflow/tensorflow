@@ -21,6 +21,7 @@ package_group(
         "//tensorflow/lite/python/...",
         "//tensorflow/lite/python/converter/...",
         "//tensorflow/lite/toco/...",
+        "//third_party/odml/litert/litert/...",
     ],
 )
 

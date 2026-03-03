@@ -17,12 +17,9 @@ limitations under the License.
 #define XLA_RUNTIME_BUFFER_USE_H_
 
 #include <cstdint>
-#include <optional>
 #include <tuple>
 #include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -62,28 +59,19 @@ class BufferUse {
     kDefinedOnInputAndOutput = kDefinedOnInput | kDefinedOnOutput,
   };
 
-  BufferUse(BufferAllocation::Slice slice, MemoryAccess access)
+  BufferUse(BufferAllocation::Slice slice, MemoryAccess access, Shape shape)
       : BufferUse(slice, access,
                   access == MemoryAccess::kRead
                       ? ContentValidity::kDefinedOnInputAndOutput
-                      : ContentValidity::kDefinedOnOutput) {}
+                      : ContentValidity::kDefinedOnOutput,
+                  shape) {}
 
   BufferUse(BufferAllocation::Slice slice, MemoryAccess access,
-            ContentValidity content_validity,
-            std::optional<Shape> shape = std::nullopt)
-      : slice_(slice), access_(access), content_validity_(content_validity) {}
-
-  ABSL_DEPRECATED("Please provide shape as well.")
-  static BufferUse Read(BufferAllocation::Slice slice) {
-    return BufferUse(slice, MemoryAccess::kRead,
-                     ContentValidity::kDefinedOnInputAndOutput);
-  }
-
-  ABSL_DEPRECATED("Please provide shape as well.")
-  static BufferUse Write(BufferAllocation::Slice slice) {
-    return BufferUse(slice, MemoryAccess::kWrite,
-                     ContentValidity::kDefinedOnOutput);
-  }
+            ContentValidity content_validity, Shape shape)
+      : slice_(slice),
+        shape_(shape),
+        access_(access),
+        content_validity_(content_validity) {}
 
   static BufferUse Read(BufferAllocation::Slice slice, Shape shape) {
     return BufferUse(slice, MemoryAccess::kRead,
@@ -164,9 +152,11 @@ class BufferUse {
                  use.HasDefinedContentsOnOutput() ? "O" : "");
   }
 
+  const Shape& shape() const { return shape_; }
+
  private:
   BufferAllocation::Slice slice_;
-  std::optional<Shape> shape_;
+  Shape shape_;
   MemoryAccess access_;
   ContentValidity content_validity_;
 };

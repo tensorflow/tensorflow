@@ -62,7 +62,7 @@ TEST_F(DenseCountLimitTest, Basic) {
   TF_ASSERT_OK(InitOp());
 
   // Input: [1, 2, 1, 3]
-  AddInputFromArray<int32>(TensorShape({4}), {1, 2, 1, 3});
+  AddInputFromArray<int32_t>(TensorShape({4}), {1, 2, 1, 3});
   // Weights: [] (empty)
   AddInputFromArray<int64_t>(TensorShape({0}), {});
 
@@ -114,7 +114,7 @@ TEST_F(DenseCountLimitTest, LargeBatch) {
 
   // Input: Matrix [2, 3]
   // [[1, 2, 1], [3, 3, 0]]
-  AddInputFromArray<int32>(TensorShape({2, 3}), {1, 2, 1, 3, 3, 0});
+  AddInputFromArray<int32_t>(TensorShape({2, 3}), {1, 2, 1, 3, 3, 0});
   // Weights: []
   AddInputFromArray<int64_t>(TensorShape({0}), {});
 
@@ -185,7 +185,7 @@ TEST_F(SparseCountLimitTest, Basic) {
   // Indices: [[0, 0], [0, 1], [1, 0]]
   AddInputFromArray<int64_t>(TensorShape({3, 2}), {0, 0, 0, 1, 1, 0});
   // Values: [1, 2, 1]
-  AddInputFromArray<int32>(TensorShape({3}), {1, 2, 1});
+  AddInputFromArray<int32_t>(TensorShape({3}), {1, 2, 1});
   // Shape: [2, 2]
   AddInputFromArray<int64_t>(TensorShape({2}), {2, 2});
   // Weights: []

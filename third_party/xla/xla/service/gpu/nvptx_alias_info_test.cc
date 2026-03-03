@@ -57,7 +57,7 @@ class NVPTXAliasInfoTest : public HloHardwareIndependentTestBase {
 
  private:
   const se::DeviceDescription device_description_{
-      xla::gpu::TestGpuDeviceInfo::RTXH100SXMDeviceInfo()};
+      xla::gpu::TestGpuDeviceInfo::H100SXMDeviceInfo()};
   NVPTXAliasInfo alias_info_{device_description_};
 };
 

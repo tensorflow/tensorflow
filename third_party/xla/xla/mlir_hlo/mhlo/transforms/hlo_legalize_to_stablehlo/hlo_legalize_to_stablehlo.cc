@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
@@ -679,15 +680,14 @@ class HloToStablehloOpConverter
     if (failed(convertAttributes(rewriter, hloOp, stablehloAttrs)))
       return failure();
 
-    // Convert the MHLO operation to a StableHLO equivalent.
-    // This can almost be done in a generic fashion, except for stablehlo.case
-    // that uses a variadic number of regions which means an additional argument
-    // for the generic builder.
+    // Convert the MHLO operation to a StableHLO equivalent. This can almost be
+    // done in a generic fashion, except for ops with a variadic number of
+    // regions which means an additional argument for the generic builder.
     HloToStablehloOp<HloOpTy> stablehloOp;
-    if constexpr (std::is_same<HloOpTy, mhlo::CaseOp>::value) {
-      stablehloOp = stablehlo::CaseOp::create(
+    if constexpr (HloOpTy::template hasTrait<OpTrait::VariadicRegions>()) {
+      stablehloOp = HloToStablehloOp<HloOpTy>::create(
           rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
-          stablehloAttrs, hloOp.getBranches().size());
+          stablehloAttrs, hloOp.getNumRegions());
     } else {
       stablehloOp = HloToStablehloOp<HloOpTy>::create(
           rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
@@ -697,7 +697,7 @@ class HloToStablehloOpConverter
     // Finally, populate the regions while converting argument types
     // and nested operations.
     for (auto [hloRegion, stablehloRegion] :
-         llvm::zip(hloOp->getRegions(), stablehloOp->getRegions())) {
+         llvm::zip_equal(hloOp->getRegions(), stablehloOp->getRegions())) {
       rewriter.inlineRegionBefore(hloRegion, stablehloRegion,
                                   stablehloRegion.end());
       if (failed(rewriter.convertRegionTypes(&stablehloRegion,

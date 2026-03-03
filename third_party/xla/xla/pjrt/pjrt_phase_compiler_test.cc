@@ -30,6 +30,8 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/reference/Api.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -97,7 +99,9 @@ class SamplePhaseCompilerTest : public ::testing::Test {
 
     topology_description_ = std::make_unique<xla::CpuTopologyDescription>(
         xla::CpuId(), xla::CpuName(), "<unknown>",
-        std::vector<xla::CpuTopology::CpuDevice>(), std::vector<std::string>());
+        xla::CpuTopology(
+            std::vector<xla::CpuTopology::CpuDevice>(),
+            xla::cpu::TargetMachineOptions(xla::GetDebugOptionsFromFlags())));
   }
 };
 

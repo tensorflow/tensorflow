@@ -147,6 +147,9 @@ class GpuCollectives : public Collectives {
   // Returns true if GPU collectives support device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
 
+  // Returns minimum alignment requirement for symmetric memory.
+  virtual size_t SymmetricMemoryAlignment() const { return 1; }
+
   // Returns a slice of device memory `buff` containing `count` values of data
   // type `dtype` starting from `offset`.
   static stream_executor::DeviceAddressBase Slice(

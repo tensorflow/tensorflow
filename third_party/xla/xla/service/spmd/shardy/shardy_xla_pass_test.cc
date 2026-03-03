@@ -1177,15 +1177,15 @@ TEST_F(ShardyXLATest, StackFrameMetadataFullyCopiedTest) {
   runShardyWithStablehloImport(module.get());
 
   // Verify the stack frame index is fully copied both frames.
-  EXPECT_EQ(module->stack_frame_index()->stack_frames().size(), 2);
-  const auto& frame1 = module->stack_frame_index()->stack_frames()[0];
+  EXPECT_EQ(module->stack_frames().proto().stack_frames().size(), 2);
+  const auto& frame1 = module->stack_frames().proto().stack_frames()[0];
   EXPECT_EQ(frame1.file_location_id(), 1);
   EXPECT_EQ(frame1.parent_frame_id(), 0);
-  const auto& frame2 = module->stack_frame_index()->stack_frames()[1];
+  const auto& frame2 = module->stack_frames().proto().stack_frames()[1];
   EXPECT_EQ(frame2.file_location_id(), 2);
   EXPECT_EQ(frame2.parent_frame_id(), 1);
 
-  EXPECT_EQ(module->stack_frame_index()->file_locations().size(), 2);
+  EXPECT_EQ(module->stack_frames().proto().file_locations().size(), 2);
 
   HloInstruction* copy = FindInstruction(module.get(), xla::HloOpcode::kCopy);
   EXPECT_NE(copy, nullptr);
@@ -1226,12 +1226,12 @@ TEST_F(ShardyXLATest, StackFrameMetadataReplacedTest) {
   runShardyWithStablehloImport(module.get());
 
   // Verify the stack frame index is replaced with a single frame.
-  EXPECT_EQ(module->stack_frame_index()->stack_frames().size(), 1);
-  const auto& frame = module->stack_frame_index()->stack_frames()[0];
+  EXPECT_EQ(module->stack_frames().proto().stack_frames().size(), 1);
+  const auto& frame = module->stack_frames().proto().stack_frames()[0];
   EXPECT_EQ(frame.file_location_id(), 1);
   EXPECT_EQ(frame.parent_frame_id(), 0);
 
-  const auto& location = module->stack_frame_index()->file_locations()[0];
+  const auto& location = module->stack_frames().proto().file_locations()[0];
   EXPECT_EQ(location.file_name_id(), 1);
   EXPECT_EQ(location.function_name_id(), 1);
   EXPECT_EQ(location.line(), 1);

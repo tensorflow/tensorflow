@@ -39,6 +39,8 @@ jobs:
         run: docker rm -f ${{ env.CONTAINER_NAME }} || true
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: Checkout rocAutomation using local creds
         run: |
@@ -91,5 +93,5 @@ jobs:
       - name: Cleanup container
         if: always()
         run: |
-           docker stop --time=60 ${{ env.CONTAINER_NAME }} || true
-           docker rm -f ${{ env.CONTAINER_NAME }} || true
+          docker stop --time=60 ${{ env.CONTAINER_NAME }} || true
+          docker rm -f ${{ env.CONTAINER_NAME }} || true

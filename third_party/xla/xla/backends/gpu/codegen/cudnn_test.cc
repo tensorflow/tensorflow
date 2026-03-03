@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
@@ -40,7 +42,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -70,7 +71,7 @@ class CuDnnFusionTest : public GpuCodegenTest {
     // Only run the CuDNN backend.
     debug_options.clear_xla_gpu_experimental_autotune_backends();
     debug_options.add_xla_gpu_experimental_autotune_backends(
-        DebugOptions::AUTOTUNE_BACKEND_CUDNN);
+        autotuner::Backend::CUDNN);
     return debug_options;
   }
   se::CudaComputeCapability get_cuda_cc() const {
@@ -269,7 +270,7 @@ e {
   // Single dot is not supported by cuDNN, so Triton should be used.
   HloModuleConfig config = GetModuleConfigForTest();
   config.mutable_debug_options().add_xla_gpu_experimental_autotune_backends(
-      DebugOptions::AUTOTUNE_BACKEND_TRITON);
+      autotuner::Backend::TRITON);
   EXPECT_TRUE(RunAndCompareTwoModules(kHloText, R"(e {
     a = f32[32,96] parameter(0)
     b = f32[96,64] parameter(1)

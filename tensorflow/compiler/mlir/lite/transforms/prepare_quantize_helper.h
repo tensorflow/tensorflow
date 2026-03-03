@@ -658,23 +658,20 @@ class PropagateTransposedPerAxisQuantDim
       : OpRewritePattern<TFL::TransposeOp>(context) {}
   LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
                                 PatternRewriter& rewriter) const override {
-    // Check if the quantization is per-axis
+    // This pattern tries to find Transpose(Dequantize(QuantizedValue))
+    // where QuantizedValue is per-axis quantized, and inserts a Q/DQ pair
+    // after transpose op with quantization dimension updated.
     auto dq_op = dyn_cast_or_null<quantfork::DequantizeCastOp>(
         transpose_op.getOperand(0).getDefiningOp());
     if (!dq_op) return failure();
-    auto q_op = dyn_cast_or_null<quantfork::QuantizeCastOp>(
-        dq_op.getOperand().getDefiningOp());
-    if (!q_op) return failure();
-    auto qtype =
-        mlir::cast<TensorType>(dq_op.getArg().getType()).getElementType();
-    auto per_axis_quant =
-        dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(qtype);
+    auto per_axis_quant = dyn_cast_or_null<quant::UniformQuantizedPerAxisType>(
+        getElementTypeOrSelf(dq_op.getArg().getType()));
     if (!per_axis_quant) return failure();
 
     // Return if the result of TransposeOp is already quantized
-    if (!transpose_op.getResult().hasOneUse()) return failure();
-    auto next_op = *transpose_op.getResult().getUsers().begin();
-    if (dyn_cast_or_null<quantfork::QuantizeCastOp>(next_op)) return failure();
+    for (auto* user : transpose_op.getResult().getUsers()) {
+      if (dyn_cast_or_null<quantfork::QuantizeCastOp>(user)) return failure();
+    }
 
     auto input_type = mlir::cast<ShapedType>(transpose_op.getInput().getType());
     auto perm_type = mlir::cast<ShapedType>(transpose_op.getPerm().getType());
@@ -734,12 +731,13 @@ class PropagateTransposedPerAxisQuantDim
 
     rewriter.setInsertionPointAfter(transpose_op);
     auto new_q_op = quantfork::QuantizeCastOp::create(
-        rewriter, transpose_op.getLoc(), new_tensor_type, q_op.getArg());
+        rewriter, transpose_op.getLoc(), new_tensor_type,
+        transpose_op.getResult());
     auto new_dq_op = quantfork::DequantizeCastOp::create(
         rewriter, new_q_op.getLoc(), transpose_op.getResult().getType(),
         new_q_op.getResult());
-    transpose_op.getResult().replaceAllUsesWith(new_dq_op.getResult());
-    new_q_op.setOperand(transpose_op.getResult());
+    transpose_op.getResult().replaceAllUsesExcept(new_dq_op.getResult(),
+                                                  new_q_op);
 
     return success();
   }

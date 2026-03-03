@@ -33,6 +33,7 @@ cc_library(
         "//xla/hlo/transforms/expanders:eigh_expander",
         "//xla/hlo/transforms/expanders:qr_expander",
         "//xla/pjrt:layout_mode",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",

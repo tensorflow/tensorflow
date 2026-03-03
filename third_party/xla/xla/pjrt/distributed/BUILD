@@ -65,6 +65,7 @@ cc_library(
     deps = [
         ":key_value_store_interface",
         "//xla/pjrt/distributed/coordination:coordination_client",
+        "//xla/pjrt/distributed/coordination:coordination_service",
         "//xla/pjrt/distributed/coordination:coordination_service_agent",
         "//xla/pjrt/distributed/coordination:grpc_coordination_client",
         "//xla/runtime:device_id",
@@ -120,6 +121,7 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",

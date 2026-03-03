@@ -32,6 +32,9 @@ void CreateTritonPipeline(mlir::OpPassManager* pm,
                           const stream_executor::GpuComputeCapability& gpu_cc,
                           int num_warps, int num_ctas, int num_stages);
 
+// Returns the default PTX version for a given CUDA compute capability.
+int GetDefaultPtxVersion(const stream_executor::CudaComputeCapability& cuda_cc);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_COMPILATION_PIPELINE_H_

@@ -17,6 +17,8 @@ permissions:
   contents: read
 on:
   workflow_dispatch:  # Allows manual triggering
+  schedule:
+    - cron: "0 0 * * *"  # Run at midnight every day
 
 jobs:
   Tests:
@@ -28,7 +30,7 @@ jobs:
           {
             pool: "linux-x86-a3-8g-h100-8gpu",
             container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
-            name: "XLA Linux x86 GPU 8xH100",
+            name: "XLA Linux x86 GPU 8X H100",
             repo: "openxla/xla",
           },
         ]
@@ -44,12 +46,14 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: "openxla/xla"
+          persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
+          persist-credentials: false
       - name: "Wait For Connection"
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
@@ -62,3 +66,10 @@ jobs:
           else
             $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
+
+
+
+
+
+
+

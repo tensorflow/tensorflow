@@ -14,6 +14,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/backends/profiler:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         ":host_tracer_impl",
@@ -54,6 +55,7 @@ cc_library(
         "//xla/python:__pkg__",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
         # copybara:uncomment "//tensorflow:internal",
+        "//xla/tsl/profiler:friends",
     ]),
     deps = [
         ":python_tracer_impl",
@@ -74,6 +76,7 @@ cc_library(
         # copybara:uncomment "//tensorflow/core/profiler:internal",
     ]),
     deps = [
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/python/profiler/internal:python_hooks",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
@@ -93,6 +96,7 @@ cc_library(
     ]),
     deps = [
         ":metadata_utils",
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/service:hlo_proto_cc",
         "//xla/service:xla_debug_info_manager",
         "//xla/tsl/profiler/utils:xplane_builder",

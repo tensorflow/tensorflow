@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -132,36 +134,40 @@ TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
 TEST(StreamExecutorGpuCompilerTest, NoClientMlir) {
   StreamExecutorGpuCompiler compiler;
 
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
 
   auto mlir_module =
-      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
 
   StreamExecutorGpuTopologyDescription topology(
       CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
-  EXPECT_THAT(
-      compiler.Compile(xla::CompileOptions(), mlir_module.get(), topology,
-                       /*client=*/nullptr),
-      absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
+  EXPECT_THAT(compiler.Compile(xla::CompileOptions(),
+                               MaybeOwningMlirModule(std::move(context),
+                                                     std::move(mlir_module)),
+                               topology,
+                               /*client=*/nullptr),
+              absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
   StreamExecutorGpuCompiler compiler;
 
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
 
   auto mlir_module =
-      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
 
   StreamExecutorGpuTopologyDescription topology(
       CudaId(), CudaName(), GetGpuTopology(kFakeDeviceName, 1, 1, 2, 10));
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
-  EXPECT_THAT(compiler.Compile(xla::CompileOptions(), mlir_module.get(),
+  EXPECT_THAT(compiler.Compile(xla::CompileOptions(),
+                               MaybeOwningMlirModule(std::move(context),
+                                                     std::move(mlir_module)),
                                topology, client.get()),
               absl_testing::StatusIs(absl::StatusCode::kOk));
 }
@@ -169,17 +175,19 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
 TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
   StreamExecutorGpuCompiler compiler;
 
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
 
   auto mlir_module =
-      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable,
-      client->CompileAndLoad(mlir_module.get(), xla::CompileOptions()));
+      client->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(mlir_module)),
+          xla::CompileOptions()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto result,
                           loaded_executable->Execute(
@@ -197,11 +205,11 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
 TEST(StreamExecutorGpuCompilerTest, SuccessMlirCanBeSerialized) {
   StreamExecutorGpuCompiler compiler;
 
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
 
   auto mlir_module =
-      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
 
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(GpuClientOptions()));
@@ -211,8 +219,10 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlirCanBeSerialized) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<xla::PjRtExecutable> executable,
-      compiler.Compile(xla::CompileOptions(), mlir_module.get(), topology,
-                       client.get()));
+      compiler.Compile(
+          xla::CompileOptions(),
+          MaybeOwningMlirModule(std::move(context), std::move(mlir_module)),
+          topology, client.get()));
 
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
                           executable->SerializeExecutable());

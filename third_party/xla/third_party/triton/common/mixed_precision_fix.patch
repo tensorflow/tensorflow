@@ -1,0 +1,19 @@
+--- a/lib/Dialect/TritonGPU/Transforms/Prefetch.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Prefetch.cpp
+@@ -194,6 +194,15 @@ LogicalResult Prefetcher::initialize() {
+         break;
+       if (!op->getResult(0).hasOneUse())
+         break;
++      // Similar to issues faced in HoistLayoutConversion pattern in
++      // OptimizeDotOperands.cpp, we can't propagate through type casts from
++      // predicates as they aren't supported in Triton when encoded with dot_op
++      // layout.
++      if (isa<arith::UIToFPOp>(op)) {
++        Type srcType = getElementTypeOrSelf(op->getOperand(0));
++        if (srcType.isInteger(1))
++          break;
++      }
+       rets.push_back(op->getOperand(0));
+       if (auto cvt = dyn_cast<triton::gpu::LocalLoadOp>(op)) {
+         // NYI for other encodings, for example if we have transpose
+

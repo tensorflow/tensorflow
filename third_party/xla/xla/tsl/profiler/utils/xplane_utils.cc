@@ -285,8 +285,9 @@ void RemoveEvents(XLine* line,
 }
 
 void RemoveEmptyPlanes(XSpace* space) {
-  RemoveIf(space->mutable_planes(),
-           [&](const XPlane* plane) { return plane->lines().empty(); });
+  RemoveIf(space->mutable_planes(), [&](const XPlane* plane) {
+    return plane->lines().empty() && plane->stats().empty();
+  });
 }
 
 void RemoveEmptyLines(XPlane* plane) {
@@ -364,6 +365,13 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
     XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
     // Use SetOrAddStat to avoid duplicating stats in dst_plane.
     dst.SetOrAddStat(*stat_metadata, stat.RawStat(), src_plane);
+  });
+
+  src.ForEachEventMetadata([&](const XEventMetadataVisitor& event_metadata) {
+    XEventMetadata* dst_event_metadata =
+        dst.GetOrCreateEventMetadata(event_metadata.Name());
+    CopyEventMetadata(*event_metadata.metadata(), src, *dst_event_metadata,
+                      dst);
   });
   src.ForEachLine([&](const XLineVisitor& line) {
     XLineBuilder dst_line = dst.GetOrCreateLine(line.Id());
