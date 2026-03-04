@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/stream_executor_executable.h"
@@ -112,8 +113,9 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
 }  // namespace
 
 StreamExecutorGpuCompiler::StreamExecutorGpuCompiler(
-    stream_executor::Platform::Id platform_id)
-    : requested_platform_id_(platform_id) {}
+    PjRtPlatformId pjrt_platform_id, stream_executor::Platform::Id platform_id)
+    : requested_platform_id_(platform_id),
+      pjrt_platform_id_(pjrt_platform_id) {}
 
 absl::StatusOr<Compiler*> StreamExecutorGpuCompiler::GetOrCreateCompiler() {
   absl::MutexLock lock(compiler_mutex_);

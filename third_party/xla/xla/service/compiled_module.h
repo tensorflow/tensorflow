@@ -22,7 +22,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/platform.h"
 
 namespace stream_executor {
@@ -52,10 +54,20 @@ class CompiledModule {
     return absl::UnimplementedError("buffer_assignment is not supported.");
   }
 
+  virtual absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
+    return absl::UnimplementedError("GetCompiledMemoryStats is not supported.");
+  }
+
   // Returns the optimized HLO module if one was computed and the implementation
   // supports it.
   virtual const HloModule* optimized_module() const = 0;
   virtual std::shared_ptr<HloModule> shared_optimized_module() = 0;
+
+  virtual absl::StatusOr<stream_executor::ExecutableAbiVersion>
+  GetExecutableAbiVersion() const {
+    return absl::UnimplementedError(
+        "ExecutableAbiVersion is not supported by this executable.");
+  }
 };
 
 }  // namespace xla
