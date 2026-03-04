@@ -1187,6 +1187,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   const std::vector<const HloInstruction*>* GetRepeatedInstructionList(
       const HloInstruction* instruction) const;
 
+  // Adds an operand to the alternate memory map.
+  void AddOperandToAlternateMemoryMap(const HloInstruction* instruction,
+                                      int operand_number,
+                                      const ShapeIndex& index);
+
   // Returns true if the interval is pinned in the alternate memory. Buffers are
   // pinned when their layout has the alternate memory space before MSA runs.
   bool IsIntervalPinnedToAlternateMemory(

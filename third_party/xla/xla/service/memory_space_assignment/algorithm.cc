@@ -3889,6 +3889,13 @@ MsaAlgorithm::GenerateAllocationSegmentContexts(
   return uses_work_list;
 }
 
+void MsaAlgorithm::AddOperandToAlternateMemoryMap(
+    const HloInstruction* instruction, int operand_number,
+    const ShapeIndex& index) {
+  operands_in_alternate_memory_map_[instruction].insert(
+      std::make_pair(operand_number, index));
+}
+
 absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
     absl::Span<AllocationValue> allocation_values) {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
@@ -4097,7 +4104,7 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
               "memory, which could not be satisfied. This typically happens "
               "because more pinned buffers are live than the alternate memory "
               "capacity.",
-              allocation_value.defining_instruction()->ToString());
+              allocation_value.defining_position().ToString());
           LOG(ERROR) << failed_precondition;
           return failed_precondition;
         }
@@ -5095,8 +5102,8 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
       buffer_interval.buffer = prefetch_candidate.buffer;
       AddToPendingChunks(buffer_interval, chunk_candidate);
       for (const HloUse& use : allocation->uses()) {
-        operands_in_alternate_memory_map_[use.instruction].insert(
-            std::make_pair(use.operand_number, use.operand_index));
+        AddOperandToAlternateMemoryMap(use.instruction, use.operand_number,
+                                       use.operand_index);
       }
     }
     allocations_->push_back(std::move(allocation));
@@ -5875,8 +5882,8 @@ void MsaAlgorithm::FinalizeAllocations(
       if ((allocation->memory_space() == MemorySpace::kAlternate) &&
           (!allocation->is_scoped_allocation())) {
         for (const HloUse& use : allocation->uses()) {
-          operands_in_alternate_memory_map_[use.instruction].insert(
-              std::make_pair(use.operand_number, use.operand_index));
+          AddOperandToAlternateMemoryMap(use.instruction, use.operand_number,
+                                         use.operand_index);
         }
         if (!allocation->is_copy_like_allocation()) {
           outputs_in_alternate_memory_map_[allocation->defining_position()
