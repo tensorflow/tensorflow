@@ -134,7 +134,7 @@ TEST_P(CollectivePipelineParallelismTest,
     inputs_a.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
   Literal input_b_replicated = LiteralUtil::CreateR2<float>({{0, 0}, {0, 1}});
-  std::vector<std::vector<const Literal*>> inputs;
+  std::vector<std::vector<Literal *>> inputs;
   for (int64_t i = 0; i < kNumReplicas; ++i) {
     inputs.push_back({&inputs_a[i], &input_b_replicated});
   }
@@ -340,10 +340,10 @@ TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch4Replica4) {
   Literal fake_input =
       LiteralUtil::CreateFull<float>({kMicrobatches, kInputSize}, 0.0);
 
-  std::vector<std::vector<const Literal*>> args = {{&weights_r0, &real_input},
-                                                   {&weights_r1, &fake_input},
-                                                   {&weights_r2, &fake_input},
-                                                   {&weights_r3, &fake_input}};
+  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
+                                              {&weights_r1, &fake_input},
+                                              {&weights_r2, &fake_input},
+                                              {&weights_r3, &fake_input}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), args, kNumReplicas,
@@ -468,10 +468,10 @@ TEST_P(CollectivePipelineParallelismTest, NaiveBFSMicrobatch5Replica4) {
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<const Literal*>> args = {{&weights_r0, &real_input},
-                                                   {&weights_r1, &fake_input},
-                                                   {&weights_r2, &fake_input},
-                                                   {&weights_r3, &fake_input}};
+  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
+                                              {&weights_r1, &fake_input},
+                                              {&weights_r2, &fake_input},
+                                              {&weights_r3, &fake_input}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), args, kNumReplicas,
@@ -593,10 +593,10 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<const Literal*>> args = {{&weights_r0, &real_input},
-                                                   {&weights_r1, &fake_input},
-                                                   {&weights_r2, &fake_input},
-                                                   {&weights_r3, &fake_input}};
+  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
+                                              {&weights_r1, &fake_input},
+                                              {&weights_r2, &fake_input},
+                                              {&weights_r3, &fake_input}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), args, kNumReplicas,
@@ -734,10 +734,10 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<const Literal*>> args = {{&weights_r0, &real_input},
-                                                   {&weights_r1, &fake_input},
-                                                   {&weights_r2, &fake_input},
-                                                   {&weights_r3, &fake_input}};
+  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
+                                              {&weights_r1, &fake_input},
+                                              {&weights_r2, &fake_input},
+                                              {&weights_r3, &fake_input}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), args, kNumReplicas,
@@ -877,10 +877,10 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<const Literal*>> args = {{&weights_r0, &real_input},
-                                                   {&weights_r1, &fake_input},
-                                                   {&weights_r2, &fake_input},
-                                                   {&weights_r3, &fake_input}};
+  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
+                                              {&weights_r1, &fake_input},
+                                              {&weights_r2, &fake_input},
+                                              {&weights_r3, &fake_input}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), args, kNumReplicas,
@@ -955,7 +955,7 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop) {
     float val = i + 1;
     literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  std::vector<std::vector<const Literal*>> inputs;
+  std::vector<std::vector<Literal *>> inputs;
   for (int64_t i = 0; i < kNumPartitions; ++i) {
     inputs.push_back({&literals[i]});
   }
@@ -1046,7 +1046,7 @@ TEST_P(CollectivePipelineParallelismTest, SendRecvLoop2Devices) {
     float val = i + 1;
     literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  std::vector<std::vector<const Literal*>> inputs;
+  std::vector<std::vector<Literal *>> inputs;
   for (int64_t i = 0; i < kNumPartitions; ++i) {
     inputs.push_back({&literals[i]});
   }
@@ -1147,7 +1147,7 @@ TEST_P(CollectivePipelineParallelismTest, PartiallyPipelinedAsyncSendRecvLoop) {
     float val = i + 1;
     literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  std::vector<std::vector<const Literal*>> inputs;
+  std::vector<std::vector<Literal *>> inputs;
   for (int64_t i = 0; i < kNumPartitions; ++i) {
     inputs.push_back({&literals[i]});
   }
@@ -1250,7 +1250,7 @@ TEST_P(CollectivePipelineParallelismTest,
     float val = i + 1;
     literals.push_back(LiteralUtil::CreateR2<float>({{val, val}, {val, val}}));
   }
-  std::vector<std::vector<const Literal*>> inputs;
+  std::vector<std::vector<Literal *>> inputs;
   for (int64_t i = 0; i < kNumPartitions; ++i) {
     inputs.push_back({&literals[i]});
   }
@@ -1492,10 +1492,10 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<const Literal*>> args = {{&weights_r0, &real_input},
-                                                   {&weights_r1, &fake_input},
-                                                   {&weights_r2, &fake_input},
-                                                   {&weights_r3, &fake_input}};
+  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
+                                              {&weights_r1, &fake_input},
+                                              {&weights_r2, &fake_input},
+                                              {&weights_r3, &fake_input}};
   // TODO(rosiezou): enable send/recv combiner pass.
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -1678,10 +1678,10 @@ TEST_P(CollectivePipelineParallelismTest,
   const float kExpectedFactor = 1.0 * 2.0 * 3.0 * 4.0 * 1.0 * 2.0 * 3.0 * 4.0;
   Literal expected_output = LiteralUtil::CreateFingerprintMatixR2<float>(
       kMicrobatches, kInputSize, /*scale=*/kExpectedFactor);
-  std::vector<std::vector<const Literal*>> args = {{&weights_r0, &real_input},
-                                                   {&weights_r1, &fake_input},
-                                                   {&weights_r2, &fake_input},
-                                                   {&weights_r3, &fake_input}};
+  std::vector<std::vector<Literal *>> args = {{&weights_r0, &real_input},
+                                              {&weights_r1, &fake_input},
+                                              {&weights_r2, &fake_input},
+                                              {&weights_r3, &fake_input}};
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
       ExecuteReplicated(std::move(module), args, kNumReplicas,

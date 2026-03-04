@@ -237,7 +237,7 @@ class HloRunnerAgnosticTestBase : public HloHardwareIndependentTestBase {
   // different devices of the same program.
   absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
-      std::vector<std::vector<const Literal*>> arguments, int64_t num_devices,
+      std::vector<std::vector<Literal*>> arguments, int64_t num_devices,
       bool run_hlo_passes, DeviceAssignment* device_assignment = nullptr);
 
   // Executes an hlo module with fake inputs and checks that the execution is
