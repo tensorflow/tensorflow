@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
   mlir::LLVM::registerInlinerInterface(registry);
   mlir::registerCanonicalizerPass();
   mlir::registerCSEPass();
-  mlir::registerInliner();
+  mlir::registerInlinerPass();
   xla::emitters::registerTransformsPasses();
   xla::emitters::registerTransformsLLVMGPUPasses();
   xla::gpu::registerGpuFusionTransformsPasses();
