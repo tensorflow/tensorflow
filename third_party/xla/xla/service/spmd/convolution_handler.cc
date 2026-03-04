@@ -241,8 +241,8 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
     const Window& conv_window, HloInstruction* original_hlo,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
-  TF_RET_CHECK(!lhs.sharding().IsTileMaximal() &&
-               !rhs.sharding().IsTileMaximal());
+  TF_RET_CHECK(!lhs.sharding().IsReplicatedOrSingleDevice() &&
+               !rhs.sharding().IsReplicatedOrSingleDevice());
 
   const auto& dnums = original_hlo->convolution_dimension_numbers();
   std::vector<int64_t> rhs_to_lhs_indices(
@@ -531,8 +531,8 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     const Window& conv_window, HloInstruction* original_hlo,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
-  TF_RET_CHECK(!lhs.sharding().IsTileMaximal() &&
-               !rhs.sharding().IsTileMaximal());
+  TF_RET_CHECK(!lhs.sharding().IsReplicatedOrSingleDevice() &&
+               !rhs.sharding().IsReplicatedOrSingleDevice());
 
   const auto& dnums = original_hlo->convolution_dimension_numbers();
 
@@ -756,7 +756,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
     const Window& conv_window, HloInstruction* original_hlo, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
   const auto& dnums = original_hlo->convolution_dimension_numbers();
-  TF_RET_CHECK(!output_sharding.IsTileMaximal());
+  TF_RET_CHECK(!output_sharding.IsReplicatedOrSingleDevice());
   // We don't currently support sharding on output feature dimension.
   if (ShardCountAtDim(output_sharding, dnums.output_feature_dimension()) > 1) {
     return nullptr;
@@ -877,7 +877,8 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
   // the LHS batch dimension is not partitioned because it is mapped to the
   // output feature dimension in aligned_rhs_sharding, which are not the same
   // dimension.
-  if (!lhs.sharding().IsTileMaximal() && !rhs.sharding().IsTileMaximal()) {
+  if (!lhs.sharding().IsReplicatedOrSingleDevice() &&
+      !rhs.sharding().IsReplicatedOrSingleDevice()) {
     if (options.conv_halo_exchange_always_on_lhs) {
       TF_ASSIGN_OR_RETURN(
           auto partitioned_conv,
@@ -900,7 +901,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
   }
 
   // Case 3: output is tiled.
-  if (!output_sharding.IsTileMaximal()) {
+  if (!output_sharding.IsReplicatedOrSingleDevice()) {
     TF_ASSIGN_OR_RETURN(auto partitioned_conv,
                         PartitionConvolutionTiledOutput(
                             lhs, rhs, output_base_shape, output_sharding,

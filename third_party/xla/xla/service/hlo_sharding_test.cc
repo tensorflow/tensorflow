@@ -73,7 +73,7 @@ TEST_P(HloShardingRepresentationTest, Replicate) {
   HloSharding sharding = HloSharding::Replicate({}, use_named_sharding);
   EXPECT_EQ(sharding.UseNamedShardingLeaf(), use_named_sharding);
   EXPECT_TRUE(sharding.IsReplicated());
-  EXPECT_TRUE(sharding.IsTileMaximal());
+  EXPECT_TRUE(sharding.IsReplicatedOrSingleDevice());
   EXPECT_TRUE(sharding.UsesDevice(0));
   EXPECT_TRUE(sharding.UsesDevice(65535));
 
@@ -93,7 +93,7 @@ TEST_P(HloShardingRepresentationTest, DevicePlacement) {
   HloSharding sharding = HloSharding::AssignDevice(5, {}, use_named_sharding);
   EXPECT_EQ(sharding.UseNamedShardingLeaf(), use_named_sharding);
   EXPECT_FALSE(sharding.IsReplicated());
-  EXPECT_TRUE(sharding.IsTileMaximal());
+  EXPECT_TRUE(sharding.IsReplicatedOrSingleDevice());
   EXPECT_FALSE(sharding.UsesDevice(0));
   EXPECT_TRUE(sharding.UsesDevice(5));
   EXPECT_EQ(5, sharding.GetUniqueDevice());

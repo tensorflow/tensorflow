@@ -181,7 +181,7 @@ int64_t GetPartitionsForDims(
     absl::Span<const DotConvolutionDimsInfo::DimNums> dims,
     DotComponent component) {
   int64_t partitions = 1;
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return partitions;
   }
   for (const auto& dim : dims) {
@@ -2203,7 +2203,7 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnBatchImpl(
             int64_t other_contracting_dim_partitions,
             std::vector<int64_t>* sharding_dims_adjusted_to_output)
         -> std::optional<PartitionedHloMaybeMX> {
-      if (operand.sharding().IsTileMaximal()) {
+      if (operand.sharding().IsReplicatedOrSingleDevice()) {
         return ReplicatePartiallySharded(operand, batch_dims, output_grouped, b,
                                          per_group_partitioner_state);
       }
@@ -3288,7 +3288,7 @@ bool PrioritizeContractingDimensionsPartitioning(
   }
   int64_t new_output_lhs_non_contracting_partitions = 1;
   int64_t new_output_rhs_non_contracting_partitions = 1;
-  if (!inner_output_sharding.IsTileMaximal()) {
+  if (!inner_output_sharding.IsReplicatedOrSingleDevice()) {
     for (const auto& dim : dims_mapping.lhs_non_contracting_dims) {
       new_output_lhs_non_contracting_partitions *=
           ShardCountAtDim(inner_output_sharding, dim.output);

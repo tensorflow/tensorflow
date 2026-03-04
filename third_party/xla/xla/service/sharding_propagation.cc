@@ -768,7 +768,7 @@ bool RefineManualAutoShardingFromAuto(
   HloSharding partial_rep =
       hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
           to_merge, unspecified_dims);
-  if (partial_rep.IsTileMaximal()) {
+  if (partial_rep.IsReplicatedOrSingleDevice()) {
     return false;
   }
 
@@ -830,7 +830,7 @@ bool RefineManualAutoShardingFromManual(
   HloSharding partial_rep =
       hlo_sharding_util::PartiallyReplicateTiledShardingOnAllDimsExcept(
           to_merge, unspecified_dims);
-  if (partial_rep.IsTileMaximal()) {
+  if (partial_rep.IsReplicatedOrSingleDevice()) {
     return false;
   }
   if (!hlo_sharding_util::MergeShardingIfCompatible(partial_rep,
@@ -937,7 +937,8 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
           man_conversion_op == nullptr ? *annotate_op : *man_conversion_op,
           *user, aggressiveness, is_spmd, call_graph,
           /*sharding_helper=*/nullptr);
-  if (!user_sharding.has_value() || user_sharding->IsTileMaximal()) {
+  if (!user_sharding.has_value() ||
+      user_sharding->IsReplicatedOrSingleDevice()) {
     return false;
   }
   if (man_conversion_op == nullptr) {
@@ -1088,7 +1089,7 @@ bool InferDotShardingFromOperands(
   auto from_operand = [&](int64_t operand_index) {
     auto operand = instruction->operand(operand_index);
     const HloSharding& operand_sharding = operand->sharding();
-    if (operand_sharding.IsTileMaximal()) {
+    if (operand_sharding.IsReplicatedOrSingleDevice()) {
       return operand_sharding;
     }
     std::vector<int64_t> contracting_dims;
@@ -1214,7 +1215,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
           return partitions;
         }
         const auto& sharding = inst->sharding();
-        if (sharding.IsTileMaximal()) {
+        if (sharding.IsReplicatedOrSingleDevice()) {
           return partitions;
         }
         for (const auto& dim : dims) {
@@ -1243,7 +1244,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
   const auto& dnums = instruction->convolution_dimension_numbers();
   const HloInstruction* lhs = instruction->operand(0);
   auto get_tiled_sharding_based_on_lhs = [&] {
-    CHECK(!lhs->sharding().IsTileMaximal());
+    CHECK(!lhs->sharding().IsReplicatedOrSingleDevice());
     std::vector<int64_t> output_to_lhs_indices(
         instruction->shape().dimensions().size());
     output_to_lhs_indices[dnums.output_batch_dimension()] =
@@ -1260,7 +1261,7 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
   if (!IsSpatiallyPartitioned(lhs)) {
     return false;
   }
-  if (lhs->sharding().IsTileMaximal()) {
+  if (lhs->sharding().IsReplicatedOrSingleDevice()) {
     return MaybeImproveInstructionSharding(lhs->sharding(), instruction,
                                            may_combine_partial_sharding);
   }
@@ -1828,7 +1829,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
               ? user.sharding().GetSubSharding(
                     user.shape(), {user.operand_index(&instruction)})
               : user.sharding();
-      if (!user_sharding.IsTileMaximal()) {
+      if (!user_sharding.IsReplicatedOrSingleDevice()) {
         std::vector<int64_t> target_tile_assignment_dimensions(
             instruction.shape().dimensions().size() +
             (user_sharding.ReplicateOnLastTileDim() ? 1 : 0) +
@@ -1955,12 +1956,12 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
           // parallel sharding first as this is how it is in spmd_partitioner.
           hlo_sharding_util::MergeShardingIfCompatible(from_indices,
                                                        &*from_output);
-          if (!from_output->IsTileMaximal()) {
+          if (!from_output->IsReplicatedOrSingleDevice()) {
             return from_output;
           }
         }
       }
-      if (!from_indices.IsTileMaximal()) {
+      if (!from_indices.IsReplicatedOrSingleDevice()) {
         return from_indices;
       }
       return std::nullopt;
@@ -2066,7 +2067,8 @@ bool ShardingPropagation::InferShardingFromShardGroup(
     return false;
   }
   // Propagate manual sharding.
-  if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
+  if (!instruction->has_sharding() ||
+      instruction->sharding().IsReplicatedOrSingleDevice()) {
     for (const HloInstruction* member : shard_group) {
       if (!member->has_sharding() || !member->sharding().IsManual() ||
           member == instruction) {
@@ -2123,7 +2125,7 @@ bool ShardingPropagation::InferShardingFromOperands(
                                         execution_threads);
 
   if ((!instruction->has_sharding() ||
-       instruction->sharding().IsTileMaximal()) &&
+       instruction->sharding().IsReplicatedOrSingleDevice()) &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
        instruction->opcode() == HloOpcode::kSort ||
@@ -2162,7 +2164,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       return false;
     }
     for (const HloInstruction* op : instruction->operands()) {
-      if (op->has_sharding() && op->sharding().IsTileMaximal() &&
+      if (op->has_sharding() && op->sharding().IsReplicatedOrSingleDevice() &&
           !op->sharding().HasUniqueDevice()) {
         return MaybeImproveInstructionSharding(op->sharding(), instruction,
                                                may_combine_partial_sharding);
@@ -2479,7 +2481,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       HloSortInstruction* sort = DynCast<HloSortInstruction>(instruction);
       CHECK(sort);
       const int64_t sort_dim = sort->sort_dimension();
-      if (!operand->sharding().IsTileMaximal() &&
+      if (!operand->sharding().IsReplicatedOrSingleDevice() &&
           operand->sharding().dimension(sort_dim) != 1 &&
           !hlo_sharding_util::GetFirstTargetDimToMoveShardingTiles(
                operand->shape(), operand->sharding(), sort_dim)
@@ -2734,7 +2736,8 @@ bool ShardingPropagation::InferShardingFromUsers(
     return false;
   }
   // Propagate manual sharding.
-  if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
+  if (!instruction->has_sharding() ||
+      instruction->sharding().IsReplicatedOrSingleDevice()) {
     for (const HloInstruction* user : instruction->users()) {
       if (!user->has_sharding() || user->IsCustomCall("SPMDFullToShardShape"))
         continue;

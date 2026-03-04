@@ -565,7 +565,7 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
   if (types.empty()) {
     // This case is for ops with 0 results, which corresponds to tuple<> in
     // which case it can have replicated or maximal sharding.
-    CHECK(hloSharding.IsTileMaximal());
+    CHECK(hloSharding.IsReplicatedOrSingleDevice());
     if (hloSharding.IsReplicated()) {
       return TensorShardingPerValueAttr::get(
           context,
