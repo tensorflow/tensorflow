@@ -636,29 +636,32 @@ cc_library(
 
 xla_test(
     name = "fusion_emitter_large_test",
-    size = "large",
     srcs = ["fusion_emitter_large_test.cc"],
+    backend_tags = {
+        "h100": [
+            # Needs full H100, otherwise we run OOM.
+            "full",
+        ],
+    },
     backends = [
         "a100",
         "h100",
         "b200",
         "amdgpu_any",
     ],
+    shard_count = 3,
     tags = [
-        "large",
         "no_mac",
         "no_oss",  # requires-mem:16g tag doesn't work in open source
         "nozapfhahn",  # Times out under coverage
-        "pjrt_migration_candidate",
     ] + if_google([
         "requires-mem:16g",
     ]),
-    use_legacy_runtime = True,
     deps = [
         "//xla:error_spec",
         "//xla:xla_proto_cc",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",

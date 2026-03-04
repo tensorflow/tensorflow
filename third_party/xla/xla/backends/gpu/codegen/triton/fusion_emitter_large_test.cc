@@ -19,31 +19,25 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class TritonGemmTest : public GpuCodegenTest {
+class TritonGemmTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
-  se::GpuComputeCapability GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
-
   void SetUp() override {
-    if (GetGpuComputeCapability().IsRocm()) {
+    if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
       GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
     }
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
@@ -134,7 +128,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-using TritonNormalizationTest = GpuCodegenTest;
+using TritonNormalizationTest =
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(TritonNormalizationTest,
        CanEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
