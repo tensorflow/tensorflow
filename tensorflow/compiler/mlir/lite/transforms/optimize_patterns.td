@@ -783,10 +783,9 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
 // such that the value operation happens before move operation.
 foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
                    TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
-                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp, TFL_LogisticOp,
-                   TFL_LogicalNotOp] in {
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp, TFL_LogisticOp] in {
   foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
-                   TFL_ReshapeOp, TFL_TransposeOp, TFL_BroadcastToOp] in {
+                   TFL_ReshapeOp, TFL_TransposeOp] in {
     def ReorderElementwiseAndMoveOperations#ValueOp#MoveOp : Pat<
       (ValueOp:$value (MoveOp:$move $input, $move_def)),
       (MoveOp (ValueOp $input), $move_def),
@@ -2328,50 +2327,3 @@ def ConvertSubZerosLikeToNeg : Pat<
   (TFL_NegOp $rhs),
   [(IsNoneType $act_fn), (HaveSameType $rhs, $output)]
 >;
-
-def EliminateDoubleLogicalNot : Pat<
-  (TFL_LogicalNotOp (TFL_LogicalNotOp $input)),
-  (replaceWithValue $input)
->;
-
-def OptimizeLogicalAndBroadcastTo : Pat<
-  (TFL_LogicalAndOp $x, (TFL_BroadcastToOp:$bcst $x, $shape)),
-  (replaceWithValue $bcst)>;
-
-def OptimizeLogicalAndBroadcastToRev : Pat<
-  (TFL_LogicalAndOp (TFL_BroadcastToOp:$bcst $x, $shape), $x),
-  (replaceWithValue $bcst)>;
-
-def FuseBroadcastReduceAllNoop : Pat<
-  (TFL_ReduceAllOp:$output
-      (TFL_BroadcastToOp $x, $shape), $axes, $keep_dims),
-  (replaceWithValue $x),
-  [(IsTailOfShape $x, $output),
-    (IsTailOfShape $output, $x)]>;
-
-def FuseBroadcastReduceAnyNoop : Pat<
-  (TFL_ReduceAnyOp:$output
-      (TFL_BroadcastToOp $x, $shape), $axes, $keep_dims),
-  (replaceWithValue $x),
-  [(IsTailOfShape $x, $output),
-    (IsTailOfShape $output, $x)]>;
-
-def FuseBroadcastReduceAllToReshape : Pat<
-  (TFL_ReduceAllOp:$output
-      (TFL_BroadcastToOp $x, $shape),
-        (Arith_ConstantOp I32ElementsAttr:$axes),
-       $keep_dims),
-  (TFL_ReshapeOp $x, (Arith_ConstantOp (GetShapeAttr $output))),
-  [(AnyStaticShapeTensor $x),
-   (AnyStaticShapeTensor $output),
-   (AreInputDimensionsOneInAxes $x, $axes)]>;
-
-def FuseBroadcastReduceAnyToReshape : Pat<
-  (TFL_ReduceAnyOp:$output
-      (TFL_BroadcastToOp $x, $shape),
-      (Arith_ConstantOp I32ElementsAttr:$axes),
-      $keep_dims),
-  (TFL_ReshapeOp $x, (Arith_ConstantOp (GetShapeAttr $output))),
-  [(AnyStaticShapeTensor $x),
-   (AnyStaticShapeTensor $output),
-   (AreInputDimensionsOneInAxes $x, $axes)]>;
