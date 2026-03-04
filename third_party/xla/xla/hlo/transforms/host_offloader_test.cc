@@ -677,6 +677,48 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, BasicHostTransferSendNoCrash) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  data_param = f32[2048] parameter(0)
+  token_param = token[] parameter(1)
+  offload_custom_call = f32[2048] custom-call(data_param), custom_call_target="MoveToHost"
+  send = (f32[2048], u32[], token[]) send(offload_custom_call, token_param), channel_id=5, is_host_transfer=true
+  send-done = token[] send-done(send), channel_id=5, is_host_transfer=true
+  ROOT out_tuple = (f32[2048]) tuple(data_param)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(const std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(const bool changed, RunHostOffloader(module.get()));
+
+  EXPECT_TRUE(changed);
+
+  HloInstruction* param;
+  HloInstruction* copy_to_host;
+  HloInstruction* send_instr;
+  HloInstruction* tuple_instr;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(&tuple_instr, m::Parameter(&param, 0))));
+
+  // Find the send instr
+  for (HloInstruction* instr : module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kSendDone) {
+      send_instr = instr->mutable_operand(0);
+      copy_to_host = send_instr->mutable_operand(0);
+      break;
+    }
+  }
+
+  TestShapeHasMemorySpace(param->shape(), Layout::kDefaultMemorySpace);
+  // The fact that SetMemorySpace skipped the token subshape and executed
+  // without crashing fulfills the goal of the test.
+  TestShapeHasMemorySpace(copy_to_host->shape(), Layout::kHostMemorySpace);
+}
+
 TEST_F(HostOffloaderTest, NoCopyThroughTuple) {
   const std::string& hlo_string = R"(
 HloModule my_module

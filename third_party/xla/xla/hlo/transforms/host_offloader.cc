@@ -66,8 +66,10 @@ using ::xla::host_offload_utils::InstructionAndShapeIndex;
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
   ShapeUtil::ForEachMutableLeafShape(
       shape, [memory_space_color](Shape* subshape, const ShapeIndex& index) {
-        CHECK(subshape->has_layout());
-        subshape->mutable_layout()->set_memory_space(memory_space_color);
+        if (subshape->IsArray()) {
+          CHECK(subshape->has_layout());
+          subshape->mutable_layout()->set_memory_space(memory_space_color);
+        }
       });
 }
 
