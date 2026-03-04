@@ -1519,7 +1519,7 @@ absl::StatusOr<TensorValue> EmitAllReduce(
     operands.push_back(values[operand]);
   }
 
-  if (all_reduce.device_list().replica_groups().empty()) {
+  if (all_reduce.device_list()->replica_groups().empty()) {
     return Internal(
         "Triton emitting AllReduce without replica groups is not supported.");
   }

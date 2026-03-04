@@ -1,1 +1,115 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -9335,6 +9335,7 @@
+       OPT_save_temps_EQ,
+       OPT_mcode_object_version_EQ,
+       OPT_load,
++      OPT_no_canonical_prefixes,
+       OPT_fno_lto,
+       OPT_flto,
+       OPT_flto_partitions_EQ,
+@@ -9562,6 +9563,10 @@
+     }
+   }
+ 
++  // Propagate -no-canonical-prefixes.
++  if (Args.hasArg(options::OPT_no_canonical_prefixes))
++    CmdArgs.push_back("--no-canonical-prefixes");
++
+   const char *Exec =
+       Args.MakeArgString(getToolChain().GetProgramPath("clang-linker-wrapper"));
+ 
+diff -ruN --strip-trailing-cr a/clang/test/Driver/hip-options.hip b/clang/test/Driver/hip-options.hip
+--- a/clang/test/Driver/hip-options.hip
++++ b/clang/test/Driver/hip-options.hip
+@@ -88,6 +88,16 @@
+ // HIPTHINLTO-NOT: "-cc1"{{.*}} "-triple" "x86_64-unknown-linux-gnu" {{.*}} "-flto-unit"
+ // HIPTHINLTO: clang-linker-wrapper{{.*}} "--device-compiler=amdgcn-amd-amdhsa=-flto=thin"
+ 
++// Check -no-canonical-prefixes is propagated correctly.
++
++// RUN: %clang -### --target=x86_64-unknown-linux-gnu -nogpuinc -nogpulib \
++// RUN:   --cuda-gpu-arch=gfx906 -foffload-lto=thin -fwhole-program-vtables -no-canonical-prefixes %s 2>&1 \
++// RUN:   | FileCheck -check-prefix=HIPTHINLTO-NO-CANON-PREFIXES %s
++
++// Ensure that we invoke clang-linker-wrapper with --no-canonical-prefixes and
++// pass -no-canonical-prefixes as a device compiler flag.
++// HIPTHINLTO-NO-CANON-PREFIXES: clang-linker-wrapper{{.*}} "--device-compiler=amdgcn-amd-amdhsa=-no-canonical-prefixes" {{.*}} "--no-canonical-prefixes"
++
+ // Check that -flto=thin is handled correctly, particularly with -fwhole-program-vtables.
+ //
+ // RUN: %clang -### --target=x86_64-unknown-linux-gnu -nogpuinc -nogpulib \
+diff -ruN --strip-trailing-cr a/clang/test/Driver/linker-wrapper-canonical-prefixes.c b/clang/test/Driver/linker-wrapper-canonical-prefixes.c
+--- a/clang/test/Driver/linker-wrapper-canonical-prefixes.c
++++ b/clang/test/Driver/linker-wrapper-canonical-prefixes.c
+@@ -0,0 +1,24 @@
++// UNSUPPORTED: system-windows
++// REQUIRES: x86-registered-target
++// REQUIRES: amdgpu-registered-target
++
++// An externally visible variable so static libraries extract.
++__attribute__((visibility("protected"), used)) int x;
++
++// RUN: rm -rf %t.test_dir && mkdir -p %t.test_dir
++// RUN: touch %t.test_dir/clang
++// RUN: chmod +x %t.test_dir/clang
++// RUN: ln -s clang-linker-wrapper %t.test_dir/clang-linker-wrapper
++
++// RUN: %clang -cc1 %s -triple x86_64-unknown-linux-gnu -emit-obj -o %t.elf.o
++// RUN: %clang -cc1 %s -triple amdgcn-amd-amdhsa -emit-llvm-bc -o %t.amdgpu.bc
++
++// RUN: llvm-offload-binary -o %t.out \
++// RUN:   --image=file=%t.elf.o,kind=openmp,triple=amdgcn-amd-amdhsa,arch=gfx908
++// RUN: %clang -cc1 %s -triple x86_64-unknown-linux-gnu -emit-obj -o %t.o -fembed-offload-object=%t.out
++// RUN: %t.test_dir/clang-linker-wrapper --host-triple=x86_64-unknown-linux-gnu --dry-run \
++// RUN:   --linker-path=/usr/bin/ld %t.o -o a.out --no-canonical-prefixes 2>&1 | FileCheck %s
++
++// Check that we resolve clang to the symlink rather than the bin/ directory
++// and that the sub-clang invocation was passed -no-canonical-prefixes.
++// CHECK: test_dir/clang"
+diff -ruN --strip-trailing-cr a/clang/tools/clang-linker-wrapper/ClangLinkerWrapper.cpp b/clang/tools/clang-linker-wrapper/ClangLinkerWrapper.cpp
+--- a/clang/tools/clang-linker-wrapper/ClangLinkerWrapper.cpp
++++ b/clang/tools/clang-linker-wrapper/ClangLinkerWrapper.cpp
+@@ -134,6 +134,9 @@
+ /// Codegen flags for LTO backend.
+ static codegen::RegisterCodeGenFlags CodeGenFlags;
+ 
++/// Whether or not to look through symlinks when resolving binaries.
++static bool CanonicalPrefixes = true;
++
+ using OffloadingImage = OffloadBinary::OffloadingImage;
+ 
+ namespace llvm {
+@@ -210,6 +213,8 @@
+ }
+ 
+ std::string getExecutableDir(const char *Name) {
++  if (!CanonicalPrefixes)
++    return sys::path::parent_path(LinkerExecutable).str();
+   void *Ptr = reinterpret_cast<void *>(&getExecutableDir);
+   return sys::path::parent_path(sys::fs::getMainExecutable(Name, Ptr)).str();
+ }
+@@ -1351,6 +1356,7 @@
+   DryRun = Args.hasArg(OPT_dry_run);
+   SaveTemps = Args.hasArg(OPT_save_temps);
+   CudaBinaryPath = Args.getLastArgValue(OPT_cuda_path_EQ).str();
++  CanonicalPrefixes = !Args.hasArg(OPT_no_canonical_prefixes);
+ 
+   llvm::Triple Triple(
+       Args.getLastArgValue(OPT_host_triple_EQ, sys::getDefaultTargetTriple()));
+diff -ruN --strip-trailing-cr a/clang/tools/clang-linker-wrapper/LinkerWrapperOpts.td b/clang/tools/clang-linker-wrapper/LinkerWrapperOpts.td
+--- a/clang/tools/clang-linker-wrapper/LinkerWrapperOpts.td
++++ b/clang/tools/clang-linker-wrapper/LinkerWrapperOpts.td
+@@ -69,6 +69,10 @@
+       Flags<[WrapperOnlyOption]>,
+       HelpText<"Emit fat binary directly without wrapping or host linking">;
+ 
++def no_canonical_prefixes : Flag<["--"], "no-canonical-prefixes">,
++  Flags<[WrapperOnlyOption]>,
++  HelpText<"Do not resolve symbolic links, turn relative paths into absolute ones, or do anything else to identify the executable">;
++
+ // Flags passed to the device linker.
+ def arch_EQ : Joined<["--"], "arch=">,
+   Flags<[DeviceOnlyOption, HelpHidden]>, MetaVarName<"<arch>">,
