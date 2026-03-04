@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
