@@ -197,7 +197,7 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
 absl::StatusOr<std::vector<Literal>>
 HloRunnerAgnosticTestBase::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
-    const std::vector<std::vector<Literal*>> arguments,
+    const std::vector<std::vector<const Literal*>> arguments,
     const int64_t num_devices, const bool run_hlo_passes,
     DeviceAssignment* const device_assignment) {
   CHECK(num_devices > 0 && "expected at least one device");
