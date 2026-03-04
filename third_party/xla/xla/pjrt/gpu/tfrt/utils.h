@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -30,7 +29,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -72,20 +70,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-
-// Invokes `f` on the given async work runner and returns the result. Blocks the
-// current thread until the work is done.
-template <typename F>
-std::invoke_result_t<F> RunOnAsyncWorkRunner(AsyncWorkRunner* runner, F&& f) {
-  std::invoke_result_t<F> result;
-  absl::Notification done;
-  runner->Schedule([&]() {
-    result = std::forward<F>(f)();
-    done.Notify();
-  });
-  done.WaitForNotification();
-  return result;
-}
 
 std::unique_ptr<se::Stream> MaybeCreateStream(se::StreamExecutor* executor);
 
