@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1183 @@
+@@ -0,0 +1,1184 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -1179,6 +1179,7 @@ new file mode 100644
 +        "@triton//python/tutorials:all-files",
 +        "@triton//test:all-files",
 +        "@triton//third_party/amd:all-files",
++        "@triton//third_party/amd/backend:all-files",
 +        "@triton//third_party/f2reduce:all-files",
 +        "@triton//third_party/nvidia:all-files",
 +        "@triton//third_party/nvidia/backend:all-files",
@@ -1955,7 +1956,7 @@ diff --git b/third_party/amd/BUILD b/third_party/amd/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/BUILD
-@@ -0,0 +1,383 @@
+@@ -0,0 +1,372 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -2047,7 +2048,6 @@ new file mode 100644
 +        "lib/TritonAMDGPUToLLVM/TargetInfo.h",
 +    ],
 +    hdrs = [
-+        "backend/include/TDMCommon.h",
 +        "lib/TritonAMDGPUToLLVM/TDMUtility.h",
 +    ],
 +    copts = _no_unused_variable,
@@ -2065,6 +2065,7 @@ new file mode 100644
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUToLLVM",
 +        "@triton//:TritonTools",
++        "@triton//third_party/amd/backend:headers",
 +    ],
 +)
 +
@@ -2321,17 +2322,6 @@ new file mode 100644
 +    ],
 +)
 +
-+cc_library(
-+    name = "backend_headers",
-+    defines = [
-+        "__HIP_PLATFORM_AMD__",
-+    ],
-+    includes = [
-+        "backend/include",
-+    ],
-+    textual_hdrs = glob(["backend/include/**/*.h"]),
-+)
-+
 +filegroup(
 +    name = "all-files",
 +    srcs = glob(
@@ -2339,6 +2329,55 @@ new file mode 100644
 +    ),
 +    visibility = ["@triton//:__subpackages__"],
 +)
+
+diff --git b/third_party/amd/backend/BUILD b/third_party/amd/backend/BUILD
+new file mode 100644
+--- /dev/null
++++ b/third_party/amd/backend/BUILD
+@@ -0,0 +1,43 @@
++# load("@rules_cc//cc:cc_library.bzl", "cc_library")
++
++package(
++    # copybara:uncomment_begin
++    # default_applicable_licenses = ["@triton//:license"],
++    # default_compatible_with = [# "@build-target"],
++    # default_visibility = [
++        # "//third_party/py/triton:__subpackages__",
++        # "@triton//:__subpackages__",
++    # ],
++    # copybara:uncomment_end_and_comment_begin
++    default_visibility = ["//visibility:public"],
++    # copybara:comment_end
++)
++
++filegroup(
++    name = "files",
++    srcs = glob(
++        include = ["**/*.py"],
++    ),
++)
++
++filegroup(
++    name = "all-files",
++    srcs = glob(
++        include = ["**"],
++    ),
++)
++
++cc_library(
++    name = "headers",
++    defines = [
++        "__HIP_PLATFORM_AMD__",
++    ],
++    includes = [
++        "include",
++    ],
++    textual_hdrs = glob(["include/**/*.h"]),
++)
++
++exports_files([
++    "include/TDMCommon.h",
++])
 
 diff --git b/third_party/f2reduce/BUILD b/third_party/f2reduce/BUILD
 new file mode 100644
@@ -3397,7 +3436,7 @@ new file mode 100644
 +    deps = [
 +        "@local_config_cuda//cuda:cuda_headers",
 +        "//third_party/json",
-+        "@triton//third_party/amd:backend_headers",
++        "@triton//third_party/amd/backend:headers",
 +    ],
 +)
 +
