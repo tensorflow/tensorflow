@@ -117,6 +117,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
 #include "xla/util/split_proto/split_executable_and_options_writer.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
@@ -1471,7 +1472,8 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
   }
 
   proto.mutable_output_info_map()->Reserve(output_info_.size());
-  for (const auto& [shape_index, output_info] : output_info_) {
+  for (const auto& [shape_index, output_info] :
+       tsl::KeySortedRange(output_info_)) {
     auto map_entry = proto.add_output_info_map();
     *map_entry->mutable_shape_index() = shape_index.ToProto();
     *map_entry->mutable_output_info() = output_info.ToProto();

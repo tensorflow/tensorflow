@@ -763,6 +763,7 @@ cc_library(
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:status_macros",
+        "//xla/tsl/util:sorted_range",
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_gpu_executable_writer",
         "@com_google_absl//absl/algorithm:container",
