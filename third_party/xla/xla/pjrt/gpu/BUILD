@@ -199,7 +199,6 @@ cc_library(
 
 xla_test(
     name = "se_gpu_pjrt_client_test",
-    size = "large",
     srcs = ["se_gpu_pjrt_client_test.cc"],
     backend_tags = {
         "h100": [
@@ -220,6 +219,7 @@ xla_test(
         ],
     },
     backends = ["gpu"],
+    shard_count = 3,
     tags = ["nofixdeps"],
     use_legacy_runtime = True,
     deps = [
