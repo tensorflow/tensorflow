@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_PYTHON_SAFE_STATIC_INIT_H_
 
 #include <atomic>
+#include <type_traits>
 
 #include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
@@ -82,31 +83,8 @@ class SafeStatic {
   std::atomic<T*> output_{nullptr};
 };
 
-// TODO(phawkins): deprecated. Use SafeStatic instead.
-template <typename T, typename F>
-T& SafeStaticInit(F init_fn) {
-  static absl::Mutex mutex(absl::kConstInit);
-  static std::atomic<T*> output{nullptr};
-  // Opportunistic check outside the lock.
-  if (T* result = output.load()) {
-    return *result;
-  }
-  // Locking must always be ordered, so we must release and reacquire
-  // the gil because init_fn() may release the gil which forces us
-  // to order mutex before gil.
-  // In free-threading mode, the effect is the same but we are ordering
-  // mutex before any critical sections because release_gil releases
-  // all critical sections.
-  nanobind::gil_scoped_release release_gil;
-  absl::MutexLock lock(mutex);
-  // Second check under the lock.
-  if (T* result = output.load()) {
-    return *result;
-  }
-  nanobind::gil_scoped_acquire acquire_gil;
-  output.store(init_fn().release());
-  return *output.load();
-}
+// Google C style requires static objects be trivially destructible.
+static_assert(std::is_trivially_destructible_v<SafeStatic<int>>);
 
 }  // namespace xla
 
