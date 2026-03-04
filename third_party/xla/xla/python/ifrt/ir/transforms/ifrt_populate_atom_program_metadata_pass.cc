@@ -51,10 +51,6 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
                                      mlir::OpBuilder& builder) {
   module_op->setAttr(kIfrtNumDevicesAttrName,
                      builder.getI32IntegerAttr(call_op.getDevices().size()));
-  // Copy `ifrt.sdy_partitioned` attribute if it exists.
-  if (call_op->hasAttr(kIsSdyPartitioned)) {
-    module_op->setAttr(kIsSdyPartitioned, builder.getUnitAttr());
-  }
   // Copy ifrt.compile_options_key if it exists.
   if (call_op->hasAttr(kIfrtCompileOptionsKey)) {
     module_op->setAttr(kIfrtCompileOptionsKey,

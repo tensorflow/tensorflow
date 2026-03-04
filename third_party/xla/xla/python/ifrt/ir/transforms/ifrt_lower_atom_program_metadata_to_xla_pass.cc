@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Visitors.h"
-#include "mlir/Pass/Pass.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/constants.h"
@@ -91,15 +90,7 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
     return;
   }
 
-  // TODO(b/433244129) - Do not use kIsSdyPartitioned attr and default to true
-  // after 6 month bwd compatibility window.
-  bool is_sdy = module_op->hasAttr(kIsSdyPartitioned);
-  if (is_sdy) {
-    mlir::emitWarning(module_op->getLoc())
-        << "`" << kIsSdyPartitioned
-        << "` attribute is deprecated and will be removed. See b/433244129."
-           " Please use `compile_options_override` to specify sharding.";
-  }
+  bool is_sdy = false;
   if (compile_options_override_or->has_value()) {
     is_sdy = compile_options_override_or->value()
                  .executable_build_options.use_shardy_partitioner();
@@ -196,7 +187,8 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
         return;
       }
       continue;
-    } else if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
+    }
+    if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
       // Sharding is not specified so we cannot lower to kHloShardingAttrName.
       continue;
     }
