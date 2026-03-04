@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,35 +13,35 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/utils/concurrency/tsl_task_executor.h"
+#include "xla/hlo/utils/concurrency/concurrency_utils.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <optional>
-#include <string>
-#include <utility>
+#include <cstdlib>
 
-#include "absl/strings/string_view.h"
+#include "absl/base/no_destructor.h"
+#include "absl/strings/numbers.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/cpu_info.h"
 
 namespace xla::concurrency {
 
-static int32_t ResolveParallelism(std::optional<int32_t> parallelism) {
-  if (!parallelism.has_value() || *parallelism <= 0 ||
-      *parallelism > tsl::port::MaxParallelism()) {
-    return tsl::port::MaxParallelism();
+static int32_t DefaultThreadPoolSize() {
+  // Google's CI system exposes an environment variable NPROC that describes
+  // a CPU reservation for tests.
+  const char* nproc_str = std::getenv("NPROC");
+  if (int32_t nproc = 0; nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
+    return std::max(0, nproc);
   }
-  return *parallelism;
+  return tsl::port::MaxParallelism();
 }
 
-TslTaskExecutor::TslTaskExecutor(std::optional<int32_t> max_parallelism,
-                                 absl::string_view name)
-    : thread_pool_(tsl::Env::Default(), std::string(name),
-                   ResolveParallelism(max_parallelism)) {}
-
-void TslTaskExecutor::Execute(Task task) {
-  thread_pool_.AsExecutor()->Execute(std::move(task));
+tsl::Executor& DefaultExecutor() {
+  static absl::NoDestructor<tsl::thread::ThreadPool> pool(
+      tsl::Env::Default(), "xla-concurrency", DefaultThreadPoolSize());
+  return *pool->AsExecutor();
 }
 
 }  // namespace xla::concurrency
