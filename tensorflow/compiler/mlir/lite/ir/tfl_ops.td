@@ -1045,7 +1045,7 @@ def TFL_CumsumOp: TFL_Op<"cumsum", [
     Pure,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_OperandHasRank<1, 0>]> {
+    TFL_Operand0DOr1ElementTensor<1>]> {
   let summary = "Cumsum operator";
 
   let description = [{
@@ -1496,8 +1496,8 @@ def TFL_NonMaxSuppressionV4Op : TFL_Op<"non_max_suppression_v4", [
   // Operand 1 (scores) should be a 1-dim tensor
   TFL_OperandHasRank<1, 1>,
   // Other operands are scalar params.
-  TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
-  TFL_OperandHasRank<4, 0>]> {
+  TFL_Operand0DOr1ElementTensor<2>, TFL_Operand0DOr1ElementTensor<3>,
+  TFL_Operand0DOr1ElementTensor<4>]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
   }];
@@ -1545,8 +1545,8 @@ def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
   // Operand 1 (scores) should be a 1-dim tensor
   TFL_OperandHasRank<1, 1>,
   // Other operands are scalar params.
-  TFL_OperandHasRank<2, 0>, TFL_OperandHasRank<3, 0>,
-  TFL_OperandHasRank<4, 0>, TFL_OperandHasRank<5, 0>]> {
+  TFL_Operand0DOr1ElementTensor<2>, TFL_Operand0DOr1ElementTensor<3>,
+  TFL_Operand0DOr1ElementTensor<4>, TFL_Operand0DOr1ElementTensor<5>]> {
   let summary = [{
 Greedily selects a subset of bounding boxes in descending order of score,
   }];
@@ -2829,7 +2829,7 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
     SameOperandsAndResultsScale,
     TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRank<1, 2>,
-    TFL_OperandHasRank<2, 0>,
+    TFL_Operand0DOr1ElementTensor<2>,
     TFL_OperandRankEquals1DimOfOperand<0, 1>,
     PredOpTrait<"the first dim size of the padding argument must be at most 5",
       Or<[TFL_OperandIsUnrankedPred<1>,
@@ -3218,9 +3218,9 @@ def TFL_ShapeOp: TFL_Op<"shape", [
 
 def TFL_RangeOp: TFL_Op<"range", [
     Pure,
-    TFL_OperandHasRank<0, 0>,
-    TFL_OperandHasRank<1, 0>,
-    TFL_OperandHasRank<2, 0>,
+    TFL_Operand0DOr1ElementTensor<0>,
+    TFL_Operand0DOr1ElementTensor<1>,
+    TFL_Operand0DOr1ElementTensor<2>,
     PredOpTrait<"operands and output must have same element type",
       And<[TCresVTEtIsSameAsOp<0, 0>, TCresVTEtIsSameAsOp<0, 1>,
            TCresVTEtIsSameAsOp<0, 2>]>>]> {
@@ -3628,7 +3628,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
     QuantizableResult,
     Pure,
     TFL_OperandHasRankAtLeast<0, 1>,
-    TFL_OperandHasRank<1, 0>,
+    TFL_Operand0DOr1ElementTensor<1>,
     PredOpTrait<"result and input element type match",
       TFL_TCresVTEtIsSameAsOp<0,0>>,
     SameOperandsAndResultsScale]> {
