@@ -55,6 +55,7 @@ cc_library(
         "//xla/hlo/builder/lib:comparators",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/parser:hlo_lexer",
         "//xla/hlo/pass:hlo_pass",
