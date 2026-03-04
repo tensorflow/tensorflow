@@ -81,6 +81,7 @@ message KernelThunkProto {
   int64 shmem_bytes = 6;
   optional stream_executor.gpu.TmaMetadataProto tma_metadata = 7;
   repeated int64 zeroed_output_buffer_indices = 9;
+  bool use_pdl = 10;
 }
 
 message GemmThunkProto {

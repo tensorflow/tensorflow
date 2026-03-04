@@ -204,7 +204,8 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
 
     return {{kernel->getName().str(), launch_dimensions,
              /*cluster_dim=*/std::nullopt, triton_wrapper_result.shmem_bytes,
-             /*binary=*/"", triton_wrapper_result.tma_metadata}};
+             /*binary=*/"", triton_wrapper_result.tma_metadata, /*use_pdl=*/
+             triton_wrapper_result.use_pdl}};
   };
 
   auto [status_or_entry, was_cached] =
@@ -217,8 +218,9 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
           Thunk::ThunkInfo::WithProfileAnnotation(
               &fusion, ir_emitter_context.GetNextThunkId()),
           entry->kernel_name, kernel_arguments, entry->launch_dimensions,
-          /*cluster_dim=*/std::nullopt, entry->shmem_bytes,
-          entry->tma_metadata),
+          /*cluster_dim=*/std::nullopt, entry->shmem_bytes, entry->tma_metadata,
+          /*zeroed_output_buffer_indices=*/std::vector<int64_t>{},
+          entry->use_pdl),
       was_cached ? nullptr : std::move(local_module)};
 }
 

@@ -70,7 +70,8 @@ class KernelThunk : public Thunk {
               LaunchDimensions launch_dimensions,
               std::optional<se::ClusterDim> cluster_dim, int64_t shmem_bytes,
               stream_executor::gpu::TmaMetadata tma_metadata,
-              std::vector<int64_t> zeroed_output_buffer_indices = {});
+              std::vector<int64_t> zeroed_output_buffer_indices = {},
+              bool use_pdl = false);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
@@ -102,6 +103,8 @@ class KernelThunk : public Thunk {
     return tma_metadata_;
   }
 
+  bool use_pdl() const { return use_pdl_; }
+
   BufferUses buffer_uses() const override;
 
  private:
@@ -127,6 +130,9 @@ class KernelThunk : public Thunk {
   // Map of argument index to TmaDescriptor used to create arguments to the
   // kernel.
   stream_executor::gpu::TmaMetadata tma_metadata_;
+
+  // Programmatic Dependent Launch.
+  bool use_pdl_;
 
   // Loaded kernels for each `StreamExecutor`.
   mutable absl::Mutex mutex_;
