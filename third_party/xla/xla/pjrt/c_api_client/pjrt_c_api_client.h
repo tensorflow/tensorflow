@@ -556,7 +556,7 @@ class PjRtCApiClient : public PjRtClient {
       const Layout* device_layout);
 
   absl::StatusOr<std::string> SerializeMlirModule(
-      mlir::ModuleOp module, const CompileOptions& options);
+      MaybeOwningMlirModule module, const CompileOptions& options);
 
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
