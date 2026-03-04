@@ -60,19 +60,6 @@ EXCLUDED_TESTS=(
     # @xla//xla/backends/gpu/codegen/triton:dot_algorithms_test_amdgpu_any
     TritonAndBlasSupportForDifferentTensorSizes/TritonAndBlasSupportForDifferentTensorSizes.IsDotAlgorithmSupportedByTriton/dot_*
 
-    # @xla//xla/backends/gpu/codegen/triton:triton_gemm_fusion_test_amdgpu_any
-    CompareTest.SplitK
-    CompareTest.SplitKBatch
-    CompareTest.SupportsSplitKWithIndivisibleKUsingPaddingEqual1
-    TritonGemmTest.S8ToF32DotWithManyWarpsDoesNotCrash
-    TritonGemmTest.SplitAndTransposeLhsExecutesCorrectly #failing on mi250
-    
-    # @xla//xla/backends/gpu/codegen/triton:fusion_emitter_device_test_amdgpu_any
-    TritonEmitterTest.FusionWithOutputContainingMoreThanInt32MaxElementsExecutesCorrectly
-    TritonEmitterTest.ConvertF16ToF8E5M2Exhaustive
-    TritonEmitterTest.RocmWarpSizeIsSetCorrectly
-    BasicDotAlgorithmEmitterTestSuite/BasicDotAlgorithmEmitterTest.BasicAlgorithmIsEmittedCorrectly/ALG_DOT_F16_F16_F16
-
     # @xla//xla/backends/gpu/codegen/triton:fusion_emitter_int4_device_test_amdgpu_any
     TritonTest.FuseSubchannelDequantizationWithTranspose
 
@@ -82,20 +69,9 @@ EXCLUDED_TESTS=(
     ElementwiseTestSuiteF16/BinaryElementwiseTest.ElementwiseBinaryOpExecutesCorrectly/f16_atan2
     ElementwiseTestSuiteF16/BinaryElementwiseTest.ElementwiseFusionExecutesCorrectly/f16_atan2
 
-    # @xla//xla/service/gpu/tests:command_buffer_test_amdgpu_any
-    CommandBufferTests/CommandBufferTest.WhileLoop/*
-    CommandBufferTests/CommandBufferTest.IndexConditional/*
-    CommandBufferTests/CommandBufferTest.TrueFalseConditional/*
-
     # @xla//xla/backends/gpu/runtime:command_buffer_conversion_pass_test_amdgpu_any
     CommandBufferConversionPassTest.ConvertWhileThunk
     CommandBufferConversionPassTest.ConvertWhileThunkWithAsyncPair
-
-    # @xla//xla/backends/gpu/runtime:topk_test_amdgpu_any
-    TopKTests/TopKKernelTest.*
-
-    # @xla//xla/pjrt/c:pjrt_c_api_gpu_test_amdgpu_any
-    PjrtCAPIGpuExtensionTest.TritonCompile
 
     # @xla//xla/service/gpu:dot_algorithm_support_test_amdgpu_any
     DotTf32Tf32F32Tests/DotAlgorithmSupportTest.AlgorithmIsSupportedFromCudaCapability/dot_tf32_tf32_f32_*
@@ -112,12 +88,6 @@ EXCLUDED_TESTS=(
     WithoutDotDimensionSorterTest.UnsortedDimsCreateTransposes # failing on mi250
     WithoutDotDimensionSorterTest.DimOrderCanBeChanged # failing on mi250
 
-    # @xla//xla/service/gpu/tests:gpu_cub_sort_test_amdgpu_any
-    CubSortKeysTest.CompareToReferenceNumpyOrderGt
-    CubSortKeysTest.CompareToReferenceTotalOrderLt
-    CubSort/CubSortKeysTest.*
-    CubSort/CubSortPairsTest.*
-
     # @xla//xla/service/gpu/transforms:cublas_gemm_rewriter_test_amdgpu_any
     CublasLtGemmRewriteTest.MatrixBiasSwishActivation
     CublasLtGemmRewriteTest.VectorBiasReluActivationF16Padded
@@ -129,9 +99,6 @@ EXCLUDED_TESTS=(
     CublasLtGemmRewriteTest.ReluActivationBF16Padded
     CublasLtGemmRewriteTest.VectorBiasBF16Padded
 
-    # @xla//xla/service/gpu:determinism_test_amdgpu_any
-    DeterminismTest.Conv
-
     # @xla//xla/tests:sample_file_test_amdgpu_any
     # @xla//xla/tests:sample_file_test_amdgpu_any_notfrt
     SampleFileTest.Convolution
@@ -142,12 +109,7 @@ EXCLUDED_TESTS=(
     # @xla//xla/tests:scatter_test_amdgpu_any_notfrt
     ScatterTest.TensorFlowScatterV1_UpdateTwice
 
-    # @xla//xla/tests:multioutput_fusion_test_amdgpu_any
-    MultiOutputFusionTest.MultiOutputReduceFusionMajorWithExtraOutput
-
     # vvv TODO (rocm) weekly-sync-20251224 excluded tests
-    # @xla//xla/service/gpu:gpu_compiler_test_amdgpu_any
-    PersistedAutotuningTest.SingleOperationGetsAutotuned
 
     # @xla//xla/backends/gpu/codegen/triton:support_test
     BitcastOrReshapeTestSuite/BitcastOrReshapeTest.IsTritonSupportedBitcastOrReshape*
@@ -164,9 +126,6 @@ EXCLUDED_TESTS=(
     ParameterTestSuite/ParameterTest.Parameter*
     ConstantTestSuite/ConstantTest.ConstantEffectiveScalar*
     DotTestSuite/DotTypesTest.Dot*
-
-    # @xla//xla/backends/gpu/codegen/triton:support_legacy_test
-    DotTestTestSuite/DotTest.IsTritonSupportedExecutesCorrectlyForDot/f8e5m2_dot
 
     # @xla//xla/backends/gpu/profiler:kernel_name_tracer_test
     KernelNameTracerTest.Create
@@ -245,5 +204,4 @@ bazel --bazelrc=tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/rocm.b
     --action_env=XLA_FLAGS=--xla_gpu_force_compilation_parallelism=16 \
     --test_filter=-$(IFS=: ; echo "${EXCLUDED_TESTS[*]}") \
     -- @xla//xla/... \
-    -@xla//xla/service/gpu/tests:sorting_test_amdgpu_any \
     # ^^^ TODO (rocm) weekly-sync-20251021 excluded test files
