@@ -1631,7 +1631,6 @@ xla_test(
     shard_count = 25,
     tags = [
         "cuda-only",
-        "test_migrated_to_hlo_runner_pjrt",
     ],
     deps = [
         ":client_library_test_runner_mixin",
