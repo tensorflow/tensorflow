@@ -3,9 +3,6 @@ load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow/core/function/runtime_client:__subpackages__",
-    ],
 )
 
 licenses(["notice"])
@@ -15,7 +12,7 @@ pytype_strict_library(
     srcs = [
         "transform.py",
     ],
-    visibility = ["//smartass/brain/configure:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/framework:function_proto_py",
