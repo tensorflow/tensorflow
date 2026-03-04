@@ -1733,7 +1733,60 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
     absl::Span<xla::ifrt::ArrayRef> arrays,
     absl::Span<const xla::ifrt::ArraySpec> specs,
     ArrayCopySemantics semantics) {
-  return Unimplemented("BitcastArrays not available with pjrt-ifrt client.");
+  if (arrays.size() != specs.size()) {
+    return absl::InvalidArgumentError("arrays and specs must be the same size");
+  }
+  if (semantics == ArrayCopySemantics::kAlwaysCopy) {
+    return absl::InvalidArgumentError(
+        "BitcastArrays disallows ArrayCopySemantics::kAlwaysCopy");
+  }
+  if (semantics != ArrayCopySemantics::kDonateInput) {
+    return absl::UnimplementedError(
+        "PjRt-IFRT requires ArrayCopySemantics::kDonateInput for "
+        "BitcastArrays");
+  }
+
+  std::vector<ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
+  for (int i = 0; i < arrays.size(); ++i) {
+    auto* pjrt_array = llvm::dyn_cast<PjRtArray>(arrays[i].get());
+    if (pjrt_array == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Array %d is not a PjRtArray", i));
+    }
+
+    absl::Span<const std::shared_ptr<PjRtBuffer>> buffers =
+        pjrt_array->pjrt_buffers();
+    PjRtBuffers new_buffers;
+    new_buffers.reserve(buffers.size());
+
+    TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
+                        ToPrimitiveType(specs[i].dtype));
+    TF_ASSIGN_OR_RETURN(const Shape& new_shard_shape,
+                        specs[i].sharding->GetShardShape(specs[i].shape));
+    const xla::Layout* device_layout = nullptr;
+    if (specs[i].layout != nullptr) {
+      device_layout = &specs[i].layout->xla_layout();
+    }
+
+    for (const std::shared_ptr<PjRtBuffer>& buffer : buffers) {
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtBuffer> new_buffer,
+          buffer->Bitcast(element_type, new_shard_shape.dims(), device_layout));
+      new_buffers.push_back(std::move(new_buffer));
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        tsl::RCReference<PjRtArray> new_array,
+        PjRtArray::Create(this, specs[i].dtype, specs[i].shape,
+                          specs[i].sharding, std::move(new_buffers),
+                          specs[i].layout));
+    new_arrays.push_back(std::move(new_array));
+  }
+  for (ArrayRef& array : arrays) {
+    array->Delete();
+  }
+  return new_arrays;
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(
