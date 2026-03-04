@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package stream_executor;
+
+option java_multiple_files = true;
+option java_outer_classname = "ExecutableAbiVersionOuter";
+
+message ExecutableAbiVersionProto {
+  string platform_name = 1;
+
+  message CudaPlatformVersion {
+    bytes cuda_toolkit_version = 1;
+    bytes cudnn_version = 2;
+    bytes cub_version = 3;
+  }
+
+  oneof platform_specific_version {
+    CudaPlatformVersion cuda_platform_version = 3;
+  }
+}
