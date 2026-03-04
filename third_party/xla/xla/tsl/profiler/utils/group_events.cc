@@ -737,9 +737,8 @@ void EventForest::ProcessTensorFlowLoop() {
   }
 }
 
-void EventForest::AddPlane(
-    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    XPlane* plane) {
+void EventForest::AddPlane(XPlaneVisitorFactory visitor_factory,
+                           XPlane* plane) {
   if (registered_planes_.contains(plane)) {
     return;
   }
@@ -748,17 +747,15 @@ void EventForest::AddPlane(
   planes_.push_back({plane, visitor_factory(plane)});
 }
 
-void EventForest::AddSpace(
-    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    XSpace* space) {
+void EventForest::AddSpace(XPlaneVisitorFactory visitor_factory,
+                           XSpace* space) {
   for (XPlane& plane : *space->mutable_planes()) {
     AddPlane(visitor_factory, &plane);
   }
 }
 
-void EventForest::AddPlanes(
-    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    const std::vector<XPlane*>& planes) {
+void EventForest::AddPlanes(XPlaneVisitorFactory visitor_factory,
+                            const std::vector<XPlane*>& planes) {
   for (XPlane* plane : planes) {
     AddPlane(visitor_factory, plane);
   }
@@ -767,9 +764,8 @@ void EventForest::AddPlanes(
 void EventForest::ConnectEvents(
     const std::vector<InterThreadConnectInfo>& connect_info_list) {
   ContextGroupMap context_groups;
-  for (auto& plane_visitor : planes_) {
-    ConnectIntraThread(plane_visitor.first, &plane_visitor.second,
-                       &context_groups);
+  for (auto& [plane, visitor] : planes_) {
+    ConnectIntraThread(plane, visitor.get(), &context_groups);
   }
   ConnectInterThread(connect_info_list);
   ConnectContextGroups(context_groups);
@@ -877,7 +873,7 @@ void GroupTfEvents(XSpace* space, EventForest* event_forest) {
   }
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  event_forest->AddSpace(CreateTfXPlaneVisitor, space);
+  event_forest->AddSpace(MakeTfXPlaneVisitor, space);
   event_forest->ConnectEvents(connect_info_list);
   event_forest->GroupEvents();
 }
@@ -1048,10 +1044,10 @@ void GroupHostAndPlanes(
     EventForest* event_forest) {
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  event_forest->AddSpace(CreateTfXPlaneVisitor, space);
+  event_forest->AddSpace(MakeTfXPlaneVisitor, space);
   // Group host and device planes together, and assigns group_id to module
   // events using TraceMe 2.0.
-  event_forest->AddPlanes(CreateTfXPlaneVisitor, device_traces);
+  event_forest->AddPlanes(MakeTfXPlaneVisitor, device_traces);
   event_forest->ConnectEvents(connect_info_list);
   event_forest->GroupEvents();
 }
