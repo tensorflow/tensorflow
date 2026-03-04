@@ -955,6 +955,7 @@ xla_test(
     deps = [
         ":matmul_perf_table_gen",
         ":matmul_perf_table_gen_main_lib",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/target_config",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",

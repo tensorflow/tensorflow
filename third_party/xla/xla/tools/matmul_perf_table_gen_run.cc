@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/pjrt_gpu_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tools/matmul_perf_table_gen.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
 
