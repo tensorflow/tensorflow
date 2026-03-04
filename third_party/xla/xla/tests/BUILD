@@ -406,12 +406,16 @@ cc_library(
     srcs = ["llvm_irgen_test_base.cc"],
     hdrs = ["llvm_irgen_test_base.h"],
     deps = [
-        ":codegen_test_base",
+        ":hlo_test_base",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/service:executable",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:test",
     ],
 )
@@ -434,19 +438,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-cc_library(
-    name = "codegen_test_base",
-    testonly = True,
-    srcs = ["codegen_test_base.cc"],
-    hdrs = ["codegen_test_base.h"],
-    deps = [
-        ":hlo_test_base",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:compiler",
-        "//xla/service:executable",
     ],
 )
 
