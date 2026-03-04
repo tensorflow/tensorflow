@@ -222,6 +222,10 @@ class DeviceDescription {
   // Returns the DNN version (cuDNN or hipDNN) - or 0.0.0 if not available.
   SemanticVersion dnn_version() const { return dnn_version_; }
 
+  // Returns the version of the CUB library (these days part of CCCL) - or 0.0.0
+  // if not available.
+  SemanticVersion cub_version() const { return cub_version_; }
+
   // Returns the name that the device reports. Vendor dependent.
   const std::string& name() const { return name_; }
 
@@ -453,6 +457,7 @@ class DeviceDescription {
   void set_compile_time_toolkit_version(const SemanticVersion& value) {
     compile_time_toolkit_version_ = value;
   }
+  void set_cub_version(const SemanticVersion& value) { cub_version_ = value; }
   void set_pci_bus_id(std::string value) { pci_bus_id_ = std::move(value); }
   void set_name(std::string value) { name_ = std::move(value); }
   void set_model_str(std::string value) { model_str_ = std::move(value); }
@@ -581,6 +586,7 @@ class DeviceDescription {
   SemanticVersion runtime_version_{0, 0, 0};
   SemanticVersion compile_time_toolkit_version_{0, 0, 0};
   SemanticVersion dnn_version_{0, 0, 0};
+  SemanticVersion cub_version_{0, 0, 0};
 
   DeviceInterconnectInfo interconnect_info_;
 };

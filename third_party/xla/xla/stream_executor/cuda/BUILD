@@ -1360,6 +1360,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cuda_headers",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:fingerprint",
