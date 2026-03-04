@@ -3138,16 +3138,6 @@ absl::Status CanonicalizeLayoutAfterShardingPropagation(
   return absl::OkStatus();
 }
 
-bool IsSpatiallyPartitioned(const HloSharding& sharding) {
-  if (sharding.IsTuple()) {
-    return absl::c_any_of(sharding.tuple_elements(),
-                          [](const HloSharding& sub_sharding) {
-                            return IsSpatiallyPartitioned(sub_sharding);
-                          });
-  }
-  return !sharding.IsTileMaximal() || sharding.IsReplicated();
-}
-
 // Returns
 // - 1, iff `lhs` is strictly better than `rhs`.
 // - 2, iff `rhs` is strictly better than `lhs`.
@@ -3203,8 +3193,8 @@ std::optional<HloSharding> ReturnImprovedShardingImpl(
   if (to_improved != nullptr && IsShardingStrictlyBetter(from, *to_improved)) {
     return from;
   }
-  // We don't want to propagate tile maximal shardings.
-  if (!IsSpatiallyPartitioned(from)) {
+  // We don't want to propagate single device shardings.
+  if (from.IsSingleDevice()) {
     return std::nullopt;
   }
   // Any sharding is better than no sharding.
@@ -3303,7 +3293,7 @@ HloSharding InferDotOperandSharding(
   }
 
   if (consider_other_operand && other_operand_sharding != nullptr &&
-      IsSpatiallyPartitioned(*other_operand_sharding)) {
+      !other_operand_sharding->IsSingleDevice()) {
     auto other_operand_dims_replicated = PartiallyReplicateTiledShardingOnDims(
         *other_operand_sharding, other_operand_dims_to_replicate);
 
