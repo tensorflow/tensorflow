@@ -509,6 +509,10 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduce) {
                  << device_count() << " available)";
   }
 
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "NCCL symmetric memory requires Hopper+";
+  }
+
   GpuCollectives* collectives = GpuCollectives::Default("CUDA");
   if (!collectives || !collectives->SupportsDeviceComm()) {
     GTEST_SKIP() << "GPU collectives do not support device communication";
