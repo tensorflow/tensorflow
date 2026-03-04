@@ -7,7 +7,7 @@ module(name = "xla")
 bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
-bazel_dep(name = "bazel_skylib", version = "1.8.1")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
 bazel_dep(name = "boringssl", version = "0.20250818.0")
 bazel_dep(name = "curl", version = "8.11.0")
 bazel_dep(name = "google_benchmark", version = "1.8.5", repo_name = "com_google_benchmark")
@@ -25,7 +25,7 @@ bazel_dep(name = "re2", version = "2025-11-05", repo_name = "com_googlesource_co
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "rules_python", version = "1.6.3")
+bazel_dep(name = "rules_python", version = "1.8.4")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
 bazel_dep(name = "xxd", version = "9.1.0917")
@@ -135,8 +135,9 @@ single_version_override(
         "//third_party/py:rules_python_pip_version.patch",
         "//third_party/py:rules_python_freethreaded.patch",
         "//third_party/py:rules_python_versions.patch",
+        "//third_party/py:rules_python_scope.patch",
     ],
-    version = "1.6.3",
+    version = "1.8.4",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")

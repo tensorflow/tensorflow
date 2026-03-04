@@ -37,11 +37,11 @@ def python_init_rules(extra_patches = []):
 
     tf_http_archive(
         name = "rules_python",
-        sha256 = "2f5c284fbb4e86045c2632d3573fc006facbca5d1fa02976e89dc0cd5488b590",
-        strip_prefix = "rules_python-1.6.3",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_python/releases/download/1.6.3/rules_python-1.6.3.tar.gz"),
+        sha256 = "c85d5db38d3eac06167a13b10c9dba54b003a986cd4f1ebc00806b74e7c12f06",
+        strip_prefix = "rules_python-1.8.4",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_python/releases/download/1.8.4/rules_python-1.8.4.tar.gz"),
         patch_file = [
-            "@xla//third_party/py:rules_python_pip_version.patch",
+            "@xla//third_party/py:rules_python_scope.patch",
             "@xla//third_party/py:rules_python_freethreaded.patch",
             "@xla//third_party/py:rules_python_versions.patch",
         ] + extra_patches,
