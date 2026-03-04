@@ -886,16 +886,57 @@ cc_library(
     ],
     deps = [
         ":host_compute_metadata_proto_cc",
+        ":xla_argument_proto_cc",
         ":xla_resource",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
         "@xla//xla:shape_util",
-        "@xla//xla/hlo/builder:xla_builder",
-        "@xla//xla/hlo/ir:hlo",
+        "@xla//xla/tsl/platform:statusor",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "xla_argument_test",
+    srcs = ["xla_argument_test.cc"],
+    deps = [
+        ":xla_argument",
+        ":xla_argument_proto_cc",
+        ":xla_resource",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla:shape_util",
+    ],
+)
+
+tf_proto_library(
+    name = "xla_argument_proto",
+    srcs = ["xla_argument.proto"],
+    protodeps = [
+        "@xla//xla:xla_data_proto",
+        "//tensorflow/core:protos_all",
+    ],
+    visibility = [
+        ":friends",
+        "//tensorflow/compiler:__subpackages__",
+    ] + if_google([
+        "//waymo/ml/deploy:__subpackages__",
+    ]),
 )
 
 cc_library(
