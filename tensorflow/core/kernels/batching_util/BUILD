@@ -263,6 +263,7 @@ cc_library(
 tf_cc_test(
     name = "shared_batch_scheduler_test",
     size = "small",
+    timeout = "long",
     srcs = ["shared_batch_scheduler_test.cc"],
     tags = ["no_windows"],
     deps = [

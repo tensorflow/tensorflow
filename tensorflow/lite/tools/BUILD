@@ -135,7 +135,7 @@ py_strict_library(
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/python:schema_util",
         "//tensorflow/python/platform:gfile",
-        "@flatbuffers//:runtime_py",
+        "@pypi_flatbuffers//:pkg",
     ],
 )
 
@@ -157,7 +157,7 @@ py_strict_library(
     srcs = ["test_utils.py"],
     deps = [
         "//tensorflow/lite/python:schema_py",
-        "@flatbuffers//:runtime_py",
+        "@pypi_flatbuffers//:pkg",
     ],
 )
 

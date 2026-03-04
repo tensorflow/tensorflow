@@ -205,6 +205,7 @@ def _tf_repositories():
             "//third_party/compute_library:compute_library.patch",
             "//third_party/compute_library:exclude_omp_scheduler.patch",
             "//third_party/compute_library:include_string.patch",
+            "//third_party/compute_library:rules_python.patch",
         ],
         sha256 = "8273f68cd0bb17e9231a11a6618d245eb6d623884ae681c00e7a4eabca2dad42",
         strip_prefix = "ComputeLibrary-24.12",
