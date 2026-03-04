@@ -23,7 +23,7 @@ limitations under the License.
 namespace xla {
 namespace {
 using ::xla::coordination::BarrierError;
-using ::xla::coordination::CoordinatedTask;
+
 using ::xla::coordination::CoordinationServiceError;
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
@@ -49,7 +49,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(payload.source_task().task_id(), 7);
+  EXPECT_EQ(payload.source_task_id(), 7);
   EXPECT_EQ(payload.is_reported_error(), false);
 }
 
@@ -65,16 +65,14 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(payload.source_task().task_id(), 7);
+  EXPECT_EQ(payload.source_task_id(), 7);
   EXPECT_EQ(payload.is_reported_error(), true);
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
   absl::Status error = absl::InternalError("Test Error");
   CoordinationServiceError payload;
-  CoordinatedTask* source_task = payload.mutable_source_task();
-  source_task->set_job_name("test_worker");
-  source_task->set_task_id(7);
+  payload.set_source_task_id(7);
   payload.set_is_reported_error(true);
 
   absl::Status coordination_error = MakeCoordinationError(error, payload);
@@ -85,10 +83,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
   // Explicit string conversion for open source builds.
   actual_payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(actual_payload.source_task().job_name(),
-            payload.source_task().job_name());
-  EXPECT_EQ(actual_payload.source_task().task_id(),
-            payload.source_task().task_id());
+  EXPECT_EQ(actual_payload.source_task_id(), payload.source_task_id());
   EXPECT_EQ(actual_payload.is_reported_error(), payload.is_reported_error());
 }
 

@@ -142,7 +142,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
   void UpdateGlobalProcessInfo(
-      absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) override;
+      absl::Span<xla::coordination::TaskInfo> infos) override;
 
   using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>

@@ -1611,14 +1611,13 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 
     // Parse the response.
     version_number = response->version_number();
-    std::vector<xla::coordination::CoordinatedTaskStateInfo> state(
+    std::vector<xla::coordination::TaskInfo> state(
         response->task_state().begin(), response->task_state().end());
-    absl::c_sort(
-        state,
-        [](const xla::coordination::CoordinatedTaskStateInfo& x,
-           const xla::coordination::CoordinatedTaskStateInfo& y) -> bool {
-          return x.task().task_id() < y.task().task_id();
-        });
+    absl::c_sort(state,
+                 [](const xla::coordination::TaskInfo& x,
+                    const xla::coordination::TaskInfo& y) -> bool {
+                   return x.task_id() < y.task_id();
+                 });
 
     // Pretty print the job state, if VLOG is on.
     if (VLOG_IS_ON(3)) {

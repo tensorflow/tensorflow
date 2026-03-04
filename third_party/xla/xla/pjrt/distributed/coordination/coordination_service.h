@@ -156,7 +156,7 @@ class CoordinationService {
 
   // Watches the state and the error status of the job.
   using WatchJobStateCallback = absl::AnyInvocable<void(
-      std::vector<xla::coordination::CoordinatedTaskStateInfo>, int64_t)>;
+      std::vector<xla::coordination::TaskInfo>, int64_t)>;
   void WatchJobState(std::optional<int64_t> version_number,
                      WatchJobStateCallback);
 
@@ -479,7 +479,7 @@ class CoordinationService {
 
     explicit TaskState(TaskId task_id) : task_id_(task_id) {}
 
-    xla::coordination::CoordinatedTaskState GetState() const { return state_; }
+    xla::coordination::TaskState GetState() const { return state_; }
     absl::Status GetStatus() const { return status_; }
     IncarnationId GetTaskIncarnation() const { return task_incarnation_; }
     void SetTaskIncarnation(IncarnationId task_incarnation) {
@@ -519,8 +519,8 @@ class CoordinationService {
     // Incarnation ID for CPU:0 on remote task.
     IncarnationId task_incarnation_{0};
 
-    xla::coordination::CoordinatedTaskState state_ =
-        xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+    xla::coordination::TaskState state_ =
+        xla::coordination::TaskState::DISCONNECTED;
     absl::Status status_;
     absl::Mutex last_heartbeat_mu_;
     uint64_t last_heartbeat_us_ ABSL_GUARDED_BY(last_heartbeat_mu_);
@@ -558,11 +558,11 @@ class CoordinationService {
   // be refreshed, for example, after a task has failed.
   void RefreshAliveness() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  static xla::coordination::CoordinatedTaskStateInfo CreateTaskStateInfo(
+  static xla::coordination::TaskInfo CreateTaskStateInfo(
       TaskId task, const TaskState& state);
 
   // Gets the task states.
-  std::vector<xla::coordination::CoordinatedTaskStateInfo> GetJobState()
+  std::vector<xla::coordination::TaskInfo> GetJobState()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Notifies all callbacks registered via WatchJobState.
