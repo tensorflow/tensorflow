@@ -457,7 +457,20 @@ PjRtStreamExecutorClient::MakeDefaultShapeForMemorySpace(
     const xla::Layout* layout) const {
   TransferManager* transfer_manager = client()->backend().transfer_manager();
   if (layout != nullptr) {
-    *(shape.mutable_layout()) = *layout;
+    *shape.mutable_layout() = *layout;
+    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      TF_ASSIGN_OR_RETURN(xla::Shape default_shape,
+                          transfer_manager->ChooseCompactLayoutForShape(shape));
+      if (default_shape.layout().element_size_in_bits() !=
+          shape.layout().element_size_in_bits()) {
+        return InvalidArgument(
+            "Device buffers require %d bits per element for an element type "
+            "%s, but got layout %s for shape %s",
+            default_shape.layout().element_size_in_bits(),
+            PrimitiveType_Name(shape.element_type()), layout->ToString(),
+            shape.ToString());
+      }
+    }
   } else {
     TF_ASSIGN_OR_RETURN(shape,
                         transfer_manager->ChooseCompactLayoutForShape(shape));
