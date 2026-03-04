@@ -17,27 +17,36 @@ limitations under the License.
 #define XLA_TSL_PLATFORM_CLOUD_GCS_FILE_SYSTEM_H_
 
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "json/json.h"
 #include "xla/tsl/platform/cloud/auth_provider.h"
 #include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
-#include "xla/tsl/platform/cloud/compute_engine_zone_provider.h"
 #include "xla/tsl/platform/cloud/expiring_lru_cache.h"
 #include "xla/tsl/platform/cloud/file_block_cache.h"
 #include "xla/tsl/platform/cloud/gcs_dns_cache.h"
 #include "xla/tsl/platform/cloud/gcs_throttle.h"
 #include "xla/tsl/platform/cloud/http_request.h"
+#include "xla/tsl/platform/cloud/zone_provider.h"
+#include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_file_system.h"
-
+#include "tsl/platform/retrying_utils.h"
+#include "tsl/platform/thread_annotations.h"
 namespace tsl {
+
+namespace thread {
+class ThreadPool;
+}
 
 class GcsFileSystem;
 
@@ -147,6 +156,8 @@ class GcsFileSystem : public FileSystem {
   // Main constructor used (via RetryingFileSystem) throughout Tensorflow
   explicit GcsFileSystem(bool make_default_cache = true,
                          GcsCacheOptions cache_options = {});
+  ~GcsFileSystem() override;
+
   explicit GcsFileSystem(GcsCacheOptions cache_options)
       : GcsFileSystem(true, cache_options) {}
   // Used mostly for unit testing or use cases which need to customize the
@@ -336,6 +347,7 @@ class GcsFileSystem : public FileSystem {
                                        uint64_t start_offset,
                                        uint64_t already_uploaded,
                                        const std::string& tmp_content_filename,
+                                       const std::string* ram_buffer,
                                        uint64_t file_size,
                                        const std::string& file_path);
 
@@ -494,9 +506,14 @@ class GcsFileSystem : public FileSystem {
 
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
 
-  // Additional header material to be transmitted with all GCS requests
   std::unique_ptr<std::pair<const std::string, const std::string>>
       additional_header_;
+
+  // Configuration for parallel reads and writes.
+  int32_t parallel_read_threads_ = 1;
+  uint64_t parallel_read_min_bytes_ = 0;
+  std::unique_ptr<tsl::thread::ThreadPool> read_thread_pool_;
+  bool upload_buffer_ram_ = false;
 
   GcsFileSystem(const GcsFileSystem&) = delete;
   void operator=(const GcsFileSystem&) = delete;

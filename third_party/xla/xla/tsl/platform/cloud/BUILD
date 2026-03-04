@@ -130,7 +130,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:file_statistics",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -178,7 +177,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:file_statistics",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -205,15 +203,7 @@ cc_library(
     name = "http_request",
     hdrs = ["http_request.h"],
     copts = tsl_copts(),
-    deps = [
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
-        "@tsl//tsl/platform:protobuf",
-        "@tsl//tsl/platform:stringpiece",
-    ],
+    deps = ["@com_google_absl//absl/status"],
 )
 
 cc_library(
@@ -226,8 +216,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -235,10 +223,8 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@curl",  # buildcleaner: keep
-        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:scanner",
         "@tsl//tsl/platform:strcat",
-        "@tsl//tsl/platform:stringpiece",
     ],
 )
 

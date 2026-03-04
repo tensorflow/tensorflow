@@ -16,17 +16,12 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_CLOUD_HTTP_REQUEST_H_
 #define XLA_TSL_PLATFORM_CLOUD_HTTP_REQUEST_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringpiece.h"
+#include "absl/status/status.h"
 
 namespace tsl {
 
@@ -128,6 +123,11 @@ class HttpRequest {
   /// the given offset.
   virtual absl::Status SetPutFromFile(const std::string& body_filepath,
                                       size_t offset) = 0;
+
+  /// \brief Makes the request a PUT request.
+  ///
+  /// The request body will be taken from the specified buffer.
+  virtual void SetPutFromBuffer(const char* buffer, size_t size) = 0;
 
   /// Makes the request a PUT request with an empty body.
   virtual void SetPutEmptyBody() = 0;
