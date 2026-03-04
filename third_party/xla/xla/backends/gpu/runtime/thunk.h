@@ -565,6 +565,15 @@ class Thunk {
 class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
  public:
   using std::vector<std::unique_ptr<Thunk>>::vector;
+
+  // Apply transformer callback to all thunks in *this sequence.
+  absl::Status TransformNested(Thunk::Transformer callback) {
+    for (std::unique_ptr<Thunk>& thunk : *this) {
+      RETURN_IF_ERROR(thunk->TransformNested(callback));
+      ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
+    }
+    return absl::OkStatus();
+  }
 };
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);

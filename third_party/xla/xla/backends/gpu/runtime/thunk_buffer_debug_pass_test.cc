@@ -180,15 +180,13 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
   Thunk* fake_thunk_ptr = fake_thunk.get();
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
   ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(root_thunk.get(), debug_options,
+      bool changed, pass.Run(&thunks, debug_options,
                              /*hlo_module=*/nullptr, device_info, allocator));
   EXPECT_FALSE(changed);
-  EXPECT_THAT(root_thunk->thunks(), ElementsAre(Pointer(fake_thunk_ptr)));
+  EXPECT_THAT(thunks, ElementsAre(Pointer(fake_thunk_ptr)));
   EXPECT_THAT(allocator.allocs(), IsEmpty());
 }
 
@@ -226,13 +224,11 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
   Thunk* fake_thunk_ptr = fake_thunk.get();
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
   ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(root_thunk.get(), debug_options,
-                             fake_hlo_module_.get(), device_info, allocator));
+      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
+                             device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -243,9 +239,8 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
   //    3. BuffersDebugChecksumThunk (checksum output buffers)
   // ]
   // 3. CustomCallThunk (buffer debug log dump)
-  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
-      new_thunks,
+      thunks,
       ElementsAre(
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
           IsSequentialThunkWith(ElementsAre(IsChecksumThunkChecking(SliceList{
@@ -320,8 +315,9 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
       /*body_thunk_sequence=*/
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(while_body_thunks)));
-  std::unique_ptr<SequentialThunk> root_thunk =
-      SequentialThunk::FromThunk(std::move(while_thunk));
+
+  ThunkSequence thunks;
+  thunks.push_back(std::move(while_thunk));
 
   // Thunk structure before the pass:
   // 1. WhileThunk
@@ -342,8 +338,8 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
 
   ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(root_thunk.get(), debug_options,
-                             fake_hlo_module_.get(), device_info, allocator));
+      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
+                             device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Each FakeThunk is supposed to be transformed into a SequentialThunk
@@ -385,18 +381,17 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   //    ]
   // 3. CustomCallThunk (buffer debug log dump)
 
-  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
-      new_thunks,
+      thunks,
       ElementsAre(
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
           ThunkKindIs(Thunk::Kind::kSequential),
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_dump")));
 
   {
-    ASSERT_EQ(new_thunks[1]->kind(), Thunk::Kind::kSequential);
+    ASSERT_EQ(thunks[1]->kind(), Thunk::Kind::kSequential);
     const SequentialThunk& top_seq_thunk =
-        static_cast<const SequentialThunk&>(*new_thunks[1]);
+        static_cast<const SequentialThunk&>(*thunks[1]);
 
     ASSERT_EQ(top_seq_thunk.thunks()[1]->kind(), Thunk::Kind::kWhile);
     const WhileThunk& while_thunk =
@@ -426,15 +421,15 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
 
     ASSERT_EQ(while_thunk.body_thunk_sequence()->thunks()[1]->kind(),
               Thunk::Kind::kSequential);
-    const SequentialThunk& condition_warpper_thunk =
+    const SequentialThunk& condition_wrapper_thunk =
         static_cast<const SequentialThunk&>(
             *while_thunk.body_thunk_sequence()->thunks()[1]);
 
-    ASSERT_EQ(condition_warpper_thunk.thunks()[1]->kind(),
+    ASSERT_EQ(condition_wrapper_thunk.thunks()[1]->kind(),
               Thunk::Kind::kConditional);
     const ConditionalThunk& conditional_thunk =
         static_cast<const ConditionalThunk&>(
-            *condition_warpper_thunk.thunks()[1]);
+            *condition_wrapper_thunk.thunks()[1]);
     EXPECT_EQ(&conditional_thunk, conditional_thunk_ptr);
 
     EXPECT_THAT(conditional_thunk.branch_thunks(),
@@ -511,13 +506,11 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   Thunk* fake_thunk_ptr = fake_thunk.get();
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk));
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
   ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kFloatChecker);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          pass.Run(root_thunk.get(), debug_options, &hlo_module,
-                                   device_info, allocator));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      pass.Run(&thunks, debug_options, &hlo_module, device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -526,24 +519,23 @@ TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   //    1. FakeThunk
   //    2. BuffersDebugFloatCheckThunk (float check output buffers)
   // 3. CustomCallThunk (buffer debug log dump)
-  const ThunkSequence& new_thunks = root_thunk->thunks();
-  EXPECT_THAT(new_thunks, SizeIs(3));
-  EXPECT_EQ(new_thunks[0]->kind(), Thunk::Kind::kCustomCall);
-  EXPECT_EQ(new_thunks[1]->kind(), Thunk::Kind::kSequential);
-  EXPECT_EQ(new_thunks[2]->kind(), Thunk::Kind::kCustomCall);
+  EXPECT_THAT(thunks, SizeIs(3));
+  EXPECT_EQ(thunks[0]->kind(), Thunk::Kind::kCustomCall);
+  EXPECT_EQ(thunks[1]->kind(), Thunk::Kind::kSequential);
+  EXPECT_EQ(thunks[2]->kind(), Thunk::Kind::kCustomCall);
 
   const CustomCallThunk& buffer_debug_init_thunk =
-      static_cast<const CustomCallThunk&>(*new_thunks[0]);
+      static_cast<const CustomCallThunk&>(*thunks[0]);
   EXPECT_EQ(buffer_debug_init_thunk.target_name(),
             "xla_gpu_buffer_debug_float_check_init");
 
   const CustomCallThunk& buffer_debug_dump_thunk =
-      static_cast<const CustomCallThunk&>(*new_thunks[2]);
+      static_cast<const CustomCallThunk&>(*thunks[2]);
   EXPECT_EQ(buffer_debug_dump_thunk.target_name(),
             "xla_gpu_buffer_debug_float_check");
 
   const ThunkSequence& sub_thunks =
-      static_cast<const SequentialThunk&>(*new_thunks[1]).thunks();
+      static_cast<const SequentialThunk&>(*thunks[1]).thunks();
   EXPECT_THAT(sub_thunks, SizeIs(2));
   EXPECT_THAT(sub_thunks[0], Pointer(fake_thunk_ptr));
   EXPECT_EQ(sub_thunks[1]->kind(), Thunk::Kind::kBuffersDebugFloatCheck);
@@ -586,8 +578,6 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
           // buffer, so we check it on input *and* output.
           BufferUse::Read(slice_io, arg_shape),
       }));
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
   DebugOptions debug_options =
       tsl::proto_testing::ParseTextProtoOrDie<DebugOptions>(R"pb(
@@ -595,15 +585,14 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
         xla_gpu_experimental_enable_buffer_saver_on_thunks: true
       )pb");
 
-  TF_EXPECT_OK(RunDebugSaverInserter(*root_thunk, debug_options, hlo_module));
+  TF_EXPECT_OK(RunDebugSaverInserter(&thunks, debug_options, hlo_module));
 
   // Expected thunk structure after the pass:
   // 1. SequentialThunk
   //    1. FakeThunk
   //    2. CustomCall (buffer saver)
-  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
-      new_thunks,
+      thunks,
       ElementsAre(IsSequentialThunkWith(ElementsAre(
           ThunkKindIs(Thunk::Kind::kGemm),
           IsCustomCallThunkWithTargetName(kXlaGpuAppendToFileCustomCallTag)))));
@@ -640,13 +629,11 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
   ThunkSequence thunks;
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
   ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(root_thunk.get(), debug_options,
-                             fake_hlo_module_.get(), device_info, allocator));
+      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
+                             device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -657,9 +644,8 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
   //    2. FakeThunk2
   //    3. BuffersDebugChecksumThunk (checksum output buffers)
   // 4. CustomCallThunk (buffer debug log dump)
-  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
-      new_thunks,
+      thunks,
       ElementsAre(
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
           Pointer(fake_thunk1_ptr),
@@ -713,13 +699,11 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
   thunks.push_back(std::move(fake_thunk3));
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
   ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(root_thunk.get(), debug_options,
-                             fake_hlo_module_.get(), device_info, allocator));
+      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
+                             device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -736,9 +720,8 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
   // ]
   // 3. FakeThunk3 (not instrumented)
   // 4. CustomCallThunk (buffer debug log dump)
-  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
-      new_thunks,
+      thunks,
       ElementsAre(
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
           IsSequentialThunkWith(ElementsAre(IsChecksumThunkChecking(SliceList{
@@ -804,13 +787,11 @@ TEST_F(ThunkBufferDebugPassTest,
   thunks.push_back(std::move(fake_thunk1));
   thunks.push_back(std::move(fake_thunk2));
   thunks.push_back(std::move(fake_thunk3));
-  auto root_thunk =
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
 
   ThunkBufferDebugPass pass(ThunkBufferDebugPass::Mode::kChecksum);
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pass.Run(root_thunk.get(), debug_options,
-                             fake_hlo_module_.get(), device_info, allocator));
+      bool changed, pass.Run(&thunks, debug_options, fake_hlo_module_.get(),
+                             device_info, allocator));
   EXPECT_TRUE(changed);
 
   // Expected thunk structure after the pass:
@@ -822,9 +803,8 @@ TEST_F(ThunkBufferDebugPassTest,
   //    2. FakeThunk3
   //    3. BuffersDebugChecksumThunk (checksum output buffers)
   // 5. CustomCallThunk (buffer debug log dump)
-  const ThunkSequence& new_thunks = root_thunk->thunks();
   EXPECT_THAT(
-      new_thunks,
+      thunks,
       ElementsAre(
           IsCustomCallThunkWithTargetName("xla_gpu_buffer_debug_log_init"),
           Pointer(fake_thunk1_ptr), Pointer(fake_thunk2_ptr),

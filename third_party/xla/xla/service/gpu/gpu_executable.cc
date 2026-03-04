@@ -237,8 +237,8 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
       hlo_module ? hlo_module->name() : "Anonymous"));
 
   ASSIGN_OR_RETURN(bool changed,
-                   pipeline.Run(root_thunk, debug_options, hlo_module,
-                                device_info, allocator));
+                   pipeline.Run(&root_thunk->thunks(), debug_options,
+                                hlo_module, device_info, allocator));
   if (changed) {
     VLOG(3) << "Thunk passes changed the thunk tree.";
     if (hlo_module && DumpingEnabledForHloModule(*hlo_module)) {

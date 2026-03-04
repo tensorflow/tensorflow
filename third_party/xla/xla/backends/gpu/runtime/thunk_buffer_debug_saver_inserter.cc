@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,6 +22,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -92,7 +93,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
 
 }  // namespace
 
-absl::Status RunDebugSaverInserter(SequentialThunk& root_thunk,
+absl::Status RunDebugSaverInserter(ThunkSequence* thunk_sequence,
                                    const DebugOptions& debug_options,
                                    const HloModule& hlo_module) {
   if (debug_options.xla_dump_to().empty()) {
@@ -101,15 +102,16 @@ absl::Status RunDebugSaverInserter(SequentialThunk& root_thunk,
     return absl::OkStatus();
   }
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  return root_thunk.TransformNested(
-      [&](std::unique_ptr<Thunk> thunk)
-          -> absl::StatusOr<std::unique_ptr<Thunk>> {
-        if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-          return thunk;
-        }
-        return InsertBufferSaverCustomCall(hlo_module, std::move(thunk),
-                                           debug_options.xla_dump_to());
-      });
+  auto transform_callback = [&](std::unique_ptr<Thunk> thunk)
+      -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
+    return InsertBufferSaverCustomCall(hlo_module, std::move(thunk),
+                                       debug_options.xla_dump_to());
+  };
+
+  return thunk_sequence->TransformNested(transform_callback);
 }
 
 }  // namespace xla::gpu
