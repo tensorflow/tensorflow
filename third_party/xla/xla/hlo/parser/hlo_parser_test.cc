@@ -4239,9 +4239,9 @@ TEST_F(HloParserTest, ParseMixedShardingTuple1) {
   EXPECT_TRUE(sharding.tuple_elements()[1].UseNamedShardingLeaf());
   EXPECT_TRUE(sharding.tuple_elements()[1].IsReplicatedLeaf());
   EXPECT_FALSE(sharding.tuple_elements()[2].UseNamedShardingLeaf());
-  EXPECT_TRUE(sharding.tuple_elements()[2].IsTileMaximalLeaf());
+  EXPECT_TRUE(sharding.tuple_elements()[2].IsSingleDeviceLeaf());
   EXPECT_TRUE(sharding.tuple_elements()[3].UseNamedShardingLeaf());
-  EXPECT_TRUE(sharding.tuple_elements()[3].IsTileMaximalLeaf());
+  EXPECT_TRUE(sharding.tuple_elements()[3].IsSingleDeviceLeaf());
 }
 
 TEST_F(HloParserTest, ParseMixedShardingTuple2) {

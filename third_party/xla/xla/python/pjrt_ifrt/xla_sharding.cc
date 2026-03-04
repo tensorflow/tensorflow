@@ -122,13 +122,14 @@ HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
       xla_hlo_sharding_(std::move(xla_hlo_sharding)) {
   is_fully_replicated_ =
       xla_hlo_sharding_.IsReplicated() ||
-      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsTileMaximal()) &&
+      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsSingleDevice()) &&
        devices_->size() == 1);
 }
 
 absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
-  if (xla_hlo_sharding_.IsTileMaximal() || xla_hlo_sharding_.IsManual() ||
-      xla_hlo_sharding_.IsUnreduced() || xla_hlo_sharding_.IsUnknown()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
+      xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced() ||
+      xla_hlo_sharding_.IsUnknown()) {
     return shape;
   }
   if (xla_hlo_sharding_.TotalNumTiles() != devices_->size()) {
@@ -187,7 +188,7 @@ HloSharding::Disassemble(
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
   bool is_even_sharding = false;
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal() ||
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
       xla_hlo_sharding_.IsUnreduced()) {
     is_even_sharding = true;
   } else if (xla_hlo_sharding_.IsTiled()) {
@@ -294,7 +295,7 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     return absl::InvalidArgumentError(
         "Unreduced sharding does not support IndexDomains");
   }
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice()) {
     // Fast path for a fully replicated or maximal sharding.
     IndexDomain element(shape);
     if (single_device_shard_semantics ==

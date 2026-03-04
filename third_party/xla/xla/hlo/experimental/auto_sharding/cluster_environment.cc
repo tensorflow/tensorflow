@@ -241,8 +241,9 @@ double ClusterEnvironment::OverestimateReplicationCost(
   int64_t bytes_moved = ByteSizeOfShapeWithSharding(shape, src_sharding);
   double cost = 0.0;
   for (size_t i = 0; i < device_mesh.num_dimensions(); ++i) {
-    cost += src_sharding.IsTileMaximal() ? this->AllReduceCost(bytes_moved, i)
-                                         : this->AllGatherCost(bytes_moved, i);
+    cost += src_sharding.IsReplicatedOrSingleDevice()
+                ? this->AllReduceCost(bytes_moved, i)
+                : this->AllGatherCost(bytes_moved, i);
     bytes_moved *= device_mesh.dimensions()[i];
   }
   return cost;

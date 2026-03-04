@@ -103,13 +103,14 @@ HloShardingSpec::HloShardingSpec(int num_shards,
       xla_hlo_sharding_(std::move(xla_hlo_sharding)) {
   is_fully_replicated_ =
       xla_hlo_sharding_.IsReplicated() ||
-      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsTileMaximal()) &&
+      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsSingleDevice()) &&
        num_shards_ == 1);
 }
 
 absl::StatusOr<Shape> HloShardingSpec::GetShardShape(const Shape& shape) const {
-  if (xla_hlo_sharding_.IsTileMaximal() || xla_hlo_sharding_.IsManual() ||
-      xla_hlo_sharding_.IsUnreduced() || xla_hlo_sharding_.IsUnknown()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
+      xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced() ||
+      xla_hlo_sharding_.IsUnknown()) {
     return shape;
   }
   if (shape.dims().size() != xla_hlo_sharding_.TiledDataRank()) {
@@ -145,7 +146,7 @@ bool HloShardingSpec::HasSamePartitioning(const ShardingSpec& other) const {
 absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>>
 HloShardingSpec::Disassemble(const Shape& shape) const {
   bool is_even_sharding = false;
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal() ||
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
       xla_hlo_sharding_.IsUnreduced()) {
     is_even_sharding = true;
   } else if (xla_hlo_sharding_.IsTiled()) {
@@ -217,7 +218,7 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
     return absl::InvalidArgumentError(
         "Unreduced sharding does not support IndexDomains");
   }
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice()) {
     // Fast path for a fully replicated or maximal sharding.
     IndexDomain element(shape);
     result.resize(/*count=*/num_shards_, /*value=*/element);
