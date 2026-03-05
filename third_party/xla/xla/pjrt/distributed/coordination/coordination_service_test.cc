@@ -58,7 +58,9 @@ using ::testing::UnorderedElementsAreArray;
 using ::testing::status::StatusIs;
 using ::tsl::proto_testing::EqualsProto;
 
+using tensorflow::CoordinatedJob;
 using tensorflow::CoordinationServiceConfig;
+using xla::coordination::CoordinatedTask;
 using xla::coordination::KeyValueEntry;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
@@ -251,7 +253,9 @@ TEST(CoordinationServiceTest,
      RegisterTask_AlreadyConnectedDifferentIncarnation_Fails) {
   const CoordinationService::Config config =
       GetCoordinationServiceConfig(/*num_tasks=*/1, /*recoverable=*/false);
-
+  CoordinatedTask task_0;
+  task_0.set_job_name("worker");
+  task_0.set_task_id(0);
   std::unique_ptr<CoordinationService> coord_service =
       std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   // Task connects to coordination service.
@@ -433,11 +437,11 @@ TEST_F(CoordinateTwoTasksTest, TestTaskRestart) {
   EXPECT_THAT(s, StatusIs(absl::StatusCode::kAborted));
 }
 
-xla::coordination::TaskInfo info(CoordinationService::TaskId task,
-                                 IncarnationId incarnation_id,
-                                 xla::coordination::TaskState state) {
-  xla::coordination::TaskInfo info;
-  info.set_task_id(task);
+xla::coordination::CoordinatedTaskStateInfo info(
+    CoordinationService::TaskId task, IncarnationId incarnation_id,
+    xla::coordination::CoordinatedTaskState state) {
+  xla::coordination::CoordinatedTaskStateInfo info;
+  info.mutable_task()->set_task_id(task);
   info.set_incarnation(incarnation_id.value());
   info.set_state(state);
   return info;
@@ -454,12 +458,13 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateSucceeds) {
   // Watch the job state, which should return immediately.
   absl::Notification done;
   coord_service_->WatchJobState(
-      std::nullopt, [&, this](std::vector<xla::coordination::TaskInfo> got,
-                              int64_t version_number) {
-        using State = xla::coordination::TaskState;
-        std::vector<xla::coordination::TaskInfo> want(2);
-        want[0] = info(0, incarnation_0_, State::CONNECTED);
-        want[1] = info(1, incarnation_1_, State::CONNECTED);
+      std::nullopt,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
+                int64_t version_number) {
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(1, incarnation_1_, State::TASKSTATE_CONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
                                               EqualsProto(want[1])));
         done.Notify();
@@ -480,12 +485,13 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateReturnsDisconnected) {
   // Watch the job state, which should return immediately.
   absl::Notification done;
   coord_service_->WatchJobState(
-      std::nullopt, [&, this](std::vector<xla::coordination::TaskInfo> got,
-                              int64_t version_number) {
-        using State = xla::coordination::TaskState;
-        std::vector<xla::coordination::TaskInfo> want(2);
-        want[0] = info(0, incarnation_0_, State::CONNECTED);
-        want[1] = info(1, incarnation_1_, State::DISCONNECTED);
+      std::nullopt,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
+                int64_t version_number) {
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(1, incarnation_1_, State::TASKSTATE_DISCONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
                                               EqualsProto(want[1])));
         EXPECT_THAT(version_number, Ge(0));
@@ -506,12 +512,13 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateReturnsNewIncarnation) {
   // Watch the job state, which should return immediately.
   absl::Notification done;
   coord_service_->WatchJobState(
-      std::nullopt, [&, this](std::vector<xla::coordination::TaskInfo> got,
-                              int64_t version_number) {
-        using State = xla::coordination::TaskState;
-        std::vector<xla::coordination::TaskInfo> want(2);
-        want[0] = info(0, incarnation_0_, State::CONNECTED);
-        want[1] = info(1, incarnation_1_ + 1, State::CONNECTED);
+      std::nullopt,
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
+                int64_t version_number) {
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(1, incarnation_1_ + 1, State::TASKSTATE_CONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
                                               EqualsProto(want[1])));
         EXPECT_THAT(version_number, Ge(0));
@@ -534,7 +541,8 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateBlocksUntilChange) {
   int64_t version_number = -1;
   coord_service_->WatchJobState(
       std::nullopt,
-      [&](std::vector<xla::coordination::TaskInfo> got, int64_t v) {
+      [&](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
+          int64_t v) {
         EXPECT_THAT(v, Ge(0));
         version_number = v;
         done_1.Notify();
@@ -545,11 +553,12 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateBlocksUntilChange) {
   absl::Notification done_2;
   coord_service_->WatchJobState(
       version_number,
-      [&, this](std::vector<xla::coordination::TaskInfo> got, int64_t v) {
-        using State = xla::coordination::TaskState;
-        std::vector<xla::coordination::TaskInfo> want(2);
-        want[0] = info(0, incarnation_0_, State::CONNECTED);
-        want[1] = info(1, incarnation_1_, State::DISCONNECTED);
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
+                int64_t v) {
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(1, incarnation_1_, State::TASKSTATE_DISCONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
                                               EqualsProto(want[1])));
         EXPECT_THAT(v, Ge(version_number));
@@ -575,11 +584,12 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateAfterTwoStateChanges) {
   int64_t version_number = -1;
   coord_service_->WatchJobState(
       std::nullopt,
-      [&, this](std::vector<xla::coordination::TaskInfo> got, int64_t v) {
-        using State = xla::coordination::TaskState;
-        std::vector<xla::coordination::TaskInfo> want(2);
-        want[0] = info(0, incarnation_0_, State::CONNECTED);
-        want[1] = info(1, incarnation_1_, State::CONNECTED);
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
+                int64_t v) {
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(1, incarnation_1_, State::TASKSTATE_CONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
                                               EqualsProto(want[1])));
         EXPECT_THAT(v, Ge(0));
@@ -598,11 +608,12 @@ TEST_F(CoordinateTwoTasksTest, WatchJobStateAfterTwoStateChanges) {
   absl::Notification done_2;
   coord_service_->WatchJobState(
       version_number,
-      [&, this](std::vector<xla::coordination::TaskInfo> got, int64_t v) {
-        using State = xla::coordination::TaskState;
-        std::vector<xla::coordination::TaskInfo> want(2);
-        want[0] = info(0, incarnation_0_, State::CONNECTED);
-        want[1] = info(1, incarnation_1_ + 1, State::CONNECTED);
+      [&, this](std::vector<xla::coordination::CoordinatedTaskStateInfo> got,
+                int64_t v) {
+        using State = xla::coordination::CoordinatedTaskState;
+        std::vector<xla::coordination::CoordinatedTaskStateInfo> want(2);
+        want[0] = info(0, incarnation_0_, State::TASKSTATE_CONNECTED);
+        want[1] = info(1, incarnation_1_ + 1, State::TASKSTATE_CONNECTED);
         EXPECT_THAT(got, UnorderedElementsAre(EqualsProto(want[0]),
                                               EqualsProto(want[1])));
         EXPECT_THAT(v, Ge(version_number));

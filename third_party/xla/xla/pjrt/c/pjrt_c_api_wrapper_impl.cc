@@ -665,24 +665,24 @@ PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
   auto translate_state = [](PJRT_ProcessState state) {
     switch (state) {
       case PJRT_ProcessState_kUnspecified:
-        return xla::coordination::TaskState::UNSPECIFIED;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_UNSPECIFIED;
       case PJRT_ProcessState_kUninitialized:
-        return xla::coordination::TaskState::UNINITIALIZED;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
       case PJRT_ProcessState_kDisconnected:
-        return xla::coordination::TaskState::DISCONNECTED;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
       case PJRT_ProcessState_kConnected:
-        return xla::coordination::TaskState::CONNECTED;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_CONNECTED;
       case PJRT_ProcessState_kError:
-        return xla::coordination::TaskState::ERROR;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_ERROR;
     }
     LOG(FATAL) << "Unexpected PJRT_ProcessState " << state;
   };
 
-  std::vector<xla::coordination::TaskInfo> infos;
+  std::vector<xla::coordination::CoordinatedTaskStateInfo> infos;
   for (int i = 0; i < args->num_process_infos; ++i) {
     PJRT_ProcessInfo* p = &args->process_infos[i];
-    xla::coordination::TaskInfo info;
-    info.set_task_id(p->task_id);
+    xla::coordination::CoordinatedTaskStateInfo info;
+    info.mutable_task()->set_task_id(p->task_id);
     info.set_incarnation(p->incarnation_id);
     info.set_state(translate_state(p->state));
     info.set_error_code(p->error_code);

@@ -210,6 +210,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf_lite",
+        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:thread_annotations",
     ],
 )

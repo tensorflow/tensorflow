@@ -56,10 +56,10 @@ constexpr bool kLeaveBarriersOnRecoverableAgentRestart = false;
 
 namespace xla {
 namespace {
+using xla::coordination::CoordinatedTaskState;
+using xla::coordination::CoordinatedTaskStateInfo;
 using xla::coordination::DeviceInfo;
 using xla::coordination::KeyValueEntry;
-using xla::coordination::TaskInfo;
-using xla::coordination::TaskState;
 
 constexpr char kClusterRegisterBarrierId[] =
     "[Init]Wait_for_all_tasks_to_register";
@@ -113,7 +113,7 @@ void CoordinationService::ErrorPollingState::AddTask(
 
 void CoordinationService::TaskState::SetConnected(
     IncarnationId task_incarnation) {
-  state_ = xla::coordination::TaskState::CONNECTED;
+  state_ = CoordinatedTaskState::TASKSTATE_CONNECTED;
   status_ = absl::OkStatus();
   task_incarnation_ = task_incarnation;
   absl::MutexLock l(last_heartbeat_mu_);
@@ -124,15 +124,15 @@ void CoordinationService::TaskState::Disconnect(
     uint64_t grace_period_duration_us) {
   disconnect_grace_period_us_ =
       tsl::Env::Default()->NowMicros() + grace_period_duration_us;
-  state_ = xla::coordination::TaskState::DISCONNECTED;
+  state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   status_ = absl::OkStatus();
 }
 
 bool CoordinationService::TaskState::SetError(const absl::Status& status) {
-  if (state_ == xla::coordination::TaskState::ERROR) {
+  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
     return false;
   }
-  state_ = xla::coordination::TaskState::ERROR;
+  state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = status;
   return true;
 }
@@ -179,7 +179,7 @@ void CoordinationService::TaskState::ExitBarrier(absl::string_view barrier_id) {
 }
 
 bool CoordinationService::TaskState::IsDisconnectedBeyondGracePeriod() {
-  return GetState() == xla::coordination::TaskState::DISCONNECTED &&
+  return GetState() == CoordinatedTaskState::TASKSTATE_DISCONNECTED &&
          tsl::Env::Default()->NowMicros() > disconnect_grace_period_us_;
 }
 
@@ -205,7 +205,7 @@ void CoordinationService::CheckHeartbeatTimeout() {
   absl::MutexLock l(state_mu_);
   for (const auto& [task, task_state] : cluster_state_) {
     // Skip tasks that are not registered or in error state.
-    if (task_state->GetState() != xla::coordination::TaskState::CONNECTED) {
+    if (task_state->GetState() != CoordinatedTaskState::TASKSTATE_CONNECTED) {
       continue;
     }
     const bool is_stale =
@@ -459,7 +459,7 @@ void CoordinationService::LogConnectStatusLocked() const {
   int pending_tasks = 0;
   std::vector<TaskId> tasks;
   for (const auto& [task, task_state] : cluster_state_) {
-    if (task_state->GetState() != xla::coordination::TaskState::CONNECTED) {
+    if (task_state->GetState() != CoordinatedTaskState::TASKSTATE_CONNECTED) {
       pending_tasks++;
       if (tasks.size() < kPendingStragglerLogLimit) {
         tasks.push_back(task);
@@ -559,7 +559,7 @@ void CoordinationService::RegisterTaskAsync(TaskId task,
   const auto task_state = task_cluster_state->GetState();
   const auto task_status = task_cluster_state->GetStatus();
 
-  if (task_state == xla::coordination::TaskState::DISCONNECTED ||
+  if (task_state == CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
       ((config_.allow_new_incarnation_to_reconnect || config_.recoverable) &&
        (absl::IsUnavailable(task_status) &&
         task_status.GetPayload(CoordinationErrorPayloadKey())))) {
@@ -606,7 +606,7 @@ void CoordinationService::RegisterTaskAsync(TaskId task,
     ClusterStateUpdated();
     return;
   }
-  if (task_state == xla::coordination::TaskState::CONNECTED) {
+  if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
     // This may happen if the service processes the initial RegisterTask(),
     // but the agent did not receive the response so the agent retries again.
     if (task_cluster_state->GetTaskIncarnation() == incarnation ||
@@ -705,7 +705,7 @@ absl::Status CoordinationService::DisconnectTask(TaskId task) {
   }
   const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
 
-  if (task_state->GetState() == xla::coordination::TaskState::DISCONNECTED) {
+  if (task_state->GetState() == CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         absl::StrCat("The task is already disconnected: ", task)));
   }
@@ -742,7 +742,7 @@ absl::Status CoordinationService::ReportTaskError(TaskId task,
         absl::StrCat("Unexpected request from task ", task)));
   }
   if (cluster_state_[task]->GetState() !=
-      xla::coordination::TaskState::CONNECTED) {
+      CoordinatedTaskState::TASKSTATE_CONNECTED) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         "The task is not connected or already has an error."));
   }
@@ -751,24 +751,24 @@ absl::Status CoordinationService::ReportTaskError(TaskId task,
   return absl::OkStatus();
 }
 
-TaskInfo CoordinationService::CreateTaskStateInfo(TaskId task,
-                                                  const TaskState& state) {
-  TaskInfo info;
+CoordinatedTaskStateInfo CoordinationService::CreateTaskStateInfo(
+    TaskId task, const TaskState& state) {
+  CoordinatedTaskStateInfo info;
   info.set_state(state.GetState());
   info.set_incarnation(state.GetTaskIncarnation().value());
   absl::Status error = state.GetStatus();
-  info.set_task_id(task);
+  info.mutable_task()->set_task_id(task);
   info.set_error_code(error.raw_code());
   info.set_error_message(std::string(error.message()));
   if (!error.ok()) {
-    info.mutable_error_payload()->set_source_task_id(task);
+    info.mutable_error_payload()->mutable_source_task()->set_task_id(task);
     info.mutable_error_payload()->set_is_reported_error(false);
   }
   return info;
 }
 
-std::vector<TaskInfo> CoordinationService::GetJobState() {
-  std::vector<TaskInfo> states_info;
+std::vector<CoordinatedTaskStateInfo> CoordinationService::GetJobState() {
+  std::vector<CoordinatedTaskStateInfo> states_info;
   for (const auto& [task, task_state] : cluster_state_) {
     states_info.push_back(CreateTaskStateInfo(task, *task_state));
   }
@@ -995,7 +995,8 @@ void CoordinationService::PollForErrorAsync(TaskId task,
     return;
   }
 
-  if (cluster_state_[task]->GetState() == xla::coordination::TaskState::ERROR) {
+  if (cluster_state_[task]->GetState() ==
+      CoordinatedTaskState::TASKSTATE_ERROR) {
     done(MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
         "Task (", task,
         ") that is already in error state polling for errors. Current error: ",
@@ -1032,8 +1033,8 @@ absl::Status CoordinationService::InitializeBarrier(
   for (const auto& pending_task : barrier->tasks_at_barrier) {
     TaskId task = pending_task.first;
     const std::unique_ptr<TaskState>& task_cluster_state = cluster_state_[task];
-    if (!config_.recoverable &&
-        task_cluster_state->GetState() == xla::coordination::TaskState::ERROR) {
+    if (!config_.recoverable && task_cluster_state->GetState() ==
+                                    CoordinatedTaskState::TASKSTATE_ERROR) {
       absl::Status error = MakeBarrierError(
           absl::InternalError(absl::StrCat(
               "Task (", task,
@@ -1363,7 +1364,7 @@ CoordinationService::AliveTasks(
   for (TaskId task : tasks) {
     auto it = cluster_state_.find(task);
     if (it != cluster_state_.end() &&
-        it->second->GetState() == xla::coordination::TaskState::CONNECTED) {
+        it->second->GetState() == CoordinatedTaskState::TASKSTATE_CONNECTED) {
       // We consider a task alive if it is CONNECTED.
       alive_tasks.insert(task);
     }

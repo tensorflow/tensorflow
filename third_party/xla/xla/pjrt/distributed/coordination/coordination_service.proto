@@ -7,17 +7,24 @@ option java_outer_classname = "CoordinationServiceOuterClass";
 
 import "google/protobuf/any.proto";
 
+// Represents a remote worker task, specified by job name and task id.
+message CoordinatedTask {
+  string job_name = 1;
+  int32 task_id = 2;
+  bool recoverable = 3;
+}
+
 // Represents the state of a remote worker
-enum TaskState {
-  // UNSPECIFIED is an invalid state such that indicates a bug.
-  UNSPECIFIED = 0;
-  // UNINITIALIZED is an agent-only state. While the agent is
+enum CoordinatedTaskState {
+  // TASKSTATE_UNSPECIFIED is an invalid state such that indicates a bug.
+  TASKSTATE_UNSPECIFIED = 0;
+  // TASKSTATE_UNINITIALIZED is an agent-only state. While the agent is
   // disconnected, the service has no way of knowing if the task is
   // initialized/uninitialized.
-  UNINITIALIZED = 1;
-  DISCONNECTED = 2;
-  CONNECTED = 3;
-  ERROR = 4;
+  TASKSTATE_UNINITIALIZED = 1;
+  TASKSTATE_DISCONNECTED = 2;
+  TASKSTATE_CONNECTED = 3;
+  TASKSTATE_ERROR = 4;
 }
 
 // Status payload for all coordination service errors.
@@ -31,7 +38,7 @@ message CoordinationServiceError {
   bool is_reported_error = 3;
   // Denotes which task hit the error. If unset, the error originated from the
   // same task that is processing this error.
-  int32 source_task_id = 4;
+  CoordinatedTask source_task = 4;
 }
 
 // Status payload for coordination barrier errors.
@@ -40,10 +47,10 @@ message BarrierError {
   int64 counter = 2;
 }
 
-message TaskInfo {
-  int32 task_id = 1;
+message CoordinatedTaskStateInfo {
+  CoordinatedTask task = 1;
   fixed64 incarnation = 6;
-  TaskState state = 2;
+  CoordinatedTaskState state = 2;
   int32 error_code = 3;
   string error_message = 4;
   CoordinationServiceError error_payload = 5;
@@ -65,7 +72,7 @@ message RegisterTaskRequest {
   // Moved the field `local_device_attributes` from this request message to
   // WaitForAllTasksRequest defined below.
   reserved 4;
-  int32 source_task_id = 5;
+  CoordinatedTask source_task = 5;
 }
 
 message RegisterTaskResponse {
@@ -77,7 +84,7 @@ message HeartbeatRequest {
   // Removed fields which used to specify the remote task.
   reserved 1, 2;
   fixed64 incarnation = 3;
-  int32 source_task_id = 4;
+  CoordinatedTask source_task = 4;
 }
 
 message HeartbeatResponse {
@@ -87,7 +94,7 @@ message HeartbeatResponse {
 }
 
 message PollForErrorRequest {
-  int32 source_task_id = 1;
+  CoordinatedTask source_task = 1;
 }
 
 message PollForErrorResponse {}
@@ -98,7 +105,7 @@ message WaitForAllTasksRequest {
   reserved 1, 2;
   // Removed field that specifically used TF device info.
   reserved 3, 4;
-  int32 source_task_id = 5;
+  CoordinatedTask source_task = 5;
   // All local device attributes on the request sender;
   DeviceInfo device_info = 6;
 }
@@ -113,14 +120,14 @@ message WaitForAllTasksResponse {
 
 // Request and response messages for disconnecting a task from the service.
 message ShutdownTaskRequest {
-  int32 source_task_id = 1;
+  CoordinatedTask source_task = 1;
 }
 
 message ShutdownTaskResponse {}
 
 // Request and response messages for resetting a task state in the service.
 message ResetTaskRequest {
-  int32 source_task_id = 1;
+  CoordinatedTask source_task = 1;
 }
 
 message ResetTaskResponse {}
@@ -142,18 +149,18 @@ message ReportErrorToServiceRequest {
   string error_message = 2;
   // Removed fields which used to specify the error origin.
   reserved 3, 4;
-  int32 error_origin_task_id = 5;
+  CoordinatedTask error_origin = 5;
 }
 
 message ReportErrorToServiceResponse {}
 
 // Request and response messages for getting state of a remote task.
 message GetTaskStateRequest {
-  repeated int32 source_task_ids = 1;
+  repeated CoordinatedTask source_task = 1;
 }
 
 message GetTaskStateResponse {
-  repeated TaskInfo task_state = 1;
+  repeated CoordinatedTaskStateInfo task_state = 1;
 }
 
 // Request and response messages for watching the state of a remote job.
@@ -193,12 +200,12 @@ message GetTaskStateResponse {
 //        v.  For example, a task may have failed and later recovered leading to
 //        an identical job state.
 message WatchJobStateRequest {
-  reserved 1;
+  string job_name = 1;
   int64 version_number = 2;
 }
 
 message WatchJobStateResponse {
-  repeated TaskInfo task_state = 1;
+  repeated CoordinatedTaskStateInfo task_state = 1;
   int64 version_number = 2;
 }
 
@@ -268,9 +275,9 @@ message BarrierRequest {
   int64 barrier_timeout_in_ms = 2;
   // Denotes list of tasks that will wait for the barrier. If unspecified, it
   // implies that the entire cluster is participating in the barrier.
-  repeated int32 task_ids = 3;
+  repeated CoordinatedTask tasks = 3;
   // Task that is making the request.
-  int32 source_task_id = 4;
+  CoordinatedTask source_task = 4;
   // The same id can be reused, so this tracks each unique invocation.
   int64 counter = 5;
 }
@@ -283,17 +290,17 @@ message BarrierResponse {
 // Request and response messages for querying the set of alive tasks.
 message GetAliveTasksRequest {
   // The task that is making the GetAliveTasks request.
-  int32 requesting_task_id = 1;
+  CoordinatedTask requesting_task = 1;
 
   // The tasks to check for aliveness. This list must include the requesting
   // task.
-  repeated int32 task_ids = 2;
+  repeated CoordinatedTask tasks = 2;
 }
 
 message GetAliveTasksResponse {
   // The set of alive tasks. This set is a (non-strict) subset of the tasks
   // provided in the GetAliveTasksRequest.
-  repeated int32 alive_task_ids = 1;
+  repeated CoordinatedTask alive_tasks = 1;
 
   // The incarnation ids of the alive tasks. incarnations[i] is the incarnation
   // id of alive_tasks[i].
@@ -306,7 +313,7 @@ message CancelBarrierRequest {
   string barrier_id = 1;
   int64 counter = 3;
   // Task that is making the request.
-  int32 source_task_id = 2;
+  CoordinatedTask source_task = 2;
 }
 
 message CancelBarrierResponse {}
@@ -363,7 +370,7 @@ service CoordinationService {
       returns (ReportErrorToServiceResponse);
 
   // Get the state of a remote task. Specifically, RPC returns a
-  // TaskState, and if the task is in an error status, returns a
+  // CoordinatedTaskState, and if the task is in an error status, returns a
   // non-OK error code, non-empty error message and error payload.
   rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
 

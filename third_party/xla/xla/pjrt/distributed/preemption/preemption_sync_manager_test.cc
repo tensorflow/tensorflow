@@ -42,6 +42,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+using tensorflow::CoordinatedJob;
+using tensorflow::CoordinatedTask;
 
 // Send fake preemption notices at any time for testing.
 class FakePreemptionNotifier : public PreemptionNotifier {
