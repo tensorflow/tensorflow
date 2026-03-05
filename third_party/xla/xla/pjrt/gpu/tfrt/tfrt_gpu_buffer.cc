@@ -21,7 +21,6 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <memory>
-#include <new>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -69,7 +68,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
 #include "tsl/platform/mem.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -155,12 +153,12 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
   };
 
   absl::StatusOr<Shape> shape_or;
-  client_->blocking_thread_pool()->ScheduleWhenReady(
-      {device_buffer->definition_event().CopyRCRef()},
-      [get_shape = std::move(get_shape), &shape_or,
-       usage_event_holder = std::move(ready_on_exit)]() {
-        shape_or = get_shape();
-      });
+  EnqueueWorkWhenReady(client_->blocking_thread_pool(),
+                       {device_buffer->definition_event().CopyRCRef()},
+                       [get_shape = std::move(get_shape), &shape_or,
+                        usage_event_holder = std::move(ready_on_exit)]() {
+                         shape_or = get_shape();
+                       });
 
   tsl::BlockUntilReady(usage_event);
   return shape_or;
@@ -515,13 +513,14 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
       if (generated.IsKnownReady()) {
         copy_to_literal_and_set_event(generated.Await());
       } else {
-        generated.OnReady(client->blocking_thread_pool()->AsExecutor(),
+        generated.OnReady(*client->blocking_thread_pool()->AsExecutor(),
                           std::move(copy_to_literal_and_set_event));
       }
     }
   };
-  client_->blocking_thread_pool()->ScheduleWhenReady(
-      {device_buffer->definition_event().CopyRCRef()}, std::move(d2h_copy));
+  EnqueueWorkWhenReady(client_->blocking_thread_pool(),
+                       {device_buffer->definition_event().CopyRCRef()},
+                       std::move(d2h_copy));
 
   return FutureHelpers::WithProfiling(
       std::move(future),
@@ -643,7 +642,8 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
           LOG(ERROR) << "dst resolved to an error: " << dst_or.status();
           return;
         }
-        client->blocking_thread_pool()->ScheduleWhenReady(
+        EnqueueWorkWhenReady(
+            client->blocking_thread_pool(),
             {device_buffer->definition_event().CopyRCRef()},
             [dst = std::move(dst_or.value()), promise = std::move(promise),
              d2h_copy = std::move(d2h_copy)]() mutable {
@@ -832,8 +832,9 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
         }
       };
 
-  client_->blocking_thread_pool()->ScheduleWhenReady(
-      {src_device_buffer->ready_event().CopyRCRef()}, std::move(transfer_d2d));
+  EnqueueWorkWhenReady(client_->blocking_thread_pool(),
+                       {src_device_buffer->ready_event().CopyRCRef()},
+                       std::move(transfer_d2d));
   return output_buffer;
 }
 
