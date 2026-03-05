@@ -299,7 +299,7 @@ std::optional<PjRtPluginAttributes> StreamExecutorGpuClient::plugin_attributes()
 }
 
 void StreamExecutorGpuClient::UpdateGlobalProcessInfo(
-    absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) {
+    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
   if (!abort_collectives_on_failure_) {
     return;
   }

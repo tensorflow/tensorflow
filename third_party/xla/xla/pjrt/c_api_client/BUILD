@@ -91,7 +91,6 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_stream_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_tpu_topology_extension_hdrs",
         "//xla/pjrt/distributed:key_value_store_interface",
-        "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/pjrt/extensions/cross_host_transfers:pjrt_c_api_cross_host_transfer_extension",
         "//xla/pjrt/extensions/executable_metadata:executable_metadata_extension",
         "//xla/pjrt/extensions/host_allocator:host_allocator_extension",
