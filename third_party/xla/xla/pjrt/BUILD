@@ -431,6 +431,7 @@ cc_library(
     hdrs = ["pjrt_executable.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":compiled_memory_stats",
         ":pjrt_abi_version",
         ":pjrt_common",
         ":pjrt_device_dimensions",
@@ -440,6 +441,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/target_config",
         "//xla/client:executable_build_options",
         "//xla/ffi:execution_context",
         "//xla/hlo/ir:hlo",
@@ -1642,5 +1644,19 @@ xla_cc_test(
         "//xla/stream_executor/abi:executable_abi_version_proto_cc",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "compiled_memory_stats",
+    srcs = ["compiled_memory_stats.cc"],
+    hdrs = ["compiled_memory_stats.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/pjrt/proto:executable_metadata_proto_cc",
+        "//xla/service:buffer_assignment",
+        "//xla/service:hlo_value",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/types:span",
     ],
 )
