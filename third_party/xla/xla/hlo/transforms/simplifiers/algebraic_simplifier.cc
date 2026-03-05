@@ -1307,34 +1307,6 @@ absl::Status AlgebraicSimplifierVisitor::HandleBitcast(
     return absl::OkStatus();
   }
 
-  auto not_tiled = [](const HloInstruction& instr) {
-    return !instr.shape().has_layout() ||
-           instr.shape().layout().tiles().empty();
-  };
-
-  // Simplify bitcast(unary_elementwise(bitcast(x))) to
-  // bitcast(unary_elementwise(x)).
-  if (HloInstruction* unary_op, * inner_bitcast;
-      Match(bitcast,
-            m::Bitcast(m::Op(&unary_op)
-                           .WithPredicate([](const HloInstruction* instr) {
-                             return instr->IsElementwise() &&
-                                    instr->operand_count() == 1 &&
-                                    instr->user_count() == 1;
-                           })
-                           .WithOperand(0, m::Bitcast(&inner_bitcast)))) &&
-      ShapeUtil::SameElementType(bitcast->shape(), unary_op->shape()) &&
-      ShapeUtil::SameElementType(unary_op->shape(), inner_bitcast->shape()) &&
-      ShapeUtil::SameElementType(inner_bitcast->shape(),
-                                 inner_bitcast->operand(0)->shape()) &&
-      not_tiled(*inner_bitcast) && not_tiled(*inner_bitcast->operand(0))) {
-    auto new_unary = unary_op->parent()->AddInstruction(
-        unary_op->CloneWithNewOperands(inner_bitcast->operand(0)->shape(),
-                                       {inner_bitcast->mutable_operand(0)}));
-    return ReplaceWithNewInstruction(
-        bitcast, HloInstruction::CreateBitcast(bitcast->shape(), new_unary));
-  }
-
   // If a bitcast feeds a bitcast, make it a single bitcast.
   // Make sure the whole chain of bitcasts is optimized.
   if (bitcast->operand(0)->opcode() == HloOpcode::kBitcast) {
