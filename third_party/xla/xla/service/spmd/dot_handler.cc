@@ -160,6 +160,12 @@ class CreateShardedDotFunctor final
 };
 
 absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
+  if (!options_.need_resolve_conflicts &&
+      !options_.enable_windowed_einsum_for_all_gather &&
+      !options_.enable_windowed_einsum_for_reduce_scatter) {
+    return HandleDotWithoutConflicts(hlo);
+  }
+
   DotConvolutionDimsInfo mapping =
       dot_as_convolution_util::ParseDotGeneralFromDot(hlo);
 
@@ -168,6 +174,46 @@ absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
   CreateShardedDotFunctor create_sharded_dot_functor(dot);
   return HandleDotHelper<CreateShardedDotFunctor>(hlo, mapping,
                                                   create_sharded_dot_functor);
+}
+
+absl::Status SpmdPartitioningVisitor::HandleDotWithoutConflicts(
+    HloInstruction* hlo) {
+  PartitionedHlo& lhs = GetPartitionedHlo(hlo->operand(0));
+  PartitionedHlo& rhs = GetPartitionedHlo(hlo->operand(1));
+  if (lhs.hlo() == rhs.hlo()) {
+    rhs = MakeACopyAndReturnItsPartitionedHlo(rhs, builder());
+  }
+
+  const DotDimensionNumbers& dot_dnums = hlo->dot_dimension_numbers();
+  std::vector<int64_t> sharded_lhs_contracting_dims;
+  if (lhs.sharding().IsTiled()) {
+    for (int64_t dim : dot_dnums.lhs_contracting_dimensions()) {
+      if (lhs.sharding().dimension(dim) > 1) {
+        sharded_lhs_contracting_dims.push_back(dim);
+      }
+    }
+  }
+
+  if (!sharded_lhs_contracting_dims.empty()) {
+    lhs =
+        lhs.PadWithZeroOnSpecifiedDims(dot_dnums.lhs_contracting_dimensions());
+    rhs =
+        rhs.PadWithZeroOnSpecifiedDims(dot_dnums.rhs_contracting_dimensions());
+  }
+
+  Shape pshape = MakePartitionedShape(hlo->shape(), hlo->sharding());
+  HloInstruction* phlo = b_.AddInstruction(HloInstruction::CreateDot(
+      pshape, lhs.hlo(), rhs.hlo(), dot_dnums, hlo->precision_config()));
+
+  if (!sharded_lhs_contracting_dims.empty()) {
+    phlo = lhs.state().partitioner->AllReduceAlongShardingDims(
+        lhs.state().b, phlo, lhs.sharding(), lhs.state().next_channel_id,
+        sharded_lhs_contracting_dims, lhs.state().collective_ops_creator,
+        MakeBinaryAdd(phlo->shape().element_type(), lhs.state().module));
+  }
+
+  SetPartitionedHlo(hlo, phlo);
+  return absl::OkStatus();
 }
 
 namespace {

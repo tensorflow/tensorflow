@@ -130,6 +130,10 @@ struct SpmdPartitionerOptions {
 
   // The maximum number of iterations for windowed einsum.
   int64_t max_windowed_einsum_iteration = 32;
+
+  // If true, the partitioner resolves conflicts for instructions. If false, the
+  // instructions have compatible sharding across all operands and results.
+  bool need_resolve_conflicts = true;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -896,6 +900,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);
+
+  // Handler for dot instructions with no conflicts.
+  absl::Status HandleDotWithoutConflicts(HloInstruction* hlo);
 
   // Handlers for specific custom call targets.
   // go/keep-sorted start
