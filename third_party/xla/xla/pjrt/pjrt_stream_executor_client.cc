@@ -75,7 +75,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -87,7 +86,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -96,7 +94,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/client/executable_build_options.h"
@@ -105,18 +102,15 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
-#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/dump/dump.h"
 #include "xla/pjrt/event_pool.h"
-#include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
@@ -125,6 +119,7 @@ limitations under the License.
 #include "xla/pjrt/metrics.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/never_run_on_fiber.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -135,6 +130,7 @@ limitations under the License.
 #include "xla/pjrt/se_raw_buffer.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/stream_executor_executable.h"
+#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
 #include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/transpose.h"
@@ -153,6 +149,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -171,8 +168,6 @@ limitations under the License.
 #include "tsl/platform/context.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/mem.h"
-#include "tsl/profiler/lib/connected_traceme.h"
-#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/tsl/platform/status_macros.h"
 
@@ -2780,6 +2775,18 @@ bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,
     }
   }
   return false;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+PjRtStreamExecutorLoadedExecutable::GetAbiVersion() const {
+  if (executable_ == nullptr) {
+    return absl::InternalError("Executable is null.");
+  }
+  ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion se_abi_version,
+                   executable_->executable()->GetExecutableAbiVersion());
+
+  return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(
+      client_->platform_id(), std::move(se_abi_version));
 }
 
 }  // namespace xla

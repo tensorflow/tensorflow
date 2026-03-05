@@ -52,6 +52,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -721,6 +722,9 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
         std::make_optional<InputHloSnapshotBits>(InputHloSnapshotBits{
             HloModuleProto(std::move(hlo_module)), std::move(debug_options)});
   }
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
+      const override;
 
  protected:
   bool parameter_is_tupled_arguments() const {

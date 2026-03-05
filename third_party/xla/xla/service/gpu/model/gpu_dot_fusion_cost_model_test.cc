@@ -56,15 +56,16 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
   block_params.num_stages = 1;
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
-  ASSERT_IS_OK(GpuDotFusionCostModel::IsSupported(dot));
-  absl::Duration runtime_h100 =
-      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
-          dot, block_params, ddh100_)
-          .value();
-  absl::Duration expected_runtime_compute_bound_h100 =
-      detail::CalculateComputeTimeWithTileAndWaveQuantization(
-          dot, block_params.output_tile_sizes[0], ddh100_)
-          .value();
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
+  TF_ASSERT_OK_AND_ASSIGN(
+      absl::Duration runtime_h100,
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
+          dot, block_params, ddh100_));
+  TF_ASSERT_OK_AND_ASSIGN(
+      absl::Duration expected_runtime_compute_bound_h100,
+      gpu_dot_fusion_cost_model::detail::
+          CalculateComputeTimeWithTileAndWaveQuantization(
+              dot, block_params.output_tile_sizes[0], ddh100_));
   ASSERT_EQ(runtime_h100, expected_runtime_compute_bound_h100);
 }
 
@@ -85,14 +86,15 @@ lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
   block_params.num_stages = 1;
   auto* dot =
       Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
-  ASSERT_IS_OK(GpuDotFusionCostModel::IsSupported(dot));
+  ASSERT_IS_OK(gpu_dot_fusion_cost_model::IsSupported(dot));
   absl::Duration runtime_h100 =
-      GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
+      gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
           dot, block_params, ddh100_)
           .value();
   int64_t approx_total_bytes = 2 /*BF16*/ * (4096 + 4 * 2) * 4096;
   float approx_hbm_bandwidth =
-      detail::GetEffectiveHbmBandwidth(approx_total_bytes, ddh100_);
+      gpu_dot_fusion_cost_model::detail::GetEffectiveHbmBandwidth(
+          approx_total_bytes, ddh100_);
   absl::Duration approx_hbm_time =
       absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth);
   ASSERT_EQ(runtime_h100, approx_hbm_time);
