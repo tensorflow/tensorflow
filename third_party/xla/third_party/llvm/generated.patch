@@ -1,1 +1,168 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Dialect/Func/IR/FuncOps.td b/mlir/include/mlir/Dialect/Func/IR/FuncOps.td
+--- a/mlir/include/mlir/Dialect/Func/IR/FuncOps.td
++++ b/mlir/include/mlir/Dialect/Func/IR/FuncOps.td
+@@ -357,7 +357,7 @@
+     bool isDeclaration() { return isExternal(); }
+   }];
+   let hasCustomAssemblyFormat = 1;
+-  let hasVerifier = 1;
++  let hasRegionVerifier = 1;
+ }
+ 
+ //===----------------------------------------------------------------------===//
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Func/IR/FuncOps.cpp b/mlir/lib/Dialect/Func/IR/FuncOps.cpp
+--- a/mlir/lib/Dialect/Func/IR/FuncOps.cpp
++++ b/mlir/lib/Dialect/Func/IR/FuncOps.cpp
+@@ -284,7 +284,7 @@
+ // ReturnOp
+ //===----------------------------------------------------------------------===//
+ 
+-LogicalResult FuncOp::verify() {
++LogicalResult FuncOp::verifyRegions() {
+   // External declarations have no body to check.
+   if (isDeclaration())
+     return success();
+@@ -298,21 +298,20 @@
+     auto returnOp = dyn_cast<RegionBranchTerminatorOpInterface>(&block.back());
+     if (!returnOp)
+       continue;
+-
+-    if (returnOp->getNumOperands() != resultTypes.size())
++    auto operands =
++        returnOp.getMutableSuccessorOperands(RegionSuccessor::parent());
++    if (operands.size() != resultTypes.size())
+       return returnOp->emitOpError("has ")
+-             << returnOp->getNumOperands()
+-             << " operands, but enclosing function (@" << getName()
+-             << ") returns " << resultTypes.size();
++             << operands.size() << " operands, but enclosing function (@"
++             << getName() << ") returns " << resultTypes.size();
+ 
+-    for (auto [i, opType] :
+-         llvm::enumerate(llvm::zip(returnOp->getOperandTypes(), resultTypes))) {
+-      auto [opTy, resTy] = opType;
+-      if (opTy != resTy)
+-        return returnOp->emitError()
+-               << "type of return operand " << i << " (" << opTy
+-               << ") doesn't match function result type (" << resTy
+-               << ") in function @" << getName();
++    for (auto [i, opType] : llvm::enumerate(llvm::zip(operands, resultTypes))) {
++      auto [operand, resTy] = opType;
++      if (operand.get().getType() != resTy)
++        return returnOp->emitError() << "type of return operand " << i << " ("
++                                     << operand.get().getType()
++                                     << ") doesn't match function result type ("
++                                     << resTy << ") in function @" << getName();
+     }
+   }
+ 
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/Func/invalid.mlir b/mlir/test/Dialect/Func/invalid.mlir
+--- a/mlir/test/Dialect/Func/invalid.mlir
++++ b/mlir/test/Dialect/Func/invalid.mlir
+@@ -191,3 +191,35 @@
+ // -----
+ 
+ func.func @foo() {} // expected-error {{expected non-empty function body}}
++
++// -----
++
++// test.loop_block_term implements RegionBranchTerminatorOpInterface.
++// getMutableSuccessorOperands(parent) returns only the exit operand (f32).
++// The function returns i32, so the type check must fail.
++func.func @region_branch_term_type_mismatch(%arg: i32) -> i32 {
++  %0 = "test.constant"() { value = 5.3 : f32 } : () -> f32
++  // expected-error @+1 {{type of return operand 0 ('f32') doesn't match function result type ('i32') in function @region_branch_term_type_mismatch}}
++  test.loop_block_term iter %arg exit %0
++}
++
++// -----
++
++// test.loop_block_term has one exit operand (f32) but the function returns
++// nothing. getMutableSuccessorOperands(parent) returns 1 operand while the
++// function has 0 results, so the count check must fail.
++func.func @region_branch_term_count_mismatch(%arg: i32) {
++  %0 = "test.constant"() { value = 5.3 : f32 } : () -> f32
++  // expected-error @+1 {{'test.loop_block_term' op has 1 operands, but enclosing function (@region_branch_term_count_mismatch) returns 0}}
++  test.loop_block_term iter %arg exit %0
++}
++
++// -----
++
++// After moving the return-type checks from FuncOp::verify() to
++// FuncOp::verifyRegions() (hasRegionVerifier=1), the terminator is verified
++// first and emits a clean diagnostic instead of crashing.
++func.func @func_verifier_runs_before_region() -> () {
++  // expected-error @below {{requires 'valid' unit attribute}}
++  test.crashing_return
++}
+diff -ruN --strip-trailing-cr a/mlir/test/IR/test-region-branch-op-verifier.mlir b/mlir/test/IR/test-region-branch-op-verifier.mlir
+--- a/mlir/test/IR/test-region-branch-op-verifier.mlir
++++ b/mlir/test/IR/test-region-branch-op-verifier.mlir
+@@ -21,3 +21,17 @@
+   }
+   return
+ }
++
++// -----
++
++// test.loop_block_term has two operands: iter (i32, passed back to the region)
++// and exit (f32, passed to the parent). getMutableSuccessorOperands(parent)
++// returns only the exit operand. The function returns f32, matching the exit
++// operand type, so verification must succeed.
++//
++// A verifier using getNumOperands() instead would incorrectly report "has 2
++// operands, but enclosing function returns 1".
++func.func @func_with_region_branch_terminator(%arg: i32) -> f32 {
++  %0 = "test.constant"() { value = 5.3 : f32 } : () -> f32
++  test.loop_block_term iter %arg exit %0
++}
+diff -ruN --strip-trailing-cr a/mlir/test/lib/Dialect/Test/TestOpDefs.cpp b/mlir/test/lib/Dialect/Test/TestOpDefs.cpp
+--- a/mlir/test/lib/Dialect/Test/TestOpDefs.cpp
++++ b/mlir/test/lib/Dialect/Test/TestOpDefs.cpp
+@@ -1288,6 +1288,24 @@
+ }
+ 
+ //===----------------------------------------------------------------------===//
++// TestCrashingReturnOp
++//===----------------------------------------------------------------------===//
++
++LogicalResult TestCrashingReturnOp::verify() {
++  if (!getValid())
++    return emitOpError("requires 'valid' unit attribute");
++  return success();
++}
++
++MutableOperandRange
++TestCrashingReturnOp::getMutableSuccessorOperands(RegionSuccessor successor) {
++  if (!getValid())
++    llvm::report_fatal_error("getMutableSuccessorOperands called on unverified "
++                             "test.crashing_return");
++  return getArgsMutable();
++}
++
++//===----------------------------------------------------------------------===//
+ // SwitchWithNoBreakOp
+ //===----------------------------------------------------------------------===//
+ 
+diff -ruN --strip-trailing-cr a/mlir/test/lib/Dialect/Test/TestOps.td b/mlir/test/lib/Dialect/Test/TestOps.td
+--- a/mlir/test/lib/Dialect/Test/TestOps.td
++++ b/mlir/test/lib/Dialect/Test/TestOps.td
+@@ -2239,6 +2239,17 @@
+     [{ build($_builder, $_state, {}); }]>
+   ];
+ }
++// A return-like terminator used to test FuncOp verifier ordering.
++// When 'valid' unit-attr is absent the op is malformed; its verifier
++// emits an error, but getMutableSuccessorOperands() calls report_fatal_error
++// to expose the fact that FuncOp::verify() runs before the region is checked.
++def TestCrashingReturnOp : TEST_Op<"crashing_return", [
++    DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>,
++    Terminator]> {
++  let arguments = (ins Variadic<AnyType>:$args, UnitAttr:$valid);
++  let assemblyFormat = "($args^ `:` type($args))? attr-dict";
++  let hasVerifier = 1;
++}
+ def TestCastOp : TEST_Op<"cast">,
+   Arguments<(ins Variadic<AnyType>)>, Results<(outs AnyType)>;
+ def TestInvalidOp : TEST_Op<"invalid", [Terminator]>,
