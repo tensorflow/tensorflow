@@ -346,7 +346,6 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
         "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
-        "//xla/backends/gpu/transforms:nest_gemm_fusion",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",

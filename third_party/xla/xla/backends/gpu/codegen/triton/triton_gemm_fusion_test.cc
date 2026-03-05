@@ -34,8 +34,8 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
-#include "xla/backends/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -115,11 +115,11 @@ class TritonTest : public GpuCodegenTest {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
     TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
-    TF_ASSIGN_OR_RETURN(
-        bool fusion_was_nested,
-        NestGemmFusion(device_desc(), &mlir_context_).Run(module.get()));
-    if (!fusion_was_nested) {
-      return absl::InternalError("Failed to nest the GEMM fusion.");
+    TF_ASSIGN_OR_RETURN(bool converted,
+                        ConvertTritonGemmConfig(device_desc(), &mlir_context_)
+                            .Run(module.get()));
+    if (!converted) {
+      return absl::InternalError("Failed to convert the GEMM fusion.");
     }
     HloFusionInstruction* fusion =
         Cast<HloFusionInstruction>(hlo_query::GetFirstInstructionWithOpcode(
@@ -674,12 +674,9 @@ ENTRY r {
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
 ; CHECK: %[[cv:.*]] = f32[10,3,128]{2,0,1} convert(%[[p0]])
-; CHECK: ROOT
-; CHECK-SAME: f32[3,10,128]{2,0,1} transpose(%[[cv]]), dimensions={1,0,2}
-; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
-; CHECK: %[[fusion:.*]] = f32[3,10,128]{2,0,1} fusion(%[[p0]])
-; CHECK: ROOT
-; CHECK-SAME: f32[3,128,123]{2,1,0} dot(%[[fusion]],
+; CHECK: %[[tr:.*]] = f32[3,10,128]{2,0,1} transpose(%[[cv]]), dimensions={1,0,2}
+; CHECK: %[[p1:.*]] = f32[3,10,123]{2,1,0} parameter(1)
+; CHECK: f32[3,128,123]{2,1,0} dot(%[[tr]], %[[p1]])
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
