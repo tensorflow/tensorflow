@@ -404,6 +404,7 @@ cc_library(
     deps = [
         ":device_description",
         ":platform_id",
+        "//xla/stream_executor/abi:runtime_abi_version",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

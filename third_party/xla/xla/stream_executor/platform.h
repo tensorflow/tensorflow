@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform_id.h"
 
@@ -95,6 +96,11 @@ class Platform {
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
   virtual absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
+
+  virtual absl::StatusOr<std::unique_ptr<RuntimeAbiVersion>>
+  GetRuntimeAbiVersion() const {
+    return absl::UnimplementedError("Not implemented for this platform.");
+  }
 };
 
 }  // namespace stream_executor
