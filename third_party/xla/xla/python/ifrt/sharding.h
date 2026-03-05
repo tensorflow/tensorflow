@@ -187,7 +187,7 @@ class Sharding : public llvm::RTTIExtends<Sharding, Serializable> {
   // definition.
   template <class Sink>
   friend void AbslStringify(Sink& sink,
-                            std::shared_ptr<const Sharding>& sharding) {
+                            const std::shared_ptr<const Sharding>& sharding) {
     if (sharding == nullptr) {
       sink.Append("<nullptr>");
     } else {
