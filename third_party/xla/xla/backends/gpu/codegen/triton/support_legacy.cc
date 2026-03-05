@@ -301,6 +301,12 @@ CodegenDecision CanTritonHandleGEMM(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
   auto cuda_compute_capability = gpu_version.cuda_compute_capability();
   auto rocm_compute_capability = gpu_version.rocm_compute_capability();
+  auto oneapi_compute_capability = gpu_version.oneapi_compute_capability();
+  // TODO(intel-tf): Support Triton on Intel GPUs.
+  if (oneapi_compute_capability) {
+    return CodegenDecision::Forbid(
+        "Triton backend is not supported on Intel GPUs.");
+  }
 
   CHECK(cuda_compute_capability || rocm_compute_capability);
 
