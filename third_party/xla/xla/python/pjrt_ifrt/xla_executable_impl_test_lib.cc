@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
@@ -282,22 +283,20 @@ TEST_P(LoadedExecutableImplTest, ProgramText) {
 }
 
 TEST_P(LoadedExecutableImplTest, Analysis) {
-  if (const bool serialize = GetParam(); serialize) {
-    GTEST_SKIP() << "Analysis is not supported for serialized executables.";
-  }
-
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   TF_ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
-      SimpleAddExecutable(client.get(), /*serialize=*/false));
+      SimpleAddExecutable(client.get(), /*serialize=*/GetParam()));
 
   TF_ASSERT_OK_AND_ASSIGN(const xla::CompiledMemoryStats compiled_memory_stats,
                           executable->GetCompiledMemoryStats());
   EXPECT_GT(compiled_memory_stats.argument_size_in_bytes, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis,
-                          executable->GetCostAnalysis());
-  EXPECT_FALSE(cost_analysis.IsEmpty());
+  auto cost_analysis = executable->GetCostAnalysis();
+  if (!absl::IsUnimplemented(cost_analysis.status())) {
+    TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis_value, cost_analysis);
+    EXPECT_FALSE(cost_analysis_value.IsEmpty());
+  }
 }
 
 TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {

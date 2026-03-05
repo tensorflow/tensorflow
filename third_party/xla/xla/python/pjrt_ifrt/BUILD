@@ -255,6 +255,7 @@ cc_library(
         ":xla_executable_version",
         ":xla_ifrt",
         "//xla/client:executable_build_options",
+        "//xla/pjrt:compiled_memory_stats",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
