@@ -3982,6 +3982,7 @@ cc_library(
             "tests:__pkg__",
             "tools:__pkg__",
         ]) + [
+            "//xla/codegen/intrinsic/accuracy:__pkg__",
             "//xla/tests/exhaustive:__pkg__",
         ],
         ["//visibility:public"],

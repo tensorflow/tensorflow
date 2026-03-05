@@ -311,6 +311,26 @@ int64_t CalculateDistanceInFloats(T a, T b) {
   return std::abs(signed_distance);
 }
 
+// Returns the number of ULPs between two floating point values.
+// Returns std::nullopt if the inputs are not both finite or if they are not
+// both the same infinity.
+template <typename T>
+std::optional<int64_t> UlpDistance(T actual, T expected) {
+  if (std::isnan(expected)) {
+    return std::isnan(actual) ? std::optional<int64_t>(0) : std::nullopt;
+  }
+  if (std::isinf(expected)) {
+    return (std::isinf(actual) &&
+            std::signbit(expected) == std::signbit(actual))
+               ? std::optional<int64_t>(0)
+               : std::nullopt;
+  }
+  if (std::isnan(actual) || std::isinf(actual)) {
+    return std::nullopt;
+  }
+  return std::abs(CalculateDistanceInFloats(actual, expected));
+}
+
 // Packs two float operands into a single 32-bit value as bf16. The lower 16
 // bits == lower operand, and the upper 16 bits == upper operand.
 // Uses truncation to convert float to bf16. No rounding is performed.
