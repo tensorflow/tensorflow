@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/random/bit_gen_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -79,13 +80,6 @@ bool NeedsInitValue(const HloUse& use) {
           (opcode == HloOpcode::kSelectAndScatter && op_num == 2) ||
           (opcode == HloOpcode::kReduce &&
            op_num >= instruction->operand_count() / 2));
-}
-
-// Generate random values that are constrained to the input_shape minus the
-// output_shape so as not to produce wrapping slices, for instance.
-Literal MakeRandomIndex(int64_t index_bound, std::minstd_rand0* engine) {
-  std::uniform_int_distribution<int32_t> generator(0, index_bound);
-  return LiteralUtil::CreateR0<int32_t>(generator(*engine));
 }
 
 // Returns true if `dest' is reachable from `src' through data-formatting and
@@ -201,7 +195,7 @@ std::vector<HloUse> FindConstrainedUses(const HloDataflowAnalysis& dataflow,
 absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     const absl::Span<const HloUse> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
-    std::minstd_rand0* engine, bool use_large_range,
+    std::optional<absl::BitGenRef> engine, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision,
     bool generate_aligned_ds_indices,
     GetIndexKnownZeroesFn get_index_known_zeroes = nullptr) {
@@ -349,8 +343,8 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
 // special case literal must be created, or if we can generate fake data.
 absl::StatusOr<Literal> MakeConstrainedArgument(
     const HloDataflowAnalysis& dataflow, const HloInstruction& param,
-    const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
-    bool treat_gte_as_data_formatting,
+    const Shape& param_shape, std::optional<absl::BitGenRef> engine,
+    bool use_large_range, bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision,
     bool generate_aligned_ds_indices,
     GetIndexKnownZeroesFn get_index_known_zeroes = nullptr) {
@@ -367,22 +361,18 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine,
-    bool generate_aligned_ds_indices,
+    std::optional<int64_t> max_bits_of_precision,
+    std::optional<absl::BitGenRef> engine, bool generate_aligned_ds_indices,
     GetIndexKnownZeroesFn get_index_known_zeroes) {
   if (!pseudo_random) {
-    return MakeFakeArguments(module, nullptr, use_large_range,
+    return MakeFakeArguments(module, std::nullopt, use_large_range,
                              treat_gte_as_data_formatting,
                              max_bits_of_precision, generate_aligned_ds_indices,
                              get_index_known_zeroes);
   }
-  if (engine == nullptr) {
-    auto new_engine =
-        pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-    return MakeFakeArguments(module, new_engine.get(), use_large_range,
-                             treat_gte_as_data_formatting,
-                             max_bits_of_precision, generate_aligned_ds_indices,
-                             get_index_known_zeroes);
+  std::minstd_rand default_engine;
+  if (!engine.has_value()) {
+    engine = absl::BitGenRef(default_engine);
   }
   return MakeFakeArguments(module, engine, use_large_range,
                            treat_gte_as_data_formatting, max_bits_of_precision,
@@ -390,8 +380,8 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
 }
 
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
-    const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
-    bool treat_gte_as_data_formatting,
+    const HloModule* module, std::optional<absl::BitGenRef> engine,
+    bool use_large_range, bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision,
     bool generate_aligned_ds_indices,
     GetIndexKnownZeroesFn get_index_known_zeroes) {

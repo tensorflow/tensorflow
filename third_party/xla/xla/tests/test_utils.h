@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/random/bit_gen_ref.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -106,7 +107,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random = true,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
     std::optional<int64_t> max_bits_of_precision = std::nullopt,
-    std::minstd_rand0* engine = nullptr,
+    std::optional<absl::BitGenRef> engine = std::nullopt,
     bool generate_aligned_ds_indices = false,
     GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
 
@@ -114,7 +115,7 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
 // different random values with sequential calls to MakeFakeArguments by reusing
 // the same generator.
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
-    const HloModule* module, std::minstd_rand0* engine,
+    const HloModule* module, std::optional<absl::BitGenRef> engine,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
     std::optional<int64_t> max_bits_of_precision = std::nullopt,
     bool generate_aligned_ds_indices = false,

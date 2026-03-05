@@ -29,7 +29,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
-#include "absl/random/uniform_int_distribution.h"
+#include "absl/random/bit_gen_ref.h"
+#include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -289,10 +290,10 @@ void PopulateWithIntNext(Literal* literal) {
 }
 
 template <typename FloatT>
-void PopulateWithNoDuplicateData(Literal* literal, std::minstd_rand0* engine) {
+void PopulateWithNoDuplicateData(Literal* literal, absl::BitGenRef engine) {
   PopulateWithIntNext<FloatT>(literal);
   std::shuffle(literal->data<FloatT>().begin(), literal->data<FloatT>().end(),
-               *engine);
+               engine);
 }
 
 // Populates a floating point literal with random floating points sampled from a
@@ -300,7 +301,7 @@ void PopulateWithNoDuplicateData(Literal* literal, std::minstd_rand0* engine) {
 // representable floating point.
 template <typename FloatT>
 void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
-                                                  std::minstd_rand0* engine) {
+                                                  absl::BitGenRef engine) {
   constexpr float kSpecialValueProbability = 1e-6;
   constexpr float kSpecialValues[] = {+0.F,
                                       -0.F,
@@ -309,45 +310,44 @@ void PopulateWithRandomFullRangeFloatingPointData(Literal* literal,
                                       std::numeric_limits<float>::infinity(),
                                       -std::numeric_limits<float>::infinity()};
   constexpr int kNumSpecialValues = sizeof(kSpecialValues) / sizeof(float);
-  std::uniform_real_distribution<float> special_value_gen(0, 1);
+  absl::uniform_real_distribution<float> special_value_gen(0, 1);
 
   // Generates floating points with a log-uniform distribution. This causes the
   // exponent of the floating point to have a uniform distribution.
   const int min_exp = std::numeric_limits<FloatT>::min_exponent;
   const int max_exp = std::numeric_limits<FloatT>::max_exponent;
-  std::uniform_real_distribution<double> generator(min_exp - 1, max_exp - 1);
+  absl::uniform_real_distribution<double> generator(min_exp - 1, max_exp - 1);
 
   for (FloatT& value : literal->data<FloatT>()) {
     // Each special value has a kSpecialValueProbability chance to be generated
     // instead of sampling using the normal distributions.
-    if (special_value_gen(*engine) <
+    if (special_value_gen(engine) <
         kSpecialValueProbability * kNumSpecialValues) {
-      value =
-          static_cast<FloatT>(kSpecialValues[(*engine)() % kNumSpecialValues]);
+      value = static_cast<FloatT>(
+          kSpecialValues[absl::Uniform<int>(engine, 0, kNumSpecialValues)]);
     } else {
-      float sign = ((*engine)() % 2 == 0) ? 1 : -1;
-      value = static_cast<FloatT>(pow(2, generator(*engine)) * sign);
+      float sign = absl::Bernoulli(engine, 0.5) ? 1.0f : -1.0f;
+      value = static_cast<FloatT>(pow(2, generator(engine)) * sign);
     }
   }
 }
 
 template <typename FloatT, typename GeneratorT>
 void PopulateWithRandomFloatingPointData(Literal* literal,
-                                         std::minstd_rand0* engine) {
+                                         absl::BitGenRef engine) {
   std::uniform_real_distribution<GeneratorT> generator(-0.1f, 0.2f);
   for (FloatT& value : literal->data<FloatT>()) {
-    value = static_cast<FloatT>(generator(*engine));
+    value = static_cast<FloatT>(generator(engine));
   }
 }
 
 template <typename FloatT>
 void PopulateWithFloatingPointData(
-    Literal* literal, std::minstd_rand0* engine, bool no_duplicates,
+    Literal* literal, absl::BitGenRef engine, bool no_duplicates,
     bool use_large_range, std::optional<int64_t> max_bits_of_precision,
-    std::function<double(std::minstd_rand0*)> generator = nullptr) {
+    std::function<double(absl::BitGenRef)> generator = nullptr) {
   using ComputeT =
       std::conditional_t<sizeof(FloatT) < sizeof(float), float, FloatT>;
-  CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<FloatT>());
   if (generator != nullptr) {
@@ -359,10 +359,10 @@ void PopulateWithFloatingPointData(
                                "max_bits_of_precision for floating points.";
     CHECK(!no_duplicates) << "Cannot set both no_duplicates and "
                              "max_bits_of_precision for floating points.";
-    absl::uniform_int_distribution<int64_t> generator(
-        -(1 << *max_bits_of_precision), 1 << *max_bits_of_precision);
+    int64_t limit = 1 << *max_bits_of_precision;
     for (FloatT& value : literal->data<FloatT>()) {
-      int64_t temp = generator(*engine);
+      int64_t temp = absl::Uniform<int64_t>(absl::IntervalClosedClosed, engine,
+                                            -limit, limit);
       // We want to generate floating point numbers to a fixed precision, while
       // keeping them between -1 and 1. This preserves their bits of precision
       // while keeping the numbers small.
@@ -380,11 +380,10 @@ void PopulateWithFloatingPointData(
 
 template <typename ComplexT>
 void PopulateWithComplexData(
-    Literal* result, std::minstd_rand0* engine, bool no_duplicates,
+    Literal* result, absl::BitGenRef engine, bool no_duplicates,
     bool use_large_range,
-    std::function<double(std::minstd_rand0*)> generator = nullptr) {
+    std::function<double(absl::BitGenRef)> generator = nullptr) {
   using InnerFloatT = typename ComplexT::value_type;
-  CHECK_NOTNULL(engine);
   CHECK_EQ(result->shape().element_type(),
            primitive_util::NativeToPrimitiveType<ComplexT>());
   Shape floating_point_shape = ShapeUtil::ChangeElementType(
@@ -408,19 +407,11 @@ void PopulateWithComplexData(
   }
 }
 
-// uniform_int_distribution is not defined for 8-bit integers.
-// Use 'short' for those types.
-template <typename IntT>
-using RngT = std::conditional_t<
-    sizeof(IntT) < sizeof(uint16_t),
-    std::conditional_t<std::numeric_limits<IntT>::is_signed, int16_t, uint16_t>,
-    IntT>;
 template <typename IntT>
 void PopulateWithRandomIntegralDataWithBounds(
-    Literal* literal, std::minstd_rand0* engine, bool no_duplicates, IntT min,
+    Literal* literal, absl::BitGenRef engine, bool no_duplicates, IntT min,
     IntT max, std::optional<IntT> alignment,
     std::optional<IntT> index_known_zeroes) {
-  CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
   CHECK(!(no_duplicates && alignment.has_value()))
@@ -436,12 +427,22 @@ void PopulateWithRandomIntegralDataWithBounds(
     std::iota(literal->data<IntT>().begin(), literal->data<IntT>().end(),
               static_cast<IntT>(start));
     std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
-                 *engine);
+                 engine);
   } else {
-    absl::uniform_int_distribution<RngT<IntT>> generator(
-        static_cast<RngT<IntT>>(min), static_cast<RngT<IntT>>(max));
     for (IntT& value : literal->data<IntT>()) {
-      value = static_cast<IntT>(generator(*engine));
+      if constexpr (sizeof(IntT) == 1 && !std::is_same_v<IntT, int8_t> &&
+                    !std::is_same_v<IntT, uint8_t>) {
+        using RngT = std::conditional_t<
+            primitive_util::IsSignedIntegralType(
+                primitive_util::NativeToPrimitiveType<IntT>()),
+            int8_t, uint8_t>;
+        value = static_cast<IntT>(absl::Uniform<RngT>(
+            absl::IntervalClosedClosed, engine, static_cast<RngT>(min),
+            static_cast<RngT>(max)));
+      } else {
+        value =
+            absl::Uniform<IntT>(absl::IntervalClosedClosed, engine, min, max);
+      }
       if (alignment.has_value()) {
         value = (value / alignment.value()) * alignment.value();
       }
@@ -750,8 +751,12 @@ void PopulateWithRandomIntegralDataWithBounds(
 
 absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
                                         bool use_large_range) {
-  auto engine = pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-  return MakeFakeLiteral(shape, engine.get(), /*limit=*/std::nullopt,
+  std::minstd_rand0 default_engine;
+  std::optional<absl::BitGenRef> engine_ptr =
+      pseudo_random ? std::make_optional(absl::BitGenRef(std::minstd_rand0()))
+                    : std::nullopt;
+  return MakeFakeLiteral(shape, engine_ptr,
+                         /*limit=*/std::nullopt,
                          /*is_sorted=*/false,
                          /*no_duplicates=*/false, use_large_range,
                          /*max_bits_of_precision=*/std::nullopt,
@@ -760,13 +765,13 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
 }
 
 absl::StatusOr<Literal> MakeFakeLiteral(
-    const Shape& shape, std::minstd_rand0* engine,
+    const Shape& shape, std::optional<absl::BitGenRef> engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision,
     std::optional<int64_t> index_alignment,
     std::optional<uint64_t> index_known_zeroes,
-    std::function<double(std::minstd_rand0*)> float_generator) {
+    std::function<double(absl::BitGenRef)> float_generator) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
     const auto& shape_tuple_shapes = shape.tuple_shapes();
@@ -782,7 +787,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     }
     return LiteralUtil::MakeTupleOwned(std::move(elements));
   }
-  if (engine == nullptr) {
+  if (!engine.has_value()) {
     return Literal::CreateFromShape(shape);
   }
   // Clear tiles/element size in shape's layout before using it for creating
@@ -800,7 +805,7 @@ absl::StatusOr<Literal> MakeFakeLiteral(
           if constexpr (primitive_util::IsFloatingPointType(
                             primitive_type_constant)) {
             PopulateWithFloatingPointData<NativeT>(
-                &literal, engine, no_duplicates, use_large_range,
+                &literal, engine.value(), no_duplicates, use_large_range,
                 max_bits_of_precision, float_generator);
             return absl::OkStatus();
           }
@@ -839,8 +844,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
                   static_cast<NativeT>(*index_known_zeroes);
             }
             PopulateWithRandomIntegralDataWithBounds<NativeT>(
-                &literal, engine, no_duplicates, min, max, alignment_native,
-                index_known_zeroes_native);
+                &literal, engine.value(), no_duplicates, min, max,
+                alignment_native, index_known_zeroes_native);
             if (is_sorted) {
               std::sort(literal.data<NativeT>().begin(),
                         literal.data<NativeT>().end());
@@ -849,8 +854,9 @@ absl::StatusOr<Literal> MakeFakeLiteral(
           }
           if constexpr (primitive_util::IsComplexType(
                             primitive_type_constant)) {
-            PopulateWithComplexData<NativeT>(&literal, engine, no_duplicates,
-                                             use_large_range, float_generator);
+            PopulateWithComplexData<NativeT>(&literal, engine.value(),
+                                             no_duplicates, use_large_range,
+                                             float_generator);
             return absl::OkStatus();
           }
         }

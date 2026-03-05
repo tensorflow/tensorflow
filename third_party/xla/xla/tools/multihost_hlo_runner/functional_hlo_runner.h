@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/random/bit_gen_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -317,7 +318,7 @@ absl::Status LoadAndRunAndDump(
     absl::string_view hlo_file, InputFormat input_format,
     std::string dump_output_to = "", int task_id = 0, int num_nodes = 1,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store = nullptr,
-    std::minstd_rand0* engine = nullptr);
+    std::optional<absl::BitGenRef> engine = std::nullopt);
 
 // Loads an HLO module from hlo_file according to input_format and run it.
 // The HLO module is run with the provided arguments if the arguments map is
@@ -330,7 +331,7 @@ absl::StatusOr<PerDeviceLiteralVecType> LoadAndRun(
     const CompileOptions& compile_options,
     const RunningOptions& running_options, absl::string_view hlo_file,
     InputFormat input_format, const PerDeviceLiteralVecType& arguments = {},
-    std::minstd_rand0* engine = nullptr);
+    std::optional<absl::BitGenRef> engine = std::nullopt);
 
 // Loads and compiles an HLO for debugging purposes.
 //
@@ -353,7 +354,7 @@ absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
     const PerDeviceLiteralVecType& arguments = {},
-    std::minstd_rand0* engine = nullptr);
+    std::optional<absl::BitGenRef> engine = std::nullopt);
 
 // Compiles the HLO module.
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
@@ -376,7 +377,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
 absl::StatusOr<PerDeviceLiteralVecType> Run(
     PjRtClient& client, PjRtLoadedExecutable* executable,
     const PerDeviceLiteralVecType& arguments,
-    const RunningOptions& running_options, std::minstd_rand0* engine = nullptr);
+    const RunningOptions& running_options,
+    std::optional<absl::BitGenRef> engine = std::nullopt);
 
 absl::StatusOr<HloModuleAndArguments> LoadHloModuleAndArguments(
     absl::string_view hlo_file, InputFormat input_format);
