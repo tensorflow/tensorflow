@@ -233,29 +233,28 @@ class SharedBatchSchedulerTestBase {
 
   SplitFunc get_split_func() const {
     if (enable_input_batch_split()) {
-      return
-          [](std::unique_ptr<FakeTask>* input_task,
-             int open_batch_remaining_slot, int max_batch_size,
-             std::vector<std::unique_ptr<FakeTask>>* output_tasks)
-              -> absl::Status {
-            std::unique_ptr<FakeTask> owned_input_task = std::move(*input_task);
-            const int input_task_size = owned_input_task->size();
+      return [](std::unique_ptr<FakeTask>* input_task,
+                int open_batch_remaining_slot, int max_batch_size,
+                std::vector<std::unique_ptr<FakeTask>>* output_tasks)
+                 -> absl::Status {
+        std::unique_ptr<FakeTask> owned_input_task = std::move(*input_task);
+        const int input_task_size = owned_input_task->size();
 
-            const internal::InputSplitMetadata input_split_metadata(
-                input_task_size, open_batch_remaining_slot, max_batch_size);
+        const internal::InputSplitMetadata input_split_metadata(
+            input_task_size, open_batch_remaining_slot, max_batch_size);
 
-            const absl::FixedArray<int> task_sizes =
-                input_split_metadata.task_sizes();
-            const int num_batches = task_sizes.size();
+        const absl::FixedArray<int> task_sizes =
+            input_split_metadata.task_sizes();
+        const int num_batches = task_sizes.size();
 
-            output_tasks->resize(num_batches);
-            for (int i = 0; i < num_batches; i++) {
-              (*output_tasks)[i] = std::make_unique<FakeTask>(
-                  task_sizes[i], owned_input_task->criticality());
-            }
+        output_tasks->resize(num_batches);
+        for (int i = 0; i < num_batches; i++) {
+          (*output_tasks)[i] = std::make_unique<FakeTask>(
+              task_sizes[i], owned_input_task->criticality());
+        }
 
-            return absl::OkStatus();
-          };
+        return absl::OkStatus();
+      };
     }
     return nullptr;
   }
@@ -314,14 +313,14 @@ TEST_P(SharedBatchSchedulerTest, Basic) {
           }
 
           // Submit tasks to the two queues, and (optionally) remove the queues.
-          TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
-          TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
-          TF_ASSERT_OK(ScheduleTask(3, queue_0.get()));
-          TF_ASSERT_OK(ScheduleTask(4, queue_1.get()));
+          TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue_0.get()));
+          TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue_1.get()));
+          TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue_0.get()));
+          TF_ASSERT_OK(ScheduleTask(/*task_size=*/4, queue_1.get()));
           if (delete_queue_1_early) {
             queue_1 = nullptr;
           }
-          TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
+          TF_ASSERT_OK(ScheduleTask(/*task_size=*/5, queue_0.get()));
         }
         EXPECT_TRUE(queue_0_callback_called);
         EXPECT_TRUE(queue_1_callback_called);
@@ -370,11 +369,11 @@ TEST_P(SharedBatchSchedulerTest,
         CreateQueue(scheduler, queue_options, queue_1_callback);
 
     // Submit tasks to the two queues.
-    TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
-    TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
-    TF_ASSERT_OK(ScheduleTask(3, queue_0.get()));
-    TF_ASSERT_OK(ScheduleTask(4, queue_1.get()));
-    TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue_1.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/4, queue_1.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/5, queue_0.get()));
   }
   EXPECT_TRUE(queue_0_callback_called);
   EXPECT_TRUE(queue_1_callback_called);
@@ -420,11 +419,11 @@ TEST_P(SharedBatchSchedulerTest,
         CreateQueue(scheduler, queue_options, queue_1_callback);
 
     // Submit tasks to the two queues.
-    TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
-    TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
-    TF_ASSERT_OK(ScheduleTask(3, queue_0.get()));
-    TF_ASSERT_OK(ScheduleTask(4, queue_1.get()));
-    TF_ASSERT_OK(ScheduleTask(5, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue_1.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue_0.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/4, queue_1.get()));
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/5, queue_0.get()));
   }
   EXPECT_TRUE(queue_0_callback_called);
   EXPECT_TRUE(queue_1_callback_called);
@@ -566,24 +565,26 @@ TEST_P(SharedBatchSchedulerTest, ObeyBatchSizeConstraint) {
 
     if (enable_input_batch_split()) {
       // First batch.
-      TF_ASSERT_OK(ScheduleTask(3, queue.get()));
-      TF_ASSERT_OK(ScheduleTask(5, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/5, queue.get()));
 
       // Second batch
       // Task spans over first batch and second batch, so contributes two tasks.
-      TF_ASSERT_OK(ScheduleTask(3 /* (3+5) + 3 > 10 */, queue.get()));
-      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
-      TF_ASSERT_OK(ScheduleTask(6, queue.get()));
-      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+      TF_EXPECT_OK(
+          ScheduleTask(/*task_size=*/3 /* (3+5) + 3 > 10 */, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/6, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
     } else {
       // First batch.
-      TF_ASSERT_OK(ScheduleTask(3, queue.get()));
-      TF_ASSERT_OK(ScheduleTask(5, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/5, queue.get()));
 
       // Second batch (due to size overage).
-      TF_ASSERT_OK(ScheduleTask(3 /* (3+5) + 3 > 10 */, queue.get()));
-      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
-      TF_ASSERT_OK(ScheduleTask(6, queue.get()));
+      TF_EXPECT_OK(
+          ScheduleTask(/*task_size=*/3 /* (3+5) + 3 > 10 */, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/6, queue.get()));
       // (Empty third batch, since the second batch exactly hit the size limit,
       // which should never get sent to the callback.)
     }
@@ -649,7 +650,7 @@ TEST_P(SharedBatchSchedulerTest, ObeysTimeout) {
 
     // Create an underfull batch, and ensure that it gets processed when the
     // clock hits the timeout.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
     env.AdvanceByMicroseconds(9);
     Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
     EXPECT_FALSE(first_batch_processed.HasBeenNotified());
@@ -660,11 +661,11 @@ TEST_P(SharedBatchSchedulerTest, ObeysTimeout) {
     // Start creating a batch, while leaving the clock well below the timeout.
     // Then submit a new task that overflows into the next batch, causing
     // the original batch to close.
-    TF_ASSERT_OK(ScheduleTask(2, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue.get()));
     Env::Default()->SleepForMicroseconds(10 * 1000 /* 10 milliseconds */);
     EXPECT_FALSE(second_batch_processed.HasBeenNotified());
     notify_second_batch = true;
-    TF_ASSERT_OK(ScheduleTask(3, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get()));
     second_batch_processed.WaitForNotification();
 
     // Allow the third batch to hit its timeout, and ensure it gets closed at
@@ -708,11 +709,11 @@ TEST_P(SharedBatchSchedulerTest, ObeysTimeoutWithRealClock) {
 
   // Submit a single task that doesn't fill up the batch.
   // Ensure that it gets processed due to the timeout.
-  TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+  TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
   first_batch_processed.WaitForNotification();
 
   // Do it again.
-  TF_ASSERT_OK(ScheduleTask(2, queue.get()));
+  TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue.get()));
   second_batch_processed.WaitForNotification();
 }
 
@@ -751,9 +752,9 @@ TEST_P(SharedBatchSchedulerTest,
                            batch_timeout_micros, max_enqueued_batches),
         callback);
 
-    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
     first_batch_processed.WaitForNotification();
-    TF_ASSERT_OK(ScheduleTask(2, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue.get()));
     second_batch_processed.WaitForNotification();
 
     // Shut everything down.
@@ -798,25 +799,25 @@ TEST_P(SharedBatchSchedulerTest, Fairness) {
         input_batch_size_limit, input_batch_size_limit,
         1 /* batch_timeout_micros */, 100 /* give plenty of room */);
     std::vector<std::unique_ptr<BatchScheduler<FakeTask>>> queues(2);
-    TF_ASSERT_OK(
+    TF_EXPECT_OK(
         scheduler->AddQueue(queue_options, queue_0_callback, &queues[0]));
-    TF_ASSERT_OK(
+    TF_EXPECT_OK(
         scheduler->AddQueue(queue_options, queue_1_callback, &queues[1]));
 
     // Enqueue a batch-filling task to queue 0, and wait for it to get
     // scheduled.
-    TF_ASSERT_OK(ScheduleTask(10, queues[0].get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queues[0].get()));
     env.AdvanceByMicroseconds(1);
     queue_0_first_batch_scheduled.WaitForNotification();
 
     // Enqueue two more batch-filling tasks to queue 0.
-    TF_ASSERT_OK(ScheduleTask(10, queues[0].get()));
-    TF_ASSERT_OK(ScheduleTask(10, queues[0].get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queues[0].get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queues[0].get()));
 
     // Enqueue one task to queue 1, and then advance the clock so it becomes
     // eligible for scheduling due to the timeout. Ensure that the queue 1 batch
     // gets scheduled before the next queue 0 one.
-    TF_ASSERT_OK(ScheduleTask(1, queues[1].get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queues[1].get()));
     env.AdvanceByMicroseconds(1);
     queue_0_first_batch_proceed.Notify();
     queue_1_first_batch_scheduled.WaitForNotification();
@@ -857,7 +858,7 @@ TEST_P(SharedBatchSchedulerTest, ConstMethods) {
 
     // Get one batch going on the thread, and keep the thread blocked until
     // we're done testing the maximum queue length.
-    TF_ASSERT_OK(ScheduleTask(2, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue.get()));
     processing.WaitForNotification();
     EXPECT_EQ(0, queue->NumEnqueuedTasks());
 
@@ -866,17 +867,17 @@ TEST_P(SharedBatchSchedulerTest, ConstMethods) {
     for (int i = 0; i < max_enqueued_batches; ++i) {
       EXPECT_EQ(i * 2, queue->NumEnqueuedTasks());
       EXPECT_EQ((max_enqueued_batches - i) * 2, queue->SchedulingCapacity());
-      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
       EXPECT_EQ((i * 2) + 1, queue->NumEnqueuedTasks());
       EXPECT_EQ((max_enqueued_batches - i) * 2 - 1,
                 queue->SchedulingCapacity());
-      TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
     }
     EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
     EXPECT_EQ(0, queue->SchedulingCapacity());
 
     // Attempting to enqueue one more task should yield an UNAVAILABLE error.
-    EXPECT_THAT(ScheduleTask(1, queue.get()),
+    EXPECT_THAT(ScheduleTask(/*task_size=*/1, queue.get()),
                 absl_testing::StatusIs(
                     error::UNAVAILABLE,
                     HasSubstr("The batch scheduling queue to which this "
@@ -925,25 +926,25 @@ TEST_P(SharedBatchSchedulerTest, OneFullQueueDoesntBlockOtherQueues) {
                          batch_timeout_micros, max_enqueued_batches);
 
   std::unique_ptr<BatchScheduler<FakeTask>> queue_0;
-  TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
+  TF_EXPECT_OK(scheduler->AddQueue(queue_options, queue_0_callback, &queue_0));
   std::unique_ptr<BatchScheduler<FakeTask>> queue_1;
-  TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_1_callback, &queue_1));
+  TF_EXPECT_OK(scheduler->AddQueue(queue_options, queue_1_callback, &queue_1));
 
   // Clog up queue 0.
-  TF_ASSERT_OK(ScheduleTask(1, queue_0.get()));
+  TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue_0.get()));
   queue_0_processing.WaitForNotification();
   absl::Status queue_0_status;
   do {
-    queue_0_status = ScheduleTask(1, queue_0.get());
+    queue_0_status = ScheduleTask(/*task_size=*/1, queue_0.get());
   } while (queue_0_status.ok());
   EXPECT_EQ(error::UNAVAILABLE, queue_0_status.code());
 
   // Ensure that queue 1 still behaves normally, and lets us process tasks.
-  TF_ASSERT_OK(ScheduleTask(1, queue_1.get()));
+  TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue_1.get()));
   queue_1_first_batch_processed.WaitForNotification();
-  TF_ASSERT_OK(ScheduleTask(2, queue_1.get()));
+  TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue_1.get()));
   queue_1_second_batch_processed.WaitForNotification();
-  TF_ASSERT_OK(ScheduleTask(3, queue_1.get()));
+  TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue_1.get()));
   queue_1_third_batch_processed.WaitForNotification();
 
   // Let poor queue 0 drain.
@@ -983,16 +984,17 @@ TEST_P(SharedBatchSchedulerTest, QueueDestructorBlocksUntilAllTasksProcessed) {
 
     // Clog up the queue.
     int num_enqueued_batches = 0;
-    TF_ASSERT_OK(ScheduleTask(10, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queue.get()));
     ++num_enqueued_batches;
     env.AdvanceByMicroseconds(1);
     first_callback_started.WaitForNotification();
     for (int i = 0; i < 2; ++i) {
-      TF_ASSERT_OK(ScheduleTask(10, queue.get()));
+      TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queue.get()));
       ++num_enqueued_batches;
     }
     EXPECT_EQ(kMaxEnqueuedBatches, num_enqueued_batches);
-    EXPECT_EQ(error::UNAVAILABLE, ScheduleTask(10, queue.get()).code());
+    EXPECT_EQ(error::UNAVAILABLE,
+              ScheduleTask(/*task_size=*/10, queue.get()).code());
 
     // Destroy the queue. The destructor should block until all tasks have been
     // processed.
@@ -1100,9 +1102,9 @@ TEST_P(SharedBatchSchedulerTest, BatchPaddingPolicyBatchDown) {
 
     // Schedule some tasks and ensure the scheduler calls the callback after a
     // batch timeout has expired.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
-    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
-    TF_ASSERT_OK(ScheduleTask(1, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get()));
     env.AdvanceByMicroseconds(options.batch_timeout_micros);
     first_batch_processed.WaitForNotification();
 
@@ -1167,7 +1169,7 @@ TEST_P(SharedBatchSchedulerPriorityTest,
         CreateQueue(scheduler, queue_options, queue_callback);
 
     EXPECT_THAT(
-        ScheduleTask(10, queue.get(),
+        ScheduleTask(/*task_size=*/10, queue.get(),
                      tsl::criticality::Criticality::kSheddablePlus),
         absl_testing::StatusIs(
             absl::StatusCode::kUnavailable,
@@ -1208,22 +1210,22 @@ TEST_P(SharedBatchSchedulerPriorityTest,
       CreateQueue(scheduler, queue_options, queue_callback);
 
   // Schedule one task and block the thread.
-  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(/*task_size=*/5, queue.get(),
                             tsl::criticality::Criticality::kCriticalPlus));
   processing.WaitForNotification();
-  ASSERT_EQ(0, queue->NumEnqueuedTasks());
+  EXPECT_EQ(0, queue->NumEnqueuedTasks());
 
   // Adding tasks up to size 20 should be fine.
-  TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queue.get(),
                             tsl::criticality::Criticality::kSheddablePlus));
-  ASSERT_EQ(1, queue->NumEnqueuedTasks());
-  TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+  EXPECT_EQ(1, queue->NumEnqueuedTasks());
+  TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queue.get(),
                             tsl::criticality::Criticality::kSheddablePlus));
-  ASSERT_EQ(2, queue->NumEnqueuedTasks());
+  EXPECT_EQ(2, queue->NumEnqueuedTasks());
 
   // Adding one more task should result in an error.
   EXPECT_THAT(
-      ScheduleTask(1, queue.get(),
+      ScheduleTask(/*task_size=*/1, queue.get(),
                    tsl::criticality::Criticality::kSheddablePlus),
       absl_testing::StatusIs(
           absl::StatusCode::kUnavailable,
@@ -1265,11 +1267,11 @@ TEST_P(SharedBatchSchedulerPriorityTest,
         CreateQueue(scheduler, queue_options, queue_callback);
 
     // Submit tasks to the queue.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/5, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
@@ -1309,11 +1311,11 @@ TEST_P(SharedBatchSchedulerPriorityTest,
         CreateQueue(scheduler, queue_options, queue_callback);
 
     // Submit low priority tasks to fill up the max batch size.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kSheddablePlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddablePlus));
-    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/5, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
@@ -1354,11 +1356,11 @@ TEST_P(SharedBatchSchedulerPriorityTest,
 
     // Submit low priority tasks that wouldn't fill up the max batch size, but
     // they should still be scheduled due to timeout.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kSheddablePlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddablePlus));
-    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/5, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
@@ -1434,15 +1436,15 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
 
     // Submit tasks to the queue. The high priority batch is padded by the low
     // priority tasks only up to 10, which is the max batch size.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
@@ -1485,11 +1487,11 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     // Submit tasks to the queue. The high priority batch is padded by the low
     // priority tasks only up to 7, since there is no more available low
     // priority task.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
@@ -1537,15 +1539,15 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
 
     // Submit tasks to the queue. The high priority batch is padded by the low
     // priority tasks only up to 8, which is the next allowed batch size.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
@@ -1591,15 +1593,15 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     // Submit tasks to the queue. The high priority batch is padded by the low
     // priority tasks up to 10, which is the max batch size because the allowed
     // batch sizes are missing.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_TRUE(queue_callback_called);
@@ -1648,13 +1650,13 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
 
     // Submit tasks to the queue. The high priority batch and the low priority
     // batch are scheduled separately.
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_ASSERT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
   }
   EXPECT_EQ(queue_callback_counter, 2);
@@ -1702,7 +1704,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
 
     Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
@@ -1734,8 +1736,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(1, batch->num_tasks());
     EXPECT_EQ(1, batch->task(0).size());
     EXPECT_EQ(queue_callback_counter, 1);
     first_batch_processed.Notify();
@@ -1760,7 +1762,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    TF_ASSERT_OK(ScheduleTask(1, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
@@ -1790,8 +1792,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(1, batch->num_tasks());
     EXPECT_EQ(10, batch->task(0).size());
     EXPECT_FALSE(first_batch_processed.HasBeenNotified());
     first_batch_processed.Notify();
@@ -1816,7 +1818,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
 
     // NOTE: The fake env clock is not advanced.
@@ -1842,8 +1844,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(1, batch->num_tasks());
     EXPECT_EQ(10, batch->task(0).size());
     EXPECT_FALSE(first_batch_processed.HasBeenNotified());
     first_batch_processed.Notify();
@@ -1868,7 +1870,7 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     // NOTE: The fake env clock is not advanced.
@@ -1898,8 +1900,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(2, batch->num_tasks());
     EXPECT_EQ(3, batch->task(0).size());  // High pri task
     EXPECT_EQ(2, batch->task(1).size());  // Low pri task
     EXPECT_FALSE(first_batch_processed.HasBeenNotified());
@@ -1925,16 +1927,16 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
     env.AdvanceByMicroseconds(500 * 1000);
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
 
     Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
     EXPECT_EQ(queue_callback_counter, 0);
 
-    env.AdvanceByMicroseconds(501 * 1000);
+    env.AdvanceByMicroseconds(1000 * 1000);
     first_batch_processed.WaitForNotification();
     EXPECT_EQ(queue_callback_counter, 1);
 
@@ -1962,8 +1964,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(2, batch->num_tasks());
     EXPECT_EQ(3, batch->task(0).size());  // High pri task
     EXPECT_EQ(2, batch->task(1).size());  // Low pri task
     EXPECT_FALSE(first_batch_processed.HasBeenNotified());
@@ -1989,16 +1991,16 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
     env.AdvanceByMicroseconds(500 * 1000);
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
     EXPECT_EQ(queue_callback_counter, 0);
 
-    env.AdvanceByMicroseconds(501 * 1000);
+    env.AdvanceByMicroseconds(1000 * 1000);
     first_batch_processed.WaitForNotification();
     EXPECT_EQ(queue_callback_counter, 1);
 
@@ -2022,8 +2024,8 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
   auto queue_callback = [&first_batch_processed](
                             std::unique_ptr<Batch<FakeTask>> batch,
                             std::vector<std::unique_ptr<FakeTask>> tasks) {
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(3, batch->num_tasks());
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(3, batch->num_tasks());
     EXPECT_EQ(5, batch->task(0).size());  // High pri task
     EXPECT_EQ(2, batch->task(1).size());  // Low pri task
     EXPECT_EQ(3, batch->task(2).size());  // Low pri task
@@ -2050,13 +2052,13 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    TF_ASSERT_OK(ScheduleTask(2, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
     env.AdvanceByMicroseconds(1 * 1000);
-    TF_ASSERT_OK(ScheduleTask(3, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/3, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
     env.AdvanceByMicroseconds(1 * 1000);
-    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/5, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     first_batch_processed.WaitForNotification();
@@ -2091,26 +2093,26 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
 
     if (enable_input_batch_split()) {
       if (queue_callback_counter == 1) {
-        ASSERT_EQ(2, batch->num_tasks());
+        EXPECT_EQ(2, batch->num_tasks());
         EXPECT_EQ(6, batch->task(0).size());  // High pri task
         EXPECT_EQ(4, batch->task(1).size());  // Low pri task (batch split)
         first_batch_processed.Notify();
       }
 
       if (queue_callback_counter == 2) {
-        ASSERT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(1, batch->num_tasks());
         EXPECT_EQ(3, batch->task(0).size());  // Low pri remainder
         second_batch_processed.Notify();
       }
     } else {
       if (queue_callback_counter == 1) {
-        ASSERT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(1, batch->num_tasks());
         EXPECT_EQ(6, batch->task(0).size());  // High pri task
         first_batch_processed.Notify();
       }
 
       if (queue_callback_counter == 2) {
-        ASSERT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(1, batch->num_tasks());
         EXPECT_EQ(7, batch->task(0).size());  // Low pri remainder
         second_batch_processed.Notify();
       }
@@ -2136,10 +2138,10 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     std::unique_ptr<Queue> queue =
         CreateQueue(scheduler, queue_options, queue_callback);
 
-    TF_ASSERT_OK(ScheduleTask(7, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/7, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
     env.AdvanceByMicroseconds(1 * 1000);
-    TF_ASSERT_OK(ScheduleTask(6, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/6, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
@@ -2179,10 +2181,10 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
                              std::unique_ptr<Batch<FakeTask>> batch,
                              std::vector<std::unique_ptr<FakeTask>> tasks) {
     queue_callback_counter++;
-    ASSERT_TRUE(batch->IsClosed());
+    EXPECT_TRUE(batch->IsClosed());
 
     EXPECT_EQ(queue_callback_counter, 4);
-    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_EQ(1, batch->num_tasks());
     EXPECT_EQ(5, batch->task(0).size());
     last_batch_processed.Notify();
   };
@@ -2252,21 +2254,21 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest,
     Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
     EXPECT_EQ(queue_callback_counter, 0);
 
-    TF_ASSERT_OK(ScheduleTask(4, queue2.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/4, queue2.get(),
                               tsl::criticality::Criticality::kSheddable));
     env.AdvanceByMicroseconds(1 * 1000);
 
-    TF_ASSERT_OK(ScheduleTask(5, queue1.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/5, queue1.get(),
                               tsl::criticality::Criticality::kSheddable));
     env.AdvanceByMicroseconds(1 * 1000);
 
-    TF_ASSERT_OK(ScheduleTask(6, queue3.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/6, queue3.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
     env.AdvanceByMicroseconds(1 * 1000);
 
-    TF_ASSERT_OK(ScheduleTask(1, queue4.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue4.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(2, queue4.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/2, queue4.get(),
                               tsl::criticality::Criticality::kSheddable));
     env.AdvanceByMicroseconds(1 * 1000);
 
@@ -2329,9 +2331,9 @@ TEST_P(SharedBatchSchedulerPriorityPolicyTest, PriorityMergedRankingFullBatch) {
     Env::Default()->SleepForMicroseconds(100 * 1000 /* 100ms */);
     EXPECT_EQ(queue_callback_counter, 0);
 
-    TF_ASSERT_OK(ScheduleTask(10, queue1.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/10, queue1.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
-    TF_ASSERT_OK(ScheduleTask(1, queue1.get(),
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/1, queue1.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     first_batch_processed.WaitForNotification();
@@ -2543,8 +2545,8 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, BasicScheduling) {
 TEST_P(SharedBatchSchedulerPriorityAwareTest, BasicSchedulingWithNotification) {
   absl::Notification processed;
   auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(1, batch->num_tasks());
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(1, batch->num_tasks());
     EXPECT_EQ(10, batch->task(0).size());
     processed.Notify();
   };
@@ -2586,8 +2588,8 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidTaskSize) {
 TEST_P(SharedBatchSchedulerPriorityAwareTest, SchedulingAtMaxBatchSize) {
   absl::Notification processed;
   auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
-    ASSERT_TRUE(batch->IsClosed());
-    ASSERT_EQ(2, batch->num_tasks());
+    EXPECT_TRUE(batch->IsClosed());
+    EXPECT_EQ(2, batch->num_tasks());
     EXPECT_EQ(5, batch->task(0).size());
     EXPECT_EQ(5, batch->task(1).size());
     processed.Notify();
@@ -2620,8 +2622,8 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, SchedulingAtTimeout) {
   {
     absl::Notification processed;
     auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
-      ASSERT_TRUE(batch->IsClosed());
-      ASSERT_EQ(2, batch->num_tasks());
+      EXPECT_TRUE(batch->IsClosed());
+      EXPECT_EQ(2, batch->num_tasks());
       EXPECT_EQ(5, batch->task(0).size());
       EXPECT_EQ(4, batch->task(1).size());
       processed.Notify();
@@ -2664,7 +2666,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatching) {
       block_thread.WaitForNotification();
     } else {
       // Mixed batch
-      ASSERT_EQ(2, batch->num_tasks());
+      EXPECT_EQ(2, batch->num_tasks());
       // High priority first
       EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
                 batch->task(0).criticality());
@@ -2686,16 +2688,16 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatching) {
   auto queue = CreateQueue(scheduler, options, callback);
 
   // 1. Block thread
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kCritical));
   thread_blocked.WaitForNotification();
 
   // 2. Schedule Low Priority (6)
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(6, queue.get(), tsl::criticality::Criticality::kSheddable));
 
   // 3. Schedule High Priority (4)
-  TF_ASSERT_OK(ScheduleTask(4, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(4, queue.get(),
                             tsl::criticality::Criticality::kCriticalPlus));
 
   // 4. Unblock
@@ -2720,9 +2722,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatchingHighLoad) {
     } else {
       // This is the batch we care about.
       if (!first_batch_processed.HasBeenNotified()) {
-        ASSERT_TRUE(batch->IsClosed());
+        EXPECT_TRUE(batch->IsClosed());
         // We expect the two High Priority tasks (size 5 each) = 10.
-        ASSERT_EQ(2, batch->num_tasks());
+        EXPECT_EQ(2, batch->num_tasks());
         EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
                   batch->task(0).criticality());
         EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
@@ -2741,20 +2743,20 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatchingHighLoad) {
   auto queue = CreateQueue(scheduler, options, callback);
 
   // 1. Block thread with a Critical task (size 10)
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kCritical));
   thread_blocked.WaitForNotification();
 
   // 2. Schedule Low Priority (5)
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(5, queue.get(), tsl::criticality::Criticality::kSheddable));
 
   // 3. Schedule High Priority (5)
-  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(5, queue.get(),
                             tsl::criticality::Criticality::kCriticalPlus));
 
   // 4. Schedule High Priority (5)
-  TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(5, queue.get(),
                             tsl::criticality::Criticality::kCriticalPlus));
 
   // Total queued: 15. Max batch: 10.
@@ -2787,9 +2789,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatchingTimeout) {
         block_thread.WaitForNotification();
       } else {
         if (!first_batch_processed.HasBeenNotified()) {
-          ASSERT_TRUE(batch->IsClosed());
+          EXPECT_TRUE(batch->IsClosed());
           // Expect High Priority task (size 10)
-          ASSERT_EQ(1, batch->num_tasks());
+          EXPECT_EQ(1, batch->num_tasks());
           EXPECT_EQ(tsl::criticality::Criticality::kCriticalPlus,
                     batch->task(0).criticality());
           first_batch_processed.Notify();
@@ -2806,19 +2808,19 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, MixedPriorityBatchingTimeout) {
     auto queue = CreateQueue(scheduler, options, callback);
 
     // 1. Block thread
-    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(10, queue.get(),
                               tsl::criticality::Criticality::kCritical));
     thread_blocked.WaitForNotification();
 
     // 2. Schedule Low Priority (5).
-    TF_ASSERT_OK(ScheduleTask(5, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(5, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
 
     // 3. Advance clock to force timeout on Low Priority task.
     env.AdvanceByMicroseconds(2000 * 1000);
 
     // 4. Schedule High Priority (10).
-    TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(10, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     // Total queued: 15. Max: 10. Low priority is timed out.
@@ -2869,16 +2871,16 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, PriorityOrdering) {
   auto queue = CreateQueue(scheduler, options, callback);
 
   // 1. Schedule a task to block the thread.
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kCritical));
   thread_blocked.WaitForNotification();
 
   // 2. Schedule low priority task.
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(10, queue.get(), tsl::criticality::Criticality::kSheddable));
 
   // 3. Schedule high priority task.
-  TF_ASSERT_OK(ScheduleTask(10, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(10, queue.get(),
                             tsl::criticality::Criticality::kCriticalPlus));
 
   // 4. Unblock thread.
@@ -2907,7 +2909,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, QueueSizeLimit) {
   auto queue = CreateQueue(scheduler, options, callback);
 
   // 1. Schedule one task to occupy the thread.
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
   block.WaitForNotification();
 
@@ -2916,9 +2918,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, QueueSizeLimit) {
   // We have 1 task running (popped from queue).
   // So we can enqueue 2 more tasks.
 
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
 
   // Next one should fail.
@@ -2937,7 +2939,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, LargeBatchSplitting) {
   absl::Notification processed_1, processed_2;
   int batch_count = 0;
   auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
-    ASSERT_TRUE(batch->IsClosed());
+    EXPECT_TRUE(batch->IsClosed());
     EXPECT_EQ(10, batch->size());  // Batch size limit
     batch_count++;
     if (batch_count == 1) {
@@ -3000,9 +3002,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, BatchSplittingAcrossTwoTasks) {
 
     auto queue = CreateQueue(scheduler, options, callback);
 
-    TF_ASSERT_OK(
+    TF_EXPECT_OK(
         ScheduleTask(6, queue.get(), tsl::criticality::Criticality::kCritical));
-    TF_ASSERT_OK(
+    TF_EXPECT_OK(
         ScheduleTask(6, queue.get(), tsl::criticality::Criticality::kCritical));
 
     EXPECT_TRUE(first_batch_processed.WaitForNotificationWithTimeout(
@@ -3061,9 +3063,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
 
     auto queue = CreateQueue(scheduler, options, callback);
 
-    TF_ASSERT_OK(ScheduleTask(6, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(6, queue.get(),
                               tsl::criticality::Criticality::kSheddable));
-    TF_ASSERT_OK(ScheduleTask(6, queue.get(),
+    TF_EXPECT_OK(ScheduleTask(6, queue.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     EXPECT_TRUE(first_batch_processed.WaitForNotificationWithTimeout(
@@ -3085,8 +3087,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
 
   // Test missing queue sizes
   {
-    QueueOptions options =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/2);
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
     options.priority_aware_scheduler_options.max_queue_depth = 0;
 
     std::unique_ptr<BatchScheduler<FakeTask>> queue;
@@ -3096,8 +3099,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
 
   // Test invalid padding policy
   {
-    QueueOptions options =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/2);
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
     options.batch_padding_policy = kBatchDownPolicy;
 
     std::unique_ptr<BatchScheduler<FakeTask>> queue;
@@ -3107,8 +3111,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
 
   // Test invalid padding policy
   {
-    QueueOptions options =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/2);
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
     options.batch_padding_policy = kMinimizeTpuCostPerRequestPolicy;
 
     std::unique_ptr<BatchScheduler<FakeTask>> queue;
@@ -3118,8 +3123,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
 
   // Test disable_padding set to true
   {
-    QueueOptions options =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/2);
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
     options.disable_padding = true;
 
     std::unique_ptr<BatchScheduler<FakeTask>> queue;
@@ -3129,8 +3135,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
 
   // Test invalid mixed priority policy
   {
-    QueueOptions options =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/2);
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
     options.mixed_priority_batching_policy =
         MixedPriorityBatchingPolicy::kPriorityIsolation;
 
@@ -3141,8 +3148,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
 
   // Test invalid mixed priority policy
   {
-    QueueOptions options =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/2);
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
     options.mixed_priority_batching_policy =
         MixedPriorityBatchingPolicy::kPriorityMerge;
 
@@ -3153,8 +3161,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
 
   // Test invalid mixed priority policy
   {
-    QueueOptions options =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/2);
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
     options.mixed_priority_batching_policy = MixedPriorityBatchingPolicy::
         kLowPriorityPaddingWithNextAllowedBatchSize;
 
@@ -3169,8 +3178,9 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, ValidOptions) {
   std::map<tsl::criticality::Criticality, size_t> queue_sizes;
   queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
 
-  QueueOptions options =
-      CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/2);
+  QueueOptions options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+      /*max_queue_depth=*/2);
 
   options.batch_padding_policy = kPadUpPolicy;
   options.disable_padding = false;
@@ -3211,7 +3221,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   // Use task size 1 to avoid confusion between count-based capacity
   // (PriorityQueue) and size-based capacity check (LargeBatchSplitting).
   const size_t kTaskSize = 1;
-  TF_ASSERT_OK(ScheduleTask(kTaskSize, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(kTaskSize, queue.get(),
                             tsl::criticality::Criticality::kCritical));
   processing.WaitForNotification();
 
@@ -3220,13 +3230,13 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   EXPECT_EQ(2, queue->SchedulingCapacity());
 
   // Enqueue 1 task.
-  TF_ASSERT_OK(ScheduleTask(kTaskSize, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(kTaskSize, queue.get(),
                             tsl::criticality::Criticality::kCritical));
   EXPECT_EQ(1, queue->NumEnqueuedTasks());
   EXPECT_EQ(1, queue->SchedulingCapacity());
 
   // Enqueue another task.
-  TF_ASSERT_OK(ScheduleTask(kTaskSize, queue.get(),
+  TF_EXPECT_OK(ScheduleTask(kTaskSize, queue.get(),
                             tsl::criticality::Criticality::kCritical));
   EXPECT_EQ(2, queue->NumEnqueuedTasks());
   EXPECT_EQ(0, queue->SchedulingCapacity());
@@ -3263,18 +3273,22 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, RankQueuesPriority) {
 
     // Queue 1: Will have CriticalPlus task (Higher priority).
     QueueOptions options1 =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/20);
+        CreatePriorityAwareQueueOptions(/*max_execution_batch_size=*/10,
+                                        /*batch_timeout_micros=*/1000,
+                                        /*max_queue_depth=*/20);
     auto queue_high = CreateQueue(scheduler, options1, callback_high);
 
     // Queue 2: Will have Critical task (Lower priority).
     QueueOptions options2 =
-        CreatePriorityAwareQueueOptions(10, 1000, /*max_queue_depth=*/20);
+        CreatePriorityAwareQueueOptions(/*max_execution_batch_size=*/10,
+                                        /*batch_timeout_micros=*/1000,
+                                        /*max_queue_depth=*/20);
     auto queue_low = CreateQueue(scheduler, options2, callback_low);
 
     // Schedule tasks.
-    TF_ASSERT_OK(ScheduleTask(1, queue_low.get(),
+    TF_EXPECT_OK(ScheduleTask(1, queue_low.get(),
                               tsl::criticality::Criticality::kCritical));
-    TF_ASSERT_OK(ScheduleTask(1, queue_high.get(),
+    TF_EXPECT_OK(ScheduleTask(1, queue_high.get(),
                               tsl::criticality::Criticality::kCriticalPlus));
 
     // Advance clock to trigger timeouts.
@@ -3283,7 +3297,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, RankQueuesPriority) {
 
     // Expect High then Low.
     mutex_lock l(mu);
-    ASSERT_EQ(2, execution_order.size());
+    EXPECT_EQ(2, execution_order.size());
     EXPECT_EQ("high", execution_order[0]);
     EXPECT_EQ("low", execution_order[1]);
 
@@ -3334,7 +3348,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, EvictionOfLowestPriorityTasks) {
 
   // 1. Schedule a blocker task to occupy the thread.
   // This task is removed from the queue immediately to be processed.
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
   thread_blocked.WaitForNotification();
 
@@ -3344,16 +3358,16 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, EvictionOfLowestPriorityTasks) {
   std::unique_ptr<FakeTask> task1(
       new FakeTask(1, tsl::criticality::Criticality::kSheddable,
                    done_notification1, status1));
-  TF_ASSERT_OK(queue->Schedule(&task1));
+  TF_EXPECT_OK(queue->Schedule(&task1));
 
   auto done_notification2 = std::make_shared<absl::Notification>();
   auto status2 = std::make_shared<absl::Status>();
   std::unique_ptr<FakeTask> task2(
       new FakeTask(1, tsl::criticality::Criticality::kSheddable,
                    done_notification2, status2));
-  TF_ASSERT_OK(queue->Schedule(&task2));
+  TF_EXPECT_OK(queue->Schedule(&task2));
 
-  ASSERT_EQ(2, queue->NumEnqueuedTasks());
+  EXPECT_EQ(2, queue->NumEnqueuedTasks());
 
   // 3. Schedule a high priority task. The queue is full, so this should trigger
   // eviction of the lowest priority task (task2, since it's the newest low
@@ -3363,7 +3377,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, EvictionOfLowestPriorityTasks) {
   std::unique_ptr<FakeTask> task3(
       new FakeTask(1, tsl::criticality::Criticality::kCritical,
                    done_notification3, status3));
-  TF_ASSERT_OK(queue->Schedule(&task3));
+  TF_EXPECT_OK(queue->Schedule(&task3));
 
   // 4. Verify that task2 was evicted.
   done_notification2->WaitForNotification();
@@ -3398,7 +3412,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest, EvictionOfLowestPriorityTasks) {
   std::unique_ptr<FakeTask> task5(
       new FakeTask(1, tsl::criticality::Criticality::kCriticalPlus,
                    done_notification5, status5));
-  TF_ASSERT_OK(queue->Schedule(&task5));
+  TF_EXPECT_OK(queue->Schedule(&task5));
 
   // Verify task1 evicted.
   done_notification1->WaitForNotification();
@@ -3440,7 +3454,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
 
   // 1. Schedule a blocker task to occupy the thread.
   // Size 1.
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
   thread_blocked.WaitForNotification();
 
@@ -3455,7 +3469,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
     std::unique_ptr<FakeTask> task(
         new FakeTask(2, tsl::criticality::Criticality::kSheddable,
                      done_notifications.back(), statuses.back()));
-    TF_ASSERT_OK(queue->Schedule(&task));
+    TF_EXPECT_OK(queue->Schedule(&task));
   }
 
   // 3. Schedule a high priority task (Critical, size 5).
@@ -3467,7 +3481,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   std::unique_ptr<FakeTask> high_pri_task(
       new FakeTask(5, tsl::criticality::Criticality::kCritical, high_pri_done,
                    high_pri_status));
-  TF_ASSERT_OK(queue->Schedule(&high_pri_task));
+  TF_EXPECT_OK(queue->Schedule(&high_pri_task));
 
   // 4. Verify eviction.
   // Task 0 and 1 (oldest) should remain.
@@ -3517,7 +3531,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
 
   // 1. Schedule a blocker task to occupy the thread.
   // Size 1.
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
   thread_blocked.WaitForNotification();
 
@@ -3531,7 +3545,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
     std::unique_ptr<FakeTask> task(
         new FakeTask(2, tsl::criticality::Criticality::kSheddable,
                      done_notifications.back(), statuses.back()));
-    TF_ASSERT_OK(queue->Schedule(&task));
+    TF_EXPECT_OK(queue->Schedule(&task));
   }
 
   // 3. Schedule two medium priority tasks (SheddablePlus, size 5 each).
@@ -3541,7 +3555,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
     std::unique_ptr<FakeTask> task(
         new FakeTask(5, tsl::criticality::Criticality::kSheddablePlus,
                      done_notifications.back(), statuses.back()));
-    TF_ASSERT_OK(queue->Schedule(&task));
+    TF_EXPECT_OK(queue->Schedule(&task));
   }
 
   // Current queue state:
@@ -3571,7 +3585,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   std::unique_ptr<FakeTask> high_pri_task(
       new FakeTask(12, tsl::criticality::Criticality::kCritical, high_pri_done,
                    high_pri_status));
-  TF_ASSERT_OK(queue->Schedule(&high_pri_task));
+  TF_EXPECT_OK(queue->Schedule(&high_pri_task));
 
   // 5. Verify eviction.
   // T0, T1, T3 evicted.
@@ -3619,7 +3633,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   auto queue = CreateQueue(scheduler, options, callback);
 
   // 1. Schedule a blocker task to occupy the thread.
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
   thread_blocked.WaitForNotification();
 
@@ -3630,7 +3644,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   std::unique_ptr<FakeTask> task_sheddable(
       new FakeTask(5, tsl::criticality::Criticality::kSheddable, done_sheddable,
                    status_sheddable));
-  TF_ASSERT_OK(queue->Schedule(&task_sheddable));
+  TF_EXPECT_OK(queue->Schedule(&task_sheddable));
 
   // SheddablePlus (Size 5)
   auto done_sheddable_plus = std::make_shared<absl::Notification>();
@@ -3638,7 +3652,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   std::unique_ptr<FakeTask> task_sheddable_plus(
       new FakeTask(5, tsl::criticality::Criticality::kSheddablePlus,
                    done_sheddable_plus, status_sheddable_plus));
-  TF_ASSERT_OK(queue->Schedule(&task_sheddable_plus));
+  TF_EXPECT_OK(queue->Schedule(&task_sheddable_plus));
 
   // CriticalPlus (Size 5)
   auto done_critical_plus = std::make_shared<absl::Notification>();
@@ -3646,7 +3660,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   std::unique_ptr<FakeTask> task_critical_plus(
       new FakeTask(5, tsl::criticality::Criticality::kCriticalPlus,
                    done_critical_plus, status_critical_plus));
-  TF_ASSERT_OK(queue->Schedule(&task_critical_plus));
+  TF_EXPECT_OK(queue->Schedule(&task_critical_plus));
 
   // Current queue state:
   // Sheddable (5)
@@ -3717,7 +3731,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   auto queue = CreateQueue(scheduler, options, callback);
 
   // 1. Block thread.
-  TF_ASSERT_OK(
+  TF_EXPECT_OK(
       ScheduleTask(1, queue.get(), tsl::criticality::Criticality::kCritical));
   thread_blocked.WaitForNotification();
 
@@ -3740,7 +3754,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
     std::unique_ptr<FakeTask> task(
         new FakeTask(size, tsl::criticality::Criticality::kSheddable,
                      done_notifications.back(), statuses.back()));
-    TF_ASSERT_OK(queue->Schedule(&task));
+    TF_EXPECT_OK(queue->Schedule(&task));
   }
 
   // 3. New Task (Critical, 20).
@@ -3753,7 +3767,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   std::unique_ptr<FakeTask> high_pri_task(
       new FakeTask(20, tsl::criticality::Criticality::kCritical, high_pri_done,
                    high_pri_status));
-  TF_ASSERT_OK(queue->Schedule(&high_pri_task));
+  TF_EXPECT_OK(queue->Schedule(&high_pri_task));
 
   // 4. Verify T2 and T3 evicted. T1 remains.
   done_notifications[2]->WaitForNotification();  // T3
