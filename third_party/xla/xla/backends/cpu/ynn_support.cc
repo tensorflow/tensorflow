@@ -185,6 +185,7 @@ absl::StatusOr<bool> IsDotSupportedByYnn(
   static const absl::NoDestructor<absl::flat_hash_set<
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
       kAllowedTypes({
+          {F64, F64, F64},
           {F32, F32, F32},
           // TODO(b/449998002): We don't have fast fp16 kernels yet.
           // {F16, F16, F32},
@@ -375,7 +376,12 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
   // TODO(b/466474339): Enable other data types.
   static const absl::NoDestructor<absl::flat_hash_set<
       std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>>>
-      kAllowedTypes({{F32, F32, F32}, /* {BF16, BF16, F32}, */ {S8, S8, S32}});
+      kAllowedTypes({
+          {F64, F64, F64},
+          {F32, F32, F32},
+          // {BF16, BF16, F32},
+          {S8, S8, S32},
+      });
 
   const Shape& lhs_shape = conv->operand(0)->shape();
   const Shape& rhs_shape = conv->operand(1)->shape();
