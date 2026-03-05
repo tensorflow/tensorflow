@@ -97,13 +97,6 @@ class CopyInsertion : public HloModulePass {
       std::function<bool(const HloValue* value)>
           should_add_target_specific_copies = nullptr);
 
-  absl::Status AddSpecialCaseCopies(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads,
-      std::function<bool(const HloValue* value)>
-          should_add_target_specific_copies,
-      std::function<bool(const HloPosition& position)> pick_position_to_copy);
-
  protected:
   // Override which requires the caller to pass in a call graph.
   virtual absl::Status AddSpecialCaseCopies(
@@ -112,14 +105,6 @@ class CopyInsertion : public HloModulePass {
       HloModule* module,
       std::function<bool(const HloValue* value)>
           should_add_target_specific_copies);
-
-  virtual absl::Status AddSpecialCaseCopies(
-      const CallGraph& call_graph,
-      const absl::flat_hash_set<absl::string_view>& execution_threads,
-      HloModule* module,
-      std::function<bool(const HloValue* value)>
-          should_add_target_specific_copies,
-      std::function<bool(const HloPosition& position)> pick_position_to_copy);
 
   // Add copies for conditional instructions.
   virtual absl::Status AddCopiesForConditional(

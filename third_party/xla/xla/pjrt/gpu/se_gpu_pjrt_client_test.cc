@@ -2057,7 +2057,7 @@ ROOT gte0 = f32[16]{0} get-tuple-element(t), index=0
 
   EXPECT_EQ(memory_stats.output_size_in_bytes, 64);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
-  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 144);
+  EXPECT_EQ(memory_stats.peak_memory_in_bytes, 80);
 }
 
 TEST(StreamExecutorGpuClientTest, GetCompiledMemoryStatsCountTupleTable) {
@@ -2099,7 +2099,7 @@ ROOT t = (f32[1]{0}, f32[1]{0}, f32[1]{0}, f32[1]{0},
   EXPECT_EQ(memory_stats.peak_memory_in_bytes, 388);
 }
 
-// Verify the output device memory kind with default memory space shape
+// Verify the output device memory kind with collective memory space shape
 // when NCCL user buffer is enabled.
 TEST(StreamExecutorGpuClientTest,
      ExecutableCollectiveMemoryOutputMemoryKindTest) {
@@ -2143,7 +2143,7 @@ TEST(StreamExecutorGpuClientTest,
   TF_ASSERT_OK(result_buffers[0]->GetReadyFuture().Await());
   Shape result_shape = result_buffers[0]->on_device_shape();
   auto memory_space = result_shape.layout().memory_space();
-  EXPECT_EQ(memory_space, Layout::kDefaultMemorySpace);
+  EXPECT_EQ(memory_space, 1);
 }
 
 TEST(StreamExecutorGpuClientTest, CollectiveMemorySpaceSmoke) {
@@ -2178,7 +2178,7 @@ TEST(StreamExecutorGpuClientTest, CollectiveMemorySpaceSmoke) {
 
   // Override default memory space to collective memory space.
   EXPECT_EQ(buf->on_device_shape().layout().memory_space(),
-            (int)gpu::MemorySpaceColor::kDefault);
+            (int)gpu::MemorySpaceColor::kCollective);
 }
 
 TEST(StreamExecutorGpuClientTest,

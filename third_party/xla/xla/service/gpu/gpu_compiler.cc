@@ -2145,42 +2145,17 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 }
 
 namespace {
-
-bool CollectiveMemoryOutputPositionPicker(const HloPosition& position) {
-  const HloInstruction* inst = position.instruction;
-  return IsCollectiveMosaicGpuInstruction(*inst) ||
-         (IsCollective(inst) && inst->IsRoot());
-}
-
-bool ShouldAddCopyForCollectiveMemoryOutput(const HloValue* value) {
-  const HloInstruction* inst = value->defining_instruction();
-  const HloModule* module = inst->GetModule();
-  const bool is_nccl_buffers_used =
-      (module->config().debug_options().xla_gpu_enable_nccl_user_buffers() ||
-       module->config()
-           .debug_options()
-           .xla_gpu_experimental_enable_nccl_symmetric_buffers());
-
-  // Add copy if the value is the module output to preserve collective memory
-  // space symmetric across all devices.
-  if (value->live_out_of_module()) {
-    if ((is_nccl_buffers_used && IsCollective(inst)) ||
-        IsCollectiveMosaicGpuInstruction(*inst)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value) {
   const HloInstruction* inst = value->defining_instruction();
   const HloModule* module = inst->GetModule();
-  const bool is_nccl_buffers_used =
-      (module->config().debug_options().xla_gpu_enable_nccl_user_buffers() ||
-       module->config()
+  // If no collective memory is needed, return.
+  if (!module->config().debug_options().xla_gpu_enable_nccl_user_buffers() &&
+      !module->config().debug_options().xla_gpu_experimental_enable_nvshmem() &&
+      !module->config()
            .debug_options()
-           .xla_gpu_experimental_enable_nccl_symmetric_buffers());
-
+           .xla_gpu_experimental_enable_nccl_symmetric_buffers()) {
+    return false;
+  }
   // Add copy if a potential collective-memory-spaced op directly consumes from
   // module input or a constant as they are allocated by bfc ahead of time and
   // the alignment might not match collective memory space's requirement.
@@ -2188,13 +2163,12 @@ bool ShouldAddCopyForCollectiveMemorySpace(const HloValue* value) {
           module->entry_computation()->parameter_instructions(), inst) ||
       (inst->opcode() == HloOpcode::kConstant)) {
     for (auto& use : value->GetUses()) {
-      if ((is_nccl_buffers_used && IsCollective(use.instruction)) ||
+      if (IsCollective(use.instruction) ||
           IsCollectiveMosaicGpuInstruction(*use.instruction)) {
         return true;
       }
     }
   }
-
   return false;
 }
 
@@ -2223,10 +2197,6 @@ absl::Status RunPostSchedulingCopyInsertion(HloModule* module,
   // out of the graph. So run AddSpecialCaseCopies to re-insert these copies.
   RETURN_IF_ERROR(copy_insertion.CopyInsertion::AddSpecialCaseCopies(
       module, /*execution_threads=*/{}, ShouldAddCopyForCollectiveMemorySpace));
-
-  RETURN_IF_ERROR(copy_insertion.CopyInsertion::AddSpecialCaseCopies(
-      module, /*execution_threads=*/{}, ShouldAddCopyForCollectiveMemoryOutput,
-      CollectiveMemoryOutputPositionPicker));
 
   RETURN_IF_ERROR(HloDCE().Run(module).status());
 

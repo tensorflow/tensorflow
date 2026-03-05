@@ -1233,35 +1233,11 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
 }
 
 absl::Status CopyInsertion::AddSpecialCaseCopies(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads,
-    std::function<bool(const HloValue* value)>
-        should_add_target_specific_copies,
-    std::function<bool(const HloPosition& position)> pick_position_to_copy) {
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  return AddSpecialCaseCopies(*call_graph, execution_threads, module,
-                              should_add_target_specific_copies,
-                              pick_position_to_copy);
-}
-
-absl::Status CopyInsertion::AddSpecialCaseCopies(
     const CallGraph& call_graph,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     HloModule* module,
     std::function<bool(const HloValue* value)>
         should_add_target_specific_copies) {
-  return AddSpecialCaseCopies(call_graph, execution_threads, module,
-                              should_add_target_specific_copies,
-                              /*pick_position_to_copy=*/nullptr);
-}
-
-absl::Status CopyInsertion::AddSpecialCaseCopies(
-    const CallGraph& call_graph,
-    const absl::flat_hash_set<absl::string_view>& execution_threads,
-    HloModule* module,
-    std::function<bool(const HloValue* value)>
-        should_add_target_specific_copies,
-    std::function<bool(const HloPosition& position)> pick_position_to_copy) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, alias_info_));
 
@@ -1308,20 +1284,7 @@ absl::Status CopyInsertion::AddSpecialCaseCopies(
         should_add_target_specific_copies(value)) {
       VLOG(2) << "Adding target specific copies for value "
               << value->ToShortString();
-
-      if (!pick_position_to_copy) {
-        add_index_to_copy(value->defining_instruction(),
-                          value->defining_index());
-      } else {
-        VLOG(2) << "using pick_position_to_copy for value "
-                << value->ToShortString();
-        for (const HloPosition& position : value->positions()) {
-          if (pick_position_to_copy(position)) {
-            add_index_to_copy(position.instruction, position.index);
-            break;
-          }
-        }
-      }
+      add_index_to_copy(value->defining_instruction(), value->defining_index());
     }
 
     for (const HloValue* value2 : buffer.values()) {
