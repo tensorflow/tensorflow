@@ -21,6 +21,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "json/json.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
