@@ -49,12 +49,15 @@ static const int64_t kSamePadding = 1;
 
 static const std::vector<TypeConfig>& GetTypeConfigs() {
   static const absl::NoDestructor<std::vector<TypeConfig>> v(
-      {{F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
+      {{F64, F64, F64}, {F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
   return *v;
 }
 
 Literal GetRandomLiteral(PrimitiveType type, const Shape& shape,
                          std::minstd_rand0& engine) {
+  if (type == F64) {
+    return *LiteralUtil::CreateRandomLiteral<F64>(shape, &engine, 1.0f, 0.1f);
+  }
   if (type == F32) {
     return *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
   }
