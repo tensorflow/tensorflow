@@ -1875,13 +1875,19 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto pjrt_platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM
 
+  bool use_async_dispatch;
+  if (options.use_async_dispatch.has_value()) {
+    use_async_dispatch = *options.use_async_dispatch;
+  } else if (const char* v = std::getenv("PJRT_GPU_ENABLE_ASYNC_DISPATCH")) {
+    use_async_dispatch = absl::string_view(v) == "1";
+  }
+
   TF_ASSIGN_OR_RETURN(
       LocalClient * xla_client,
       GetGpuXlaClient(options.platform_name, options.allowed_devices));
   std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states;
-  TF_ASSIGN_OR_RETURN(
-      local_device_states,
-      BuildLocalDeviceStates(xla_client, options.use_tfrt_gpu_client));
+  TF_ASSIGN_OR_RETURN(local_device_states,
+                      BuildLocalDeviceStates(xla_client, use_async_dispatch));
   EnablePeerAccess(xla_client->backend().stream_executors());
   TF_ASSIGN_OR_RETURN(auto allocator,
                       GetStreamExecutorGpuDeviceAllocator(
