@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
@@ -26,11 +27,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -47,6 +50,10 @@ namespace ifrt_serving {
 struct InputHandle {
   // The input tensor to be transferred.
   tensorflow::Tensor tensor;
+  // The IFRT dtype of the input tensor.
+  xla::ifrt::DType ifrt_dtype;
+  // The IFRT shape of the input tensor.
+  std::shared_ptr<const xla::ifrt::Shape> ifrt_shape;
   // The XLA shape of the input tensor.
   const xla::Shape* input_xla_shape;
   // The devices to transfer the tensor to.

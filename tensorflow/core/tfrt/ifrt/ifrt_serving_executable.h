@@ -43,10 +43,12 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/shape.h"
@@ -187,6 +189,7 @@ class IfrtServingExecutable {
   };
 
   struct CachedExecutableBundle {
+    std::vector<xla::ifrt::DType> ifrt_input_dtypes;
     // If populated, these are the input shapes and layouts that the
     // executable was compiled with. `xla_input_shapes` and `xla_input_layouts`
     // are either both populated or both empty and they will have the same size.
@@ -195,6 +198,7 @@ class IfrtServingExecutable {
     // TODO(b/477700609): Currently `xla_input_layouts` and `xla_input_shapes`
     // are not used. We should use them to generate ifrt arrays.
     std::optional<std::vector<std::shared_ptr<xla::Shape>>> xla_input_shapes;
+    std::vector<std::shared_ptr<const xla::ifrt::Shape>> ifrt_input_shapes;
     std::optional<std::vector<xla::ifrt::LayoutRef>> xla_input_layouts;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;

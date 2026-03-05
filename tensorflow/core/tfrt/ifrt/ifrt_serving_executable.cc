@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/stablehlo.h"
+#include "xla/layout.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -100,6 +101,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/platform/tstring.h"
@@ -583,6 +585,25 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                 ->CompileAndLoad(std::move(program), std::move(options))
                 .Await();
           }));
+
+  executable_bundle->ifrt_input_dtypes.reserve(
+      tf2hlo_result.compile_metadata.args().size());
+  executable_bundle->reshaped_input_tensors.reserve(
+      tf2hlo_result.compile_metadata.args().size());
+  executable_bundle->ifrt_input_shapes.reserve(
+      tf2hlo_result.compile_metadata.args().size());
+  for (const auto& arg : tf2hlo_result.compile_metadata.args()) {
+    TF_ASSIGN_OR_RETURN(auto ifrt_dtype, ToIfrtDType(arg.dtype()));
+    executable_bundle->ifrt_input_dtypes.push_back(ifrt_dtype);
+    TF_ASSIGN_OR_RETURN(auto reshaped_tensor,
+                        tensorflow::TensorShape::BuildTensorShape(arg.shape()));
+    executable_bundle->reshaped_input_tensors.push_back(
+        std::move(reshaped_tensor));
+    xla::ifrt::Shape ifrt_shape =
+        ToIfrtShape(executable_bundle->reshaped_input_tensors.back());
+    executable_bundle->ifrt_input_shapes.push_back(
+        std::make_shared<xla::ifrt::Shape>(std::move(ifrt_shape)));
+  }
   if (!tf2hlo_result.xla_input_shapes.empty()) {
     std::vector<std::shared_ptr<xla::Shape>> xla_input_shapes;
     xla_input_shapes.reserve(tf2hlo_result.xla_input_shapes.size());
@@ -610,8 +631,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
 
   executable_bundle->arg_hlo_shardings.reserve(
       executable_bundle->compile_metadata.args().size());
-  executable_bundle->reshaped_input_tensors.reserve(
-      executable_bundle->compile_metadata.args().size());
+
   for (const auto& arg : executable_bundle->compile_metadata.args()) {
     TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
                         xla::HloSharding::FromProto(arg.sharding()));
@@ -620,10 +640,6 @@ IfrtServingExecutable::CreateExecutableSynchronously(
         auto ifrt_sharding,
         ToIfrtSharding(*ifrt_client_, hlo_sharding, assigned_device_list_));
     executable_bundle->arg_ifrt_shardings.push_back(std::move(ifrt_sharding));
-    TF_ASSIGN_OR_RETURN(auto reshaped_tensor,
-                        tensorflow::TensorShape::BuildTensorShape(arg.shape()));
-    executable_bundle->reshaped_input_tensors.push_back(
-        std::move(reshaped_tensor));
   }
 
   if (UsePortableExecution()) {
@@ -954,6 +970,8 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       }
       input_handles.push_back({
           .tensor = reshaped,
+          .ifrt_dtype = executable_bundle->ifrt_input_dtypes[i],
+          .ifrt_shape = executable_bundle->ifrt_input_shapes[i],
           .input_xla_shape = xla_input_shape,
           .device_list = device_list,
           .ifrt_sharding = std::move(ifrt_sharding),
