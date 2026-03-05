@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Visitors.h"
+#include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/constants.h"
@@ -42,13 +43,137 @@ namespace ifrt {
 
 namespace {
 
+mlir::LogicalResult SetArgHloSharding(mlir::func::FuncOp func_op,
+                                      mlir::UnitAttr local_view_attr,
+                                      int num_devices, mlir::OpBuilder& builder,
+                                      int arg_idx) {
+  const auto sharding_attr =
+      func_op.getArgAttrOfType<IfrtShardingAttrInterface>(
+          arg_idx, kIfrtShardingAttrName);
+  if (sharding_attr == nullptr) {
+    // The op has already been visited, and the IFRT attributes have been
+    // removed. Verify that kHloShardingAttrName has been set if the module is
+    // not sdy partitioned.
+    if (func_op.getArgAttr(arg_idx, kHloShardingAttrName) == nullptr) {
+      func_op.emitOpError()
+          << "can't find `" << kIfrtShardingAttrName << "` attribute of input #"
+          << arg_idx << " to set `" << kHloShardingAttrName << "` attribute";
+      return mlir::failure();
+    }
+    return mlir::success();
+  }
+
+  if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
+    // Sharding is not specified so we cannot lower to kHloShardingAttrName.
+    return mlir::success();
+  }
+
+  // Verify that the input is sharded over the same number of devices as
+  // the computation.
+  if (int attr_num_devices = sharding_attr.NumDevices();
+      attr_num_devices != num_devices) {
+    func_op.emitOpError() << "can't lower sharding of input #" << arg_idx
+                          << ". Sharding: " << sharding_attr << " uses "
+                          << attr_num_devices
+                          << " devices while computation uses " << num_devices
+                          << " devices";
+    return mlir::failure();
+  }
+
+  if (local_view_attr != nullptr) {
+    // The arguments to the function are already sharded, so we do not
+    // need to shard them again.
+    func_op.setArgAttr(
+        arg_idx, kHloShardingAttrName,
+        builder.getStringAttr(xla::HloSharding::Replicate().ToString()));
+  } else {
+    const auto sharding_param_attr =
+        func_op.getArgAttrOfType<IfrtShardingParamAttr>(arg_idx,
+                                                        kIfrtShardingAttrName);
+    auto hlo_sharding =
+        xla::ifrt::support::ToHloSharding(sharding_param_attr.getSharding());
+    if (!hlo_sharding.ok()) {
+      func_op.emitOpError() << "can't lower sharding of input #" << arg_idx
+                            << ". Sharding: " << sharding_param_attr << ". "
+                            << hlo_sharding.status().message();
+      return mlir::failure();
+    }
+    func_op.setArgAttr(arg_idx, kHloShardingAttrName,
+                       builder.getStringAttr(hlo_sharding.value().ToString()));
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult SetResultHloSharding(mlir::func::FuncOp func_op,
+                                         mlir::UnitAttr local_view_attr,
+                                         int num_devices,
+                                         mlir::OpBuilder& builder,
+                                         int res_idx) {
+  const auto sharding_attr =
+      func_op.getResultAttrOfType<IfrtShardingAttrInterface>(
+          res_idx, kIfrtShardingAttrName);
+
+  if (sharding_attr == nullptr) {
+    // The op has already been visited, and the IFRT attributes have been
+    // removed. Verify that kHloShardingAttrName has been set.
+    if (func_op.getResultAttr(res_idx, kHloShardingAttrName) == nullptr) {
+      func_op.emitOpError()
+          << "can't find `" << kIfrtShardingAttrName
+          << "` attribute of output #" << res_idx << " to set `"
+          << kHloShardingAttrName << "` attribute";
+      return mlir::failure();
+    }
+    return mlir::success();
+  }
+
+  if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
+    // Sharding is not specified so we cannot lower to kHloShardingAttrName.
+    return mlir::success();
+  }
+
+  // Verify that the output is sharded over the same number of devices as
+  // the computation.
+  if (int attr_num_devices = sharding_attr.NumDevices();
+      attr_num_devices != num_devices) {
+    func_op.emitOpError() << "can't lower sharding of output #" << res_idx
+                          << ". Sharding: " << sharding_attr << " uses "
+                          << attr_num_devices
+                          << " devices while computation uses " << num_devices
+                          << " devices";
+    return mlir::failure();
+  }
+
+  if (local_view_attr != nullptr) {
+    // The results of the function are already sharded, so we do not need
+    // to shard them again.
+    func_op.setResultAttr(
+        res_idx, kHloShardingAttrName,
+        builder.getStringAttr(xla::HloSharding::Replicate().ToString()));
+  } else {
+    const auto sharding_param_attr =
+        func_op.getResultAttrOfType<IfrtShardingParamAttr>(
+            res_idx, kIfrtShardingAttrName);
+    auto hlo_sharding =
+        xla::ifrt::support::ToHloSharding(sharding_param_attr.getSharding());
+    if (!hlo_sharding.ok()) {
+      func_op.emitOpError() << "can't lower sharding of output #" << res_idx
+                            << ". Sharding: " << sharding_param_attr << ". "
+                            << hlo_sharding.status().message();
+      return mlir::failure();
+    }
+    func_op.setResultAttr(
+        res_idx, kHloShardingAttrName,
+        builder.getStringAttr(hlo_sharding.value().ToString()));
+  }
+  return mlir::success();
+}
+
 // Pass that does the following:
-// 1) transforms kIfrtShardingAttrName attribute on the main FuncOp inputs and
-// outputs to HloSharding.
-// 2) sets FuncOps input/outputs kHloShardingAttrName attribute to the
-// corresponding computed HloSharding.
-// 3) sents kHloMemoryKindAttrName attribute to the corresponding
+// 1) sets kHloMemoryKindAttrName attribute to the corresponding
 // memory kind if kIfrtMemoryKindAttrName is set.
+// 2) transforms kIfrtShardingAttrName attribute on the main FuncOp inputs and
+// outputs to HloSharding and sets it to kHloShardingAttrName attribute. This
+// is only done if the module is not sdy partitioned.
 
 class IfrtLowerAtomProgramMetadataToXlaPass
     : public impl::IfrtLowerAtomProgramMetadataToXlaPassBase<
@@ -95,145 +220,43 @@ void IfrtLowerAtomProgramMetadataToXlaPass::runOnOperation() {
     is_sdy = compile_options_override_or->value()
                  .executable_build_options.use_shardy_partitioner();
   }
+  // TODO(icgog): If Shardy is used, then verify that the sdy shardings are set.
 
   int num_devices = num_devices_attr.getInt();
   mlir::func::FuncOp func_op = GetMainFunction(module_op);
-  auto local_view_attr =
+  mlir::UnitAttr local_view_attr =
       module_op->getAttrOfType<mlir::UnitAttr>(kIfrtLocalViewAttrName);
-  // Lower input shardings.
-  for (int i = 0; i < func_op.getNumArguments(); ++i) {
-    const auto sharding_attr =
-        func_op.getArgAttrOfType<IfrtShardingAttrInterface>(
-            i, kIfrtShardingAttrName);
-    if (sharding_attr == nullptr) {
-      // The op has already been visited, and the IFRT attributes have been
-      // removed. Verify that kHloShardingAttrName has been set if the module is
-      // not sdy partitioned.
-      if (!is_sdy && func_op.getArgAttr(i, kHloShardingAttrName) == nullptr) {
-        func_op.emitOpError() << "can't find `" << kIfrtShardingAttrName
-                              << "` attribute of input #" << i << " to set `"
-                              << kHloShardingAttrName << "` attribute";
-        signalPassFailure();
-        return;
-      }
-      continue;
-    }
-    if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
-      // Sharding is not specified so we cannot lower to kHloShardingAttrName.
-      continue;
-    }
 
-    // Verify that the input is sharded over the same number of devices as
-    // the computation.
-    auto attr_num_devices = sharding_attr.NumDevices();
-    if (attr_num_devices != num_devices) {
-      func_op.emitOpError()
-          << "can't lower sharding of input #" << i
-          << ". Sharding: " << sharding_attr << " uses " << attr_num_devices
-          << " devices while computation uses " << num_devices << " devices";
+  // Lower input shardings.
+  for (int arg_idx = 0; arg_idx < func_op.getNumArguments(); ++arg_idx) {
+    const auto memory_kind_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
+        arg_idx, kIfrtMemoryKindAttrName);
+    if (memory_kind_attr) {
+      func_op.setArgAttr(arg_idx, kHloMemoryKindAttrName, memory_kind_attr);
+    }
+    // Only set the HLO shardings if Shardy is not used.
+    if (!is_sdy &&
+        mlir::failed(SetArgHloSharding(func_op, local_view_attr, num_devices,
+                                       builder, arg_idx))) {
       signalPassFailure();
       return;
-    }
-
-    // Shardy doesn't use HLO shardings, but the old propagation system GSPMD
-    // does, so we don't need to set HLO shardings for sdy.
-    if (!is_sdy) {
-      if (local_view_attr != nullptr) {
-        // The arguments to the function are already sharded, so we do not
-        // need to shard them again.
-        func_op.setArgAttr(
-            i, kHloShardingAttrName,
-            builder.getStringAttr(xla::HloSharding::Replicate().ToString()));
-      } else {
-        const auto sharding_param_attr =
-            func_op.getArgAttrOfType<IfrtShardingParamAttr>(
-                i, kIfrtShardingAttrName);
-        auto hlo_sharding = xla::ifrt::support::ToHloSharding(
-            sharding_param_attr.getSharding());
-        if (!hlo_sharding.ok()) {
-          func_op.emitOpError() << "can't lower sharding of input #" << i
-                                << ". Sharding: " << sharding_param_attr << ". "
-                                << hlo_sharding.status().message();
-          signalPassFailure();
-          return;
-        }
-        func_op.setArgAttr(
-            i, kHloShardingAttrName,
-            builder.getStringAttr(hlo_sharding.value().ToString()));
-      }
-    }
-    const auto memory_kind_attr =
-        func_op.getArgAttrOfType<mlir::StringAttr>(i, kIfrtMemoryKindAttrName);
-    if (memory_kind_attr) {
-      func_op.setArgAttr(i, kHloMemoryKindAttrName, memory_kind_attr);
     }
   }
 
   // Lower output shardings.
-  for (int i = 0; i < func_op.getNumResults(); ++i) {
-    const auto sharding_attr =
-        func_op.getResultAttrOfType<IfrtShardingAttrInterface>(
-            i, kIfrtShardingAttrName);
-    if (sharding_attr == nullptr) {
-      // The op has already been visited, and the IFRT attributes have been
-      // removed. Verify that kHloShardingAttrName has been set if the module is
-      // not sdy partitioned.
-      if (!is_sdy &&
-          func_op.getResultAttr(i, kHloShardingAttrName) == nullptr) {
-        func_op.emitOpError() << "can't find `" << kIfrtShardingAttrName
-                              << "` attribute of output #" << i << " to set `"
-                              << kHloShardingAttrName << "` attribute";
-        signalPassFailure();
-        return;
-      }
-      continue;
+  for (int res_idx = 0; res_idx < func_op.getNumResults(); ++res_idx) {
+    if (const auto memory_kind_attr =
+            func_op.getResultAttrOfType<mlir::StringAttr>(
+                res_idx, kIfrtMemoryKindAttrName);
+        memory_kind_attr) {
+      func_op.setResultAttr(res_idx, kHloMemoryKindAttrName, memory_kind_attr);
     }
-    if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
-      // Sharding is not specified so we cannot lower to kHloShardingAttrName.
-      continue;
-    }
-
-    // Verify that the output is sharded over the same number of devices as
-    // the computation.
-    auto attr_num_devices = sharding_attr.NumDevices();
-    if (attr_num_devices != num_devices) {
-      func_op.emitOpError()
-          << "can't lower sharding of output #" << i
-          << ". Sharding: " << sharding_attr << " uses " << attr_num_devices
-          << " devices while computation uses " << num_devices << " devices";
+    // Only set the HLO shardings if Shardy is not used.
+    if (!is_sdy &&
+        mlir::failed(SetResultHloSharding(func_op, local_view_attr, num_devices,
+                                          builder, res_idx))) {
       signalPassFailure();
       return;
-    }
-
-    if (!is_sdy) {
-      if (local_view_attr != nullptr) {
-        // The results of the function are already sharded, so we do not need
-        // to shard them again.
-        func_op.setResultAttr(
-            i, kHloShardingAttrName,
-            builder.getStringAttr(xla::HloSharding::Replicate().ToString()));
-      } else {
-        const auto sharding_param_attr =
-            func_op.getResultAttrOfType<IfrtShardingParamAttr>(
-                i, kIfrtShardingAttrName);
-        auto hlo_sharding = xla::ifrt::support::ToHloSharding(
-            sharding_param_attr.getSharding());
-        if (!hlo_sharding.ok()) {
-          func_op.emitOpError() << "can't lower sharding of output #" << i
-                                << ". Sharding: " << sharding_param_attr << ". "
-                                << hlo_sharding.status().message();
-          signalPassFailure();
-          return;
-        }
-        func_op.setResultAttr(
-            i, kHloShardingAttrName,
-            builder.getStringAttr(hlo_sharding.value().ToString()));
-      }
-    }
-    const auto memory_kind_attr = func_op.getResultAttrOfType<mlir::StringAttr>(
-        i, kIfrtMemoryKindAttrName);
-    if (memory_kind_attr) {
-      func_op.setResultAttr(i, kHloMemoryKindAttrName, memory_kind_attr);
     }
   }
 }
