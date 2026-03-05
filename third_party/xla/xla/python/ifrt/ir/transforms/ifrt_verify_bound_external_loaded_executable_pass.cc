@@ -132,7 +132,9 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
 
       auto func_type = loaded_exec_op.getFunctionType();
       std::optional<std::vector<xla::OpSharding>> parameter_shardings;
-      if (loaded_exec_op.getDevices().size() == 1) {
+      if (func_type.getNumInputs() == 0) {
+        parameter_shardings.emplace();
+      } else if (loaded_exec_op.getDevices().size() == 1) {
         parameter_shardings.emplace(func_type.getNumInputs());
       } else {
         parameter_shardings = exec_it->second->GetParameterShardings();
@@ -143,7 +145,9 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
                   "shardings";
       }
       std::optional<std::vector<xla::OpSharding>> output_shardings;
-      if (loaded_exec_op.getDevices().size() == 1) {
+      if (func_type.getNumResults() == 0) {
+        output_shardings.emplace();
+      } else if (loaded_exec_op.getDevices().size() == 1) {
         output_shardings.emplace(func_type.getNumResults());
       } else {
         output_shardings = exec_it->second->GetOutputShardings();
