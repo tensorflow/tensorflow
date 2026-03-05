@@ -73,12 +73,6 @@ std::string OperationToString(mlir::Operation* op,
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleIntoContext(
     mlir::ModuleOp module, mlir::MLIRContext& context);
 
-// Clones a given mlir::ModuleOp using a mlir::OpBuilder. This function is used
-// to clone a module into a new MLIR context, which was used to construct the
-// builder. For other cases, regular mlir::ModuleOp::clone() should be used.
-mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
-                                       mlir::OpBuilder& builder);
-
 // Expands a vector of platform names from short format (e.g., tpu:2,host:2) to
 // long format with an entry for each platform instance.
 absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(
