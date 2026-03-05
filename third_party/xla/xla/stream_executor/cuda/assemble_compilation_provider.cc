@@ -261,7 +261,8 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
     return CompositeCompilationProvider::Create(std::move(providers));
   }
 
-  if (ptxas_path.ok() && has_driver_compilation_support) {
+  if (parallel_compilation_support_is_desired && ptxas_path.ok() &&
+      has_driver_compilation_support) {
     // It's possible to use ptxas for compilation and the driver for linking.
     // This setup supports parallel compilation.
     // cuda_compat should help with old drivers.
