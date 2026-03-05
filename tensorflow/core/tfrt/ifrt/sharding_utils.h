@@ -76,17 +76,6 @@ class H2DTransferExecutor {
   explicit H2DTransferExecutor(xla::ifrt::Client& ifrt_client);
   virtual ~H2DTransferExecutor() = default;
 
-  ABSL_DEPRECATED("Use ScheduledH2DTransfers instead.")
-  // Registers a tensor to be transferred to devices. The H2D transfer can be
-  // started in this call or in a later call of `RunH2DTransfers`.
-  virtual absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> ScheduledH2DTransfer(
-      const tensorflow::Tensor& tensor,
-      // `input_xla_shape` is not used in this implementation.
-      const xla::Shape* /*input_xla_shape*/,
-      const xla::ifrt::DeviceListRef& device_list,
-      xla::ifrt::ShardingRef sharding, tsl::thread::ThreadPool& thread_pool,
-      xla::ifrt::LayoutRef xla_input_layout);
-
   // Registers a list of tensors to be transferred to devices.
   // This should be called only before `RunH2DTransfers` once.
   virtual absl::StatusOr<tsl::Future<std::vector<xla::ifrt::ArrayRef>>>

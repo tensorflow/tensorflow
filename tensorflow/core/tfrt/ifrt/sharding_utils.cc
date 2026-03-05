@@ -656,19 +656,6 @@ H2DTransferExecutorFactory::CreateH2DTransferExecutor(
 H2DTransferExecutor::H2DTransferExecutor(xla::ifrt::Client& ifrt_client)
     : ifrt_client_(ifrt_client) {}
 
-absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>>
-H2DTransferExecutor::ScheduledH2DTransfer(
-    const tensorflow::Tensor& tensor, const xla::Shape* /*input_xla_shape*/,
-    const xla::ifrt::DeviceListRef& device_list,
-    xla::ifrt::ShardingRef sharding, tsl::thread::ThreadPool& thread_pool,
-    xla::ifrt::LayoutRef xla_input_layout) {
-  TF_ASSIGN_OR_RETURN(
-      xla::ifrt::ArrayRef array_ref,
-      MakeArrayFromTensor(ifrt_client_, tensor, device_list, sharding,
-                          thread_pool, xla_input_layout));
-  return tsl::Future<xla::ifrt::ArrayRef>(std::move(array_ref));
-}
-
 absl::StatusOr<tsl::Future<std::vector<xla::ifrt::ArrayRef>>>
 H2DTransferExecutor::ScheduledH2DTransfers(
     absl::Span<const InputHandle> handles,
