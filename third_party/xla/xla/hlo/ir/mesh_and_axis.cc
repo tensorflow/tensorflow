@@ -129,7 +129,7 @@ std::string Mesh::ToString() const {
   formatted_axes_names.reserve(axes_names_.size());
   for (int64_t i = 0; i < axes_names_.size(); ++i) {
     formatted_axes_names.push_back(
-        absl::StrCat(axes_names_[i], "=", device_assignment_.dim(i)));
+        absl::StrCat("'", axes_names_[i], "'", "=", device_assignment_.dim(i)));
   }
 
   // Add the device assignment if it is not an iota case.
@@ -239,8 +239,9 @@ std::string AxisRef::ToString(const Mesh* mesh) const {
   if (mesh) {
     CHECK_LT(mesh_axis_index_, mesh->num_axes());
   }
-  std::string axis_str = mesh ? mesh->axis_names()[mesh_axis_index_]
-                              : std::to_string(mesh_axis_index_);
+  std::string axis_str =
+      mesh ? absl::StrCat("'", mesh->axis_names()[mesh_axis_index_], "'")
+           : std::to_string(mesh_axis_index_);
   if (sub_axis_info_.has_value()) {
     absl::StrAppend(&axis_str, ":(", sub_axis_info_->pre_size, ")",
                     sub_axis_info_->size);

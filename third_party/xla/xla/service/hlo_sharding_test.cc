@@ -817,12 +817,12 @@ TEST_F(HloShardingTest, ToStringTupleWithMetadataTest) {
 TEST_F(HloShardingTest, ToStringWithNamedShardingTest) {
   Mesh mesh({2, 4}, {"a", "b"});
   HloSharding sharding(test_utils::FromAxisNames(mesh, {{"a"}, {"b"}}));
-  EXPECT_EQ(sharding.ToString(), "{mesh[a=2,b=4], [{a}, {b}]}");
+  EXPECT_EQ(sharding.ToString(), "{mesh['a'=2,'b'=4], [{'a'}, {'b'}]}");
 
   HloSharding sharding_with_metadata(test_utils::FromAxisNames(
       mesh, {{"a"}, {"b"}}, {}, {}, {}, ListMetadata()));
   EXPECT_EQ(sharding_with_metadata.ToString(/*include_metadata=*/true),
-            "{mesh[a=2,b=4], [{a}, {b}], metadata={{op_name=\"b\"}, "
+            "{mesh['a'=2,'b'=4], [{'a'}, {'b'}], metadata={{op_name=\"b\"}, "
             "{op_name=\"c\"}}}");
 
   HloSharding tuple_sharding(HloSharding::Tuple(
@@ -831,8 +831,9 @@ TEST_F(HloShardingTest, ToStringWithNamedShardingTest) {
                                  ShapeUtil::MakeShape(S32, {9, 11})}),
       {sharding, sharding, sharding_with_metadata}));
   EXPECT_EQ(tuple_sharding.ToString(/*include_metadata=*/true),
-            "{{mesh[a=2,b=4], [{a}, {b}]}, {mesh[a=2,b=4], [{a}, {b}]}, "
-            "{mesh[a=2,b=4], [{a}, {b}], metadata={{op_name=\"b\"}, "
+            "{{mesh['a'=2,'b'=4], [{'a'}, {'b'}]}, {mesh['a'=2,'b'=4], [{'a'}, "
+            "{'b'}]}, "
+            "{mesh['a'=2,'b'=4], [{'a'}, {'b'}], metadata={{op_name=\"b\"}, "
             "{op_name=\"c\"}}}}");
 }
 
@@ -1177,7 +1178,7 @@ TEST_F(HloShardingTest, ToNamedShardingTuple) {
             NamedSharding::Replicate());
   EXPECT_TRUE(named_sharding.tuple_elements()[1].UseNamedShardingLeaf());
   EXPECT_EQ(named_sharding.tuple_elements()[1].named_sharding().ToString(),
-            "{mesh[axis_0=2,axis_1=3], [{axis_0}, {axis_1}]}");
+            "{mesh['axis_0'=2,'axis_1'=3], [{'axis_0'}, {'axis_1'}]}");
 }
 
 TEST_F(HloShardingTest, ToNamedShardingReplicated) {
@@ -1200,15 +1201,16 @@ TEST_F(HloShardingTest, ToNamedShardingTiled) {
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
   EXPECT_EQ(named_sharding.ToString(),
-            "{mesh[axis_0=2,axis_1=3], [{axis_0}, {axis_1}]}");
+            "{mesh['axis_0'=2,'axis_1'=3], [{'axis_0'}, {'axis_1'}]}");
 }
 
 TEST_F(HloShardingTest, ToNamedShardingPartialTile) {
   HloSharding hlo_sharding = HloSharding::PartialTile(TileAssignment({2, 3}));
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
-  EXPECT_EQ(named_sharding.ToString(),
-            "{mesh[axis_0=2,axis_1=3], [{axis_0}], replicated={axis_1}}");
+  EXPECT_EQ(
+      named_sharding.ToString(),
+      "{mesh['axis_0'=2,'axis_1'=3], [{'axis_0'}], replicated={'axis_1'}}");
 }
 
 TEST_F(HloShardingTest, ToNamedShardingIotaWithReshape) {
@@ -1216,7 +1218,7 @@ TEST_F(HloShardingTest, ToNamedShardingIotaWithReshape) {
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
   EXPECT_EQ(named_sharding.ToString(),
-            "{mesh[axis_0=2,axis_1=4], [{axis_0}, {axis_1}]}");
+            "{mesh['axis_0'=2,'axis_1'=4], [{'axis_0'}, {'axis_1'}]}");
 }
 
 TEST_F(HloShardingTest, ToNamedShardingIotaWithReshapeTransposeToSingleDim) {
@@ -1224,7 +1226,7 @@ TEST_F(HloShardingTest, ToNamedShardingIotaWithReshapeTransposeToSingleDim) {
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
   EXPECT_EQ(named_sharding.ToString(),
-            "{mesh[axis_0=2,axis_1=2], [{axis_1, axis_0}]}");
+            "{mesh['axis_0'=2,'axis_1'=2], [{'axis_1', 'axis_0'}]}");
 }
 
 TEST_F(HloShardingTest, ToNamedShardingIotaWithReshapeAndTranspose) {
@@ -1232,7 +1234,7 @@ TEST_F(HloShardingTest, ToNamedShardingIotaWithReshapeAndTranspose) {
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
   EXPECT_EQ(named_sharding.ToString(),
-            "{mesh[axis_0=2,axis_1=2], [{axis_1}, {axis_0}]}");
+            "{mesh['axis_0'=2,'axis_1'=2], [{'axis_1'}, {'axis_0'}]}");
 }
 
 TEST_F(HloShardingTest, ToNamedShardingIotaWithReshapeTransposeToTwoDims) {
@@ -1241,8 +1243,9 @@ TEST_F(HloShardingTest, ToNamedShardingIotaWithReshapeTransposeToTwoDims) {
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
   EXPECT_EQ(named_sharding.ToString(),
-            "{mesh[axis_0=7,axis_1=2,axis_2=5,axis_3=3], [{axis_3, axis_1}, "
-            "{axis_2, axis_0}]}");
+            "{mesh['axis_0'=7,'axis_1'=2,'axis_2'=5,'axis_3'=3], [{'axis_3', "
+            "'axis_1'}, "
+            "{'axis_2', 'axis_0'}]}");
 }
 
 TEST_F(HloShardingTest, ToNamedShardingSubgroups) {
@@ -1251,9 +1254,10 @@ TEST_F(HloShardingTest, ToNamedShardingSubgroups) {
       {OpSharding::MANUAL, OpSharding::UNREDUCED, OpSharding::REPLICATED});
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
-  EXPECT_EQ(named_sharding.ToString(),
-            "{mesh[axis_0=2,axis_1=2,axis_2=2], [], replicated={axis_2}, "
-            "unreduced={axis_1}, manual={axis_0}}");
+  EXPECT_EQ(
+      named_sharding.ToString(),
+      "{mesh['axis_0'=2,'axis_1'=2,'axis_2'=2], [], replicated={'axis_2'}, "
+      "unreduced={'axis_1'}, manual={'axis_0'}}");
 }
 
 class HloShardingV2ToV3ToV2RoundTripTest

@@ -19,15 +19,15 @@ module @module_1 {
   // CHECK-SAME:    tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}]>},
   // CHECK-SAME:    tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) {
   func.func @results_with_sharding(
-    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{b}]}"},
-    %arg1: tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{a}]}"},
-    %arg2: tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{c}]}"}
-  ) -> (tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{a}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{b}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{a}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{c}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{b}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{a}]}"}) {
+    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'b'}]}"},
+    %arg1: tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"},
+    %arg2: tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'c'}]}"}
+  ) -> (tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'b'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'c'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'b'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"}) {
     // CHECK-NEXT: return %arg0, %arg1, %arg0, %arg1, %arg1, %arg2
     return %arg0, %arg1, %arg0, %arg1, %arg1, %arg2 : tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>
   }
@@ -35,7 +35,7 @@ module @module_1 {
   // CHECK-LABEL: func @while_with_free_variables
   func.func @while_with_free_variables(
       %arg0: tensor<32x96xf32>,
-      %arg1: tensor<32x96xf32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{?}, {?}]}"})
+      %arg1: tensor<32x96xf32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{?}, {?}]}"})
       -> tensor<32x96xf32> {
     // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
     // CHECK-NEXT: %[[C1:.*]] = sdy.constant dense<1>
@@ -101,11 +101,11 @@ module @module_1 {
   // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>})
   // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>}) {
   func.func @inlined_mesh(
-    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh[a=2,b=2], [{a}]}"}
+    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"}
   ) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}) {
     // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh_0, [{"a", "b"}]> : tensor<32xi32>
     // CHECK-NEXT: return %[[SHARDING]]
-    %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh[c=4], [{c}]}"} : (tensor<32xi32>) -> tensor<32xi32>
+    %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['c'=4], [{'c'}]}"} : (tensor<32xi32>) -> tensor<32xi32>
     return %0 : tensor<32xi32>
   }
 
@@ -146,7 +146,7 @@ module @module_1 {
   // CHECK-SAME:    %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},
   // CHECK-SAME:    %arg2: !stablehlo.token) -> tensor<16x8xf32> {
   func.func @frontend_attr_not_sharding(
-    %arg0: tensor<16x8xf32> {mhlo.sharding = "{mesh[a=1,b=4,c=1], [{b},{?}]}"},
+    %arg0: tensor<16x8xf32> {mhlo.sharding = "{mesh['a'=1,'b'=4,'c'=1], [{'b'},{?}]}"},
     %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},
     %arg2: !stablehlo.token) -> tensor<16x8xf32> {
     // CHECK-NEXT: %[[SEND:.*]] = "stablehlo.send"(%arg0, %arg2) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token

@@ -16522,8 +16522,8 @@ TEST_P(SpmdPartitioningTest, UnreducedParamV3) {
 HloModule module
 
 ENTRY entry {
-  a = s32[2,4]{1,0} parameter(0), sharding={mesh[x=2] [{},{}], unreduced={x}}
-  b = s32[2,4]{1,0} parameter(1), sharding={mesh[x=2] [{},{}], unreduced={x}}
+  a = s32[2,4]{1,0} parameter(0), sharding={mesh['x'=2] [{},{}], unreduced={'x'}}
+  b = s32[2,4]{1,0} parameter(1), sharding={mesh['x'=2] [{},{}], unreduced={'x'}}
   ROOT add = s32[2,4]{1,0} add(a, b)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -16558,15 +16558,15 @@ TEST_P(SpmdPartitioningTest, SubgroupUnreducedParamV3) {
 HloModule module
 
 ENTRY entry {
-  a = s32[2,4]{1,0} parameter(0), sharding={mesh[x=2, y=2] [{?},{x}], unreduced={y}}
+  a = s32[2,4]{1,0} parameter(0), sharding={mesh['x'=2,'y'=2] [{?},{'x'}], unreduced={'y'}}
   ROOT add = s32[2,4]{1,0} add(a, a)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   // Check that unreduced HloSharding is preserved after the pass.
   EXPECT_THAT(module->entry_computation()->parameter_instructions(),
-              ::testing::Each(
-                  op::Sharding("{mesh[x=2,y=2] [{?},{x}], unreduced={y}}")));
+              ::testing::Each(op::Sharding(
+                  "{mesh['x'=2,'y'=2] [{?},{'x'}], unreduced={'y'}}")));
 }
 
 // TODO(b/489091261): Test V3 dot handler.
