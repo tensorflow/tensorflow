@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/ifrt_ir_executable_version.h"
 
-#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>

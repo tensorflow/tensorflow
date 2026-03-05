@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/python/ifrt/test_util.h"
