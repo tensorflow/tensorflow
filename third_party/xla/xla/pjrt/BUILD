@@ -1616,3 +1616,31 @@ xla_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "stream_executor_pjrt_abi_version",
+    srcs = ["stream_executor_pjrt_abi_version.cc"],
+    hdrs = ["stream_executor_pjrt_abi_version.h"],
+    deps = [
+        ":pjrt_abi_version",
+        ":pjrt_common",
+        "//xla/stream_executor/abi:executable_abi_version",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "stream_executor_pjrt_abi_version_test",
+    srcs = ["stream_executor_pjrt_abi_version_test.cc"],
+    deps = [
+        ":pjrt_common",
+        ":stream_executor_pjrt_abi_version",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/stream_executor/abi:executable_abi_version",
+        "//xla/stream_executor/abi:executable_abi_version_proto_cc",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
