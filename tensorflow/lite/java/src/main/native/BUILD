@@ -109,6 +109,7 @@ cc_library_with_tflite(
         "//tensorflow/lite/tools:verifier_internal",
     ],
     deps = [
+        "//tensorflow/lite:interpreter_options_header",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:op_resolver",
         "//tensorflow/lite:schema_fbs_version",
