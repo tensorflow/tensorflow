@@ -549,14 +549,15 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
       if rtol == 0 and atol == 0:
         return a == b
 
-      # Compute comparison in float64 to avoid overflow and to correctly
-      # account for fractional `rtol` / `atol` when inputs are integers
-      # (matches NumPy semantics).
-      diff_f = math_ops.cast(diff, tf.float64)
+      # Perform the tolerance comparison in float64 so that fractional
+      # rtol/atol values are handled correctly for integer inputs and to
+      # match NumPy semantics.
+      diff_f = math_ops.cast(diff, dtypes.float64)
       rhs_f = (
-          tf.cast(atol, tf.float64)
-          + tf.cast(rtol, tf.float64) * math_ops.cast(math_ops.abs(b), tf.float64)
-      )
+          math_ops.cast(atol, dtypes.float64)
+          + math_ops.cast(rtol, dtypes.float64)
+          * math_ops.cast(math_ops.abs(b), dtypes.float64)
+        )
       return diff_f <= rhs_f
 
   return _bin_op(f, a, b)

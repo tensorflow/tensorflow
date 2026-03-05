@@ -259,7 +259,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
     b = np.asarray([2**60 + 124], np.int64)
     rtol = 1e-5
     atol = 0
-    expected = np.isclose(a.astype(np.float64), b.astype(np.float64), rtol=rtol, atol=atol)
+    expected = np.isclose(
+        a.astype(np.float64), 
+        b.astype(np.float64), 
+        rtol=rtol, 
+        atol=atol
+    )
     actual = np_math_ops.isclose(a, b, rtol=rtol, atol=atol)
     self.match(actual, expected)
 
