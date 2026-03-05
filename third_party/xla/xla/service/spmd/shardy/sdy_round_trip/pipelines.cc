@@ -41,7 +41,8 @@ using ::mlir::PassPipelineOptions;
 using ::mlir::PassPipelineRegistration;
 
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
-                                   bool keepMeshesInlined) {
+                                   bool keepMeshesInlined,
+                                   bool enableHloShardingV3) {
   // Lift meshes before deduping, since the dedup meshes pass ignores inlined
   // meshes.
   if (!keepMeshesInlined) {
@@ -53,18 +54,19 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
   // Preserve the SDY shardings for `createExportStablehloShardingsPass` so that
   // we have both `mhlo.sharding`s and hidden `sdy.sharding`s on the module. We
   // want to have `mhlo.sharding`s for Pathways to read from.
-  pm.addPass(createSdyRoundTripExportShardyAttrsPass());
-  pm.addPass(createExportStablehloShardingsPass());
+  pm.addPass(createSdyRoundTripExportShardyAttrsPass(enableHloShardingV3));
+  pm.addPass(createExportStablehloShardingsPass(
+      /*addMissingShardingToControlFlow=*/false, enableHloShardingV3));
 }
 
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport,
-                                   bool importFuncCalls,
-                                   bool liftAndDedupMeshes) {
+                                   bool liftAndDedupMeshes,
+                                   bool enableHloShardingV3) {
   addCommonPreImportPasses(pm, enableConstantImport);
-  pm.addPass(createSdyRoundTripImportShardyAttrsPass());
+  pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
   pm.addPass(createSdyRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm, importFuncCalls);
+  addCommonPostImportPasses(pm);
   if (liftAndDedupMeshes) {
     // Lift and dedup meshes required here because of sdy shardings added
     // directly to hlo in tf2xla.
@@ -81,11 +83,17 @@ struct SdyRoundTripExportPipelineOptions
       *this, "keep-meshes-inlined",
       llvm::cl::desc("Whether to keep meshes inlined and not lift them."),
       llvm::cl::init(false)};
+  Option<bool> enableHloShardingV3{
+      *this, "enable-hlo-sharding-v3",
+      llvm::cl::desc("Whether to enable HloShardingV3 which is the mesh and "
+                     "axis based sharding representation."),
+      llvm::cl::init(false)};
 };
 
 void sdyRoundTripExportPipeline(
     mlir::OpPassManager& pm, const SdyRoundTripExportPipelineOptions& options) {
-  addSdyRoundTripExportPipeline(pm, options.keepMeshesInlined);
+  addSdyRoundTripExportPipeline(pm, options.keepMeshesInlined,
+                                options.enableHloShardingV3);
 }
 
 }  // namespace
@@ -105,19 +113,21 @@ struct SdyRoundTripImportPipelineOptions
   Option<bool> enableConstantImport{*this, "enable-constant-import",
                                     llvm::cl::desc("Enable constant import."),
                                     llvm::cl::init(true)};
-  Option<bool> importFuncCalls{*this, "import-func-calls",
-                               llvm::cl::desc("Import func calls."),
-                               llvm::cl::init(false)};
   Option<bool> liftAndDedupMeshes{*this, "lift-and-dedup-meshes",
                                   llvm::cl::desc("Lift and dedup meshes."),
                                   llvm::cl::init(false)};
+  Option<bool> enableHloShardingV3{
+      *this, "enable-hlo-sharding-v3",
+      llvm::cl::desc("Whether to enable HloShardingV3 which is the mesh and "
+                     "axis based sharding representation."),
+      llvm::cl::init(false)};
 };
 
 void sdyRoundTripImportPipeline(
     mlir::OpPassManager& pm, const SdyRoundTripImportPipelineOptions& options) {
   addSdyRoundTripImportPipeline(pm, options.enableConstantImport,
-                                options.importFuncCalls,
-                                options.liftAndDedupMeshes);
+                                options.liftAndDedupMeshes,
+                                options.enableHloShardingV3);
 }
 
 }  // namespace

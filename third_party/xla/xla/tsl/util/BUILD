@@ -4,6 +4,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//xla:py_strict.bzl", "py_strict_binary")
 load(
     "//xla/tsl:tsl.bzl",
@@ -519,10 +520,11 @@ cc_library(
     hdrs = ["memfile_builtin.h"],
     deps = [
         ":file_toc",
+        "//xla/tsl/platform:embedded_filesystem",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:ram_file_system",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -574,5 +576,47 @@ tsl_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+bzl_library(
+    name = "cc_embed_data",
+    srcs = ["cc_embed_data.bzl"],
+    deps = [
+        "@bazel_skylib//lib:paths",
+        "@rules_cc//cc:find_cc_toolchain_bzl",
+        "@rules_cc//cc/common",
+    ],
+)
+
+bzl_library(
+    name = "memfile_embed_data",
+    srcs = ["memfile_embed_data.bzl"],
+    deps = [
+        ":cc_embed_data",
+        "//xla/tsl/platform:rules_cc_bzl",
+    ],
+)
+
+cc_library(
+    name = "sorted_range",
+    hdrs = [
+        "sorted_range.h",
+        "sorted_range_internal.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/container:fixed_array"],
+)
+
+tsl_cc_test(
+    name = "sorted_range_test",
+    srcs = ["sorted_range_test.cc"],
+    deps = [
+        ":sorted_range",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
     ],
 )

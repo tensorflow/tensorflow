@@ -152,6 +152,15 @@ diff --git a/xprof/utils/hlo_module_utils.h b/xprof/utils/hlo_module_utils.h
      xla::HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
      if (frame.empty()) {
        break;
+@@ -107,6 +120,6 @@
+   return {.source_file = instr.metadata().source_file(),
+           .source_line = instr.metadata().source_line(),
+           .stack_frame = stack_frame_id != 0
+-                             ? GetOpLocationStack(stack_frame_id, instr)
++                             ? GetOpLocationStack(xla::StackFrameId{static_cast<int>(stack_frame_id)}, instr)
+                              : ""};
+ }
+ 
 diff --git a/xprof/utils/hlo_module_utils_test.cc b/xprof/utils/hlo_module_utils_test.cc
 --- a/xprof/utils/hlo_module_utils_test.cc	2025-06-10 16:15:37.000000000 +0000
 +++ b/xprof/utils/hlo_module_utils_test.cc	2026-02-17 17:32:56.336350473 +0000

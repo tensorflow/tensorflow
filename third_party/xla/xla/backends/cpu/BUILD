@@ -188,6 +188,7 @@ cc_library(
     name = "target_machine_options",
     srcs = ["target_machine_options.cc"],
     hdrs = ["target_machine_options.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:util",
         "//xla:xla_proto_cc",
@@ -214,6 +215,8 @@ xla_cc_test(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
     ],
 )
 

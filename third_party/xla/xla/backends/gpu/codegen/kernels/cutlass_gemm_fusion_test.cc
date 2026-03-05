@@ -34,23 +34,20 @@ limitations under the License.
 #include "xla/error_spec.h"
 #include "xla/literal_util.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
-using stream_executor::CudaComputeCapability;
-
 namespace xla::gpu {
 
-class CutlassFusionTest : public HloTestBase {
+class CutlassFusionTest : public HloPjRtGpuTestBase {
  public:
   int GpuSharedMemorySize() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .shared_memory_per_block_optin();
+    return device_description().shared_memory_per_block_optin();
   }
   int CutlassGemmKernelSharedMemorySize(PrimitiveType dot_type,
                                         PrimitiveType lhs_type,
@@ -58,12 +55,14 @@ class CutlassFusionTest : public HloTestBase {
                                         int k) {
     return kernel::gemm_universal::GetCutlassGemmKernels(
                "cutlass_gemm", dot_type, lhs_type, rhs_type, m, n, k,
-               /*indices=*/{0, 1, 2}, /*slices=*/{},
-               backend().default_stream_executor()->GetDeviceDescription())
+               /*indices=*/{0, 1, 2}, /*slices=*/{}, device_description())
         ->at(0)
         .shared_memory_bytes();
   };
 };
+
+class CutlassFusionTestWithReferenceComparison
+    : public HloPjRtInterpreterReferenceMixin<CutlassFusionTest> {};
 
 //===----------------------------------------------------------------------===//
 // Pattern matching tests
@@ -290,8 +289,11 @@ TEST_F(CutlassFusionTest, DoNotRewriteOnV100) {
   patterns.Emplace<CutlassGemmWithDynamicUpdateSlicePattern>();
 
   auto device = TestGpuDeviceInfo::RTXA6000DeviceInfo(
-      stream_executor::GpuComputeCapability{CudaComputeCapability{
-          CudaComputeCapability::CudaComputeCapabilities::kVolta, 0}});
+      stream_executor::GpuComputeCapability{
+          stream_executor::CudaComputeCapability{
+              stream_executor::CudaComputeCapability::CudaComputeCapabilities::
+                  kVolta,
+              0}});
   CustomKernelFusionRewriter pass(&device, /*kernel_index=*/0, &patterns);
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
@@ -756,7 +758,7 @@ TEST_F(CutlassFusionTest,
                                       /*run_hlo_passes=*/false));
 }
 
-TEST_F(CutlassFusionTest, GemmWithUpcastShouldBeFused) {
+TEST_F(CutlassFusionTestWithReferenceComparison, GemmWithUpcastShouldBeFused) {
   const char* hlo = R"(
   ENTRY e {
     p0 = f32[16,32]{1,0} parameter(0)
@@ -900,7 +902,8 @@ TEST_F(CutlassFusionTest, GemmWithUpcastWithBatchDimensionShouldNotBeFused) {
   RunAndFilecheckHloRewrite(hlo, std::move(pass), std::nullopt);
 }
 
-TEST_F(CutlassFusionTest, GemmWithUpcastAndColumnMajorOperandsShouldBeFused) {
+TEST_F(CutlassFusionTestWithReferenceComparison,
+       GemmWithUpcastAndColumnMajorOperandsShouldBeFused) {
   const char* hlo = R"(
   ENTRY e {
     p0 = f32[32,16]{0,1} parameter(0)

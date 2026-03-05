@@ -201,6 +201,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::LLVMContext& context) {
   switch (element_type) {
+    case S1:
+    case U1:
+      return llvm::Type::getIntNTy(context, 1);
     case S2:
     case U2:
       return llvm::Type::getIntNTy(context, 2);

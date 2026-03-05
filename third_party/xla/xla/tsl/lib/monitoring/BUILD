@@ -12,6 +12,7 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = internal_visibility([
+        "//learning/brain/tpu/runtime/hal/internal:__subpackages__",
         "//learning/brain/google/data:__subpackages__",
         "//learning/brain/google/monitoring:__subpackages__",
         # copybara:uncomment "//third_party/neptune:__subpackages__",

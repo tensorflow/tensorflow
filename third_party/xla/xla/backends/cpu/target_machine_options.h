@@ -31,14 +31,21 @@ namespace cpu {
 // Helper class to manage the target machine options for CPU compilation.
 class TargetMachineOptions {
  public:
+  // Creates a TargetMachineOptions object for the host machine with no CPU
+  // features set.
+  TargetMachineOptions();
+
   // Creates a TargetMachineOptions object from the given DebugOptions. This
-  // will create a TargetMachineOptions object for the host machine.
+  // will create a TargetMachineOptions object for the host machine and infer
+  // the target features from the DebugOptions.
   explicit TargetMachineOptions(const DebugOptions& debug_options);
 
   // Creates a TargetMachineOptions object from the given triple, cpu, and
   // features.
   TargetMachineOptions(absl::string_view triple, absl::string_view cpu,
                        absl::string_view features);
+
+  bool operator==(const TargetMachineOptions& other) const;
 
   TargetMachineOptionsProto ToProto() const;
   static absl::StatusOr<TargetMachineOptions> FromProto(
@@ -64,8 +71,6 @@ class TargetMachineOptions {
   std::vector<std::string> GetTargetMachineFeaturesVector() const;
 
  private:
-  TargetMachineOptions() = default;
-
   std::string triple_;
   std::string cpu_;
   std::vector<std::string> enabled_features_;

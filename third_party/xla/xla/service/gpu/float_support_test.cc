@@ -13,28 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <variant>
-
 #include <gtest/gtest.h>
-#include "absl/functional/overload.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class FloatSupportTest : public HloTestBase {
+class FloatSupportTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
  public:
   const se::GpuComputeCapability& GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
+    return device_description().gpu_compute_capability();
   }
 };
 
@@ -43,16 +39,6 @@ class FloatSupportTestWithCublas : public FloatSupportTest {
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(false);
-    return debug_options;
-  }
-};
-
-class FloatSupportTestWithTriton : public FloatSupportTest {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_enable_triton_gemm(true);
-    debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
 };
@@ -73,6 +59,16 @@ ENTRY e {
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{1e-6, 1e-6}));
 }
+
+class FloatSupportTestWithTriton : public FloatSupportTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = FloatSupportTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_gemm(true);
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    return debug_options;
+  }
+};
 
 TEST_F(FloatSupportTestWithTriton, MixedTypeDotWithBF16IsNotUpcasted) {
   if (GetGpuComputeCapability().IsRocm() ||

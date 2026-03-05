@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -35,7 +37,7 @@ absl::Status CollectiveCliqueRequests::RequestClique(
     std::vector<std::vector<GlobalDeviceId>> device_groups,
     const CliqueRequirements& requirements) {
   // Sort each device group in ascending order, and all device groups using
-  // the first device. We need this for determenistic check below.
+  // the first device. We need this for deterministic check below.
   absl::c_for_each(device_groups, [](auto& group) { absl::c_sort(group); });
   absl::c_sort(device_groups, [](const auto& a, const auto& b) {
     CHECK(!a.empty() && !b.empty()) << "Replica groups must not be empty";
@@ -122,13 +124,21 @@ CollectiveCliqueRequests::OrderedRequestedCliques() const {
   return cliques;
 }
 
-bool CollectiveCliqueRequests::IsBarrierAfterModuleExecutionRequested() const {
+absl::flat_hash_set<GlobalDeviceId>
+CollectiveCliqueRequests::GetDevicesRequiringBarrier() const {
+  absl::flat_hash_set<GlobalDeviceId> result;
   for (const auto& [key, request] : cliques_) {
-    if (request.barrier_after_module_execution_requested) {
-      return true;
+    if (!request.barrier_after_module_execution_requested) {
+      continue;
+    }
+
+    for (const std::vector<GlobalDeviceId>& group : request.device_groups) {
+      for (GlobalDeviceId device : group) {
+        result.insert(device);
+      }
     }
   }
-  return false;
+  return result;
 }
 
 }  // namespace xla::gpu

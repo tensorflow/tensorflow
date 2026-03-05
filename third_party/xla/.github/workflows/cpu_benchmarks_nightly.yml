@@ -16,9 +16,9 @@ name: Nightly CPU Benchmarks
 permissions:
   contents: read
 on:
-  workflow_dispatch:  # Allows manual triggering
+  workflow_dispatch: # Allows manual triggering
   schedule:
-    - cron: "0 0 * * *"  # Run at midnight every day
+    - cron: "0 0 * * *" # Run at midnight every day
 
 jobs:
   Tests:
@@ -60,10 +60,8 @@ jobs:
           free -h  # Memory information
           df -h    # Disk space information
           uname -a # Kernel information
-
       - name: Check Python Version in Container
         run: python3 --version
-
       - name: Install Python 3.10 if not present (IN CONTAINER)
         run: |
           if ! python3 --version > /dev/null 2>&1; then # check for python3
@@ -73,18 +71,17 @@ jobs:
           else
             echo "Python 3 found."
           fi
-
       - name: Checkout OpenXLA
-        uses: actions/checkout@v6.0.2
-
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
       - name: Create results directory
-        run:
-          mkdir results
+        run: mkdir results
 
       - name: Configure CPU backend
         run: |
-          ./configure.py --backend=CPU
 
+          ./configure.py --backend=CPU
       - name: Download and run Gemma HLO files and collect runtime and compile time stats
         if: ${{ matrix.job_info.os != 'linux-arm64-t2a-48' }}
         run: |
@@ -97,42 +94,47 @@ jobs:
       - name: Print GitHub Context
         run: |
           echo "GitHub SHA: ${{ github.sha }}"
-          echo "GitHub Ref: ${{ github.ref }}"
-          echo "GitHub Ref Name: ${{ github.ref_name }}"
-          echo "GitHub Head Ref: ${{ github.head_ref }})"
-          echo "GitHub Base Ref: ${{ github.base_ref }})"
+          echo "GitHub Ref: ${GITHUB_REF}"
+
+          echo "GitHub Ref Name: ${GITHUB_REF_NAME}"
+          echo "GitHub Head Ref: ${GITHUB_HEAD_REF})"
+          echo "GitHub Base Ref: ${GITHUB_BASE_REF})"
+
           echo "GitHub Repository: ${{ github.repository }}"
           echo "GitHub Run ID: ${{ github.run_id }}"
           echo "GitHub Run Number: ${{ github.run_number }}"
-          echo "GitHub Workflow: ${{ github.workflow }}"
-          echo "GitHub Actor: ${{ github.actor }}"
+
+          echo "GitHub Workflow: ${GITHUB_WORKFLOW}"
+          echo "GitHub Actor: ${GITHUB_ACTOR}"
           echo "GitHub Event Name: ${{ github.event_name }}"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "Pull Request Number: ${{ github.event.pull_request.number }}"
-            echo "Pull Request Head Ref: ${{ github.event.pull_request.head.ref }}"
-            echo "Pull Request Base Ref: ${{ github.event.pull_request.base.ref }}"
+            echo "Pull Request Head Ref: ${GITHUB_EVENT_PULL_REQUEST_HEAD_REF}"
+            echo "Pull Request Base Ref: ${GITHUB_EVENT_PULL_REQUEST_BASE_REF}"
           fi
 
+        env:
+          GITHUB_EVENT_PULL_REQUEST_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          GITHUB_EVENT_PULL_REQUEST_BASE_REF: ${{ github.event.pull_request.base.ref }}
       # Find the current PR number, if any, because github context doesn't have it for push events.
-      - uses: jwalton/gh-find-current-pr@v1.3.3
+      - uses: jwalton/gh-find-current-pr@89ee5799558265a1e0e31fab792ebb4ee91c016b # ratchet:jwalton/gh-find-current-pr@v1.3.3
         id: findPr
         with:
           # Can be "open", "closed", or "all".  Defaults to "open".
           state: all
       # This will echo "Your PR is 7", or be skipped if there is no current PR.
-      - run: echo "PR_NUMBER=${{ steps.findPr.outputs.pr }}"
+      - run: echo "PR_NUMBER=${STEPS_FINDPR_OUTPUTS_PR}"
         if: success() && steps.findPr.outputs.number
         env:
           PR: ${{ steps.findPr.outputs.pr }}
-
+          STEPS_FINDPR_OUTPUTS_PR: ${{ steps.findPr.outputs.pr }}
       - name: "Run build.py"
         run: |
           ./build_tools/ci/build.py --build="${{ matrix.job_info.pretty_name }}_github_actions"
-
-
       - name: Run hlo_runner_main on cpu_hlo.hlo and collect profile stats
         run: |
           bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"
+
           binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
           mkdir -p "$OUTPUT_DIR"
           OUTPUT_FILE_PATH="$OUTPUT_DIR/cpu_hlo_output.txt"
@@ -143,12 +145,14 @@ jobs:
           $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
           $binary_dir/compute_xspace_stats_main --input="$XSPACE_FILE_PATH" --device_type=CPU >> "$OUTPUT_FILE_PATH"
           cat "$OUTPUT_FILE_PATH"
-
       - name: Run hlo_runner_main on gemma2_2b_keras_jax.hlo and collect profile stats
         if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
+
         run: |
           bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"
           binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
+
+
           OUTPUT_FILE_PATH="$OUTPUT_DIR/gemma2_2b_keras_jax_output.txt"
           XSPACE_FILE_PATH="$OUTPUT_DIR/gemma2_2b_xspace.pb"
           test_hlo_file="$OUTPUT_DIR/tmp_hlo/gemma2_2b_keras_jax.hlo"
@@ -157,12 +161,12 @@ jobs:
           $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
           $binary_dir/compute_xspace_stats_main --input="$XSPACE_FILE_PATH" --device_type=CPU >> "$OUTPUT_FILE_PATH"
           cat "$OUTPUT_FILE_PATH"
-
       - name: Run hlo_runner_main on gemma3_1b_flax_call.hlo and collect profile stats
         if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
           bazel_arch_dir="${{ matrix.job_info.bazel_arch_dir }}"
           binary_dir="./bazel-out/${bazel_arch_dir}/bin/xla/tools"
+
           OUTPUT_FILE_PATH="$OUTPUT_DIR/gemma3_1b_flax_call_output.txt"
           XSPACE_FILE_PATH="$OUTPUT_DIR/gemma3_1b_xspace.pb"
           test_hlo_file="$OUTPUT_DIR/tmp_hlo/gemma3_1b_flax_call.hlo"
@@ -171,24 +175,25 @@ jobs:
           $binary_dir/multihost_hlo_runner/hlo_runner_main --device_type=host --num_repeats=5 --use_spmd_partitioning --profile_execution=True --xla_gpu_dump_xspace_to="$XSPACE_FILE_PATH" "$test_hlo_file" > "$OUTPUT_FILE_PATH"
           $binary_dir/compute_xspace_stats_main --input="$XSPACE_FILE_PATH" --device_type=CPU >> "$OUTPUT_FILE_PATH"
           cat "$OUTPUT_FILE_PATH"
-
       - name: Upload HLO test output to a GCS bucket
         if: ${{ matrix.job_info.pool != 'linux-arm64-t2a-48' }}
         run: |
           GCS_BUCKET="gs://openxla-nightly-transient"
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
           DATE_FOLDER=$(date +%Y%m%d)
           FILENAME_GEMMA="gemma2_2b_keras_jax_output.txt"
           FILENAME_CPU="cpu_hlo_output.txt"
           FILENAME_GEMMA3="gemma3_1b_flax_call_output.txt"
           COMMIT_SHA="${{ github.sha }}"
           RUN_ID="${{ github.run_id }}"
-          PR_NUMBER="${{ steps.findPr.outputs.pr }}"
+          PR_NUMBER="${STEPS_FINDPR_OUTPUTS_PR}"
           OUTPUT_SUBDIR="${{ matrix.job_info.output_dir }}"
           PR_SUFFIX=""
           if [[ -n "$PR_NUMBER" ]]; then
             PR_SUFFIX="_pr_${PR_NUMBER}"
           fi
+
 
           GEMMA_GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.pool }}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_${OUTPUT_SUBDIR}_${FILENAME_GEMMA}"
           CPU_GCS_OBJECT_NAME="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.pool }}_run_${RUN_ID}_commit_${COMMIT_SHA}${PR_SUFFIX}_${OUTPUT_SUBDIR}_${FILENAME_CPU}"
@@ -205,19 +210,39 @@ jobs:
           echo "Uploading $OUTPUT_DIR/$FILENAME_GEMMA3 to $GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
           ls -l "$OUTPUT_DIR/$FILENAME_GEMMA3" # Verify the file exists
           gsutil cp "$OUTPUT_DIR/$FILENAME_GEMMA3" "$GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
+        env:
+          STEPS_FINDPR_OUTPUTS_PR: ${{ steps.findPr.outputs.pr }}
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # ratchet:actions/upload-artifact@v6.0.0
         with:
+
           name: cpu-xla-benchmarks-xspace-${{ matrix.job_info.pool }}
           path: ${{ github.workspace }}/${{ matrix.job_info.output_dir }}/*_xspace.pb
-
       - name: Run E2E benchmarks flax_2b
+
         timeout-minutes: 60
         run: |
           cd xla/backends/cpu/benchmarks/e2e/gemma2/flax_2b
+
           bash setup.sh
           bash run.sh | tee -a ../../../../../../../results/flax_2b.log
 
+# TODO(juliagmt): Add CPU XSpace collection support to hlo_runner_main.
 
-    # TODO(juliagmt): Add CPU XSpace collection support to hlo_runner_main.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

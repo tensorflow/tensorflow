@@ -471,7 +471,7 @@ BuildStrategyAndCost(
             HloSharding output_spec = indices_to_combine_spec;
             if (gather_parallel_dims) {
               // Infer output sharding from scatter operand sharding.
-              if (hlo_sharding_util::IsSpatiallyPartitioned(data_spec)) {
+              if (!data_spec.IsSingleDevice()) {
                 const HloSharding to_merge = hlo_sharding_util::
                     InferGatherScatterParallelShardingFromOperandSharding(
                         data_spec, gather_shape,
@@ -487,7 +487,7 @@ BuildStrategyAndCost(
                 }
               }
               // Infer output sharding from scatter indices sharding.
-              if (hlo_sharding_util::IsSpatiallyPartitioned(indices_spec)) {
+              if (!indices_spec.IsSingleDevice()) {
                 const HloSharding to_merge = hlo_sharding_util::
                     InferGatherScatterParallelShardingFromOperandSharding(
                         indices_spec, gather_shape,

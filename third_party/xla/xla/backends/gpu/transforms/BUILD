@@ -168,10 +168,10 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "async_wrapper_test",
     srcs = ["async_wrapper_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["gpu"],
     deps = [
         ":async_wrapper",
         "//xla:literal",
@@ -180,7 +180,7 @@ xla_cc_test(
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/hlo/utils:hlo_query",
-        "//xla/tests:hlo_test_base",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
@@ -329,7 +329,6 @@ cc_library(
 xla_cc_test(
     name = "block_scaling_rewriter_test",
     srcs = ["block_scaling_rewriter_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         ":block_scaling_rewriter",
         "//xla/hlo/ir:hlo",
@@ -481,7 +480,6 @@ cc_library(
 xla_cc_test(
     name = "conv_rewriter_test",
     srcs = ["conv_rewriter_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conv_rewriter",
         "//xla:array4d",
@@ -513,7 +511,6 @@ xla_cc_test(
 xla_cc_test(
     name = "conv_kind_assignment_test",
     srcs = ["conv_kind_assignment_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         ":conv_kind_assignment",
         "//xla:array4d",
@@ -1172,8 +1169,6 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = if_gpu_is_configured(
         [
             ":dot_operand_converter",
@@ -1185,14 +1180,16 @@ xla_test(
             "//xla/hlo/ir:hlo",
             "//xla/hlo/utils:hlo_matchers",
             "//xla/service:pattern_matcher",
-            "//xla/tests:hlo_test_base",
+            "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
             "@tsl//tsl/platform:statusor",
         ],
         [
             # b/317293391
             "@com_google_googletest//:gtest_main",
         ],
-    ) + ["//xla/tsl/platform:statusor"],
+    ) + [
+        "//xla/tsl/platform:statusor",
+    ],
 )
 
 cc_library(
@@ -1831,7 +1828,6 @@ cc_library(
 xla_cc_test(
     name = "layout_assignment_test",
     srcs = ["layout_assignment_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         ":layout_assignment",
         "//xla:shape_layout",
@@ -2933,17 +2929,15 @@ xla_test(
     name = "topk_specializer_test",
     srcs = ["topk_specializer_test.cc"],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
         ":topk_specializer",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
-        "//xla/service:platform_util",
         "//xla/service:topk_rewriter",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
@@ -2974,17 +2968,19 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "topk_splitter_test",
     srcs = ["topk_splitter_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["gpu"],
     deps = [
         ":topk_splitter",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:pattern_matcher",
         "//xla/service:topk_rewriter",
-        "//xla/tests:hlo_test_base",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",

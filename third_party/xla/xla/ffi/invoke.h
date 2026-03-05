@@ -86,13 +86,23 @@ struct InvokeContext {
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
 
-  RunId run_id = RunId{-1};
+  // Execution state for instantiate, prepare and initialize. See execution
+  // state documentation for different kinds of execution state that FFI
+  // handlers support (per-instance and per-execution).
+  struct StateContext {
+    ExecutionState* instantiate = nullptr;
+    ExecutionState* prepare = nullptr;
+    ExecutionState* initialize = nullptr;
+  };
+
+  RunId run_id = RunId{0};
   int32_t device_ordinal = -1;
+
   BackendContext backend_context;
+  StateContext state_context;
 
   const HloComputation* called_computation = nullptr;
   const ExecutionContext* execution_context = nullptr;
-  ExecutionState* execution_state = nullptr;
 };
 
 // Invokes an XLA FFI handler with the given call frame and context. This is a

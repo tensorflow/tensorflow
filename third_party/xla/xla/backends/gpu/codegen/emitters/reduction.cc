@@ -15,9 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/emitters/reduction.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <limits>
 #include <memory>
 #include <optional>

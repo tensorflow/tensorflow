@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/primitive_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,7 +33,7 @@ namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
 
-class DotOperandConverterTest : public HloTestBase {
+class DotOperandConverterTest : public HloPjRtGpuTestBase {
  public:
   void TestConvert(bool left_less_precise, PrimitiveType lhs_type,
                    PrimitiveType rhs_type, PrimitiveType result_type) {

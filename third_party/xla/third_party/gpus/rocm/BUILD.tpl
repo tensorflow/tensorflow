@@ -684,6 +684,7 @@ platform(
     ],
     exec_properties = {
         "container-image": "docker://%{rocm_rbe_docker_image}",
+        "Pool": "%{rocm_rbe_pool}",
         "OSFamily": "Linux",
     },
 )

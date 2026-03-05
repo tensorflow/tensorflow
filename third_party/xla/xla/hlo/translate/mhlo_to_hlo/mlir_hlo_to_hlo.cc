@@ -4350,6 +4350,13 @@ LogicalResult ConvertToHloModule::LowerStablehloCompositeCall(
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
+  auto composite_op = cast<stablehlo::CompositeOp>(inst);
+  if (!composite_op.getCompositeRegions().empty()) {
+    return inst->emitOpError()
+           << "CompositeOp with regions not supported in StableHLO -> HLO "
+              "conversion.";
+  }
+
   auto& value_map = *value_lowering;
   SmallVector<xla::XlaOp, 1> operands;
   for (const Value& val : inst->getOperands()) {
@@ -4360,7 +4367,6 @@ LogicalResult ConvertToHloModule::LowerStablehloCompositeCall(
     operands.push_back(operand);
   }
 
-  auto composite_op = cast<stablehlo::CompositeOp>(inst);
   xla::XlaComputationId computation;
   if (failed(LowerBasicBlockAsFunction(
           /*block=*/&module_
@@ -4409,6 +4415,13 @@ LogicalResult ConvertToHloModule::LowerCompositeCall(
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
+  auto composite_op = cast<mhlo::CompositeOp>(inst);
+  if (!composite_op.getCompositeRegions().empty()) {
+    return inst->emitOpError()
+           << "CompositeOp with regions not supported in MHLO -> HLO "
+              "conversion.";
+  }
+
   auto& value_map = *value_lowering;
   SmallVector<xla::XlaOp, 1> operands;
   for (const Value& val : inst->getOperands()) {
@@ -4419,7 +4432,6 @@ LogicalResult ConvertToHloModule::LowerCompositeCall(
     operands.push_back(operand);
   }
 
-  auto composite_op = cast<mhlo::CompositeOp>(inst);
   xla::XlaComputationId computation;
   Block& block =
       module_.lookupSymbol<mlir::func::FuncOp>(composite_op.getDecomposition())

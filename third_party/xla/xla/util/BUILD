@@ -60,7 +60,6 @@ cc_library(
     srcs = ["embedded_constant_buffers.cc"],
     hdrs = ["embedded_constant_buffers.h"],
     # usage of llvm_type_conversion_util
-    compatible_with = [],
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:util",

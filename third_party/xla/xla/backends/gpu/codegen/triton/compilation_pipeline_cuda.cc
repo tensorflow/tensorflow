@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "mlir/Conversion/NVVMToLLVM/NVVMToLLVM.h"
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
@@ -133,9 +134,9 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
 int GetDefaultPtxVersion(
     const stream_executor::CudaComputeCapability& cuda_cc) {
   if (cuda_cc.IsAtLeastHopper()) {
-    // Upstream defaults to 8.6
+    // Upstream defaults to 9.0
     // @triton//:third_party/nvidia/backend/compiler.py
-    return 86;
+    return 90;
   }
   // Fallback for older architectures.
   return 80;
@@ -154,12 +155,17 @@ static void MakeLLIR(mlir::OpPassManager* pm,
       mt::createAllocateSharedMemoryNvPass(cuda_cc_as_int, final_ptx_version));
   pm->addPass(ttng::createTritonTensorMemoryAllocationPass());
   pm->addPass(ttng::createTritonNvidiaGPUCheckMatmulTwoCTAPass());
-  // We could add a flag to XLA to optionally enable the following pass:
+  // We could add a flag to XLA to optionally enable the following passes:
+  // if "consan" in options.instrumentation_mode
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
+  // pm->addPass(mlir::triton::gluon::createGluonCanonicalize());
+  // pm->addPass(mlir::createCSEPass());
   pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(ttng::createTritonGPUProxyFenceInsertion({cuda_cc_as_int}));
   pm->addPass(
       mt::createConvertTritonGPUToLLVMPass(cuda_cc_as_int, final_ptx_version));
+  pm->addNestedPass<mlir::LLVM::LLVMFuncOp>(
+      mlir::triton::gpu::createCanonicalizeLLVMIR());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mt::createConvertNVGPUToLLVM());

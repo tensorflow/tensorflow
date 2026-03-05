@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
@@ -58,6 +59,11 @@ class NamedSharding {
         : axes_(axes.begin(), axes.end()), is_closed_(is_closed) {}
 
     absl::Span<const AxisRef> axes() const { return axes_; }
+
+    // Returns the names of the axis in the dimension sharding. This should only
+    // be called for non-sub-axis.
+    std::vector<std::string> axis_names(const Mesh& mesh) const;
+
     bool is_closed() const { return is_closed_; }
 
     int64_t getShardedSize(const Mesh& mesh) const;
@@ -207,6 +213,8 @@ class NamedSharding {
 
   static NamedSharding Unreduced(Mesh mesh,
                                  absl::Span<const OpMetadata> metadata = {}) {
+    CHECK_NE(mesh.num_axes(), 0)
+        << "Unreduced sharding requires non-empty mesh.";
     return NamedSharding(mesh, /*dim_shardings=*/{},
                          /*replicated_axes=*/{}, GetAllMeshAxes(mesh),
                          /*manual_axes=*/{}, metadata);
@@ -214,6 +222,7 @@ class NamedSharding {
 
   static NamedSharding Manual(Mesh mesh,
                               absl::Span<const OpMetadata> metadata = {}) {
+    CHECK_NE(mesh.num_axes(), 0) << "Manual sharding requires non-empty mesh.";
     return NamedSharding(mesh, /*dim_shardings=*/{},
                          /*replicated_axes=*/{},
                          /*unreduced_axes=*/{}, GetAllMeshAxes(mesh), metadata);

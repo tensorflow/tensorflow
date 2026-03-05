@@ -301,6 +301,21 @@ struct ExecuteOptions {
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
+
+  // Pretty-printing for ExecutionMode enum.
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ExecutionMode& mode) {
+    absl::Format(&sink, "%s", [&] {
+      switch (mode) {
+        case ExecutionMode::kDefault:
+          return "default";
+        case ExecutionMode::kSynchronous:
+          return "synchronous";
+        case ExecutionMode::kAsynchronous:
+          return "asynchronous";
+      }
+    }());
+  }
 };
 
 // Static memory usage for a compiled program.

@@ -101,7 +101,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
 
   absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const override;
+      GlobalDeviceId device_id) const override;
 
   absl::StatusOr<std::string> Serialize() const override;
 

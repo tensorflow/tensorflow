@@ -1,5 +1,5 @@
 // RUN: ifrt-opt %s --ifrt-legalize-to-vifrt --symbol-dce --mlir-print-op-generic -split-input-file | FileCheck %s
-// RUN: ifrt-translate --serialize --ifrt_version=0.1.0 --atom_program_version=1.8.0 --strip_debuginfo %s | ifrt-translate --deserialize --strip_debuginfo | ifrt-opt > %t.0
+// RUN: ifrt-translate --serialize --ifrt_version=0.1.0 --atom_program_version=1.13.1 --strip_debuginfo %s | ifrt-translate --deserialize --strip_debuginfo | ifrt-opt > %t.0
 // RUN: ifrt-opt %s > %t.1
 // RUN: diff %t.0 %t.1
 

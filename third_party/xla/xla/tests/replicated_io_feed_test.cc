@@ -74,7 +74,6 @@ TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   opts.infeed_steps = 1;
   opts.outfeed_shape = ShapeUtil::MakeScalarShape(PrimitiveType::U32);
   opts.outfeed_values = &outfeed_literals;
-  opts.use_threads = true;
 
   DeviceAssignment device_assn(/*replica_count=*/kNumReplicas,
                                /*computation_count=*/1);

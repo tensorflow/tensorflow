@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Parser/Parser.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
@@ -128,6 +129,15 @@ uint64_t HloProgram::Fingerprint() const {
   flags.enableDebugInfo(false);
   mlir_module_->print(os, flags);
   return std::move(os).fingerprint();
+}
+
+xla::MaybeOwningMlirModule HloProgram::ToMaybeOwningMlirModule() && {
+  if (owning_mlir_module_) {
+    return xla::MaybeOwningMlirModule(std::move(mlir_context_),
+                                      std::move(owning_mlir_module_));
+  }
+  CHECK(mlir_context_ == nullptr);
+  return xla::MaybeOwningMlirModule(std::move(mlir_module_));
 }
 
 }  // namespace xla::ifrt

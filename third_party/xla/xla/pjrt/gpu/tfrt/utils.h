@@ -152,7 +152,7 @@ std::vector<PjRtDevice*> InitializeDevices(
     TfrtGpuClient* client,
     const std::vector<std::unique_ptr<TfrtGpuDevice>>& owned_devices);
 
-absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> GetIdToDeviceMap(
+absl::flat_hash_map<GlobalDeviceId, TfrtGpuDevice*> GetIdToDeviceMap(
     absl::Span<const std::unique_ptr<TfrtGpuDevice>> devices);
 
 std::vector<PjRtDevice*> GetAddressableDevicePointers(

@@ -90,7 +90,7 @@ TEST_P(SkipInstructionTest, Bf16InF32Out) {
         HloInstruction::CreateBinary(output_shape, spec.op, p0, p1));
   }
   std::unique_ptr<HloComputation> computation = builder.Build();
-  std::unique_ptr<HloModule> module = std::make_unique<VerifiedHloModule>(
+  auto module = std::make_unique<VerifiedHloModule>(
       "test", HloModuleConfig(),
       /*verifier_layout_sensitive=*/false,
       /*allow_mixed_precision_in_hlo_verifier=*/true,

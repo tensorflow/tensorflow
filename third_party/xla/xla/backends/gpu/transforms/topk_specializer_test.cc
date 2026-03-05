@@ -35,14 +35,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/service/platform_util.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 
-namespace xla {
+namespace xla::gpu {
 namespace {
 
 using ::testing::Combine;
@@ -56,16 +56,14 @@ using ::testing::Values;
 using ParameterizedInterface =
     ::testing::WithParamInterface<std::tuple<int, int, int, absl::string_view>>;
 
-class TopkTest : public HloTestBase, public ParameterizedInterface {
- public:
-  TopkTest()
-      : HloTestBase(*PlatformUtil::GetPlatform("gpu"),
-                    *PlatformUtil::GetPlatform("gpu"), true, true, {}) {}
-
+class TopkTest : public HloPjRtGpuTestBase, public ParameterizedInterface {
  protected:
-  absl::StatusOr<std::unique_ptr<HloModule>> TopkHlo(int n, int k,
-                                                     int batch_size,
-                                                     absl::string_view dtype) {
+  TopkTest()
+      : HloPjRtGpuTestBase(
+            HloPjRtTestBaseOptions{.verifier_layout_sensitive = true}) {}
+
+  absl::StatusOr<std::unique_ptr<HloModule>> TopkHlo(
+      int n, int k, int batch_size, absl::string_view dtype) const {
     return ParseAndReturnVerifiedModule(absl::Substitute(
         R"(
       %compare {
@@ -135,16 +133,18 @@ void ToSortAndSlice(HloModule* module) {
 TEST_P(TopkTest, ProducesCorrectResult) {
   const auto [n_kb, k, batch_size, dtype] = GetParam();
   const size_t n = n_kb * 1024;
-  TF_ASSERT_OK_AND_ASSIGN(auto topk_module, TopkHlo(n, k, batch_size, dtype));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> topk_module,
+                          TopkHlo(n, k, batch_size, dtype));
   TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<xla::se::DeviceDescription> device_desc,
-      GetTestPlatform()->DescriptionForDevice(0));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, gpu::TopkSpecializer(device_desc->gpu_compute_capability())
-                        .Run(topk_module.get()));
+      bool changed,
+      TopkSpecializer(device_description().gpu_compute_capability())
+          .Run(topk_module.get()));
   ASSERT_TRUE(changed);
-  EXPECT_TRUE(
-      RunAndCompare(std::move(topk_module), std::nullopt, ToSortAndSlice));
+
+  std::unique_ptr<HloModule> reference_module = topk_module->Clone("reference");
+  ToSortAndSlice(reference_module.get());
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      std::move(topk_module), std::move(reference_module), std::nullopt));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -161,4 +161,4 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 }  // namespace
-}  // namespace xla
+}  // namespace xla::gpu

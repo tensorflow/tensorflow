@@ -436,7 +436,6 @@ TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
 
   HloRunnerInterface::ReplicatedExecuteOptions opts;
   opts.num_devices = devices.size();
-  opts.use_threads = true;
   opts.arguments.push_back(&input_literal);
 
   tsl::BlockingCounter done(kNumThreads * kRunsPerThread);

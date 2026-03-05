@@ -122,7 +122,7 @@ tsl::Future<xla::ifrt::ExecutableRef> IfrtIrProgramCompiler::Compile(
 
 absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
     const xla::ifrt::ExecutableVersion& version,
-    const xla::ifrt::DeviceListRef& devices) const {
+    const xla::ifrt::DeviceListRef&) const {
   const xla::ifrt::IfrtIrExecutableVersion* executable_version =
       llvm::dyn_cast<xla::ifrt::IfrtIrExecutableVersion>(&version);
   if (!executable_version) {
@@ -132,7 +132,7 @@ absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
 
   absl::Status compatibility =
       GetCurrentIfrtIrExecutableVersion()->IsCompatibleWith(
-          *client_, devices, *executable_version);
+          *client_, *executable_version);
   if (!compatibility.ok()) {
     tsl::errors::AppendToMessage(
         &compatibility,

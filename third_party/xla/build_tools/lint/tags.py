@@ -93,6 +93,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_a100": "Runs on an a100.",
     "xla_h100": "Runs on an h100.",
     "xla_b200": "Runs on a b200.",
+    "xla_gb200": "Runs on a gb200.",
     # Below tags are consumed by `xla_test`.
     "test_migrated_to_hlo_runner_pjrt": (
         "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"

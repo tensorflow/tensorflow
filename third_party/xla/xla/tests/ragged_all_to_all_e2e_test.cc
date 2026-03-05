@@ -219,6 +219,12 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
   }
 
  protected:
+  void SetUp() override {
+    if (device_count() < 2) {
+      GTEST_SKIP() << "Test requires at least 2 devices.";
+    }
+  }
+
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(

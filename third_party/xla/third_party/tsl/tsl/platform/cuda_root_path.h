@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_CUDA_ROOT_PATH_H_
 #define TENSORFLOW_TSL_PLATFORM_CUDA_ROOT_PATH_H_
 
+#include <cstdlib>
 #include <string>
 #include <vector>
 

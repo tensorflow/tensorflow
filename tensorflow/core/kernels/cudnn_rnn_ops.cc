@@ -380,7 +380,7 @@ class CudnnRnnAllocatorInTemp : public ScratchAllocator {
     return std::numeric_limits<int64_t>::max();
   }
 
-  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = ToTFDataType<T>::value;
@@ -425,7 +425,7 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
   int64_t GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64_t>::max();
   }
-  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     CHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
@@ -443,7 +443,8 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
         stream_executor::DeviceAddress<uint8_t>::MakeFromByteSize(
             temporary_memory->template flat<T>().data(),
             temporary_memory->template flat<T>().size() * sizeof(T));
-    return absl::StatusOr<stream_executor::DeviceAddress<uint8>>(memory_uint8);
+    return absl::StatusOr<stream_executor::DeviceAddress<uint8_t>>(
+        memory_uint8);
   }
   int64_t TotalByteSize() { return total_byte_size_; }
 
@@ -467,7 +468,7 @@ class CudnnRNNSpaceAllocator : public ScratchAllocator {
     return std::numeric_limits<int64_t>::max();
   }
 
-  absl::StatusOr<stream_executor::DeviceAddress<uint8>> AllocateBytes(
+  absl::StatusOr<stream_executor::DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override {
     if (total_byte_size_ != 0) {
       return absl::Status(absl::StatusCode::kFailedPrecondition,

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -52,8 +53,11 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_multi_slice_internal_types.h"
 #include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -75,7 +79,6 @@ limitations under the License.
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -259,6 +262,33 @@ static absl::Status EnsureExecutableOutputDimensionsPopulated(
   if (!executable->out_dimension_ran) {
     TF_RETURN_IF_ERROR(PopulateExecutableOutputDimensions(executable));
     executable->out_dimension_ran = true;
+  }
+  return absl::OkStatus();
+}
+
+static absl::Status PopulateExecutableParameterLayouts(
+    PJRT_Executable* executable) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::shared_ptr<const xla::PjRtLayout>> cpp_parameter_layouts,
+      executable->get()->GetParameterLayouts());
+  executable->parameter_layouts.reserve(cpp_parameter_layouts.size());
+  executable->parameter_layouts_pointers.reserve(cpp_parameter_layouts.size());
+  for (std::shared_ptr<const xla::PjRtLayout>& layout : cpp_parameter_layouts) {
+    executable->parameter_layouts.push_back(
+        PJRT_Layouts_MemoryLayout{std::move(layout)});
+  }
+  for (PJRT_Layouts_MemoryLayout& layout : executable->parameter_layouts) {
+    executable->parameter_layouts_pointers.push_back(&layout);
+  }
+  return absl::OkStatus();
+}
+
+static absl::Status EnsureExecutableParameterLayoutsPopulated(
+    PJRT_Executable* executable) {
+  absl::MutexLock lock(executable->mutex);
+  if (!executable->parameter_layouts_ran) {
+    TF_RETURN_IF_ERROR(PopulateExecutableParameterLayouts(executable));
+    executable->parameter_layouts_ran = true;
   }
   return absl::OkStatus();
 }
@@ -635,23 +665,23 @@ PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
   auto translate_state = [](PJRT_ProcessState state) {
     switch (state) {
       case PJRT_ProcessState_kUnspecified:
-        return tensorflow::CoordinatedTaskState::TASKSTATE_UNSPECIFIED;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_UNSPECIFIED;
       case PJRT_ProcessState_kUninitialized:
-        return tensorflow::CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
       case PJRT_ProcessState_kDisconnected:
-        return tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
       case PJRT_ProcessState_kConnected:
-        return tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_CONNECTED;
       case PJRT_ProcessState_kError:
-        return tensorflow::CoordinatedTaskState::TASKSTATE_ERROR;
+        return xla::coordination::CoordinatedTaskState::TASKSTATE_ERROR;
     }
     LOG(FATAL) << "Unexpected PJRT_ProcessState " << state;
   };
 
-  std::vector<tensorflow::CoordinatedTaskStateInfo> infos;
+  std::vector<xla::coordination::CoordinatedTaskStateInfo> infos;
   for (int i = 0; i < args->num_process_infos; ++i) {
     PJRT_ProcessInfo* p = &args->process_infos[i];
-    tensorflow::CoordinatedTaskStateInfo info;
+    xla::coordination::CoordinatedTaskStateInfo info;
     info.mutable_task()->set_task_id(p->task_id);
     info.set_incarnation(p->incarnation_id);
     info.set_state(translate_state(p->state));
@@ -1006,23 +1036,19 @@ absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
 }
 
 using ProgramVariant =
-    std::variant<mlir::OwningOpRef<mlir::ModuleOp>, xla::XlaComputation>;
-absl::StatusOr<
-    std::variant<mlir::OwningOpRef<mlir::ModuleOp>, xla::XlaComputation>>
-ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
-                 const PJRT_Program* program) {
+    std::variant<xla::MaybeOwningMlirModule, xla::XlaComputation>;
+absl::StatusOr<ProgramVariant> ParsePjrtProgram(const PJRT_Program* program) {
   auto format_str = absl::string_view(program->format, program->format_size);
   auto module_str = absl::string_view(program->code, program->code_size);
 
   if (format_str == pjrt::kMlirFormat) {
-    if (!context.has_value()) {
-      context.emplace();
-    }
+    auto context = std::make_unique<mlir::MLIRContext>();
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
                         xla::ParseMlirModuleString(module_str, *context));
-
-    return ProgramVariant(std::move(module));
-  } else if (format_str == pjrt::kHloFormat) {
+    return ProgramVariant(
+        xla::MaybeOwningMlirModule(std::move(context), std::move(module)));
+  }
+  if (format_str == pjrt::kHloFormat) {
     xla::HloModuleProto module_proto;
     // Open source ParseFromString doesn't support string_view.
     if (!module_proto.ParseFromString(module_str)) {
@@ -1030,19 +1056,9 @@ ParsePjrtProgram(std::optional<mlir::MLIRContext>& context,
           "PJRT_Client_Compile: failed to deserialize HloModuleProto");
     }
     return ProgramVariant(xla::XlaComputation(module_proto));
-  } else {
-    return absl::InvalidArgumentError(ProgramFormatErrorMsg(format_str));
   }
+  return absl::InvalidArgumentError(ProgramFormatErrorMsg(format_str));
 }
-
-mlir::ModuleOp UnpackPjrtProgram(mlir::OwningOpRef<mlir::ModuleOp>& module) {
-  return *module;
-}
-const xla::XlaComputation& UnpackPjrtProgram(
-    const xla::XlaComputation& computation) {
-  return computation;
-}
-
 }  // namespace
 
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
@@ -1062,18 +1078,89 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
       ParseCompileOptions(absl::string_view(args->compile_options,
                                             args->compile_options_size)));
 
-  std::optional<mlir::MLIRContext> context;
-  PJRT_ASSIGN_OR_RETURN(auto module_or_hlo,
-                        ParsePjrtProgram(context, args->program));
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtLoadedExecutable> executable,
-                        std::visit(
-                            [args, &options](auto& program) {
-                              return args->client->client->CompileAndLoad(
-                                  UnpackPjrtProgram(program), options);
-                            },
-                            module_or_hlo));
+  PJRT_ASSIGN_OR_RETURN(auto module_or_hlo, ParsePjrtProgram(args->program));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> executable,
+      std::visit(absl::Overload{
+                     [args, &options](xla::MaybeOwningMlirModule module) {
+                       return args->client->client->CompileAndLoad(
+                           std::move(module), options);
+                     },
+                     [args, &options](xla::XlaComputation program) {
+                       return args->client->client->CompileAndLoad(program,
+                                                                   options);
+                     },
+                 },
+                 std::move(module_or_hlo)));
+
   args->executable =
       new PJRT_LoadedExecutable(std::move(executable), args->client);
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Client_Load(PJRT_Client_Load_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Client_Load_Args", PJRT_Client_Load_Args_STRUCT_SIZE,
+      args->struct_size));
+  if (args->executable->shared_executable == nullptr) {
+    absl::Status status =
+        absl::InvalidArgumentError("Missing shared_executable in the input.");
+    return new PJRT_Error{status};
+  }
+
+  std::optional<xla::CompileOptions> options;
+  if (args->compile_options && args->compile_options_size > 0) {
+    PJRT_ASSIGN_OR_RETURN(
+        options, ParseCompileOptions(absl::string_view(
+                     args->compile_options, args->compile_options_size)));
+  }
+
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> loaded,
+      args->client->client->Load(args->executable->shared_executable,
+                                 xla::LoadOptions()));
+  args->loaded_executable =
+      new PJRT_LoadedExecutable(std::move(loaded), args->client);
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_Bitcast(PJRT_Buffer_Bitcast_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Buffer_Bitcast_Args", PJRT_Buffer_Bitcast_Args_STRUCT_SIZE,
+      args->struct_size));
+  xla::PrimitiveType element_type =
+      pjrt::ConvertFromPjRtBufferType(args->element_type);
+  absl::Span<const int64_t> dims =
+      absl::Span<const int64_t>(args->dims, args->num_dims);
+  std::optional<xla::Layout> cpp_layout;
+  xla::Layout* device_layout = nullptr;
+  if (args->device_layout != nullptr) {
+    PJRT_Buffer_MemoryLayout* layout = args->device_layout;
+    switch (layout->type) {
+      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
+        PJRT_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
+        break;
+      }
+      case PJRT_Buffer_MemoryLayout_Type::
+          PJRT_Buffer_MemoryLayout_Type_Strides: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
+            "converted to a xla::Layout."));
+        break;
+      }
+      default: {
+        PJRT_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
+            "Unexpected PJRT_Buffer_MemoryLayout_Type type: ", layout->type)));
+      }
+    }
+    device_layout = &*cpp_layout;
+  }
+
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> bitcast_buffer,
+      args->buffer->buffer->Bitcast(element_type, dims, device_layout));
+  args->out_buffer =
+      new PJRT_Buffer{std::move(bitcast_buffer), args->buffer->client};
   return nullptr;
 }
 
@@ -1697,6 +1784,20 @@ PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
   return nullptr;
 }
 
+PJRT_Error* PJRT_LoadedExecutable_AddressableDeviceLogicalIds(
+    PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args",
+      PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  args->num_addressable_device_logical_ids =
+      args->executable->addressable_device_logical_ids.size();
+  args->addressable_device_logical_ids =
+      args->executable->addressable_device_logical_ids.data();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Executable_NumOutputs_Args",
@@ -2036,8 +2137,11 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_LoadedExecutable_Execute_Args",
       PJRT_LoadedExecutable_Execute_Args_STRUCT_SIZE, args->struct_size));
+  // TODO(b/485591964): Make this check stricter after 12week compatibility
+  // window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
-      "PJRT_ExecuteOptions", PJRT_ExecuteOptions_STRUCT_SIZE,
+      "PJRT_ExecuteOptions",
+      PJRT_STRUCT_SIZE(PJRT_ExecuteOptions, incarnation_ids),
       args->options->struct_size));
 
   int64_t traceme_context_id = pjrt::GetTracemeContextId(args);
@@ -2054,6 +2158,12 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
                         ? args->options->context->execute_context.get()
                         : nullptr;
   options.multi_slice_config = nullptr;
+  // TODO(b/485591964): Remove this check after 12week compatibility window.
+  if (args->options->struct_size >= PJRT_ExecuteOptions_STRUCT_SIZE &&
+      args->options->multi_slice_config != nullptr) {
+    options.multi_slice_config =
+        args->options->multi_slice_config->config.get();
+  }
   options.use_major_to_minor_data_layout_for_callbacks = true;
   if (args->options->num_non_donatable_input_indices > 0) {
     for (int i = 0; i < args->options->num_non_donatable_input_indices; ++i) {
@@ -2916,17 +3026,20 @@ PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args) {
       ParseCompileOptions(absl::string_view(args->compile_options,
                                             args->compile_options_size)));
 
-  std::optional<mlir::MLIRContext> context;
-  PJRT_ASSIGN_OR_RETURN(auto module_or_hlo,
-                        ParsePjrtProgram(context, args->program));
-  PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtExecutable> executable,
-                        std::visit(
-                            [&](auto& program) {
-                              return PjRtCompile(
-                                  options, UnpackPjrtProgram(program),
-                                  *args->topology->topology, client);
-                            },
-                            module_or_hlo));
+  PJRT_ASSIGN_OR_RETURN(auto module_or_hlo, ParsePjrtProgram(args->program));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtExecutable> executable,
+      std::visit(absl::Overload{
+                     [&](xla::MaybeOwningMlirModule module) {
+                       return PjRtCompile(options, std::move(module),
+                                          *args->topology->topology, client);
+                     },
+                     [&](xla::XlaComputation program) {
+                       return PjRtCompile(options, program,
+                                          *args->topology->topology, client);
+                     },
+                 },
+                 std::move(module_or_hlo)));
   args->executable = new PJRT_Executable(std::move(executable));
   return nullptr;
 }
@@ -3078,6 +3191,19 @@ PJRT_Error* PJRT_Layouts_PJRT_Topology_GetDefaultLayout(
 
   auto pjrt_xla_layout = std::make_shared<xla::PjRtLayout>(xla_layout);
   args->layout = new PJRT_Layouts_MemoryLayout{std::move(pjrt_xla_layout)};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Layouts_PJRT_Executable_GetParameterLayouts(
+    PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args",
+      PJRT_Layouts_PJRT_Executable_GetParameterLayouts_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_RETURN_IF_ERROR(
+      EnsureExecutableParameterLayoutsPopulated(args->executable));
+  args->num_parameters = args->executable->parameter_layouts_pointers.size();
+  args->layouts = args->executable->parameter_layouts_pointers.data();
   return nullptr;
 }
 
@@ -3255,6 +3381,24 @@ PJRT_TopologyDescription* CreateWrapperDeviceTopology(
   return topo_desc;
 }
 
+PJRT_Error* PJRT_Device_GetAttributes(PJRT_Device_GetAttributes_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Device_GetAttributes_Args",
+      PJRT_Device_GetAttributes_Args_STRUCT_SIZE, args->struct_size));
+
+  auto device_attributes = std::make_unique<PJRT_Device_Attributes>();
+  device_attributes->attributes =
+      PopulatePjrtAttributes(args->device->device->Attributes());
+
+  args->num_attributes = device_attributes->attributes.size();
+  args->attributes = device_attributes->attributes.data();
+  args->attributes_deleter = [](PJRT_Device_Attributes* device_attributes) {
+    delete device_attributes;
+  };
+  args->device_attributes = device_attributes.release();
+  return nullptr;
+}
+
 }  // namespace pjrt
 
 PJRT_Client::PJRT_Client(std::unique_ptr<xla::PjRtClient> cpp_client)
@@ -3272,10 +3416,25 @@ PJRT_Executable::PJRT_Executable(xla::PjRtExecutable* unowned_executable)
     : executable(unowned_executable),
       fingerprint(executable->FingerprintExecutable()) {}
 
+static void PopulatePjrtExecutableAddressableDeviceLogicalIds(
+    PJRT_LoadedExecutable* executable) {
+  CHECK(executable->client != nullptr) << ": client was null";
+  absl::Span<const xla::PjRtLoadedExecutable::LogicalDeviceIds> cpp_ids =
+      executable->get()->addressable_device_logical_ids();
+
+  std::vector<PJRT_LogicalDeviceIds>& exec_ids =
+      executable->addressable_device_logical_ids;
+  exec_ids.reserve(cpp_ids.size());
+  for (const auto& id : cpp_ids) {
+    exec_ids.push_back(PJRT_LogicalDeviceIds{id.replica, id.partition});
+  }
+}
+
 PJRT_LoadedExecutable::PJRT_LoadedExecutable(
     std::shared_ptr<xla::PjRtLoadedExecutable> executable, PJRT_Client* client)
     : executable(std::move(executable)), client(client) {
   pjrt::PopulatePjrtExecutableAddressableDevices(this);
+  PopulatePjrtExecutableAddressableDeviceLogicalIds(this);
 }
 
 namespace pjrt {
@@ -3506,6 +3665,12 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
 
       /*PJRT_Event_Create=*/pjrt::PJRT_Event_Create,
       /*PJRT_Event_Set=*/pjrt::PJRT_Event_Set,
+      /*PJRT_Device_GetAttributes=*/pjrt::PJRT_Device_GetAttributes,
+
+      /*PJRT_Client_Load=*/pjrt::PJRT_Client_Load,
+      /*PJRT_LoadedExecutable_AddressableDeviceLogicalIds=*/
+      pjrt::PJRT_LoadedExecutable_AddressableDeviceLogicalIds,
+      /*PJRT_Buffer_Bitcast=*/pjrt::PJRT_Buffer_Bitcast,
   };
 }
 
@@ -3528,6 +3693,8 @@ PJRT_Layouts_Extension CreateLayoutsExtension(PJRT_Extension_Base* next) {
       &PJRT_Layouts_PJRT_Topology_GetDefaultLayout,
       /*PJRT_Layouts_PJRT_Executable_GetOutputLayouts=*/
       &PJRT_Layouts_PJRT_Executable_GetOutputLayouts,
+      /*PJRT_Layouts_PJRT_Executable_GetParameterLayouts=*/
+      &PJRT_Layouts_PJRT_Executable_GetParameterLayouts,
   };
 }
 

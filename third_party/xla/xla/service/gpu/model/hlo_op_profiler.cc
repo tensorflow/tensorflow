@@ -20,11 +20,14 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/time/clock.h"
@@ -37,7 +40,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
@@ -143,76 +145,70 @@ static constexpr std::array<HloOpcode, 74> ops = {
     // TODO(b/443800190): HloOpcode::kComplex
 };
 
-static const std::unordered_set<HloOpcode> TooFastToMeasureOps = {
-    // go/keep-sorted start
-    HloOpcode::kAbs,
-    HloOpcode::kAnd,
-    HloOpcode::kBitcast,
-    HloOpcode::kBitcastConvert,
-    HloOpcode::kCeil,
-    HloOpcode::kClz,
-    HloOpcode::kCopy,
-    HloOpcode::kFloor,
-    HloOpcode::kImag,
-    HloOpcode::kIsFinite,
-    HloOpcode::kMaximum,
-    HloOpcode::kMinimum,
-    HloOpcode::kNegate,
-    HloOpcode::kNot,
-    HloOpcode::kOr,
-    HloOpcode::kReal,
-    HloOpcode::kSign,
-    HloOpcode::kXor
-    // go/keep-sorted end
-};
+static const absl::flat_hash_set<HloOpcode>& TooFastToMeasureOps() {
+  static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>> kOps({
+      // go/keep-sorted start
+      HloOpcode::kAbs, HloOpcode::kAnd, HloOpcode::kBitcast,
+      HloOpcode::kBitcastConvert, HloOpcode::kCeil, HloOpcode::kClz,
+      HloOpcode::kCopy, HloOpcode::kFloor, HloOpcode::kImag,
+      HloOpcode::kIsFinite, HloOpcode::kMaximum, HloOpcode::kMinimum,
+      HloOpcode::kNegate, HloOpcode::kNot, HloOpcode::kOr, HloOpcode::kReal,
+      HloOpcode::kSign, HloOpcode::kXor
+      // go/keep-sorted end
+  });
+  return *kOps;
+}
 
-static const std::unordered_set<HloOpcode> UnsupportedOps = {
-    // These Opcodes need custom APIs to create instructions that can be
-    // used for profiling. They are not created by HloInstruction::CreateUnary
-    // or HloInstruction::CreateBinary functions.
+static const absl::flat_hash_set<HloOpcode>& UnsupportedOps() {
+  static const absl::NoDestructor<absl::flat_hash_set<HloOpcode>> kOps({
+      // These Opcodes need custom APIs to create instructions that can be
+      // used for profiling. They are not created by HloInstruction::CreateUnary
+      // or HloInstruction::CreateBinary functions.
 
-    // TODO(444503555): Add support for these Opcodes by using custom APIs.
-    // Unary
-    // go/keep-sorted start
-    HloOpcode::kBitcastConvert,
-    HloOpcode::kBroadcast,
-    HloOpcode::kCholesky,
-    HloOpcode::kCollectivePermuteDone,
-    HloOpcode::kConvert,
-    HloOpcode::kDomain,
-    HloOpcode::kFft,
-    HloOpcode::kGetDimensionSize,
-    HloOpcode::kGetTupleElement,
-    HloOpcode::kOutfeed,
-    HloOpcode::kPad,
-    HloOpcode::kPower,
-    HloOpcode::kReducePrecision,
-    HloOpcode::kRemainder,
-    HloOpcode::kReshape,
-    HloOpcode::kReverse,
-    HloOpcode::kRngBitGenerator,
-    HloOpcode::kSetDimensionSize,
-    HloOpcode::kShiftLeft,
-    HloOpcode::kShiftRightArithmetic,
-    HloOpcode::kShiftRightLogical,
-    HloOpcode::kSlice,
-    HloOpcode::kStochasticConvert,
-    HloOpcode::kTopK,
-    HloOpcode::kTranspose,
-    // go/keep-sorted end
-    // Binary
-    // go/keep-sorted start
-    HloOpcode::kAddDependency,
-    HloOpcode::kCompare,
-    HloOpcode::kConvolution,
-    HloOpcode::kDot,
-    HloOpcode::kGather,
-    HloOpcode::kOutfeed,
-    HloOpcode::kPad,
-    HloOpcode::kSetDimensionSize,
-    HloOpcode::kTriangularSolve,
-    // go/keep-sorted end
-};
+      // TODO(444503555): Add support for these Opcodes by using custom APIs.
+      // Unary
+      // go/keep-sorted start
+      HloOpcode::kBitcastConvert,
+      HloOpcode::kBroadcast,
+      HloOpcode::kCholesky,
+      HloOpcode::kCollectivePermuteDone,
+      HloOpcode::kConvert,
+      HloOpcode::kDomain,
+      HloOpcode::kFft,
+      HloOpcode::kGetDimensionSize,
+      HloOpcode::kGetTupleElement,
+      HloOpcode::kOutfeed,
+      HloOpcode::kPad,
+      HloOpcode::kPower,
+      HloOpcode::kReducePrecision,
+      HloOpcode::kRemainder,
+      HloOpcode::kReshape,
+      HloOpcode::kReverse,
+      HloOpcode::kRngBitGenerator,
+      HloOpcode::kSetDimensionSize,
+      HloOpcode::kShiftLeft,
+      HloOpcode::kShiftRightArithmetic,
+      HloOpcode::kShiftRightLogical,
+      HloOpcode::kSlice,
+      HloOpcode::kStochasticConvert,
+      HloOpcode::kTopK,
+      HloOpcode::kTranspose,
+      // go/keep-sorted end
+      // Binary
+      // go/keep-sorted start
+      HloOpcode::kAddDependency,
+      HloOpcode::kCompare,
+      HloOpcode::kConvolution,
+      HloOpcode::kDot,
+      HloOpcode::kGather,
+      HloOpcode::kOutfeed,
+      HloOpcode::kPad,
+      HloOpcode::kSetDimensionSize,
+      HloOpcode::kTriangularSolve,
+      // go/keep-sorted end
+  });
+  return *kOps;
+}
 
 absl::Span<const PrimitiveType> HloOpProfiler::AllSupportedDtypes() {
   return absl::MakeConstSpan(dtypes);
@@ -222,12 +218,12 @@ absl::Span<const HloOpcode> HloOpProfiler::AllSupportedOps() {
   return absl::MakeConstSpan(ops);
 }
 
-const std::unordered_set<HloOpcode>& HloOpProfiler::Unsupported() {
-  return UnsupportedOps;
+const absl::flat_hash_set<HloOpcode>& HloOpProfiler::Unsupported() {
+  return UnsupportedOps();
 }
 
-const std::unordered_set<HloOpcode>& HloOpProfiler::TooFastToMeasure() {
-  return TooFastToMeasureOps;
+const absl::flat_hash_set<HloOpcode>& HloOpProfiler::TooFastToMeasure() {
+  return TooFastToMeasureOps();
 }
 
 #ifdef GOOGLE_CUDA
@@ -379,9 +375,11 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
   return absl::Nanoseconds(std::move(cupti_tracer).getMedianKernelTimeNs());
 }
 
-HloOpProfiler::HloOpProfiler(HloRunner& runner)
-    : runner_(runner),
-      dev_info_(runner.backend().stream_executors()[0]->GetDeviceDescription()),
+HloOpProfiler::HloOpProfiler(HloRunnerInterface* const absl_nonnull runner,
+                             const stream_executor::DeviceDescription* const
+                             absl_nonnull device_description)
+    : runner_(*ABSL_DIE_IF_NULL(runner)),
+      dev_info_(*ABSL_DIE_IF_NULL(device_description)),
       // Twice the runtime of a copy (chain_length = 0) kernel.
       min_duration_(2 * MeasureOpChainDuration(HloOpcode::kNegate, F32, 0)
                             .value_or(absl::ZeroDuration())) {

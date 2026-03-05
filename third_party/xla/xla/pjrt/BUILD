@@ -201,6 +201,7 @@ xla_cc_test(
         "//xla/client:client_library",
         "//xla/client:local_client",
         "//xla/hlo/testlib:test",
+        "//xla/runtime:chip_id",
         "//xla/service:cpu_plugin",
         "//xla/stream_executor:device_address_allocator",
         "//xla/tsl/concurrency:async_value",
@@ -297,12 +298,22 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "maybe_owning_mlir_module",
+    hdrs = ["maybe_owning_mlir_module.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "pjrt_client",
     srcs = ["pjrt_client.cc"],
     hdrs = ["pjrt_client.h"],
     visibility = internal_visibility(["//xla:friends"]),
     deps = [
         ":host_memory_allocator",
+        ":maybe_owning_mlir_module",
         ":pjrt_abi_version",
         ":pjrt_common",
         ":pjrt_compiler",
@@ -319,13 +330,13 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt/distributed:key_value_store_interface",
+        "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_cost_analysis",
         "//xla/tsl/framework:allocator",
         "//xla/tsl/lib/gtl:int_type",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -496,6 +507,7 @@ cc_library(
     hdrs = ["pjrt_compiler.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":maybe_owning_mlir_module",
         ":pjrt_abi_version",
         ":pjrt_common",
         ":pjrt_device_description",
@@ -527,6 +539,7 @@ xla_cc_test(
     name = "pjrt_compiler_test",
     srcs = ["pjrt_compiler_test.cc"],
     deps = [
+        ":maybe_owning_mlir_module",
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_compiler",
@@ -544,7 +557,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -558,7 +570,6 @@ cc_library(
         "//xla/runtime:chip_id",
         "//xla/runtime:device_id",
         "//xla/runtime:process_id",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )
@@ -720,6 +731,7 @@ cc_library(
         ":host_memory_spaces",
         ":layout_mode",
         ":local_device_state",
+        ":maybe_owning_mlir_module",
         ":metrics",
         ":mlir_to_hlo",
         ":never_run_on_fiber",
@@ -751,6 +763,7 @@ cc_library(
         "//xla/pjrt/dump",
         "//xla/pjrt/profiling:device_time_measurement",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/runtime:device_id",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
         "//xla/service:computation_layout",
@@ -1059,6 +1072,7 @@ cc_library(
     hdrs = ["tf_pjrt_client.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":maybe_owning_mlir_module",
         ":pjrt_client",
         ":pjrt_common",
         ":pjrt_compiler",
@@ -1463,6 +1477,8 @@ xla_cc_test(
         ":pjrt_compiler",
         ":pjrt_executable",
         ":pjrt_phase_compile_sample_plugin",
+        "//xla:debug_options_flags",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/testlib:test",
         "//xla/pjrt/c:pjrt_c_api_phase_compile_internal",
@@ -1565,6 +1581,36 @@ xla_cc_test(
     srcs = ["errors_test.cc"],
     deps = [
         ":errors",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "stream_executor_platform_id_mapping",
+    srcs = ["stream_executor_platform_id_mapping.cc"],
+    hdrs = ["stream_executor_platform_id_mapping.h"],
+    deps = [
+        ":pjrt_common",
+        "//xla/stream_executor:platform_id",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+xla_cc_test(
+    name = "stream_executor_platform_id_mapping_test",
+    srcs = ["stream_executor_platform_id_mapping_test.cc"],
+    deps = [
+        ":pjrt_common",
+        ":stream_executor_platform_id_mapping",
+        "//xla/stream_executor:platform_id",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",

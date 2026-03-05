@@ -420,6 +420,14 @@ MIOpenBackend::GetSupportedConfigs(const HloInstruction& instr) {
       return GetFusedConvolutionCustomCallConfigs(
           custom_call_instr, custom_call_instr->GetModule(), stream_executor());
     }
+
+    if (do_not_autotune_) {
+      ASSIGN_OR_RETURN(auto default_config, GetDefaultConfig(instr));
+      std::vector<std::unique_ptr<BackendConfig>> configs;
+      configs.push_back(std::move(default_config));
+      return std::move(configs);
+    }
+
     return GetConvolutionCustomCallConfigs(
         custom_call_instr, custom_call_instr->GetModule(), stream_executor(),
         /* stream */ nullptr);

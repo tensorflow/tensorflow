@@ -680,7 +680,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
     auto inverse_perm = InversePermutation(layout_as_permutation);
     for (int dim = 0; dim < s.dimensions().size(); dim++) {
-      int tr_dim = static_cast<int>(inverse_perm[dim]);
+      auto tr_dim = static_cast<int>(inverse_perm[dim]);
       *new_padding.mutable_dimensions(tr_dim) = padded_config.dimensions(dim);
     }
 

@@ -98,10 +98,9 @@ absl::StatusOr<uint32_t> DefineTensorValue(ynn_subgraph_t subgraph,
     tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
   }
 
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
-      subgraph, type, dims.size(), dims.data(), /*data=*/nullptr,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID, tensor_flags, &tensor_id));
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(subgraph, type, dims.size(),
+                                        dims.data(), /*data=*/nullptr,
+                                        tensor_flags, &tensor_id));
   return tensor_id;
 }
 
@@ -205,13 +204,11 @@ ynn_status DefineConvolution(
     unfused_dims.push_back(feature_group_count);
     unfused_dims.push_back(1);
     unfused_dims.push_back(kernel_output_channels / feature_group_count);
-    status = ynn_define_tensor_value(subgraph, output_id_type,
-                                     /*rank=*/out_dims.size() + 2,
-                                     /*dims=*/unfused_dims.data(),
-                                     /*data=*/nullptr,
-                                     /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-                                     /*scale_id=*/YNN_INVALID_VALUE_ID,
-                                     /*flags=*/0, &output_unfused_id);
+    status = ynn_define_tensor(subgraph, output_id_type,
+                               /*rank=*/out_dims.size() + 2,
+                               /*dims=*/unfused_dims.data(),
+                               /*data=*/nullptr,
+                               /*flags=*/0, &output_unfused_id);
     if (status != ynn_status_success) {
       return status;
     }
@@ -224,13 +221,10 @@ ynn_status DefineConvolution(
 
     // Define padding value.
     uint64_t padding_value = 0;
-    status = ynn_define_tensor_value(subgraph, input1_id_type,
-                                     /*rank=*/0, /*dims=*/nullptr,
-                                     /*data=*/&padding_value,
-                                     /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-                                     /*scale_id=*/YNN_INVALID_VALUE_ID,
-                                     /*flags=*/YNN_VALUE_FLAG_COPY_DATA,
-                                     &padding_id);
+    status = ynn_define_tensor(subgraph, input1_id_type,
+                               /*rank=*/0, /*dims=*/nullptr,
+                               /*data=*/&padding_value,
+                               /*flags=*/YNN_VALUE_FLAG_COPY_DATA, &padding_id);
 
     if (status != ynn_status_success) {
       return status;
@@ -357,11 +351,9 @@ absl::StatusOr<uint32_t> DefineConstant(ynn_subgraph_t subgraph,
 
   const void* value = literals.Add(instr->literal().CloneToUnique());
 
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
-      subgraph, type, dims.size(), dims.data(), /*data=*/value,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID,
-      /*flags=*/0, &tensor_id));
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(subgraph, type, dims.size(),
+                                        dims.data(), /*data=*/value,
+                                        /*flags=*/0, &tensor_id));
 
   return tensor_id;
 }
@@ -375,11 +367,9 @@ absl::StatusOr<uint32_t> DefineParameter(ynn_subgraph_t subgraph,
   TF_ASSIGN_OR_RETURN(auto type, YnnType(param->shape().element_type()));
 
   uint32_t tensor_id = param->parameter_number();
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph, type, dims.size(), dims.data(), /*data=*/nullptr,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID, YNN_VALUE_FLAG_EXTERNAL_INPUT,
-      &tensor_id));
+      YNN_VALUE_FLAG_EXTERNAL_INPUT, &tensor_id));
 
   return tensor_id;
 }
@@ -815,24 +805,19 @@ absl::StatusOr<YnnSubgraph> EmitYnnDotSubgraph(
   TF_ASSIGN_OR_RETURN(ynn_type ynn_out_type, YnnType(out_shape.element_type()));
 
   const uint32_t input_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_INPUT;
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph.get(), ynn_lhs_type, lhs_dims.size(), lhs_dims.data(),
-      /*data=*/nullptr,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &lhs_id));
+      /*data=*/nullptr, input_tensor_flags, &lhs_id));
 
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph.get(), ynn_rhs_type, rhs_dims.size(), rhs_dims.data(),
-      capture_rhs ? arguments_buffers[1].opaque() : nullptr,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &rhs_id));
+      capture_rhs ? arguments_buffers[1].opaque() : nullptr, input_tensor_flags,
+      &rhs_id));
 
   const uint32_t output_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph.get(), ynn_out_type, out_dims.size(), out_dims.data(),
-      /*data=*/nullptr,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID, output_tensor_flags, &out_id));
+      /*data=*/nullptr, output_tensor_flags, &out_id));
 
   DotDimensionNumbers dot_dimensions = dot->dot_dimension_numbers();
   TF_ASSIGN_OR_RETURN(DotShape dot_shape, GetDotShape(dot_dimensions, lhs_shape,
@@ -887,24 +872,18 @@ absl::StatusOr<YnnSubgraph> EmitYnnConvolutionSubgraph(
   TF_ASSIGN_OR_RETURN(ynn_type ynn_out_type, YnnType(out_shape.element_type()));
 
   const uint32_t input_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_INPUT;
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph.get(), ynn_lhs_type, lhs_dims.size(), lhs_dims.data(),
-      /*data=*/nullptr,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &lhs_id));
+      /*data=*/nullptr, input_tensor_flags, &lhs_id));
 
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph.get(), ynn_rhs_type, rhs_dims.size(), rhs_dims.data(),
-      /*data=*/nullptr,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID, input_tensor_flags, &rhs_id));
+      /*data=*/nullptr, input_tensor_flags, &rhs_id));
 
   const uint32_t output_tensor_flags = YNN_VALUE_FLAG_EXTERNAL_OUTPUT;
-  YNN_RETURN_IF_ERROR(ynn_define_tensor_value(
+  YNN_RETURN_IF_ERROR(ynn_define_tensor(
       subgraph.get(), ynn_out_type, out_dims.size(), out_dims.data(),
-      /*data=*/nullptr,
-      /*zero_point_id=*/YNN_INVALID_VALUE_ID,
-      /*scale_id=*/YNN_INVALID_VALUE_ID, output_tensor_flags, &out_id));
+      /*data=*/nullptr, output_tensor_flags, &out_id));
 
   ConvolutionParams params = GetConvolutionParams(conv);
 

@@ -39,6 +39,12 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
     return false;
   }
 
+  // Do not swap operands for convolutions with sparsity.
+  if (convolution->sparsity_config().has_lhs() ||
+      convolution->sparsity_config().has_rhs()) {
+    return false;
+  }
+
   const auto& dnums = convolution->convolution_dimension_numbers();
   const auto& window_dims = convolution->window().dimensions();
   Window swapped_window;
@@ -146,7 +152,8 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
           kernel, input, /*feature_group_count=*/1,
           /*batch_group_count=*/1, swapped_window, swapped_dnums,
           precision_config,
-          /*preferred_element_type=*/convolution->shape().element_type()));
+          /*preferred_element_type=*/convolution->shape().element_type(),
+          /*sparsity_config=*/convolution->sparsity_config()));
 
   if (conv_is_lowerable_callback &&
       !conv_is_lowerable_callback(new_convolution)) {

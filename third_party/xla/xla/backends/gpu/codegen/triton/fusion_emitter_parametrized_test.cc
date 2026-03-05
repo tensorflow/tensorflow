@@ -73,30 +73,13 @@ class MixedTypeTest : public GpuCodegenTest,
 TEST_P(MixedTypeTest, MixedTypeDotProducesCorrectResult) {
   MixTypeParams params = GetParam();
   const std::string hlo_string_template = R"(
-lhs {
-  p0 = $0[$2,$3] parameter(0)
-  ROOT convert = $1[$2,$3] convert(p0)
-}
-
-rhs {
-  ROOT p0 = $1[$3,$4] parameter(0)
-}
-
 dot {
   p0 = $0[$2,$3] parameter(0)
   p1 = $1[$3,$4] parameter(1)
-  lhs = $1[$2,$3] fusion(p0), kind=kCustom, calls=lhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "16"]}]
-    }}}
-  rhs = $1[$3,$4]{1,0} fusion(p1), kind=kCustom, calls=rhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "16"]}]
-    }}}
-  ROOT dot = $1[$2,$4] dot(lhs, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  convert = $1[$2,$3] convert(p0)
+  ROOT dot = $1[$2,$4] dot(convert, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 
 ENTRY entry {
@@ -198,26 +181,15 @@ TEST_P(UnaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
   std::tie(data_type, opcode, tolerance) = GetParam();
 
   const std::string kHloTestTemplate = R"(
-lhs_computation {
-  ROOT parameter_0 = f32[15,33]{1,0} parameter(0)
-}
-
-rhs_computation {
-  parameter_1 = $0[33,68]{1,0} parameter(0)
-  f1.1 = $0[33,68]{1,0} $1(parameter_1)
-  ROOT c.1 = f32[33,68]{1,0} convert(f1.1)
-}
-
 triton_gemm___computation {
   parameter_0 = f32[15,33]{1,0} parameter(0)
   parameter_1 = $0[33,68]{1,0} parameter(1)
-  lhs = f32[15,33]{1,0} fusion(parameter_0), kind=kCustom, calls=lhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}]}}}
-  rhs = f32[33,68]{1,0} fusion(parameter_1), kind=kCustom, calls=rhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["32","32"]}]}}}
-  ROOT _.1 = f32[15,68]{1,0} dot(lhs, rhs),
+  f1.1 = $0[33,68]{1,0} $1(parameter_1)
+  c.1 = f32[33,68]{1,0} convert(f1.1)
+  ROOT _.1 = f32[15,68]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -383,28 +355,16 @@ TEST_P(BinaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
   std::tie(data_type, opcode, tolerance) = GetParam();
 
   const std::string kHloTestTemplate = R"(
-lhs_computation {
-  ROOT parameter_0 = f32[92,11]{1,0} parameter(0)
-}
-
-rhs_computation {
-  parameter_1 = $0[11,63]{1,0} parameter(0)
-  parameter_2 = $0[11,63]{1,0} parameter(1)
-  f1.1 = $0[11,63]{1,0} $1(parameter_1, parameter_2)
-  ROOT c.1 = f32[11,63]{1,0} convert(f1.1)
-}
-
 triton_gemm___computation {
   parameter_0 = f32[92,11]{1,0} parameter(0)
   parameter_1 = $0[11,63]{1,0} parameter(1)
   parameter_2 = $0[11,63]{1,0} parameter(2)
-  lhs = f32[92,11]{1,0} fusion(parameter_0), kind=kCustom, calls=lhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["64","32"]}]}}}
-  rhs = f32[11,63]{1,0} fusion(parameter_1, parameter_2), kind=kCustom, calls=rhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["64","32"]}]}}}
-  ROOT _.1 = f32[92,63]{1,0} dot(lhs, rhs),
+  f1.1 = $0[11,63]{1,0} $1(parameter_1, parameter_2)
+  c.1 = f32[11,63]{1,0} convert(f1.1)
+  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -649,30 +609,17 @@ TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
   }
 
   const std::string kHloTestTemplate = R"(
-lhs_computation {
-  ROOT parameter_0 = $1[92,13]{1,0} parameter(0)
-}
-
-rhs_computation {
-  parameter_1 = $0[13,63]{1,0} parameter(0)
-  parameter_2 = $0[13,63]{1,0} parameter(1)
-  parameter_3 = pred[13,63]{1,0} parameter(2)
-  f1.1 = $0[13,63]{1,0} select(parameter_3, parameter_1, parameter_2)
-  ROOT c.1 = $1[13,63]{1,0} convert(f1.1)
-}
-
 triton_gemm___computation {
   parameter_0 = $1[92,13]{1,0} parameter(0)
   parameter_1 = $0[13,63]{1,0} parameter(1)
   parameter_2 = $0[13,63]{1,0} parameter(2)
   parameter_3 = pred[13,63]{1,0} parameter(3)
-  lhs = $1[92,13]{1,0} fusion(parameter_0), kind=kCustom, calls=lhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","64"]}]}}}
-  rhs = $1[13,63]{1,0} fusion(parameter_1, parameter_2, parameter_3), kind=kCustom, calls=rhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","64"]}]}}}
-  ROOT _.1 = $1[92,63]{1,0} dot(lhs, rhs),
+  f1.1 = $0[13,63]{1,0} select(parameter_3, parameter_1, parameter_2)
+  c.1 = $1[13,63]{1,0} convert(f1.1)
+  ROOT _.1 = $1[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[64]}
 }
 
 ENTRY e {
@@ -762,28 +709,17 @@ TEST_P(ConstantTest, ConstantFusionExecutesCorrectly) {
   }
 
   const std::string kHloTestTemplate = R"(
-lhs_computation {
-  ROOT parameter_0 = f32[92,11]{1,0} parameter(0)
-}
-
-rhs_computation {
-  parameter_1 = f32[11,63]{1,0} parameter(0)
-  c = $0[] constant(123)
-  b = $0[11,63] broadcast(c)
-  cv = f32[11,63] convert(b)
-  ROOT m = f32[11,63] multiply(cv, parameter_1)
-}
-
 triton_gemm___computation {
   parameter_0 = f32[92,11]{1,0} parameter(0)
   parameter_1 = f32[11,63]{1,0} parameter(1)
-  lhs = f32[92,11]{1,0} fusion(parameter_0), kind=kCustom, calls=lhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","64"]}]}}}
-  rhs = f32[11,63]{1,0} fusion(parameter_1), kind=kCustom, calls=rhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{"output_tiles":[{"sizes":["16","64"]}]}}}
-  ROOT _.1 = f32[92,63]{1,0} dot(lhs, rhs),
+  c = $0[] constant(123)
+  b = $0[11,63] broadcast(c)
+  cv = f32[11,63] convert(b)
+  m = f32[11,63] multiply(cv, parameter_1)
+  ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, m),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[64]}
 }
 
 ENTRY e {
@@ -877,26 +813,15 @@ TEST_P(ConvertTest, ConvertFusionExecutesCorrectly) {
 
   const std::string hlo_text = absl::Substitute(
       R"(
-lhs_computation {
-  p0 = $0[2,2] parameter(0)
-  p0c = $1[2,2] convert(p0)
-  ROOT p0cc = f32[2,2] convert(p0c)
-}
-
-rhs_computation {
-  ROOT p1 = f32[2,2] parameter(0)
-}
-
 t {
   p0 = $0[2,2] parameter(0)
   p1 = f32[2,2] parameter(1)
-  lhs = f32[2,2] fusion(p0), kind=kCustom, calls=lhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion"}}
-  rhs = f32[2,2] fusion(p1), kind=kCustom, calls=rhs_computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion"}}
-  ROOT r = f32[2,2] dot(lhs, rhs),
+  p0c = $1[2,2] convert(p0)
+  p0cc = f32[2,2] convert(p0c)
+  ROOT r = f32[2,2] dot(p0cc, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[16]}
 }
 
 ENTRY e {

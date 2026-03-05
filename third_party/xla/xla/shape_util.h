@@ -181,6 +181,8 @@ class ShapeUtil {
   // this method only returns the size of the pointer array.
   static int64_t ByteSizeOf(const Shape& shape, int64_t pointer_size = -1);
 
+  static int64_t ByteSizeOfElementsRecursive(const Shape& shape);
+
   // Returns the number of bytes used to store the primitive_type.
   //
   // Precondition: primitive_type is an array type (otherwise crashes)

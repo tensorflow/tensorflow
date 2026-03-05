@@ -2415,11 +2415,12 @@ XlaOp XlaBuilder::ConvGeneralDilated(
                         ShapeInference::InferWindowFromDimensions(
                             window_dimensions, window_strides, padding,
                             lhs_dilation, rhs_dilation, window_reversal));
-    TF_ASSIGN_OR_RETURN(
-        Shape shape,
-        ShapeInference::InferConvolveShape(
-            *lhs_shape, *rhs_shape, feature_group_count, batch_group_count,
-            window, dimension_numbers, preferred_element_type));
+    SparsityConfig sparsity_config;
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferConvolveShape(
+                            *lhs_shape, *rhs_shape, feature_group_count,
+                            batch_group_count, window, dimension_numbers,
+                            sparsity_config, preferred_element_type));
     return ConvGeneralDilatedInternal(shape, lhs, rhs, window, window_strides,
                                       padding, lhs_dilation, rhs_dilation,
                                       dimension_numbers, feature_group_count,
@@ -2449,11 +2450,12 @@ absl::StatusOr<HloInstructionProto> XlaBuilder::DynamicConvInstruction(
   TF_ASSIGN_OR_RETURN(Window window, ShapeInference::InferWindowFromDimensions(
                                          window_dimensions, window_strides,
                                          padding, lhs_dilation, rhs_dilation));
+  SparsityConfig sparsity_config;
   TF_ASSIGN_OR_RETURN(
       Shape shape,
       ShapeInference::InferConvolveShape(
           *lhs_shape, *rhs_shape, feature_group_count, batch_group_count,
-          window, dimension_numbers, preferred_element_type));
+          window, dimension_numbers, sparsity_config, preferred_element_type));
 
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();

@@ -74,6 +74,12 @@ size_t Align(size_t offset, const size_t alignment) {
   return offset + (misalign ? alignment - misalign : 0);
 }
 
+template <class T>
+T* Align(T* offset, const size_t alignment) {
+  return reinterpret_cast<T*>(
+      Align(reinterpret_cast<uintptr_t>(offset), alignment));
+}
+
 // Returns true if the given path exists.
 [[nodiscard]]
 bool FileExists(const char* path) {
@@ -193,8 +199,7 @@ void* WeightCacheBuilder::Reserve(size_t size) {
     data_ = std::make_unique<uint8_t[]>(size + kMinAlignment);
     capacity_ = size;
   }
-  return reinterpret_cast<void*>(
-      Align(reinterpret_cast<size_t>(data_.get()), kMinAlignment));
+  return Align(data_.get(), kMinAlignment);
 }
 
 BufferLocation WeightCacheBuilder::Append(PackIdentifier pack_id,
@@ -303,6 +308,45 @@ bool WeightCacheBuilder::StopBuildStep() {
   return true;
 }
 
+void* CacheMissHandler::Reserve(size_t size) {
+  CacheMissHandler::Buffer buffer{
+      /*data=*/std::make_unique<uint8_t[]>(size + kMinAlignment),
+      /*loc=*/
+      BufferLocation{/*offset=*/min_offset_ + buffers_.size(), /*size=*/size},
+      /*ptr=*/nullptr,
+      /*used=*/false,
+  };
+
+  // Calls to Reserve / Append do not support interleaving. When a Reserve call
+  // hasn't been used, we can replace the buffer. This will free the memory and
+  // prevent taking up too much memory in the case Reserve is called but then
+  // never appended.
+  if (!buffers_.empty() && !buffers_.back().used) {
+    buffers_.back() = std::move(buffer);
+  } else {
+    buffers_.emplace_back(std::move(buffer));
+  }
+  buffers_.back().ptr = Align(buffers_.back().data.get(), kMinAlignment);
+  ++reserve_count_;
+  return buffers_.back().ptr;
+}
+
+BufferLocation CacheMissHandler::Append(PackIdentifier pack_id,
+                                        const void* data, uint64_t size,
+                                        int fingerprint_id) {
+  auto buf_it =
+      std::find_if(buffers_.rbegin(), buffers_.rend(),
+                   [data](const auto& buf) { return buf.ptr == data; });
+  if (buf_it == buffers_.rend()) {
+    void* new_data = Reserve(size);
+    std::memcpy(new_data, data, size);
+    buf_it = buffers_.rbegin();
+  }
+  buf_it->used = true;
+  ++append_count_;
+  return buf_it->loc;
+}
+
 #define XNN_MOVE_CONSTRUCT_MEMBER(member) member(std::move(other.member))
 MMapWeightCacheProvider::MMapWeightCacheProvider(
     MMapWeightCacheProvider&& other)
@@ -315,7 +359,7 @@ MMapWeightCacheProvider::MMapWeightCacheProvider(
       XNN_MOVE_CONSTRUCT_MEMBER(mmap_buffer_base_offset_),
       XNN_MOVE_CONSTRUCT_MEMBER(file_descriptor_),
       XNN_MOVE_CONSTRUCT_MEMBER(builder_),
-      XNN_MOVE_CONSTRUCT_MEMBER(building_run_),
+      XNN_MOVE_CONSTRUCT_MEMBER(cache_miss_handler_),
       XNN_MOVE_CONSTRUCT_MEMBER(offset_to_addr_) {
   // The contexts need to keep pointing to their owning object.
   cache_provider_.context = this;
@@ -325,6 +369,7 @@ MMapWeightCacheProvider::MMapWeightCacheProvider(
 
 MMapWeightCacheProvider& MMapWeightCacheProvider::operator=(
     MMapWeightCacheProvider&& other) {
+  this->WriteCacheMissFlag();
 #define XNN_MOVE_MEMBER(member) member = std::move(other.member)
   XNN_MOVE_MEMBER(cache_provider_);
   // The contexts need to keep pointing to their owning object.
@@ -338,11 +383,31 @@ MMapWeightCacheProvider& MMapWeightCacheProvider::operator=(
   XNN_MOVE_MEMBER(mmap_buffer_base_offset_);
   XNN_MOVE_MEMBER(file_descriptor_);
   XNN_MOVE_MEMBER(builder_);
-  XNN_MOVE_MEMBER(building_run_);
+  XNN_MOVE_MEMBER(cache_miss_handler_);
   XNN_MOVE_MEMBER(offset_to_addr_);
 #undef XNN_MOVE_MEMBER
   return *this;
 }
+
+bool MMapWeightCacheProvider::WriteCacheMissFlag() {
+  if (cache_miss_handler_.HasCacheMisses()) {
+    TFLITE_LOG_PROD(tflite::TFLITE_LOG_WARNING,
+                    "Cache file is stale. Setting stale flag.");
+    if (file_descriptor_.IsValid()) {
+      const decltype(XNNPackCacheHeader::stale) stale = 1;
+      const size_t stale_offset = offsetof(XNNPackCacheHeader, stale);
+      XNNPACK_RETURN_CHECK(
+          file_descriptor_.SetPos(stale_offset) == stale_offset,
+          "Could not move cursor to update stale flag.");
+      XNNPACK_RETURN_CHECK(
+          file_descriptor_.Write(&stale, sizeof(XNNPackCacheHeader::stale)),
+          "Cannot write stale flag to cache file.");
+    }
+  }
+  return true;
+}
+
+MMapWeightCacheProvider::~MMapWeightCacheProvider() { WriteCacheMissFlag(); }
 
 void MMapWeightCacheProvider::SetFilePath(const char* path) {
   XNNPACK_ABORT_CHECK(
@@ -394,8 +459,7 @@ bool MMapWeightCacheProvider::StartBuild(const char* path, FileDescriptor fd) {
   XNNPACK_RETURN_CHECK(fd.IsValid(), "could not open file ('%s'): %s.",
                        file_path_.c_str(), strerror(errno));
   file_descriptor_ = std::move(fd);
-  building_run_ = builder_.Start(safe_path, file_descriptor_);
-  return building_run_;
+  return builder_.Start(safe_path, file_descriptor_);
 }
 
 bool MMapWeightCacheProvider::Load(const std::string& path, FileDescriptor fd) {
@@ -441,6 +505,10 @@ bool MMapWeightCacheProvider::Load() {
                        ", expected %" PRIu64 ". Cache needs to be built again.",
                        header.version, XNNPackCacheHeader::kVersion);
 
+  XNNPACK_RETURN_CHECK(!header.stale,
+                       "cache file was marked as stale by a previous run. "
+                       "Cache needs to be built again.");
+
   XNNPACK_RETURN_CHECK(header.buffer_list_offset < mmap_handle.size(),
                        "invalid offset for buffer list descriptor.");
 
@@ -462,6 +530,7 @@ bool MMapWeightCacheProvider::Load() {
 
   XNNPACK_RETURN_CHECK(CheckFingerprints(buffer_list));
 
+  size_t max_buffer_offset = 0;
   mmap_buffer_base_offset_ = buffer_list->base_offset();
   if (const auto buffers = buffer_list->buffers(); buffers) {
     for (auto* buffer : *buffers) {
@@ -474,9 +543,10 @@ bool MMapWeightCacheProvider::Load() {
       offset_to_addr_.insert(
           {buffer->offset(),
            mmap_handle.data() + mmap_buffer_base_offset_ + buffer->offset()});
+      max_buffer_offset = std::max<size_t>(max_buffer_offset, buffer->offset());
     }
   }
-
+  cache_miss_handler_.SetMinOffset(max_buffer_offset + 1);
   unmap_on_fail.Deactivate();
   return true;
 }
@@ -617,9 +687,8 @@ size_t MMapWeightCacheProvider::LookUp(
 }
 
 void* MMapWeightCacheProvider::ReserveSpace(size_t size) {
-  XNNPACK_ABORT_CHECK(IsBuilding(),
-                      "Cannot reserve space in a cache that isn't building.");
-  return builder_.Reserve(size);
+  return builder_.IsBuilding() ? builder_.Reserve(size)
+                               : cache_miss_handler_.Reserve(size);
 }
 
 size_t MMapWeightCacheProvider::LookUpOrInsert(
@@ -633,7 +702,10 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
   }
 
   const BufferLocation location =
-      builder_.Append(pack_id, ptr, size, cache_key->fingerprint_id);
+      builder_.IsBuilding()
+          ? builder_.Append(pack_id, ptr, size, cache_key->fingerprint_id)
+          : cache_miss_handler_.Append(pack_id, ptr, size,
+                                       cache_key->fingerprint_id);
   XNNPACK_ABORT_CHECK(!location.IsInvalid(),
                       "Inserting data in the cache failed.");
   cache_key_to_offset_.emplace(pack_id, location);
@@ -742,6 +814,7 @@ bool IsCompatibleCacheFile(FileDescriptorView fd) {
                        "Cache header version is incompatible. Expected %" PRIu64
                        ", got %" PRIu64 ".",
                        XNNPackCacheHeader::kVersion, header.version);
+  XNNPACK_RETURN_CHECK(!header.stale, "Cache file is stale.");
 
   fd.SetPos(header.buffer_list_offset);
   auto buffer = std::make_unique<uint8_t[]>(header.buffer_list_size);

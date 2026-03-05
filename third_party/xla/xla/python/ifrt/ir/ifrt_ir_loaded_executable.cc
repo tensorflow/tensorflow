@@ -67,6 +67,9 @@ char IfrtIrLoadedExecutable::ID = 0;
 
 namespace {
 
+using DeviceIdToLogicalDeviceIdMap =
+    absl::flat_hash_map<xla::ifrt::DeviceId, IfrtIrLogicalDeviceId>;
+
 // Returns a DeviceList for the given device ids.
 absl::StatusOr<xla::ifrt::DeviceListRef> LookUpDevices(
     xla::ifrt::Client* client, absl::Span<const xla::ifrt::DeviceId> ids) {
@@ -78,6 +81,48 @@ absl::StatusOr<xla::ifrt::DeviceListRef> LookUpDevices(
   }
   return client->MakeDeviceList(devices);
 }
+
+// Create a map from runtime device id to logical device id.
+absl::StatusOr<DeviceIdToLogicalDeviceIdMap> CreateDeviceIdToLogicalDeviceIdMap(
+    std::shared_ptr<CompiledIfrtIrProgram> program) {
+  DeviceIdToLogicalDeviceIdMap device_id_to_logical_device_id;
+  for (int i = 0; i < program->device_assignments.size(); ++i) {
+    const xla::ifrt::DeviceId device_id = program->device_assignments[i];
+    auto [_, inserted] = device_id_to_logical_device_id.insert(
+        {device_id, IfrtIrLogicalDeviceId(i)});
+    if (!inserted) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Duplicate device id ", device_id.value(),
+                       " found in device assignments"));
+    }
+  }
+  return device_id_to_logical_device_id;
+}
+
+absl::StatusOr<IfrtIrExecutableVersion::AtomExecutableVersion>
+CreateAtomExecutableVersion(
+    std::shared_ptr<const xla::ifrt::LoadedExecutable> executable,
+    absl::flat_hash_map<xla::ifrt::DeviceId, IfrtIrLogicalDeviceId>&
+        device_id_to_logical_device_id) {
+  std::optional<xla::ifrt::DeviceListRef> device_list = executable->devices();
+  if (!device_list.has_value()) {
+    return absl::UnimplementedError("Portable executables are not supported.");
+  }
+  absl::Span<xla::ifrt::Device* const> devices = (*device_list)->devices();
+
+  IfrtIrExecutableVersion::AtomExecutableVersion atom_executable_version;
+  TF_ASSIGN_OR_RETURN(
+      std::shared_ptr<const xla::ifrt::ExecutableVersion> version,
+      executable->executable_version());
+  atom_executable_version.runtime_abi_version = std::move(version);
+  atom_executable_version.logical_device_ids.reserve(devices.size());
+  for (xla::ifrt::Device* device : devices) {
+    atom_executable_version.logical_device_ids.push_back(
+        device_id_to_logical_device_id[device->Id()]);
+  }
+  return atom_executable_version;
+}
+
 }  // namespace
 
 absl::StatusOr<std::optional<std::string>> IfrtIrLoadedExecutable::Fingerprint()
@@ -97,27 +142,16 @@ IfrtIrLoadedExecutable::executable_version() const {
       std::vector<IfrtIrExecutableVersion::AtomExecutableVersion>
           runtime_abi_versions;
       runtime_abi_versions.reserve(program_->atom_program_executables->size());
+      TF_ASSIGN_OR_RETURN(
+          DeviceIdToLogicalDeviceIdMap device_id_to_logical_device_id,
+          CreateDeviceIdToLogicalDeviceIdMap(program_));
 
       for (const auto& [name, executable] :
            *program_->atom_program_executables) {
-        std::optional<xla::ifrt::DeviceListRef> device_list =
-            executable->devices();
-        if (!device_list.has_value()) {
-          return absl::UnimplementedError(
-              "Portable executables are not supported.");
-        }
-        absl::Span<xla::ifrt::Device* const> devices =
-            (*device_list)->devices();
-
-        IfrtIrExecutableVersion::AtomExecutableVersion atom_executable_version;
-        TF_ASSIGN_OR_RETURN(
-            std::shared_ptr<const xla::ifrt::ExecutableVersion> version,
-            executable->executable_version());
-        atom_executable_version.devices.reserve(devices.size());
-        for (xla::ifrt::Device* device : devices) {
-          atom_executable_version.devices.push_back(device->Id());
-        }
-        atom_executable_version.runtime_abi_version = std::move(version);
+        TF_ASSIGN_OR_RETURN(IfrtIrExecutableVersion::AtomExecutableVersion
+                                atom_executable_version,
+                            CreateAtomExecutableVersion(
+                                executable, device_id_to_logical_device_id));
         runtime_abi_versions.push_back(std::move(atom_executable_version));
       }
 

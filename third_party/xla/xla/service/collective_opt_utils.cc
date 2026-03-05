@@ -1036,7 +1036,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
                                                  reshape->shape());
     // Map each unmodified output dim of reshape to the corresponding input dim.
     absl::flat_hash_map<int64_t, int64_t> unmodified_output_to_input_map;
-    for (const std::pair<int64_t, int64_t>& io_pair : unmodified_dims) {
+    for (const auto& io_pair : unmodified_dims) {
       unmodified_output_to_input_map.insert({io_pair.second, io_pair.first});
     }
 

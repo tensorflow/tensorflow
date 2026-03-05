@@ -224,7 +224,6 @@ android_binary_with_tflite(
     assets_dir = "assets",
     custom_package = "org.tensorflow.lite.benchmark.delegateperformance",
     manifest = "AndroidManifest.xml",
-    multidex = "native",
     nocompress_extensions = [".tflite"],
     # In some platforms we don't have an Android SDK/NDK and this target
     # can't be built. We need to prevent the build system from trying to

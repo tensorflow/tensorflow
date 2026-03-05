@@ -314,14 +314,60 @@ static XLA_FFI_Error* XLA_FFI_ExecutionContext_Get(
   return nullptr;
 }
 
+static ExecutionState* GetExecutionState(XLA_FFI_ExecutionContext* ctx,
+                                         XLA_FFI_ExecutionStage stage) {
+  switch (stage) {
+    case XLA_FFI_ExecutionStage_INSTANTIATE:
+      return ctx->state_context.instantiate;
+    case XLA_FFI_ExecutionStage_PREPARE:
+      return ctx->state_context.prepare;
+    case XLA_FFI_ExecutionStage_INITIALIZE:
+      return ctx->state_context.initialize;
+    case XLA_FFI_ExecutionStage_EXECUTE:
+      DCHECK(false) << "Execution stage doesn't have a state";
+      return nullptr;
+  }
+}
+
+namespace {
+// This is a struct declaration for `XLA_FFI_State_Set/Get_Args` in XLA:FFI
+// version 0.2. We use this struct to detect older XLA:FFI clients for backward
+// compatibility reasons. This can be removed 15 Feb 2027.
+struct XLA_FFI_State_Args_V02 {
+  size_t struct_size;
+  XLA_FFI_Extension_Base* extension_start;
+
+  XLA_FFI_ExecutionContext* ctx;
+  XLA_FFI_TypeId* type_id;
+  void* state;
+};
+
+XLA_FFI_DEFINE_STRUCT_TRAITS(XLA_FFI_State_Args_V02, state);
+}  // namespace
+
 static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
+  // If struct size matches the legacy struct layout, always assume that we set
+  // the state for instantiation stage.
+  if (args->struct_size == XLA_FFI_State_Args_V02_STRUCT_SIZE) {
+    auto* v02 = reinterpret_cast<XLA_FFI_State_Args_V02*>(args);
+
+    XLA_FFI_State_Set_Args compat = {XLA_FFI_State_Set_Args_STRUCT_SIZE};
+    compat.ctx = v02->ctx;
+    compat.stage = XLA_FFI_ExecutionStage_INSTANTIATE;
+    compat.type_id = v02->type_id;
+    compat.state = v02->state;
+
+    return XLA_FFI_State_Set(&compat);
+  }
+
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_State_Set_Args", XLA_FFI_State_Set_Args_STRUCT_SIZE,
       args->struct_size));
 
-  DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
+  ExecutionState* execution_state = GetExecutionState(args->ctx, args->stage);
+  DCHECK(execution_state) << "ExecutionState must be set";
 
-  absl::Status status = args->ctx->execution_state->Set(
+  absl::Status status = execution_state->Set(
       TypeRegistry::TypeId(args->type_id->type_id), args->state);
   if (!status.ok()) {
     return new XLA_FFI_Error{std::move(status)};
@@ -331,13 +377,29 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
 }
 
 static XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args) {
+  // If struct size matches the legacy struct layout, always assume that we get
+  // the state for instantiation stage.
+  if (args->struct_size == XLA_FFI_State_Args_V02_STRUCT_SIZE) {
+    auto* v02 = reinterpret_cast<XLA_FFI_State_Args_V02*>(args);
+
+    XLA_FFI_State_Get_Args compat = {XLA_FFI_State_Set_Args_STRUCT_SIZE};
+    compat.ctx = v02->ctx;
+    compat.stage = XLA_FFI_ExecutionStage_INSTANTIATE;
+    compat.type_id = v02->type_id;
+    compat.state = v02->state;
+
+    return XLA_FFI_State_Get(&compat);
+  }
+
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "XLA_FFI_State_Get_Args", XLA_FFI_State_Get_Args_STRUCT_SIZE,
       args->struct_size));
 
-  DCHECK(args->ctx->execution_state) << "ExecutionState must be set";
-  absl::StatusOr<void*> state = args->ctx->execution_state->Get(
-      TypeRegistry::TypeId(args->type_id->type_id));
+  ExecutionState* execution_state = GetExecutionState(args->ctx, args->stage);
+  DCHECK(execution_state) << "ExecutionState must be set";
+
+  absl::StatusOr<void*> state =
+      execution_state->Get(TypeRegistry::TypeId(args->type_id->type_id));
   if (!state.ok()) {
     return new XLA_FFI_Error{std::move(state).status()};
   }

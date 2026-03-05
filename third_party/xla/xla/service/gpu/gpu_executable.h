@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -59,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -249,7 +251,7 @@ class GpuExecutable : public Executable {
       std::vector<ConstantInfo> constants,
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
       bool enable_debug_info_manager, ModuleStats module_stats,
-      absl::StatusOr<ThunkProto> thunk_proto);
+      absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -367,17 +369,14 @@ class GpuExecutable : public Executable {
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
-  // Retains shared ownership of on-device constants that are managed by XLA and
-  // potentially shared with other executables.
-  std::vector<std::shared_ptr<se::DeviceAddressBase>> shared_constants_;
   bool enable_debug_info_manager_;
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
 
-  // Stores the thunk graph as a proto from before running the thunk pass.
+  // Stores the thunk sequence as a proto from before running the thunk pass.
   // Might contain an error if the given thunk graph is not serializable.
-  absl::StatusOr<ThunkProto> thunk_proto_;
+  absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

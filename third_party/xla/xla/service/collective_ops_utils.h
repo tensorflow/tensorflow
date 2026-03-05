@@ -304,11 +304,6 @@ inline constexpr absl::string_view kCollectiveStreamAttrName =
     "_xla_gpu_collective_stream";
 inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
 
-// Returns latency metadata in microseconds(us) if the instruction is a custom
-// call with latency metadata. Returns `std::nullopt` if the instruction is not
-// a custom call with latency metadata or invalid latency metadata is provided.
-std::optional<double> GetCustomCallLatencyMetadata(const HloInstruction* instr);
-
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);
 

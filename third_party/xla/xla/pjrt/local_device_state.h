@@ -122,8 +122,8 @@ class LocalDeviceState {
 
   se::StreamExecutor* executor() const { return executor_; }
 
-  PjRtLocalDeviceId local_device_id() { return local_device_id_; }
-  PjRtLocalHardwareId local_hardware_id() { return local_hardware_id_; }
+  LocalDeviceId local_device_id() { return local_device_id_; }
+  LocalChipId local_hardware_id() { return local_hardware_id_; }
 
   LocalClient* client() const { return client_; }
 
@@ -245,8 +245,8 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  PjRtLocalDeviceId local_device_id_;
-  PjRtLocalHardwareId local_hardware_id_;
+  LocalDeviceId local_device_id_;
+  LocalChipId local_hardware_id_;
   se::StreamExecutor* const executor_;
   LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;

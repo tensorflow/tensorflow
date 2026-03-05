@@ -1441,18 +1441,29 @@ void HloDataflowAnalysis::OptimizePhiValues() {
       instruction_value_set.ForEachMutableElement(
           [&](const xla::ShapeIndex& index, HloValueSet* value_set) {
             auto values = value_set->values();
-            if (!(values.size() == 1 && values[0]->is_phi())) {
-              return;
+            bool changed = false;
+            std::vector<const HloValue*> new_values;
+            for (const HloValue* value : values) {
+              if (value->is_phi()) {
+                HloValue::Id phi_id = value->id();
+                HloValue::Id new_id = phi_graph_.FindOptimizedValue(phi_id);
+                if (new_id != phi_id) {
+                  VLOG(1) << "Replacing " << value->ToShortString() << " with "
+                          << GetValue(new_id).ToShortString();
+                  const HloValue& new_value = GetValue(new_id);
+                  new_values.push_back(&new_value);
+                  MarkValueForDeletion(phi_id);
+                  changed = true;
+                  continue;
+                }
+              }
+              new_values.push_back(value);
             }
-            HloValue::Id phi_id = values[0]->id();
-            HloValue::Id new_id = phi_graph_.FindOptimizedValue(phi_id);
-            if (new_id != phi_id) {
-              VLOG(1) << "Replacing " << values[0]->ToShortString() << " with "
-                      << GetValue(new_id).ToShortString();
+            if (changed) {
               value_set->Clear();
-              const HloValue& new_value = GetValue(new_id);
-              value_set->AddValue(&new_value);
-              MarkValueForDeletion(phi_id);
+              for (const HloValue* new_value : new_values) {
+                value_set->AddValue(new_value);
+              }
             }
           });
     }

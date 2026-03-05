@@ -29,15 +29,14 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
 
-
-class AsyncWrapperTest : public HloTestBase {};
+class AsyncWrapperTest : public HloPjRtGpuTestBase {};
 
 int CountAsyncInstructions(HloComputation* computation) {
   int count = 0;

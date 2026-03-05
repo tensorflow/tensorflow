@@ -102,7 +102,7 @@ std::optional<std::vector<int64_t>>
 GatherScatterOperandPartitionedOnTrivialSliceDims(
     const PartitionedHlo& operand, absl::Span<const int64_t> index_map,
     absl::Span<const int64_t> slice_size) {
-  if (operand.sharding().IsTileMaximal()) {
+  if (operand.sharding().IsReplicatedOrSingleDevice()) {
     return std::nullopt;
   }
   std::vector<int64_t> slice_dims;
@@ -339,7 +339,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive) {
-  if (indices.sharding().IsTileMaximal()) {
+  if (indices.sharding().IsReplicatedOrSingleDevice()) {
     return nullptr;
   }
 
@@ -373,7 +373,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
           indices.sharding(), index_passthrough_dims.indices_dims,
           index_passthrough_dims.output_dims,
           gather->shape().dimensions().size());
-  if (passthrough_sharding.IsTileMaximal()) {
+  if (passthrough_sharding.IsReplicatedOrSingleDevice()) {
     return nullptr;
   }
   hlo_sharding_util::MergeShardingIfCompatible(output_sharding,
@@ -423,7 +423,7 @@ absl::StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
     const HloSharding& output_sharding, absl::Span<const int64_t> batch_dims,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive) {
-  if (operand.sharding().IsTileMaximal()) {
+  if (operand.sharding().IsReplicatedOrSingleDevice()) {
     return nullptr;
   }
   // Perform clean up actions upon exiting function scope.
@@ -541,8 +541,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
     // For index and output sharding, if one is grouped partially but the other
     // is replicated, pass through the partially grouped sharding to the other
     // one.
-    if (!indices_grouped.sharding.IsTileMaximal() &&
-        output_grouped.sharding.IsTileMaximal()) {
+    if (!indices_grouped.sharding.IsReplicatedOrSingleDevice() &&
+        output_grouped.sharding.IsReplicatedOrSingleDevice()) {
       const HloSharding new_output_sharding =
           hlo_sharding_util::GatherOutputShardingFromIndex(indices.sharding(),
                                                            gather);
@@ -554,8 +554,8 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
                                                          gather, slice_sizes)),
                           operand_grouped);
     }
-    if (indices_grouped.sharding.IsTileMaximal() &&
-        !output_grouped.sharding.IsTileMaximal()) {
+    if (indices_grouped.sharding.IsReplicatedOrSingleDevice() &&
+        !output_grouped.sharding.IsReplicatedOrSingleDevice()) {
       const HloSharding new_indices_sharding =
           hlo_sharding_util::GatherIndexShardingFromOutput(output_sharding,
                                                            gather);
@@ -1330,7 +1330,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
     const Shape& output_shape, const HloSharding& output_sharding,
     absl::Span<const int64_t> slice_sizes, SpmdPartitioningVisitor* visitor,
     bool allow_recursive) {
-  if (operands[0].sharding().IsTileMaximal()) {
+  if (operands[0].sharding().IsReplicatedOrSingleDevice()) {
     return nullptr;
   }
   // Perform clean up actions upon exiting function scope.
@@ -1450,7 +1450,7 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
           indices.sharding(), index_passthrough_dims.indices_dims,
           index_passthrough_dims.output_dims,
           scatter->scatter_updates()[0]->shape().dimensions().size());
-  if (passthrough_sharding.IsTileMaximal()) {
+  if (passthrough_sharding.IsReplicatedOrSingleDevice()) {
     return nullptr;
   }
   hlo_sharding_util::MergeShardingIfCompatible(updates[0].sharding(),
@@ -1493,9 +1493,9 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
                                             std::move(*identity_literal), b);
   // Update partition_id for partial replicate.
   auto partition_id = indices.state().partition_id;
-  if (indices.sharding().ReplicateOnLastTileDim()) {
+  if (indices.sharding().HasPartialReplication()) {
     auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
-        indices.sharding(), {indices.sharding().num_dimensions() - 1});
+        indices.sharding(), {indices.sharding().SubgroupReplicationDim()});
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
         indices.state(), sharding_grouped.device_groups, b);
     partition_id = per_group_partitioner_state.partition_id;
@@ -1592,8 +1592,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
     // For index and update sharding, if one is grouped partially but the
     // other is replicated, pass through the partially grouped sharding to the
     // other one.
-    if (!indices_grouped.sharding.IsTileMaximal() &&
-        update_grouped.sharding.IsTileMaximal()) {
+    if (!indices_grouped.sharding.IsReplicatedOrSingleDevice() &&
+        update_grouped.sharding.IsReplicatedOrSingleDevice()) {
       const HloSharding new_update_sharding =
           hlo_sharding_util::ScatterUpdateShardingFromIndex(indices.sharding(),
                                                             scatter);
@@ -1605,8 +1605,8 @@ absl::StatusOr<HloInstruction*> PartitionScatterTrivialSlicedOperandDimensions(
                                           scatter, slice_sizes)),
           operand_grouped);
     }
-    if (indices_grouped.sharding.IsTileMaximal() &&
-        !update_grouped.sharding.IsTileMaximal()) {
+    if (indices_grouped.sharding.IsReplicatedOrSingleDevice() &&
+        !update_grouped.sharding.IsReplicatedOrSingleDevice()) {
       const HloSharding new_indices_sharding =
           hlo_sharding_util::ScatterIndexShardingFromUpdate(
               updates[0].sharding(), scatter);

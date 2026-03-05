@@ -16481,6 +16481,7 @@ ENTRY entry {
   EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 1));
 }
 
+// TODO(b/489091261): Test V3 dot handler.
 TEST_P(SpmdPartitioningTest, UnreducedDot) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -16516,6 +16517,24 @@ ENTRY entry {
               ::testing::Each(op::Sharding("{unreduced}")));
 }
 
+TEST_P(SpmdPartitioningTest, UnreducedParamV3) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = s32[2,4]{1,0} parameter(0), sharding={mesh[x=2] [{},{}], unreduced={x}}
+  b = s32[2,4]{1,0} parameter(1), sharding={mesh[x=2] [{},{}], unreduced={x}}
+  ROOT add = s32[2,4]{1,0} add(a, b)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  // Check that unreduced HloSharding is preserved after the pass.
+  for (auto* param : module->entry_computation()->parameter_instructions()) {
+    EXPECT_THAT(param->sharding().ToString(),
+                ::testing::HasSubstr("unreduced"));
+  }
+}
+
 TEST_P(SpmdPartitioningTest, SubgroupUnreducedParam) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -16534,6 +16553,23 @@ ENTRY entry {
                   "{devices=[1,2,2]<=[4] last_tile_dims={unreduced}}")));
 }
 
+TEST_P(SpmdPartitioningTest, SubgroupUnreducedParamV3) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  a = s32[2,4]{1,0} parameter(0), sharding={mesh[x=2, y=2] [{?},{x}], unreduced={y}}
+  ROOT add = s32[2,4]{1,0} add(a, a)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  // Check that unreduced HloSharding is preserved after the pass.
+  EXPECT_THAT(module->entry_computation()->parameter_instructions(),
+              ::testing::Each(
+                  op::Sharding("{mesh[x=2,y=2] [{?},{x}], unreduced={y}}")));
+}
+
+// TODO(b/489091261): Test V3 dot handler.
 TEST_P(SpmdPartitioningTest, SubgroupUnreducedDot) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -16550,6 +16586,7 @@ ENTRY entry {
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
+// TODO(b/489091261): Test V3 dot handler.
 TEST_P(SpmdPartitioningTest, SubgroupUnreducedAndReplicated) {
   absl::string_view hlo_string = R"(
 HloModule module

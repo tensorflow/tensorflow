@@ -36,6 +36,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"

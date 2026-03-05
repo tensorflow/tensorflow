@@ -981,25 +981,20 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
         }
 
         auto frontend_attributes_map = instruction->frontend_attributes().map();
-        mlir::StringAttr name = builder_->getStringAttr(
-            frontend_attributes_map.find("composite.name")->second);
+        mlir::StringRef name =
+            frontend_attributes_map.find("composite.name")->second;
         mlir::Attribute composite_attributes = mlir::parseAttribute(
             frontend_attributes_map.find("composite.attributes")->second,
             builder_->getContext());
-        mlir::FlatSymbolRefAttr decomposition = mlir::SymbolRefAttr::get(
-            builder_->getContext(),
-            ToStringRef(instruction->to_apply()->name()));
-        mlir::IntegerAttr version = builder_->getIntegerAttr(
-            builder_->getI32Type(),
-            std::stoi(
-                frontend_attributes_map.find("composite.version")->second));
+        mlir::StringRef decomposition =
+            ToStringRef(instruction->to_apply()->name());
+        int32_t version = std::stoi(
+            frontend_attributes_map.find("composite.version")->second);
 
         new_operation = mlir::stablehlo::CompositeOp::create(
-            *func_builder, loc, result_type, operands);
-        new_operation->setAttr("name", name);
+            *func_builder, loc, result_type, operands, name, {}, decomposition,
+            version);
         new_operation->setAttr("composite_attributes", composite_attributes);
-        new_operation->setAttr("decomposition", decomposition);
-        new_operation->setAttr("version", version);
         for (const auto& attr : attributes) {
           new_operation->setAttr(attr.getName(), attr.getValue());
         }

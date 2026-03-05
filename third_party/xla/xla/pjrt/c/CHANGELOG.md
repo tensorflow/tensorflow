@@ -1,5 +1,34 @@
 # PJRT C API changelog
 
+## 0.98
+
+* Added `PJRT_Buffer_Bitcast`.
+
+## 0.97
+
+* Add `multi_slice_config` field to `PJRT_ExecuteOptions`.
+
+## 0.96
+
+* Added `PJRT_LoadedExecutable_AddressableDeviceLogicalIds`.
+
+## 0.95
+
+* Added `PJRT_Client_Load`.
+
+## 0.94
+
+* Added types S1 and U1.
+
+## 0.93
+
+* Added `PJRT_Layouts_PJRT_Executable_GetParameterLayouts`. This extension API
+  complements `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.
+
+## 0.92
+
+* Added `PJRT_Device_GetAttributes`.
+
 ## 0.91
 
 * Added `PJRT_Extension_Type::PJRT_Extension_Type_Shardings`. This extension

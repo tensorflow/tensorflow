@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/symbolic_tile.h"
+#include "mlir/Support/LLVM.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -39,6 +41,8 @@ limitations under the License.
 
 namespace xla::gpu::experimental {
 namespace {
+
+using ::mlir::AffineExpr;
 
 std::string HloPtrToString(const HloInstruction* hlo) {
   return hlo == nullptr ? "nullptr" : hlo->ToString();
@@ -174,6 +178,20 @@ const TilingSpace::RTVarInfo& TilingSpace::GetRTVarInfo(
   return *it->second;
 }
 
+void TilingSpace::AssignTileSizes(absl::Span<const int64_t> tile_sizes) {
+  CHECK_EQ(tile_sizes.size(), dimensions_.size());
+  is_symbolic_ = false;
+  mlir::DenseMap<AffineExpr, AffineExpr> replacement_map;
+  for (const auto& [index, dim] : llvm::enumerate(dimensions_)) {
+    dim.tile_size = tile_sizes[index];
+    replacement_map[getAffineSymbolExpr(dim.id, mlir_context_)] =
+        getAffineConstantExpr(tile_sizes[index], mlir_context_);
+  }
+  for (auto& tiled_root : tiled_roots_) {
+    tiled_root.Replace(replacement_map);
+  }
+}
+
 std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
                                                  mlir::MLIRContext* ctx) {
   auto tiling_space = std::make_unique<TilingSpace>();
@@ -193,9 +211,10 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
     for (auto [index, dim] : llvm::enumerate(dims)) {
       tiling_space->AppendDimension(&root.instruction(), index, dim,
                                     DimensionSemantics::kParallel);
-      dim_tiles.push_back(GetDefaultDimTile(index, dim, ctx));
+      dim_tiles.push_back(
+          GetDefaultDimTile(index, getAffineSymbolExpr(index, ctx), dim));
     }
-    SymbolicTile tile{*tiling_space, std::move(dim_tiles)};
+    Tile tile{*tiling_space, std::move(dim_tiles)};
     if (root_shape.IsTuple()) {
       for (int64_t i = 0, e = root_shape.tuple_shapes().size(); i < e; ++i) {
         tiling_space->tiled_roots_.push_back(tile);

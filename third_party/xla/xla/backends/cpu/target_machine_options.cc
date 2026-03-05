@@ -104,6 +104,11 @@ GetEnabledAndDisabledFeatures(const std::vector<std::string>& features) {
 
 }  // namespace
 
+TargetMachineOptions::TargetMachineOptions() {
+  triple_ = llvm::sys::getDefaultTargetTriple();
+  cpu_ = llvm::sys::getHostCPUName();
+}
+
 TargetMachineOptions::TargetMachineOptions(const DebugOptions& debug_options) {
   triple_ = llvm::sys::getDefaultTargetTriple();
   auto xla_cpu_max_isa = CpuFeatureFromString(debug_options.xla_cpu_max_isa());
@@ -130,6 +135,12 @@ TargetMachineOptions::TargetMachineOptions(absl::string_view triple,
   std::tie(enabled_features_, disabled_features_) =
       GetEnabledAndDisabledFeatures(features_vec);
   EnableFeaturesIfAVX512(enabled_features_);
+}
+
+bool TargetMachineOptions::operator==(const TargetMachineOptions& other) const {
+  return triple_ == other.triple_ && cpu_ == other.cpu_ &&
+         enabled_features_ == other.enabled_features_ &&
+         disabled_features_ == other.disabled_features_;
 }
 
 std::vector<std::string> TargetMachineOptions::GetTargetMachineFeaturesVector()

@@ -94,10 +94,6 @@ struct SpmdPartitionerOptions {
   // prefer the former if true.
   bool choose_faster_windowed_einsum_over_mem = false;
 
-  // Whether doing bidirectional communication when decomposing independent
-  // all-gathers.
-  bool bidirectional_decomposed_all_gather = false;
-
   // Whether to skip checking the numbers and shardings of windowed einsum's
   // users.
   bool skip_checking_windowed_einsum_users = false;
@@ -746,11 +742,6 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Common handle for HLOs that runs on a single device.
   absl::Status HandleSingleDevice(const HloInstruction* hlo);
 
-  // CustomCall handlers per call target.
-  absl::Status HandleCustomCallTopK(HloInstruction* hlo);
-  // Convenient custom ops defined by the partitioner itself.
-  absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
-
   virtual std::unique_ptr<SpmdPartitioningVisitor> Clone() const;
 
   // Returns the PartitionedHlo that corresponds to the original hlo.
@@ -905,6 +896,14 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);
+
+  // Handlers for specific custom call targets.
+  // go/keep-sorted start
+  absl::Status HandleCustomCallSPMDInternal_MultiRotate(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_Wrap(HloInstruction* hlo);
+  absl::Status HandleCustomCallTopK(HloInstruction* hlo);
+  // go/keep-sorted end
 };
 
 }  // namespace spmd

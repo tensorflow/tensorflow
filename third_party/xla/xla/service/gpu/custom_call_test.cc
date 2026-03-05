@@ -222,6 +222,24 @@ TEST_F(CustomCallTest, WithStatusFailed) {
   EXPECT_THAT(status.message(), ::testing::HasSubstr("Failed"));
 }
 
+TEST_F(CustomCallTest, WithNoCallback) {
+  XlaBuilder b(TestName());
+  CustomCall(
+      &b, "NoCallback", /*operands=*/{}, ShapeUtil::MakeShape(F32, {}),
+      /*opaque=*/"",
+      /*has_side_effect=*/false,
+      /*output_operand_aliasing=*/{}, /*literal=*/nullptr,
+      /*schedule=*/CustomCallSchedule::SCHEDULE_NONE,
+      /*api_version=*/CustomCallApiVersion::API_VERSION_STATUS_RETURNING);
+  auto status = ExecuteAndTransfer(&b, {}).status();
+  EXPECT_THAT(
+      status,
+      StatusIs(
+          absl::StatusCode::kNotFound,
+          HasSubstr(
+              "No registered implementation for custom call to NoCallback")));
+}
+
 //===----------------------------------------------------------------------===//
 // XLA runtime custom calls provides type-safe custom call API
 //===----------------------------------------------------------------------===//
@@ -798,21 +816,52 @@ TEST_F(CustomCallTest, FfiExecutionContext) {
 // Stateful XLA:FFI handler
 //===----------------------------------------------------------------------===//
 
-struct SomeState {
-  explicit SomeState(int32_t value) : value(value) {}
+// This is the state that created for each instance of a custom call in the
+// XLA program. Its lifetime is tied to the XLA GPU executable itself.
+struct InstanceState {
+  explicit InstanceState(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+// This is the state that created by the prepare handler during XLA GPU
+// executable initialization and destroyed automatically when XLA execution is
+// complete. Note that it's not the same as creating state inside `Execute`, as
+// custom call can be inside the control flow and executed arbitrary number of
+// times (or not executed at all). Prepare and Initialize are guaranteed to be
+// invoked exactly once before XLA starts executing the program.
+struct PreparedState {
+  explicit PreparedState(int32_t value) : value(value) {}
+  int32_t value = 0;
+};
+
+// Same as `PreparedState` but for initialization.
+struct InitializedState {
+  explicit InitializedState(int32_t value) : value(value) {}
   int32_t value = 0;
 };
 
 // Every time custom call HLO operation is instantiated as a GPU runtime Thunk,
 // XLA calls instantiate callback to create a new instance of the handler state,
 // that will be passed to all other FFI handler calls.
-static absl::StatusOr<std::unique_ptr<SomeState>> InstantiateState() {
-  return std::make_unique<SomeState>(42);
+static absl::StatusOr<std::unique_ptr<InstanceState>> InstantiateState() {
+  return std::make_unique<InstanceState>(42);
 }
 
-// At run time we can access the state created by the instantiate callback.
-static absl::Status GetState(ffi::Result<ffi::AnyBuffer>, SomeState* state) {
-  if (state->value != 42) {
+static absl::StatusOr<std::unique_ptr<PreparedState>> PrepareState() {
+  return std::make_unique<PreparedState>(42);
+}
+
+static absl::StatusOr<std::unique_ptr<InitializedState>> InitializeState() {
+  return std::make_unique<InitializedState>(42);
+}
+
+// At run time we can access both of the state objects.
+static absl::Status ExecuteWithState(ffi::Result<ffi::AnyBuffer>,
+                                     InstanceState* instance_state,
+                                     PreparedState* prep_state,
+                                     InitializedState* init_state) {
+  if (instance_state->value != 42 || prep_state->value != 42 ||
+      init_state->value != 42) {
     return absl::InternalError("Unexpected value");
   }
   return absl::OkStatus();
@@ -821,18 +870,26 @@ static absl::Status GetState(ffi::Result<ffi::AnyBuffer>, SomeState* state) {
 XLA_FFI_DEFINE_HANDLER(kInstantiateState, InstantiateState,
                        ffi::Ffi::BindInstantiate());
 
-XLA_FFI_DEFINE_HANDLER(
-    kGetState, GetState,
-    ffi::Ffi::Bind().Ret<ffi::AnyBuffer>().Ctx<ffi::State<SomeState>>());
+XLA_FFI_DEFINE_HANDLER(kPrepareState, PrepareState, ffi::Ffi::BindPrepare());
 
-TEST_F(CustomCallTest, FfiExecutionState) {
+XLA_FFI_DEFINE_HANDLER(kInitializeState, InitializeState,
+                       ffi::Ffi::BindInitialize());
+
+XLA_FFI_DEFINE_HANDLER(kExecuteWithState, ExecuteWithState,
+                       ffi::Ffi::Bind()
+                           .Ret<ffi::AnyBuffer>()
+                           .Ctx<ffi::State<InstanceState>>()
+                           .Ctx<ffi::Prepared<PreparedState>>()
+                           .Ctx<ffi::Initialized<InitializedState>>());
+
+TEST_F(CustomCallTest, FfiInitializationState) {
   xla::ffi::Ffi::RegisterStaticHandler(
       ffi::GetXlaFfiApi(), "xla.gpu.ffi_execution_state", PlatformName(),
       {
           /*instantiate=*/kInstantiateState,
-          /*prepare=*/nullptr,
-          /*initialize=*/nullptr,
-          /*execute=*/kGetState,
+          /*prepare=*/kPrepareState,
+          /*initialize=*/kInitializeState,
+          /*execute=*/kExecuteWithState,
       });
 
   XlaBuilder b(TestName());

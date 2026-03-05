@@ -66,7 +66,7 @@ cc_library(
     name = "platform_id",
     srcs = ["platform_id.cc"],
     hdrs = ["platform_id.h"],
-    deps = ["//xla/stream_executor:platform"],
+    deps = ["//xla/stream_executor:platform_id"],
 )
 
 cc_library(

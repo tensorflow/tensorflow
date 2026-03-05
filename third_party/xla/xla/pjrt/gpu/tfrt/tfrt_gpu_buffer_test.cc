@@ -323,6 +323,38 @@ TEST_F(TfrtGpuBufferTest, CopyPoisonedBuffer) {
   }
 }
 
+TEST_F(TfrtGpuBufferTest, Bitcast) {
+  std::vector<int32_t> data{3};
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+  TF_ASSERT_OK_AND_ASSIGN(
+      *shape.mutable_layout(),
+      client_->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+
+  Shape new_shape = ShapeUtil::MakeShape(S32, {1});
+  TF_ASSERT_OK_AND_ASSIGN(*new_shape.mutable_layout(),
+                          client_->GetDefaultLayout(new_shape.element_type(),
+                                                    new_shape.dimensions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client_->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client_->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto bitcast_buffer,
+      buffer->Bitcast(new_shape.element_type(), new_shape.dimensions(),
+                      &new_shape.layout()));
+  EXPECT_TRUE(buffer->IsDeleted());
+  ASSERT_EQ(bitcast_buffer->on_device_shape(), new_shape);
+
+  auto future = bitcast_buffer->ToLiteral();
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
+  std::vector<int32_t> expected = {3};
+  EXPECT_EQ(shared_literal->data<int32_t>(), expected);
+}
+
 // TODO: b/382117736 - Add test for logical shape when shape is dynamic after
 // TfrtGpuClient::Execute() is ready.
 

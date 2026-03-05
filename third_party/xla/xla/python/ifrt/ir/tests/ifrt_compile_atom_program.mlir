@@ -36,7 +36,7 @@ module @call_hlo_sdy_lowered attributes {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     // CHECK: ifrt.CallLoadedExecutable @{{.*}}(%arg0)
     %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
-        {ifrt.module_type = "xla", ifrt.is_sdy_partitioned} : (!array) -> !array
+        {ifrt.module_type = "xla"} : (!array) -> !array
     return %0 : !array
   }
 

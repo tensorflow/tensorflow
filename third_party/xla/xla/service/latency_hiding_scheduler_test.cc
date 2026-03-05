@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -148,6 +150,59 @@ class TestLatencyEstimator : public LatencyEstimator {
   static constexpr TimeCost kMediumCost = 1000.0;
   static constexpr TimeCost kHighCost = 5000.0;
 };
+
+TEST(LatencyEstimatorTest, GetLatencyFromMetadata) {
+  TestLatencyEstimator estimator;
+  auto hlo_module =
+      VerifiedHloModule("test_module", HloModuleConfig(),
+                        /*verifier_layout_sensitive=*/false,
+                        /*allow_mixed_precision_in_hlo_verifier=*/true,
+                        /*shape_size_function=*/{});
+  HloComputation::Builder builder("test_computation");
+  auto* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p0"));
+  auto* instruction = hlo_module.AddEntryComputation(builder.Build(param));
+
+  // Test case 1: Metadata present and valid.
+  {
+    auto* custom_call = instruction->AddInstruction(
+        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
+                                         "test_target", "test_backend_config"));
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["latency_metadata"] = "1000";
+    custom_call->set_frontend_attributes(attributes);
+
+    std::optional<LatencyEstimator::TimeCost> latency =
+        estimator.GetLatencyFromMetadata(*custom_call);
+    ASSERT_TRUE(latency.has_value());
+    // 1000 ns * 1 cycle/us / 1000 = 1 cycle.
+    EXPECT_NEAR(*latency, 1.0, 1e-6);
+  }
+
+  // Test case 2: Metadata present but invalid.
+  {
+    auto* custom_call = instruction->AddInstruction(
+        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
+                                         "test_target", "test_backend_config"));
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["latency_metadata"] = "invalid";
+    custom_call->set_frontend_attributes(attributes);
+
+    std::optional<LatencyEstimator::TimeCost> latency =
+        estimator.GetLatencyFromMetadata(*custom_call);
+    EXPECT_FALSE(latency.has_value());
+  }
+
+  // Test case 3: Metadata missing.
+  {
+    auto* custom_call = instruction->AddInstruction(
+        HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {1}), {},
+                                         "test_target", "test_backend_config"));
+    std::optional<LatencyEstimator::TimeCost> latency =
+        estimator.GetLatencyFromMetadata(*custom_call);
+    EXPECT_FALSE(latency.has_value());
+  }
+}
 
 absl::StatusOr<bool> RunScheduler(
     HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
@@ -5067,6 +5122,61 @@ ENTRY %main (x: f32[61,163]) -> f32[61,163] {
   EXPECT_TRUE(hlo_module->has_schedule());
   EXPECT_TRUE(hlo_module->schedule().is_computation_scheduled(
       hlo_module->entry_computation()));
+}
+
+TEST_F(LatencyHidingSchedulerTest, AllGatherAsyncSimpleTopDownScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+
+ENTRY %module {
+  %constant.19 = u32[] constant(0)
+  %replica_id = u32[]{:T(128)} replica-id()
+  %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+  %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(
+    f32[]{:T(128)} %convert), dimensions={}
+  %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(
+    f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0},
+    metadata={op_type="AllGather" op_name="ag0"}
+  %ag-done = f32[16,256,256] all-gather-done(
+    (f32[8,256,256], f32[16,256,256]) %ag-start),
+    metadata={op_type="AllGather" op_name="ag0"}
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[16,256,256]{2,1,0} parameter(2)
+  p3 = f32[16,256,256]{2,1,0} parameter(3)
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  ROOT a2 = f32[16,256,256]{2,1,0} add(%ag-done, c0)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that AG overlaps with c0. AG does not overlap with c1 because c0's
+  // latency (5000 cycles) is enough to cover AG's latency.
+  auto ag_start_index = GetIndex(new_instruction_sequence, "ag-start");
+  auto c0_index = GetIndex(new_instruction_sequence, "c0");
+  auto ag_done_index = GetIndex(new_instruction_sequence, "ag-done");
+  EXPECT_TRUE(c0_index > ag_start_index && ag_done_index > c0_index);
 }
 
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {

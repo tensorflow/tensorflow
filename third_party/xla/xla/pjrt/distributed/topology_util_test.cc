@@ -34,6 +34,16 @@ limitations under the License.
 namespace xla {
 namespace {
 
+TEST(TopologyTest, GetNetworkNodes) {
+  tsl::setenv("XLA_DISTRIBUTED_TOPOLOGY_NETWORK_NODES", "spine,pod,rack", true);
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::string> nodes, GetNetworkNodes());
+
+  ASSERT_EQ(nodes.size(), 3);
+  EXPECT_EQ(nodes[0], "spine");
+  EXPECT_EQ(nodes[1], "pod");
+  EXPECT_EQ(nodes[2], "rack");
+}
+
 TEST(TopologyTest, BuildGlobalTopology) {
   std::vector<LocalTopologyProto> locals(2);
   DeviceProto* d0 = locals[0].add_devices();
@@ -126,6 +136,95 @@ TEST(TopologyTest, BuildGlobalTopologyMultipleFabricUuid) {
   EXPECT_EQ(global.processes()[2].devices()[1].partition_index(), 1);
   EXPECT_EQ(global.processes()[3].devices()[0].partition_index(), 1);
   EXPECT_EQ(global.processes()[3].devices()[1].partition_index(), 1);
+}
+
+// Verifies that BuildGlobalTopology sorts hosts by network_nodes so that
+// topologically-close hosts (sharing rack/pod switches) receive consecutive
+// global device IDs. This minimizes spine switch traffic for collective
+// operations where adjacent-ID devices communicate (e.g. ring all-reduce).
+TEST(TopologyTest, BuildGlobalTopologyWithNetworkNodes) {
+  // Network topology:
+  //   spine1
+  //   ├── pod1
+  //   │   ├── rack1 → host_a, host_b
+  //   │   └── rack2 → host_c
+  //   └── pod2
+  //       └── rack3 → host_d
+  //
+  // Input order is intentionally NOT sorted by network proximity.
+  std::vector<LocalTopologyProto> locals(4);
+
+  // host_d: pod2/rack3 (different pod from the others).
+  locals[0].set_boot_id("host_d");
+  locals[0].add_network_nodes("spine1");
+  locals[0].add_network_nodes("pod2");
+  locals[0].add_network_nodes("rack3");
+  locals[0].add_devices()->set_local_device_ordinal(0);
+
+  // host_b: pod1/rack1.
+  locals[1].set_boot_id("host_b");
+  locals[1].add_network_nodes("spine1");
+  locals[1].add_network_nodes("pod1");
+  locals[1].add_network_nodes("rack1");
+  locals[1].add_devices()->set_local_device_ordinal(0);
+
+  // host_c: pod1/rack2.
+  locals[2].set_boot_id("host_c");
+  locals[2].add_network_nodes("spine1");
+  locals[2].add_network_nodes("pod1");
+  locals[2].add_network_nodes("rack2");
+  locals[2].add_devices()->set_local_device_ordinal(0);
+
+  // host_a: pod1/rack1 (same rack as host_b).
+  locals[3].set_boot_id("host_a");
+  locals[3].add_network_nodes("spine1");
+  locals[3].add_network_nodes("pod1");
+  locals[3].add_network_nodes("rack1");
+  locals[3].add_devices()->set_local_device_ordinal(0);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      GlobalTopologyProto global,
+      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals),
+                          /*assign_global_device_ids=*/true));
+
+  ASSERT_EQ(global.processes_size(), 4);
+
+  // Find each host's global device ID via its boot_id.
+  auto find_global_id = [&](const std::string& boot_id) -> int {
+    for (const auto& process : global.processes()) {
+      if (process.boot_id() == boot_id) {
+        return process.devices(0).global_device_id();
+      }
+    }
+    return -1;
+  };
+
+  int host_a_id = find_global_id("host_a");
+  int host_b_id = find_global_id("host_b");
+  int host_c_id = find_global_id("host_c");
+  int host_d_id = find_global_id("host_d");
+
+  // Same-rack hosts (host_a, host_b under pod1/rack1) must have consecutive
+  // global device IDs — their traffic stays within the rack switch.
+  EXPECT_EQ(host_b_id + 1, host_a_id)
+      << "Same-rack hosts should have consecutive IDs";
+
+  // All pod1 hosts should have lower IDs than the pod2 host, so that
+  // collective traffic between adjacent IDs stays within pod1's aggregation
+  // switch and never traverses the spine.
+  EXPECT_LT(host_a_id, host_d_id);
+  EXPECT_LT(host_b_id, host_d_id);
+  EXPECT_LT(host_c_id, host_d_id);
+
+  // Verify the exact assignment:
+  //   Lexicographic sort: host_b (pod1/rack1), host_a (pod1/rack1),
+  //                       host_c (pod1/rack2), host_d (pod2/rack3)
+  //   Partition indices assigned in encounter order: 0, 1, 2, 3
+  //   Global device IDs follow partition order: 0, 1, 2, 3
+  EXPECT_EQ(host_b_id, 0);
+  EXPECT_EQ(host_a_id, 1);
+  EXPECT_EQ(host_c_id, 2);
+  EXPECT_EQ(host_d_id, 3);
 }
 
 TEST(TopologyTest, ExchangeTopology) {

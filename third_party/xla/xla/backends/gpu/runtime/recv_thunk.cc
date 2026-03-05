@@ -66,36 +66,11 @@ RecvThunk::RecvThunk(ThunkInfo thunk_info, const P2PConfig& config,
     : CollectiveThunk(Thunk::kRecv, thunk_info, async_events, true),
       config_(config),
       buffer_(buffer),
-      execution_counters_(config_.validation_kind ==
-                                  P2PConfig::ValidationKind::kConditional
-                              ? std::make_shared<ExecutionCounters>()
-                              : nullptr),
       hlo_name_(instr_name) {}
 
 absl::Status RecvThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  if (execution_counters_) {
-    TF_RETURN_IF_ERROR(execution_counters_->Initialize(
-        params.executor, params.collective_params->run_id));
-  }
   return absl::OkStatus();
-}
-
-absl::StatusOr<bool> RecvThunk::ConditionalShouldRun(
-    const ExecuteParams& params, int64_t current_id, int64_t source_id) const {
-  se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(int64_t* counter,
-                      execution_counters_->GetCounter(
-                          executor, params.collective_params->run_id));
-  auto it = config_.source_target_to_bounds.find(
-      std::make_pair(source_id, current_id));
-  TF_RET_CHECK(it != config_.source_target_to_bounds.end())
-      << "Missing bounds for conditional Recv";
-  bool should_run =
-      !(*counter < it->second.first || *counter > it->second.second);
-  VLOG(3) << "RunCollective counter " << *counter << " " << should_run;
-  ++(*counter);
-  return should_run;
 }
 
 absl::StatusOr<std::unique_ptr<RecvThunk>> RecvThunk::FromProto(
@@ -130,9 +105,6 @@ absl::StatusOr<std::unique_ptr<RecvThunk>> RecvThunk::FromProto(
 }
 
 absl::StatusOr<ThunkProto> RecvThunk::ToProto() const {
-  CHECK_EQ(config_.validation_kind, P2PConfig::ValidationKind::kValid);
-  CHECK(config_.source_target_to_bounds.empty());
-
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
@@ -229,32 +201,11 @@ absl::StatusOr<bool> RecvThunk::RunCollective(const ExecuteParams& params,
   int device_ordinal = stream.parent()->device_ordinal();
 
   const std::optional<int64_t> source_id = source_target.source;
-  bool should_run = false;
-  switch (config_.validation_kind) {
-    case P2PConfig::ValidationKind::kValid:
-      should_run = true;
-      break;
-    case P2PConfig::ValidationKind::kInvalid:
-      should_run = false;
-      break;
-    case P2PConfig::ValidationKind::kConditional:
-      if (source_id) {
-        TF_ASSIGN_OR_RETURN(
-            should_run, ConditionalShouldRun(params, current_id, *source_id));
-      }
-      break;
-  }
-
-  if (!should_run) {
-    VLOG(3) << "[" << device_ordinal << "] Skipping Recv";
-    return false;
-  }
 
   VLOG(3) << "[" << device_ordinal
           << "] Performing Recv, current_id: " << current_id << ", group mode: "
           << CollectiveOpGroupModeToString(config_.config.group_mode)
-          << ", should_run: " << should_run << ", hlo_name=(" << hlo_name_
-          << ")";
+          << ", hlo_name=(" << hlo_name_ << ")";
 
   TF_RETURN_IF_ERROR(RunRecv(device_buffer_pair, stream, comm, current_id,
                              source_id, device_string));

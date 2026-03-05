@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 
+#include <zlib.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -118,6 +120,10 @@ void ZlibOutputBuffer::AddToInputBuffer(absl::string_view data) {
   }
   memcpy(z_stream_->next_in + z_stream_->avail_in, data.data(), bytes_to_write);
   z_stream_->avail_in += bytes_to_write;
+}
+
+bool ZlibOutputBuffer::IsSyncOrFullFlush(uint8_t flush_mode) {
+  return flush_mode == Z_SYNC_FLUSH || flush_mode == Z_FULL_FLUSH;
 }
 
 absl::Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {

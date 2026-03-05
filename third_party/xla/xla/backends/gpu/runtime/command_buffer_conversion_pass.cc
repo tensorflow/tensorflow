@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -41,17 +42,19 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
+#include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
-#include "xla/ffi/ffi_api.h"
+#include "xla/ffi/ffi_registry.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/platform.h"
 #include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -63,14 +66,21 @@ namespace {
 using CommandBufferConfig = CommandBufferConversionPass::CommandBufferConfig;
 
 CommandBufferConfig GetCommandBufferConfig(
-    const DebugOptions& debug_options,
-    const se::DeviceDescription& device_info) {
+    const DebugOptions& debug_options, const se::DeviceDescription& device_info,
+    const HloModule* hlo_module) {
   absl::flat_hash_set<DebugOptions::CommandBufferCmdType> commands;
   for (auto cmd_type : debug_options.xla_gpu_enable_command_buffer()) {
     commands.insert(static_cast<DebugOptions::CommandBufferCmdType>(cmd_type));
   }
 
-  CommandBufferConfig config{std::move(commands), device_info};
+  // Extract slice_size (partition_size) from HloModule config if available.
+  int64_t num_local_devices = 0;
+  if (hlo_module != nullptr) {
+    num_local_devices = hlo_module->config().partition_size();
+  }
+
+  CommandBufferConfig config{std::move(commands), device_info,
+                             num_local_devices};
 
   // Erase command buffer cmd types that are not supported by the gpu runtime.
   static constexpr auto kRequireConditionals = {DebugOptions::CONDITIONAL,
@@ -141,10 +151,11 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::CUBLAS;
     case Thunk::kAllGatherStart:
     case Thunk::kAllReduceStart:
-    case Thunk::kReduceScatterStart:
     case Thunk::kAllToAllStart:
     case Thunk::kCollectiveBroadcastStart:
     case Thunk::kCollectivePermuteStart:
+    case Thunk::kRaggedAllToAllStart:
+    case Thunk::kReduceScatterStart:
     case Thunk::kRecv:
     case Thunk::kSend:
       return DebugOptions::COLLECTIVES;
@@ -207,6 +218,45 @@ bool IsConvertible(const CustomCallThunk& custom_call_thunk,
              : false;
 }
 
+// Returns true if the RaggedAllToAllStartThunk is convertible to a command
+// buffer operation.
+// This requires the one-shot barrier kernel to be explicitly enabled.
+bool IsConvertible(const RaggedAllToAllStartThunk& ra2a_thunk,
+                   const CommandBufferConfig& config) {
+  // 1. Check flags
+  bool flags_enabled = ra2a_thunk.is_one_shot_kernel_enabled() &&
+                       ra2a_thunk.use_multi_gpu_barrier_in_one_shot_kernel();
+  if (!flags_enabled) {
+    return false;
+  }
+
+  // 2. Check kernel support (types, limits)
+  if (!ra2a_thunk.IsOneShotKernelSupported()) {
+    return false;
+  }
+
+  // 3. Check Topology
+  // If we know the slice size (devices per node), we MUST verify that
+  // the collective is local. If it spans across nodes, the one-shot
+  // kernel (and P2P) cannot be used.
+  if (config.num_local_devices > 0) {
+    bool is_local = IsAllReplicasLocal(
+        config.num_local_devices, ra2a_thunk.ragged_all_to_all_config().config);
+    if (!is_local) {
+      VLOG(2) << "Skipping RaggedAllToAll Command Buffer conversion: "
+                 "Operation requires multi-host communication "
+              << "(num_local_devices=" << config.num_local_devices
+              << "), but one-shot kernel only supports "
+                 "local (intra-node) cliques.";
+      return false;
+    }
+  }
+
+  // If slice_size is unknown (0), we optimistically assume it's convertible
+  // and let the runtime Initialize/Record safety checks fail if we are wrong.
+  return true;
+}
+
 // Returns true if the given Thunk is convertible to a command buffer operation
 // based on the provided `config`.
 bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
@@ -237,6 +287,11 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
 
   if (thunk.kind() == Thunk::kCustomCall) {
     return IsConvertible(static_cast<const CustomCallThunk&>(thunk), config);
+  }
+
+  if (thunk.kind() == Thunk::kRaggedAllToAllStart) {
+    return IsConvertible(static_cast<const RaggedAllToAllStartThunk&>(thunk),
+                         config);
   }
   return true;
 }
@@ -339,7 +394,7 @@ GetSynchronizationMode(
 
 absl::StatusOr<std::unique_ptr<CommandBufferThunk>>
 ConvertThunksToCommandBuffer(
-    std::vector<std::unique_ptr<Thunk>> thunks_to_convert,
+    ThunkSequence thunks_to_convert,
     CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
@@ -377,8 +432,8 @@ ConvertThunksToCommandBuffer(
 absl::Status FlushCommandBuffer(
     CommandBufferCmdExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options,
-    std::vector<std::unique_ptr<Thunk>>& current_command_buffer_thunks,
-    std::vector<std::unique_ptr<Thunk>>& new_thunks, bool& changed) {
+    ThunkSequence& current_command_buffer_thunks, ThunkSequence& new_thunks,
+    bool& changed) {
   // If we don't have enough thunks to form a command buffer, we just add
   // them to the new thunks sequence as is.
   if (current_command_buffer_thunks.size() <
@@ -424,14 +479,14 @@ std::string CommandBufferConversionPass::CommandBufferConfig::ToString() const {
 }
 
 absl::StatusOr<bool> CommandBufferConversionPass::Run(
-    SequentialThunk* root_thunk, const DebugOptions& debug_options,
+    ThunkSequence* thunk_sequence, const DebugOptions& debug_options,
     const HloModule* absl_nullable hlo_module,
     const se::DeviceDescription& device_info,
     ThunkPassBufferAllocator& allocator) {
   tsl::profiler::TraceMe traceme("CommandBufferConversionPass");
 
   CommandBufferConfig config =
-      GetCommandBufferConfig(debug_options, device_info);
+      GetCommandBufferConfig(debug_options, device_info, hlo_module);
   VLOG(1) << "Module " << module_name_
           << " CommandBufferConfig: " << config.ToString();
   TF_ASSIGN_OR_RETURN(
@@ -441,8 +496,8 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
 
   bool changed = false;
 
-  std::vector<std::unique_ptr<Thunk>> current_command_buffer_thunks;
-  std::vector<std::unique_ptr<Thunk>> new_thunks;
+  ThunkSequence current_command_buffer_thunks;
+  ThunkSequence new_thunks;
 
   auto flush_command_buffer = [&]() -> absl::Status {
     return FlushCommandBuffer(synchronization_mode, debug_options,
@@ -450,7 +505,7 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
                               changed);
   };
 
-  auto& original_thunks = root_thunk->thunks();
+  auto& original_thunks = *thunk_sequence;
 
   for (size_t i = 0; i < original_thunks.size(); ++i) {
     auto& thunk = original_thunks[i];
@@ -480,9 +535,10 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       // If a `WhileThunk` itself is not eligible for conversion into a
       // command buffer, we attempt to convert thunks within its body
       auto while_thunk = static_cast<WhileThunk*>(thunk.get());
-      TF_ASSIGN_OR_RETURN(bool changed_in_body,
-                          Run(while_thunk->body_thunk_sequence(), debug_options,
-                              hlo_module, device_info, allocator));
+      TF_ASSIGN_OR_RETURN(
+          bool changed_in_body,
+          Run(&while_thunk->body_thunk_sequence()->thunks(), debug_options,
+              hlo_module, device_info, allocator));
       changed |= changed_in_body;
     } else if (thunk->kind() == Thunk::kConditional) {
       // If a `ConditionalThunk` itself is not eligible for conversion into a
@@ -490,8 +546,8 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
       auto conditional_thunk = static_cast<ConditionalThunk*>(thunk.get());
       for (auto& branch_thunk : conditional_thunk->branch_thunks()) {
         TF_ASSIGN_OR_RETURN(bool changed_in_branch,
-                            Run(branch_thunk.get(), debug_options, hlo_module,
-                                device_info, allocator));
+                            Run(&branch_thunk->thunks(), debug_options,
+                                hlo_module, device_info, allocator));
         changed |= changed_in_branch;
       }
     }
@@ -506,7 +562,7 @@ absl::StatusOr<bool> CommandBufferConversionPass::Run(
   // Flush the last command buffer.
   TF_RETURN_IF_ERROR(flush_command_buffer());
 
-  root_thunk->thunks() = std::move(new_thunks);
+  *thunk_sequence = std::move(new_thunks);
   return changed;
 }
 

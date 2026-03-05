@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/pjrt/utils.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
@@ -346,7 +347,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     const int device_id = (*device_assignment_)(replica, partition);
     VLOG(3) << "device_id: " << device_id;
     TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
-                        client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
+                        client_->LookupDevice(GlobalDeviceId(device_id)));
     device = tsl::down_cast<TfrtGpuDevice*>(pjrt_device);
     device_assignment = device_assignment_;
   } else {
@@ -1040,7 +1041,7 @@ TfrtGpuExecutable::Execute(
       const int partition = addressable_device_logical_ids_[i].partition;
       const int device_id = (*device_assignment_)(replica, partition);
       TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
-                          client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
+                          client_->LookupDevice(GlobalDeviceId(device_id)));
       TfrtGpuDevice* gpu_device =
           tensorflow::down_cast<TfrtGpuDevice*>(pjrt_device);
 

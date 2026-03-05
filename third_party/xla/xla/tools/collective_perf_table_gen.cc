@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/pjrt_gpu_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/platform/env.h"
@@ -412,13 +414,6 @@ PjRtEnvironment& CollectivePerfTableGen::GetPjRtEnv() {
   return *pjrt_env_;
 }
 
-Backend& CollectivePerfTableGen::GetBackend() {
-  if (backend_ == nullptr) {
-    backend_ = Backend::CreateDefaultBackend().value();
-  }
-  return *backend_;
-}
-
 std::unique_ptr<PjRtLoadedExecutable> CollectivePerfTableGen::Compile(
     std::unique_ptr<HloModule> module) {
   DebugOptions debug_opts;
@@ -560,10 +555,10 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
     return profiles;
   }
 
+  GpuTargetConfig gpu_target_config =
+      GetGpuTargetConfig(GetPjRtEnv().client.get());
   std::string device_key = HloOpProfiles::GetProfileName(
-      /*device_info=*/GetBackend()
-          .stream_executors()[0]
-          ->GetDeviceDescription());
+      /*device_info=*/gpu_target_config.device_description);
   profiles.mutable_entries()->insert({device_key, profile_list});
   return profiles;
 }

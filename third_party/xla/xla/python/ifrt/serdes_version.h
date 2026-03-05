@@ -38,10 +38,11 @@ class SerDesVersion {
   // List of SerDes version literals and introduction dates.
   //
   // 0: 2025-05-20, initial version.
+  // 1: 2026-02-19, added support for unreduced axes in ShardingParam.
 
   // Returns the current version.
   static SerDesVersion current() {
-    return SerDesVersion(SerDesVersionNumber(0));
+    return SerDesVersion(SerDesVersionNumber(1));
   }
 
   SerDesVersion(const SerDesVersion& other) = default;

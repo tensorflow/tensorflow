@@ -22,10 +22,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
@@ -38,12 +41,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -60,20 +65,71 @@ NvshmemSendThunk::NvshmemSendThunk(
       config_(GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
                                       replica_count, partition_count)),
       buffer_(buffer),
-      execution_counters_(config_.validation_kind ==
-                                  P2PConfig::ValidationKind::kConditional
-                              ? std::make_unique<ExecutionCounters>()
-                              : nullptr),
       hlo_name_(instr->name()),
       buffer_addresses_(std::move(buffer_addresses)) {}
+
+NvshmemSendThunk::NvshmemSendThunk(
+    ThunkInfo thunk_info, const P2PConfig& config,
+    const CollectiveThunk::Buffer& buffer, std::string hlo_name,
+    std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    : NvshmemCollectiveThunk(Thunk::kNvshmemSend, thunk_info,
+                             async_events != nullptr),
+      config_(config),
+      buffer_(buffer),
+      hlo_name_(std::move(hlo_name)),
+      buffer_addresses_(std::move(buffer_addresses)) {
+  set_async_events(std::move(async_events));
+}
+
+absl::StatusOr<ThunkProto> NvshmemSendThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  NvshmemSendThunkProto* nvshmem_proto = proto.mutable_nvshmem_send_thunk();
+  *nvshmem_proto->mutable_p2p_config() = P2PConfigToProto(config_);
+  nvshmem_proto->set_hlo_name(hlo_name_);
+  TF_ASSIGN_OR_RETURN(*nvshmem_proto->mutable_buffer(), buffer_.ToProto());
+
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  if (async_events_id.has_value()) {
+    nvshmem_proto->set_async_events_unique_id(async_events_id->value());
+  }
+
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<NvshmemSendThunk>> NvshmemSendThunk::FromProto(
+    ThunkInfo thunk_info, const NvshmemSendThunkProto& proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
+    CollectiveThunk::AsyncEventsMap& async_events_map) {
+  TF_RET_CHECK(buffer_addresses != nullptr);
+  TF_ASSIGN_OR_RETURN(P2PConfig p2p_config,
+                      P2PConfigFromProto(proto.p2p_config()));
+
+  TF_ASSIGN_OR_RETURN(
+      CollectiveThunk::Buffer buffer,
+      CollectiveThunk::Buffer::FromProto(proto.buffer(), buffer_allocations));
+
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
+  if (proto.has_async_events_unique_id()) {
+    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
+        async_events_map[AsyncEventsUniqueId{proto.async_events_unique_id()}];
+    if (!events) {
+      events = std::make_shared<CollectiveThunk::AsyncEvents>();
+    }
+    async_events = events;
+  }
+
+  return absl::WrapUnique(new NvshmemSendThunk(
+      std::move(thunk_info), p2p_config, buffer, proto.hlo_name(),
+      std::move(buffer_addresses), async_events));
+}
 
 absl::Status NvshmemSendThunk::Initialize(const InitializeParams& params) {
   VLOG(3) << "Initializing NvshmemSendThunk for: " << hlo_name_;
   TF_RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
-  if (execution_counters_) {
-    TF_RETURN_IF_ERROR(execution_counters_->Initialize(
-        params.executor, params.collective_params->run_id));
-  }
   return absl::OkStatus();
 }
 
@@ -130,31 +186,6 @@ absl::Status NvshmemSendThunk::RunNvshmemCollective(const ExecuteParams& params,
   // Only proceed with Send operation if we have a target
   if (!target_id) {
     VLOG(3) << "No target ID found, skipping Send operation";
-    return absl::OkStatus();
-  }
-
-  // Determine if we should run the Send operation
-  bool should_run =
-      config_.validation_kind != P2PConfig::ValidationKind::kInvalid;
-  if (config_.validation_kind == P2PConfig::ValidationKind::kConditional) {
-    se::StreamExecutor* executor = params.stream->parent();
-    TF_ASSIGN_OR_RETURN(int64_t* counter,
-                        execution_counters_->GetCounter(
-                            executor, params.collective_params->run_id));
-    auto it = config_.source_target_to_bounds.find(
-        std::make_pair(current_id, *source_target.target));
-    if (it == config_.source_target_to_bounds.end()) {
-      return absl::InternalError("Missing bounds for conditional Send");
-    }
-    if (*counter < it->second.first || *counter > it->second.second) {
-      should_run = false;
-    }
-    VLOG(3) << "RunNvshmemCollective counter " << *counter << " " << should_run;
-    ++(*counter);
-  }
-
-  if (!should_run) {
-    VLOG(3) << "Skipping Send operation";
     return absl::OkStatus();
   }
 

@@ -1187,6 +1187,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   const std::vector<const HloInstruction*>* GetRepeatedInstructionList(
       const HloInstruction* instruction) const;
 
+  // Adds an operand to the alternate memory map.
+  void AddOperandToAlternateMemoryMap(const HloInstruction* instruction,
+                                      int operand_number,
+                                      const ShapeIndex& index);
+
   // Returns true if the interval is pinned in the alternate memory. Buffers are
   // pinned when their layout has the alternate memory space before MSA runs.
   bool IsIntervalPinnedToAlternateMemory(
@@ -1363,7 +1368,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       default_memory_coloring_requirements_;
 
   // Set of HloUses that are in the default memory.
-  absl::flat_hash_set<HloUse> uses_in_default_memory_;
+  absl::flat_hash_set<HloUse> uses_in_default_memory_set_;
+  // Vector to preserve insertion order for deterministic window prefetching
+  // results.
+  std::vector<HloUse> uses_in_default_memory_;
 };
 
 }  // namespace memory_space_assignment

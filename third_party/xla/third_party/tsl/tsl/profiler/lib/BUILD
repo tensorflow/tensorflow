@@ -152,6 +152,7 @@ cc_library(
         "@xla//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/platform:errors",

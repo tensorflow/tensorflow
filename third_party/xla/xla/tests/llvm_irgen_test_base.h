@@ -19,13 +19,18 @@ limitations under the License.
 #include <string>
 
 #include "xla/service/llvm_compiler.h"
-#include "xla/tests/codegen_test_base.h"
+#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 
 // Tests that verify IR emitted by the CPU/GPU backend is as expected.
-class LlvmIrGenTestBase : public CodegenTestBase {
+class LlvmIrGenTestBase : public HloTestBase {
  protected:
+  // Compiles hlo_module with the JIT compiler.
+  absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
+      std::unique_ptr<HloModule> hlo_module,
+      bool run_optimization_passes = true);
+
   // Compiles the given HLO module to LLVM IR and verifies the IR matches the
   // given pattern. `pattern` is in the FileCheck pattern matching syntax
   // (http://llvm.org/docs/CommandGuide/FileCheck.html).
@@ -45,20 +50,6 @@ class LlvmIrGenTestBase : public CodegenTestBase {
                           const std::string& expected_llvm_ir,
                           bool match_optimized_ir = false,
                           bool run_optimization_passes = true);
-
-  // Compiles the given HLO module to LLVM IR and verifies the IR matches the
-  // given pattern. `pattern` is in the FileCheck pattern matching syntax
-  // (http://llvm.org/docs/CommandGuide/FileCheck.html).
-  //
-  // This function invokes the AOT compiler, with options in `options`.
-  //
-  // If `match_optimized_ir` is true, match the version of the IR after internal
-  // optimizations are applied; otherwise, the IR before optimizations is
-  // matched.
-  void CompileAheadOfTimeAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
-                                     const AotCompilationOptions& options,
-                                     const std::string& pattern,
-                                     bool match_optimized_ir);
 
  private:
   LLVMCompiler* GetLLVMCompiler();

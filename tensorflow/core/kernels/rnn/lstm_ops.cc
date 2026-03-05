@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <string>
 #include <utility>
 
 #include "absl/log/check.h"

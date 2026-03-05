@@ -32,21 +32,20 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 // A simple ThunkPass that adds a new thunk to the root thunk.
 class TestPass : public ThunkPassInterface {
  public:
   absl::string_view name() const override { return "test-pass"; }
-  absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+  absl::StatusOr<bool> Run(ThunkSequence* thunk_sequence,
                            const DebugOptions& debug_options,
                            const HloModule* hlo_module,
                            const se::DeviceDescription& device_info,
                            ThunkPassBufferAllocator& /*allocator*/) override {
-    root_thunk->thunks().push_back(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>()));
+    thunk_sequence->push_back(
+        std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
     return true;
   }
 };
@@ -62,22 +61,20 @@ TEST(ThunkPassPipelineTest, PipelineRunsPass) {
   ThunkPassPipeline pipeline("test-pipeline");
   pipeline.AddPass(std::make_unique<TestPass>());
 
-  auto root_thunk = std::make_unique<SequentialThunk>(
-      Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>());
+  ThunkSequence thunk_sequence;
+  EXPECT_EQ(thunk_sequence.size(), 0);
+
   DebugOptions debug_options;
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
 
-  EXPECT_EQ(root_thunk->thunks().size(), 0);
-
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      pipeline.Run(root_thunk.get(), debug_options, /*hlo_module=*/nullptr,
+      pipeline.Run(&thunk_sequence, debug_options, /*hlo_module=*/nullptr,
                    device_info, allocator));
   EXPECT_TRUE(changed);
-  EXPECT_EQ(root_thunk->thunks().size(), 1);
+  EXPECT_EQ(thunk_sequence.size(), 1);
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

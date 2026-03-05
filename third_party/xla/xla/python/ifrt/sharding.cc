@@ -860,6 +860,22 @@ absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
 
+  std::vector<IndexDomain> result;
+  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
+    if (shape.dims().empty()) {
+      result.resize(devices_->size(), IndexDomain(shape));
+      return result;
+    }
+    result.reserve(devices_->size());
+  } else {
+    if (shape.dims().empty()) {
+      result.resize(devices_->AddressableDeviceList()->size(),
+                    IndexDomain(shape));
+      return result;
+    }
+    result.reserve(devices_->AddressableDeviceList()->size());
+  }
+
   // Calculate the origins of tiles, ignoring device assignments.
   TF_ASSIGN_OR_RETURN(Shape local_shape, GetShardShape(shape));
   std::vector<Index> tile_indices =
@@ -885,12 +901,6 @@ absl::StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
   int replication = device_to_index.size() / origins.size();
 
   DCHECK_EQ(device_to_index.size(), devices_->size());
-  std::vector<IndexDomain> result;
-  if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards) {
-    result.reserve(devices_->size());
-  } else {
-    result.reserve(devices_->AddressableDeviceList()->size());
-  }
   const absl::Span<Device* const> devices = devices_->devices();
   for (int i = 0; i < device_to_index.size(); ++i) {
     if (single_device_shard_semantics ==

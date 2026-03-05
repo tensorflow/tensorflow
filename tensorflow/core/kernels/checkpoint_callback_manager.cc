@@ -152,7 +152,7 @@ absl::Status CheckpointCallbackManager::RegisterSaveCallback(
     mutex_lock l(mu_);
     if (!save_callbacks_.try_emplace(file_extension, std::move(callback))
              .second) {
-      return errors::AlreadyExists("A callback already exists.");
+      return absl::AlreadyExistsError("A callback already exists.");
     }
 
     // If last_saved_checkpoint_id_and_dir_ is not empty,
@@ -186,7 +186,7 @@ absl::Status CheckpointCallbackManager::RegisterRestoreCallback(
     mutex_lock l(mu_);
     if (!restore_callbacks_.try_emplace(file_extension, std::move(callback))
              .second) {
-      return errors::AlreadyExists("A callback already exists.");
+      return absl::AlreadyExistsError("A callback already exists.");
     }
 
     // If last_restored_checkpoint_id_and_dir_ is not empty,

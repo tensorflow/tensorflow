@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <queue>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>

@@ -74,6 +74,7 @@ MATCHER_P(OutputTileSizesIs, matcher, "") {
 class NestGemmFusionTest : public HloHardwareIndependentTestBase {
  protected:
   NestGemmFusionTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   const se::DeviceDescription device_description_{
       TestGpuDeviceInfo::RTXA6000DeviceInfo(
           se::GpuComputeCapability{se::CudaComputeCapability::Ampere()})};
@@ -88,6 +89,13 @@ class NestGemmFusionTest : public HloHardwareIndependentTestBase {
         IsOkAndHolds(expect_change));
     EXPECT_OK(verifier().Run(module.get()).status());
     return module;
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_unsupported_disable_nested_gemm_fusions(false);
+    return debug_options;
   }
 };
 

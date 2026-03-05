@@ -87,8 +87,19 @@ class CollectiveMemoryRequests {
   // Allocations must be allocated from a compatible collective memory allocator
   // (typically have a memory space S(1) in the HLO program).
   struct MulticastAllocations {
-    size_t id;  // see synthetic id documentation above
+    // See synthetic id documentation above.
+    size_t id;
     GpuCliqueKey key;
+
+    // Buffer assigner can fit multiple buffers into one pre-allocated memory.
+    // With current API users are allowed to map any of those buffers with
+    // the multicast object. However CUDA requires the memory address mapped to
+    // the multicast object to be aligned with specific alignment:
+    // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MULTICAST.html
+    // This alignment can't currently be guaranteed by the buffer assigner,
+    // that's why range_mapped option allows the user to map the entire
+    // pre-allocated memory range with the multicast object.
+    bool range_mapped;
     absl::btree_set<BufferAllocation::Index> allocations;
   };
 
@@ -111,14 +122,18 @@ class CollectiveMemoryRequests {
 
   // Adds a request to map the given allocation to multicast object on the given
   // clique.
+  // If the method is called several times for different allocation in the same
+  // clique, `range_mapped` flag will be used if it was set at any call.
   absl::Status RequestMulticastAllocation(const GpuCliqueKey& clique_key,
-                                          BufferAllocation::Index allocation);
+                                          BufferAllocation::Index allocation,
+                                          bool range_mapped = false);
 
   // Adds a request to map the given address to multicast object on the given
   // clique. If address does not correspond to any of the buffer allocations in
   // the `buffers_`, it will return an error.
   absl::Status RequestMulticastAddress(const GpuCliqueKey& clique_key,
-                                       const se::DeviceAddressBase& addr);
+                                       const se::DeviceAddressBase& addr,
+                                       bool range_mapped = false);
 
   // Adds a request to exchange the given allocation with clique peers.
   absl::Status RequestPeerAllocation(const GpuCliqueKey& clique_key,

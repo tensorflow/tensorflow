@@ -451,12 +451,21 @@ TEST(MeshAxesReplicaGroupListTest, ToCollectiveDeviceList) {
   MeshAxesReplicaGroupList replica_group_b(mesh, {AxisRef(0)});
   EXPECT_EQ(
       replica_group_b.flattened_replica_groups(),
-      replica_group_b.ToCollectiveDeviceList().flattened_replica_groups());
+      replica_group_b.ToCollectiveDeviceList()->flattened_replica_groups());
 
   MeshAxesReplicaGroupList replica_group_a_1_3(mesh, {AxisRef(0, {1, 3})});
   EXPECT_EQ(
       replica_group_a_1_3.flattened_replica_groups(),
-      replica_group_a_1_3.ToCollectiveDeviceList().flattened_replica_groups());
+      replica_group_a_1_3.ToCollectiveDeviceList()->flattened_replica_groups());
+}
+
+TEST(MeshAxesReplicaGroupListTest, ToStringWithFullReplicaGroupList) {
+  Mesh mesh({2, 2}, {"x", "y"});
+  MeshAxesReplicaGroupList replica_group_x(mesh, {AxisRef(0)});
+  EXPECT_EQ(replica_group_x.ToString(true), "{{0,2},{1,3}}");
+
+  MeshAxesReplicaGroupList replica_group_y(mesh, {AxisRef(1)});
+  EXPECT_EQ(replica_group_y.ToString(true), "{{0,1},{2,3}}");
 }
 
 TEST(CollectiveDeviceListTest, DefaultListToString) {
@@ -562,6 +571,11 @@ TEST(IotaReplicaGroupListTest, ToString) {
 TEST(IotaReplicaGroupListTest, ReshapeTransposeToString) {
   IotaReplicaGroupList list(2, 10, {4, 5}, {1, 0});
   EXPECT_EQ(list.ToString(), "[2,10]<=[4,5]T(1,0)");
+}
+
+TEST(IotaReplicaGroupListTest, ToStringWithFullReplicaGroupList) {
+  IotaReplicaGroupList list(2, 2);
+  EXPECT_EQ(list.ToString(true), "{{0,1},{2,3}}");
 }
 
 }  // namespace xla

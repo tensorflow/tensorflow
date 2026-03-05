@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
@@ -55,36 +56,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
-
-ReductionKindProto ToReductionKindProto(ReductionKind kind) {
-  switch (kind) {
-    case ReductionKind::SUM:
-      return REDUCTION_KIND_SUM;
-    case ReductionKind::PRODUCT:
-      return REDUCTION_KIND_PRODUCT;
-    case ReductionKind::MIN:
-      return REDUCTION_KIND_MIN;
-    case ReductionKind::MAX:
-      return REDUCTION_KIND_MAX;
-  }
-}
-
-absl::StatusOr<ReductionKind> FromReductionKindProto(
-    const ReductionKindProto& proto) {
-  switch (proto) {
-    case REDUCTION_KIND_SUM:
-      return ReductionKind::SUM;
-    case REDUCTION_KIND_PRODUCT:
-      return ReductionKind::PRODUCT;
-    case REDUCTION_KIND_MIN:
-      return ReductionKind::MIN;
-    case REDUCTION_KIND_MAX:
-      return ReductionKind::MAX;
-    default:
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unknown ReductionKindProto: ", proto));
-  }
-}
 
 absl::Status CheckImplementableInst(const HloInstruction* inst,
                                     Thunk::Kind reduction_op) {
@@ -274,10 +245,17 @@ AllReduceStartThunk::FromProto(
   ASSIGN_OR_RETURN(ReductionKind reduction_kind,
                    FromReductionKindProto(thunk_proto.reduction_kind()));
 
+  std::optional<LaunchDimensions> launch_dimensions = std::nullopt;
+  if (thunk_proto.has_launch_dimensions()) {
+    TF_ASSIGN_OR_RETURN(
+        launch_dimensions,
+        LaunchDimensions::FromProto(thunk_proto.launch_dimensions()));
+  }
   auto kernel_thunk = std::make_unique<CollectiveKernelThunk>(
       thunk_info, config, reduction_kind, thunk_proto.is_async(), buffers,
       thunk_proto.collective_kernel_enabled(), thunk_proto.kernel_name(),
-      thunk_proto.shmem_bytes(), thunk_proto.is_multimem_enabled());
+      launch_dimensions, thunk_proto.shmem_bytes(),
+      thunk_proto.is_multimem_enabled());
 
   return std::make_unique<AllReduceStartThunk>(
       std::move(thunk_info), AllReduceConfig{config, reduction_kind},
@@ -310,6 +288,10 @@ absl::StatusOr<ThunkProto> AllReduceStartThunk::ToProto() const {
   thunk_proto->set_collective_kernel_enabled(
       collective_kernel_thunk_->collective_kernel_enabled());
   thunk_proto->set_is_async(collective_kernel_thunk_->is_async());
+  if (auto launch_dimensions = collective_kernel_thunk_->launch_dimensions();
+      launch_dimensions.has_value()) {
+    *thunk_proto->mutable_launch_dimensions() = launch_dimensions->ToProto();
+  }
 
   return proto;
 }

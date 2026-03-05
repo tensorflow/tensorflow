@@ -25,7 +25,7 @@ limitations under the License.
 // the same parameter at the peer device, where N is the number of devices
 // participating in the collective kernel.
 // This information is structured as the
-// single dimentional array with the following layout:
+// single dimensional array with the following layout:
 // [
 //   param0_peer0, param0_peer1, ..., param0_peerN,
 //   param1_peer0, param1_peer1, ..., param1_peerN,

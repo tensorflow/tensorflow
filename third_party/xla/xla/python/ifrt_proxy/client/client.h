@@ -98,6 +98,11 @@ class Client final : public llvm::RTTIExtends<Client, xla::ifrt::Client> {
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> BitcastArrays(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      xla::ifrt::ArrayCopySemantics semantics) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) override;

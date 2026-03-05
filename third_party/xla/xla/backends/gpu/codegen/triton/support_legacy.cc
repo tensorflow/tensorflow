@@ -68,13 +68,25 @@ bool IsTritonSupportedDotOutputType(
     case F32:
       return true;
     case F8E5M2:
-      if (auto ptr = gpu_version.cuda_compute_capability()) {
-        return ptr->IsAtLeastAmpere();
+      if (auto* cuda_cc = gpu_version.cuda_compute_capability()) {
+        return cuda_cc->IsAtLeastAmpere();
+      }
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_ocp_fp8_support();
       }
       return false;
     case F8E4M3FN:
-      if (auto ptr = gpu_version.cuda_compute_capability()) {
-        return ptr->IsAtLeastHopper();
+      if (auto* cuda_cc = gpu_version.cuda_compute_capability()) {
+        return cuda_cc->IsAtLeastHopper();
+      }
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_ocp_fp8_support();
+      }
+      return false;
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_nanoo_fp8_support();
       }
       return false;
     case BF16:

@@ -22,19 +22,18 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -58,7 +57,8 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     se::Stream* command_buffer_trace_stream,
     CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
     CollectiveMemory* collective_memory,
-    ExecutionStreamIdMap additional_compute_streams) {
+    ExecutionStreamIdMap additional_compute_streams,
+    ExecutionScopedState* execution_scoped_state) {
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
                        collective_params, collective_cliques, collective_memory,
                        run_options.run_options().device_to_host_stream(),
@@ -66,7 +66,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
                        run_options.run_options().send_device_memory_function(),
                        run_options.run_options().recv_device_memory_function(),
                        run_options.run_options().ffi_execution_context(),
-                       additional_compute_streams,
+                       additional_compute_streams, execution_scoped_state,
                        run_options.run_options().gpu_executable_run_options()
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
@@ -96,7 +96,8 @@ Thunk::ExecuteParams::ExecuteParams(
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives,
+    ExecutionStreamIdMap additional_compute_streams,
+    ExecutionScopedState* execution_scoped_state, bool mock_collectives,
     int64_t execution_id)
     : buffer_allocations(buffer_allocations),
       stream(stream),
@@ -110,6 +111,7 @@ Thunk::ExecuteParams::ExecuteParams(
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
+      execution_scoped_state(execution_scoped_state),
       mock_collectives(mock_collectives),
       execution_id(execution_id) {}
 
@@ -607,11 +609,13 @@ ThunkMetadataProto Thunk::ToMetadataProto() const {
 }
 
 ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
-    const Thunk& root_thunk) {
+    const ThunkSequence& thunk_sequence) {
   ThunkMetadataListProto metadata_list_proto;
-  root_thunk.Walk([&metadata_list_proto](const Thunk* thunk) {
-    *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
-  });
+  for (auto& thunk : thunk_sequence) {
+    thunk->Walk([&metadata_list_proto](const Thunk* thunk) {
+      *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
+    });
+  }
   return metadata_list_proto;
 }
 

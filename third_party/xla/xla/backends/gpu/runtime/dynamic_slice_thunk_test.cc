@@ -2126,7 +2126,7 @@ TEST_F(DynamicSliceThunkTest,
   EXPECT_EQ(proto.offsets().offsets(0).hlo_module_offset_idx(), 0);
 }
 
-TEST_F(DynamicSliceThunkTest, TransformAllNestedThunks) {
+TEST_F(DynamicSliceThunkTest, TransformNested) {
   auto seq = std::make_unique<ThunkSequence>();
   seq->emplace_back(
       std::make_unique<DummyThunk>(Thunk::Kind::kGemm, Thunk::ThunkInfo()));
@@ -2139,7 +2139,7 @@ TEST_F(DynamicSliceThunkTest, TransformAllNestedThunks) {
                           /*sliced_shapes=*/{},
                           /*offset_byte_sizes=*/{});
 
-  TF_EXPECT_OK(thunk.TransformAllNestedThunks([](auto) {
+  TF_EXPECT_OK(thunk.TransformNested([](auto) {
     return std::make_unique<DummyThunk>(Thunk::Kind::kCustomCall,
                                         Thunk::ThunkInfo());
   }));

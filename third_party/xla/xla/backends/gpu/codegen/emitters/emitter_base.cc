@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <limits>

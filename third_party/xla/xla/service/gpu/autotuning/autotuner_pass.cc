@@ -128,10 +128,9 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   if (cache_dir.empty()) {
     cache_dir = debug_options.xla_gpu_experimental_autotuner_cache_dir();
   }
-  std::unique_ptr<AutotunerCacheInterface> cache =
-      std::make_unique<LegacyCache>(
-          cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
-          target_config->device_description);
+  auto cache = std::make_unique<LegacyCache>(
+      cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
+      target_config->device_description);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,

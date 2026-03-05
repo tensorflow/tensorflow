@@ -34,6 +34,17 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "stacktrace_lineinfo",
+    flag_values = {":lineinfo": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "lineinfo",
+    build_setting_default = False,
+)
+
 # Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
@@ -472,25 +483,10 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
-selects.config_setting_group(
-    name = "linux_any",
-    match_any = [
-        ":linux_aarch64",
-        ":linux_armhf",
-        ":linux_ppc64le",
-        ":linux_riscv64",
-        ":linux_s390x",
-        ":linux_x86_64",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 # Enable NUMA on Linux platforms; hwloc does not work on Android
-selects.config_setting_group(
+alias(
     name = "with_numa_support",
-    match_any = [
-        ":linux_any",
-    ],
+    actual = if_google("//tools/cc_target_os:linux-google", "@platforms//os:linux"),
 )
 
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD

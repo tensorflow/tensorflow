@@ -28,12 +28,14 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
+#include <initializer_list>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/scanner.h"
 #include "tsl/platform/str_util.h"
@@ -48,14 +50,14 @@ namespace {
 const char kPathSep[] = "/";
 }  // namespace
 
-string JoinPathImpl(std::initializer_list<absl::string_view> paths) {
-  string result;
+std::string JoinPathImpl(std::initializer_list<absl::string_view> paths) {
+  std::string result;
 
   for (absl::string_view path : paths) {
     if (path.empty()) continue;
 
     if (result.empty()) {
-      result = string(path);
+      result = std::string(path);
       continue;
     }
 
@@ -138,10 +140,10 @@ absl::string_view BasenamePrefix(absl::string_view path) {
   return internal::SplitBasename(path).first;
 }
 
-string CleanPath(absl::string_view unclean_path) {
-  string path(unclean_path);
+std::string CleanPath(absl::string_view unclean_path) {
+  std::string path(unclean_path);
   const char* src = path.c_str();
-  string::iterator dst = path.begin();
+  std::string::iterator dst = path.begin();
 
   // Check for absolute path and determine initial backtrack limit.
   const bool is_absolute_path = *src == '/';
@@ -149,7 +151,7 @@ string CleanPath(absl::string_view unclean_path) {
     *dst++ = *src++;
     while (*src == '/') ++src;
   }
-  string::const_iterator backtrack_limit = dst;
+  std::string::const_iterator backtrack_limit = dst;
 
   // Process all parts
   while (*src) {
@@ -205,7 +207,7 @@ string CleanPath(absl::string_view unclean_path) {
   }
 
   // Calculate and check the length of the cleaned path.
-  string::difference_type path_length = dst - path.begin();
+  std::string::difference_type path_length = dst - path.begin();
   if (path_length != 0) {
     // Remove trailing '/' except if it is root path ("/" ==> path_length := 1)
     if (path_length > 1 && path[path_length - 1] == '/') {
@@ -251,10 +253,10 @@ void ParseURI(absl::string_view uri, absl::string_view* scheme,
   *path = uri;
 }
 
-string CreateURI(absl::string_view scheme, absl::string_view host,
-                 absl::string_view path) {
+std::string CreateURI(absl::string_view scheme, absl::string_view host,
+                      absl::string_view path) {
   if (scheme.empty()) {
-    return string(path);
+    return std::string(path);
   }
   return absl::StrCat(scheme, "://", host, path);
 }
@@ -267,10 +269,11 @@ int64_t UniqueId() {
   return ++id;
 }
 
-string CommonPathPrefix(absl::Span<const string> paths) {
+std::string CommonPathPrefix(absl::Span<const std::string> paths) {
   if (paths.empty()) return "";
   size_t min_filename_size =
-      absl::c_min_element(paths, [](const string& a, const string& b) {
+      absl::c_min_element(paths, [](const std::string& a,
+                                    const std::string& b) {
         return a.size() < b.size();
       })->size();
   if (min_filename_size == 0) return "";
@@ -296,7 +299,7 @@ string CommonPathPrefix(absl::Span<const string> paths) {
              : std::string(absl::string_view(paths[0]).substr(0, rpos + 1));
 }
 
-string GetTempFilename(const string& extension) {
+std::string GetTempFilename(const std::string& extension) {
 #if defined(__ANDROID__)
   LOG(FATAL) << "GetTempFilename is not implemented in this platform.";
 #elif defined(PLATFORM_WINDOWS)
@@ -313,7 +316,7 @@ string GetTempFilename(const string& extension) {
     LOG(FATAL) << "Cannot get a temporary file in: " << temp_dir;
   }
 
-  string full_tmp_file_name(temp_file_name);
+  std::string full_tmp_file_name(temp_file_name);
   full_tmp_file_name.append(extension);
   return full_tmp_file_name;
 #else
@@ -327,7 +330,7 @@ string GetTempFilename(const string& extension) {
       // UniqueId is added here because mkstemps is not as thread safe as it
       // looks. https://github.com/tensorflow/tensorflow/issues/5804 shows
       // the problem.
-      string tmp_filepath;
+      std::string tmp_filepath;
       int fd;
       if (extension.length()) {
         tmp_filepath =
@@ -365,7 +368,7 @@ bool StartsWithSegment(absl::string_view path, absl::string_view segment) {
 }
 }  // namespace
 
-bool GetTestWorkspaceDir(string* dir) {
+bool GetTestWorkspaceDir(std::string* dir) {
   const char* srcdir = getenv("TEST_SRCDIR");
   if (srcdir == nullptr) {
     return false;
@@ -380,7 +383,7 @@ bool GetTestWorkspaceDir(string* dir) {
   return true;
 }
 
-bool GetTestUndeclaredOutputsDir(string* dir) {
+bool GetTestUndeclaredOutputsDir(std::string* dir) {
   const char* outputs_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
   if (outputs_dir == nullptr) {
     return false;
@@ -391,7 +394,7 @@ bool GetTestUndeclaredOutputsDir(string* dir) {
   return true;
 }
 
-bool ResolveTestPrefixes(absl::string_view path, string& resolved_path) {
+bool ResolveTestPrefixes(absl::string_view path, std::string& resolved_path) {
   constexpr absl::string_view kTestWorkspaceSegment = "TEST_WORKSPACE";
   constexpr absl::string_view kOutputDirSegment = "TEST_UNDECLARED_OUTPUTS_DIR";
 

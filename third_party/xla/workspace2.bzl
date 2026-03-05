@@ -14,6 +14,7 @@ load("//third_party/brotli:workspace.bzl", brotli = "repo")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
 load("//third_party/cudnn_frontend:workspace.bzl", cudnn_frontend = "repo")
+load("//third_party/cutlass:workspace.bzl", cutlass = "repo")
 load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
 load("//third_party/ducc:workspace.bzl", ducc = "repo")
 load("//third_party/eigen3:workspace.bzl", eigen3 = "repo")
@@ -57,6 +58,7 @@ load("//third_party/transformer_engine:workspace.bzl", transformer_engine = "rep
 load("//third_party/triton:workspace.bzl", triton = "repo")
 load("//third_party/uv:workspace.bzl", uv = "repo")
 load("//third_party/xnnpack:workspace.bzl", xnnpack = "repo")
+load("//third_party/xxd:workspace.bzl", xxd = "repo")
 load("//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 load("//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -111,6 +113,8 @@ def _initialize_third_party():
     triton()
     uv()
     xnnpack()
+    xxd()
+    cutlass()
 
     # copybara: tsl vendor
 
@@ -201,6 +205,7 @@ def _tf_repositories():
             "//third_party/compute_library:compute_library.patch",
             "//third_party/compute_library:exclude_omp_scheduler.patch",
             "//third_party/compute_library:include_string.patch",
+            "//third_party/compute_library:rules_python.patch",
         ],
         sha256 = "8273f68cd0bb17e9231a11a6618d245eb6d623884ae681c00e7a4eabca2dad42",
         strip_prefix = "ComputeLibrary-24.12",
@@ -302,7 +307,10 @@ def _tf_repositories():
     maybe(
         tf_http_archive,
         name = "com_google_protobuf",
-        patch_file = ["//third_party/protobuf:protobuf.patch"],
+        patch_file = [
+            "//third_party/protobuf:protobuf.patch",
+            "//third_party/protobuf:protobuf_arena.patch",
+        ],
         sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
         strip_prefix = "protobuf-6.31.1",
         urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"),
@@ -370,10 +378,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "dd6a2fa311ba8441bbefd2764c55b99136ff10f7ea42954be96006a2723d33fc",
-        strip_prefix = "grpc-1.74.0",
+        sha256 = "e2ace790a5f2d0f83259d1390a816a33b013ea34df2e86084d927e58daa4c5d9",
+        strip_prefix = "grpc-1.78.0",
         patch_file = ["//third_party/grpc:grpc.patch"],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.74.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.78.0.tar.gz"),
     )
 
     # Load the raw llvm-project.  llvm does not have build rules set up by default,
@@ -401,14 +409,6 @@ def _tf_repositories():
         sha256 = "736aeb64d86566d2236ddffa2865ee5d7a82d26c9016b36218fcc27ea4f09f86",
         strip_prefix = "snappy-1.2.1",
         urls = tf_mirror_urls("https://github.com/google/snappy/archive/refs/tags/1.2.1.tar.gz"),
-    )
-
-    tf_http_archive(
-        name = "cutlass_archive",
-        build_file = "//third_party:cutlass.BUILD",
-        sha256 = "a7739ca3dc74e3a5cb57f93fc95224c5e2a3c2dff2c16bb09a5e459463604c08",
-        strip_prefix = "cutlass-3.8.0",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cutlass/archive/refs/tags/v3.8.0.zip"),
     )
 
     tf_http_archive(

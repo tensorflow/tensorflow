@@ -130,7 +130,8 @@ class RamFileSystem : public FileSystem {
     auto fname = StripSchemePrefix(fname_);
 
     if (fs_.find(fname) == fs_.end()) {
-      return absl::NotFoundError("");
+      return absl::NotFoundError(
+          absl::StrCat("Could not open ", fname_, " for reading."));
     }
     if (fs_[fname] == nullptr) {
       return absl::InvalidArgumentError(

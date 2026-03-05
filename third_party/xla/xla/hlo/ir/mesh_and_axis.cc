@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -273,6 +275,79 @@ AxisRef::AxisRef(int64_t mesh_axis_index, SubAxis sub_axis_info)
   CHECK_GT(sub_axis_info_->size, 1) << "sub-axis size must be > 1";
 }
 
+namespace {
+
+bool CanSubAxesCoexist(int64_t min_pre_size, int64_t max_pre_size,
+                       int64_t min_next_pre_size, int64_t max_next_pre_size) {
+  if (min_next_pre_size > max_pre_size) {
+    // Sub-axes overlap, check if overlapping and non-overlapping parts are
+    // valid.
+    return min_next_pre_size % max_pre_size == 0 &&
+           max_pre_size % min_pre_size == 0 &&
+           max_next_pre_size % min_next_pre_size == 0;
+  }
+  // Sub-axes don't overlap, check if the gap is valid.
+  return max_pre_size % min_next_pre_size == 0;
+}
+
+}  // namespace
+
+bool AxisRef::CanCoexist(const AxisRef& other) const {
+  if (mesh_axis_index() != other.mesh_axis_index()) {
+    return true;
+  }
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    // One of the axes is full
+    return true;
+  }
+  const SubAxis& this_sub = *sub_axis_info_;
+  const SubAxis& other_sub = *other.sub_axis_info_;
+
+  auto [min_pre_size, max_pre_size] =
+      std::minmax(this_sub.pre_size, other_sub.pre_size);
+  auto [min_next_pre_size, max_next_pre_size] =
+      std::minmax({this_sub.next_pre_size(), other_sub.next_pre_size()});
+
+  return CanSubAxesCoexist(min_pre_size, max_pre_size, min_next_pre_size,
+                           max_next_pre_size);
+}
+
+bool AxisRef::Overlaps(const AxisRef& other) const {
+  if (mesh_axis_index() != other.mesh_axis_index()) {
+    return false;
+  }
+  if (!sub_axis_info_.has_value() || !other.sub_axis_info_.has_value()) {
+    // One of the axes is full
+    return true;
+  }
+  const SubAxis& this_sub = *sub_axis_info_;
+  const SubAxis& other_sub = *other.sub_axis_info_;
+
+  return this_sub.pre_size < other_sub.next_pre_size() &&
+         other_sub.pre_size < this_sub.next_pre_size();
+}
+
+std::optional<AxisRef> AxisRef::GetPrefixWithoutOverlap(
+    const AxisRef& other) const {
+  if (!CanCoexist(other)) {
+    return std::nullopt;
+  }
+  if (!Overlaps(other)) {
+    return *this;
+  }
+
+  int64_t this_pre_size =
+      sub_axis_info_.has_value() ? sub_axis_info_->pre_size : 1;
+  int64_t other_pre_size =
+      other.sub_axis_info_.has_value() ? other.sub_axis_info_->pre_size : 1;
+
+  if (this_pre_size >= other_pre_size) {
+    return std::nullopt;
+  }
+  return AxisRef(mesh_axis_index_,
+                 SubAxis{this_pre_size, other_pre_size / this_pre_size});
+}
+
 bool AxisRef::CanCoexistWithoutOverlap(const AxisRef& other) const {
   // Check if the axes are on different mesh dimensions. If so, they can always
   // coexist and never overlap.
@@ -412,6 +487,53 @@ absl::Status ValidateSpanOfAxes(absl::Span<const AxisRef> axes,
     }
   }
   return absl::OkStatus();
+}
+
+void SortAndMergeAxes(std::vector<AxisRef>& axes, const Mesh& mesh) {
+  if (axes.empty()) {
+    return;
+  }
+
+  absl::c_sort(axes);
+
+  auto current = axes.begin();
+  for (auto next = current + 1; next != axes.end(); ++next) {
+    if (current->Overlaps(*next)) {
+      LOG(FATAL) << "Axes should not overlap: " << current->ToString(&mesh)
+                 << " and " << next->ToString(&mesh);
+    }
+    if (current->CanMerge(*next)) {
+      CHECK(current->Merge(*next, mesh));
+    } else {
+      current++;
+      *current = *next;
+    }
+  }
+  axes.erase(current + 1, axes.end());
+}
+
+bool TruncateAxesByRemovingOverlaps(std::vector<AxisRef>& axes,
+                                    absl::Span<const AxisRef> other_axis_refs) {
+  for (size_t i = 0; i < axes.size(); ++i) {
+    std::optional<AxisRef> prefix = axes[i];
+    for (const AxisRef& other : other_axis_refs) {
+      prefix = prefix->GetPrefixWithoutOverlap(other);
+      if (!prefix) {
+        break;
+      }
+    }
+
+    if (!prefix) {
+      axes.erase(axes.begin() + i, axes.end());
+      return true;
+    }
+    if (axes[i] != *prefix) {
+      axes[i] = *prefix;
+      axes.erase(axes.begin() + i + 1, axes.end());
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace xla

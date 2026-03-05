@@ -419,7 +419,8 @@ class HloInstruction {
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      const PrecisionConfig& precision_config);
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config = {});
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -2441,6 +2442,10 @@ class HloInstruction {
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
 
+  // Delegates to HloConvolutionInstruction::sparsity_config.
+  const SparsityConfig& sparsity_config() const;
+  void set_sparsity_config(const SparsityConfig& config);
+
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
   bool IsAsynchronous() const;
@@ -2829,6 +2834,7 @@ std::string RaggedDotDimensionNumbersToString(
     const RaggedDotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
+std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);

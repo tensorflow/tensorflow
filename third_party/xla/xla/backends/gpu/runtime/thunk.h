@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -43,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
 #include "xla/tsl/platform/status_macros.h"
 
@@ -247,6 +248,24 @@ class Thunk {
   };
 
   //===--------------------------------------------------------------------===//
+  // ExecutionScopedState
+  //===--------------------------------------------------------------------===//
+
+  // Thunks themself instantiated once per XLA program (GpuExecutable), and the
+  // same Thunk is reused for all concurrent executions. Thunks state is shared
+  // between all concurrently executing XLA programs (and must be carefully
+  // synchronized). `ExecutionScopedState` is a container that allows thunks to
+  // put an arbitrary state that will have an execution scope, i.e. it will be
+  // automatically destroyed when GpuExecutable finishes execution. This allows
+  // thunks to pass arbitrary state between stages (from prepare to initialize
+  // and then to execute), without having to create a globally synchronized map
+  // and it also guarantees correct state life time, as leaving state in a map
+  // might lead to "leaks", as the map will be destroyed only when the
+  // executable is destroyed. It also thread-safe by construction as all thunks
+  // for a GPU program run sequentially from a single thread.
+  using ExecutionScopedState = absl::flat_hash_map<ThunkId, tsl::UniqueAny>;
+
+  //===--------------------------------------------------------------------===//
   // PrepareParams
   //===--------------------------------------------------------------------===//
 
@@ -266,6 +285,8 @@ class Thunk {
     se::StreamExecutor* absl_nonnull executor = nullptr;
     // Buffer allocations for the thunk.
     const BufferAllocations* absl_nonnull buffer_allocations = nullptr;
+    // Execution scoped state shared between prepare, initialize and execute.
+    ExecutionScopedState* execution_scoped_state = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
@@ -309,6 +330,9 @@ class Thunk {
 
     // Total local device count.
     int local_device_count = 0;
+
+    // Execution scoped state shared between prepare, initialize and execute.
+    ExecutionScopedState* execution_scoped_state = nullptr;
   };
 
   //===--------------------------------------------------------------------===//
@@ -328,7 +352,8 @@ class Thunk {
         CollectiveParams* collective_params,
         CollectiveCliques* collective_cliques,
         CollectiveMemory* collective_memory,
-        ExecutionStreamIdMap additional_compute_streams = {});
+        ExecutionStreamIdMap additional_compute_streams = {},
+        ExecutionScopedState* execution_scoped_state = nullptr);
 
     // Constructs execute parameters from an existing parameters but with
     // different buffer allocations.
@@ -368,6 +393,9 @@ class Thunk {
     // Additional compute streams on which thunks launch operations.
     ExecutionStreamIdMap additional_compute_streams;
 
+    // Execution scoped state shared between prepare, initialize and execute.
+    ExecutionScopedState* execution_scoped_state = nullptr;
+
     bool mock_collectives = false;
 
     int64_t execution_id = 0;
@@ -386,6 +414,7 @@ class Thunk {
                   RecvDeviceMemoryFunction* recv_device_memory_function,
                   const ffi::ExecutionContext* ffi_execution_context,
                   ExecutionStreamIdMap additional_compute_streams = {},
+                  ExecutionScopedState* execution_scoped_state = nullptr,
                   bool mock_collectives = false, int64_t execution_id = 0);
   };
 
@@ -460,24 +489,26 @@ class Thunk {
 
   // Type predicate for `Walk` callback.
   template <typename F, typename Arg>
-  using Walker = std::enable_if_t<std::is_invocable_v<F, Arg> ||
-                                  std::is_invocable_r_v<absl::Status, F, Arg>>;
+  using WalkCallback =
+      std::enable_if_t<std::is_invocable_v<F, Arg> ||
+                       std::is_invocable_r_v<absl::Status, F, Arg>>;
 
   // Recursively walks all the thunks nested inside *this one and calls the
-  // user provided callback on every thunk. Always starts traversal with *this.
-  template <typename F, Walker<F, Thunk*>* = nullptr>
+  // user-provided callback on every thunk. Always starts traversal with *this,
+  // and traverses thunks in DFS order.
+  template <typename F, WalkCallback<F, Thunk*>* = nullptr>
   std::invoke_result_t<F, Thunk*> Walk(F&& callback);
-  template <typename F, Walker<F, const Thunk*>* = nullptr>
+  template <typename F, WalkCallback<F, const Thunk*>* = nullptr>
   std::invoke_result_t<F, const Thunk*> Walk(F&& callback) const;
 
-  // Recursively replaces all nested thunks with the result of applying `fn` to
-  // them.
-  // An error will leave the transformation in invalid state.
-  // InternalError should be used for status.
-  virtual absl::Status TransformAllNestedThunks(
-      absl::FunctionRef<
-          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-          fn) {
+  // Recursively applies transformation to all nested thunks inside *this one.
+  // Transformation can be applied optionally by returning the argument back to
+  // the caller. Any error during transformation leaves the thunk in an invalid
+  // state. Traverses thunks in reverse-DFS order (transforms innermost thunk
+  // first).
+  using Transformer = absl::FunctionRef<absl::StatusOr<std::unique_ptr<Thunk>>(
+      std::unique_ptr<Thunk>)>;
+  virtual absl::Status TransformNested(Transformer callback) {
     return absl::OkStatus();
   }
 
@@ -515,10 +546,8 @@ class Thunk {
 
  protected:
   // Walks all nested thunks and calls `callback` for them.
-  virtual absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Thunk*)> callback) {
-    return absl::OkStatus();
-  }
+  using Walker = absl::FunctionRef<absl::Status(Thunk*)>;
+  virtual absl::Status WalkNested(Walker callback) { return absl::OkStatus(); }
 
  private:
   Kind kind_;
@@ -533,7 +562,19 @@ class Thunk {
 };
 
 // A sequence of thunks.
-using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
+class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
+ public:
+  using std::vector<std::unique_ptr<Thunk>>::vector;
+
+  // Apply transformer callback to all thunks in *this sequence.
+  absl::Status TransformNested(Thunk::Transformer callback) {
+    for (std::unique_ptr<Thunk>& thunk : *this) {
+      RETURN_IF_ERROR(thunk->TransformNested(callback));
+      ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
+    }
+    return absl::OkStatus();
+  }
+};
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
@@ -541,15 +582,15 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 // reduce-scatter).
 bool IsReductionCollective(Thunk::Kind kind);
 
-// Returns the metadata from all thunks in the given thunk graph.
+// Returns the metadata from all thunks in the given thunk sequence.
 ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
-    const Thunk& root_thunk);
+    const ThunkSequence& thunk_sequence);
 
 //===----------------------------------------------------------------------===//
 // Thunk templates implementation.
 //===----------------------------------------------------------------------===//
 
-template <typename F, Thunk::Walker<F, Thunk*>*>
+template <typename F, Thunk::WalkCallback<F, Thunk*>*>
 std::invoke_result_t<F, Thunk*> Thunk::Walk(F&& callback) {
   if constexpr (std::is_void_v<std::invoke_result_t<F, Thunk*>>) {
     Walk([f = std::forward<F>(callback)](Thunk* thunk) {
@@ -561,7 +602,7 @@ std::invoke_result_t<F, Thunk*> Thunk::Walk(F&& callback) {
   }
 }
 
-template <typename F, Thunk::Walker<F, const Thunk*>*>
+template <typename F, Thunk::WalkCallback<F, const Thunk*>*>
 std::invoke_result_t<F, const Thunk*> Thunk::Walk(F&& callback) const {
   return const_cast<Thunk*>(this)->Walk(  // NOLINT
       std::forward<F>(callback));

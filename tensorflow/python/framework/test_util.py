@@ -3165,9 +3165,7 @@ class TensorFlowTestCase(googletest.TestCase):
       err: a float value.
       msg: Optional message to report on failure.
     """
-    self.assertEqual(len(farray1), len(farray2), msg=msg)
-    for f1, f2 in zip(farray1, farray2):
-      self.assertNear(float(f1), float(f2), err, msg=msg)
+    self.assertAllClose(farray1, farray2, rtol=0, atol=err, msg=msg)
 
   def _NDArrayNear(self, ndarray1, ndarray2, err):
     return np.linalg.norm(ndarray1 - ndarray2) < err

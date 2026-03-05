@@ -143,8 +143,8 @@ ENTRY computation {
   ConvertToCommandsOptions conv_options;
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
-      CommandBufferCmdExecutor::SynchronizationMode::kLHS;
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdExecutor cb_cmd_executor,
+      CommandExecutor::SynchronizationMode::kLHS;
+  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
                           ConvertToCommands(thunk_sequence, conv_options));
 
   // Check that we have two commands: start and done.
@@ -235,8 +235,8 @@ ENTRY computation {
   ConvertToCommandsOptions conv_options;
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
-      CommandBufferCmdExecutor::SynchronizationMode::kLHS;
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdExecutor cb_cmd_executor,
+      CommandExecutor::SynchronizationMode::kLHS;
+  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
                           ConvertToCommands(thunk_sequence, conv_options));
 
   // Check that we have two commands: start and done.

@@ -550,6 +550,14 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
   return result;
 }
 
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::BitcastArrays(
+    xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  return absl::UnimplementedError("BitcastArrays is not implemented.");
+}
+
 absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> Array::GetHandles(
     absl::Span<xla::ifrt::ArrayRef> arrays, ArrayCopySemantics semantics) {
   ::google::protobuf::RepeatedField<uint64_t> handles;

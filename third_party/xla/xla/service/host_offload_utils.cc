@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,13 +30,18 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -56,8 +62,7 @@ bool CustomCallReusesBuffer(const HloInstruction* custom_call,
   // Check the custom call's output_to_operand_aliasing.
   const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
       aliases = custom_call->output_operand_aliasing();
-  for (const std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>& alias :
-       aliases) {
+  for (const auto& alias : aliases) {
     int64_t alias_operand_index = alias.second.first;
     if (alias_operand_index == operand_index) {
       // This operand aliases with the output.
@@ -222,6 +227,11 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
   } else if (instruction->opcode() == HloOpcode::kPad) {
     result.push_back({instruction->mutable_operand(0),
                       instruction_and_shape_index.shape_index});
+  } else if (instruction->opcode() == HloOpcode::kSend) {
+    // Explicitly handle Send, which has 2 operands (data, token).
+    // We follow the data path (operand 0).
+    result.push_back({instruction->mutable_operand(0),
+                      instruction_and_shape_index.shape_index});
   } else {
     CHECK(instruction->operand_count() == 1) << absl::StreamFormat(
         "Expecting instruction %s to have 1 operand, but it has %d.",
@@ -234,12 +244,21 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
 
 bool IsValidDuringPureMemoryOffload(const HloInstruction* instruction) {
   static constexpr std::array allowed_opcodes = {
-      HloOpcode::kGetTupleElement, HloOpcode::kBitcast,
-      HloOpcode::kTuple,           HloOpcode::kCall,
-      HloOpcode::kWhile,           HloOpcode::kConditional,
-      HloOpcode::kParameter,       HloOpcode::kOptimizationBarrier,
-      HloOpcode::kAsyncStart,      HloOpcode::kAsyncDone,
-      HloOpcode::kCustomCall};
+      HloOpcode::kGetTupleElement,
+      HloOpcode::kBitcast,
+      HloOpcode::kTuple,
+      HloOpcode::kCall,
+      HloOpcode::kWhile,
+      HloOpcode::kConditional,
+      HloOpcode::kParameter,
+      HloOpcode::kOptimizationBarrier,
+      HloOpcode::kAsyncStart,
+      HloOpcode::kAsyncDone,
+      HloOpcode::kCustomCall,
+      HloOpcode::kSend,
+      HloOpcode::kRecv,
+      HloOpcode::kSendDone,
+      HloOpcode::kRecvDone};
   return absl::c_linear_search(allowed_opcodes, instruction->opcode());
 }
 

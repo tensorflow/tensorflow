@@ -58,12 +58,12 @@ namespace {
 // execution graph from a command sequence.
 class CommandOperation : public ExecutionGraph::Operation {
  public:
-  CommandOperation(Command::BufferUses buffers, const Command* cmd)
+  explicit CommandOperation(const Command* cmd)
       : name_(absl::StrFormat("cmd %s: %s", cmd->ToString(),
                               cmd->profile_annotation())),
-        buffers_(std::move(buffers)),
         cmd_(cmd),
-        resources_(cmd_->resources()) {}
+        buffers_(CollectBufferUses(cmd)),
+        resources_(CollectResourceUses(cmd)) {}
 
   absl::string_view name() const final { return name_; }
   absl::Span<const BufferUse> BufferUses() const final { return buffers_; }
@@ -91,10 +91,28 @@ class CommandOperation : public ExecutionGraph::Operation {
   }
 
  private:
+  static Command::BufferUses CollectBufferUses(const Command* cmd) {
+    absl::flat_hash_set<BufferUse> buffers;
+    cmd->Walk([&](const Command* command) {
+      auto command_buffers = command->buffer_uses();
+      buffers.insert(command_buffers.begin(), command_buffers.end());
+    });
+    return {buffers.begin(), buffers.end()};
+  }
+
+  static Command::ResourceUses CollectResourceUses(const Command* cmd) {
+    absl::flat_hash_set<ResourceUse> resources;
+    cmd->Walk([&](const Command* command) {
+      auto command_resources = command->resource_uses();
+      resources.insert(command_resources.begin(), command_resources.end());
+    });
+    return {resources.begin(), resources.end()};
+  }
+
   std::string name_;
-  Command::BufferUses buffers_;
   const Command* cmd_;
-  Command::ResourceUseVector resources_;
+  Command::BufferUses buffers_;
+  Command::ResourceUses resources_;
 
   // The token resource is used to specify dependency other than buffer data
   // flow, e.g, LHS topology will use token resource to specify dependency
@@ -119,7 +137,7 @@ std::vector<CommandOperation> CreateCommandOperationsWithConcurrentMode(
   // For concurrent synchronization mode, pass in buffer and resources for
   // dependency inference.
   for (const std::unique_ptr<Command>& cmd : commands) {
-    operations.emplace_back(cmd->buffer_uses(), cmd.get());
+    operations.emplace_back(cmd.get());
   }
 
   VlogOperations(operations);
@@ -185,7 +203,7 @@ std::vector<CommandOperation> CreateCommandOperationsWithLHSMode(
 
   // 1. Initialization Phase: Convert commands to operations
   for (const auto& cmd : commands) {
-    operations.emplace_back(Command::BufferUses{}, cmd.get());
+    operations.emplace_back(cmd.get());
   }
 
   // 2. Dependency Analysis Phase
@@ -264,26 +282,33 @@ CommandExecutor::CommandExecutor(SynchronizationMode synchronization_mode,
     : synchronization_mode_(synchronization_mode),
       commands_(std::move(commands)),
       execution_graph_(std::move(execution_graph)) {
-  // Buffer allocations referenced by commands in this sequence.
-  absl::btree_set<BufferAllocation::Index> allocs_indices;
+  // Walk all nested commands and collect all buffers used by this executor.
+  commands_.Walk([&](const Command* command) {
+    Command::BufferUses buffer_uses = command->buffer_uses();
+    buffer_uses_.insert(buffer_uses.begin(), buffer_uses.end());
+  });
 
+  // Buffer allocations referenced by all buffer uses.
+  absl::btree_set<BufferAllocation::Index> allocs_indices;
+  for (const BufferUse& buffer_use : buffer_uses_) {
+    allocs_indices.insert(buffer_use.slice().index());
+  }
+  allocs_indices_.assign(allocs_indices.begin(), allocs_indices.end());
+
+  // Iterate over the commands in the top level command sequence to build a
+  // mapping from command index to allocation indices.
   for (const std::unique_ptr<Command>& cmd : commands_) {
     absl::btree_set<BufferAllocation::Index> cmd_allocs_indices;
-
-    for (const BufferUse& buffer : cmd->buffer_uses()) {
-      buffers_.insert(buffer);
-      allocs_indices.insert(buffer.slice().index());
-      cmd_allocs_indices.insert(buffer.slice().index());
-    }
+    cmd->Walk([&](const Command* command) {
+      for (const BufferUse& buffer_use : command->buffer_uses()) {
+        cmd_allocs_indices.insert(buffer_use.slice().index());
+      }
+    });
 
     // Record buffer allocations indices referenced by the `cmd`.
     cmd_allocs_indices_.emplace_back(cmd_allocs_indices.begin(),
                                      cmd_allocs_indices.end());
   }
-
-  // Record all buffer allocations indices referenced by all commands in this
-  // sequence.
-  allocs_indices_.assign(allocs_indices.begin(), allocs_indices.end());
 }
 
 absl::Status CommandExecutor::Prepare(const Thunk::PrepareParams& params) {
@@ -676,7 +701,7 @@ std::vector<const se::CommandBuffer::Command*> CommandExecutor::Dependencies(
 }
 
 const absl::flat_hash_set<BufferUse>& CommandExecutor::buffer_uses() const {
-  return buffers_;
+  return buffer_uses_;
 }
 
 absl::Span<const BufferAllocation::Index> CommandExecutor::allocs_indices()

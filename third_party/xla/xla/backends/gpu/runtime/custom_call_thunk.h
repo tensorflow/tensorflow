@@ -78,6 +78,12 @@ class CustomCallThunk : public Thunk {
     std::unique_ptr<xla::ffi::Ffi> execute;
   };
 
+  // A per-execution state that holds state for prepare and initialize stages.
+  struct PrepareAndInitState {
+    ffi::ExecutionState prepare;
+    ffi::ExecutionState init;
+  };
+
   using CustomCallTarget =
       std::function<void(stream_executor::Stream*, void**, const char*, size_t,
                          XlaCustomCallStatus*)>;
@@ -205,6 +211,7 @@ class CustomCallThunk : public Thunk {
 
   xla::ffi::InvokeContext BuildInvokeContext(
       RunId run_id, se::Stream* absl_nullable stream,
+      Thunk::ExecutionScopedState* absl_nullable execution_scoped_state,
       const BufferAllocations* absl_nullable buffer_allocations,
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
@@ -215,7 +222,8 @@ class CustomCallThunk : public Thunk {
 
   absl::Status ExecuteFfiHandler(
       RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
-      se::Stream* stream, const ffi::ExecutionContext* execution_context,
+      se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
+      const ffi::ExecutionContext* execution_context,
       const BufferAllocations* buffer_allocations,
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
@@ -225,7 +233,8 @@ class CustomCallThunk : public Thunk {
 
   absl::Status ExecuteFfiHandler(
       RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
-      se::Stream* stream, const ffi::ExecutionContext* execution_context,
+      se::Stream* stream, Thunk::ExecutionScopedState* execution_scoped_state,
+      const ffi::ExecutionContext* execution_context,
       const BufferAllocations* buffer_allocations,
       const CollectiveParams* absl_nullable collective_params,
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
@@ -262,7 +271,7 @@ class CustomCallThunk : public Thunk {
   // copied from the reference call frame and updated with buffer addresses.
   std::optional<ObjectPool<ffi::CallFrame>> call_frames_;
 
-  // Execution state bound to the FFI handler. Optional.
+  // Execution state bound to the FFI handler instance. Optional.
   std::shared_ptr<ffi::ExecutionState> execution_state_;
 
   // TODO(ezhulenev): Currently we assume that HloModule that owns this

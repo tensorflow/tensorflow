@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_symbol_repository.h"
+#include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
@@ -69,9 +70,13 @@ TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
 }
 
 TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
+  const std::string spec_file =
+      test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)
+          ? "mi200.txtpb"
+          : "h100_sxm.txtpb";
   const std::string target_config_path =
       tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
-                        "backends/gpu/target_config/specs", "h100_sxm.txtpb");
+                        "backends/gpu/target_config/specs", spec_file);
   stream_executor::GpuTargetConfigProto target_config;
   TF_ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
                                   &target_config));

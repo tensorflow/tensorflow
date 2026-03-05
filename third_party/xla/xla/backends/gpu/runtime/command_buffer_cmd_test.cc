@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -809,6 +810,115 @@ TEST(CommandBufferCmdTest, NestedChildCmdCreateAndUpdate) {
   TF_ASSERT_OK(
       outer_executor.Record(exec_params, record_params, command_buffer.get()));
   TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+
+  // Verify the generated CUDA graph structure matches the expected
+  // dependencies:
+  //
+  // Outer graph (graph_1):
+  //   Node 0: ChildCmd (graph_2)  -> depends on nothing
+  //   Node 1: MemzeroCmd (MEMSET) -> depends on Node 0
+  //   Node 2: EmptyCmd (EMPTY)    -> depends on Node 1
+  //
+  // Middle graph (graph_2, nested in ChildCmd):
+  //   Node 0: ChildCmd (graph_3)              -> depends on nothing
+  //   Node 1: Memset32Cmd (MEMSET, value=3)   -> depends on Node 0
+  //   Node 2: MemcpyDeviceToDeviceCmd (MEMCPY b->b) -> depends on Node 1
+  //
+  // Inner graph (graph_3, nested in ChildCmd):
+  //   Node 0: MemcpyDeviceToDeviceCmd (MEMCPY a->c) -> no dependencies
+  {
+    auto* gpu_cmd_buffer =
+        dynamic_cast<se::gpu::GpuCommandBuffer*>(command_buffer.get());
+    ASSERT_NE(gpu_cmd_buffer, nullptr)
+        << "Expected command buffer to be a GpuCommandBuffer";
+
+    // Verify outer level: 3 commands (ChildCmd, MemzeroCmd, EmptyCmd)
+    auto outer_commands = gpu_cmd_buffer->commands();
+    ASSERT_EQ(outer_commands.size(), 3)
+        << "Outer level should have 3 commands: ChildCmd, MemzeroCmd, EmptyCmd";
+
+    // First command: GpuChildCommand (wrapping middle graph)
+    auto* outer_child_cmd =
+        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuChildCommand*>(
+            outer_commands[0].get());
+    ASSERT_NE(outer_child_cmd, nullptr)
+        << "First outer command should be GpuChildCommand";
+    ASSERT_NE(outer_child_cmd->command_buffer, nullptr)
+        << "GpuChildCommand should have a nested command buffer";
+
+    // Second command: GpuCommand (MemzeroCmd)
+    auto* outer_memzero_cmd =
+        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
+            outer_commands[1].get());
+    ASSERT_NE(outer_memzero_cmd, nullptr)
+        << "Second outer command should be GpuCommand (MemzeroCmd)";
+    ASSERT_NE(outer_memzero_cmd->handle, nullptr)
+        << "MemzeroCmd should have a valid graph node handle";
+
+    // Third command: GpuCommand (EmptyCmd)
+    auto* outer_empty_cmd =
+        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
+            outer_commands[2].get());
+    ASSERT_NE(outer_empty_cmd, nullptr)
+        << "Third outer command should be GpuCommand (EmptyCmd)";
+    ASSERT_NE(outer_empty_cmd->handle, nullptr)
+        << "EmptyCmd should have a valid graph node handle";
+
+    // Verify middle level (inside first ChildCmd): 3 commands
+    auto* middle_gpu_buffer = dynamic_cast<se::gpu::GpuCommandBuffer*>(
+        outer_child_cmd->command_buffer.get());
+    ASSERT_NE(middle_gpu_buffer, nullptr)
+        << "Nested command buffer should be a GpuCommandBuffer";
+
+    auto middle_commands = middle_gpu_buffer->commands();
+    ASSERT_EQ(middle_commands.size(), 3)
+        << "Middle level should have 3 commands: ChildCmd, Memset32Cmd, "
+           "MemcpyDeviceToDeviceCmd";
+
+    // First command: GpuChildCommand (wrapping inner graph)
+    auto* middle_child_cmd =
+        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuChildCommand*>(
+            middle_commands[0].get());
+    ASSERT_NE(middle_child_cmd, nullptr)
+        << "First middle command should be GpuChildCommand";
+    ASSERT_NE(middle_child_cmd->command_buffer, nullptr)
+        << "Middle GpuChildCommand should have a nested command buffer";
+
+    // Second command: GpuCommand (Memset32Cmd)
+    auto* middle_memset_cmd =
+        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
+            middle_commands[1].get());
+    ASSERT_NE(middle_memset_cmd, nullptr)
+        << "Second middle command should be GpuCommand (Memset32Cmd)";
+
+    // Third command: GpuCommand (MemcpyDeviceToDeviceCmd b->b)
+    auto* middle_memcpy_cmd =
+        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
+            middle_commands[2].get());
+    ASSERT_NE(middle_memcpy_cmd, nullptr)
+        << "Third middle command should be GpuCommand "
+           "(MemcpyDeviceToDeviceCmd)";
+
+    // Verify inner level (inside middle ChildCmd): 1 command
+    auto* inner_gpu_buffer = dynamic_cast<se::gpu::GpuCommandBuffer*>(
+        middle_child_cmd->command_buffer.get());
+    ASSERT_NE(inner_gpu_buffer, nullptr)
+        << "Inner nested command buffer should be a GpuCommandBuffer";
+
+    auto inner_commands = inner_gpu_buffer->commands();
+    ASSERT_EQ(inner_commands.size(), 1)
+        << "Inner level should have 1 command: MemcpyDeviceToDeviceCmd";
+
+    // First (and only) command: GpuCommand (MemcpyDeviceToDeviceCmd a->c)
+    auto* inner_memcpy_cmd =
+        dynamic_cast<const se::gpu::GpuCommandBuffer::GpuCommand*>(
+            inner_commands[0].get());
+    ASSERT_NE(inner_memcpy_cmd, nullptr)
+        << "Inner command should be GpuCommand (MemcpyDeviceToDeviceCmd)";
+    ASSERT_NE(inner_memcpy_cmd->handle, nullptr)
+        << "Inner MemcpyDeviceToDeviceCmd should have a valid graph node "
+           "handle";
+  }
 
   // Verify c == a (all ones).
   std::vector<int32_t> dst(length, 0);

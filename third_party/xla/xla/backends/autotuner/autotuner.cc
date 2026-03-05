@@ -165,6 +165,14 @@ absl::Status Autotuner::Autotune(HloModule* module,
   std::vector<std::pair<tsl::Fprint128, std::vector<HloInstruction*>>>
       all_instructions(instructions_by_fingerprint.begin(),
                        instructions_by_fingerprint.end());
+  // Sort the instructions by fingerprint to ensure deterministic order.
+  std::sort(all_instructions.begin(), all_instructions.end(),
+            [](const auto& a, const auto& b) {
+              if (a.first.high64 != b.first.high64) {
+                return a.first.high64 < b.first.high64;
+              }
+              return a.first.low64 < b.first.low64;
+            });
   if (instructions_by_fingerprint.empty()) {
     VLOG(1) << "No instructions to autotune.";
     return absl::OkStatus();

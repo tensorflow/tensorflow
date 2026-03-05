@@ -128,7 +128,7 @@ class BuildType(enum.Enum):
   XLA_MACOS_X86_CPU_KOKORO = enum.auto()
   XLA_MACOS_ARM64_CPU_KOKORO = enum.auto()
 
-  JAX_LINUX_X86_CPU_GITHUB_ACTIONS = enum.auto()
+  JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS = enum.auto()
   JAX_WINDOWS_X86_CPU_GITHUB_ACTIONS = enum.auto()
   JAX_LINUX_X86_GPU_L4_GITHUB_ACTIONS = enum.auto()
 
@@ -746,7 +746,7 @@ Build(
 )
 
 Build(
-    type_=BuildType.JAX_LINUX_X86_CPU_GITHUB_ACTIONS,
+    type_=BuildType.JAX_LINUX_X86_CPU_BZLMOD_GITHUB_ACTIONS,
     repo="google/jax",
     configs=("rbe_linux_x86_64", "bzlmod"),
     target_patterns=(

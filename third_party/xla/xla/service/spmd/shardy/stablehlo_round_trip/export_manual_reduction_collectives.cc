@@ -101,64 +101,6 @@ bool inputHasUnreducedAxes(CollectiveTy collective) {
   return false;
 }
 
-// Builds the replica groups for `reductionAxesAttr`.
-//
-// For example, given:
-//
-// - reductionAxesAttr = ["y"]
-// - mesh = ["x"=2, "y"=2]
-//
-// Returns `[[0, 1], [2, 3]]`.
-mlir::DenseIntElementsAttr getReplicaGroups(
-    sdy::AxisRefListAttr reductionAxesAttr, MeshAttr mesh,
-    OpBuilder& rewriter) {
-  SmallVector<AxisRefAttr> meshAxisRefs =
-      getOrderedAxisRefs(reductionAxesAttr, mesh);
-
-  ArrayRef<AxisRefAttr> reductionAxes = reductionAxesAttr.getValue();
-  int64_t groupSize = 1;
-  llvm::SmallDenseMap<AxisRefAttr, int64_t> axisRefToReductionIndex;
-  axisRefToReductionIndex.reserve(reductionAxes.size());
-  for (auto [index, axis] : llvm::enumerate(reductionAxes)) {
-    groupSize *= axis.getSize(mesh);
-    axisRefToReductionIndex[axis] = index;
-  }
-  int64_t totalSize = mesh.getTotalSize();
-  int64_t numGroups = totalSize / groupSize;
-
-  SmallVector<int64_t> transposePerm(meshAxisRefs.size());
-  SmallVector<int64_t> reshapeDims;
-  reshapeDims.reserve(meshAxisRefs.size());
-
-  int64_t nonReductionIndex = 0;
-  int64_t nonReductionCount = meshAxisRefs.size() - reductionAxes.size();
-  for (auto [meshIndex, axis] : llvm::enumerate(meshAxisRefs)) {
-    reshapeDims.push_back(axis.getSize(mesh));
-    auto reductionIndexIt = axisRefToReductionIndex.find(axis);
-    if (reductionIndexIt == axisRefToReductionIndex.end()) {
-      // Axis is not a reduction axis.
-      transposePerm[nonReductionIndex++] = meshIndex;
-    } else {
-      transposePerm[nonReductionCount + reductionIndexIt->second] = meshIndex;
-    }
-  }
-
-  // TODO(b/410040098): output V2 if possible, and maybe canonicalize.
-
-  Array<int64_t> array(reshapeDims);
-  if (mesh.getDeviceIds().empty()) {
-    array.FillIota(0);
-  } else {
-    array.SetValues(mesh.getDeviceIds());
-  }
-  array.TransposeDimensions(transposePerm);
-  array.Reshape({totalSize});
-  auto replicaGroupsType = RankedTensorType::get({numGroups, groupSize},
-                                                 rewriter.getIntegerType(64));
-  return mlir::DenseIntElementsAttr::get(replicaGroupsType,
-                                         llvm::to_vector(array));
-}
-
 // Creates a manual computation, with all axes in `mesh` as manual, and
 // populates its body via the `bodyPopulator` function.
 ManualComputationOp createFullyManualComputation(

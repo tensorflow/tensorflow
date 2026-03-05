@@ -100,6 +100,7 @@ std::string NonRoundtripTestDataToString(
 //  - we parse it to an HloModule successfully, and
 //  - the stringification of the resulting HloModule is equal to our original
 //    string.
+[[clang::optnone]]
 std::vector<TestData> CreateTestCases() {
   // clang-format off
   return std::vector<TestData>({
@@ -1650,8 +1651,7 @@ R"(HloModule m, entry_computation_layout={()->pred[]}
 
 FileNames
 1 "<embedded module>"
-2 "experimental/module.py"
-3 "yet/another/test.py"
+2 "yet/another/test.py"
 
 FunctionNames
 1 "main"
@@ -1659,8 +1659,7 @@ FunctionNames
 
 FileLocations
 1 {file_name_id=1 function_name_id=1 line=153 end_line=153 column=2 end_column=31}
-2 {file_name_id=3 function_name_id=2 line=35 end_line=35 column=2 end_column=24}
-3 {file_name_id=2 function_name_id=2 line=83 end_line=83 column=2 end_column=15}
+2 {file_name_id=2 function_name_id=2 line=35 end_line=35 column=2 end_column=24}
 
 StackFrames
 1 {file_location_id=1 parent_frame_id=1}
@@ -1668,7 +1667,7 @@ StackFrames
 
 
 ENTRY %constant_pred () -> pred[] {
-  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="opname" stack_frame_id=1}
+  ROOT %constant = pred[] constant(true), metadata={op_type="const" op_name="opname" stack_frame_id=2}
 }
 
 )"
@@ -1677,6 +1676,7 @@ ENTRY %constant_pred () -> pred[] {
   // clang-format on
 }
 
+[[clang::optnone]]
 std::vector<TestData> CreateShortTestCases() {
   // clang-format off
   return std::vector<TestData>({
@@ -2720,6 +2720,7 @@ ENTRY Scan {
   // clang-format on
 }
 
+[[clang::optnone]]
 std::vector<NonRoundtripTestData> CreateNonRoundtripTestCases() {
   // clang-format off
 return std::vector<NonRoundtripTestData>({
@@ -4149,6 +4150,12 @@ TEST_F(HloParserTest, ParseNamedShardingNonIotaMeshDeviceList) {
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
 }
 
+TEST_F(HloParserTest, ParseNamedShardingEmptyMeshReplicated) {
+  const std::string original = "{mesh[], replicated}";
+  ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(/*include_metadata=*/true), original);
+}
+
 TEST_F(HloParserTest, ParseNamedShardingFullyReplicated) {
   const std::string original = "{mesh[a=2,b=4], replicated}";
   ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
@@ -4232,9 +4239,9 @@ TEST_F(HloParserTest, ParseMixedShardingTuple1) {
   EXPECT_TRUE(sharding.tuple_elements()[1].UseNamedShardingLeaf());
   EXPECT_TRUE(sharding.tuple_elements()[1].IsReplicatedLeaf());
   EXPECT_FALSE(sharding.tuple_elements()[2].UseNamedShardingLeaf());
-  EXPECT_TRUE(sharding.tuple_elements()[2].IsTileMaximalLeaf());
+  EXPECT_TRUE(sharding.tuple_elements()[2].IsSingleDeviceLeaf());
   EXPECT_TRUE(sharding.tuple_elements()[3].UseNamedShardingLeaf());
-  EXPECT_TRUE(sharding.tuple_elements()[3].IsTileMaximalLeaf());
+  EXPECT_TRUE(sharding.tuple_elements()[3].IsSingleDeviceLeaf());
 }
 
 TEST_F(HloParserTest, ParseMixedShardingTuple2) {
@@ -6245,6 +6252,48 @@ ENTRY entry {
                        ParseAndReturnVerifiedModule(hlo_without_mode));
   EXPECT_EQ(*module_with_mode->entry_computation(),
             *module_without_mode->entry_computation());
+}
+
+TEST_F(HloParserTest, SparsityConfig_RHSOnly) {
+  const char* const hlo_string = R"(
+  HloModule SparsityConfigModule
+  ENTRY SparsityConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter), dim_labels=bf_io->bf,
+      sparsity_config={rhs={sparsity=3x4 dimension=0 stride=1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->sparsity_config();
+  EXPECT_EQ(config.rhs().block_size(), 4);
+  EXPECT_EQ(config.rhs().num_non_zero(), 3);
+  EXPECT_EQ(config.rhs().dimension(), 0);
+  EXPECT_EQ(config.rhs().stride(), 1);
+}
+
+TEST_F(HloParserTest, SparsityConfig_Both) {
+  const char* const hlo_string = R"(
+  HloModule SparsityConfigModule
+  ENTRY SparsityConfig {
+    %input = f32[1,2] parameter(0)
+    %filter = f32[2,2] parameter(1)
+    ROOT %convolution = f32[1,2] convolution(%input, %filter), dim_labels=bf_io->bf,
+      sparsity_config={lhs={sparsity=1x4 dimension=1 stride=1} rhs={sparsity=3x4 dimension=0 stride=1}}
+  }
+  )";
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo_string));
+  auto* conv = module->entry_computation()->root_instruction();
+  auto config = conv->sparsity_config();
+  EXPECT_EQ(config.lhs().block_size(), 4);
+  EXPECT_EQ(config.lhs().num_non_zero(), 1);
+  EXPECT_EQ(config.lhs().dimension(), 1);
+  EXPECT_EQ(config.lhs().stride(), 1);
+  EXPECT_EQ(config.rhs().block_size(), 4);
+  EXPECT_EQ(config.rhs().num_non_zero(), 3);
+  EXPECT_EQ(config.rhs().dimension(), 0);
+  EXPECT_EQ(config.rhs().stride(), 1);
 }
 
 }  // namespace

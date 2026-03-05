@@ -16,7 +16,12 @@ limitations under the License.
 #include "xla/runtime/hang_watchdog.h"
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <vector>
 
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
@@ -52,14 +57,34 @@ TEST(HangWatchdogTest, Completed) {
   EXPECT_FALSE(notification.WaitForNotificationWithTimeout(absl::Seconds(1)));
 }
 
-TEST(HangWatchdogTest, StressTest) {
-  tsl::thread::ThreadPool pool(tsl::Env::Default(), "stress", 8);
-  HangWatchdog watchdog(tsl::Env::Default(), "watchdog");
+// Stress test HangWatchdog under concurrent execution to detect data races.
+class HangWatchdogStressTest : public ::testing::TestWithParam<int32_t> {};
 
-  for (size_t i = 0; i < 1000; ++i) {
-    watchdog.Watch("test", absl::Milliseconds(1), [] {});
+TEST_P(HangWatchdogStressTest, StressTest) {
+  std::optional<tsl::thread::ThreadPool> pool;
+  pool.emplace(tsl::Env::Default(), "stress", 8);
+
+  std::optional<HangWatchdog> watchdog;
+  watchdog.emplace(tsl::Env::Default(), "watchdog", GetParam());
+
+  static constexpr size_t n = 1000;
+  std::vector<std::shared_ptr<HangWatchdog::Guard>> guards(n);
+
+  absl::BlockingCounter counter(n);
+  for (size_t i = 0; i < n; ++i) {
+    pool->Schedule([&, i] {
+      guards[i] = watchdog->Watch("test", absl::Milliseconds(1),
+                                  [&] { counter.DecrementCount(); });
+    });
   }
+
+  // Wait for all tasks to finish.
+  (pool.reset(), watchdog.reset());
+  counter.Wait();
 }
+
+INSTANTIATE_TEST_SUITE_P(HangWatchdogStress, HangWatchdogStressTest,
+                         ::testing::ValuesIn({1, 2, 4, 8}));
 
 }  // namespace
 }  // namespace xla

@@ -1711,23 +1711,6 @@ UsesList MemoryUsageTracker::GetItemUses(HloRematItem* item) const {
   return combined_users;
 }
 
-// Inserts `item` into `place_before` if `item` is not something previously
-// touched by remat and dead. This is used to avoid inserting new instructions
-// based on now dead instructions into the schedule, which can cause dependency
-// issues. This is needed when rematerializing multiple instructions without
-// running a DCE pass in between. Mostly applicable to peak priority mode.
-void InsertIntoPlaceBeforeSafely(
-    HloRematItem* item, ItemList& place_before,
-    absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map) {
-  // Skips inserting instructions previously killed by rematerialization.
-  if (rematerializable_map != nullptr &&
-      rematerializable_map->contains(item->instruction) &&
-      item->instruction->IsDead()) {
-    return;
-  }
-  place_before.push_back(item);
-}
-
 // Performs the rematerialization of all items in `best_items` and returns the
 // number of net instructions added.
 absl::StatusOr<int64_t> RematerializeInstructions(
@@ -1850,15 +1833,13 @@ absl::StatusOr<int64_t> RematerializeInstructions(
         indirect_users.begin(), indirect_users.end());
     for (auto user : remat->users()) {
       if (!indirect_users_set.contains(instruction_list->GetItem(user))) {
-        InsertIntoPlaceBeforeSafely(instruction_list->GetItem(user),
-                                    place_before, rematerializable_map);
+        place_before.push_back(instruction_list->GetItem(user));
       }
     }
     for (auto* indirect_user : indirect_users) {
       for (auto user : indirect_user->instruction->users()) {
         if (!indirect_users_set.contains(instruction_list->GetItem(user))) {
-          InsertIntoPlaceBeforeSafely(instruction_list->GetItem(user),
-                                      place_before, rematerializable_map);
+          place_before.push_back(instruction_list->GetItem(user));
         }
       }
     }
@@ -1893,8 +1874,7 @@ absl::StatusOr<int64_t> RematerializeInstructions(
                 continue;
               }
             }
-            InsertIntoPlaceBeforeSafely(operand_user_item, place_before,
-                                        rematerializable_map);
+            place_before.push_back(operand_user_item);
           }
         }
       }
@@ -1906,8 +1886,7 @@ absl::StatusOr<int64_t> RematerializeInstructions(
       // Assert to make sure we never remat an operation with control
       // successor already placed.
       CHECK(!successor_item->placed) << successor_item->instruction->name();
-      InsertIntoPlaceBeforeSafely(successor_item, place_before,
-                                  rematerializable_map);
+      place_before.push_back(successor_item);
     }
     instruction_list->InsertBeforeInstructions(remat_item, place_before);
 
@@ -1937,6 +1916,31 @@ absl::StatusOr<int64_t> RematerializeInstructions(
         // of 'best' and kills 'best'. Stop rematerializing this instruction
         // to avoid an infinite loop.
         instruction_list->Denylist(remat);
+      }
+      // Peak priority specific cleanup. If the source (best) instruction
+      // is dead, we are forced to remove it from the computation immediately
+      // before any other rematerialization occurs. Otherwise, the dead
+      // instruction may influence instruction placement.
+      // TODO(b/486858124): Generalize this to all strategies.
+      if (rematerialization->remat_algorithm() ==
+          RematAlgorithm::kPeakPriority) {
+        TF_RETURN_IF_ERROR(best->DropAllControlDeps());
+        // Removes all leftover uses of best. These uses are inactive as the
+        // instruction has been rendered effectively dead by rematerialization.
+        while (!best->users().empty()) {
+          HloInstruction* user = best->users().front();
+          TF_RET_CHECK(user->IsDead())
+              << "User of instruction " << best->name()
+              << " killed by rematerialization is not dead or corrected: "
+              << user->name();
+          VLOG(3)
+              << "Deleting user " << user->name() << " of instruction "
+              << best->name()
+              << " because the instruction was killed by rematerialization.";
+          TF_RETURN_IF_ERROR(user->DropAllControlDeps());
+          TF_RETURN_IF_ERROR(computation->RemoveInstruction(user));
+        }
+        TF_RETURN_IF_ERROR(computation->RemoveInstruction(best));
       }
       remat_move_instructions->insert(remat);
       net_instructions_added += indirect_users.size();
@@ -2797,6 +2801,10 @@ HloRematerialization::PeakPriorityUpdateVariables(
   HloInstructionSequence sequence_from_list;
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
+    // No parent means the instruction has already been deleted.
+    if (item->instruction->parent() == nullptr) {
+      continue;
+    }
     sequence_from_list.push_back(item->instruction);
   }
   TF_RETURN_IF_ERROR(HloRematerialization::UpdateScheduleFromSequence(

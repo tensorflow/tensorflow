@@ -28,6 +28,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -311,8 +312,8 @@ class SharedBatchScheduler
     // If `enable_priority_aware_batch_scheduler` is true, this struct controls
     // the size of the queue.
     struct PriorityAwareSchedulerOptions {
-      std::map<tsl::criticality::Criticality, size_t>
-          per_criticality_queue_size;
+      // The maximum sum of task sizes to enqueue.
+      size_t max_queue_depth = 200;
     };
 
     PriorityAwareSchedulerOptions priority_aware_scheduler_options;
@@ -378,16 +379,15 @@ class SharedBatchScheduler
 namespace internal {
 // A priority queue of tasks, designed to be used with
 // SharedBatchScheduler when `enable_priority_aware_batch_scheduler` is true.
-// Tasks are organized into sub-queues based on criticality.
-// When forming a batch, tasks are drawn from higher-criticality queues before
-// lower-criticality queues. Within each queue, tasks are processed in
-// FIFO order.
+// Tasks are stored in a priority queue ordered by criticality and arrival time.
+// When forming a batch, tasks are drawn based on their priority. Higher
+// criticality tasks are processed before lower criticality ones. Tasks with the
+// same criticality are processed in FIFO order.
 template <typename TaskType>
 class PriorityTaskQueue {
  public:
   explicit PriorityTaskQueue(
-      std::map<tsl::criticality::Criticality, size_t>
-          per_criticality_queue_size,
+      size_t max_queue_depth,
       std::function<
           absl::Status(std::unique_ptr<TaskType>* input_task,
                        int first_output_task_size, int input_batch_size_limit,
@@ -395,36 +395,64 @@ class PriorityTaskQueue {
           split_input_task_func,
       bool enable_large_batch_splitting, size_t max_execution_batch_size,
       int64_t batch_timeout_micros, Env* env)
-      : per_criticality_queue_size_(std::move(per_criticality_queue_size)),
+      : max_queue_depth_(max_queue_depth),
         split_input_task_func_(split_input_task_func),
         enable_large_batch_splitting_(enable_large_batch_splitting),
         max_execution_batch_size_(max_execution_batch_size),
         batch_timeout_micros_(batch_timeout_micros),
-        env_(env) {
-    for (const auto& [criticality, _] : per_criticality_queue_size_) {
-      queues_[criticality] = std::make_unique<TaskQueue<TaskType>>();
-    }
-  }
+        env_(env) {}
 
+  // If queue has capacity, adds task to queue and returns OK.
+  // If queue doesn't have capacity:
+  // - If task has higher criticality than lowest criticality task in queue,
+  //   evicts lowest criticality tasks until there is capacity, adds task to
+  //   queue and returns OK.
+  // - Otherwise, returns UnavailableError.
+  // The entire task is either accepted or rejected; partial acceptance is not
+  // supported.
   absl::Status AddTask(std::unique_ptr<TaskType>* task,
                        uint64_t start_time_micros) {
-    if (GetQueueSize(**task) >= GetPerCriticalityQueueSize(**task)) {
+    QueueEntry new_task_entry;
+    new_task_entry.criticality = GetCriticality(**task);
+    new_task_entry.start_time_micros = start_time_micros;
+
+    while (current_queue_size_ + (*task)->size() > max_queue_depth_ &&
+           !tasks_.empty()) {
+      // Evict if necessary
+      auto it = std::prev(tasks_.end());
+      const QueueEntry& lowest_priority_entry = *it;
+
+      // Would new task be sorted into the queue before the lowest priority
+      // entry?
+      if (new_task_entry < lowest_priority_entry) {
+        // Evict lower-priority tasks to make room for a higher-priority task,
+        // even if the higher-priority task may end up being rejected. This is
+        // necessary to prevent priority inversion, where a low-priority task
+        // could occupy queue space and prevent a high-priority task from being
+        // admitted.
+        QueueEntry evicted_entry = RemoveEntryInternal(it);
+
+        if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
+          evicted_entry.task->FinishTask(absl::UnavailableError(
+              "Task evicted due to priority queue full."));
+        }
+      } else {
+        return absl::UnavailableError(
+            "The priority queue to which this task was submitted is full; "
+            "and the task priority is too low to evict other tasks.");
+      }
+    }
+
+    if (current_queue_size_ + (*task)->size() > max_queue_depth_) {
       return absl::UnavailableError(absl::StrFormat(
           "The priority queue to which this task was submitted is full; "
-          "current size: %d, limit: %zu",
-          GetQueueSize(**task), GetPerCriticalityQueueSize(**task)));
+          "task size %zu is larger than the max queue depth %zu.",
+          (*task)->size(), max_queue_depth_));
     }
-    GetQueue(GetCriticality(**task))
-        .AddTask(std::move(*task), start_time_micros);
+
+    new_task_entry.task = std::move(*task);
+    AddEntryInternal(std::move(new_task_entry));
     return absl::OkStatus();
-  }
-
-  TaskQueue<TaskType>& GetQueue(tsl::criticality::Criticality c) {
-    return *queues_.at(c);
-  }
-
-  const TaskQueue<TaskType>& GetQueue(tsl::criticality::Criticality c) const {
-    return *queues_.at(c);
   }
 
   // Returns tasks whose sizes sum up to `size`; highest priority tasks are
@@ -433,91 +461,76 @@ class PriorityTaskQueue {
   std::vector<std::unique_ptr<TaskType>> RemoveTask(int size) {
     std::vector<std::unique_ptr<TaskType>> tasks;
     int remaining_size = size;
-    for (auto it = queues_.rbegin(); it != queues_.rend(); ++it) {
-      if (remaining_size <= 0) {
-        break;
-      }
-      if (it->second && !it->second->empty()) {
-        RemoveTasksFromQueue(it->second.get(), &remaining_size, &tasks);
-        MaybeSplitAndAddTask(it->second.get(), &remaining_size, &tasks);
+
+    while (remaining_size > 0 && !tasks_.empty()) {
+      auto it = tasks_.begin();
+      QueueEntry highest_priority_entry = RemoveEntryInternal(it);
+
+      if (enable_large_batch_splitting_ &&
+          highest_priority_entry.task->size() > remaining_size) {
+        // Split
+        std::unique_ptr<TaskType> highest_priority_task_ptr =
+            std::move(highest_priority_entry.task);
+        std::vector<std::unique_ptr<TaskType>> output_tasks;
+        absl::Status status =
+            split_input_task_func_(&highest_priority_task_ptr, remaining_size,
+                                   max_execution_batch_size_, &output_tasks);
+
+        if (!status.ok()) {
+          LOG(ERROR) << "Failed to split task: " << status;
+          highest_priority_entry.task = std::move(highest_priority_task_ptr);
+          AddEntryInternal(std::move(highest_priority_entry));
+          break;
+        }
+
+        // First task fits.
+        remaining_size -= output_tasks[0]->size();
+
+        tasks.push_back(std::move(output_tasks[0]));
+
+        for (size_t i = 1; i < output_tasks.size(); ++i) {
+          QueueEntry new_entry;
+          new_entry.task = std::move(output_tasks[i]);
+          new_entry.start_time_micros =
+              highest_priority_entry.start_time_micros;
+          new_entry.criticality = highest_priority_entry.criticality;
+          AddEntryInternal(std::move(new_entry));
+        }
+      } else {
+        remaining_size -= highest_priority_entry.task->size();
+        tasks.push_back(std::move(highest_priority_entry.task));
       }
     }
     return tasks;
   }
 
   std::optional<uint64_t> EarliestTaskStartTime() const {
-    std::optional<uint64_t> earliest_task_start_time;
-    for (const auto& [criticality, queue] : queues_) {
-      if (queue) {
-        auto t = queue->EarliestTaskStartTime();
-        if (t.has_value()) {
-          if (!earliest_task_start_time.has_value() ||
-              *t < *earliest_task_start_time) {
-            earliest_task_start_time = t;
-          }
-        }
-      }
+    if (start_times_.empty()) {
+      return std::nullopt;
     }
-    return earliest_task_start_time;
+    return *start_times_.begin();
   }
 
-  bool empty() const {
-    for (const auto& [criticality, queue] : queues_) {
-      if (queue && !queue->empty()) {
-        return false;
-      }
+  std::optional<uint64_t> EarliestHighPriorityTaskStartTime() const {
+    if (tasks_.empty()) {
+      return std::nullopt;
     }
-    return true;
+    return tasks_.begin()->start_time_micros;
   }
 
-  int num_tasks() const {
-    int num_tasks = 0;
-    for (const auto& [criticality, queue] : queues_) {
-      if (queue) {
-        num_tasks += queue->num_tasks();
-      }
-    }
-    return num_tasks;
-  }
+  bool empty() const { return tasks_.empty(); }
 
-  int size() const {
-    int size = 0;
-    for (const auto& [criticality, queue] : queues_) {
-      if (queue) {
-        size += queue->size();
-      }
-    }
-    return size;
-  }
+  int num_tasks() const { return tasks_.size(); }
 
-  int GetQueueSize(const TaskType& task) const {
-    auto it = queues_.find(GetCriticality(task));
-    if (it != queues_.end() && it->second) {
-      return it->second->size();
-    }
-    return 0;
-  }
+  size_t size() const { return current_queue_size_; }
 
-  size_t GetPerCriticalityQueueSize(const TaskType& task) const {
-    tsl::criticality::Criticality criticality = GetCriticality(task);
-    return per_criticality_queue_size_.at(criticality);
-  }
-
-  size_t GetMaxSize() const {
-    size_t total_limit = 0;
-    for (auto const& [criticality, limit] : per_criticality_queue_size_) {
-      total_limit += limit;
-    }
-    return total_limit;
-  }
+  size_t max_queue_depth() const { return max_queue_depth_; }
 
   std::optional<tsl::criticality::Criticality> HighestCriticality() const {
-    for (auto it = queues_.rbegin(); it != queues_.rend(); ++it) {
-      if (it->second && !it->second->empty()) {
-        return it->first;
-      }
+    if (tasks_.empty()) {
+      return std::nullopt;
     }
-    return std::nullopt;
+    return tasks_.begin()->criticality;
   }
 
   std::unique_ptr<Batch<TaskType>> ScheduleBatch() {
@@ -542,42 +555,19 @@ class PriorityTaskQueue {
   }
 
  private:
-  void RemoveTasksFromQueue(TaskQueue<TaskType>* queue, int* remaining_size,
-                            std::vector<std::unique_ptr<TaskType>>* tasks) {
-    std::vector<std::unique_ptr<TaskType>> t =
-        queue->RemoveTask(*remaining_size);
-    for (const auto& task_ptr : t) {
-      *remaining_size -= task_ptr->size();
-    }
-    std::move(t.begin(), t.end(), std::back_inserter(*tasks));
-  }
+  struct QueueEntry {
+    mutable std::unique_ptr<TaskType> task;
+    uint64_t start_time_micros;
+    tsl::criticality::Criticality criticality;
 
-  void MaybeSplitAndAddTask(TaskQueue<TaskType>* queue, int* remaining_size,
-                            std::vector<std::unique_ptr<TaskType>>* tasks) {
-    if (*remaining_size <= 0 || queue->empty() ||
-        !enable_large_batch_splitting_) {
-      return;
+    // If qe1 < qe2, then q1 is higher priority than q2.
+    bool operator<(const QueueEntry& other) const {
+      if (criticality != other.criticality) {
+        return criticality > other.criticality;
+      }
+      return start_time_micros < other.start_time_micros;
     }
-
-    // If we are here, it means next task in queue is larger
-    // than *remaining_size.
-    uint64_t start_time = queue->EarliestTaskStartTime().value();
-    std::unique_ptr<TaskType> task = queue->RemoveTask();
-    std::vector<std::unique_ptr<TaskType>> output_tasks;
-    absl::Status status = split_input_task_func_(
-        &task, *remaining_size, max_execution_batch_size_, &output_tasks);
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to split task: " << status;
-      queue->PrependTask(std::move(task), start_time);
-      return;
-    }
-    *remaining_size -= output_tasks[0]->size();
-    tasks->push_back(std::move(output_tasks[0]));
-
-    for (size_t i = output_tasks.size() - 1; i >= 1; --i) {
-      queue->PrependTask(std::move(output_tasks[i]), start_time);
-    }
-  }
+  };
 
   tsl::criticality::Criticality GetCriticality(const TaskType& task) const {
     if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
@@ -586,18 +576,37 @@ class PriorityTaskQueue {
     return tsl::criticality::Criticality::kSheddable;
   }
 
-  std::map<tsl::criticality::Criticality, std::unique_ptr<TaskQueue<TaskType>>>
-      queues_;
-  std::map<tsl::criticality::Criticality, size_t> per_criticality_queue_size_;
-  std::function<absl::Status(
+  void AddEntryInternal(QueueEntry entry) {
+    current_queue_size_ += entry.task->size();
+    start_times_.insert(entry.start_time_micros);
+    tasks_.insert(std::move(entry));
+  }
+
+  QueueEntry RemoveEntryInternal(
+      typename std::multiset<QueueEntry>::iterator it) {
+    auto node = tasks_.extract(it);
+    QueueEntry& entry = node.value();
+    current_queue_size_ -= entry.task->size();
+    auto st_it = start_times_.find(entry.start_time_micros);
+    if (st_it != start_times_.end()) {
+      start_times_.erase(st_it);
+    }
+    return std::move(entry);
+  }
+
+  std::multiset<QueueEntry> tasks_;
+  std::multiset<uint64_t> start_times_;
+  const size_t max_queue_depth_;
+  size_t current_queue_size_ = 0;
+  const std::function<absl::Status(
       std::unique_ptr<TaskType>* input_task, int first_output_task_size,
       int input_batch_size_limit,
       std::vector<std::unique_ptr<TaskType>>* output_tasks)>
       split_input_task_func_;
-  bool enable_large_batch_splitting_;
-  size_t max_execution_batch_size_;
-  int64_t batch_timeout_micros_;
-  Env* env_;
+  const bool enable_large_batch_splitting_;
+  const size_t max_execution_batch_size_;
+  const int64_t batch_timeout_micros_;
+  Env* const env_;
 };
 
 // A task queue for SharedBatchScheduler. Accepts tasks and accumulates them
@@ -1014,21 +1023,10 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
                           "mixed_priority_batching_policy is %d.",
                           options.mixed_priority_batching_policy));
     }
-    if (options.priority_aware_scheduler_options.per_criticality_queue_size
-            .empty()) {
+    if (options.priority_aware_scheduler_options.max_queue_depth == 0) {
       return absl::InvalidArgumentError(
           "If enable_priority_aware_batch_scheduler is true, "
-          "per_criticality_queue_size must be non-empty.");
-    }
-    for (const auto& pair :
-         options.priority_aware_scheduler_options.per_criticality_queue_size) {
-      if (pair.second < 0) {
-        return absl::InvalidArgumentError(absl::StrFormat(
-            "If enable_priority_aware_batch_scheduler is true, queue sizes "
-            "must be "
-            "positive. The queue size for criticality %d is %d.",
-            pair.first, pair.second));
-      }
+          "max_queue_depth must be positive.");
     }
   }
 
@@ -1172,7 +1170,7 @@ Queue<TaskType>::Queue(
     Env* env, ProcessBatchCallback process_batch_callback,
     SchedulableBatchCallback schedulable_batch_callback)
     : tasks_priority_queue_(
-          options.priority_aware_scheduler_options.per_criticality_queue_size,
+          options.priority_aware_scheduler_options.max_queue_depth,
           options.split_input_task_func, options.enable_large_batch_splitting,
           GetMaxExecutionBatchSize(options), options.batch_timeout_micros, env),
       options_(options),
@@ -1413,10 +1411,9 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   if (options_.enable_priority_aware_batch_scheduler) {
-    size_t total_limit = tasks_priority_queue_.GetMaxSize();
-    int size = tasks_priority_queue_.size();
-    if (size >= total_limit) return 0;
-    return total_limit - size;
+    size_t depth = tasks_priority_queue_.size();
+    if (depth >= tasks_priority_queue_.max_queue_depth()) return 0;
+    return tasks_priority_queue_.max_queue_depth() - depth;
   }
   const int64_t num_new_batches_schedulable =
       static_cast<int64_t>(options_.max_enqueued_batches) -
@@ -1757,9 +1754,7 @@ Queue<TaskType>::PeekBatchPriorityImpl() const {
         static_cast<int>(tsl::criticality::Criticality::kCriticalPlus);
     return std::make_pair(
         max_priority - static_cast<int>(highest_criticality.value()),
-        tasks_priority_queue_.GetQueue(highest_criticality.value())
-            .EarliestTaskStartTime()
-            .value());
+        tasks_priority_queue_.EarliestHighPriorityTaskStartTime().value());
   }
 
   const int kHighPriority = 1;

@@ -166,7 +166,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> WrapWithFloatCheckThunk(
   VLOG(1) << "Wrapping thunk " << thunk->thunk_info().thunk_id
           << " with float check thunk due to presence of buffers: "
           << buffers_to_check.size();
-  std::vector<std::unique_ptr<Thunk>> thunk_and_checks;
+  ThunkSequence thunk_and_checks;
   Thunk* thunk_ptr = thunk.get();
   thunk_and_checks.push_back(std::move(thunk));
   auto buffer_debug_float_check_thunk =
@@ -415,7 +415,7 @@ CreateBufferDebugFloatCheckThunk(
 
 }  // namespace
 
-absl::Status RunFloatCheckPassInternal(SequentialThunk* root_thunk,
+absl::Status RunFloatCheckPassInternal(ThunkSequence* thunk_sequence,
                                        const DebugOptions& debug_options,
                                        const HloModule* absl_nonnull hlo_module,
                                        ThunkPassBufferAllocator& allocator) {
@@ -434,24 +434,25 @@ absl::Status RunFloatCheckPassInternal(SequentialThunk* root_thunk,
       CreateBufferDebugFloatCheckThunk(metadata_store, log_slice, hlo_module));
 
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  TF_RETURN_IF_ERROR(root_thunk->TransformAllNestedThunks(
-      [&](std::unique_ptr<Thunk> thunk)
-          -> absl::StatusOr<std::unique_ptr<Thunk>> {
-        if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-          return thunk;
-        }
-        VLOG(1) << "Wrapping with float check thunk";
-        return WrapWithFloatCheckThunk(
-            std::move(thunk), log_slice,
-            /*predecessor_thunk=*/*buffer_debug_init_thunk,
-            /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store,
-            allocator);
-      }));
+  auto transform_callback = [&](std::unique_ptr<Thunk> thunk)
+      -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
+    VLOG(1) << "Wrapping with float check thunk";
+    return WrapWithFloatCheckThunk(
+        std::move(thunk), log_slice,
+        /*predecessor_thunk=*/*buffer_debug_init_thunk,
+        /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store,
+        allocator);
+  };
 
-  ThunkSequence& thunks = root_thunk->thunks();
-  thunks.reserve(thunks.size() + 2);
-  thunks.insert(thunks.begin(), std::move(buffer_debug_init_thunk));
-  thunks.push_back(std::move(buffer_debug_dump_thunk));
+  TF_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+
+  thunk_sequence->reserve(thunk_sequence->size() + 2);
+  thunk_sequence->insert(thunk_sequence->begin(),
+                         std::move(buffer_debug_init_thunk));
+  thunk_sequence->push_back(std::move(buffer_debug_dump_thunk));
   return absl::OkStatus();
 }
 

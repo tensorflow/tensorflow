@@ -32,13 +32,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 
 namespace xla {
-namespace {
-bool IsDefaultInPlaceOperation(const HloInstruction* hlo) {
-  HloOpcode opcode = hlo->opcode();
-  return opcode == HloOpcode::kDynamicUpdateSlice ||
-         opcode == HloOpcode::kScatter || opcode == HloOpcode::kAllReduceStart;
-}
-}  // namespace
 
 // Returns in-place input/output pairs for the given fusion instruction,
 // according to the aliasing rules for the corresponding fusion computation.

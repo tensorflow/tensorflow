@@ -68,6 +68,8 @@ struct CollectiveParams {
   int64_t collective_max_nchannels;
   int64_t p2p_max_nchannels;
 
+  int local_device_count = 0;
+
  private:
   CollectiveParams(
       GpuCollectives* collectives, se::StreamExecutor* executor, RunId run_id,
@@ -77,7 +79,8 @@ struct CollectiveParams {
       const GlobalDeviceIdMap* global_device_id_map,
       const CliqueIdCallback* clique_id_callback,
       const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
-      int64_t collective_max_nchannels, int64_t p2p_max_nchannels);
+      int64_t collective_max_nchannels, int64_t p2p_max_nchannels,
+      int local_device_count);
 };
 
 }  // namespace xla::gpu

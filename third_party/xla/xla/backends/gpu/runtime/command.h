@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -72,6 +71,7 @@ namespace xla::gpu {
   V(kAllGatherCmd, "AllGatherCmd")                           \
   V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")       \
   V(kCollectivePermuteCmd, "CollectivePermuteCmd")           \
+  V(kRaggedAllToAllCmd, "RaggedAllToAllCmd")                 \
   V(kRecvCmd, "RecvCmd")                                     \
   V(kSendCmd, "SendCmd")                                     \
   V(kAsyncDone, "AsyncDone")                                 \
@@ -127,14 +127,14 @@ bool IsCollectiveCommand(CommandType type);
 class Command {
  public:
   using BufferUses = Thunk::BufferUses;
-  using ResourceUseVector = absl::InlinedVector<ResourceUse, 1>;
+  using ResourceUses = absl::InlinedVector<ResourceUse, 1>;
 
  public:
   explicit Command(CommandType cmd_type,
                    se::StreamPriority priority = se::StreamPriority::Default)
       : cmd_type_(cmd_type), priority_(priority) {
     token_ = Resource::Create(Resource::kToken);
-    resources_.push_back(ResourceUse::Write(token_));
+    resource_uses_.push_back(ResourceUse::Write(token_));
   }
 
   virtual ~Command() = default;
@@ -153,11 +153,6 @@ class Command {
     // A flag indicating whether we record commands at command buffer thunk
     // initialization time.
     bool is_initialization = false;
-
-    // The command sequence might be recorded in the loop unrolling pattern, so
-    // the command sequence might be instantiated multiple times, we uses
-    // unroll_iteration to locate the commands for current unroll iteration.
-    int64_t unroll_iteration = 0;
   };
 
   // Create new commands in the command buffer using the given dependencies.
@@ -213,29 +208,34 @@ class Command {
   // they got lucky and got the same buffer allocations), it will lead to
   // deadlocks. By forcing the command update at thunk initialization time, we
   // ensure that all ranks execute NCCL command update.
-  virtual bool requires_initialization() { return false; }
+  virtual bool requires_initialization() const { return false; }
 
   // Returns true if command supports loop unroll, the while loop can be
   // unrolled only if it has pre-known trip count and also all commands from the
   // body commands are unrollable.
-  virtual bool support_loop_unroll() { return true; }
+  virtual bool support_loop_unroll() const { return true; }
 
   // This is only true for DynamicSliceCopyFusionCmd when offset is dependents
   // on loop iteration. As the command of slice operation is access the sliced
   // memory region that varies across loop iterations, so even the original
   // buffer allocation is the same, it still requires to do update.
-  virtual bool force_update() { return false; }
+  virtual bool force_update() const { return false; }
 
-  // Returns all buffers used by the cmd. These will be used to track cmd
-  // updates, thus they need to be consistent across calls to the function.
+  // Returns buffers used by this command. Buffer uses do not include buffers
+  // that might be used by nested commands, they must be collected separately
+  // by walking the nested commands using `Walk` API.
   virtual BufferUses buffer_uses() const { return {}; }
 
   std::shared_ptr<Resource> token() const { return token_; }
 
   void add_resource_use(ResourceUse resource_use) {
-    resources_.push_back(resource_use);
+    resource_uses_.push_back(resource_use);
   }
-  ResourceUseVector resources() const { return resources_; }
+
+  // Returns resource used by this command. Resource uses do not include
+  // resources that might be used by nested commands, they must be collected
+  // separately by walking the nested commands using `Walk` API.
+  ResourceUses resource_uses() const { return resource_uses_; }
 
   // Returns true if command implemented as a nested command buffer.
   virtual bool IsNestedCommandBuffer() const { return false; }
@@ -253,29 +253,28 @@ class Command {
 
   // Type predicate for `Walk` callback.
   template <typename F, typename Arg>
-  using Walker = std::enable_if_t<std::is_invocable_v<F, Arg> ||
-                                  std::is_invocable_r_v<absl::Status, F, Arg>>;
+  using WalkCallback =
+      std::enable_if_t<std::is_invocable_v<F, Arg> ||
+                       std::is_invocable_r_v<absl::Status, F, Arg>>;
 
   // Recursively walks all the commands nested inside *this one and calls
-  // the user provided callback on every command. Always starts traversal with
+  // the user-provided callback on every command. Always starts traversal with
   // *this.
-  template <typename F, Walker<F, Command*>* = nullptr>
+  template <typename F, WalkCallback<F, Command*>* = nullptr>
   std::invoke_result_t<F, Command*> Walk(F&& callback);
-  template <typename F, Walker<F, const Command*>* = nullptr>
+  template <typename F, WalkCallback<F, const Command*>* = nullptr>
   std::invoke_result_t<F, const Command*> Walk(F&& callback) const;
 
  protected:
   // Walks all nested commands and calls `callback` for them.
-  virtual absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Command*)> callback) {
-    return absl::OkStatus();
-  }
+  using Walker = absl::FunctionRef<absl::Status(Command*)>;
+  virtual absl::Status WalkNested(Walker callback) { return absl::OkStatus(); }
 
  private:
   std::string profile_annotation_;
   CommandType cmd_type_;
 
-  ResourceUseVector resources_;
+  ResourceUses resource_uses_;
 
   // The token resource is used to specify additional dependency across
   // commands, like control dependency across HLO operators, and LHS scheduling
@@ -296,7 +295,7 @@ inline bool IsCollectiveCommand(const Command& cmd) {
 // Command templates implementation.
 //===----------------------------------------------------------------------===//
 
-template <typename F, Command::Walker<F, Command*>*>
+template <typename F, Command::WalkCallback<F, Command*>*>
 std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
   if constexpr (std::is_void_v<std::invoke_result_t<F, Command*>>) {
     Walk([f = std::forward<F>(callback)](Command* command) {
@@ -308,7 +307,7 @@ std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
   }
 }
 
-template <typename F, Command::Walker<F, const Command*>*>
+template <typename F, Command::WalkCallback<F, const Command*>*>
 std::invoke_result_t<F, const Command*> Command::Walk(F&& callback) const {
   return const_cast<Command*>(this)->Walk(  // NOLINT
       std::forward<F>(callback));
@@ -377,6 +376,18 @@ class CommandSequence : public std::vector<std::unique_ptr<Command>> {
       RETURN_IF_ERROR(cmd->Walk(callback));
     }
     return absl::OkStatus();
+  }
+
+  void Walk(absl::FunctionRef<void(const Command*)> callback) const {
+    for (const std::unique_ptr<Command>& cmd : *this) {
+      cmd->Walk(callback);
+    }
+  }
+
+  void Walk(absl::FunctionRef<void(Command*)> callback) {
+    for (std::unique_ptr<Command>& cmd : *this) {
+      cmd->Walk(callback);
+    }
   }
 };
 

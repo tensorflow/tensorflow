@@ -42,7 +42,8 @@ namespace mt = ::mlir::triton;
 static void MakeTTIR(mlir::OpPassManager* pm) {
   pm->addPass(mlir::createInlinerPass());
   pm->addPass(mt::createTritonRewriteTensorPointer());
-  pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
+  // if not amd.supports_tdm(arch)
+  // pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mt::createTritonCombineOps());
   pm->addPass(mt::createTritonReorderBroadcast());
@@ -106,6 +107,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
     pm->addPass(
         mlir::createTritonAMDGPUCoalesceAsyncCopy({rocm_cc.gfx_version()}));
   }
+  pm->addPass(mlir::createTritonAMDGPUConvertToTensorOps());
   pm->addPass(mlir::createCanonicalizerPass());
   if (schedule_hint != "none") {
     pm->addPass(
@@ -118,7 +120,8 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
         mlir::createTritonAMDGPUInThreadTranspose());
     pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   }
-  pm->addPass(mlir::createTritonAMDGPUReorderInstructions());
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUMoveUpPrologueLoads());
   if (use_block_pingpong && num_stages > 1) {
     pm->addPass(mlir::createTritonAMDGPUBlockPingpong({num_stages}));
   }
@@ -131,9 +134,13 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
        /*analyzeSmallTensorOfst*/ false}));
 
   pm->addPass(mlir::createTritonAMDFoldTrueCmpI());
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUPrepareIfCombining());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
+  // Unimplemented if instrumentation_mode == "fpsan"
+  // pm->addPass(mt::gpu::createTritonInstrumentFpSanitizer());
 }
 
 // Based on make_llir() in
@@ -142,7 +149,8 @@ static void MakeLLIR(mlir::OpPassManager* pm,
                      const stream_executor::RocmComputeCapability& rocm_cc,
                      int num_stages) {
   pm->addPass(mlir::createTritonAMDGPUUpdateAsyncWaitCount());
-  pm->addPass(mlir::triton::AMD::createConvertWarpPipelinePass());
+  pm->addPass(
+      mlir::triton::AMD::createConvertWarpPipelinePass(rocm_cc.gfx_version()));
   pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
   pm->addPass(mt::gpu::createAllocateSharedMemory());
@@ -160,7 +168,8 @@ static void MakeLLIR(mlir::OpPassManager* pm,
     pm->addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
         rocm_cc.gfx_version(), num_stages));
   }
-  pm->addPass(mt::createConvertBuiltinFuncToLLVMPass(/*ftz=*/true));
+  pm->addPass(mt::createConvertBuiltinFuncToLLVMPass(rocm_cc.gfx_version(),
+                                                     /*ftz=*/true));
 }
 
 void CreateTritonRocmPipeline(

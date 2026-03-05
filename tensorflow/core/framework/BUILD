@@ -1134,6 +1134,8 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

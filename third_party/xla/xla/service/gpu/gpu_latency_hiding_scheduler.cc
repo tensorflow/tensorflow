@@ -605,19 +605,9 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::NodeCost(
   // custom call is 1000, the LHS will try to schedule approximately 5 of
   // these in between each start/end pair.
   if (instr->opcode() == HloOpcode::kCustomCall) {
-    if (instr->has_frontend_attributes() &&
-        instr->frontend_attributes().map().contains("latency_metadata")) {
-      int64_t latency_metadata_ns = 0;
-      CHECK(absl::SimpleAtoi(
-          instr->frontend_attributes().map().at("latency_metadata"),
-          &latency_metadata_ns))
-          << "Failed to parse latency from custom call for " << instr->name()
-          << " from latency_metadata:"
-          << instr->frontend_attributes().map().at("latency_metadata");
-      VLOG(10) << "NodeCost: Returning latency from custom call for "
-               << instr->name() << ": " << latency_metadata_ns / 1000.0
-               << " ns";
-      return (LatencyEstimator::TimeCost)latency_metadata_ns / 1000.0;
+    if (const std::optional<TimeCost> latency =
+            GetLatencyFromMetadata(*instr)) {
+      return *latency;
     }
     if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
       return ApproximateLatencyEstimator::kMediumCost;

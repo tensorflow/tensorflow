@@ -397,14 +397,26 @@ LocalTopologyProto MakeLocalTopologyFromPjRtClient(
     xla::PjRtClient* pjrt_client, const PjRtClient::CreateOptions& options) {
   LocalTopologyProto local_topology_proto;
   local_topology_proto.set_process_id(options.process_id);
-  std::string boot_id_str;
-  auto boot_id_str_or_status = GetBootIdString();
-  if (!boot_id_str_or_status.ok()) {
-    LOG(INFO) << boot_id_str_or_status.status();
+
+  // Boot id is optional, we leave it empty if we can't get it at run time.
+  absl::StatusOr<std::string> boot_id = GetBootIdString();
+  if (boot_id.ok()) {
+    local_topology_proto.set_boot_id(*boot_id);
   } else {
-    boot_id_str = boot_id_str_or_status.value();
+    LOG(INFO) << "Failed to get boot id: " << boot_id.status();
   }
-  local_topology_proto.set_boot_id(boot_id_str);
+
+  // Network nodes also optional, they are needed for global device assignment
+  // optimized for network locality.
+  absl::StatusOr<std::vector<std::string>> network_nodes = GetNetworkNodes();
+  if (network_nodes.ok()) {
+    for (auto& network_node : *network_nodes) {
+      *local_topology_proto.add_network_nodes() = std::move(network_node);
+    }
+  } else {
+    LOG(INFO) << "Failed to get network nodes: " << network_nodes.status();
+  }
+
   // We ignore any non-addressable devices. We're going to do our own topology
   // exchange, so we don't care what devices any given client things that some
   // other process has.
@@ -1556,12 +1568,12 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
     // Call WatchJobStateAsync.
     VLOG(3) << "Calling WatchJobStateAsync for task " << task_id
             << " with version number " << version_number;
-    absl::StatusOr<tensorflow::WatchJobStateResponse> response;
+    absl::StatusOr<xla::coordination::WatchJobStateResponse> response;
     bool done = false;
     std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchJobStateAsync(
         version_number,
         [this, &response,
-         &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
+         &done](absl::StatusOr<xla::coordination::WatchJobStateResponse> r) {
           response = std::move(r);
           absl::MutexLock lock(shutting_down_mu_);
           done = true;
@@ -1599,13 +1611,14 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 
     // Parse the response.
     version_number = response->version_number();
-    std::vector<tensorflow::CoordinatedTaskStateInfo> state(
+    std::vector<xla::coordination::CoordinatedTaskStateInfo> state(
         response->task_state().begin(), response->task_state().end());
-    absl::c_sort(state,
-                 [](const tensorflow::CoordinatedTaskStateInfo& x,
-                    const tensorflow::CoordinatedTaskStateInfo& y) -> bool {
-                   return x.task().task_id() < y.task().task_id();
-                 });
+    absl::c_sort(
+        state,
+        [](const xla::coordination::CoordinatedTaskStateInfo& x,
+           const xla::coordination::CoordinatedTaskStateInfo& y) -> bool {
+          return x.task().task_id() < y.task().task_id();
+        });
 
     // Pretty print the job state, if VLOG is on.
     if (VLOG_IS_ON(3)) {
@@ -1714,6 +1727,66 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::RemapArrays(
     const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
     ArrayCopySemantics semantics) {
   return PjRtCompatibleClientRemapArrays(this, plan, arrays, semantics);
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    ArrayCopySemantics semantics) {
+  if (arrays.size() != specs.size()) {
+    return absl::InvalidArgumentError("arrays and specs must be the same size");
+  }
+  if (semantics == ArrayCopySemantics::kAlwaysCopy) {
+    return absl::InvalidArgumentError(
+        "BitcastArrays disallows ArrayCopySemantics::kAlwaysCopy");
+  }
+  if (semantics != ArrayCopySemantics::kDonateInput) {
+    return absl::UnimplementedError(
+        "PjRt-IFRT requires ArrayCopySemantics::kDonateInput for "
+        "BitcastArrays");
+  }
+
+  std::vector<ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
+  for (int i = 0; i < arrays.size(); ++i) {
+    auto* pjrt_array = llvm::dyn_cast<PjRtArray>(arrays[i].get());
+    if (pjrt_array == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Array %d is not a PjRtArray", i));
+    }
+
+    absl::Span<const std::shared_ptr<PjRtBuffer>> buffers =
+        pjrt_array->pjrt_buffers();
+    PjRtBuffers new_buffers;
+    new_buffers.reserve(buffers.size());
+
+    TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
+                        ToPrimitiveType(specs[i].dtype));
+    TF_ASSIGN_OR_RETURN(const Shape& new_shard_shape,
+                        specs[i].sharding->GetShardShape(specs[i].shape));
+    const xla::Layout* device_layout = nullptr;
+    if (specs[i].layout != nullptr) {
+      device_layout = &specs[i].layout->xla_layout();
+    }
+
+    for (const std::shared_ptr<PjRtBuffer>& buffer : buffers) {
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtBuffer> new_buffer,
+          buffer->Bitcast(element_type, new_shard_shape.dims(), device_layout));
+      new_buffers.push_back(std::move(new_buffer));
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        tsl::RCReference<PjRtArray> new_array,
+        PjRtArray::Create(this, specs[i].dtype, specs[i].shape,
+                          specs[i].sharding, std::move(new_buffers),
+                          specs[i].layout));
+    new_arrays.push_back(std::move(new_array));
+  }
+  for (ArrayRef& array : arrays) {
+    array->Delete();
+  }
+  return new_arrays;
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(

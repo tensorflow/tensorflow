@@ -263,8 +263,7 @@ TEST_F(LLVMSPIRVTest, AddRangeMetadataTest) {
   llvm::LLVMContext llvm_context;
   llvm::IRBuilder<> builder(llvm_context);
   llvm::Triple spirv_triple("spirv64-unknown-unknown");
-  std::unique_ptr<llvm::Module> llvm_module =
-      std::make_unique<llvm::Module>("Module", llvm_context);
+  auto llvm_module = std::make_unique<llvm::Module>("Module", llvm_context);
   llvm_module->setTargetTriple(spirv_triple);
   llvm::Value* p0 = builder.getInt64(2);
 

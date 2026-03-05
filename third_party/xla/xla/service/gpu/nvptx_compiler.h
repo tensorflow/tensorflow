@@ -55,13 +55,14 @@ class NVPTXCompiler : public GpuCompiler {
   absl::Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
       se::dnn::VersionInfo dnn_version,
-      const se::SemanticVersion& toolkit_version) override;
+      const se::SemanticVersion& toolkit_version,
+      CompilationStats* compilation_stats) override;
 
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const GpuAliasInfo* alias_info,
-      tsl::thread::ThreadPool* thread_pool) override;
+      const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+      CompilationStats* compilation_stats) override;
 
   absl::Status RunCudnnCompilerPasses(HloModule* module,
                                       se::StreamExecutor* stream_exec,

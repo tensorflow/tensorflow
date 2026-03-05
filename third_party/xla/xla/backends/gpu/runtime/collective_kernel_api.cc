@@ -32,13 +32,11 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -104,6 +102,13 @@ absl::Status LaunchMultiGpuBarrier(
       signal_buffers, typed_sync_counter);
 }
 
+size_t GetMultiGpuBarrierSignalBufferSize() {
+  return stream_executor::gpu::MultiGpuBarrierKernel::kMaxPeers *
+         sizeof(uint32_t);
+}
+
+size_t GetMultiGpuBarrierSignalValueSize() { return sizeof(uint32_t); }
+
 absl::StatusOr<std::vector<void*>> CollectParamToPeers(
     const GpuCliqueKey& clique_key, RankId rank,
     stream_executor::Stream* stream,
@@ -138,37 +143,6 @@ absl::StatusOr<std::vector<void*>> CollectParamToPeers(
   }
 
   return param_to_peers_ptrs;
-}
-
-absl::Status CopyCollectiveMetadataToDevice(
-    se::Stream* stream, CollectiveKernelMetadata metadata,
-    const std::vector<void*>& param_to_peers_ptrs,
-    const std::vector<void*>& multimem_addresses,
-    se::DeviceAddressBase destination) {
-  const int64_t param_to_peers_ptrs_size =
-      param_to_peers_ptrs.size() * sizeof(void*);
-  se::DeviceAddressBase param_to_peers_ptrs_buffer = destination.GetByteSlice(
-      sizeof(CollectiveKernelMetadata), param_to_peers_ptrs_size);
-
-  const int64_t multimem_addresses_size =
-      multimem_addresses.size() * sizeof(void*);
-  se::DeviceAddressBase multimem_addresses_buffer = destination.GetByteSlice(
-      sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size,
-      multimem_addresses_size);
-
-  metadata.param_to_peers =
-      reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
-  metadata.param_to_multimem_addresses =
-      reinterpret_cast<void**>(multimem_addresses_buffer.opaque());
-  TF_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
-                                    sizeof(CollectiveKernelMetadata)));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
-                                    param_to_peers_ptrs.data(),
-                                    param_to_peers_ptrs_size));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&multimem_addresses_buffer,
-                                    multimem_addresses.data(),
-                                    multimem_addresses_size));
-  return absl::OkStatus();
 }
 
 }  // namespace gpu

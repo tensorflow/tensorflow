@@ -303,7 +303,7 @@ TEST(ConditionalThunkTest, ToString) {
             "  000: kGemm\t\n");
 }
 
-TEST(ConditionalThunkTest, TransformAllNestedThunks) {
+TEST(ConditionalThunkTest, TransformNested) {
   BufferAllocation::Slice slice;
   Shape shape = ShapeUtil::MakeShape(S32, {});
 
@@ -315,7 +315,7 @@ TEST(ConditionalThunkTest, TransformAllNestedThunks) {
   auto conditional_thunk = std::make_unique<ConditionalThunk>(
       Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks));
 
-  TF_EXPECT_OK(conditional_thunk->TransformAllNestedThunks([](auto) {
+  TF_EXPECT_OK(conditional_thunk->TransformNested([](auto) {
     return std::make_unique<DummyThunk>(Kind::kCustomCall, Thunk::ThunkInfo());
   }));
 

@@ -16,13 +16,11 @@
 
 import os
 import tempfile
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
 
-from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
-from tensorboard.plugins.image import summary_v2 as image_summary_v2
-from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -52,6 +50,13 @@ from tensorflow.python.tpu import functional as tpu_functional
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import tpu_ops
+try:
+  from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2  # pylint: disable=g-import-not-at-top
+  from tensorboard.plugins.image import summary_v2 as image_summary_v2  # pylint: disable=g-import-not-at-top
+  from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2  # pylint: disable=g-import-not-at-top
+  _TENSORBOARD_AVAILABLE = True
+except ImportError:
+  _TENSORBOARD_AVAILABLE = False
 
 FLAGS = flags.FLAGS
 flags.DEFINE_bool(
@@ -351,6 +356,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
         strategy.experimental_local_results(train_step()),
         constant_op.constant(58., shape=(strategy.num_replicas_in_sync)))
 
+  @unittest.skipIf(not _TENSORBOARD_AVAILABLE, "Tensorboard is not installed.")
   def testSummary(self):
     strategy = get_tpu_strategy()
 
@@ -377,6 +383,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
           constant_op.constant(7., shape=(strategy.num_replicas_in_sync)))
 
   @parameterized.parameters((True), (False))
+  @unittest.skipIf(not _TENSORBOARD_AVAILABLE, "Tensorboard is not installed.")
   def testSummaryInCond(self, take_true_branch):
     strategy = get_tpu_strategy()
 
@@ -412,6 +419,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
           constant_op.constant(
               output_value, shape=(strategy.num_replicas_in_sync)))
 
+  @unittest.skipIf(not _TENSORBOARD_AVAILABLE, "Tensorboard is not installed.")
   def testSummaryInWhile(self):
     strategy = get_tpu_strategy()
 
@@ -584,6 +592,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
         constant_op.constant(10, shape=(strategy.num_replicas_in_sync)))
 
   # Regression test for b/180509859.
+  @unittest.skipIf(not _TENSORBOARD_AVAILABLE, "Tensorboard is not installed.")
   def testImageSummary(self):
     strategy = get_tpu_strategy()
 
@@ -615,14 +624,17 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
           )
 
           step = constant_op.constant(0)
-          step, tokens_var = while_loop.while_loop(cond_fn, body,
-                                                   [step, tokens_var])
+          step, tokens_var = while_loop.while_loop(
+              cond_fn, body, [step, tokens_var]
+          )
 
           image_flat = array_ops.transpose(tokens_var.stack(), [1, 0])
           image = array_ops.tile(
-              array_ops.reshape(image_flat, [bsz, 32, 32, 1]), [1, 1, 1, 3])
-          image_summary_v2.image("image_sample", image,
-                                 constant_op.constant(5, dtype=dtypes.int64))
+              array_ops.reshape(image_flat, [bsz, 32, 32, 1]), [1, 1, 1, 3]
+          )
+          image_summary_v2.image(
+              "image_sample", image, constant_op.constant(5, dtype=dtypes.int64)
+          )
 
         return strategy.run(f)
 
@@ -640,6 +652,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
         array_ops.zeros((3072,), dtype=dtypes.float32),
         list(decoded_image.flat))
 
+  @unittest.skipIf(not _TENSORBOARD_AVAILABLE, "Tensorboard is not installed.")
   def testSummaryWithAutoOutsideCompilation(self):
     strategy = get_tpu_strategy()
 
@@ -669,6 +682,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     self.assertLen(events, 2)
     self.assertEqual(events[1].summary.value[0].tag, "x")
 
+  @unittest.skipIf(not _TENSORBOARD_AVAILABLE, "Tensorboard is not installed.")
   def testNestedFunctionScalarSummary(self):
     strategy = get_tpu_strategy()
 
@@ -699,6 +713,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     self.assertLen(events, 2)
     self.assertEqual(events[1].summary.value[0].tag, "x")
 
+  @unittest.skipIf(not _TENSORBOARD_AVAILABLE, "Tensorboard is not installed.")
   def testHistogramSummaryWithAutoOutsideCompilation(self):
     strategy = get_tpu_strategy()
 
@@ -729,6 +744,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     self.assertEqual(events[1].summary.value[0].tag, "x")
 
   @parameterized.parameters((True), (False))
+  @unittest.skipIf(not _TENSORBOARD_AVAILABLE, "Tensorboard is not installed.")
   def testSummaryControlFlowIfWithAutoOutsideCompilation(
       self, take_true_branch):
     strategy = get_tpu_strategy()

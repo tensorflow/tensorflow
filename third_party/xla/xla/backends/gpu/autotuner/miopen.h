@@ -39,7 +39,8 @@ class MIOpenBackend : public GpuCodegenBackend {
                          const DebugOptions* debug_options, Compiler* compiler,
                          const Compiler::GpuTargetConfig* target_config)
       : GpuCodegenBackend(autotuner::Backend::MIOPEN, debug_options, compiler,
-                          target_config, stream_executor) {}
+                          target_config, stream_executor),
+        do_not_autotune_(debug_options->xla_gpu_autotune_level() == 0) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -52,6 +53,7 @@ class MIOpenBackend : public GpuCodegenBackend {
 
  private:
   bool IsSupported(const HloInstruction& instr) override;
+  bool do_not_autotune_;
 };
 
 }  // namespace gpu

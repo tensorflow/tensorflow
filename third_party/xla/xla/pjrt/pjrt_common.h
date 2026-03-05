@@ -21,7 +21,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "xla/pjrt/proto/pjrt_value_type.pb.h"
 #include "xla/runtime/chip_id.h"
@@ -52,12 +51,6 @@ PjRtIdContainer<Id> MakeContinuousIds(int start, int size) {
   }
   return container;
 }
-
-using PjRtProcessId ABSL_DEPRECATE_AND_INLINE() = ProcessId;
-using PjRtLocalDeviceId ABSL_DEPRECATE_AND_INLINE() = LocalDeviceId;
-using PjRtGlobalDeviceId ABSL_DEPRECATE_AND_INLINE() = GlobalDeviceId;
-using PjRtLocalHardwareId ABSL_DEPRECATE_AND_INLINE() = LocalChipId;
-using PjRtGlobalChipId ABSL_DEPRECATE_AND_INLINE() = GlobalChipId;
 
 using PjRtPlatformId = uint64_t;
 

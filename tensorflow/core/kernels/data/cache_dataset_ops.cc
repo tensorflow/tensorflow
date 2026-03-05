@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/data/global_shuffle_utils.h"
 #include "tensorflow/core/data/name_utils.h"
@@ -493,10 +494,10 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
         // 1. Check that a checkpoint for the shard has not already been
         // written.
         if (dataset()->env_->FileExists(MetaFilename(filename_)).ok()) {
-          return errors::AlreadyExists("Existing cache files found: \n",
-                                       MetaFilename(filename_), "\n",
-                                       DataFilename(filename_, 0, 1), "\n",
-                                       "To continue delete the above files.");
+          return absl::AlreadyExistsError(absl::StrCat(
+              "Existing cache files found: \n", MetaFilename(filename_), "\n",
+              DataFilename(filename_, 0, 1), "\n",
+              "To continue delete the above files."));
         }
 
         // 2. Check that there isn't a concurrent iterator that is writing
@@ -510,14 +511,14 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
             file->Read(0, contents, absl::MakeSpan(contents_scratch, 150))
                 .IgnoreError();
           }
-          return errors::AlreadyExists(
+          return absl::AlreadyExistsError(absl::StrCat(
               "There appears to be a concurrent caching iterator running - "
               "cache lockfile already exists ('",
               lockfile_,
               "'). If you are sure no other running TF computations are "
               "using this cache prefix, delete the lockfile and "
               "re-initialize the iterator. Lockfile contents: ",
-              contents);
+              contents));
         }
         // Create the file, and write some basic contents.
         std::unique_ptr<WritableFile> lockfile;

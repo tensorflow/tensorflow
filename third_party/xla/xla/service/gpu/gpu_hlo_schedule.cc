@@ -582,17 +582,70 @@ absl::Status RunLatencyHidingSchedulerPasses(
     pipeline.AddPass<PGLEAccuracyChecker>(
         dynamic_cast<ProfileGuidedLatencyEstimator&>(*estimator));
   }
-
+  // If overlap limit is set to be greater than 1 and the default t-short size
+  // estimator is used we will tell LHS to extend async-done intervals as much
+  // as possible to start collectives as early as possible.
+  bool prioritize_compute_over_async_start = false;
+  if (config.parallel_collective_overlap_limit > 1) {
+    prioritize_compute_over_async_start = true;
+  }
   auto async_tracker = std::make_unique<GpuAsyncTracker>(config);
 
   std::shared_ptr<const SchedulingContext> scheduling_context =
       std::make_shared<const SchedulingContext>(
           module, std::move(estimator), std::move(async_tracker), alias_info,
           shape_size_in_bytes);
+
+  auto gpu_early_scheduling_rule =
+      [&prioritize_compute_over_async_start, &config](
+          DefaultSchedulerCore::ScheduleCandidate& a,
+          DefaultSchedulerCore::ScheduleCandidate& b)
+      -> std::optional<DefaultSchedulerCore::CandidateResult> {
+    if (config.aggressive_scheduling_policies &&
+        prioritize_compute_over_async_start) {
+      HloGraphNode* a_node = a.node;
+      HloGraphNode* b_node = b.node;
+      // If either one is an asyncDone, we proceed to the subsequent rules in
+      // the base LHS.
+      if (a_node->DoesOccupyAnyResource() || b_node->DoesOccupyAnyResource()) {
+        return std::nullopt;
+      }
+
+      bool a_has_async_resource =
+          a_node->DoesReleaseAnyResource() && !a.resource_constrained;
+      bool b_has_async_resource =
+          b_node->DoesReleaseAnyResource() && !b.resource_constrained;
+
+      if (!a_has_async_resource && b_has_async_resource) {
+        return DefaultSchedulerCore::CandidateResult{
+            a, "kDelayAsyncStartForCompute"};
+      }
+      if (a_has_async_resource && !b_has_async_resource) {
+        return DefaultSchedulerCore::CandidateResult{
+            b, "kDelayAsyncStartForCompute"};
+      }
+      if (a_has_async_resource && b_has_async_resource) {
+        // If 2 nodes are both async nodes, we prioritize the one
+        // with more depth to free up more computes to overlap
+        // with the one with less depth which can be launched
+        // early
+        if (a_node->GetDepth() > b_node->GetDepth()) {
+          return DefaultSchedulerCore::CandidateResult{
+              a, "kDelayAsyncStartForDepth"};
+        }
+        if (b_node->GetDepth() > a_node->GetDepth()) {
+          return DefaultSchedulerCore::CandidateResult{
+              b, "kDelayAsyncStartForDepth"};
+        }
+      }
+    }
+    return std::nullopt;
+  };
+
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
       scheduling_context, config,
       /*target_scheduling_rule=*/nullptr,
-      /*early_target_scheduling_rule=*/nullptr,
+      /*early_target_scheduling_rule=*/gpu_early_scheduling_rule,
       /*post_processing_fn=*/nullptr);
 
   pipeline.AddPass<LatencyHidingScheduler>(scheduling_context,

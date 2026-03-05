@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -113,14 +114,18 @@ struct DeserializeIfrtIRProgramOptions
       : context(context) {}
   DeserializeIfrtIRProgramOptions(
       mlir::MLIRContext* context,
-      std::optional<xla::ifrt::DeviceListRef> device_list)
+      std::optional<xla::ifrt::DeviceListRef> device_list,
+      absl::Span<Device* const> device_assignments)
       : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
                           DeserializeExecutableOptions>(device_list),
-        context(context) {}
+        context(context),
+        device_assignments(device_assignments.begin(),
+                           device_assignments.end()) {}
 
   static char ID;  // NOLINT
 
   mlir::MLIRContext* context;
+  std::vector<Device*> device_assignments;
 };
 
 // CompileOptions for an IFRT IR program.

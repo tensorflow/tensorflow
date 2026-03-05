@@ -21,20 +21,19 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/symbolic_tile.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 
 namespace xla::gpu::experimental {
 
-MATCHER_P(MatchString, symbolic_tile_string, "") {
-  return ExplainMatchResult(
-      true, ApproximateMatch(symbolic_tile_string, arg.ToString()),
-      result_listener);
+MATCHER_P(MatchString, tile_string, "") {
+  return ExplainMatchResult(true, ApproximateMatch(tile_string, arg.ToString()),
+                            result_listener);
 }
 
-SymbolicTile GetTestSymbolicTile(const TilingSpace& tiling_space,
-                                 absl::Span<const int64_t> shape);
+Tile GetTestTile(const TilingSpace& tiling_space,
+                 absl::Span<const int64_t> shape);
 
 }  // namespace xla::gpu::experimental
 

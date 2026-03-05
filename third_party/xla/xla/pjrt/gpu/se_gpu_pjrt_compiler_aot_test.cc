@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_compiler.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -95,17 +96,20 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
       se_client->client()->backend().default_stream_executor());
   StreamExecutorGpuCompiler compiler(se_client->client()->platform()->id());
 
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect>();
   auto mlir_module =
-      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(mlir_str, context.get());
   TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
   xla::CompileOptions opts;
   opts.gpu_target_config = gpu_target_config;
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          compiler.Compile(opts, mlir_module.get(), *topology,
-                                           /*client=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(
+          opts,
+          MaybeOwningMlirModule(std::move(context), std::move(mlir_module)),
+          *topology, /*client=*/nullptr));
   EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(SizeIs(1)));
   TF_ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,

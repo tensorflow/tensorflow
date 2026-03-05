@@ -17,7 +17,6 @@ android_binary(
     assets_dir = "",
     custom_package = "com.example.android.tflitecamerademo",
     manifest = "AndroidManifest.xml",
-    multidex = "native",
     nocompress_extensions = [
         ".tflite",
     ],

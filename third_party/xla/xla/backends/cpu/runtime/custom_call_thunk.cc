@@ -102,7 +102,7 @@ static absl::Status InstantiateHandlerState(
     ffi::CallFrame instantiate_call_frame = builder.Build();
 
     ffi::InvokeContext invoke_context;
-    invoke_context.execution_state = execution_state;
+    invoke_context.state_context = {execution_state};
     TF_RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), handler.bundle.instantiate,
                               instantiate_call_frame, invoke_context,
                               XLA_FFI_ExecutionStage_INSTANTIATE));
@@ -342,9 +342,9 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> CustomCallThunk::CallTypedFFI(
       custom_call_params->run_id,
       custom_call_params->device_ordinal,
       ffi::InvokeContext::CpuContext{custom_call_params->intra_op_thread_pool},
+      ffi::InvokeContext::StateContext{execution_state_.get()},
       /*called_computation=*/nullptr,
-      custom_call_params->ffi_execution_context,
-      execution_state_.get()};
+      custom_call_params->ffi_execution_context};
 
   ffi::HandlerRegistration& handler = std::get<1>(target_);
   return ffi::InvokeAsync(ffi::GetXlaFfiApi(), handler.bundle.execute,

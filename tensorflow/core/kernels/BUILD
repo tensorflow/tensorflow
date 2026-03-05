@@ -3319,6 +3319,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:regexp",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

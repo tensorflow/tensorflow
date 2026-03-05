@@ -35,6 +35,7 @@ cc_library(
         "hlo_schedule.cc",
         "hlo_sharding_metadata.cc",
         "replica_group.cc",
+        "stack_frames.cc",
     ],
     hdrs = [
         "dfs_hlo_visitor.h",
@@ -58,6 +59,7 @@ cc_library(
         "hlo_sharding.h",
         "hlo_sharding_metadata.h",
         "replica_group.h",
+        "stack_frames.h",
     ],
     deps = [
         ":backend_config",
@@ -145,6 +147,17 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "stack_frames_test",
+    srcs = ["stack_frames_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
     name = "hlo_computation_test",
     srcs = ["hlo_computation_test.cc"],
     deps = [
@@ -192,6 +205,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -391,6 +405,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",

@@ -3889,6 +3889,13 @@ MsaAlgorithm::GenerateAllocationSegmentContexts(
   return uses_work_list;
 }
 
+void MsaAlgorithm::AddOperandToAlternateMemoryMap(
+    const HloInstruction* instruction, int operand_number,
+    const ShapeIndex& index) {
+  operands_in_alternate_memory_map_[instruction].insert(
+      std::make_pair(operand_number, index));
+}
+
 absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
     absl::Span<AllocationValue> allocation_values) {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
@@ -4097,7 +4104,7 @@ absl::StatusOr<AllocationResult> MsaAlgorithm::AllocateAllocationValues(
               "memory, which could not be satisfied. This typically happens "
               "because more pinned buffers are live than the alternate memory "
               "capacity.",
-              allocation_value.defining_instruction()->ToString());
+              allocation_value.defining_position().ToString());
           LOG(ERROR) << failed_precondition;
           return failed_precondition;
         }
@@ -4605,7 +4612,7 @@ bool AsynchronousCopyResource::ConsumeResource(
   int64_t* initial_resources_scaled_ptr = initial_resources_scaled_.data();
   int64_t* delay_ptr = delay_.data();
 
-  std::list<AsynchronousCopy>::iterator current_copy = async_copies_.end();
+  auto current_copy = async_copies_.end();
   // In order to propagate the resource to the next scheduled copy, we iterate
   // over the copies in start time order until we either find enough free
   // resource (and return true), or find out that we don't have enough free
@@ -4641,7 +4648,7 @@ bool AsynchronousCopyResource::ConsumeResource(
     // Find the copy that is right after this one. If there are leftover
     // resources by the time the next copy starts, the next copy will be pushed
     // further later in time.
-    std::list<AsynchronousCopy>::iterator next_copy = async_copies_.end();
+    auto next_copy = async_copies_.end();
     if (current_copy != async_copies_.end()) {
       next_copy = std::next(current_copy);
     } else {
@@ -5095,8 +5102,8 @@ void MsaAlgorithm::AllocateCrossProgramPrefetchBuffer(
       buffer_interval.buffer = prefetch_candidate.buffer;
       AddToPendingChunks(buffer_interval, chunk_candidate);
       for (const HloUse& use : allocation->uses()) {
-        operands_in_alternate_memory_map_[use.instruction].insert(
-            std::make_pair(use.operand_number, use.operand_index));
+        AddOperandToAlternateMemoryMap(use.instruction, use.operand_number,
+                                       use.operand_index);
       }
     }
     allocations_->push_back(std::move(allocation));
@@ -5875,8 +5882,8 @@ void MsaAlgorithm::FinalizeAllocations(
       if ((allocation->memory_space() == MemorySpace::kAlternate) &&
           (!allocation->is_scoped_allocation())) {
         for (const HloUse& use : allocation->uses()) {
-          operands_in_alternate_memory_map_[use.instruction].insert(
-              std::make_pair(use.operand_number, use.operand_index));
+          AddOperandToAlternateMemoryMap(use.instruction, use.operand_number,
+                                         use.operand_index);
         }
         if (!allocation->is_copy_like_allocation()) {
           outputs_in_alternate_memory_map_[allocation->defining_position()
@@ -6549,7 +6556,9 @@ AllocationResult MsaAlgorithm::AllocateSegment(AllocationRequest& request) {
   // default memory.
   (*prev_allocation_in_default_mem_it)->Extend(request.end_time);
   (*prev_allocation_in_default_mem_it)->AddUse(request.use->hlo_use);
-  uses_in_default_memory_.insert(request.use->hlo_use);
+  if (uses_in_default_memory_set_.insert(request.use->hlo_use).second) {
+    uses_in_default_memory_.push_back(request.use->hlo_use);
+  }
   return allocation_result;
 }
 
@@ -7203,7 +7212,10 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   // cloned computation and use the cloned computation to determine the operand
   // span size.
 
-  // Map of the original instruction to a clone of the instruction.
+  // Map of the original instruction to a clone of the instruction. Use a
+  // vector to ensure deterministic traversal for memory space propagation
+  // and cleanup.
+  std::vector<HloInstruction*> cloned_insts_order;
   absl::flat_hash_map<HloInstruction*, HloInstruction*> cloned_insts;
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
@@ -7228,6 +7240,7 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
     HloInstruction* cloned =
         instruction->parent()->AddInstruction(instruction->Clone());
     cloned_insts[instruction] = cloned;
+    cloned_insts_order.push_back(instruction);
 
     // Color the cloned instruction's fused parameters.
     auto it = operands_in_alternate_memory_map_.find(instruction);
@@ -7263,7 +7276,8 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
                       HloDataflowAnalysis::Run(*module_, /*ssa_form=*/false,
                                                /*bitcast_defines_value=*/true));
   MemorySpacePropagation memory_space_propagation(std::move(dataflow_analysis));
-  for (auto [_, cloned] : cloned_insts) {
+  for (HloInstruction* inst : cloned_insts_order) {
+    HloInstruction* cloned = cloned_insts[inst];
     for (HloComputation* computation : cloned->called_computations()) {
       memory_space_propagation.RunOnComputation(computation);
     }
@@ -7284,7 +7298,8 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   }
 
   // Remove the cloned instructions.
-  for (auto [_, cloned] : cloned_insts) {
+  for (HloInstruction* inst : cloned_insts_order) {
+    HloInstruction* cloned = cloned_insts[inst];
     HloComputation* computation = cloned->parent();
     CHECK_OK(computation->RemoveInstruction(cloned));
     computation->Cleanup();
@@ -8244,7 +8259,7 @@ int64_t AsynchronousCopyResource::GetScaledIntegerResource(
                  << std::numeric_limits<int64_t>::max();
     return std::numeric_limits<int64_t>::max();
   }
-  int64_t scaled_value_int = static_cast<int64_t>(scaled_value);
+  auto scaled_value_int = static_cast<int64_t>(scaled_value);
   return scaled_value_int;
 }
 

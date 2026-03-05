@@ -269,7 +269,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOGICAL_NOT, Register_LOGICAL_NOT());
   AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_FLOOR_DIV, Register_FLOOR_DIV(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -309,7 +309,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_MATRIX_DIAG, Register_MATRIX_DIAG());
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_MATRIX_SET_DIAG, Register_MATRIX_SET_DIAG());
   AddBuiltin(BuiltinOperator_IF, tflite::ops::builtin::Register_IF());
   AddBuiltin(BuiltinOperator_WHILE, tflite::ops::builtin::Register_WHILE());

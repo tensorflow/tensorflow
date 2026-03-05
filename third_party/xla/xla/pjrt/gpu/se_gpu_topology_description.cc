@@ -157,7 +157,7 @@ absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
 absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
 StreamExecutorGpuTopologyDescription::
     ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-        xla::PjRtGlobalDeviceId device_id) const {
+        GlobalDeviceId device_id) const {
   if (device_id.value() < 0 ||
       device_id.value() >= gpu_topology_->number_of_devices()) {
     return absl::InvalidArgumentError(

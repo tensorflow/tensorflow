@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/experimental/symbolic_tile.h"
+#include "xla/codegen/tiling/experimental/tile.h"
 
 namespace xla::gpu::experimental {
 
@@ -33,8 +33,8 @@ using ::mlir::getAffineDimExpr;
 using ::mlir::getAffineSymbolExpr;
 using ::mlir::MLIRContext;
 
-SymbolicTile GetTestSymbolicTile(const TilingSpace& tiling_space,
-                                 absl::Span<const int64_t> shape) {
+Tile GetTestTile(const TilingSpace& tiling_space,
+                 absl::Span<const int64_t> shape) {
   MLIRContext* mlir_context = tiling_space.mlir_context();
   CHECK(mlir_context != nullptr);
   int64_t rank = shape.size();
@@ -47,7 +47,7 @@ SymbolicTile GetTestSymbolicTile(const TilingSpace& tiling_space,
         tid * ts, ts, mlir::getAffineConstantExpr(index + 1, mlir_context),
         mlir::getAffineConstantExpr(dim, mlir_context)});
   }
-  return SymbolicTile{tiling_space, std::move(dim_tiles)};
+  return Tile{tiling_space, std::move(dim_tiles)};
 }
 
 }  // namespace xla::gpu::experimental

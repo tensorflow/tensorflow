@@ -74,7 +74,7 @@ class DummyLatencyEstimator : public LatencyEstimator {
     return 0;
   }
   TimeCost NodeCost(const HloInstruction* instr) const override { return 0; }
-  int CyclesPerMicrosecond() const override { return 0; }
+  int CyclesPerMicrosecond() const override { return 1; }
 };
 
 class SolLatencyEstimatorTest : public HloHardwareIndependentTestBase,

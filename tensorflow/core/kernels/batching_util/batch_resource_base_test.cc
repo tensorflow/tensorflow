@@ -426,6 +426,108 @@ INSTANTIATE_TEST_SUITE_P(
     });
 #endif
 
+// Regression test for b/466418871: When SplitInputTask creates subtasks with
+// shared TensorMatrix and IncrementalBarrier, and those subtasks are evicted
+// from the priority queue (FinishTask called with UnavailableError before
+// outputs are populated), the IncrementalBarrier callback must not crash trying
+// to Concat uninitialized tensor data.
+class SplitInputTaskEvictionTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    device_ = DeviceFactory::NewDevice("CPU", SessionOptions{},
+                                       "/job:a/replica:0/task:0");
+    NodeDefBuilder batch_function_builder("my_batch_node", "BatchFunction");
+    batch_function_builder.Attr("max_batch_size", 16);
+    batch_function_builder.Attr("num_batch_threads", 1);
+    batch_function_builder.Attr("allowed_batch_sizes", {4, 8, 16});
+    batch_function_builder.Attr("batch_timeout_micros", 1000000);
+    batch_function_builder.Attr("max_enqueued_batches", 10);
+    batch_function_builder.Attr("enable_large_batch_splitting", true);
+    batch_function_builder.Attr("Tin", {DataType::DT_INT64});
+    batch_function_builder.Input(std::vector<NodeDefBuilder::NodeOut>{
+        NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
+    batch_function_builder.Attr("Tcaptured", std::vector<DataType>{});
+    batch_function_builder.Input(std::vector<NodeDefBuilder::NodeOut>{});
+    batch_function_builder.Attr("Tout", {DataType::DT_INT64});
+    NameAttrList f;
+    f.set_name("func_to_batch");
+    batch_function_builder.Attr("f", f);
+    NodeDef batch_kernel_node_def;
+    CHECK_OK(batch_function_builder.Finalize(&batch_kernel_node_def));
+
+    absl::Status op_kernel_creation_status;
+    batch_kernel_ =
+        CreateOpKernel(DEVICE_CPU, device_.get(), device_->GetAllocator({}),
+                       batch_kernel_node_def, TF_GRAPH_DEF_VERSION,
+                       &op_kernel_creation_status);
+    CHECK_OK(op_kernel_creation_status);
+
+    input_tensor_ = Tensor(DataType::DT_INT64, TensorShape({6, 4}));
+    input_tensor_.flat<int64_t>().setZero();
+    input_tensor_values_ = {TensorValue(&input_tensor_)};
+
+    params_.device = device_.get();
+    params_.op_kernel = batch_kernel_.get();
+    params_.inputs = input_tensor_values_;
+    context_ = std::make_unique<OpKernelContext>(&params_);
+  }
+
+  std::unique_ptr<Device> device_;
+  std::unique_ptr<OpKernel> batch_kernel_;
+  Tensor input_tensor_;
+  std::vector<TensorValue> input_tensor_values_;
+  OpKernelContext::Params params_;
+  std::unique_ptr<OpKernelContext> context_;
+};
+
+TEST_F(SplitInputTaskEvictionTest, EvictedSubtasksDoNotCrash) {
+  // Set up a BatchTask with a real OpKernelContext, shared output and status.
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
+  task->inputs.push_back(
+      Tensor(DataType::DT_INT64, TensorShape({6, 4})));  // size = 6
+  task->context = context_.get();
+  task->output = std::make_shared<BatchResourceBase::TensorMatrix>();
+  task->status = std::make_shared<ThreadSafeStatus>();
+  task->guid = 0;
+  task->start_time = 0;
+
+  // Capture shared status before SplitInputTask moves the task.
+  auto shared_status = task->status;
+
+  absl::Notification done;
+  task->set_done_callback([&done]() { done.Notify(); });
+
+  // Split the task: open_batch_remaining_slot=2, max_batch_size=4.
+  // Input size 6 > 2, so it splits into [2, 4] = 2 subtasks.
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>> output_tasks;
+  TF_ASSERT_OK(
+      BatchResourceBase::SplitInputTask(&task, /*open_batch_remaining_slot=*/2,
+                                        /*max_batch_size=*/4, &output_tasks));
+  ASSERT_EQ(output_tasks.size(), 2);
+
+  // Simulate eviction: call FinishTask(UnavailableError) on ALL subtasks
+  // without populating their outputs. This is exactly what happens when
+  // PriorityTaskQueue::AddTask evicts split subtasks.
+  for (auto& subtask : output_tasks) {
+    subtask->FinishTask(
+        absl::UnavailableError("Task evicted due to priority queue full."));
+  }
+
+  // The IncrementalBarrier callback should fire after all subtasks finish.
+  // Without the fix (checking status before Concat), this would attempt to
+  // Concat uninitialized TensorMatrix entries and set_output on the context.
+  // With the fix, it skips Concat entirely and no output is set.
+  ASSERT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(5)));
+
+  // Verify the error was propagated.
+  EXPECT_EQ(shared_status->status().code(), absl::StatusCode::kUnavailable);
+
+  // Key behavioral assertion: With the fix, the early exit skips Concat and
+  // set_output, so no output is set on the context. Without the fix, Concat
+  // runs on empty tensors and set_output IS called.
+  EXPECT_EQ(context_->mutable_output(0), nullptr);
+}
+
 class TestTpuCostMeasurement : public CostMeasurement {
  public:
   using CostMeasurement::CostMeasurement;

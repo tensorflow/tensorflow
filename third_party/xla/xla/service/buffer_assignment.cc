@@ -1972,6 +1972,8 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     const flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>&
         buffers_to_assign_sequentially,
     bool run_whole_module_heap_simulation, BufferAssignment* assignment,
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        buffer_assignment_algorithm,
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare,
@@ -1991,18 +1993,34 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
           GlobalDecreasingSizeBestFitHeap<HloValue>::kCustom,
           heap_buffer_interval_compare);
     }
-    auto algorithms = std::make_unique<
-        std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
-    algorithms->push_back(
-        std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+    using HeapType = GlobalDecreasingSizeBestFitHeap<HloValue>;
+    switch (buffer_assignment_algorithm) {
+      case buffer_assignment::BufferAssignmentAlgorithmProto::SPATIAL:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
             assignment->multiheap_size_constraint_per_heap(), alignment,
-            GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial));
-    algorithms->push_back(
-        std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            HeapType::kSpatial);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
             assignment->multiheap_size_constraint_per_heap(), alignment,
-            GlobalDecreasingSizeBestFitHeap<HloValue>::kTemporal));
-    return std::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
-        std::move(algorithms));
+            HeapType::kTemporal);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::
+          BEST_OF_SPATIAL_TEMPORAL:
+      case buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT:
+      default: {
+        auto algorithms = std::make_unique<
+            std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
+        algorithms->push_back(
+            std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+                assignment->multiheap_size_constraint_per_heap(), alignment,
+                HeapType::kSpatial));
+        algorithms->push_back(
+            std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+                assignment->multiheap_size_constraint_per_heap(), alignment,
+                HeapType::kTemporal));
+        return std::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
+            std::move(algorithms));
+      }
+    }
   };
 
   if (run_whole_module_heap_simulation) {
@@ -2410,7 +2428,7 @@ BufferAssigner::CreateAssignment(
   const PrivateStacks private_stacks;
   TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
-      assignment.get(),
+      assignment.get(), opts_.buffer_assignment_algorithm,
       opts_.private_stacks ? *opts_.private_stacks : private_stacks,
       opts_.heap_buffer_interval_compare, opts_.isolation_options));
 

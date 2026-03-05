@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -46,11 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
-
-namespace mlir {
-namespace triton {
-}  // namespace triton
-}  // namespace mlir
 
 namespace xla {
 namespace gpu {
@@ -102,7 +97,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     mlir::ModuleOp triton_module, const llvm::Triple& target_triple,
     const std::string& data_layout, llvm::LLVMContext& llvm_context,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion,
-    bool emit_kernel = true);
+    bool emit_kernel = true,
+    absl::AnyInvocable<void()> error_handler = nullptr);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);

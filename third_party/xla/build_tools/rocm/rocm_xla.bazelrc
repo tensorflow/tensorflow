@@ -3,6 +3,7 @@
 build:rocm_dev --remote_upload_local_results=false
 build:rocm_dev --remote_cache="https://wardite.cluster.engflow.com"
 
+build:rocm_rbe --repo_env=REMOTE_GPU_TESTING=1
 build:rocm_rbe --bes_backend="grpcs://wardite.cluster.engflow.com"
 build:rocm_rbe --bes_results_url="https://wardite.cluster.engflow.com/invocation/"
 build:rocm_rbe --host_platform="@local_config_rocm//rocm:linux_x64"

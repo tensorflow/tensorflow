@@ -81,11 +81,7 @@ class SendThunk : public CollectiveThunk {
  private:
   const P2PConfig config_;
   const Buffer buffer_;
-  std::shared_ptr<ExecutionCounters> execution_counters_;
   std::string hlo_name_;
-  absl::StatusOr<bool> ConditionalShouldRun(const ExecuteParams& params,
-                                            int64_t current_id,
-                                            int64_t target_id) const;
 };
 
 absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,

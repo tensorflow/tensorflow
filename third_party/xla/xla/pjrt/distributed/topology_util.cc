@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/topology_util.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -88,6 +91,25 @@ bool HasFabricUuid(absl::Span<LocalTopologyProto> local_topologies) {
   return true;
 }
 
+bool HasPartitionIndex(const LocalTopologyProto& local) {
+  return local.has_partition_index();
+}
+
+// Comparator for sorting LocalTopologyProto by network_nodes.
+// Lexicographic ordering groups topologically-close hosts (sharing
+// more network switches) adjacent in the sorted order.
+struct NetworkProximityComparator {
+  bool operator()(const LocalTopologyProto& a,
+                  const LocalTopologyProto& b) const {
+    for (size_t i = 0; i < a.network_nodes_size() && i < b.network_nodes_size();
+         ++i) {
+      if (a.network_nodes(i) < b.network_nodes(i)) return true;
+      if (a.network_nodes(i) > b.network_nodes(i)) return false;
+    }
+    return a.network_nodes_size() < b.network_nodes_size();
+  }
+};
+
 }  // namespace
 
 // Exists on Linux systems. Unique per OS kernel restart.
@@ -110,6 +132,18 @@ absl::StatusOr<std::string> GetBootIdString() {
   }
 #endif
   return boot_id_str;
+}
+
+absl::StatusOr<std::vector<std::string>> GetNetworkNodes() {
+  // There is no infrastructure-agnostic way to query network topology which
+  // is portable between cloud providers, so we require users to pass it
+  // explicitly via the environment variable.
+  const char* env = std::getenv("XLA_DISTRIBUTED_TOPOLOGY_NETWORK_NODES");
+  if (env == nullptr) {
+    return std::vector<std::string>();
+  }
+
+  return absl::StrSplit(env, ',', absl::SkipWhitespace());
 }
 
 static std::string GetLocalTopologyKey(absl::string_view platform,
@@ -175,31 +209,38 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
     absl::Span<LocalTopologyProto> local_topologies,
     bool assign_global_device_ids) {
   CHECK(!local_topologies.empty());
-  bool explicit_partition_indices = local_topologies[0].has_partition_index();
-  if (explicit_partition_indices) {
+
+  bool all_have_partition_index =
+      absl::c_all_of(local_topologies, HasPartitionIndex);
+  bool none_have_partition_index =
+      absl::c_none_of(local_topologies, HasPartitionIndex);
+
+  if (!all_have_partition_index && !none_have_partition_index) {
+    return InvalidArgument(
+        "Either all of or none of the local topologies should explicitly set "
+        "partition_index");
+  }
+
+  if (all_have_partition_index) {
     // Every local topology explicitly declares its partition_index.
     for (LocalTopologyProto& local : local_topologies) {
-      if (!local.has_partition_index()) {
-        return InvalidArgument(
-            "Either all of or none of the local topologies "
-            "should explicitly set partition_index");
-      }
-      int partition_index = local.partition_index();
       for (DeviceProto& device : *local.mutable_devices()) {
-        device.set_partition_index(partition_index);
+        device.set_partition_index(local.partition_index());
       }
     }
   } else {
     // Assign local devices of the same fabric_uuid/boot_id to the same
     // partition_index.
-    const bool has_fabric_uuid = HasFabricUuid(local_topologies);
+    bool has_fabric_uuid = HasFabricUuid(local_topologies);
+
+    // First sort all local topologies according to their network proximity,
+    // this will guarantee that consecutive global devices are close to each
+    // other. It is up to the end user to shard computations in a way that would
+    // maximize communication between "close" global device ids.
+    absl::c_stable_sort(local_topologies, NetworkProximityComparator());
+
     absl::flat_hash_map<std::string, int> id_to_partition_index;
     for (LocalTopologyProto& local : local_topologies) {
-      if (local.has_partition_index()) {
-        return InvalidArgument(
-            "Either all of or none of the local topologies "
-            "should explicitly set partition_index");
-      }
       for (DeviceProto& device : *local.mutable_devices()) {
         // Each new fabric_uuid/boot_id seen is treated as a new partition.
         auto [it, _] = id_to_partition_index.try_emplace(
@@ -209,23 +250,22 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
       }
     }
     if (VLOG_IS_ON(10)) {
-      for (auto it = id_to_partition_index.begin();
-           it != id_to_partition_index.end(); ++it) {
-        LOG(INFO) << "BuildGlobalTopology id_to_partition_index " << it->first
-                  << "->" << it->second;
+      for (auto& [id, partition_index] : id_to_partition_index) {
+        LOG(INFO) << "BuildGlobalTopology id_to_partition_index " << id << "->"
+                  << partition_index;
       }
     }
   }
 
   if (assign_global_device_ids) {
-    absl::btree_multimap<int, DeviceProto*> slice_id_to_devices;
+    absl::btree_multimap<int, DeviceProto*> partition_to_devices;
     for (LocalTopologyProto& local : local_topologies) {
       for (DeviceProto& device : *local.mutable_devices()) {
-        slice_id_to_devices.emplace(device.partition_index(), &device);
+        partition_to_devices.emplace(device.partition_index(), &device);
       }
     }
     int next_global_device_id = 0;
-    for (auto& [_slice_id, device] : slice_id_to_devices) {
+    for (auto& [_, device] : partition_to_devices) {
       device->set_global_device_id(next_global_device_id++);
     }
   }
@@ -299,8 +339,20 @@ absl::Status ExchangeTopologies(absl::string_view platform, int node_id,
         kv_store->Get(global_topology_key, get_global_topology_timeout));
     global_topology->ParseFromString(global_topology_str);
   }
-  VLOG(3) << "Global topology for platform " << platform << ":\n"
-          << global_topology->DebugString();
+
+  // Because we might do global topology assignment based on network proximity
+  // of XLA processes, the process id might not be ordered anymore, however it
+  // does not matter for XLA at run time, as we always lookup replica and
+  // partition id based on global topology we compute here.
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Global topology for platform " << platform
+            << ": num_processes=" << global_topology->processes_size();
+    for (size_t rank = 0; rank < global_topology->processes_size(); ++rank) {
+      VLOG(3) << "topology for process rank #" << rank << ":\n"
+              << global_topology->processes(rank).DebugString();
+    }
+  }
+
   return absl::OkStatus();
 }
 

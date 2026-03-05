@@ -171,6 +171,8 @@ struct SchedulerConfig {
   bool estimate_fragmentation_size = false;
   // If true, track the resource usage of sync ops in latency hiding scheduler.
   bool track_sync_op_resource_usage = false;
+  // If true, use top down scheduling.
+  bool top_down_scheduling = false;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -185,6 +187,12 @@ class LatencyEstimator {
   virtual TimeCost NodeCost(const HloInstruction* node) const = 0;
   // Returns the core frequency used in latency estimation.
   virtual int CyclesPerMicrosecond() const = 0;
+
+  // Returns the latency cycles of the instruction if it is specified in the
+  // frontend attributes. Otherwise, returns std::nullopt.
+  std::optional<TimeCost> GetLatencyFromMetadata(
+      const HloInstruction& instruction) const;
+
   virtual ~LatencyEstimator() = default;
 
   inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
@@ -356,6 +364,9 @@ class AsyncTracker {
   void InvalidateCache(const HloComputation* computation) {
     async_in_computation_cache_.erase(computation);
   }
+
+  // Returns whether the async tracker is using top down scheduling.
+  bool IsTopDownScheduling() const { return config_.top_down_scheduling; }
 
   explicit AsyncTracker(
       const SchedulerConfig& config,
@@ -904,6 +915,10 @@ class HloGraphNode {
     return has_operand_that_is_supported_async_done_;
   }
 
+  bool HasUserThatIsSupportedAsyncStart() const {
+    return has_user_that_is_supported_async_start_;
+  }
+
  private:
   friend class HloScheduleGraph;
 
@@ -915,6 +930,7 @@ class HloGraphNode {
     is_supported_async_done_ = false;
     is_supported_async_start_ = false;
     has_operand_that_is_supported_async_done_ = false;
+    has_user_that_is_supported_async_start_ = false;
     scheduled_ = false;
     valuable_for_selective_overlap_ = true;
     releases_selective_resource_ = false;
@@ -983,6 +999,8 @@ class HloGraphNode {
   bool is_supported_async_start_ : 1;
   // Whether the instruction has an operand which is a supported async done.
   bool has_operand_that_is_supported_async_done_ : 1;
+  // Whether the instruction has a user which is a supported async start.
+  bool has_user_that_is_supported_async_start_ : 1;
   // Whether this node has been scheduled or not yet.
   bool scheduled_ : 1;
   // Whether this node can be overlapped with (can cover the latency/cost of)
@@ -1230,6 +1248,7 @@ class BufferInfoTracker {
   struct ValueInfo {
     const HloBuffer* value = nullptr;
     const HloInstruction* first_definition = nullptr;
+    const HloInstruction* last_use = nullptr;
     int64_t buffer_size = 0;
 
     // Precomputed value of
@@ -1245,6 +1264,7 @@ class BufferInfoTracker {
                     const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes);
   static ValueInfo CreateBufferInfo(
       const HloBuffer* value, const HloInstruction* first_definition,
+      const HloInstruction* last_use,
       const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes) {
     const auto& shape = value->values()[0]->shape();
     const bool non_default_memory_space_layout =
@@ -1253,6 +1273,7 @@ class BufferInfoTracker {
     return ValueInfo{
         /*value=*/value,
         /*first_definition=*/first_definition,
+        /*last_use=*/last_use,
         /*buffer_size=*/shape_size_bytes(shape),
         /*non_default_memory_space_layout=*/non_default_memory_space_layout,
     };
@@ -1277,13 +1298,15 @@ class MemoryPressureTracker {
       const HloAliasAnalysis* hlo_alias_analysis,
       const BufferInfoTracker& buffer_tracker,
       const absl::flat_hash_map<const HloComputation*, MemoryPressureState>&
-          pressure_state_cache)
+          pressure_state_cache,
+      bool top_down_scheduling = false)
       : hlo_alias_analysis_(hlo_alias_analysis),
         live_buffers_(hlo_alias_analysis->buffers().back().id() + 1),
         buffer_tracker_(buffer_tracker),
         pressure_state_cache_(pressure_state_cache),
         live_memory_usage_(0),
-        initial_memory_pressure_(0) {}
+        initial_memory_pressure_(0),
+        top_down_scheduling_(top_down_scheduling) {}
   // Initialize object to be ready to start tracking of computation.
   void Initialize(const HloComputation* computation,
                   const LiveBufferSet& initial_live_buffers);
@@ -1426,6 +1449,7 @@ class MemoryPressureTracker {
   // Initial memory pressure at the bottom of the computation.
   int64_t initial_memory_pressure_;
   MemoryPressureState pressure_state_;
+  bool top_down_scheduling_;
 };
 
 // Module memory pressure state object. Handles and holds all the objects used
@@ -1438,10 +1462,12 @@ class ModulePressureState {
                           MemoryPressureTracker::MemoryPressureState>;
   ModulePressureState(
       const HloModule* module, const HloAliasAnalysis* hlo_alias_analysis,
-      const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes)
+      const HloCostAnalysis::ShapeSizeFunction& shape_size_bytes,
+      bool top_down_scheduling = false)
       : module_(module),
         hlo_alias_analysis_(hlo_alias_analysis),
-        buffer_tracker_(module, hlo_alias_analysis, shape_size_bytes) {}
+        buffer_tracker_(module, hlo_alias_analysis, shape_size_bytes),
+        top_down_scheduling_(top_down_scheduling) {}
   void InitializePressureStates();
   bool ComputationIsMemoryTracked(const HloComputation* computation) const {
     return ContainsKey(memory_pressure_states_, computation);
@@ -1489,6 +1515,7 @@ class ModulePressureState {
       memory_pressure_states_;
   BufferInfoTracker buffer_tracker_;
   int64_t memory_peak_ = 0;
+  bool top_down_scheduling_ = false;
 };
 
 // Light data structure containing information on the schedule of a computation,
@@ -1624,8 +1651,14 @@ class DefaultSchedulerCore : public SchedulerCore {
       int64_t scheduled = 0;
       int64_t all = 0;
     };
+    struct NumPredecessorsForAnnotation {
+      int64_t scheduled = 0;
+      int64_t all = 0;
+    };
     absl::flat_hash_map<int64_t, NumSuccessorsForAnnotation>
         num_successors_for_annotation;
+    absl::flat_hash_map<int64_t, NumPredecessorsForAnnotation>
+        num_predecessors_for_annotation;
     // List of annotations that are ready to be scheduled.
     absl::InlinedVector<int64_t, 2> ready_annotations;
     // List of annotated nodes that are ready to be scheduled.
@@ -1666,7 +1699,8 @@ class DefaultSchedulerCore : public SchedulerCore {
         post_processing_fn_(post_processing_fn),
         scheduling_instruction_crosses_overlap_limit_(
             scheduling_instruction_crosses_overlap_limit),
-        scheduling_context_(std::move(scheduling_context)) {}
+        scheduling_context_(std::move(scheduling_context)),
+        top_down_scheduling_(config.top_down_scheduling) {}
 
   absl::Status InitializeScheduler(const HloModule* module) override;
 
@@ -1693,7 +1727,8 @@ class DefaultSchedulerCore : public SchedulerCore {
       std::shared_ptr<SchedulerCore::SchedulingState> sched_state) override;
   static bool AddOccupierToResource(
       HloGraphNode::TimeCost current_time, HloEdge& new_edge,
-      std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
+      std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers,
+      bool top_down_scheduling = false);
   static bool DeleteOccupierFromResource(
       HloGraphNode::TimeCost current_time, HloEdge& edge,
       std::vector<std::pair<HloEdge*, HloGraphNode::TimeCost>>& occupiers);
@@ -1727,6 +1762,9 @@ class DefaultSchedulerCore : public SchedulerCore {
   bool SchedulingAnnotationCrossesOverlapLimit(
       const SchedulingState& sched_state, int64_t annotation,
       bool use_max_resources = false);
+
+  int64_t GetNumPredecessorsForAnnotation(const SchedulingState& sched_state,
+                                          int64_t annotation) const;
 
   int64_t GetNumSuccessorsForAnnotation(const SchedulingState& sched_state,
                                         int64_t annotation) const;
@@ -1777,6 +1815,7 @@ class DefaultSchedulerCore : public SchedulerCore {
   const HloModule* module_ = nullptr;
   SchedulerCore::GraphProcessingHook graph_processing_hook_;
   std::shared_ptr<const SchedulingContext> scheduling_context_;
+  bool top_down_scheduling_ = false;
 };
 
 // A scheduler oriented to hiding latencies of operations that can run in

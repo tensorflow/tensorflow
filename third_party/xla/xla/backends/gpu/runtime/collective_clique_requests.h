@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -148,8 +149,8 @@ class CollectiveCliqueRequests {
 
   size_t size() const { return cliques_.size(); }
 
-  // Returns true if any clique requests a barrier after module execution.
-  bool IsBarrierAfterModuleExecutionRequested() const;
+  // Returns devices which requested a barrier after module execution.
+  absl::flat_hash_set<GlobalDeviceId> GetDevicesRequiringBarrier() const;
 
  private:
   absl::flat_hash_map<GpuCliqueKey, CliqueRequest> cliques_;

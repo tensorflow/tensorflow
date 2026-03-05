@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -1089,10 +1090,11 @@ TEST_F(AutotunerTest, DumpHlos) {
   EXPECT_THAT(
       files,
       UnorderedElementsAre(
-          MatchesRegex(".*\\.test_module\\.autotuner_0\\.copy\\.before\\.txt"),
-          MatchesRegex(".*\\.test_module\\.autotuner_0\\.copy\\.after\\.txt"),
-          MatchesRegex(".*\\.test_module\\.autotuner_1\\.add\\.after\\.txt"),
-          MatchesRegex(".*\\.test_module\\.autotuner_1\\.add\\.before\\.txt")));
+          MatchesRegex(".*\\.test_module\\.autotuner_0\\.add\\.before\\.txt"),
+          MatchesRegex(".*\\.test_module\\.autotuner_0\\.add\\.after\\.txt"),
+          MatchesRegex(".*\\.test_module\\.autotuner_1\\.copy\\.after\\.txt"),
+          MatchesRegex(
+              ".*\\.test_module\\.autotuner_1\\.copy\\.before\\.txt")));
 }
 
 TEST(AutotuneConfigTest, ToString) {

@@ -44,7 +44,7 @@ TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutable) {
     gpu_compute_capability {
       cuda_compute_capability { major: 9 minor: 0 feature_extension: NONE }
     }
-    thunk { thunk_info { thunk_id: 1 } }
+    thunks { thunk_info { thunk_id: 1 } }
     module_name: "test_module"
     program_shape { parameter_names: [ "name1", "name2" ] }
     output_info_map {

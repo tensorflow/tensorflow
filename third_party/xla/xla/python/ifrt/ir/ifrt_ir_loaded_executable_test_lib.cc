@@ -44,11 +44,14 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/ifrt_ir_executable_version.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/tests/executable_impl_test_base.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/memory.h"
+#include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/python/ifrt/test_util.h"
@@ -140,6 +143,42 @@ class IfrtIrLoadedExecutableTest
 
     return absl::InvalidArgumentError(
         absl::Substitute("Unsupported device type $0.", *platform_name));
+  }
+
+  absl::StatusOr<std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions>>
+  GetDeserializeOptions(xla::ifrt::DeviceListRef device_list) {
+    std::vector<xla::ifrt::Device*> device_assignments;
+    for (auto device : device_list->devices()) {
+      device_assignments.push_back(device);
+    }
+    return std::make_unique<xla::ifrt::DeserializeIfrtIRProgramOptions>(
+        nullptr, std::nullopt, device_assignments);
+  }
+
+  absl::StatusOr<std::unique_ptr<xla::ifrt::IfrtIrExecutableVersion>>
+  DeserializeExecutableVersion(std::string serialized_executable_version_str,
+                               xla::ifrt::DeviceListRef devices) {
+    std::vector<xla::ifrt::DeviceId> device_assignments;
+    for (auto device : devices->devices()) {
+      device_assignments.push_back(device->Id());
+    }
+    auto deserialize_options =
+        std::make_unique<xla::ifrt::IfrtIrExecutableVersionDeserializeOptions>(
+            client_.get(), device_assignments);
+
+    xla::ifrt::Serialized serialized_executable_version;
+    serialized_executable_version.ParseFromString(
+        serialized_executable_version_str);
+    absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+        deserialized_executable_version =
+            xla::ifrt::Deserialize<xla::ifrt::ExecutableVersion>(
+                serialized_executable_version, std::move(deserialize_options));
+    if (!deserialized_executable_version.ok()) {
+      return deserialized_executable_version.status();
+    }
+
+    return ToIfrtIrExecutableVersion(
+        std::move(*deserialized_executable_version));
   }
 };
 
@@ -280,6 +319,123 @@ module {
   ASSERT_OK(result.status.Await());
   ASSERT_EQ(result.outputs.size(), 1);
   ASSERT_OK(result.outputs[0]->GetReadyFuture().Await());
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, RoundTripExecutableSerialization) {
+  if (client_->platform_name() != xla::TpuName()) {
+    GTEST_SKIP() << "Do not run on GPU because it is not supported.";
+  }
+  std::string source = R"(
+!array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                      [0,1]>
+!array2 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                      [2,3]>
+module {
+  func.func @main(%arg0: !array1, %arg1: !array2) -> (!array1, !array2)
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        : (!array1) -> !array1
+    %1, %ctrl_1 = ifrt.Call @add_one(%arg1) on devices [2,3]
+        : (!array2) -> !array2
+    %2, %ctrl_2 = ifrt.Call @add_one(%1) on devices [2,3]
+        : (!array2) -> !array2
+    return %0, %2 : !array1, !array2
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  ASSERT_OK_AND_ASSIGN(
+      program,
+      SerDeRoundTrip(std::move(program),
+                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
+  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(
+      auto ifrt_ir_executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          .Await());
+
+  ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
+                       ifrt_ir_executable->Serialize());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions> options,
+      GetDeserializeOptions(devices));
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<xla::ifrt::LoadedExecutable> deserialized_executable,
+      client_->GetDefaultCompiler()
+          ->DeserializeLoadedExecutable(serialized_executable,
+                                        std::move(options))
+          .Await());
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, RoundTripExecutableVersionSerialization) {
+  if (client_->platform_name() != xla::TpuName()) {
+    GTEST_SKIP() << "Do not run on GPU because it is not supported.";
+  }
+  std::string source = R"(
+!array1 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                      [0,1]>
+!array2 = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,
+                      [2,3]>
+module {
+  func.func @main(%arg0: !array1, %arg1: !array2) -> (!array1, !array2)
+      attributes {ifrt.function} {
+    %0, %ctrl_0 = ifrt.Call @add_one(%arg0) on devices [0,1]
+        : (!array1) -> !array1
+    %1, %ctrl_1 = ifrt.Call @add_one(%arg1) on devices [2,3]
+        : (!array2) -> !array2
+    %2, %ctrl_2 = ifrt.Call @add_one(%1) on devices [2,3]
+        : (!array2) -> !array2
+    return %0, %2 : !array1, !array2
+  }
+
+  func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
+    return %1 : tensor<2x2xi32>
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(*mlir_module);
+  ASSERT_OK_AND_ASSIGN(
+      program,
+      SerDeRoundTrip(std::move(program),
+                     xla::ifrt::Version::CompatibilityRequirement::WEEK_4));
+  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(4));
+  ASSERT_OK_AND_ASSIGN(
+      auto ifrt_ir_executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(std::move(program), CreateCompileOptions(devices))
+          .Await());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<const xla::ifrt::ExecutableVersion> executable_version,
+      ifrt_ir_executable->executable_version());
+  ASSERT_OK_AND_ASSIGN(
+      xla::ifrt::Serialized serialized_executable_version,
+      xla::ifrt::Serialize(*executable_version,
+                           std::make_unique<xla::ifrt::SerializeOptions>()));
+  std::string serialized_executable_version_str =
+      serialized_executable_version.SerializeAsString();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::ifrt::IfrtIrExecutableVersion>
+          deserialized_executable_version,
+      DeserializeExecutableVersion(serialized_executable_version_str, devices));
+
+  ASSERT_OK(deserialized_executable_version->IsCompatibleWith(
+      *client_, *executable_version));
 }
 
 TEST_F(IfrtIrLoadedExecutableTest, CallXlaWithDifferentDevices) {

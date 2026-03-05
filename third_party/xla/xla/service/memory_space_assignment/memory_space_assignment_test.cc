@@ -13167,8 +13167,7 @@ class SlicedPrefetchTest : public MemorySpaceAssignmentTestBase {
     absl::flat_hash_map<const HloInstruction*, Chunk> slices_to_chunks;
     std::optional<Chunk> result_chunk = std::nullopt;
 
-    for (const std::pair<HloPosition, Chunk>& position_chunk_pair :
-         assignments.chunks()) {
+    for (const auto& position_chunk_pair : assignments.chunks()) {
       if (position_chunk_pair.first.instruction == sliced_copy_result) {
         if (result_chunk.has_value()) {
           return FailedPrecondition(
@@ -14095,8 +14094,7 @@ ENTRY main {
   ASSERT_EQ(p2_slice_dones.size(), 2);
   std::vector<int64_t> p2_slice_offsets;
   for (const HloInstruction* i : p2_slice_dones) {
-    for (const std::pair<HloPosition, Chunk>& position_chunk_pair :
-         assignments->chunks()) {
+    for (const auto& position_chunk_pair : assignments->chunks()) {
       if (position_chunk_pair.first.instruction == i) {
         p2_slice_offsets.push_back(position_chunk_pair.second.offset);
       }

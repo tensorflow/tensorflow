@@ -15,26 +15,27 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class SimplifyFPConversionsTest : public HloTestBase {
+class SimplifyFPConversionsTest : public HloPjRtGpuTestBase {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_allow_excess_precision(
         enable_simplify_all_fp_conversions_);
     return debug_options;
   }
 
   bool SupportsMultiplyBF16() {
-    const auto& device_description =
-        backend().default_stream_executor()->GetDeviceDescription();
-    const auto& cc = device_description.gpu_compute_capability();
+    const stream_executor::GpuComputeCapability& cc =
+        device_description().gpu_compute_capability();
     return cc.IsCuda() && cc.cuda_compute_capability()->IsAtLeastHopper();
   }
 

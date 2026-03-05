@@ -166,6 +166,8 @@ std::vector<int64_t> GetLoopShapeCoveringWriteIndices(
   return loop_indices;
 }
 
+}  // namespace
+
 // Returns true if the given instruction is monotonic, i.e. it is either
 // monotonically increasing or decreasing. This is not an exhaustive list of
 // monotonic operations.
@@ -174,20 +176,14 @@ bool IsMonotonic(HloInstruction* instr) {
          instr->opcode() == HloOpcode::kSubtract;
 }
 
-// The idea is that certain constant-initialized buffers can be left as
-// uninitialized if all the elements of the buffer are written to in the loop
-// body. This way, we eliminate the need to initialize the buffer (with
-// broadcast) in the critical path of the program. To summarize, the conditions
-// to apply this optimization are:
-// 1. The buffer is a constant-initialized buffer.
-// 2. All the elements of the buffer are written to in the loop body.
-// 3. The iteration variable of the loop is monotonically increasing or
-// decreasing.
-// The optimization is applied by creating a select between the initial value
-// and the value in the body. The select is guarded by a predicate that checks
-// if the loop iteration variable is equal to the first iteration value.
-absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
+absl::StatusOr<bool>
+WhileLoopFusibleSinking::TryRewritingBroadcastAsAllocateBuffer(
     HloInstruction* while_instr) {
+  // Don't try to mutate unflattened while loop computations.
+  if (call_counts_[while_instr->while_body()] > 1 ||
+      call_counts_[while_instr->while_condition()] > 1) {
+    return false;
+  }
   std::optional<int64_t> induction_var_tuple_index =
       GetLoopInductionVarTupleIdx(while_instr);
   if (!induction_var_tuple_index.has_value() ||
@@ -290,7 +286,6 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
   }
   return changed;
 }
-}  // namespace
 
 bool WhileLoopFusibleSinking::IsSinkableFusion(HloInstruction* while_operand) {
   absl::InlinedVector<HloInstruction*, 8> worklist;
@@ -524,6 +519,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::RunImpl(
                     HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
+  // TODO(b/260601110): Handle non-flat graphs properly here.
   for (HloInstruction* while_instr : while_instrs) {
     call_counts_[while_instr->while_body()]++;
     call_counts_[while_instr->while_condition()]++;

@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
@@ -2120,10 +2121,23 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvolveShape(
-    const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
+    const Shape& lhs, const Shape& rhs_arg, int64_t feature_group_count,
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
+    const SparsityConfig& sparsity_config,
     std::optional<PrimitiveType> preferred_element_type) {
+  const Shape* rhs_ptr = &rhs_arg;
+  if (rhs_arg.IsTuple()) {
+    if (rhs_arg.tuple_shapes().size() != 2) {
+      return InvalidArgument(
+          "rhs of convolution, if a tuple, must have 2 elements for sparsity; "
+          "got: %s",
+          ShapeUtil::HumanString(rhs_arg));
+    }
+    rhs_ptr = &rhs_arg.tuple_shapes(0);
+  }
+  const Shape& rhs = *rhs_ptr;
+
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -2249,8 +2263,24 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   for (int i = 0; i < num_spatial_dims; ++i) {
     kernel_spatial_dims[i] = rhs.dimensions(dnums.kernel_spatial_dimensions(i));
   }
-  const int64_t kernel_input_features =
+  int64_t kernel_input_features =
       rhs.dimensions(dnums.kernel_input_feature_dimension());
+  if (sparsity_config.has_rhs()) {
+    VLOG(8) << "Using sparse RHS for convolution. Got kernel_input_features: "
+            << kernel_input_features
+            << ", sparsity_config: " << SparsityConfigToString(sparsity_config);
+    int64_t num_non_zero = sparsity_config.rhs().num_non_zero();
+    int64_t block_size = sparsity_config.rhs().block_size();
+    if (num_non_zero != 1) {
+      return InvalidArgument("Only 1:N sparsity is currently supported.");
+    }
+    // Since the kernel is sparse, the effective number of input features is
+    // the number of non-zero elements times the block size. This currently
+    // assumes 1:N sparsity, where N is the block size.
+    kernel_input_features = kernel_input_features * block_size;
+  } else {
+    VLOG(8) << "Not using sparse RHS for convolution.";
+  }
   const int64_t kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 

@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/local_device_state.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -98,7 +99,7 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
       : local_device_id_(local_device_id),
         local_hardware_id_(local_device_state
                                ? local_device_state->local_hardware_id()
-                               : PjRtLocalHardwareId(-1)),
+                               : LocalChipId(-1)),
         local_device_state_(std::move(local_device_state)),
         description_(id, local_device_id_.value(), process_index,
                      process_index_in_partition, partition_index,
@@ -142,13 +143,9 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
 
   bool IsAddressable() const override { return local_device_state_ != nullptr; }
 
-  PjRtLocalDeviceId local_device_id() const override {
-    return local_device_id_;
-  }
+  LocalDeviceId local_device_id() const override { return local_device_id_; }
 
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return local_hardware_id_;
-  }
+  LocalChipId local_hardware_id() const override { return local_hardware_id_; }
 
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
@@ -192,8 +189,8 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   }
 
  private:
-  const PjRtLocalDeviceId local_device_id_;
-  const PjRtLocalHardwareId local_hardware_id_;
+  const LocalDeviceId local_device_id_;
+  const LocalChipId local_hardware_id_;
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   PjRtStreamExecutorDeviceDescription description_;
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_;
@@ -259,7 +256,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   }
 
   absl::StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const override {
+      GlobalDeviceId global_device_id) const override {
     auto it = id_to_device_.find(global_device_id.value());
     if (it != id_to_device_.end()) {
       return it->second;
@@ -269,7 +266,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   }
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const override;
+      LocalDeviceId local_device_id) const override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -295,9 +292,18 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp mlir_module, CompileOptions options) override;
+      mlir::ModuleOp mlir_module, CompileOptions options) override {
+    return Compile(MaybeOwningMlirModule(std::move(mlir_module)), options);
+  }
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp mlir_module, CompileOptions options) override;
+      mlir::ModuleOp mlir_module, CompileOptions options) override {
+    return CompileAndLoad(MaybeOwningMlirModule(std::move(mlir_module)),
+                          options);
+  }
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
 
   virtual absl::StatusOr<std::string> SerializeExecutable(
       const PjRtLoadedExecutable& executable) const;
@@ -315,7 +321,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                            const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable,
+      std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
@@ -342,7 +348,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   LocalDeviceState& device_state(int device_ordinal) const {
     return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-                LookupAddressableDevice(xla::PjRtLocalDeviceId(device_ordinal))
+                LookupAddressableDevice(xla::LocalDeviceId(device_ordinal))
                     .value())
                 ->local_device_state();
   }
@@ -441,6 +447,9 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   void WaitForAllocation(se::Stream* stream,
                          const CommonPjRtRawBuffer& raw_buffer);
 
+  void LaunchOnDevice(PjRtDevice* device,
+                      absl::AnyInvocable<void()> execute_fn) const override;
+
  protected:
   friend class PjRtStreamExecutorRawBuffer;
 
@@ -472,7 +481,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       const XlaComputation& computation, CompileOptions options,
       bool lookup_addressable_devices);
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp mlir_module, CompileOptions options,
+      MaybeOwningMlirModule mlir_module, CompileOptions options,
       bool lookup_addressable_devices);
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
@@ -493,7 +502,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
       std::optional<HloModuleProto> unoptimized_hlo_module_proto,
       std::unique_ptr<LocalExecutable> local_executables,
-      CompileOptions compile_options, bool dump);
+      CompileOptions compile_options, bool dump,
+      std::optional<std::string> fingerprint = std::nullopt);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -597,6 +607,7 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
  public:
   PjRtStreamExecutorLoadedExecutable(
       std::unique_ptr<LocalExecutable> executables,
+      std::optional<std::string> fingerprint,
       bool parameter_is_tupled_arguments,
       std::shared_ptr<DeviceAssignment> device_assignment,
       CompileOptions compile_options,
@@ -645,9 +656,6 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> StartRawExecutable(
       const ExecuteOptions& options, xla::RunId run_id, int replica,
       int partition, PjRtDevice* device) const override;
-
-  void LaunchOnDevice(PjRtDevice* device,
-                      absl::AnyInvocable<void()> execute_fn) const;
 
   const DeviceAssignment& device_assignment() const override {
     return *device_assignment_;

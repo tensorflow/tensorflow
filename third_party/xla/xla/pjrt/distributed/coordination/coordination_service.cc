@@ -42,12 +42,12 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/tsl/util/device_name_utils.h"
 
 // If true, allow the recoverable agent to leave ongoing barriers on restart.
@@ -56,10 +56,10 @@ constexpr bool kLeaveBarriersOnRecoverableAgentRestart = false;
 
 namespace xla {
 namespace {
-using tensorflow::CoordinatedTaskState;
-using tensorflow::CoordinatedTaskStateInfo;
-using tensorflow::DeviceInfo;
-using tensorflow::KeyValueEntry;
+using xla::coordination::CoordinatedTaskState;
+using xla::coordination::CoordinatedTaskStateInfo;
+using xla::coordination::DeviceInfo;
+using xla::coordination::KeyValueEntry;
 
 constexpr char kClusterRegisterBarrierId[] =
     "[Init]Wait_for_all_tasks_to_register";

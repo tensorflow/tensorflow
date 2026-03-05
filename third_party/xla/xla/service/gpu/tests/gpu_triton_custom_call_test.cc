@@ -35,12 +35,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/tests/gpu_pjrt_codegen_test.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
@@ -128,13 +128,10 @@ std::unique_ptr<HloInstruction> CreateTritonCustomCall(
 
 }  // namespace
 
-class GpuIrEmitterUnnestedTest : public GpuCodegenTest {
+class GpuIrEmitterUnnestedTest : public GpuPjRtCodegenTest {
  public:
   se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
 };
 
@@ -167,8 +164,8 @@ TEST_F(GpuIrEmitterUnnestedTest, EmitTritonCustomCallWithCorrectLowering) {
   // Check that the compiled llvm ir matches the expected lowering of our tt ir.
   // We check that the arguments do not specify noalias or alignment attributes,
   // as this prevents recompilation based on the alignment of the input buffers.
-  CompileAndVerifyIr(std::move(module),
-                     R"(
+  EXPECT_OK(CompileAndVerifyIr(std::move(module),
+                               R"(
   ; CHECK: @add_one
 ; CHECK-SAME: dereferenceable(4) %arg0
 ; CHECK-SAME: dereferenceable(4) %arg1
@@ -179,7 +176,7 @@ TEST_F(GpuIrEmitterUnnestedTest, EmitTritonCustomCallWithCorrectLowering) {
 ; CHECK-DAG:  addrspacecast ptr %arg2 to ptr addrspace(1)
 ; CHECK-DAG:  addrspacecast ptr %arg3 to ptr addrspace(1)
         )",
-                     /*match_optimized_ir=*/false);
+                               /*match_optimized_ir=*/false));
 }
 
 TEST_F(GpuIrEmitterUnnestedTest, EmitTritonCustomCallParseErrorHasEscapedIr) {
@@ -262,20 +259,16 @@ TEST_F(GpuIrEmitterUnnestedTest,
 
   // TODO(b/412980654): for custom kernels, the alignment attribute is getting
   // dropped for compile time so we do not check for this.
-  CompileAndVerifyIr(std::move(module),
-                     R"(
+  EXPECT_OK(CompileAndVerifyIr(std::move(module),
+                               R"(
   ; CHECK: @add_one
   ; CHECK: byval([128 x i8])
         )",
-                     /*match_optimized_ir=*/false);
+                               /*match_optimized_ir=*/false));
 }
 
 TEST_F(GpuIrEmitterUnnestedTest, RunTritonCustomCallWithDeviceSideTMA) {
-  if (!backend()
-           .default_stream_executor()
-           ->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeastHopper()) {
+  if (!device_description().cuda_compute_capability().IsAtLeastHopper()) {
     GTEST_SKIP() << "Device-side TMA is only supported on Hopper and up.";
   }
 
@@ -421,13 +414,11 @@ TEST_F(GpuIrEmitterUnnestedTest, FailGracefullyIfCallNameIsInvalid) {
               HasSubstr("Call name not found in the Triton module"));
 }
 
-class TritonCustomCallTest : public HloTestBase {};
+class TritonCustomCallTest : public HloPjRtGpuTestBase {};
 
 TEST_F(TritonCustomCallTest, NoArgumentDeduplication) {
-  if (auto cc = backend()
-                    .default_stream_executor()
-                    ->GetDeviceDescription()
-                    .cuda_compute_capability();
+  if (se::CudaComputeCapability cc =
+          device_description().cuda_compute_capability();
       !cc.IsAtLeastAmpere()) {
     GTEST_SKIP() << "Triton support is only enabled for Ampere GPUs and up.";
   }

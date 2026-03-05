@@ -227,6 +227,7 @@ cc_library(
     deps = [
         ":constraint_expression",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -297,6 +298,7 @@ xla_cc_test(
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",

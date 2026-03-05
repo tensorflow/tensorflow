@@ -107,14 +107,21 @@ GpuPjRtCodegenTest::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
 }
 
 absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
-    absl::string_view hlo_text, absl::string_view expected_llvm_ir,
+    std::unique_ptr<HloModule> hlo_module, absl::string_view expected_llvm_ir,
     bool match_optimized_ir, bool run_optimization_passes) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
-                      ParseAndReturnVerifiedModule(hlo_text));
   auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler());
   return xla::CompileAndVerifyIr(llvm_compiler, compile_options_,
                                  std::move(hlo_module), expected_llvm_ir,
                                  match_optimized_ir, run_optimization_passes);
+}
+
+absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
+    absl::string_view hlo_text, absl::string_view expected_llvm_ir,
+    bool match_optimized_ir, bool run_optimization_passes) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
+                      ParseAndReturnVerifiedModule(hlo_text));
+  return CompileAndVerifyIr(std::move(hlo_module), expected_llvm_ir,
+                            match_optimized_ir, run_optimization_passes);
 }
 
 }  // namespace gpu

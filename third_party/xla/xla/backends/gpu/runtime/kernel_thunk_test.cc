@@ -86,7 +86,8 @@ TEST(KernelThunkTest, CreateWithDefaultValues) {
   EXPECT_EQ(thunk.cluster_dim(), se::ClusterDim(1, 1, 1));
   EXPECT_EQ(thunk.shmem_bytes(), 0);
   EXPECT_EQ(thunk.ToString(0),
-            ", kernel = , launch dimensions = blocks: {1, 1, 1}, "
+            ", kernel = , profile_annotation = , launch dimensions = blocks: "
+            "{1, 1, 1}, "
             "threads/block: {1, 1, 1}, cluster_dim = ClusterDim{1, 1, 1}");
 }
 
@@ -131,7 +132,8 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   EXPECT_EQ(thunk.shmem_bytes(), 1024);
   EXPECT_EQ(
       thunk.ToString(0),
-      ", kernel = kernel123, launch dimensions = blocks: {32, 31, 30}, "
+      ", kernel = kernel123, profile_annotation = DotGeneral, launch "
+      "dimensions = blocks: {32, 31, 30}, "
       "threads/block: {256, 255, 254}, cluster_dim = ClusterDim{8, 7, 6}");
 }
 
@@ -482,7 +484,7 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
     thunk_sequence.push_back(std::move(kernel_thunk));
 
     TF_ASSERT_OK_AND_ASSIGN(
-        CommandBufferCmdExecutor cmds,
+        CommandExecutor cmds,
         ConvertToCommands(thunk_sequence, ConvertToCommandsOptions()));
     auto sequential_thunk = std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo(), std::move(thunk_sequence));

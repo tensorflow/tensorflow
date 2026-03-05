@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/ffi/ffi_api.h"
 #include "xla/future.h"
 #include "xla/literal.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/service/rendezvous.h"
 #include "xla/status_macros.h"
@@ -90,10 +91,15 @@ static absl::Status PrepareAllReduce(
           *collective_params, {AllDevices()},
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID, false));
 
+  std::vector<GlobalDeviceId> all_device_groups;
+  for (int i = 0; i < kNumReplicas; ++i) {
+    all_device_groups.push_back(GlobalDeviceId(i));
+  }
+
   // Ask XLA:GPU runtime to acquire a clique for this key. Later we will be
   // able to get access to it from the execute handler.
-  TF_RETURN_IF_ERROR(
-      clique_requests->RequestClique(clique_key, /*device_groups=*/{{}}));
+  TF_RETURN_IF_ERROR(clique_requests->RequestClique(
+      clique_key, /*device_groups=*/{all_device_groups}));
 
   return absl::OkStatus();
 }
@@ -118,11 +124,14 @@ static absl::Status PrepareDeviceAllReduce(
   // Ask for a device communicator with 8 lsa barriers.
   CollectiveCliqueRequests::CliqueRequirements requirements;
   requirements.dev_comm = GpuDeviceCommunicator::Requirements{8};
-
+  std::vector<GlobalDeviceId> all_device_groups;
+  for (int i = 0; i < kNumReplicas; ++i) {
+    all_device_groups.push_back(GlobalDeviceId(i));
+  }
   // Request XLA:GPU runtime to acquire a clique for this key. Later we will be
   // able to get access to it from the execute handler.
   TF_RETURN_IF_ERROR(clique_requests->RequestClique(
-      clique_key, /*device_groups=*/{{}}, requirements));
+      clique_key, /*device_groups=*/{all_device_groups}, requirements));
 
   // Request src and dst buffers to be symmetric on the given clique.
   TF_RETURN_IF_ERROR(memory_requests->RequestSymmetricAddress(
@@ -460,6 +469,10 @@ TEST_F(CollectiveOpsTestFFI, AllReduce) {
                  << device_count() << " available)";
   }
 
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "NCCL symmetric memory requires Hopper+";
+  }
+
   constexpr absl::string_view hlo_string = R"(
       HloModule m, replica_count=2
 
@@ -496,6 +509,10 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduce) {
                  << device_count() << " available)";
   }
 
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "NCCL symmetric memory requires Hopper+";
+  }
+
   GpuCollectives* collectives = GpuCollectives::Default("CUDA");
   if (!collectives || !collectives->SupportsDeviceComm()) {
     GTEST_SKIP() << "GPU collectives do not support device communication";
@@ -507,9 +524,10 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduce) {
       ENTRY test_computation {
         id = u32[] replica-id()
         in = u32[]{:S(1)} copy(id)
-        ROOT all-reduce = u32[]{:S(1)} custom-call(in),
+        all-reduce = u32[]{:S(1)} custom-call(in),
           custom_call_target="__xla_test$$device_all_reduce",
           api_version=API_VERSION_TYPED_FFI
+        ROOT out = u32[] copy(all-reduce)
       }
     )";
 
@@ -576,6 +594,11 @@ TEST_F(CollectiveOpsTestFFI, PeerAllReduce) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
                  << device_count() << " available)";
+  }
+
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "Test requires Hopper+ since on a previous platforms there "
+                    "are no guarantess that GPUs have direct peer access";
   }
 
   constexpr absl::string_view hlo_string = R"(

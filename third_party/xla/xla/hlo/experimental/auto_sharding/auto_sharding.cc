@@ -110,9 +110,9 @@ std::vector<double> CommunicationReshardingCostVector(
   CHECK(!strategy_group.is_tuple) << "Only works with strategy vector.";
   std::vector<double> ret;
   ret.reserve(strategy_group.GetStrategies().size());
-  auto required_sharding_for_resharding = required_sharding.IsTileMaximal()
-                                              ? HloSharding::Replicate()
-                                              : required_sharding;
+  auto required_sharding_for_resharding =
+      required_sharding.IsReplicatedOrSingleDevice() ? HloSharding::Replicate()
+                                                     : required_sharding;
   for (const ShardingStrategy& x : strategy_group.GetStrategies()) {
     ret.push_back(cluster_env.ReshardingCost(operand_shape, x.output_sharding,
                                              required_sharding_for_resharding));
@@ -161,9 +161,9 @@ std::vector<double> MemoryReshardingCostVector(
   CHECK(!strategy_group.is_tuple) << "Only works with strategy vector.";
   std::vector<double> ret;
   ret.reserve(strategy_group.GetStrategies().size());
-  auto required_sharding_for_resharding = required_sharding.IsTileMaximal()
-                                              ? HloSharding::Replicate()
-                                              : required_sharding;
+  auto required_sharding_for_resharding =
+      required_sharding.IsReplicatedOrSingleDevice() ? HloSharding::Replicate()
+                                                     : required_sharding;
   CHECK_OK(required_sharding.Validate(operand_shape))
       << strategy_group.ToString();
   for (const ShardingStrategy& x : strategy_group.GetStrategies()) {
@@ -381,7 +381,7 @@ std::unique_ptr<StrategyGroup> HandlePartialReduce(
       }
 
       HloSharding output_spec = input_spec;
-      if (!(input_spec.IsReplicated() || input_spec.IsTileMaximal())) {
+      if (!input_spec.IsReplicatedOrSingleDevice()) {
         // All 3. sub-cases (reduction dim would be replicated in the
         // output)
         output_spec = hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(

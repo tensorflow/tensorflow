@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "cub/version.cuh"
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/base/casts.h"
@@ -1741,6 +1742,8 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
       ParseCudaVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
   desc.set_compile_time_toolkit_version(
       ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0}));
+  desc.set_cub_version(SemanticVersion{CUB_MAJOR_VERSION, CUB_MINOR_VERSION,
+                                       CUB_SUBMINOR_VERSION});
 
   // cudnnGetProperty (the function that backs GetLoadedCudnnVersion()) needs
   // 64KiB of stack, so we call it from a separate thread to avoid stack

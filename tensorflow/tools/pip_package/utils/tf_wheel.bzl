@@ -154,4 +154,4 @@ tf_wheel = rule(
 )
 
 def tf_wheel_dep():
-    return ["@pypi_{}//:pkg".format(WHEEL_NAME)]
+    return ["@pypi//{}".format(WHEEL_NAME)]

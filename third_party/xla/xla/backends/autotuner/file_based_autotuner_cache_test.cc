@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"

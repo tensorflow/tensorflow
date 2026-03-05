@@ -41,8 +41,7 @@ namespace xla {
 namespace gpu {
 
 CollectiveGroupThunk::CollectiveGroupThunk(
-    ThunkInfo thunk_info, Thunk::Kind kind,
-    std::vector<std::unique_ptr<Thunk>> thunks,
+    ThunkInfo thunk_info, Thunk::Kind kind, ThunkSequence thunks,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
     : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {
   for (auto& thunk : thunks) {
@@ -111,21 +110,17 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
-absl::Status CollectiveGroupThunk::WalkNested(
-    absl::FunctionRef<absl::Status(Thunk*)> callback) {
+absl::Status CollectiveGroupThunk::WalkNested(Walker callback) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
     RETURN_IF_ERROR(thunk->Walk(callback));
   }
   return absl::OkStatus();
 }
 
-absl::Status CollectiveGroupThunk::TransformAllNestedThunks(
-    absl::FunctionRef<
-        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-        fn) {
+absl::Status CollectiveGroupThunk::TransformNested(Transformer callback) {
   for (std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
-    ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
+    RETURN_IF_ERROR(thunk->TransformNested(callback));
+    ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
   }
   return absl::OkStatus();
 }

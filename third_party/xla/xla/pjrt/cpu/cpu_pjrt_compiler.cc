@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -99,9 +100,11 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
-    CompileOptions options, mlir::ModuleOp module,
+    CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  return CompileInternal(module, options, topology, client);
+  TF_ASSIGN_OR_RETURN(auto cpu_client,
+                      CreatePjRtCpuClientFromTopology(topology));
+  return cpu_client->Compile(std::move(module), options);
 }
 
 }  // namespace xla::cpu

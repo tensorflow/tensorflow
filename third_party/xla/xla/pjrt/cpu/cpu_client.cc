@@ -85,6 +85,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/host_to_device_transfer_manager.h"
 #include "xla/pjrt/layout_mode.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -101,6 +102,7 @@ limitations under the License.
 #include "xla/pjrt/thread_pool_async_work_runner.h"
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
@@ -150,16 +152,6 @@ static int CpuDeviceCount() {
   // parallel across multiple devices, e.g. pmap.
   return GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
 }
-
-namespace cpu {
-
-PjRtPlatformId PlatformId() { return tsl::Fingerprint64(CpuName()); }
-
-absl::string_view PlatformName() { return CpuName(); }
-
-absl::string_view PlatformVersion() { return CpuName(); }
-
-}  // namespace cpu
 
 namespace {
 
@@ -221,12 +213,9 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetPjRtCpuClient(
     }
 
     topology = std::make_unique<CpuTopologyDescription>(
-        cpu::PlatformId(), cpu::PlatformName(), cpu::PlatformVersion(),
-        cpu_topology_devices,
-        cpu::DetectMachineAttributes(
-            cpu::CpuFeatureFromString(
-                GetDebugOptionsFromFlags().xla_cpu_max_isa()))
-            .features);
+        xla::CpuPlatformId(), xla::CpuPlatformName(), xla::CpuPlatformVersion(),
+        CpuTopology(cpu_topology_devices,
+                    cpu::TargetMachineOptions(GetDebugOptionsFromFlags())));
   } else {
     topology = std::make_unique<CpuTopologyDescription>(*options.topology);
     if (topology->cpu_topology().number_of_devices() != cpu_device_count) {
@@ -348,7 +337,7 @@ PjRtCpuClient::PjRtCpuClient(
 PjRtCpuClient::~PjRtCpuClient() { VLOG(1) << "PjRtCpuClient destroyed."; }
 
 absl::StatusOr<PjRtDevice*> PjRtCpuClient::LookupDevice(
-    xla::PjRtGlobalDeviceId global_device_id) const {
+    xla::GlobalDeviceId global_device_id) const {
   auto it = id_to_device_.find(global_device_id);
   if (it != id_to_device_.end()) {
     return it->second;
@@ -358,7 +347,7 @@ absl::StatusOr<PjRtDevice*> PjRtCpuClient::LookupDevice(
 }
 
 absl::StatusOr<PjRtDevice*> PjRtCpuClient::LookupAddressableDevice(
-    PjRtLocalDeviceId local_device_id) const {
+    LocalDeviceId local_device_id) const {
   for (auto* device : addressable_devices_) {
     if (local_device_id == device->local_device_id()) {
       return device;
@@ -555,7 +544,7 @@ PjRtCpuClient::LoadInternal(
     addressable_devices.reserve(num_replicas * num_partitions);
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
-        PjRtGlobalDeviceId device_id((*device_assignment)(replica, partition));
+        GlobalDeviceId device_id((*device_assignment)(replica, partition));
         if (UnpackCpuProcessIndex(device_id) != process_index()) {
           VLOG(3) << "Non-local device: " << device_id;
           continue;
@@ -642,14 +631,15 @@ static absl::StatusOr<std::unique_ptr<xla::Executable>> CompileAheadOfTime(
 
 absl::StatusOr<std::pair<std::unique_ptr<PjRtCpuExecutable>,
                          std::shared_ptr<DeviceAssignment>>>
-PjRtCpuClient::CompileAndAssignDevices(mlir::ModuleOp module,
+PjRtCpuClient::CompileAndAssignDevices(MaybeOwningMlirModule module,
                                        CompileOptions options) {
-  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, *topology_));
+  TF_RETURN_IF_ERROR(
+      pjrt::MaybeDumpCompileInputs(options, module.mlir_module(), *topology_));
 
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
-      module, xla_computation,
+      module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options));
 
@@ -658,13 +648,16 @@ PjRtCpuClient::CompileAndAssignDevices(mlir::ModuleOp module,
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                      GetArgLayoutModes(module));
+                      GetArgLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                      GetOutputLayoutModes(module));
+                      GetOutputLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                      GetArgMemoryKinds(module));
+                      GetArgMemoryKinds(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                      GetOutputMemoryKinds(module));
+                      GetOutputMemoryKinds(module.mlir_module()));
+
+  // MLIR module no longer required - release any memory if owned.
+  module = MaybeOwningMlirModule();
 
   // If auto-sharding modifies shapes of arguments and/or result,
   // we get a callback to restore the layouts. Let us restore the layouts
@@ -723,7 +716,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCpuClient::Compile(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCpuClient::Compile(
-    mlir::ModuleOp module, CompileOptions options) {
+    MaybeOwningMlirModule module, CompileOptions options) {
   TF_ASSIGN_OR_RETURN(auto results, CompileAndAssignDevices(
                                         std::move(module), std::move(options)));
   return std::move(results.first);
@@ -738,18 +731,18 @@ PjRtCpuClient::CompileAndLoad(const XlaComputation& computation,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+PjRtCpuClient::CompileAndLoad(MaybeOwningMlirModule module,
+                              CompileOptions options) {
   TF_ASSIGN_OR_RETURN(auto results, CompileAndAssignDevices(
                                         std::move(module), std::move(options)));
   return LoadInternal(std::move(results.first), std::move(results.second));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCpuClient::Load(
-    std::unique_ptr<PjRtExecutable> executable,
+    std::shared_ptr<PjRtExecutable> executable,
     const LoadOptions& load_options) {
   TF_RET_CHECK(tensorflow::down_cast<PjRtCpuExecutable*>(executable.get()));
-  auto cpu_executable = absl::WrapUnique<PjRtCpuExecutable>(
-      tensorflow::down_cast<PjRtCpuExecutable*>(executable.release()));
+  auto cpu_executable = std::static_pointer_cast<PjRtCpuExecutable>(executable);
   CompileOptions options = cpu_executable->compile_options();
   int unused_num_replicas;
   int unused_num_partitions;
@@ -825,7 +818,7 @@ PjRtCpuClient::CompileInternal(
       for (int computation = 0;
            computation < device_assignment->computation_count();
            ++computation) {
-        PjRtGlobalDeviceId id((*device_assignment)(replica, computation));
+        GlobalDeviceId id((*device_assignment)(replica, computation));
         if (UnpackCpuProcessIndex(id) != process_index()) {
           // TODO(phawkins): improve this error message when we're ready to
           // publicize that multiprocess collectives exist.
@@ -842,8 +835,7 @@ PjRtCpuClient::CompileInternal(
     TF_RETURN_IF_ERROR([&]() -> absl::Status {
       for (int replica = 0; replica < num_replicas; ++replica) {
         for (int partition = 0; partition < num_partitions; ++partition) {
-          PjRtGlobalDeviceId device_id(
-              (*device_assignment)(replica, partition));
+          GlobalDeviceId device_id((*device_assignment)(replica, partition));
           if (UnpackCpuProcessIndex(device_id) != process_index()) {
             VLOG(3) << "Non-local device: " << device_id;
             continue;
@@ -895,12 +887,8 @@ PjRtCpuClient::CompileInternal(
       compile_options.thread_pool = pjrt_client_thread_pool();
     }
 
-    cpu::TargetMachineOptions target_machine_options(
-        hlo_module->config().debug_options());
-    // Overwrite the features with the machine attributes from the topology.
-
-    TF_RETURN_IF_ERROR(target_machine_options.SetFeatures(
-        absl::StrJoin(topology_->cpu_topology().machine_attributes(), ",")));
+    const cpu::TargetMachineOptions& target_machine_options =
+        topology_->cpu_topology().target_machine_options();
 
     compile_options.cpu_target_config.emplace(target_machine_options);
 
@@ -1027,9 +1015,7 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> PjRtCpuClient::LinearizeInto(
 
 absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
     const {
-  auto cpu_executable_ptr =
-      tsl::down_cast<cpu::CpuExecutable*>(cpu_executable_.get());
-  const auto& buffer_assignment = cpu_executable_ptr->buffer_assignment();
+  const auto& buffer_assignment = cpu_executable_->buffer_assignment();
   auto proto = buffer_assignment.ToProto();
 
   CompiledMemoryStats memory_stats = CompiledMemoryStats();
@@ -1182,7 +1168,8 @@ PjRtCpuExecutable::PjRtCpuExecutable(
       num_partitions_(num_partitions),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
       compile_options_(std::move(compile_options)),
-      cpu_executable_(std::move(cpu_executable)),
+      cpu_executable_(
+          tsl::down_cast<cpu::CpuExecutable*>(cpu_executable.release())),
       parameter_device_shapes_(GetParameterShapes(
           cpu_executable_->module().entry_computation_layout())),
       result_buffer_indices_(std::move(result_buffer_indices)),
@@ -1200,11 +1187,7 @@ PjRtCpuExecutable::PjRtCpuExecutable(
   output_memory_space_kind_ids_.resize(result_buffer_indices_.size(),
                                        CpuDeviceMemorySpace::kKindId);
   output_indices_.resize(
-      tsl::down_pointer_cast<cpu::CpuExecutable>(cpu_executable_)
-          ->buffer_assignment()
-          .Allocations()
-          .size(),
-      -1);
+      cpu_executable_->buffer_assignment().Allocations().size(), -1);
   for (int i = 0; i < result_buffer_indices_.size(); ++i) {
     CHECK_LT(result_buffer_indices_[i], output_indices_.size());
     CHECK_EQ(output_indices_[result_buffer_indices_[i]], -1)
@@ -1453,7 +1436,7 @@ PjRtCpuLoadedExecutable::StartRawExecutable(const ExecuteOptions& options,
   if (device == nullptr) {
     CHECK(device_assignment_ != nullptr);
     const int64_t device_id = (*device_assignment_)(replica, partition);
-    PjRtGlobalDeviceId global_device_id(device_id);
+    GlobalDeviceId global_device_id(device_id);
     TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
                         client_->LookupDevice(global_device_id));
     device = tsl::down_cast<PjRtCpuDevice*>(pjrt_device);
@@ -1535,8 +1518,8 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
   result.primary_execute_event =
       tsl::MakeRef<CpuTrackedDeviceEvent>(execute_event);
 
-  auto cpu_executable =
-      tsl::down_pointer_cast<cpu::CpuExecutable>(executable_->cpu_executable_);
+  std::shared_ptr<cpu::CpuExecutable> cpu_executable =
+      executable_->cpu_executable_;
   auto client = client_;
 
   // Tuplize the inputs if compiler expects a single tuple argument but runtime
@@ -1886,32 +1869,13 @@ PjRtCpuLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<Future<>>>& returned_futures) const {
-  RunId run_id(options.launch_id);
-  tsl::profiler::TraceMe trace_me("PjRtCpuLoadedExecutable::Execute");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
-  const int num_addressable_devices = addressable_devices_.size();
-
-  if (argument_handles.size() != num_addressable_devices) {
-    return InvalidArgument(
-        "Attempted to execute with %d argument lists when local device "
-        "count is %d (total replica count: %d, partition count: %d)",
-        argument_handles.size(), num_addressable_devices, num_replicas(),
-        num_partitions());
-  }
-
-  VLOG(1) << "Executing computation " << name()
-          << "; num_replicas=" << num_replicas()
-          << " num_partitions=" << num_partitions()
-          << " num_addressable_devices=" << num_addressable_devices;
-
-  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(
-      num_addressable_devices);
-  if (returned_futures.has_value()) {
-    returned_futures->resize(num_addressable_devices);
-  }
-  if (num_addressable_devices == 1) {
+  if (addressable_devices_.size() == 1 && argument_handles.size() == 1) {
+    std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> wrapped_results(1);
+    RunId run_id = options.launch_id != 0 ? RunId(options.launch_id)
+                                          : RunId::CreateUniqueId();
     // Fast-path if there is only one device — run the computation on the
     // current thread.
     const int replica = addressable_device_logical_ids_[0].replica;
@@ -1947,67 +1911,16 @@ PjRtCpuLoadedExecutable::Execute(
 
     wrapped_results[0] = std::move(statusor->buffers);
     if (returned_futures.has_value()) {
-      (*returned_futures)[0] = std::move(*statusor->future);
+      returned_futures->push_back(std::move(*statusor->future));
     }
 
     MaybeDumpHloSnapshot(executable_->cpu_executable_->module(), run_id,
                          argument_handles[0], wrapped_results[0]);
+    return wrapped_results;
   } else {
-    // Gang schedule collectives to ensure that collectives with the same RunId
-    // are run at the same time. We conservatively run only one collective at a
-    // time, because we may not have enough threads to run arbitrary number of
-    // collectives concurrently.
-    absl::Mutex mu;
-    int running = num_addressable_devices;
-    int failed = 0;
-    absl::Status first_failure_status;
-
-    for (int i = 0; i < num_addressable_devices; ++i) {
-      const int replica = addressable_device_logical_ids_[i].replica;
-      const int partition = addressable_device_logical_ids_[i].partition;
-
-      client()->async_work_runner()->Schedule([&, replica, partition, i] {
-        auto statusor = ExecuteHelperOnSingleDevice(
-            argument_handles[i], run_id, replica, partition, options,
-            returned_futures.has_value());
-        if (statusor.ok()) {
-          wrapped_results[i] = std::move(statusor->buffers);
-          if (returned_futures.has_value()) {
-            (*returned_futures)[i] = std::move(*statusor->future);
-          }
-        }
-
-        absl::MutexLock lock(mu);
-        --running;
-        if (!statusor.ok()) {
-          if (failed == 0) {
-            first_failure_status = AppendStatus(
-                std::move(statusor).status(),
-                absl::StrFormat(
-                    "while running replica %d and partition %d of a "
-                    "replicated computation (other "
-                    "replicas may have failed as well).",
-                    replica, partition));
-          }
-          ++failed;
-        }
-      });
-    }
-
-    {
-      auto done_running = [&]() {
-        mu.AssertHeld();
-        return running == 0;
-      };
-      absl::MutexLock lock(mu);
-      mu.Await(absl::Condition(&done_running));
-    }
-
-    if (!first_failure_status.ok()) return first_failure_status;
+    return CommonPjRtLoadedExecutable::Execute(argument_handles, options,
+                                               returned_futures);
   }
-  VLOG(1) << "Replicated execution complete.";
-
-  return wrapped_results;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -2015,30 +1928,11 @@ PjRtCpuLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
-  RunId run_id(options.launch_id);
-  tsl::profiler::TraceMe trace_me("PjRtCpuLoadedExecutable::ExecuteSharded");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
   }
-  for (int i = 0; i < addressable_devices_.size(); ++i) {
-    if (addressable_devices_[i] == device) {
-      VLOG(1) << "ExecuteShard executes computation " << name()
-              << " on assigned replica/partition on device "
-              << device->DebugString();
-      TF_ASSIGN_OR_RETURN(auto result,
-                          ExecuteHelperOnSingleDevice(
-                              argument_handles, run_id,
-                              addressable_device_logical_ids_[i].replica,
-                              addressable_device_logical_ids_[i].partition,
-                              options, fill_future));
-      returned_future = std::move(result.future);
-      return std::move(result.buffers);
-    }
-  }
-  return InvalidArgument(
-      "ExecuteShard attempted to execute on device id %d which is not "
-      "addressable by this client",
-      device->id());
+  return CommonPjRtLoadedExecutable::ExecuteSharded(
+      argument_handles, device, options, returned_future, fill_future);
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -2046,28 +1940,10 @@ PjRtCpuLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
-  RunId run_id(options.launch_id);
-  tsl::profiler::TraceMe trace_me("PjRtCpuLoadedExecutable::ExecutePortable");
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");
   }
-  if (num_replicas() != 1 || num_partitions() != 1) {
-    return InvalidArgument(
-        "ExecutePortable expects a single-core executable but gets "
-        "one with %d replica %d partition",
-        num_replicas(), num_partitions());
-  }
-  if (device == nullptr) {
-    return InvalidArgument("ExecutePortable expects a device to be specified");
-  }
-  VLOG(1) << "ExecutePortable executes single-core portable executable "
-          << name();
-  TF_ASSIGN_OR_RETURN(auto result, ExecuteHelperOnSingleDevice(
-                                       argument_handles, run_id,
-                                       /*replica=*/0,
-                                       /*partition=*/0, options, fill_future,
-                                       tsl::down_cast<PjRtCpuDevice*>(device)));
-  returned_future = std::move(result.future);
-  return std::move(result.buffers);
+  return CommonPjRtLoadedExecutable::ExecutePortable(
+      argument_handles, device, options, returned_future, fill_future);
 }
 }  // namespace xla

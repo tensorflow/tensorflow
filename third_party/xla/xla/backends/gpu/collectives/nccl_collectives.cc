@@ -25,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/call_once.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
+#include "xla/future.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/process_id.h"
@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/numbers.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -153,7 +154,7 @@ class NcclIdStore {
 
     // Collect generated clique ids for all root processes. We will read back
     // the key that we just generated, it's a small performance vs code
-    // readbility tradeoff.
+    // readability tradeoff.
     absl::Time get_clique_ids_start = absl::Now();
     CliqueIds clique_ids;
     for (ProcessId root : root_processes) {
@@ -191,6 +192,12 @@ class NcclIdStore {
 //===----------------------------------------------------------------------===//
 // NcclCollectives
 //===----------------------------------------------------------------------===//
+
+static absl::StatusOr<std::unique_ptr<Communicator>> Cast(
+    absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm_or) {
+  ASSIGN_OR_RETURN(auto comm, std::move(comm_or));
+  return std::unique_ptr<Communicator>(comm.release());
+}
 
 static auto DeviceOrdinal(const Collectives::DeviceRank& rank) {
   auto* device = tsl::down_cast<const GpuCollectives::Device*>(rank.device);
@@ -354,29 +361,26 @@ NcclCollectives::CreateCommunicatorsWithCancel(
     return comm;
   };
 
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "CreateNcclComms",
+                               ranks.size());
+
   // Create all communicators. Each communicator is created on its own thread.
-  std::vector<std::unique_ptr<Communicator>> comms(ranks.size());
-  absl::Status status;
-  absl::once_flag once;
-  {
-    tsl::thread::ThreadPool pool(tsl::Env::Default(), "CreateCommunicators",
-                                 ranks.size());
-    for (size_t i = 0; i < ranks.size(); ++i) {
-      pool.Schedule([&, i]() {
-        absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-            NcclCommunicator::Create(stream_executors[i],
-                                     std::bind(make_comm, i), cancel,
-                                     gpu_config.async_execution);
-        if (!comm.ok()) {
-          absl::call_once(once, [&] { status = comm.status(); });
-          return;
-        }
-        comms[i] = *std::move(comm);
-      });
-    }
-  }  // pool's destructor blocks until all scheduled work is done.
-  TF_RETURN_IF_ERROR(status);
-  return comms;
+  std::vector<Future<std::unique_ptr<Communicator>>> futures(ranks.size());
+  for (size_t i = 0; i < ranks.size(); ++i) {
+    futures[i] = MakeFutureOn(*pool.AsExecutor(), [&, i] {
+      absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
+          NcclCommunicator::Create(stream_executors[i], std::bind(make_comm, i),
+                                   cancel, gpu_config.async_execution);
+      if (!comm.ok()) {
+        LOG(ERROR) << absl::StreamFormat(
+            "[%d] [rank=%v] Failed to create NCCL communicator: %s",
+            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status().ToString());
+      }
+      return Cast(std::move(comm));
+    });
+  }
+
+  return JoinFutures(absl::MakeSpan(futures)).Await();
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
@@ -421,28 +425,26 @@ NcclCollectives::SplitCommunicatorsWithCancel(
     return split_comm;
   };
 
-  std::vector<std::unique_ptr<Communicator>> split_comms(comms.size());
-  absl::Status status;
-  absl::once_flag once;
-  {
-    tsl::thread::ThreadPool pool(tsl::Env::Default(), "SplitCommunicators",
-                                 comms.size());
-    for (size_t i = 0; i < comms.size(); ++i) {
-      pool.Schedule([&, i]() {
-        absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
-            NcclCommunicator::Create(stream_executors[i],
-                                     std::bind(make_comm, i), cancel,
-                                     gpu_config.async_execution);
-        if (!comm.ok()) {
-          absl::call_once(once, [&] { status = comm.status(); });
-          return;
-        }
-        split_comms[i] = *std::move(comm);
-      });
-    }
-  }  // pool's destructor blocks until all scheduled work is done.
-  TF_RETURN_IF_ERROR(status);
-  return split_comms;
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "SplitNcclComms",
+                               comms.size());
+
+  // Create all communicators. Each communicator is created on its own thread.
+  std::vector<Future<std::unique_ptr<Communicator>>> futures(comms.size());
+  for (size_t i = 0; i < comms.size(); ++i) {
+    futures[i] = MakeFutureOn(*pool.AsExecutor(), [&, i] {
+      absl::StatusOr<std::unique_ptr<NcclCommunicator>> comm =
+          NcclCommunicator::Create(stream_executors[i], std::bind(make_comm, i),
+                                   cancel, gpu_config.async_execution);
+      if (!comm.ok()) {
+        LOG(ERROR) << absl::StreamFormat(
+            "[%d] [rank=%v] Failed to split NCCL communicator: %s",
+            DeviceOrdinal(ranks[i]), ranks[i].rank, comm.status().ToString());
+      }
+      return Cast(std::move(comm));
+    });
+  }
+
+  return JoinFutures(absl::MakeSpan(futures)).Await();
 }
 
 static absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectives() {

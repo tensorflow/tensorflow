@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/named_sharding.h"
 #include "xla/layout.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
@@ -372,7 +371,8 @@ class DeviceGroupTileAssignment : public TileAssignment {
  public:
   explicit DeviceGroupTileAssignment(int64_t num_groups,
                                      int64_t num_devices_per_group)
-      : TileAssignment({num_groups, num_devices_per_group}) {}
+      : TileAssignment(
+            absl::Span<const int64_t>{num_groups, num_devices_per_group}) {}
   explicit DeviceGroupTileAssignment(int64_t num_groups,
                                      int64_t num_devices_per_group,
                                      absl::Span<const int64_t> reshape_dims,
@@ -554,16 +554,6 @@ void ReplicateBoundaryShardingsIfIndivisible(
 absl::Status CanonicalizeLayoutAfterShardingPropagation(
     HloModule* module, absl::Span<const bool> update_output_layout,
     absl::Span<const bool> update_parameters_layout);
-
-// Returns true iff the specified hlo or sharding has a spatially partitioned
-// sharding (tiled or replicated) that can be propagated by sharding
-// propagation.
-bool IsSpatiallyPartitioned(const HloSharding& sharding);
-
-// Similar to above but takes a instruction as an input.
-inline bool IsSpatiallyPartitioned(const HloInstruction* hlo) {
-  return hlo->has_sharding() && IsSpatiallyPartitioned(hlo->sharding());
-}
 
 // Implementation for returning a improved sharding from another sharding.
 std::optional<HloSharding> ReturnImprovedShardingImpl(

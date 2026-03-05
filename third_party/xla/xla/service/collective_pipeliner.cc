@@ -689,6 +689,7 @@ struct WhileMoveInfo {
   int64_t sliced_idx;
   std::vector<int64_t> output_indices;
   HloInstruction* sink_instruction;
+  bool invalidated = false;
 };
 
 std::string ToString(const WhileMoveInfo& move_info) {
@@ -1289,7 +1290,7 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
         move_infos_[idx].collectives_to_move, move_infos_[idx].formatting_ops,
         move_infos_[idx].dynamic_update_slices, move_infos_[idx].sliced_idx,
         move_infos_[idx].output_indices);
-    move_infos_.erase(move_infos_.begin() + idx);
+    move_infos_[idx].invalidated = true;
   }
 
   // Now merge the current entry into the existing target entry.
@@ -1535,6 +1536,17 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
     }
     if (move_infos_.size() >= max_pipelining_per_loop_) {
       break;
+    }
+  }
+  if (direction ==
+      collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
+    int64_t last_index = move_infos_.size() - 1;
+    for (int64_t i = move_infos_.size() - 1; i >= 0; --i) {
+      if (move_infos_[i].invalidated) {
+        move_infos_[i] = std::move(move_infos_[last_index]);
+        move_infos_.pop_back();
+        last_index--;
+      }
     }
   }
   if (direction != collective_pipeliner_utils::PipeliningDirection::kForward) {

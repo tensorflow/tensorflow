@@ -1096,7 +1096,7 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
         auto inferred_return_shape,
         ShapeInference::InferConvolveShape(
             lhs_shape, rhs_shape, conv->feature_group_count(),
-            conv->batch_group_count(), window, dnums,
+            conv->batch_group_count(), window, dnums, conv->sparsity_config(),
             /*preferred_element_type=*/conv->shape().element_type()));
     CHECK(ShapeUtil::Compatible(result_shape, inferred_return_shape))
         << "return shape set to: " << ShapeUtil::HumanString(result_shape)

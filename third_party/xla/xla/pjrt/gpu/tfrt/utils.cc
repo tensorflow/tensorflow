@@ -548,9 +548,9 @@ std::vector<PjRtDevice*> InitializeDevices(
   return devices;
 }
 
-absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> GetIdToDeviceMap(
+absl::flat_hash_map<GlobalDeviceId, TfrtGpuDevice*> GetIdToDeviceMap(
     absl::Span<const std::unique_ptr<TfrtGpuDevice>> devices) {
-  absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> id_to_device;
+  absl::flat_hash_map<GlobalDeviceId, TfrtGpuDevice*> id_to_device;
   for (const std::unique_ptr<TfrtGpuDevice>& device : devices) {
     CHECK(id_to_device.emplace(device->global_device_id(), device.get()).second)
         << "Duplicate device id: " << device->id();

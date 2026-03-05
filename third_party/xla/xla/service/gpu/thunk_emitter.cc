@@ -217,6 +217,7 @@ absl::StatusOr<EmitCollectiveResult> EmitCollectiveKernelThunk(
       ir_emitter_context->gpu_device_info();
   const auto make_thunk = [&](absl::string_view kernel_name,
                               int32_t shmem_bytes,
+                              std::optional<LaunchDimensions> launch_dimensions,
                               std::unique_ptr<llvm::Module> local_module) {
     return EmitCollectiveResult{
         std::make_unique<CollectiveKernelThunk>(
@@ -228,6 +229,7 @@ absl::StatusOr<EmitCollectiveResult> EmitCollectiveKernelThunk(
                 .debug_options()
                 .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
             /*kernel_name=*/kernel_name,
+            /*launch_dimensions=*/launch_dimensions,
             /*shmem_bytes=*/shmem_bytes,
             /*is_multimem_enabled=*/false),
         std::move(local_module)};
@@ -235,7 +237,10 @@ absl::StatusOr<EmitCollectiveResult> EmitCollectiveKernelThunk(
   TF_ASSIGN_OR_RETURN(bool did_set_config, TrySetGpuBackendConfigForCollective(
                                                device_info, fusion_instr));
   if (!did_set_config) {
-    return make_thunk(/*kernel_name=*/"", 0, nullptr);
+    return make_thunk(/*kernel_name=*/"",
+                      /*shmem_bytes=*/0,
+                      /*launch_dimensions=*/std::nullopt,
+                      /*local_module=*/nullptr);
   }
   const HloFusionAnalysis fusion_analysis =
       HloFusionAnalysis::Create(*fusion_instr, device_info);
@@ -249,9 +254,9 @@ absl::StatusOr<EmitCollectiveResult> EmitCollectiveKernelThunk(
         result, emitter->Emit(*ir_emitter_context, *fusion_instr,
                               /*instr_override=*/instr, unmanaged_arguments));
   }
-  return make_thunk(result.kernel_thunk->kernel_name(),
-                    result.kernel_thunk->shmem_bytes(),
-                    std::move(result.llvm_module));
+  return make_thunk(
+      result.kernel_thunk->kernel_name(), result.kernel_thunk->shmem_bytes(),
+      result.kernel_thunk->launch_dimensions(), std::move(result.llvm_module));
 }
 
 // If the fusion instruction is a dynamic-slice-fusion instruction,
@@ -1559,8 +1564,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
           Thunk::ThunkInfo::WithProfileAnnotation(
               instr, ir_emitter_context_->GetNextThunkId()),
           instr, replica_count, partition_count, buffers,
-          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p(),
-          GetStreamKindForP2P(instr));
+          ir_emitter_context_->debug_options().xla_gpu_use_memcpy_local_p2p());
       GetCollectivesAsyncEvents().try_emplace(instr, thunk->async_events());
       thunks.push_back(std::move(thunk));
     } else {
@@ -1818,22 +1822,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNvshmemAsyncDone(
     return ThunkSequence{};
   }
 
-  AsyncStreamKind stream_kind = AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
-  if (is_send_recv) {
-    stream_kind = GetStreamKindForP2P(start);
-  }
-
   if (kind == Thunk::Kind::kNvshmemCollectivePermuteDone) {
     return GetThunkSequence(std::make_unique<NvshmemCollectivePermuteDoneThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(
             inst, ir_emitter_context_->GetNextThunkId()),
-        async_events_it->second, stream_kind));
+        async_events_it->second));
   }
   return GetThunkSequence(std::make_unique<NvshmemCollectiveDoneThunk>(
       kind,
       Thunk::ThunkInfo::WithProfileAnnotation(
           inst, ir_emitter_context_->GetNextThunkId()),
-      async_events_it->second, stream_kind));
+      async_events_it->second));
 }
 
 template <typename NvshmemAllReduceThunkType, typename HloAllReduceInstruction>
@@ -2031,7 +2030,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
                       GetAllocationSliceForHlo(src, {}));
   const Shape& shape = copy_start_instr->shape();
   CHECK(shape.IsTuple());
-  int host_memory_space = static_cast<int>(stream_executor::MemorySpace::kHost);
+  auto host_memory_space =
+      static_cast<int>(stream_executor::MemorySpace::kHost);
   TF_ASSIGN_OR_RETURN(bool is_dst_host_memory,
                       ShapeHasHostMemorySpace(shape, 0, host_memory_space));
   TF_ASSIGN_OR_RETURN(bool is_src_host_memory,

@@ -29,6 +29,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
@@ -100,6 +101,7 @@ SubProcess::SubProcess(int nfds)
       pid_(-1),
       exit_cb_(nullptr),
       exit_cb_tid_(-1),
+      exit_status_(0),
       exec_path_(nullptr),
       exec_argv_(nullptr) {
   // The input 'nfds' parameter is currently ignored and the internal constant
@@ -256,9 +258,16 @@ bool SubProcess::Start() {
     return false;
   }
   if ((exec_path_ == nullptr) || (exec_argv_ == nullptr)) {
-    LOG(ERROR) << "Start called without setting a program.";
+    error_text_ = "Start called without setting a program.";
+    LOG(ERROR) << error_text_;
     return false;
   }
+
+  {
+    absl::MutexLock lock(wait_mu_);
+    exit_status_ = 0;
+  }
+  error_text_ = "";
 
   // Create parent/child pipes for the specified channels and make the
   // parent-side of the pipes non-blocking.
@@ -266,7 +275,9 @@ bool SubProcess::Start() {
     if (action_[i] == ACTION_PIPE) {
       int pipe_fds[2];
       if (pipe(pipe_fds) < 0) {
-        LOG(ERROR) << "Start cannot create pipe: " << strerror(errno);
+        error_text_ =
+            absl::StrCat("Start cannot create pipe: ", strerror(errno));
+        LOG(ERROR) << error_text_;
         ClosePipes();
         return false;
       }
@@ -280,14 +291,16 @@ bool SubProcess::Start() {
       }
 
       if (fcntl(parent_pipe_[i], F_SETFL, O_NONBLOCK) < 0) {
-        LOG(ERROR) << "Start cannot make pipe non-blocking: "
-                   << strerror(errno);
+        error_text_ =
+            absl::StrCat("Start cannot make pipe non-block: ", strerror(errno));
+        LOG(ERROR) << error_text_;
         ClosePipes();
         return false;
       }
       if (fcntl(parent_pipe_[i], F_SETFD, FD_CLOEXEC) < 0) {
-        LOG(ERROR) << "Start cannot make pipe close-on-exec: "
-                   << strerror(errno);
+        error_text_ = absl::StrCat("Start cannot make pipe close-on-exec: ",
+                                   strerror(errno));
+        LOG(ERROR) << error_text_;
         ClosePipes();
         return false;
       }
@@ -298,8 +311,9 @@ bool SubProcess::Start() {
   int ret;
   ret = posix_spawn_file_actions_init(&file_actions);
   if (ret != 0) {
-    LOG(ERROR) << "Start cannot initialize POSIX file actions: "
-               << strerror(ret);
+    error_text_ = absl::StrCat("Start cannot initialize POSIX file actions: ",
+                               strerror(ret));
+    LOG(ERROR) << error_text_;
     ClosePipes();
     return false;
   }
@@ -372,8 +386,9 @@ bool SubProcess::Start() {
   if (!chdir_.empty()) {
     ret = SpawnFileActionsAddChdir(&file_actions, chdir_.c_str());
     if (ret != 0) {
-      LOG(ERROR) << "Start cannot add chdir to POSIX file actions: "
-                 << strerror(ret);
+      error_text_ = absl::StrCat(
+          "Start cannot add chdir to POSIX file actions: ", strerror(ret));
+      LOG(ERROR) << error_text_;
       posix_spawn_file_actions_destroy(&file_actions);
       ClosePipes();
       return false;
@@ -383,7 +398,9 @@ bool SubProcess::Start() {
   ret = posix_spawnp(&pid_, exec_path_, &file_actions, nullptr, exec_argv_,
                      environ);
   if (ret != 0) {
-    LOG(INFO) << "Start cannot spawn child process: " << strerror(ret);
+    error_text_ =
+        absl::StrCat("Start cannot spawn child process: ", strerror(ret));
+    LOG(INFO) << error_text_;
     ClosePipes();
     return false;
   }
@@ -419,9 +436,16 @@ bool SubProcess::Start() {
     return false;
   }
   if ((exec_path_ == nullptr) || (exec_argv_ == nullptr)) {
-    LOG(ERROR) << "Start called without setting a program.";
+    error_text_ = "Start called without setting a program.";
+    LOG(ERROR) << error_text_;
     return false;
   }
+
+  {
+    absl::MutexLock waitLock(&wait_mu_);
+    exit_status_ = 0;
+  }
+  error_text_ = "";
 
   // Create parent/child pipes for the specified channels and make the
   // parent-side of the pipes non-blocking.
@@ -429,7 +453,9 @@ bool SubProcess::Start() {
     if (action_[i] == ACTION_PIPE) {
       int pipe_fds[2];
       if (pipe(pipe_fds) < 0) {
-        LOG(ERROR) << "Start cannot create pipe: " << strerror(errno);
+        error_text_ =
+            absl::StrCat("Start cannot create pipe: ", strerror(errno));
+        LOG(ERROR) << error_text_;
         ClosePipes();
         return false;
       }
@@ -443,14 +469,16 @@ bool SubProcess::Start() {
       }
 
       if (fcntl(parent_pipe_[i], F_SETFL, O_NONBLOCK) < 0) {
-        LOG(ERROR) << "Start cannot make pipe non-blocking: "
-                   << strerror(errno);
+        error_text_ = absl::StrCat("Start cannot make pipe non-blocking: ",
+                                   strerror(errno));
+        LOG(ERROR) << error_text_;
         ClosePipes();
         return false;
       }
       if (fcntl(parent_pipe_[i], F_SETFD, FD_CLOEXEC) < 0) {
-        LOG(ERROR) << "Start cannot make pipe close-on-exec: "
-                   << strerror(errno);
+        error_text_ = absl::StrCat("Start cannot make pipe close-on-exec: ",
+                                   strerror(errno));
+        LOG(ERROR) << error_text_;
         ClosePipes();
         return false;
       }
@@ -461,7 +489,9 @@ bool SubProcess::Start() {
   // See comment (1) in the header about issues with the use of fork().
   pid_ = fork();
   if (pid_ < 0) {
-    LOG(ERROR) << "Start cannot fork() child process: " << strerror(errno);
+    error_text_ =
+        absl::StrCat("Start cannot fork() child process: ", strerror(errno));
+    LOG(ERROR) << error_text_;
     ClosePipes();
     return false;
   }
@@ -543,7 +573,8 @@ bool SubProcess::Start() {
   // Change directory if requested.
   if (!chdir_.empty()) {
     if (chdir(chdir_.c_str()) != 0) {
-      LOG(ERROR) << "chdir() failed: " << strerror(errno);
+      error_text_ = absl::StrCat("chdir() failed: ", strerror(errno));
+      LOG(ERROR) << error_text_;
       _exit(1);
     }
   }
@@ -561,98 +592,71 @@ bool SubProcess::Wait() {
   return WaitInternal(&status);
 }
 
-bool SubProcess::WaitInternal(int* status) {
-  // The waiter must release proc_mu_ while waiting in order for Kill() to work.
-  proc_mu_.Lock();
-  bool running = running_;
-  pid_t pid = pid_;
-  proc_mu_.Unlock();
-
-  bool ret = false;
-  if (running && (pid > 1)) {
-    absl::MutexLock lock(&wait_mu_);
-    pid_t cpid;
-    int cstat;
-    bool done = false;
-    while (!done) {
-      cpid = waitpid(pid, &cstat, 0);
-      if ((cpid < 0) && !retry(errno)) {
-        done = true;
-      } else if ((cpid == pid) && (WIFEXITED(cstat) || WIFSIGNALED(cstat))) {
-        *status = cstat;
-        ret = true;
-        done = true;
-      }
-    }
-  }
-
-  proc_mu_.Lock();
-  // Invariant: exit_cb_tid_ == -1 if and only if there are no callback or
-  // the exit callback has completed.
-  std::function<void(SubProcess*)> cb;
-  if ((running_ == running) && (pid_ == pid)) {
-    running_ = false;
-    pid_ = -1;
-    cb = exit_cb_;
-    if (cb != nullptr) {
-      exit_cb_tid_ = Env::Default()->GetCurrentThreadId();
-    }
-  }
-  proc_mu_.Unlock();
-  if (cb != nullptr) {
-    cb(this);
-    proc_mu_.Lock();
-    exit_cb_tid_ = -1;
-    proc_mu_.Unlock();
-  }
-  return ret;
-}
-
-bool SubProcess::CheckRunning() {
+SubProcess::WaitStatus SubProcess::WaitOrCheckRunningInternal(int flags,
+                                                              int* status) {
   pid_t pid;
   {
     absl::MutexLock lock(&proc_mu_);
     if (!running_) {
-      return false;
+      return WaitStatus::kNotRunning;
     }
     pid = pid_;
   }
 
-  int status = 0;
-  pid_t result;
-  if (!wait_mu_.TryLock()) {
-    return true;
+  if ((flags & WNOHANG) == 0) {
+    wait_mu_.Lock();
+  } else if (!wait_mu_.TryLock()) {
+    return WaitStatus::kStillRunning;
   }
-  do {
-    result = waitpid(pid, &status, WNOHANG);
-  } while (result < 0 && retry(errno));
+
+  // wait_mu_ is locked.
+
+  pid_t cpid;
+  int cstat;
+  bool done = false;    // Loop control.
+  bool exited = false;  // Did we reap the process?
+  while (!done) {
+    cpid = waitpid(pid, &cstat, flags);
+    if (cpid < 0 && retry(errno)) {
+      continue;
+    }
+    if (cpid == pid && (WIFEXITED(cstat) || WIFSIGNALED(cstat))) {
+      *status = cstat;
+      exit_status_ = cstat;
+      exited = true;
+      done = true;
+    } else if ((flags & WNOHANG) || (cpid < 0)) {
+      // Either non-blocking wait or blocking wait with non-retriable error.
+      done = true;
+      if (cpid < 0 && errno == ECHILD) {
+        // Reaped by someone else.
+        *status = 0;
+        exited = true;
+      }
+    }
+  }
+
   wait_mu_.Unlock();
 
-  if (result == 0) {
-    return true;  // Still running.
+  if (!exited) {
+    return WaitStatus::kStillRunning;  // Still running.
   }
 
+  // If we are here, process has exited.
   std::function<void(SubProcess*)> cb_to_run;
-  bool exited = false;
-
+  // Invariant: exit_cb_tid_ == -1 if and only if there are no callback or
+  // the exit callback has completed.
   {
     absl::MutexLock lock(&proc_mu_);
-    // If result == pid, and exited/signaled, and we are still the one who
-    // thinks it's running with that pid, then we are the ones reaping it.
-    if (running_ && pid_ == pid &&
-        ((result == pid && (WIFEXITED(status) || WIFSIGNALED(status))) ||
-         (result < 0 && errno == ECHILD))) {
+    if (running_ && pid_ == pid) {
       running_ = false;
-      pid_ = -1;
       cb_to_run = exit_cb_;
       if (cb_to_run != nullptr) {
         exit_cb_tid_ = Env::Default()->GetCurrentThreadId();
       }
-      exited = true;
-    } else if (result == 0) {
-      // If result was 0, but by the time we got proc_mu_, running_ became
-      // false, we should return false.
-      exited = !running_;
+    } else {
+      // Reaped by someone else between wait_mu_.Unlock() and proc_mu_.Lock().
+      return WaitStatus::kNotRunning;
     }
   }
 
@@ -662,7 +666,22 @@ bool SubProcess::CheckRunning() {
     exit_cb_tid_ = -1;
   }
 
-  return !exited;
+  return WaitStatus::kExited;
+}
+
+bool SubProcess::WaitInternal(int* status) {
+  return WaitOrCheckRunningInternal(/*flags=*/0, status) == WaitStatus::kExited;
+}
+
+bool SubProcess::running() const {
+  absl::MutexLock lock(&proc_mu_);
+  return running_;
+}
+
+bool SubProcess::CheckRunning() {
+  int status;
+  return WaitOrCheckRunningInternal(WNOHANG, &status) ==
+         WaitStatus::kStillRunning;
 }
 
 bool SubProcess::Kill(int signal) {

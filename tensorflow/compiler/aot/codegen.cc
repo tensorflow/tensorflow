@@ -39,7 +39,6 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/aot/compile.h"
-#include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/aot/thunk_proto_execution_deserializer.h"
 #include "tensorflow/compiler/tf2xla/allocator.h"
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/util/embedded_constant_buffers.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tsl/platform/casts.h"
@@ -624,7 +624,7 @@ absl::StatusOr<std::vector<xla::cpu::ThunkProto>> ExtractThunksOfKind(
 
 absl::StatusOr<std::string> GetThunkSpecificConstantAllocationsInitializers(
     const xla::cpu::CompilationResultProto& proto,
-    const EmbeddedConstantBuffers& embedded_constant_buffers) {
+    const xla::EmbeddedConstantBuffers& embedded_constant_buffers) {
   std::vector<absl::string_view> constant_buffer_accesses;
   constant_buffer_accesses.reserve(
       embedded_constant_buffers.variable_decls.size());
@@ -647,7 +647,7 @@ absl::Status ExtendRewrites(
     std::vector<std::pair<std::string, std::string>>& rewrites,
     const xla::cpu::CpuAotCompilationResult* aot_thunks,
     const MetadataResult& metadata_result, const CodegenOpts& codegen_opts,
-    const EmbeddedConstantBuffers& embedded_constant_buffers) {
+    const xla::EmbeddedConstantBuffers& embedded_constant_buffers) {
   std::vector<xla::cpu::SymbolProto> entry_point_symbols =
       ExtractEntryPointSymbols(aot_thunks->proto());
 
@@ -825,7 +825,7 @@ absl::Status ExtendRewrites(
 absl::Status GenerateHeader(
     const CodegenOpts& opts, const tf2xla::Config& config,
     const CompileResult& compile_result, const MetadataResult& metadata_result,
-    const EmbeddedConstantBuffers& embedded_constant_buffers,
+    const xla::EmbeddedConstantBuffers& embedded_constant_buffers,
     std::string* header) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
@@ -1195,7 +1195,7 @@ static std::string CreateUniqueIdentifier(const CodegenOpts& opts,
   return result;
 }
 
-absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
+absl::StatusOr<xla::EmbeddedConstantBuffers> GenerateConstantBuffersData(
     const CodegenOpts& opts, const CompileResult& compile_result) {
   auto aot_thunk_result = compile_result.aot.get();
 
@@ -1212,7 +1212,7 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
   xla::cpu::CpuExecutable* cpu_executable =
       tsl::down_cast<xla::cpu::CpuExecutable*>(executable.get());
 
-  std::vector<ConstantToEmbed> constants_to_embed;
+  std::vector<xla::ConstantToEmbed> constants_to_embed;
 
   int constant_identifier = 0;
   for (const auto& constant : cpu_executable->constants()) {
@@ -1225,7 +1225,7 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
       continue;
     }
 
-    ConstantToEmbed constant_to_embed;
+    xla::ConstantToEmbed constant_to_embed;
     constant_to_embed.SerializeIntoBuffer(
         absl::MakeSpan(constant_data_bytes_ptr, constant_size));
 
@@ -1235,8 +1235,8 @@ absl::StatusOr<EmbeddedConstantBuffers> GenerateConstantBuffersData(
     constants_to_embed.push_back(std::move(constant_to_embed));
   }
 
-  return CreateEmbeddedConstantBuffers(opts.target_triple,
-                                       absl::MakeSpan(constants_to_embed));
+  return xla::CreateEmbeddedConstantBuffers(opts.target_triple,
+                                            absl::MakeSpan(constants_to_embed));
 }
 
 absl::Status GenerateMetadata(const CodegenOpts& opts,

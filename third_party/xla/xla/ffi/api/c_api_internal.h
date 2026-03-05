@@ -78,8 +78,8 @@ typedef void* XLA_FFI_INTERNAL_ExecutionContext_Get(
 
 // Returns a pointer to the underlying `xla::ffi::ExecutionState` object which
 // allows to access typed data stored in the execution state.
-typedef void* XLA_FFI_INTERNAL_ExecutionState_Get(
-    XLA_FFI_ExecutionContext* ctx);
+typedef void* XLA_FFI_INTERNAL_ExecutionState_Get(XLA_FFI_ExecutionContext* ctx,
+                                                  XLA_FFI_ExecutionStage stage);
 
 //===----------------------------------------------------------------------===//
 // XLA:CPU specific internal APIs.

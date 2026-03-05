@@ -39,6 +39,7 @@ load("@xla//third_party/stablehlo:workspace.bzl", stablehlo = "repo")
 load("@xla//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
 load("@xla//third_party/tensorrt:workspace.bzl", tensorrt = "repo")
 load("@xla//third_party/triton:workspace.bzl", triton = "repo")
+load("@xla//third_party/xxd:workspace.bzl", xxd = "repo")
 load("@xla//tools/def_file_filter:def_file_filter_configure.bzl", "def_file_filter_configure")
 load("@xla//tools/toolchains:cpus/aarch64/aarch64_compiler_configure.bzl", "aarch64_compiler_configure")
 load("@xla//tools/toolchains:cpus/arm/arm_compiler_configure.bzl", "arm_compiler_configure")
@@ -59,7 +60,6 @@ load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "r
 load("//third_party/libwebp:workspace.bzl", libwebp = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/org_brotli:workspace.bzl", org_brotli = "repo")
-load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
@@ -97,7 +97,6 @@ def _initialize_third_party():
     nasm()
     opencl_headers()
     org_brotli()
-    pasta()
     pybind11_abseil()
     pybind11_bazel()
     raft()
@@ -116,6 +115,7 @@ def _initialize_third_party():
     tensorrt()
     nvshmem()
     triton()
+    xxd()
 
     # copybara: tsl vendor
 
@@ -173,9 +173,9 @@ def _tf_repositories():
     # LINT.IfChange(xnnpack)
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "6c25b52b7cac58f5507bc3ac023f582ab0a3d8c96dde3bab90a4a2b727218bc2",
-        strip_prefix = "XNNPACK-9d47c4a7fd08370a1d4eb191b6f01244b1240907",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/9d47c4a7fd08370a1d4eb191b6f01244b1240907.zip"),
+        sha256 = "97a53ebb239e5835cc7ba24f1aa032283f0c6fe4f963977daad29a83ad75d9a0",
+        strip_prefix = "XNNPACK-262e13f37afdef03ed1b8ad7d99055b42731307a",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/262e13f37afdef03ed1b8ad7d99055b42731307a.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -407,7 +407,10 @@ def _tf_repositories():
     maybe(
         tf_http_archive,
         name = "com_google_protobuf",
-        patch_file = ["@xla//third_party/protobuf:protobuf.patch"],
+        patch_file = [
+            "@xla//third_party/protobuf:protobuf.patch",
+            "@xla//third_party/protobuf:protobuf_arena.patch",
+        ],
         sha256 = "6e09bbc950ba60c3a7b30280210cd285af8d7d8ed5e0a6ed101c72aff22e8d88",
         strip_prefix = "protobuf-6.31.1",
         urls = tf_mirror_urls("https://github.com/protocolbuffers/protobuf/archive/refs/tags/v6.31.1.zip"),
@@ -468,13 +471,13 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_grpc_grpc",
-        sha256 = "dd6a2fa311ba8441bbefd2764c55b99136ff10f7ea42954be96006a2723d33fc",
-        strip_prefix = "grpc-1.74.0",
+        sha256 = "e2ace790a5f2d0f83259d1390a816a33b013ea34df2e86084d927e58daa4c5d9",
+        strip_prefix = "grpc-1.78.0",
         system_build_file = "//third_party/systemlibs:grpc.BUILD",
         patch_file = [
             "@xla//third_party/grpc:grpc.patch",
         ],
-        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.74.0.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/grpc/grpc/archive/refs/tags/v1.78.0.tar.gz"),
     )
 
     tf_http_archive(

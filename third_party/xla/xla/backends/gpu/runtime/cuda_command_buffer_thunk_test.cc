@@ -78,7 +78,7 @@ se::StreamExecutor* GpuExecutor() {
 
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
-    CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+    CommandExecutor::SynchronizationMode::kSerialize;
 
 }  // namespace
 
@@ -158,8 +158,8 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
   commands.Emplace<CuDnnCmd>(
       args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());

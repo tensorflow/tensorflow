@@ -59,10 +59,13 @@ namespace op = xla::testing::opcode_matchers;
 
 using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
+using ::testing::AllOf;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::Gt;
 using ::testing::HasSubstr;
+using ::testing::Key;
 using ::testing::Not;
 using ::testing::Pair;
 using ::testing::Property;
@@ -160,6 +163,7 @@ class RecomputeAndCompressHloRematerializationTest
       int64_t memory_limit_bytes, HloModule* module, int64_t min_remat_size = 0,
       HloRematerialization::RematAlgorithm remat_algorithm =
           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+      int block_size_limit = 1,
       absl::AnyInvocable<absl::Status(HloInstruction*, HloInstruction*)>
           on_rematerialized = nullptr) {
     TF_EXPECT_OK(verifier().Run(module).status());
@@ -184,9 +188,9 @@ class RecomputeAndCompressHloRematerializationTest
     auto shape_size_func = [](const Shape& shape) { return ByteSizeOf(shape); };
     HloCostAnalysis cost_analysis(shape_size_func);
     HloRematerialization::Options options(
-        cost_analysis, config, memory_limit_bytes,
-        /*block_size_limit=*/1, /*block_rematerialization_factor=*/1,
-        min_remat_size, /*compact_shape_function=*/nullptr,
+        cost_analysis, config, memory_limit_bytes, block_size_limit,
+        /*block_rematerialization_factor=*/1, min_remat_size,
+        /*compact_shape_function=*/nullptr,
         /*host_memory_offload_config=*/std::nullopt,
         /*async_computation_parallelism=*/{},
         /*remat_algorithm=*/remat_algorithm);
@@ -1863,6 +1867,7 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
           /*min_remat_size=*/0,
           /*remat_algorithm=*/
           HloRematerialization::RematAlgorithm::kAlwaysRemat,
+          /*block_size_limit=*/1,
           /*on_rematerialized=*/std::move(rematerialization_callback)));
   EXPECT_TRUE(changed);
 
@@ -1929,6 +1934,13 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
   %op_6 = f32[16384]{0} add(%op_3, %op_5)
   %f4651 = f32[16384]{0} add(%constant_0, %constant_1)
   %f4653 = f32[16384]{0} add(%constant_0, %constant_1)
+  %bitcast_f4651_f16 = f16[32768]{0} bitcast(%f4651)
+  %bitcast_f4653_f16 = f16[32768]{0} bitcast(%f4653)
+  %bitcast_f4653_f16_2 = f16[32768]{0} bitcast(%f4653)
+  %f16_f_sum = f16[32768]{0} add(%bitcast_f4651_f16, %bitcast_f4651_f16)
+  %f32_f_sum_bitcast = f32[16384]{0} bitcast(%f16_f_sum)
+  %f16_f_sum_2 = f16[32768]{0} add(%bitcast_f4653_f16_2, %bitcast_f4653_f16_2)
+  %f32_f_sum_bitcast_2 = f32[16384]{0} bitcast(%f16_f_sum_2)
   %tan_res = f32[1024]{0} slice(%op_6), slice={[0:1024]}
   %add_tan_res = f32[1024]{0} add(%tan_res, %tan_res)
   %add_tan_res_2 = f32[1024]{0} add(%add_tan_res, %add_tan_res)
@@ -1945,42 +1957,54 @@ ENTRY %entry (param.0: f32[], param.1: f32[]) -> f32[1024] {
   %res_3_2 = f32[1024]{0} add(%constant_source_8_user_2.remat, %res_3)
   %constant_x = f32[1024]{0} broadcast(%constant_source_8), dimensions={}
   %constant_x_and_res_param_add = f32[1024]{0} add(%constant_x, %res_param_add.remat)
+  %slice_f_sum_2 = f32[1024]{0} slice(%f32_f_sum_bitcast_2), slice={[0:1024]}
   %res_4 = f32[1024]{0} add(%res_3_2, %constant_x_and_res_param_add)
-  %tan_f4651 = f32[1024]{0} slice(%f4651), slice={[0:1024]}
-  %res_5 = f32[1024]{0} add(%tan_f4651, %res_4)
+  %slice_f_sum = f32[1024]{0} slice(%f32_f_sum_bitcast), slice={[0:1024]}
+  %tan_f4651 = f32[1024]{0} slice(%slice_f_sum), slice={[0:1024]}
   %tan_f4653 = f32[1024]{0} slice(%f4653), slice={[0:1024]}
+  %res_5 = f32[1024]{0} add(%tan_f4651, %res_4)
   %res_6 = f32[1024]{0} add(%tan_f4653, %res_5)
-  ROOT %res = f32[1024]{0} add(%res_3, %res_6)
+  %res_7 = f32[1024]{0} add(%slice_f_sum, %res_6)
+  %res_8 = f32[1024]{0} add(%slice_f_sum_2, %res_7)
+  ROOT %res = f32[1024]{0} add(%res_3, %res_8)
 }
 )"));
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed, RunHloRematerialization(
                         /*memory_limit_bytes=*/25 * 1024, module.get(),
                         /*min_remat_size=*/0,
-                        HloRematerialization::RematAlgorithm::kPeakPriority));
+                        HloRematerialization::RematAlgorithm::kPeakPriority,
+                        /*block_size_limit=*/32));
 
   EXPECT_TRUE(changed);
   EXPECT_OK(verifier().Run(module.get()).status());
 
-  absl::Span<HloInstruction* const> instructions_in_order =
-      module->schedule().sequence(module->entry_computation()).instructions();
-  EXPECT_THAT(
-      instructions_in_order,
-      AllOf(Contains(Property(&HloInstruction::name, StrEq("f4653.remat"))),
-            Contains(Property(&HloInstruction::name, StrEq("f4651.remat"))),
-            Contains(Property(&HloInstruction::name, StrEq("tan_f4653")))));
-  // Check that f4653.remat is placed immediately before tan_f4653 instead of
-  // being placed in the old position of f.4651, which was killed by remat.
-  EXPECT_THAT(instructions_in_order,
-              ::testing::Truly([](absl::Span<HloInstruction* const> insts) {
-                for (size_t i = 0; i + 1 < insts.size(); ++i) {
-                  if (insts[i]->name() == "f4653.remat") {
-                    return insts[i + 1]->name() == "tan_f4653";
-                  }
-                }
-                return false;
-              }))
-      << "f4653.remat is not immediately followed by tan_f4653";
+  absl::flat_hash_map<std::string, int> instruction_name_to_index;
+  int instruction_index = 0;
+  for (HloInstruction* instruction : module->schedule()
+                                         .sequence(module->entry_computation())
+                                         .instructions()) {
+    instruction_name_to_index[instruction->name()] = instruction_index;
+    instruction_index++;
+  }
+
+  EXPECT_THAT(instruction_name_to_index,
+              AllOf(Contains(Key("f4653.remat")), Contains(Key("f4651.remat")),
+                    Contains(Key("tan_f4653")), Contains(Key("op_1.remat")),
+                    Contains(Key("op_6.remat"))));
+
+  // Check that f4653.remat is placed immediately before a bitcast using it
+  // instead of being placed in the old position of f.4651, which was killed by
+  // rematerialization.
+  EXPECT_THAT(instruction_name_to_index["f4653.remat"],
+              Gt(instruction_name_to_index["f4651.remat"]));
+  EXPECT_THAT(instruction_name_to_index["bitcast.remat.2"],
+              Eq(instruction_name_to_index["f4653.remat"] + 1));
+  EXPECT_THAT(module->entry_computation()
+                  ->GetInstructionWithName("bitcast.remat.2")
+                  ->operand(0)
+                  ->name(),
+              Eq("f4653.remat"));
 }
 
 TEST_F(RecomputeAndCompressHloRematerializationTest,

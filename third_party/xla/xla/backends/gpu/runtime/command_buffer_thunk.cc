@@ -174,7 +174,8 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
       /*host_to_device_stream=*/nullptr,
       /*send_device_memory_function=*/nullptr,
       /*recv_device_memory_function=*/nullptr, params.ffi_execution_context,
-      /*additional_compute_streams=*/{}, /*mock_collectives=*/false);
+      /*additional_compute_streams=*/{}, params.execution_scoped_state,
+      /*mock_collectives=*/false);
 
   // If command buffer is in `kCreate` state it means that command buffer
   // sequence was never recorded into it. We initialize all command buffers
@@ -379,8 +380,7 @@ void CommandBufferThunk::EvictCommandBuffers() {
   }
 }
 
-absl::Status CommandBufferThunk::WalkNested(
-    absl::FunctionRef<absl::Status(Thunk*)> callback) {
+absl::Status CommandBufferThunk::WalkNested(Walker callback) {
   if (thunks_ != nullptr) {
     TF_RETURN_IF_ERROR(thunks_->Walk(callback));
   }

@@ -910,7 +910,9 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
 // `bits_per_element` must be 2 or 4, or this function will crash.
 inline void PackIntN(int bits_per_element, absl::Span<const char> input,
                      absl::Span<char> output) {
-  if (bits_per_element == 2) {
+  if (bits_per_element == 1) {
+    PackIntN<1>(input, output);
+  } else if (bits_per_element == 2) {
     PackIntN<2>(input, output);
   } else if (bits_per_element == 4) {
     PackIntN<4>(input, output);
@@ -964,7 +966,9 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
 // `bits_per_element` must be 2 or 4, or this function will crash.
 inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
                        absl::Span<char> output) {
-  if (bits_per_element == 2) {
+  if (bits_per_element == 1) {
+    UnpackIntN<1>(input, output);
+  } else if (bits_per_element == 2) {
     UnpackIntN<2>(input, output);
   } else if (bits_per_element == 4) {
     UnpackIntN<4>(input, output);

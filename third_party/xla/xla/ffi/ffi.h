@@ -21,6 +21,7 @@ limitations under the License.
        See README.md for more details.
 #endif  // XLA_FFI_API_FFI_H_
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -676,18 +677,25 @@ struct CtxDecoding<UserData<T>> {
 //===----------------------------------------------------------------------===//
 
 // A type tag for automatic state decoding passed via the execution context.
-template <typename T>
+template <typename T, ExecutionStage stage = ExecutionStage::kInstantiate>
 struct State {};
 
 template <typename T>
-struct CtxDecoding<State<T>> {
+using Prepared = State<T, ExecutionStage::kPrepare>;
+
+template <typename T>
+using Initialized = State<T, ExecutionStage::kInitialize>;
+
+template <typename T, ExecutionStage stage>
+struct CtxDecoding<State<T, stage>> {
   using Type = T*;
 
   static std::optional<Type> Decode(const XLA_FFI_Api* api,
                                     XLA_FFI_ExecutionContext* ctx,
                                     DiagnosticEngine& diagnostic) {
     auto* execution_state = reinterpret_cast<const ExecutionState*>(
-        api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(ctx));
+        api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(
+            ctx, static_cast<XLA_FFI_ExecutionStage>(stage)));
 
     if (execution_state == nullptr) {
       return diagnostic.Emit(
@@ -695,7 +703,7 @@ struct CtxDecoding<State<T>> {
     }
 
     absl::StatusOr<void*> state =
-        execution_state->Get(internal::GetTypeId<T>(api));
+        *execution_state->Get(internal::GetTypeId<T>(api));
     if (!state.ok()) {
       return diagnostic.Emit("Failed to get state from execution context: ")
              << state.status().message();
@@ -721,9 +729,11 @@ struct ResultEncoding<stage, absl::Status> {
   }
 };
 
-template <typename T>
-struct ResultEncoding<ExecutionStage::kInstantiate,
-                      absl::StatusOr<std::unique_ptr<T>>> {
+template <ExecutionStage stage, typename T>
+struct ResultEncoding<stage, absl::StatusOr<std::unique_ptr<T>>> {
+  static_assert(stage != ExecutionStage::kExecute,
+                "Execute stage doesn't support setting a state");
+
   static XLA_FFI_TypeId state_type_id(const XLA_FFI_Api* api) {
     return XLA_FFI_TypeId{internal::GetTypeId<T>(api).value()};
   }
@@ -733,7 +743,10 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
                                absl::StatusOr<std::unique_ptr<T>> state) {
     if (ABSL_PREDICT_TRUE(state.ok())) {
       auto* execution_state = reinterpret_cast<ExecutionState*>(
-          api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(ctx));
+          api->internal_api->XLA_FFI_INTERNAL_ExecutionState_Get(
+              ctx, static_cast<XLA_FFI_ExecutionStage>(stage)));
+      DCHECK(execution_state) << "ExecutionState must be set";
+
       absl::Status status =
           execution_state->Set(internal::GetTypeId<T>(api), state->release());
       if (ABSL_PREDICT_TRUE(status.ok())) {

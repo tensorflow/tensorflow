@@ -104,6 +104,10 @@ cc_library(
     name = "device_address_handle",
     srcs = ["device_address_handle.cc"],
     hdrs = ["device_address_handle.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":device_address",
         ":stream_executor_h",
@@ -386,12 +390,20 @@ cc_library(
 )
 
 cc_library(
+    name = "platform_id",
+    hdrs = ["platform_id.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "platform",
     srcs = ["platform.cc"],
     hdrs = ["platform.h"],
     deps = [
         ":device_description",
-        "@com_google_absl//absl/base",
+        ":platform_id",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",

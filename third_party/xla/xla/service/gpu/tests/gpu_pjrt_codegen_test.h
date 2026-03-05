@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -62,8 +64,14 @@ class GpuPjRtCodegenTest : public HloPjRtGpuTestBase {
   absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
       std::unique_ptr<HloModule> hlo_module, bool run_optimization_passes);
 
-  // A thin wrapper around CompileAndVerifyIr that parses `hlo_text` to create
-  // an HLO module.
+  // A thin wrapper around CompileAndVerifyIr.
+  absl::Status CompileAndVerifyIr(std::unique_ptr<HloModule> module,
+                                  absl::string_view expected_llvm_ir,
+                                  bool match_optimized_ir = false,
+                                  bool run_optimization_passes = true);
+
+  // A thin wrapper around CompileAndVerifyIr that takes a string instead of a
+  // HloModule.
   absl::Status CompileAndVerifyIr(absl::string_view hlo_text,
                                   absl::string_view expected_llvm_ir,
                                   bool match_optimized_ir = false,

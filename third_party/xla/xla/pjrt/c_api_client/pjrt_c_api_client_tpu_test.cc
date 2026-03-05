@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,19 +27,32 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
+#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api_abi_version_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_callback_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/plugin/xla_tpu/xla_tpu_pjrt_client.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -144,10 +159,10 @@ TEST(PjRtCApiTopologyDescriptionTpuTest, CoreCountOfDefaultTypePerProcess) {
 TEST(PjRtCApiTopologyDescriptionTpuTest, ProcessIds) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtTopologyDescription> topology,
                           GetTpuTopology());
-  TF_ASSERT_OK_AND_ASSIGN(PjRtIdContainer<PjRtProcessId> process_ids,
+  TF_ASSERT_OK_AND_ASSIGN(PjRtIdContainer<ProcessId> process_ids,
                           topology->ProcessIds());
-  EXPECT_THAT(process_ids, ElementsAre(PjRtProcessId(0), PjRtProcessId(1),
-                                       PjRtProcessId(2), PjRtProcessId(3)));
+  EXPECT_THAT(process_ids, ElementsAre(ProcessId(0), ProcessId(1), ProcessId(2),
+                                       ProcessId(3)));
 }
 
 TEST(PjRtCApiTopologyDescriptionTpuTest,
@@ -155,20 +170,19 @@ TEST(PjRtCApiTopologyDescriptionTpuTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtTopologyDescription> topology,
                           GetTpuTopology());
   TF_ASSERT_OK_AND_ASSIGN(
-      PjRtIdContainer<PjRtGlobalDeviceId> device_ids,
-      topology->LogicalDeviceOfDefaultTypeIdsOnProcess(PjRtProcessId(0)));
-  EXPECT_THAT(device_ids,
-              ElementsAre(PjRtGlobalDeviceId(0), PjRtGlobalDeviceId(1),
-                          PjRtGlobalDeviceId(2), PjRtGlobalDeviceId(3),
-                          PjRtGlobalDeviceId(8), PjRtGlobalDeviceId(9),
-                          PjRtGlobalDeviceId(10), PjRtGlobalDeviceId(11)));
+      PjRtIdContainer<GlobalDeviceId> device_ids,
+      topology->LogicalDeviceOfDefaultTypeIdsOnProcess(ProcessId(0)));
+  EXPECT_THAT(device_ids, ElementsAre(GlobalDeviceId(0), GlobalDeviceId(1),
+                                      GlobalDeviceId(2), GlobalDeviceId(3),
+                                      GlobalDeviceId(8), GlobalDeviceId(9),
+                                      GlobalDeviceId(10), GlobalDeviceId(11)));
 }
 
 TEST(PjRtCApiTopologyDescriptionTpuTest, ProcessIdAndIndexOnProcessForChip) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtTopologyDescription> topology,
                           GetTpuTopology());
-  EXPECT_THAT(topology->ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId(2)),
-              IsOkAndHolds(Pair(PjRtProcessId(1), 0)));
+  EXPECT_THAT(topology->ProcessIdAndIndexOnProcessForChip(GlobalChipId(2)),
+              IsOkAndHolds(Pair(ProcessId(1), 0)));
 }
 
 TEST(PjRtCApiTopologyDescriptionTpuTest,
@@ -176,15 +190,15 @@ TEST(PjRtCApiTopologyDescriptionTpuTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtTopologyDescription> topology,
                           GetTpuTopology());
   EXPECT_THAT(topology->ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
-                  PjRtGlobalDeviceId(3)),
-              IsOkAndHolds(Pair(PjRtProcessId(0), 3)));
+                  GlobalDeviceId(3)),
+              IsOkAndHolds(Pair(ProcessId(0), 3)));
 }
 
 TEST(PjRtCApiTopologyDescriptionTpuTest, ProcessCoordFromId) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtTopologyDescription> topology,
                           GetTpuTopology());
   TF_ASSERT_OK_AND_ASSIGN(PjRtDeviceDimensions coords,
-                          topology->ProcessCoordFromId(PjRtProcessId(2)));
+                          topology->ProcessCoordFromId(ProcessId(2)));
   EXPECT_THAT(coords, (PjRtDeviceDimensions{0, 1, 0}));
 }
 
@@ -192,7 +206,7 @@ TEST(PjRtCApiTopologyDescriptionTpuTest, ChipIdFromCoord) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtTopologyDescription> topology,
                           GetTpuTopology());
   EXPECT_THAT(topology->ChipIdFromCoord({1, 0, 0}),
-              IsOkAndHolds(PjRtGlobalChipId(1)));
+              IsOkAndHolds(GlobalChipId(1)));
 }
 
 TEST(PjRtCApiTopologyDescriptionTpuTest,
@@ -201,7 +215,7 @@ TEST(PjRtCApiTopologyDescriptionTpuTest,
                           GetTpuTopology());
   EXPECT_THAT(topology->LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
                   {1, 1, 0}, 0),
-              IsOkAndHolds(PjRtGlobalDeviceId(10)));
+              IsOkAndHolds(GlobalDeviceId(10)));
 }
 
 TEST(PjRtCApiTopologyDescriptionTpuTest,
@@ -211,7 +225,7 @@ TEST(PjRtCApiTopologyDescriptionTpuTest,
   TF_ASSERT_OK_AND_ASSIGN(
       const PjRtDeviceDimensionsAndInt& result,
       topology->ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-          PjRtGlobalDeviceId(10)));
+          GlobalDeviceId(10)));
   EXPECT_THAT(absl::MakeConstSpan(result.first.data(), result.first.size()),
               ElementsAre(1, 1, 0));
   EXPECT_EQ(result.second, 0);
@@ -314,6 +328,170 @@ ENTRY Identity() -> f32[2, 2] {
 
   EXPECT_OK(runtime_abi_version->IsCompatibleWith(
       *executable_abi_version_from_proto));
+}
+
+TEST(PjRtCApiClientTpuTest, DeviceAttributes) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+
+  ASSERT_FALSE(client->addressable_devices().empty());
+  for (PjRtDevice* device : client->addressable_devices()) {
+    const auto& attributes = device->Attributes();
+    EXPECT_TRUE(attributes.contains("physical_location"));
+  }
+}
+
+TEST(PjRtCApiClientTpuTest, GetParameterAndOutputLayouts) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  auto computation = builder.Build(sum).value();
+
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                          client->CompileAndLoad(computation, options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::shared_ptr<const PjRtLayout>> parameter_layouts,
+      executable->GetParameterLayouts());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::shared_ptr<const PjRtLayout>> output_layouts,
+      executable->GetOutputLayouts());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      xla::Layout expected_layout,
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+
+  // We expect parameter and output layouts to be a default layout because we
+  // didn't specify any layouts in the HLO.
+  EXPECT_EQ(parameter_layouts.size(), 2);
+  for (const std::shared_ptr<const PjRtLayout>& parameter_layout :
+       parameter_layouts) {
+    EXPECT_EQ(parameter_layout->xla_layout(), expected_layout);
+  }
+  EXPECT_EQ(output_layouts.size(), 1);
+  for (const std::shared_ptr<const PjRtLayout>& output_layout :
+       output_layouts) {
+    EXPECT_EQ(output_layout->xla_layout(), expected_layout);
+  }
+}
+
+TEST(PjRtCApiClientTpuTest, CompileMlirModule) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+  constexpr char kProgram[] = "func.func @main() {return}";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                          client->Compile(*module, options));
+  EXPECT_NE(executable.get(), nullptr);
+}
+
+TEST(PjRtCApiClientTpuTest, LoadExecutable) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+  constexpr char kProgram[] = "func.func @main() {return}";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                          client->Compile(*module, options));
+  ASSERT_NE(executable.get(), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+      client->Load(std::move(executable), LoadOptions{}));
+  ASSERT_NE(loaded_executable.get(), nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+      loaded_executable->Execute(/*argument_handles=*/{{}}, ExecuteOptions()));
+  ASSERT_EQ(results.size(), 1);
+  EXPECT_EQ(results[0].size(), 0);
+}
+
+TEST(PjRtCApiClientTpuTest, LoadSameExecutableTwice) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+  constexpr char kProgram[] = "func.func @main() {return}";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  CompileOptions options;
+  TF_ASSERT_OK_AND_ASSIGN(const std::shared_ptr<PjRtExecutable> executable,
+                          client->Compile(*module, options));
+  ASSERT_NE(executable.get(), nullptr);
+
+  // Load the executable twice.
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+        client->Load(executable, LoadOptions{}));
+    ASSERT_NE(loaded_executable.get(), nullptr);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+        loaded_executable->Execute(/*argument_handles=*/{{}},
+                                   ExecuteOptions()));
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].size(), 0);
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<PjRtLoadedExecutable> loaded_executable,
+        client->Load(executable, LoadOptions{}));
+    ASSERT_NE(loaded_executable.get(), nullptr);
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> results,
+        loaded_executable->Execute(/*argument_handles=*/{{}},
+                                   ExecuteOptions()));
+    ASSERT_EQ(results.size(), 1);
+    EXPECT_EQ(results[0].size(), 0);
+  }
+}
+
+TEST(PjRtCApiClientTpuTest, Bitcast) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+
+  std::vector<int32_t> data{3};
+  Shape shape = ShapeUtil::MakeShape(S32, {});
+  TF_ASSERT_OK_AND_ASSIGN(
+      *shape.mutable_layout(),
+      client->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+
+  Shape new_shape = ShapeUtil::MakeShape(S32, {1});
+  TF_ASSERT_OK_AND_ASSIGN(*new_shape.mutable_layout(),
+                          client->GetDefaultLayout(new_shape.element_type(),
+                                                   new_shape.dimensions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostBuffer(
+          data.data(), shape.element_type(), shape.dimensions(),
+          /*byte_strides=*/std::nullopt,
+          PjRtClient::HostBufferSemantics::kImmutableOnlyDuringCall, nullptr,
+          client->memory_spaces()[0], /*device_layout=*/nullptr));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto bitcast_buffer,
+      buffer->Bitcast(new_shape.element_type(), new_shape.dimensions(),
+                      &new_shape.layout()));
+  EXPECT_TRUE(buffer->IsDeleted());
+  ASSERT_EQ(bitcast_buffer->on_device_shape(), new_shape);
+
+  auto future = bitcast_buffer->ToLiteral();
+  TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
+  std::vector<int32_t> expected = {3};
+  EXPECT_EQ(shared_literal->data<int32_t>(), expected);
 }
 
 }  // namespace

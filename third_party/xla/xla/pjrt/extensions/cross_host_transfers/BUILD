@@ -66,7 +66,6 @@ xla_test(
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "//xla/pjrt/distributed",
         "//xla/pjrt/distributed:client",
-        "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/distributed:service",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:errors",

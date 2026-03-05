@@ -850,6 +850,34 @@ message ConvolutionDimensionNumbers {
   // Next = 13
 }
 
+// Describes the structured sparsity configuration for a convolution's operands.
+//
+// Structured sparsity is a type of sparsity where the zero elements are placed
+// in a structured way, such that they can be represented by a compact encoding.
+// A M:N structured sparsity is a sparsity where for every N elements, there are
+// M non-zero elements.
+message SparsityConfig {
+  // Describes the structured sparsity configuration for a tensor.
+  message TensorSparsityConfig {
+    // The number of non-zero elements in each block (M in M:N).
+    int64 num_non_zero = 1;
+    // The size of the sparsity block (N in M:N).
+    int64 block_size = 2;
+    // The dimension along which the sparsity is applied.
+    int64 dimension = 3;
+    // The stride of the sparsity.
+    // - If it is 1, every N consecutive elements (i.e., 0,1,2,...,N-1) are a
+    //   sparsity block.
+    // - If it is k, every N elements with distance k (i.e., 0,k,2k,...,(N-1)k)
+    //   are a sparsity block.
+    int64 stride = 4;
+  }
+  // Sparsity config for the LHS operand.
+  TensorSparsityConfig lhs = 1;
+  // Sparsity config for the RHS operand.
+  TensorSparsityConfig rhs = 2;
+}
+
 enum PaddingType {
   PADDING_INVALID = 0;
   PADDING_VALID = 1;  // Only valid portion of the base are covered.

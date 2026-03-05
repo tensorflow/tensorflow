@@ -105,7 +105,7 @@ std::unique_ptr<Thunk> WrapWithChecksumThunk(
     return thunk;
   }
 
-  std::vector<std::unique_ptr<Thunk>> thunk_and_checks;
+  ThunkSequence thunk_and_checks;
   if (!buffers_to_check_before.empty()) {
     auto buffer_debug_before_thunk =
         std::make_unique<BuffersDebugChecksumThunk>(
@@ -216,7 +216,8 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CreateBufferDebugDumpThunk(
 }
 
 }  // namespace
-absl::Status RunChecksumPassInternal(SequentialThunk* root_thunk,
+
+absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
                                      const DebugOptions& debug_options,
                                      const HloModule* absl_nonnull hlo_module,
                                      ThunkPassBufferAllocator& allocator) {
@@ -235,22 +236,25 @@ absl::Status RunChecksumPassInternal(SequentialThunk* root_thunk,
       CreateBufferDebugDumpThunk(metadata_store, log_slice, hlo_module));
 
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  TF_RETURN_IF_ERROR(
-      root_thunk->TransformAllNestedThunks([&](std::unique_ptr<Thunk> thunk) {
-        if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-          return thunk;
-        }
-        VLOG(1) << "Wrapping with checksum thunk";
-        return WrapWithChecksumThunk(
-            std::move(thunk), log_slice,
-            /*predecessor_thunk=*/*buffer_debug_init_thunk,
-            /*successor_thunk=*/*buffer_debug_dump_thunk, metadata_store);
-      }));
+  auto transform_callback = [&](std::unique_ptr<Thunk> thunk)
+      -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
+    VLOG(1) << "Wrapping with checksum thunk";
+    return WrapWithChecksumThunk(std::move(thunk), log_slice,
+                                 /*predecessor_thunk=*/*buffer_debug_init_thunk,
+                                 /*successor_thunk=*/*buffer_debug_dump_thunk,
+                                 metadata_store);
+  };
 
-  ThunkSequence& thunks = root_thunk->thunks();
-  thunks.reserve(thunks.size() + 2);
-  thunks.insert(thunks.begin(), std::move(buffer_debug_init_thunk));
-  thunks.push_back(std::move(buffer_debug_dump_thunk));
+  TF_RETURN_IF_ERROR(thunk_sequence->TransformNested(transform_callback));
+
+  thunk_sequence->reserve(thunk_sequence->size() + 2);
+  thunk_sequence->insert(thunk_sequence->begin(),
+                         std::move(buffer_debug_init_thunk));
+  thunk_sequence->push_back(std::move(buffer_debug_dump_thunk));
+
   return absl::OkStatus();
 }
 

@@ -86,9 +86,19 @@ static void* XLA_FFI_INTERNAL_ExecutionContext_Get(
   return const_cast<ExecutionContext*>(ctx->execution_context);  // NOLINT
 }
 
-static void* XLA_FFI_INTERNAL_ExecutionState_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ExecutionState*>(ctx->execution_state);  // NOLINT
+static void* XLA_FFI_INTERNAL_ExecutionState_Get(XLA_FFI_ExecutionContext* ctx,
+                                                 XLA_FFI_ExecutionStage stage) {
+  switch (stage) {
+    case XLA_FFI_ExecutionStage_INSTANTIATE:
+      return ctx->state_context.instantiate;
+    case XLA_FFI_ExecutionStage_PREPARE:
+      return ctx->state_context.prepare;
+    case XLA_FFI_ExecutionStage_INITIALIZE:
+      return ctx->state_context.initialize;
+    case XLA_FFI_ExecutionStage_EXECUTE:
+      DCHECK(false) << "Execution stage doesn't have a state";
+      return nullptr;
+  }
 }
 
 //===----------------------------------------------------------------------===//

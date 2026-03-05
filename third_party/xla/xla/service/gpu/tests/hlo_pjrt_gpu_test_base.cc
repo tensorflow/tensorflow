@@ -18,26 +18,22 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/log/check.h"
 #include "absl/memory/memory.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/service/compiler.h"
+#include "xla/service/pjrt_gpu_utils.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/aot_utils.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -61,38 +57,6 @@ HloRunnerAgnosticTestBaseOptions BuildOptions(HloPjRtTestBaseOptions options) {
   new_options.swallow_execution_errors =
       HasPjRtAotAwareSwallowExecutionErrors();
   return new_options;
-}
-
-absl::StatusOr<stream_executor::GpuTargetConfigProto> GetTargetConfigProto(
-    PjRtClient* const client) {
-  ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
-                   client->GetTopologyDescription());
-  auto it = topology->Attributes().find("target_config");
-  if (it == topology->Attributes().end()) {
-    return absl::InvalidArgumentError(
-        "Topology description does not contain target config");
-  }
-  if (!std::holds_alternative<std::string>(it->second)) {
-    return absl::InvalidArgumentError(
-        "Target config is not a string in topology description");
-  }
-  stream_executor::GpuTargetConfigProto target_config_proto;
-  if (!tsl::protobuf::TextFormat::ParseFromString(
-          std::get<std::string>(it->second), &target_config_proto)) {
-    return absl::InvalidArgumentError(
-        "Failed to parse target config from topology description");
-  }
-  return target_config_proto;
-}
-
-GpuTargetConfig GetGpuTargetConfig(PjRtClient* const client) {
-  absl::StatusOr<stream_executor::GpuTargetConfigProto> target_config_proto =
-      GetTargetConfigProto(client);
-  CHECK_OK(target_config_proto);
-  absl::StatusOr<GpuTargetConfig> target_config =
-      GpuTargetConfig::FromProto(*target_config_proto);
-  CHECK_OK(target_config);
-  return *target_config;
 }
 
 std::unique_ptr<Compiler> GetGpuCompiler() {

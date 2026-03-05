@@ -645,33 +645,8 @@ BatchResourceBase::GetBatcherQueueOptions(
     int64_t total_allowed_enqueued_entries =
         effective_max_execution_batch_size * max_enqueued_batches;
 
-    // TODO(b/483419412): Add testing coverage for this logic.
-
-    // The total enqueued batch size is split across criticality bands to
-    // provide isolation and prioritize higher-criticality requests.
-    // CRITICAL_PLUS traffic is allocated 1/2 of total capacity, CRITICAL 1/4,
-    // SHEDDABLE_PLUS 1/8, and SHEDDABLE 1/16. This split ensures higher
-    // priority traffic can be buffered more than lower priority traffic,
-    // preventing starvation of lower priority requests.
-    std::map<tsl::criticality::Criticality, size_t> per_criticality_queue_size;
-    per_criticality_queue_size[tsl::criticality::Criticality::kCriticalPlus] =
-        std::max(
-            total_allowed_enqueued_entries / kCriticalPlusCapacityFractionDenom,
-            static_cast<int64_t>(1));
-    per_criticality_queue_size[tsl::criticality::Criticality::kCritical] =
-        std::max(
-            total_allowed_enqueued_entries / kCriticalCapacityFractionDenom,
-            static_cast<int64_t>(1));
-    per_criticality_queue_size[tsl::criticality::Criticality::kSheddablePlus] =
-        std::max(total_allowed_enqueued_entries /
-                     kSheddablePlusCapacityFractionDenom,
-                 static_cast<int64_t>(1));
-    per_criticality_queue_size[tsl::criticality::Criticality::kSheddable] =
-        std::max(
-            total_allowed_enqueued_entries / kSheddableCapacityFractionDenom,
-            static_cast<int64_t>(1));
-    batcher_queue_options.priority_aware_scheduler_options
-        .per_criticality_queue_size = per_criticality_queue_size;
+    batcher_queue_options.priority_aware_scheduler_options.max_queue_depth =
+        std::max(total_allowed_enqueued_entries, static_cast<int64_t>(1));
   }
   batcher_queue_options.high_priority_queue_options.input_batch_size_limit =
       max_batch_size;
@@ -903,8 +878,17 @@ absl::Status BatchResourceBase::ConcatInputTensors(
   // complete.
   std::function<void()> split_task_done_callback = [input_task]() mutable {
     OpKernelContext* context = input_task->context;
-    auto& output = input_task->output;
 
+    // Check if any split task has already failed (e.g. due to eviction from
+    // the priority queue). If so, skip the output concatenation — the output
+    // TensorMatrix may contain uninitialized entries that would cause a crash
+    // in Concat/memcpy.
+    if (!input_task->status->status().ok()) {
+      input_task->FinishTask(input_task->status->status());
+      return;
+    }
+
+    auto& output = input_task->output;
     absl::Status final_status = absl::OkStatus();
     const int num_output = context->num_outputs();
 
@@ -918,9 +902,30 @@ absl::Status BatchResourceBase::ConcatInputTensors(
       std::vector<Tensor> to_concatenate;
       to_concatenate.reserve(output->size());
 
+      bool has_invalid_tensor = false;
       for (int j = 0; j < output->size(); ++j) {
+        Tensor& tensor = (*output)[j][i];
+        // Defensive validation: catch tensors with null data pointers that may
+        // have slipped past the status check above. This can happen if:
+        // 1. A subtask completed with OK status but failed to populate outputs
+        // 2. Memory corruption caused buf_->data() to become null
+        // 3. A race condition between status update and tensor population
+        if (!tensor.IsInitialized()) {
+          final_status.Update(absl::InternalError(absl::StrCat(
+              "Split task output tensor not initialized for batch index ", j,
+              ", output index ", i,
+              ". This may indicate a silent failure in the split task.")));
+          has_invalid_tensor = true;
+          break;
+        }
         // Move tensors from the matrix into the concat list
-        to_concatenate.push_back(std::move((*output)[j][i]));
+        to_concatenate.push_back(std::move(tensor));
+      }
+
+      // Skip concat if we encountered an invalid tensor - we already recorded
+      // the error in final_status.
+      if (has_invalid_tensor) {
+        continue;
       }
 
       const auto concat_status =

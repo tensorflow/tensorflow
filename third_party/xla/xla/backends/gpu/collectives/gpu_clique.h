@@ -104,7 +104,7 @@ class GpuClique : public Clique {
   const GpuClique* parent_;
 
   // We keep device communicators in a sorted container to guarantee that they
-  // are destroyed in determenistic order.
+  // are destroyed in deterministic order.
   mutable absl::Mutex mu_;
   absl::btree_map<std::pair<RankId, GpuDeviceCommunicator::Requirements>,
                   std::unique_ptr<GpuDeviceCommunicator>>
