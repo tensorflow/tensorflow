@@ -85,8 +85,8 @@ std::vector<Device*> DynamicDeviceMgr::ListDevices() const {
   return devices;
 }
 
-string DynamicDeviceMgr::DebugString() const {
-  string out;
+std::string DynamicDeviceMgr::DebugString() const {
+  std::string out;
   tf_shared_lock l(devices_mu_);
   for (const auto& it : dynamic_devices_) {
     absl::StrAppend(&out, it.first->name(), "\n");
@@ -94,8 +94,8 @@ string DynamicDeviceMgr::DebugString() const {
   return out;
 }
 
-string DynamicDeviceMgr::DeviceMappingString() const {
-  string out;
+std::string DynamicDeviceMgr::DeviceMappingString() const {
+  std::string out;
   tf_shared_lock l(devices_mu_);
   for (const auto& it : dynamic_devices_) {
     auto d = it.first;
@@ -110,7 +110,7 @@ string DynamicDeviceMgr::DeviceMappingString() const {
 absl::Status DynamicDeviceMgr::LookupDevice(absl::string_view name,
                                             Device** device) const {
   tf_shared_lock l(devices_mu_);
-  auto iter = device_map_.find(string(name));
+  auto iter = device_map_.find(std::string(name));
   if (iter == device_map_.end()) {
     std::vector<absl::string_view> device_names;
     device_names.reserve(device_map_.size());
@@ -131,7 +131,7 @@ bool DynamicDeviceMgr::ContainsDevice(int64_t device_incarnation) const {
 }
 
 void DynamicDeviceMgr::ClearContainers(
-    absl::Span<const string> containers) const {
+    absl::Span<const std::string> containers) const {
   absl::Status s;
   tf_shared_lock l(devices_mu_);
   for (const auto& it : dynamic_devices_) {
@@ -140,7 +140,7 @@ void DynamicDeviceMgr::ClearContainers(
       s.Update(d->resource_manager()->Cleanup(
           d->resource_manager()->default_container()));
     } else {
-      for (const string& c : containers) {
+      for (const std::string& c : containers) {
         s.Update(d->resource_manager()->Cleanup(c));
       }
     }
@@ -150,7 +150,7 @@ void DynamicDeviceMgr::ClearContainers(
   }
 }
 
-int DynamicDeviceMgr::NumDeviceType(const string& type) const {
+int DynamicDeviceMgr::NumDeviceType(const std::string& type) const {
   tf_shared_lock l(devices_mu_);
   auto iter = device_type_counts_.find(type);
   if (iter != device_type_counts_.end()) return iter->second;
@@ -172,12 +172,12 @@ absl::Status DynamicDeviceMgr::AddDevices(
           " to manager but its name conflicts with an existing device.");
     }
     // Register under the (1) full name and (2) canonical name.
-    for (const string& name :
+    for (const std::string& name :
          DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
       device_map_[name] = d.get();
     }
     // Register under the (3) local name and (4) legacy local name.
-    for (const string& name :
+    for (const std::string& name :
          DeviceNameUtils::GetLocalNamesForDeviceMappings(d->parsed_name())) {
       device_map_[name] = d.get();
     }
@@ -205,12 +205,12 @@ absl::Status DynamicDeviceMgr::RemoveDevices(
 
   for (const auto& d : devices) {
     // Clear registration of (1) full name and (2) canonical name
-    for (const string& name :
+    for (const std::string& name :
          DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
       device_map_.erase(name);
     }
     // Clear registration of (3) local name and (4) legacy local name
-    for (const string& name :
+    for (const std::string& name :
          DeviceNameUtils::GetLocalNamesForDeviceMappings(d->parsed_name())) {
       device_map_.erase(name);
     }
@@ -230,9 +230,9 @@ absl::Status DynamicDeviceMgr::RemoveDevices(
 }
 
 absl::Status DynamicDeviceMgr::RemoveDevicesByName(
-    const std::vector<string>& device_names) {
+    const std::vector<std::string>& device_names) {
   std::vector<Device*> devices_to_remove;
-  for (const string& name : device_names) {
+  for (const std::string& name : device_names) {
     Device* device;
     TF_RETURN_IF_ERROR(LookupDevice(name, &device));
     devices_to_remove.emplace_back(device);
