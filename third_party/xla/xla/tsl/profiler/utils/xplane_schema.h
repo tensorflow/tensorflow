@@ -301,6 +301,8 @@ enum StatType {
   kTimeScaleMultiplier,
   // XLA metadata map related.
   kHloProto,
+  // Temporary legacy name for backward compatibility.
+  kHloProtoLegacy,
   // Device capability related.
   kDevCapClockRateKHz,
   // For GPU, this is the number of SMs.
