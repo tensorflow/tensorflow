@@ -2307,8 +2307,13 @@ std::string GroupedSharding::ToString() const {
 }
 
 GroupedSharding GroupShardingOnAllDimsExcept(
-    const HloSharding& sharding, absl::Span<const int64_t> non_group_dims,
+    const HloSharding& input_sharding, absl::Span<const int64_t> non_group_dims,
     bool subgroup_manual) {
+  HloSharding sharding =
+      input_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(input_sharding.named_sharding())
+          : input_sharding;
+
   std::vector<int64_t> group_dims(sharding.num_dimensions());
   absl::c_iota(group_dims, 0);
 
@@ -2328,10 +2333,15 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
                              subgroup_manual);
 }
 
-GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+GroupedSharding GroupShardingOnDims(const HloSharding& input_sharding,
                                     absl::Span<const int64_t> group_dims,
                                     absl::Span<const int64_t> group_dim_shards,
                                     bool subgroup_manual) {
+  HloSharding sharding =
+      input_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(input_sharding.named_sharding())
+          : input_sharding;
+
   CHECK(!sharding.IsReplicatedOrSingleDevice());
 
   // The first item of the pair is the group_dim_size. The second item is the
@@ -2453,8 +2463,13 @@ std::vector<int64_t> PrimeFactorization(int64_t num) {
 }  // namespace
 
 GroupedSharding GroupShardingOnReplicatedDim(
-    const HloSharding& sharding, int64_t num_groups, int64_t num_tiles,
+    const HloSharding& input_sharding, int64_t num_groups, int64_t num_tiles,
     int64_t data_rank, absl::Span<const int64_t> replicable_dims) {
+  HloSharding sharding =
+      input_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(input_sharding.named_sharding())
+          : input_sharding;
+
   // 1. Try group sharding on partially replicated dim.
   if (sharding.ReplicateOnLastTileDim() &&
       sharding.dimensions().back() % num_groups == 0) {
@@ -2525,7 +2540,12 @@ GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
                          /*subgroup_manual=*/false);
 }
 
-GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding) {
+GroupedSharding GetManualSubgroupSharding(const HloSharding& input_sharding) {
+  HloSharding sharding =
+      input_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(input_sharding.named_sharding())
+          : input_sharding;
+
   CHECK(sharding.IsManualSubgroup());
   int64_t subgroup_size = sharding.subgroup_types().size();
   int64_t rank = sharding.num_dimensions() - subgroup_size;
