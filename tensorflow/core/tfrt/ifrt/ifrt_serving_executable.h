@@ -95,7 +95,8 @@ class IfrtServingExecutable {
                    xla::CompileOptions::EnvironmentOptionOverrides>
           compilation_env_or_overrides,
       TfToHloCompiler* tf_to_hlo_compiler,
-      IfrtPersistentCompilationCache* persistent_compilation_cache);
+      IfrtPersistentCompilationCache* persistent_compilation_cache,
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -247,7 +248,8 @@ class IfrtServingExecutable {
                    xla::CompileOptions::EnvironmentOptionOverrides>
           compilation_env_or_overrides,
       TfToHloCompiler* tf_to_hlo_compiler,
-      IfrtPersistentCompilationCache* persistent_compilation_cache)
+      IfrtPersistentCompilationCache* persistent_compilation_cache,
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -264,7 +266,8 @@ class IfrtServingExecutable {
         ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)),
         compilation_env_or_overrides_(compilation_env_or_overrides),
         tf_to_hlo_compiler_(tf_to_hlo_compiler),
-        persistent_compilation_cache_(persistent_compilation_cache) {}
+        persistent_compilation_cache_(persistent_compilation_cache),
+        h2d_transfer_executor_factory_(h2d_transfer_executor_factory) {}
 
   int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
