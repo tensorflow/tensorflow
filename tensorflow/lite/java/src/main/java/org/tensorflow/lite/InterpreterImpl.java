@@ -45,7 +45,6 @@ class InterpreterImpl implements InterpreterApi {
       super(other);
       allowFp16PrecisionForFp32 = other.allowFp16PrecisionForFp32;
       allowBufferHandleOutput = other.allowBufferHandleOutput;
-      compressQuantizationZeroPoints = other.compressQuantizationZeroPoints;
     }
 
     // See Interpreter.Options#setAllowFp16PrecisionForFp32(boolean).
@@ -53,14 +52,6 @@ class InterpreterImpl implements InterpreterApi {
 
     // See Interpreter.Options#setAllowBufferHandleOutput(boolean).
     Boolean allowBufferHandleOutput;
-
-    // See Interpreter.Options#setCompressQuantizationZeroPoints(boolean).
-    Boolean compressQuantizationZeroPoints;
-
-    // See Interpreter.Options#getCompressQuantizationZeroPoints().
-    boolean getCompressQuantizationZeroPoints() {
-      return compressQuantizationZeroPoints != null && compressQuantizationZeroPoints;
-    }
   }
 
   /**

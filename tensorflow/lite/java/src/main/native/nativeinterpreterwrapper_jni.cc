@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
-#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/tools/verifier_internal.h"
 #if TFLITE_DISABLE_SELECT_JAVA_APIS
@@ -401,8 +400,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createModelWithBuffer(
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
     JNIEnv* env, jclass clazz, jlong model_handle, jlong error_handle,
-    jint num_threads, jboolean useXnnpack,
-    jboolean compress_quantization_zero_points, jobject delegate_handle_list) {
+    jint num_threads, jboolean useXnnpack, jobject delegate_handle_list) {
   if (!tflite::jni::CheckJniInitializedOrThrow(env)) return 0;
 
   static jclass list_class = FindClassAndMakeGlobalRef(env, "java/util/List");
@@ -462,10 +460,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_createInterpreter(
       std::make_unique<tflite::jni::OpResolverLazyDelegateProxy>(
           tflite::CreateOpResolver(), useXnnpack != JNI_FALSE);
 
-  tflite::InterpreterOptions options;
-  options.SetCompressQuantizationZeroPoints(compress_quantization_zero_points !=
-                                            JNI_FALSE);
-  InterpreterBuilder interpreter_builder(*model, *resolver, &options);
+  InterpreterBuilder interpreter_builder(*model, *resolver);
   interpreter_builder.SetNumThreads(static_cast<int>(num_threads));
 
   // Add delegate_list to interpreter_builder.
