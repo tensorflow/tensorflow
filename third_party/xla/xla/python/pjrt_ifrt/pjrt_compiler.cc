@@ -95,7 +95,7 @@ PjRtCompiler::PjRtCompiler(PjRtClient* client, int num_threads)
   if (num_threads > 0) {
     tsl::ThreadOptions thread_options;
 #if defined(ABSL_HAVE_THREAD_SANITIZER)
-    thread_options.stack_size = 1024 * 1024;
+    thread_options.stack_size = 2 * 1024 * 1024;
 #else
     thread_options.stack_size = 512 * 1024;
 #endif
