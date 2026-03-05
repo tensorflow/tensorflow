@@ -1,6 +1,8 @@
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
+package(default_applicable_licenses = ["//tensorflow:license"])
+
 pybind_extension(
     name = "register_list_ops_py",
     srcs = ["register_list_ops_py.cc"],
