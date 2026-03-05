@@ -502,7 +502,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
     if (plan.input_specs[i].shape != arrays[i]->shape()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "RemapArrays expects input #%d to have shape %v, but got %v", i,
-          plan.input_specs[i].shape, arrays[i]->shape().DebugString()));
+          plan.input_specs[i].shape, arrays[i]->shape()));
     }
     // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
     // is currently called with input arrays with implicit sharding

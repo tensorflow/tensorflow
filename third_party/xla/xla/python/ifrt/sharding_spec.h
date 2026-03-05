@@ -133,9 +133,6 @@ class ShardingSpec : public llvm::RTTIExtends<ShardingSpec, Serializable> {
     return proto;
   }
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  virtual std::string DebugString() const = 0;
-
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const ShardingSpec& sharding_spec) {
     sink.Append(sharding_spec.DebugString());
@@ -159,6 +156,8 @@ class ShardingSpec : public llvm::RTTIExtends<ShardingSpec, Serializable> {
 
  protected:
   ShardingSpec(int num_shards, bool is_fully_replicated);
+
+  virtual std::string DebugString() const = 0;
 
   virtual void Hash(absl::HashState state) const = 0;
 
@@ -200,12 +199,12 @@ class SingleDeviceShardingSpec final
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   SingleDeviceShardingSpec();
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 };
@@ -235,12 +234,12 @@ class OpaqueShardingSpec
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   explicit OpaqueShardingSpec(int num_shards);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 };
@@ -322,8 +321,6 @@ class ConcreteShardingSpec
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
@@ -333,6 +330,8 @@ class ConcreteShardingSpec
 
   ConcreteShardingSpec(int num_shards, DynamicShape dynamic_shape,
                        std::vector<DynamicShape> shard_dynamic_shapes);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 
@@ -381,13 +380,13 @@ class ConcreteEvenShardingSpec
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   ConcreteEvenShardingSpec(int num_shards, Shape shape, Shape shard_shape,
                            bool is_fully_replicated);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 
@@ -417,12 +416,12 @@ class ShardingParamShardingSpec
   absl::StatusOr<std::vector<IndexDomain>> IndexDomains(
       const Shape& shape) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   ShardingParamShardingSpec(int num_shards, ShardingParam sharding_param);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 

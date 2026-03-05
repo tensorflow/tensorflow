@@ -395,8 +395,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   }
 
   std::string DebugString() const override {
-    return absl::StrCat("NanoArray(", dtype_.DebugString(), ", ",
-                        shape_.DebugString(), ", @",
+    return absl::StrCat("NanoArray(", dtype_, ", ", shape_, ", @",
                         reinterpret_cast<uintptr_t>(data_), ")");
   }
 
@@ -635,9 +634,8 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   bool IsDeleted() const override { return shards_.empty(); }
 
   std::string DebugString() const override {
-    auto result =
-        absl::StrCat("ShardedNanoArray(", dtype_.DebugString(), ", ",
-                     shape_.DebugString(), ", ", sharding_->DebugString());
+    auto result = absl::StrCat("ShardedNanoArray(", dtype_, ", ", shape_, ", ",
+                               sharding_);
     for (const auto& shard : shards_) {
       absl::StrAppend(&result, ", ", shard->DebugString());
     }
@@ -709,9 +707,9 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
     for (int i = 0; i < index_domains.size(); ++i) {
       if (ABSL_PREDICT_FALSE(index_domains[i].shape() != shards_[i]->shape())) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Index domain ", index_domains[i].shape().DebugString(),
-            " not equal to array shape ", shards_[i]->shape().DebugString()));
+        return absl::FailedPreconditionError(
+            absl::StrCat("Index domain ", index_domains[i].shape(),
+                         " not equal to array shape ", shards_[i]->shape()));
       }
     }
 

@@ -154,8 +154,8 @@ HloShardingSpec::Disassemble(const Shape& shape) const {
     if (shape.dims().size() != tiled_data_rank) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "shape must have %d dimensions, but has %d dimensions: "
-          "shape=%s, sharding=%s",
-          tiled_data_rank, shape.dims().size(), shape.DebugString(),
+          "shape=%v, sharding=%s",
+          tiled_data_rank, shape.dims().size(), shape,
           xla_hlo_sharding_.ToString()));
     }
 
@@ -202,8 +202,8 @@ absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingSpecRef>>>
 HloShardingSpec::Disassemble(const DynamicShape& dynamic_shape) const {
   return InvalidArgument(
       "HloShardingSpec can only disassemble static shape, but was asked "
-      "to disassemble dynamic shape %s",
-      dynamic_shape.DebugString());
+      "to disassemble dynamic shape %v",
+      dynamic_shape);
 }
 
 absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
@@ -235,9 +235,9 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
   if (shape.dims().size() != tiled_data_rank) {
     return absl::InvalidArgumentError(
         absl::StrFormat("shape must have %d dimensions, but has %d dimensions: "
-                        "shape=%s, sharding=%s",
-                        tiled_data_rank, shape.dims().size(),
-                        shape.DebugString(), xla_hlo_sharding_.ToString()));
+                        "shape=%v, sharding=%s",
+                        tiled_data_rank, shape.dims().size(), shape,
+                        xla_hlo_sharding_.ToString()));
   }
 
   TF_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));

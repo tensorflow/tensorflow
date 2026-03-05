@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_INDEX_DOMAIN_H_
 
 #include <ostream>
-#include <string>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/shape.h"
 
@@ -72,12 +72,10 @@ class IndexDomain {
     return *this;
   }
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  std::string DebugString() const;
-
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const IndexDomain& index_domain) {
-    sink.Append(index_domain.DebugString());
+    sink.Append(absl::StrCat("IndexDomain(origin=", index_domain.origin_,
+                             ",shape=", index_domain.shape_, ")"));
   }
 
  private:

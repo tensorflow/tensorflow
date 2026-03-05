@@ -1693,9 +1693,9 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
   for (Memory* const src_memory : src_device->Memories()) {
     for (Device* const dst_device : client->addressable_devices()) {
       for (Memory* const dst_memory : dst_device->Memories()) {
-        SCOPED_TRACE(absl::StrCat(
-            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
-            dst_device->DebugString(), " ", dst_memory->DebugString()));
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
 
         ShardingRef sharding =
             SingleDeviceSharding::Create(src_device, src_memory->Kind());
@@ -1746,9 +1746,9 @@ TEST(ArrayImplTest, CopyArraysSubByteDType) {
   for (Memory* const src_memory : src_device->Memories()) {
     for (Device* const dst_device : client->addressable_devices()) {
       for (Memory* const dst_memory : dst_device->Memories()) {
-        SCOPED_TRACE(absl::StrCat(
-            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
-            dst_device->DebugString(), " ", dst_memory->DebugString()));
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
 
         ShardingRef sharding =
             SingleDeviceSharding::Create(src_device, src_memory->Kind());
@@ -1794,9 +1794,9 @@ TEST(ArrayImplTest, CopyPoisonedArray) {
   for (Memory* const src_memory : src_device->Memories()) {
     for (Device* const dst_device : client->addressable_devices()) {
       for (Memory* const dst_memory : dst_device->Memories()) {
-        SCOPED_TRACE(absl::StrCat(
-            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
-            dst_device->DebugString(), " ", dst_memory->DebugString()));
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
 
         ArraySpec array_spec = {
             /*dtype=*/DType(DType::kF32),

@@ -181,7 +181,7 @@ absl::Status ShardingSpec::ToProto(ShardingSpecProto& sharding_spec_proto,
 }
 
 std::ostream& operator<<(std::ostream& os, const ShardingSpec& sharding_spec) {
-  return os << sharding_spec.DebugString();
+  return os << absl::StrCat(sharding_spec);
 }
 
 std::unique_ptr<SingleDeviceShardingSpec> SingleDeviceShardingSpec::Create() {
@@ -360,14 +360,14 @@ ConcreteShardingSpec::Disassemble(const Shape& shape) const {
   if (!has_static_shape()) {
     return InvalidArgument(
         "ConcreteShardingSpec holds dynamic shape, but was asked "
-        "to disassemble static shape %s",
-        shape.DebugString());
+        "to disassemble static shape %v",
+        shape);
   }
   if (shape != std::get<Shape>(shape_)) {
     return InvalidArgument(
-        "ConcreteShardingSpec can only disassemble shape %s, but was asked "
-        "to disassemble shape %s",
-        std::get<Shape>(shape_).DebugString(), shape.DebugString());
+        "ConcreteShardingSpec can only disassemble shape %v, but was asked "
+        "to disassemble shape %v",
+        std::get<Shape>(shape_), shape);
   }
   const std::vector<Shape>& shard_shapes =
       std::get<std::vector<Shape>>(shard_shapes_);
@@ -384,15 +384,14 @@ ConcreteShardingSpec::Disassemble(const DynamicShape& dynamic_shape) const {
   if (!has_dynamic_shape()) {
     return InvalidArgument(
         "ConcreteShardingSpec holds static shape, but was asked "
-        "to disassemble dynamic shape %s",
-        dynamic_shape.DebugString());
+        "to disassemble dynamic shape %v",
+        dynamic_shape);
   }
   if (dynamic_shape != std::get<DynamicShape>(shape_)) {
     return InvalidArgument(
-        "ConcreteShardingSpec can only disassemble dynamic shape %s, but was "
-        "asked to disassemble dynamic shape %s",
-        std::get<DynamicShape>(shape_).DebugString(),
-        dynamic_shape.DebugString());
+        "ConcreteShardingSpec can only disassemble dynamic shape %v, but was "
+        "asked to disassemble dynamic shape %v",
+        std::get<DynamicShape>(shape_), dynamic_shape);
   }
   const std::vector<DynamicShape>& shard_dynamic_shapes =
       std::get<std::vector<DynamicShape>>(shard_shapes_);
@@ -417,13 +416,9 @@ std::string ConcreteShardingSpec::DebugString() const {
   return std::visit(
       [this](const auto& shape, const auto& shard_shapes) {
         return absl::StrFormat(
-            "ConcreteShardingSpec(num_shards: %d, shape: %s, "
+            "ConcreteShardingSpec(num_shards: %d, shape: %v, "
             "shard_shapes: [%s], index_domains: %s)",
-            num_shards_, shape.DebugString(),
-            absl::StrJoin(shard_shapes, ",",
-                          [](std::string* out, const auto& shard_shape) {
-                            absl::StrAppend(out, shard_shape.DebugString());
-                          }),
+            num_shards_, shape, absl::StrJoin(shard_shapes, ","),
             index_domains_.has_value()
                 ? absl::StrCat("[", absl::StrJoin(*index_domains_, ","), "]")
                 : "<nullopt>");
@@ -455,9 +450,9 @@ absl::StatusOr<Shape> ConcreteEvenShardingSpec::GetShardShape(
     const Shape& shape) const {
   if (shape != shape_) {
     return InvalidArgument(
-        "ConcreteEvenShardingSpec has a shard shape for shape %s, but was "
-        "asked to get a shard shape for shape %s",
-        shape_.DebugString(), shape.DebugString());
+        "ConcreteEvenShardingSpec has a shard shape for shape %v, but was "
+        "asked to get a shard shape for shape %v",
+        shape_, shape);
   }
   return shard_shape_;
 }
@@ -483,9 +478,9 @@ absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>>
 ConcreteEvenShardingSpec::Disassemble(const Shape& shape) const {
   if (shape != shape_) {
     return InvalidArgument(
-        "ConcreteEvenShardingSpec can only disassemble shape %s, but was "
-        "asked to disassemble shape %s",
-        shape_.DebugString(), shape.DebugString());
+        "ConcreteEvenShardingSpec can only disassemble shape %v, but was "
+        "asked to disassemble shape %v",
+        shape_, shape);
   }
   std::vector<std::pair<Shape, ShardingSpecRef>> result;
   result.reserve(num_shards_);
@@ -499,8 +494,8 @@ absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingSpecRef>>>
 ConcreteEvenShardingSpec::Disassemble(const DynamicShape& dynamic_shape) const {
   return InvalidArgument(
       "ConcreteEvenShardingSpec can only disassemble static shape, but was "
-      "asked to disassemble dynamic shape %s",
-      dynamic_shape.DebugString());
+      "asked to disassemble dynamic shape %v",
+      dynamic_shape);
 }
 
 absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenShardingSpec::IndexDomains(
@@ -511,9 +506,9 @@ absl::StatusOr<std::vector<IndexDomain>> ConcreteEvenShardingSpec::IndexDomains(
 
 std::string ConcreteEvenShardingSpec::DebugString() const {
   return absl::StrFormat(
-      "ConcreteEvenShardingSpec(num_shards: %d, shape: %s, "
-      "shard_shape: %s, is_fully_replicated: %s)",
-      num_shards_, shape_.DebugString(), shard_shape_.DebugString(),
+      "ConcreteEvenShardingSpec(num_shards: %d, shape: %v, "
+      "shard_shape: %v, is_fully_replicated: %s)",
+      num_shards_, shape_, shard_shape_,
       is_fully_replicated_ ? "true" : "false");
 }
 
@@ -586,8 +581,8 @@ ShardingParamShardingSpec::Disassemble(
     const DynamicShape& dynamic_shape) const {
   return InvalidArgument(
       "ShardingParamShardingSpec can only disassemble static shape, but was "
-      "asked to disassemble dynamic shape %s",
-      dynamic_shape.DebugString());
+      "asked to disassemble dynamic shape %v",
+      dynamic_shape);
 }
 
 absl::StatusOr<std::vector<IndexDomain>>

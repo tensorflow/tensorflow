@@ -602,7 +602,7 @@ absl::StatusOr<ArrayRef> MakeStringArrayFromHostBuffer(
       return absl::InvalidArgumentError(absl::StrCat(
           "Only fully replicated shardings are supported for making "
           "BasicStringArrays: got: ",
-          sharding->DebugString()));
+          sharding));
     }
     return absl::OkStatus();
   }();
@@ -721,8 +721,8 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
     if (basic_string_array->sharding().devices()->size() != 1) {
       return absl::InvalidArgumentError(
           absl::StrFormat("All single device arrays must have single device "
-                          "sharding. got: %s for shard index: %d",
-                          basic_string_array->sharding().DebugString(), i));
+                          "sharding. got: %v for shard index: %d",
+                          basic_string_array->sharding(), i));
     }
 
     basic_string_array->buffers().OnReady(
@@ -1055,8 +1055,8 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
       !sharding->IsFullyReplicated()) {
     return InvalidArgument(
         "Only SingleDeviceSharding or fully-replicated sharding is supported: "
-        "sharding=%s",
-        sharding->DebugString());
+        "sharding=%v",
+        sharding);
   }
   TF_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
 
@@ -1065,8 +1065,8 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
   auto count =
       std::make_shared<std::atomic<int>>(ifrt_addressable_devices.size());
   if (ifrt_addressable_devices.empty()) {
-    return InvalidArgument("Cannot copy array to non-addressable device: %s",
-                           sharding->devices()->DebugString());
+    return InvalidArgument("Cannot copy array to non-addressable device: %v",
+                           sharding->devices());
   }
   std::shared_ptr<const xla::PjRtLayout> pjrt_layout;
   const xla::Layout* xla_layout;
@@ -1232,8 +1232,8 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
         "ConcreteEvenSharding, ShardingParamSharding, HloSharding are "
-        "supported: sharding=%s",
-        sharding->DebugString());
+        "supported: sharding=%v",
+        sharding);
   }
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
       !sharding->devices()->IsFullyAddressable()) {
@@ -1264,15 +1264,15 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     auto* array = static_cast<PjRtCompatibleArray*>(arrays[i].get());
     if (array->dtype() != dtype) {
       return InvalidArgument(
-          "Every input must have the same dtype: %s (shard 0) vs. %s (shard "
+          "Every input must have the same dtype: %v (shard 0) vs. %v (shard "
           "%d)",
-          dtype.DebugString(), array->dtype().DebugString(), i);
+          dtype, array->dtype(), i);
     }
     if (array->sharding().devices()->size() != 1) {
       return InvalidArgument(
           "Every input must use a single device sharding, but input %d has "
-          "sharding=%s",
-          i, array->sharding().DebugString());
+          "sharding=%v",
+          i, array->sharding());
     }
     switch (array_copy_semantics) {
       case ArrayCopySemantics::kAlwaysCopy:
