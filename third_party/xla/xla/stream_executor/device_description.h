@@ -211,6 +211,11 @@ class DeviceDescription {
   // Note for CUDA this returns the CUDA Toolkit version the driver ships with.
   SemanticVersion driver_version() const { return driver_version_; }
 
+  // Returns the kernel mode driver version.
+  SemanticVersion kernel_mode_driver_version() const {
+    return kernel_mode_driver_version_;
+  }
+
   // Returns the runtime version.
   SemanticVersion runtime_version() const { return runtime_version_; }
 
@@ -450,6 +455,9 @@ class DeviceDescription {
   void set_driver_version(const SemanticVersion& value) {
     driver_version_ = value;
   }
+  void set_kernel_mode_driver_version(const SemanticVersion& value) {
+    kernel_mode_driver_version_ = value;
+  }
   void set_runtime_version(const SemanticVersion& value) {
     runtime_version_ = value;
   }
@@ -583,6 +591,7 @@ class DeviceDescription {
   std::optional<ExecutionUnitDescription> matrix_unit_description_;
 
   SemanticVersion driver_version_{0, 0, 0};
+  SemanticVersion kernel_mode_driver_version_{0, 0, 0};
   SemanticVersion runtime_version_{0, 0, 0};
   SemanticVersion compile_time_toolkit_version_{0, 0, 0};
   SemanticVersion dnn_version_{0, 0, 0};

@@ -113,6 +113,7 @@ limitations under the License.
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/numa.h"
 #include "tsl/platform/numbers.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -795,6 +796,15 @@ absl::StatusOr<FabricInfo> GetDeviceFabricInfo(nvmlDevice_t device) {
   VLOG(2) << error_message;
   return absl::InternalError(error_message);
 #endif  // CUDA_VERSION >= 12040
+}
+
+absl::StatusOr<SemanticVersion> GetDeviceDriverVersion() {
+  constexpr int kDriverMaxLen = 100;
+  char version[kDriverMaxLen];
+  nvmlReturn_t result = nvmlSystemGetDriverVersion(version, kDriverMaxLen);
+  RETURN_IF_ERROR(ToStatus(result));
+
+  return SemanticVersion::ParseFromString(version);
 }
 
 }  // namespace
@@ -1680,7 +1690,7 @@ absl::Status FillBlockDimLimit(CUdevice device, BlockDim* block_dim_limit) {
   // (as opposed to ThreadDim which expresses the dimensions of threads
   // within a block).
   int x, y, z;
-  TF_RETURN_IF_ERROR(GetGridLimits(&x, &y, &z, device));
+  RETURN_IF_ERROR(GetGridLimits(&x, &y, &z, device));
   block_dim_limit->x = x;
   block_dim_limit->y = y;
   block_dim_limit->z = z;
@@ -1689,13 +1699,13 @@ absl::Status FillBlockDimLimit(CUdevice device, BlockDim* block_dim_limit) {
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<Event>> CudaExecutor::CreateEvent() {
-  TF_ASSIGN_OR_RETURN(auto event, CudaEvent::Create(this, false));
+  ASSIGN_OR_RETURN(auto event, CudaEvent::Create(this, false));
   return std::make_unique<CudaEvent>(std::move(event));
 }
 
 absl::StatusOr<std::unique_ptr<Stream>> CudaExecutor::CreateStream(
     std::optional<std::variant<StreamPriority, int>> priority) {
-  TF_ASSIGN_OR_RETURN(auto stream, CudaStream::Create(this, priority));
+  ASSIGN_OR_RETURN(auto stream, CudaStream::Create(this, priority));
   absl::MutexLock l(alive_gpu_streams_mu_);
   alive_gpu_streams_[stream->stream_handle()] = stream.get();
   return std::move(stream);
@@ -1710,8 +1720,8 @@ CudaExecutor::CreateCommandBuffer(CommandBuffer::Mode mode) {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CudaExecutor::CreateDeviceDescription(int device_ordinal) {
-  TF_ASSIGN_OR_RETURN(CUdevice device, GetDevice(device_ordinal));
-  TF_ASSIGN_OR_RETURN(CudaComputeCapability cc, GetComputeCapability(device));
+  ASSIGN_OR_RETURN(CUdevice device, GetDevice(device_ordinal));
+  ASSIGN_OR_RETURN(CudaComputeCapability cc, GetComputeCapability(device));
 
   DeviceDescription desc;
   int32_t driver_version{};
@@ -1726,6 +1736,12 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
   }
   desc.set_driver_version(
       ParseCudaVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
+
+  if (auto version = GetDeviceDriverVersion(); version.ok()) {
+    desc.set_kernel_mode_driver_version(*version);
+  } else {
+    LOG(ERROR) << "Could not get kernel mode driver version: " << version;
+  }
 
   int32_t runtime_version{};
   {
