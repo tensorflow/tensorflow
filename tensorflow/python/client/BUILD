@@ -246,6 +246,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
     ] + if_static(
         extra_deps = [
             "//tensorflow/core/protobuf:master_proto_cc",
