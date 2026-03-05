@@ -58,7 +58,7 @@ CommandBufferThunk::ExecutorCommandBuffer::ExecutorCommandBuffer(
     : command_buffer(std::move(command_buffer)) {}
 
 CommandBufferThunk::CommandBufferThunk(
-    CommandBufferCmdExecutor commands, ThunkInfo thunk_info,
+    CommandExecutor commands, ThunkInfo thunk_info,
     std::unique_ptr<SequentialThunk> thunks,
     bool enable_command_buffers_during_profiling)
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
@@ -95,8 +95,7 @@ CommandBufferThunk::CommandBufferThunk(
 
 std::vector<BufferAllocation::Index>
 CommandBufferThunk::ExecutorCommandBuffer::UpdateBufferAllocations(
-    const CommandBufferCmdExecutor& commands,
-    const Thunk::ExecuteParams& params) {
+    const CommandExecutor& commands, const Thunk::ExecuteParams& params) {
   std::vector<BufferAllocation::Index> updated_allocs;
   const BufferAllocations* allocs = params.buffer_allocations;
 
