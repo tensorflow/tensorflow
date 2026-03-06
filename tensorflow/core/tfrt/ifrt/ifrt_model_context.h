@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tsl/platform/protobuf.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
@@ -66,12 +67,13 @@ class IfrtModelContext {
       tsl::thread::ThreadPool* thread_pool,
       std::variant<std::unique_ptr<tsl::protobuf::Message>,
                    xla::CompileOptions::EnvironmentOptionOverrides>
-          compilation_env_or_overrides)
+          compilation_env_or_overrides,
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory)
       : client_(std::move(client)),
         ifrt_serving_core_selector_(ifrt_serving_core_selector),
         thread_pool_(*thread_pool),
-        compilation_env_or_overrides_(std::move(compilation_env_or_overrides)) {
-  }
+        compilation_env_or_overrides_(std::move(compilation_env_or_overrides)),
+        h2d_transfer_executor_factory_(h2d_transfer_executor_factory) {}
   IfrtModelContext(
       std::shared_ptr<xla::ifrt::Client> client,
       IfrtServingCoreSelector* ifrt_serving_core_selector,
@@ -81,6 +83,7 @@ class IfrtModelContext {
                    xla::CompileOptions::EnvironmentOptionOverrides>
           compilation_env_or_overrides,
       std::shared_ptr<const void> topology, TfToHloCompiler* tf_to_hlo_compiler,
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory,
       IfrtPersistentCompilationCache* persistent_compilation_cache = nullptr)
       : client_(std::move(client)),
         topology_(topology),
@@ -90,6 +93,7 @@ class IfrtModelContext {
         shape_representation_fn_(shape_representation_fn),
         compilation_env_or_overrides_(std::move(compilation_env_or_overrides)),
         tf_to_hlo_compiler_(tf_to_hlo_compiler),
+        h2d_transfer_executor_factory_(h2d_transfer_executor_factory),
         persistent_compilation_cache_(persistent_compilation_cache) {}
 
   void RegisterHandle(ServingExecutableRegistry::Handle handle) {
@@ -123,6 +127,10 @@ class IfrtModelContext {
     return persistent_compilation_cache_;
   }
 
+  H2DTransferExecutorFactory* GetH2DTransferExecutorFactory() const {
+    return h2d_transfer_executor_factory_;
+  }
+
   tensorflow::DeviceMgr* GetDeviceMgr() const { return device_mgr_; }
   IfrtServingCoreSelector* GetIfrtServingCoreSelector() const {
     return ifrt_serving_core_selector_;
@@ -138,6 +146,11 @@ class IfrtModelContext {
   void set_default_signature_inputs(
       const DefaultSignatureInputConfig& default_signature_inputs) {
     default_signature_inputs_ = default_signature_inputs;
+  }
+
+  void set_h2d_transfer_executor_factory(
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory) {
+    h2d_transfer_executor_factory_ = h2d_transfer_executor_factory;
   }
 
   const DefaultSignatureInputConfig& default_signature_inputs() const {
@@ -206,6 +219,7 @@ class IfrtModelContext {
   IfrtLoadedVariableRegistry loaded_variable_registry_;
   IfrtRestoreTensorRegistry restore_tensor_registry_;
   TfToHloCompiler* tf_to_hlo_compiler_ = nullptr;
+  H2DTransferExecutorFactory* h2d_transfer_executor_factory_ = nullptr;
   IfrtPersistentCompilationCache* persistent_compilation_cache_ = nullptr;
   bool frozen_ = false;
 };

@@ -44,7 +44,12 @@ std::vector<OpSignatureTensorSpec> GetOpSignatureTensorSpecs(
       }
       if (tfl_tensor != nullptr) {
         tensor_spec.type = tfl_tensor->type;
-        tensor_spec.is_const = (tfl_tensor->allocation_type == kTfLiteMmapRo);
+        // Tensors backed by external buffers are treated as constant because
+        // they typically represent immutable data provided from outside
+        // the interpreter's allocation, similar to weights.
+        tensor_spec.is_const =
+            IsConstantTensor(tfl_tensor) ||
+            IsTensorBackedByExternalBuffer(context, tensor_no);
         if (tfl_tensor->dims) {
           for (int32_t j = 0; j < tfl_tensor->dims->size; ++j) {
             tensor_spec.dims.push_back(tfl_tensor->dims->data[j]);

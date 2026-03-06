@@ -3439,11 +3439,11 @@ TEST_F(DynamicSliceFusionTest,
   WhileThunk* while_thunk_ptr = dynamic_cast<WhileThunk*>(while_thunk->get());
 
   auto ds_thunk =
-      absl::c_find_if(while_thunk_ptr->body_thunk_sequence()->thunks(),
+      absl::c_find_if(while_thunk_ptr->body_executor().thunks(),
                       [](const std::unique_ptr<Thunk>& thunk) {
                         return thunk->kind() == Thunk::kDynamicSlice;
                       });
-  ASSERT_NE(ds_thunk, while_thunk_ptr->body_thunk_sequence()->thunks().end());
+  ASSERT_NE(ds_thunk, while_thunk_ptr->body_executor().thunks().end());
   DynamicSliceThunk* ds_thunk_ptr =
       dynamic_cast<DynamicSliceThunk*>(ds_thunk->get());
   std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets =

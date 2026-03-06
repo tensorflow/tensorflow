@@ -170,12 +170,9 @@ std::unique_ptr<WhileThunk> CreateWhileThunk(ThunkSequence condition_thunks,
                                              const BufferAllocation& alloc) {
   BufferAllocation::Slice slice(&alloc, 0, 1024);
 
-  return std::make_unique<WhileThunk>(
-      Thunk::ThunkInfo(), /*loop=*/nullptr, slice,
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
-                                        std::move(condition_thunks)),
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
-                                        std::move(body_thunks)));
+  return std::make_unique<WhileThunk>(Thunk::ThunkInfo(), /*loop=*/nullptr,
+                                      slice, std::move(condition_thunks),
+                                      std::move(body_thunks));
 }
 
 std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
@@ -184,15 +181,8 @@ std::unique_ptr<ConditionalThunk> CreateConditionalThunk(
   BufferAllocation::Slice slice(&alloc, 0, 1024);
   Shape shape = ShapeUtil::MakeShape(S32, {});
 
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunk_sequences;
-  for (auto& thunks : branch_thunks) {
-    branch_thunk_sequences.push_back(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo(), std::move(thunks)));
-  }
-
-  return std::make_unique<ConditionalThunk>(Thunk::ThunkInfo(),
-                                            ShapedSlice{slice, shape},
-                                            std::move(branch_thunk_sequences));
+  return std::make_unique<ConditionalThunk>(
+      Thunk::ThunkInfo(), ShapedSlice{slice, shape}, std::move(branch_thunks));
 }
 
 std::unique_ptr<CuDnnThunk> CreateCuDnnThunk(const BufferAllocation& alloc0) {
@@ -617,9 +607,9 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
   auto* while_thunk_transformed =
       dynamic_cast<const WhileThunk*>(thunks_in_command_buffer[0].get());
   ASSERT_NE(while_thunk_transformed, nullptr);
-  EXPECT_THAT(while_thunk_transformed->condition_thunk_sequence()->thunks(),
+  EXPECT_THAT(while_thunk_transformed->condition_executor().thunks(),
               ThunkKindsAre(Thunk::kCopy));
-  EXPECT_THAT(while_thunk_transformed->body_thunk_sequence()->thunks(),
+  EXPECT_THAT(while_thunk_transformed->body_executor().thunks(),
               ThunkKindsAre(Thunk::kGemm));
 }
 
@@ -672,9 +662,9 @@ TEST(CommandBufferConversionPassTest,
   auto* conditional_thunk =
       dynamic_cast<const ConditionalThunk*>(thunks[0].get());
   ASSERT_NE(conditional_thunk, nullptr);
-  EXPECT_THAT(conditional_thunk->branch_thunks()[0]->thunks(),
+  EXPECT_THAT(conditional_thunk->branch_executors()[0].thunks(),
               ThunkKindsAre(Thunk::kCommandBuffer));
-  EXPECT_THAT(conditional_thunk->branch_thunks()[1]->thunks(),
+  EXPECT_THAT(conditional_thunk->branch_executors()[1].thunks(),
               ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCommandBuffer));
 }
 
@@ -730,9 +720,9 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
   auto* while_thunk_transformed =
       dynamic_cast<const WhileThunk*>(thunks_in_command_buffer[0].get());
   ASSERT_NE(while_thunk_transformed, nullptr);
-  EXPECT_THAT(while_thunk_transformed->condition_thunk_sequence()->thunks(),
+  EXPECT_THAT(while_thunk_transformed->condition_executor().thunks(),
               ThunkKindsAre(Thunk::kCopy));
-  EXPECT_THAT(while_thunk_transformed->body_thunk_sequence()->thunks(),
+  EXPECT_THAT(while_thunk_transformed->body_executor().thunks(),
               ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCopy,
                             Thunk::kAllGatherDone));
 }
@@ -817,7 +807,7 @@ TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
   auto* while_thunk = dynamic_cast<const WhileThunk*>(thunks[0].get());
   ASSERT_NE(while_thunk, nullptr);
   const auto& thunks_in_while_thunk_body =
-      while_thunk->body_thunk_sequence()->thunks();
+      while_thunk->body_executor().thunks();
   EXPECT_THAT(thunks_in_while_thunk_body,
               ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCommandBuffer));
   auto* command_buffer_thunk = dynamic_cast<const CommandBufferThunk*>(
