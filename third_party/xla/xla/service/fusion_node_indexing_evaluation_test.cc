@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/service/fusion_node_indexing_evaluation.h"
 
+#include <cstdint>
+
+#include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
