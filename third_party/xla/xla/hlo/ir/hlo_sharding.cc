@@ -1392,12 +1392,15 @@ Shape HloSharding::TileShape(const Shape& shape, int64_t device) const {
 }
 
 int64_t HloSharding::TotalNumTiles() const {
-  if (IsReplicatedOrSingleDevice()) {
+  CHECK(!IsTuple());
+
+  if (IsReplicatedOrSingleDeviceLeaf()) {
     return 1;
   }
-  CHECK(!IsManual());
-  CHECK(!IsUnknown());
-  return Product(dimensions());
+  CHECK(!IsManualLeaf());
+  CHECK(!IsUnknownLeaf());
+
+  return num_devices();
 }
 
 int64_t HloSharding::NumTiles() const {

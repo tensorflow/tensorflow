@@ -93,7 +93,7 @@ class H2DTransferExecutorFactory {
  public:
   virtual ~H2DTransferExecutorFactory() = default;
   virtual absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
-  CreateH2DTransferExecutor(xla::ifrt::Client& ifrt_client) = 0;
+  CreateH2DTransferExecutor(xla::ifrt::Client& ifrt_client);
 };
 
 // Create a tensor from the given host tensor based on given device ids and
