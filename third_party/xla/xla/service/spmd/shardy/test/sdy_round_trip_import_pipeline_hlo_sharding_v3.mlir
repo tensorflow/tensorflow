@@ -212,10 +212,8 @@ module @main_func_in_out_tuple_shardings attributes {mhlo.frontend_attributes = 
     return %arg0 : tensor<32xi32>
   }
 
-  // CHECK-LABEL: func @non_main_func(
-  // CHECK-SAME:    %arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
-  func.func @non_main_func(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
-    // CHECK-NEXT: return %arg0 : tensor<32xi32>
+  // CHECK-NOT: func private @non_main_func(
+  func.func private @non_main_func(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
     return %arg0 : tensor<32xi32>
   }
 }

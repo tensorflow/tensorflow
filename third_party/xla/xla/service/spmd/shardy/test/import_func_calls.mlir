@@ -24,6 +24,9 @@ func.func private @foo(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
   return %0 : tensor<8x2xi32>
 }
 
+// -----
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
 // CHECK-LABEL: func @backend_config_out_shardings
 func.func @backend_config_out_shardings(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
   // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"bar">(%arg0) in_shardings=[<@mesh, [{"x"}, {}]>] out_shardings=[<@mesh, [{"x"}, {"y"}]>] (%arg1: tensor<8x2xi32>) {
@@ -46,6 +49,10 @@ func.func private @bar(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0 : tensor<8x2xi32>
 }
 
+// -----
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
+
 // CHECK-LABEL: func @inlineable_false
 func.func @inlineable_false(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tensor<8x2xi32>) {
   // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"baz">(%arg0, %arg1) out_shardings=[<@mesh, [{"x"}, {}]>, <@mesh, [{}, {"y"}]>] (%arg2: tensor<8x2xi32>, %arg3: tensor<8x2xi32>) {
@@ -66,6 +73,10 @@ func.func private @baz(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tenso
   return %0, %arg1 : tensor<8x2xi32>, tensor<8x2xi32>
 }
 
+// -----
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
+
 // CHECK-LABEL: func @inlineable_true
 func.func @inlineable_true(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tensor<8x2xi32>) {
   // CHECK-NEXT: %[[NC:.*]]:2 = sdy.named_computation<"qux">(%arg0, %arg1) out_shardings=[<@mesh, [{"x"}, {}]>, <@mesh, [{}, {"y"}]>] (%arg2: tensor<8x2xi32>, %arg3: tensor<8x2xi32>) {
@@ -85,6 +96,10 @@ func.func private @qux(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tenso
   %0 = stablehlo.multiply %arg0, %arg1 : tensor<8x2xi32>
   return %0, %arg1 : tensor<8x2xi32>, tensor<8x2xi32>
 }
+
+// -----
+sdy.mesh @mesh = #sdy.mesh<["x"=2, "y"=2]>
+
 
 // CHECK-LABEL: func @no_backend_config_or_inlineable_attr
 func.func @no_backend_config_or_inlineable_attr(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tensor<8x2xi32>) {
@@ -569,4 +584,27 @@ func.func private @foo(%arg0: tensor<8x2xi32>) -> (tensor<8x2xi32>)
 attributes { xla.sdy.original_func_name = "bar" } {
   %0 = stablehlo.negate %arg0 : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @uncalled_non_main_function
+func.func @uncalled_non_main_function(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
+  // CHECK-NEXT: sdy.named_computation<"bar">(%arg0)
+  // CHECK-NEXT:   sdy.return
+  // CHECK-NEXT: }
+  // CHECK-NEXT: return
+  %0 = call @bar(%arg0) : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  return %0 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: func private @foo
+func.func private @foo(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
+  %0 = call @bar(%arg0) : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  return %0 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: func private @bar
+func.func private @bar(%arg0: tensor<8x2xi32>) -> tensor<8x2xi32> {
+  return %arg0 : tensor<8x2xi32>
 }
