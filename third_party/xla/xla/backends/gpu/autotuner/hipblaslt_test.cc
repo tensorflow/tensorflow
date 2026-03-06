@@ -197,8 +197,8 @@ TEST_F(HipblasLtBackendTest, ApplyConfig) {
                                          .at(0),
                                     any));
   EXPECT_THAT(RunFileCheck(hlo_module->ToString(),
-                           R"(CHECK: (f32[100,100]{1,0}, s8[42]{0}) custom-call
-                              CHECK: "selected_algorithm":"2")"),
+                           R"(CHECK: "selected_algorithm":"2"
+                              CHECK: "autotune_workspace_size":"42")"),
               absl_testing::IsOkAndHolds(true));
 }
 

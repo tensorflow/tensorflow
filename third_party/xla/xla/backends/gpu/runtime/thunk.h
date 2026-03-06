@@ -63,6 +63,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+class ThunkPassBufferAllocator;
+
+class CublasLtMatmulThunkProto;
 // Execution stream id allows to specify what Gpu stream Thunk should be using
 // for launching device work (kernels, library calls, etc.). By default all
 // thunks use stream #0, which is the default compute stream of an XLA
@@ -458,6 +461,16 @@ class Thunk {
   //
   // Precondition: Initialize(initialize_params) has been called.
   virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
+
+  // Allocates persistent buffers required by the thunk.
+  //
+  // This is called by AllocatePersistentMemoryPass. Thunks can use the
+  // allocator to create new BufferAllocations that are not managed by HLO
+  // BufferAssignment.
+  virtual absl::Status AllocatePersistentBuffers(
+      ThunkPassBufferAllocator& allocator) {
+    return absl::OkStatus();
+  }
 
   // Returns all device buffers used by the thunk.
   //

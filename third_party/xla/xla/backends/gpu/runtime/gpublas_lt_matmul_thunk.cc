@@ -26,11 +26,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/shaped_slice.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
@@ -313,6 +315,22 @@ absl::StatusOr<std::unique_ptr<Thunk>> CublasLtMatmulThunk::FromProto(
       std::move(b), std::move(c), std::move(d), std::move(bias), std::move(aux),
       std::move(a_scale), std::move(b_scale), std::move(c_scale),
       std::move(d_scale), std::move(d_amax), std::move(workspace));
+}
+
+absl::Status CublasLtMatmulThunk::AllocatePersistentBuffers(
+    ThunkPassBufferAllocator& allocator) {
+  if (autotune_workspace_size_ > 0) {
+    auto maybe_allocation =
+        allocator.NewEmptyAllocation(autotune_workspace_size_);
+    if (!maybe_allocation.ok()) {
+      return maybe_allocation.status();
+    }
+    const BufferAllocation* allocation = maybe_allocation.value();
+    workspace_ = ShapedSlice{
+        BufferAllocation::Slice{allocation, 0, autotune_workspace_size_},
+        ShapeUtil::MakeShape(S8, {autotune_workspace_size_})};
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

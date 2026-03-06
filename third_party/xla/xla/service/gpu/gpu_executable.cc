@@ -79,6 +79,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/allocate_persistent_memory_pass.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
@@ -236,6 +237,8 @@ static absl::Status RunThunkPasses(const DebugOptions& debug_options,
   }
   pipeline.AddPass(std::make_unique<CommandBufferConversionPass>(
       hlo_module ? hlo_module->name() : "Anonymous"));
+
+  RETURN_IF_ERROR(AllocatePersistentMemoryPass::Run(*root_thunk, allocator));
 
   ASSIGN_OR_RETURN(bool changed,
                    pipeline.Run(&root_thunk->thunks(), debug_options,

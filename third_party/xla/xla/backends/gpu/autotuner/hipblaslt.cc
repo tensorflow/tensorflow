@@ -172,7 +172,9 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
         instr.shape().tuple_shapes().size() - 1);
     if (workspace_shape->element_type() == S8 &&
         workspace_shape->dimensions().size() == 1) {
-      workspace_shape->set_dimensions(0, gemm_key.autotune_workspace_size());
+      // Set the workspace size to 0. Workspace size is set in the backend
+      // config and the thunk will allocate the required memory.
+      workspace_shape->set_dimensions(0, 0);
       if (HloModule* module = instr.GetModule()) {
         if (module->entry_computation() &&
             module->entry_computation()->root_instruction() == &instr) {

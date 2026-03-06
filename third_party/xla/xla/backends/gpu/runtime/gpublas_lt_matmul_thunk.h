@@ -52,7 +52,10 @@ class CublasLtMatmulThunk : public Thunk {
   }
   absl::Status Initialize(const InitializeParams& params) override;
   std::optional<const BufferAllocation::Slice> workspace() const {
-    return workspace_->slice;
+    if (workspace_.has_value()) {
+      return workspace_->slice;
+    }
+    return std::nullopt;
   }
 
   BufferUses buffer_uses() const override;
@@ -61,6 +64,9 @@ class CublasLtMatmulThunk : public Thunk {
   static absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
       Thunk::ThunkInfo thunk_info, const CublasLtMatmulThunkProto& proto,
       absl::Span<const BufferAllocation> allocations);
+
+  absl::Status AllocatePersistentBuffers(
+      ThunkPassBufferAllocator& allocator) override;
 
  protected:
   CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs);
@@ -86,7 +92,7 @@ class CublasLtMatmulThunk : public Thunk {
   std::optional<ShapedSlice> c_scale_;
   std::optional<ShapedSlice> d_scale_;
   std::optional<ShapedSlice> d_amax_;
-  std::optional<const ShapedSlice> workspace_;
+  std::optional<ShapedSlice> workspace_;
 };
 
 }  // namespace gpu

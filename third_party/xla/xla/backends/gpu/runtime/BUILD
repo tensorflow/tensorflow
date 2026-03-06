@@ -1233,6 +1233,8 @@ cc_library(
     hdrs = ["gpublas_lt_matmul_thunk.h"],
     deps = [
         ":thunk",
+        "//xla:shape_util",
+        "//xla/backends/gpu/runtime:thunk_pass_pipeline",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
         "//xla/service:shaped_slice",
