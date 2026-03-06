@@ -13,15 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This translation unit is **self‑contained**: it provides minimal stub
-// implementations for the rocprofiler callbacks that XLA needs to register
-// (toolInit / toolFinialize / code_object_callback).  They do nothing except
-// keep the compiler and linker happy.  Once real logging is implemented, you
-// can replace the stubs with the actual logic.
+// ROCm profiler integration using rocprofiler-sdk.
+// Provides RocmTracer singleton that manages rocprofiler contexts,
+// buffer tracing, and callback services for GPU event collection.
 
 #include "xla/backends/profiler/gpu/rocm_tracer.h"
 
-#include <time.h>
 #include <unistd.h>
 
 #include <atomic>
@@ -29,7 +26,6 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
