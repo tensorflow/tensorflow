@@ -15,30 +15,31 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/printer.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -47,6 +48,7 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::Not;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
 
@@ -559,6 +561,47 @@ TEST_F(HloInstructionTest, MapUnaryOutputDimToOperandDimReshapeMixed) {
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(0), 1);
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(1), std::nullopt);
   EXPECT_EQ(reshape->MapUnaryOutputDimToOperandDim(2), 2);
+}
+
+namespace {
+
+absl::StatusOr<HloInstruction*> CreateInstructionWithBackendConfig(
+    VerifiedHloModule& module, gpu::CudnnConvBackendConfig config) {
+  HloComputation::Builder builder("main");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {1}), "p"));
+  RETURN_IF_ERROR(param->set_backend_config(config));
+  module.AddEntryComputation(builder.Build());
+  return param;
+}
+
+}  // namespace
+
+TEST_F(HloInstructionTest, BackendConfigIsNormalized) {
+  auto module1 = CreateNewVerifiedModule();
+  ASSERT_OK_AND_ASSIGN(
+      HloInstruction * instr1,
+      CreateInstructionWithBackendConfig(
+          *module1, ParseTextProtoOrDie<gpu::CudnnConvBackendConfig>(
+                        R"pb(algorithm: {
+                               tuning_knobs: { key: 1, value: 1 }
+                               tuning_knobs: { key: 2, value: 2 }
+                               tuning_knobs: { key: 3, value: 3 }
+                             })pb")));
+
+  auto module2 = CreateNewVerifiedModule();
+  ASSERT_OK_AND_ASSIGN(
+      HloInstruction * instr2,
+      CreateInstructionWithBackendConfig(
+          *module2, ParseTextProtoOrDie<gpu::CudnnConvBackendConfig>(
+                        R"pb(algorithm: {
+                               tuning_knobs: { key: 1, value: 1 }
+                               tuning_knobs: { key: 2, value: 2 }
+                               tuning_knobs: { key: 3, value: 3 }
+                             })pb")));
+
+  EXPECT_EQ(instr1->ToProto().backend_config(),
+            instr2->ToProto().backend_config());
 }
 
 }  // namespace

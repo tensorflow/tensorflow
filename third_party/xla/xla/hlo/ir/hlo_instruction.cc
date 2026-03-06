@@ -4563,7 +4563,21 @@ void HloInstruction::ToProto(HloInstructionProto* proto) const {
   }
 
   *proto->mutable_metadata() = metadata();
-  proto->set_backend_config(backend_config_.GetRawString());
+
+  absl::string_view raw_backend_config = backend_config_.GetRawString();
+  if (!raw_backend_config.empty()) {
+    // The raw_backend_config is usually a JSON string, and the order of
+    // keys is not guaranteed. Sorting the keys makes the string
+    // deterministic.
+    absl::StatusOr<std::string> sorted_config = SortJson(raw_backend_config);
+    if (sorted_config.ok()) {
+      proto->set_backend_config(*sorted_config);
+    } else {
+      // If the backend config is not JSON, we keep the original string.
+      proto->set_backend_config(raw_backend_config);
+    }
+  }
+
   if (opcode() != HloOpcode::kFusion) {
     for (const HloComputation* computation : called_computations()) {
       proto->add_called_computation_ids(computation->unique_id());
