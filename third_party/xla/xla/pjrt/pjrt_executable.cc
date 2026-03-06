@@ -452,7 +452,8 @@ PjRtExecutableUtil::RunHloCostAnalysis(const PjRtExecutable& executable,
         "Executable '%s' did not have an HloModule to generate "
         "cost analysis with.",
         executable.name());
-  } else if (modules.size() > 1) {
+  }
+  if (modules.size() > 1) {
     return Unimplemented(
         "GetCostAnalysis() doesn't support multiple program "
         "multiple data executables (from executable '%s').",
@@ -467,7 +468,8 @@ PjRtExecutableUtil::RunHloCostAnalysis(
     HloCostAnalysis* hlo_cost_analysis) {
   if (hlo_modules.empty()) {
     return NotFound("RunHloCostAnalysis called with empty hlo_modules");
-  } else if (hlo_modules.size() > 1) {
+  }
+  if (hlo_modules.size() > 1) {
     return Unimplemented(
         "GetCostAnalysis() doesn't support multiple program "
         "multiple data executables.");

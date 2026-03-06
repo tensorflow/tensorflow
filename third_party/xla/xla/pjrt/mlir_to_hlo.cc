@@ -373,8 +373,9 @@ absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
   // Upgrade if VHLO
   mlir::PassManager pm(mlir_module->getContext());
   mlir::stablehlo::createStablehloDeserializePipeline(pm);
-  if (!mlir::succeeded(pm.run(mlir_module)))
+  if (!mlir::succeeded(pm.run(mlir_module))) {
     return xla::InvalidArgument("Failed to upgrade versioned StableHLO.");
+  }
   return absl::OkStatus();
 }
 
