@@ -1646,7 +1646,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//xla:xla_proto_cc",
-        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -1660,8 +1660,6 @@ xla_test(
     name = "gemm_rewriter_test",
     srcs = ["gemm_rewriter_test.cc"],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
         ":gemm_rewriter",
         ":gemm_rewriter_test_lib",
@@ -1671,16 +1669,12 @@ xla_test(
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/hlo/testlib:test",
-        "//xla/service:executable",
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
-        "//xla/service/gpu:gpu_executable",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
@@ -1691,11 +1685,26 @@ xla_test(
 )
 
 xla_test(
+    name = "gemm_rewriter_allocation_test",
+    srcs = ["gemm_rewriter_allocation_test.cc"],
+    backends = ["gpu"],
+    use_legacy_runtime = True,
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:executable",
+        "//xla/service/gpu:gpu_executable",
+        "//xla/service/gpu/tests:hlo_legacy_gpu_test_base",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "cublas_gemm_rewriter_test",
     srcs = ["cublas_gemm_rewriter_test.cc"],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
         ":gemm_rewriter",
         ":gemm_rewriter_test_lib",
@@ -1710,6 +1719,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -1721,12 +1731,9 @@ xla_test(
 
 xla_test(
     name = "gemm_rewriter_fp8_test",
-    size = "large",
     srcs = ["gemm_rewriter_fp8_test.cc"],
     backends = ["gpu"],
     shard_count = 5,
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
         ":gemm_rewriter",
         ":gemm_rewriter_test_lib",
@@ -1743,7 +1750,7 @@ xla_test(
         "//xla/service:pattern_matcher",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
-        "//xla/tests:hlo_runner_agnostic_test_base",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",

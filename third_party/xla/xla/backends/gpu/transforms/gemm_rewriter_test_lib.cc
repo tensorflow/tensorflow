@@ -18,7 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -26,26 +26,14 @@ limitations under the License.
 
 namespace xla::gpu {
 
-const auto& GemmRewriteTestBase::device_desc() const {
-  return backend().default_stream_executor()->GetDeviceDescription();
-}
-
-stream_executor::SemanticVersion GemmRewriteTestBase::GetRuntimeVersion()
-    const {
-  return device_desc().runtime_version();
-}
-
 const stream_executor::GpuComputeCapability& GemmRewriteTestBase::Capability()
     const {
-  return device_desc().gpu_compute_capability();
+  return device_description().gpu_compute_capability();
 }
 
 stream_executor::SemanticVersion GemmRewriteTestBase::GetToolkitVersion()
     const {
-  return backend()
-      .default_stream_executor()
-      ->GetDeviceDescription()
-      .runtime_version();
+  return device_description().runtime_version();
 }
 
 bool GemmRewriteTestBase::IsCuda() const { return Capability().IsCuda(); }
@@ -69,7 +57,7 @@ GemmRewriteTestBase::CudaHopperOrRocmCapability() {
 }
 
 DebugOptions GemmRewriteTestBase::GetDebugOptionsForTest() const {
-  DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+  DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
   // These tests test the cuBLAS rewriter so we have to make sure that we use
   // cuBLAS for them.
   debug_options.set_xla_gpu_enable_triton_gemm(false);
