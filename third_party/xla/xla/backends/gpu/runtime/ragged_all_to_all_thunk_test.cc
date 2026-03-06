@@ -147,7 +147,7 @@ TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
   ConvertToCommandsOptions conv_options;
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
-      CommandBufferCmdExecutor::SynchronizationMode::kLHS;
+      CommandExecutor::SynchronizationMode::kLHS;
   TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
                           ConvertToCommands(thunk_sequence, conv_options));
 
