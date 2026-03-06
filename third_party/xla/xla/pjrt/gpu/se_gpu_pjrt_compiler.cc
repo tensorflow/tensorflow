@@ -33,9 +33,11 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -53,11 +55,13 @@ limitations under the License.
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace {
@@ -226,8 +230,8 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
       std::vector<std::unique_ptr<CompiledModule>> aot_results,
       gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
   return std::make_unique<StreamExecutorExecutable>(
-      std::move(input_options), std::move(aot_results), num_replicas,
-      num_partitions, name, fingerprint,
+      pjrt_platform_id_, std::move(input_options), std::move(aot_results),
+      num_replicas, num_partitions, name, fingerprint,
       /*default_memory_kind=*/StreamExecutorGpuHbmMemorySpace::kKind);
 }
 
@@ -255,5 +259,18 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   // MLIR module no longer required - release any memory if owned.
   module = MaybeOwningMlirModule();
   return Compile(std::move(options), xla_computation, topology, client);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+StreamExecutorGpuCompiler::GetTargetRuntimeAbiVersion() {
+  ASSIGN_OR_RETURN(Compiler * compiler, GetOrCreateCompiler());
+  ASSIGN_OR_RETURN(
+      stream_executor::Platform * platform,
+      stream_executor::PlatformManager::PlatformWithId(compiler->PlatformId()));
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<stream_executor::RuntimeAbiVersion> runtime_abi_version,
+      platform->GetRuntimeAbiVersion());
+  return std::make_unique<StreamExecutorGpuPjRtRuntimeAbiVersion>(
+      pjrt_platform_id_, std::move(runtime_abi_version));
 }
 }  // namespace xla

@@ -844,3 +844,54 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "gpu_xla_executable_abi_version",
+    srcs = ["gpu_xla_executable_abi_version.cc"],
+    hdrs = ["gpu_xla_executable_abi_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/python/pjrt_ifrt:xla_executable_abi_version",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "gpu_xla_executable_abi_version_serdes",
+    srcs = ["gpu_xla_executable_abi_version_serdes.cc"],
+    hdrs = ["gpu_xla_executable_abi_version_serdes.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":gpu_xla_executable_abi_version",
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/python/ifrt:serdes",
+        "//xla/python/pjrt_ifrt:xla_executable_abi_version",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_gpu_xla_executable_abi_version_serdes_register",
+    srcs = ["pjrt_c_api_gpu_xla_executable_abi_version_serdes_register.cc"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":gpu_xla_executable_abi_version",
+        ":gpu_xla_executable_abi_version_serdes",
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt:pjrt_api",
+        "//xla/pjrt/c:pjrt_c_api_abi_version_helpers",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/plugin:plugin_names",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/python/ifrt:serdes",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+    ],
+    alwayslink = 1,
+)

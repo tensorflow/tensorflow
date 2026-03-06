@@ -547,6 +547,8 @@ cc_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
+        ":gpu_abi_version_extension",
+        ":pjrt_c_api_abi_version_extension_hdrs",
         ":pjrt_c_api_custom_partitioner_extension_hdrs",
         ":pjrt_c_api_ffi_extension_hdrs",
         ":pjrt_c_api_ffi_internal",
@@ -579,6 +581,9 @@ cc_library(
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_compiler",  # buildcleaner: keep to register GPU AOT compiler
+        "//xla/pjrt/gpu:se_gpu_topology_description",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
         "//xla/python:custom_call_batch_partitioner",
         "//xla/python:custom_partition_callback",
@@ -587,9 +592,15 @@ cc_library(
         "//xla/service:compiler",
         "//xla/service:custom_call_target_registry",
         "//xla/service:gpu_topology",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -799,4 +810,26 @@ cc_library(
     name = "pjrt_c_api_tpu_internal",
     hdrs = ["pjrt_c_api_tpu_internal.h"],
     deps = [":pjrt_c_api_hdrs"],
+)
+
+cc_library(
+    name = "gpu_abi_version_extension",
+    srcs = ["gpu_abi_version_extension.cc"],
+    hdrs = ["gpu_abi_version_extension.h"],
+    deps = [
+        ":pjrt_c_api_abi_version_extension_hdrs",
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_wrapper_impl",
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:stream_executor_pjrt_abi_version",
+        "//xla/pjrt/gpu:se_gpu_pjrt_runtime_abi_version",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/stream_executor/abi:runtime_abi_version_manager",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )

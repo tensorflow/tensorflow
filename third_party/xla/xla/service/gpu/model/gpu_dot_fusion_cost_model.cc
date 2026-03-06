@@ -19,9 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <utility>
-#include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -41,56 +39,16 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu::gpu_dot_fusion_cost_model {
 
-using primitive_util::BitWidth;
+namespace detail {
 
 namespace {
-
-bool TileFitsInRegisters(int64_t block_m, int64_t block_n,
-                         const PrimitiveType& element_type,
-                         const se::DeviceDescription& device_info) {
-  int bits_per_output_elem = BitWidth(element_type);
-  int registers_per_block = device_info.registers_per_block_limit();
-  int64_t block_size = block_m * block_n;
-  int64_t bytes_per_block =
-      CeilOfRatio<int64_t>(block_size * bits_per_output_elem, 8);
-  constexpr double kFractionOfRegistersAvailableForAccumulators = 0.8;
-  return bytes_per_block <=
-         (registers_per_block * kFractionOfRegistersAvailableForAccumulators);
-}
-
-absl::StatusOr<absl::InlinedVector<BlockLevelParameters, 4>>
-GetDotAlgorithmValidConfigs(const HloDotInstruction* dot,
-                            const se::DeviceDescription& device_info) {
-  absl::InlinedVector<BlockLevelParameters, 4> valid_configs;
-
-  for (int64_t block_m = detail::kMinBlockDim; block_m <= detail::kMaxBlockDim;
-       block_m *= 2) {
-    for (int64_t block_n = detail::kMinBlockDim;
-         block_n <= detail::kMaxBlockDim; block_n *= 2) {
-      if (!TileFitsInRegisters(block_m, block_n, dot->shape().element_type(),
-                               device_info)) {
-        continue;
-      }
-
-      // TODO(maniananth): Add the logic to find valid kBlock stages.
-      BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes.push_back(
-          std::vector<int64_t>{block_m, block_n});
-      // TODO(maniananth): Add the logic to sweep num warps per block.
-      block_level_parameters.num_warps = detail::kNumWarpsPerBlock;
-      valid_configs.push_back(block_level_parameters);
-    }
-  }
-
-  return valid_configs;
-}
+using ::xla::primitive_util::BitWidth;
 
 int64_t CalculateNumThreadblocks(const HloDotInstruction* dot, int64_t tile_m,
                                  int64_t tile_n) {
-  GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
+  DotProblemDimensions dims(*dot);
   int64_t tile_k = dims.k;
   // TODO(maniananth): Add special handling for grouped matmuls here.
   int64_t num_tiles_along_m_dimension = CeilOfRatio<int64_t>(dims.m, tile_m);
@@ -189,7 +147,25 @@ int64_t CalculateL2Bytes(absl::Span<const int64_t> tile_shape,
 
 }  // namespace
 
-namespace detail {
+DotProblemDimensions::DotProblemDimensions(const HloDotInstruction& dot) {
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+
+  DimensionVector lhs_non_contracting_dims = GetNonContractingDims(
+      lhs_shape.dimensions().size(), dim_numbers.lhs_contracting_dimensions(),
+      dim_numbers.lhs_batch_dimensions());
+  DimensionVector rhs_non_contracting_dims = GetNonContractingDims(
+      rhs_shape.dimensions().size(), dim_numbers.rhs_contracting_dimensions(),
+      dim_numbers.rhs_batch_dimensions());
+
+  b = dim_numbers.lhs_batch_dimensions_size() > 0
+          ? dim_numbers.lhs_batch_dimensions(0)
+          : 1;
+  m = lhs_shape.dimensions(lhs_non_contracting_dims[0]);
+  n = rhs_shape.dimensions(rhs_non_contracting_dims[0]);
+  k = lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions()[0]);
+}
 
 absl::StatusOr<absl::Duration> CalculateComputeTimeWithTileAndWaveQuantization(
     const HloDotInstruction* dot, absl::Span<const int64_t> tile_shape,
@@ -199,7 +175,7 @@ absl::StatusOr<absl::Duration> CalculateComputeTimeWithTileAndWaveQuantization(
         absl::StrCat("Tile shape must be of size 2, got ", tile_shape.size()));
   }
 
-  GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
+  DotProblemDimensions dims(*dot);
   int64_t tile_m = tile_shape[0], tile_n = tile_shape[1];
   int64_t threadblock_count = CalculateNumThreadblocks(dot, tile_m, tile_n);
   int64_t wave_count = CalculateNumWaves(threadblock_count, device_info);
@@ -229,7 +205,7 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
   // microbenchmarking L2 bandwidth within a partition, but we should add this
   // to the device info and extend for more GPUs.
 
-  GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
+  DotProblemDimensions dims(*dot);
   int64_t tile_m = tile_shape[0], tile_n = tile_shape[1];
   int64_t threadblock_count = CalculateNumThreadblocks(dot, tile_m, tile_n);
   double device_l2_bandwidth = 6.65 * 1e12;  // Measured H100 L2 bandwidth.
@@ -289,7 +265,7 @@ float GetEffectiveHbmBandwidth(const int64_t dma_size,
 
 absl::Duration CalculateHbmTime(const HloDotInstruction* dot,
                                 const se::DeviceDescription& device_info) {
-  GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
+  DotProblemDimensions dims(*dot);
   PrimitiveType lhs_element_type = dot->operand(0)->shape().element_type();
   PrimitiveType rhs_element_type = dot->operand(1)->shape().element_type();
   PrimitiveType output_element_type = dot->shape().element_type();
@@ -326,8 +302,6 @@ absl::Duration CalculateHbmTime(const HloDotInstruction* dot,
 }
 
 }  // namespace detail
-
-namespace GpuDotFusionCostModel {
 
 absl::Status IsSupported(const HloDotInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
@@ -373,26 +347,6 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
   return absl::OkStatus();
 }
 
-DotProblemDimensions::DotProblemDimensions(const HloDotInstruction& dot) {
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-
-  DimensionVector lhs_non_contracting_dims = GetNonContractingDims(
-      lhs_shape.dimensions().size(), dim_numbers.lhs_contracting_dimensions(),
-      dim_numbers.lhs_batch_dimensions());
-  DimensionVector rhs_non_contracting_dims = GetNonContractingDims(
-      rhs_shape.dimensions().size(), dim_numbers.rhs_contracting_dimensions(),
-      dim_numbers.rhs_batch_dimensions());
-
-  b = dim_numbers.lhs_batch_dimensions_size() > 0
-          ? dim_numbers.lhs_batch_dimensions(0)
-          : 1;
-  m = lhs_shape.dimensions(lhs_non_contracting_dims[0]);
-  n = rhs_shape.dimensions(rhs_non_contracting_dims[0]);
-  k = lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions()[0]);
-}
-
 absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info) {
@@ -418,23 +372,4 @@ absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
   return std::max({compute_time, hbm_time, l2_time});
 }
 
-absl::StatusOr<absl::Duration> EstimateRunTimeForDotOp(
-    const HloDotInstruction* dot, const se::DeviceDescription& device_info) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
-
-  // TODO(maniananth): Implement this.
-  return absl::UnimplementedError("Not implemented yet");
-}
-
-absl::StatusOr<BlockLevelParameters> FindBestBlockLevelParameters(
-    const HloDotInstruction* dot, const se::DeviceDescription& device_info) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
-
-  // TODO(maniananth): Implement this.
-  return absl::UnimplementedError("Not implemented yet");
-}
-
-}  // namespace GpuDotFusionCostModel
-
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu::gpu_dot_fusion_cost_model
