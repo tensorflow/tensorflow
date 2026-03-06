@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.grpc.pb.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
@@ -38,11 +39,12 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
       continue;                                                               \
     }                                                                         \
     tsl::Call<GrpcCoordinationServiceImpl,                                    \
-              tensorflow::grpc::CoordinationService::AsyncService,            \
-              tensorflow::method##Request, tensorflow::method##Response>::    \
+              xla::coordination::grpc::CoordinationService::AsyncService,     \
+              xla::coordination::method##Request,                             \
+              xla::coordination::method##Response>::                          \
         EnqueueRequest(&service_, cq_.get(),                                  \
-                       &tensorflow::grpc::CoordinationService::AsyncService:: \
-                           Request##method,                                   \
+                       &xla::coordination::grpc::CoordinationService::        \
+                           AsyncService::Request##method,                     \
                        &GrpcCoordinationServiceImpl::method##Handler, false); \
   } while (0)
   ENQUEUE_REQUEST(RegisterTask);

@@ -35,12 +35,12 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/framework/cancellation.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/random.h"
 
 namespace xla {
@@ -99,7 +99,7 @@ class CoordinationServiceAgent {
       std::function<void(const absl::StatusOr<std::string>&)>;
   // Collection of key-value pairs in the same directory.
   using StatusOrValueDirCallback = std::function<void(
-      const absl::StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
+      const absl::StatusOr<std::vector<xla::coordination::KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
@@ -133,7 +133,7 @@ class CoordinationServiceAgent {
   absl::Status Connect();
 
   // Get the device attributes of tasks from remote tasks in the cluster.
-  const tensorflow::DeviceInfo& GetClusterDeviceInfo();
+  const xla::coordination::DeviceInfo& GetClusterDeviceInfo();
 
   // State transition in coordination service agent:
   //
@@ -146,14 +146,15 @@ class CoordinationServiceAgent {
   CoordinationService::TaskId task_id() const { return task_id_; }
 
   // Watches the status of a remote job.
-  absl::StatusOr<tensorflow::WatchJobStateResponse> WatchJobState(
+  absl::StatusOr<xla::coordination::WatchJobStateResponse> WatchJobState(
       std::optional<int64_t> version_number);
 
   // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
   // `call_opts->ClearCancelCallback()`.
   std::shared_ptr<tsl::CallOptions> WatchJobStateAsync(
       std::optional<int64_t> version_number,
-      std::function<void(absl::StatusOr<tensorflow::WatchJobStateResponse>)>
+      std::function<
+          void(absl::StatusOr<xla::coordination::WatchJobStateResponse>)>
           callback);
 
   // Report error to coordination service. This will invoke the error callback.
@@ -218,7 +219,7 @@ class CoordinationServiceAgent {
   // the directory.
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
-  absl::StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
+  absl::StatusOr<std::vector<xla::coordination::KeyValueEntry>> GetKeyValueDir(
       absl::string_view key);
   void GetKeyValueDirAsync(absl::string_view key,
                            StatusOrValueDirCallback done);
@@ -389,8 +390,8 @@ class CoordinationServiceAgent {
   tsl::StatusCallback error_fn_;
 
   mutable absl::Mutex state_mu_;
-  tensorflow::CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
-      tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+  xla::coordination::CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
+      xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
   // Tracks the number of times a barrier has been used, keyed by id.
   absl::flat_hash_map<std::string, int64_t> barrier_counter_
@@ -398,7 +399,7 @@ class CoordinationServiceAgent {
   absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
   IncarnationId leader_incarnation_{0};
-  tensorflow::DeviceInfo cluster_devices_;
+  xla::coordination::DeviceInfo cluster_devices_;
 
   absl::Mutex shutdown_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutdown_mu_) = false;

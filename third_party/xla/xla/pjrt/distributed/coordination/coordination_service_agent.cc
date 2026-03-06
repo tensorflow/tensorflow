@@ -45,6 +45,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
 #include "xla/runtime/device_id.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
@@ -53,14 +54,12 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 
 namespace xla {
-using tensorflow::CoordinatedTask;
-using tensorflow::CoordinatedTaskState;
-using tensorflow::DeviceInfo;
-using tensorflow::KeyValueEntry;
+using xla::coordination::CoordinatedTaskState;
+using xla::coordination::DeviceInfo;
+using xla::coordination::KeyValueEntry;
 
 namespace {
 
@@ -326,7 +325,8 @@ const DeviceInfo& CoordinationServiceAgent::GetClusterDeviceInfo() {
 
 std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchJobStateAsync(
     std::optional<int64_t> version_number,
-    std::function<void(absl::StatusOr<tensorflow::WatchJobStateResponse>)>
+    std::function<
+        void(absl::StatusOr<xla::coordination::WatchJobStateResponse>)>
         callback) {
   auto request = std::make_shared<WatchJobStateRequest>();
   auto response = std::make_shared<WatchJobStateResponse>();
@@ -348,13 +348,14 @@ std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchJobStateAsync(
   return call_opts;
 }
 
-absl::StatusOr<tensorflow::WatchJobStateResponse>
+absl::StatusOr<xla::coordination::WatchJobStateResponse>
 CoordinationServiceAgent::WatchJobState(std::optional<int64_t> version_number) {
-  absl::StatusOr<tensorflow::WatchJobStateResponse> response;
+  absl::StatusOr<xla::coordination::WatchJobStateResponse> response;
   absl::Notification done;
   WatchJobStateAsync(
       version_number,
-      [&response, &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
+      [&response,
+       &done](absl::StatusOr<xla::coordination::WatchJobStateResponse> r) {
         response = std::move(r);
         done.Notify();
       });

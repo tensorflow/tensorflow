@@ -36,12 +36,12 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/key_value_store.h"
 #include "xla/service/global_device_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/random.h"
 
 namespace xla {
@@ -156,7 +156,7 @@ class CoordinationService {
 
   // Watches the state and the error status of the job.
   using WatchJobStateCallback = absl::AnyInvocable<void(
-      std::vector<tensorflow::CoordinatedTaskStateInfo>, int64_t)>;
+      std::vector<xla::coordination::CoordinatedTaskStateInfo>, int64_t)>;
   void WatchJobState(std::optional<int64_t> version_number,
                      WatchJobStateCallback);
 
@@ -185,7 +185,7 @@ class CoordinationService {
   // A value is considered to be in the directory if its key is prefixed with
   // the directory. This is not a blocking call. Agent does not need to be
   // connected to utilize the distributed key-value store.
-  std::vector<tensorflow::KeyValueEntry> GetKeyValueDir(
+  std::vector<xla::coordination::KeyValueEntry> GetKeyValueDir(
       absl::string_view directory_key);
 
   // Delete configuration key-value. If key is a directory, recursively clean
@@ -293,7 +293,7 @@ class CoordinationService {
 
   void LogConnectStatusLocked() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  const tensorflow::DeviceInfo& ListClusterDevices()
+  const xla::coordination::DeviceInfo& ListClusterDevices()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   IncarnationId GetServiceIncarnation();
   void BarrierAsyncLocked(absl::string_view barrier_id, int64_t counter,
@@ -479,7 +479,7 @@ class CoordinationService {
 
     explicit TaskState(TaskId task_id) : task_id_(task_id) {}
 
-    tensorflow::CoordinatedTaskState GetState() const { return state_; }
+    xla::coordination::CoordinatedTaskState GetState() const { return state_; }
     absl::Status GetStatus() const { return status_; }
     IncarnationId GetTaskIncarnation() const { return task_incarnation_; }
     void SetTaskIncarnation(IncarnationId task_incarnation) {
@@ -519,8 +519,8 @@ class CoordinationService {
     // Incarnation ID for CPU:0 on remote task.
     IncarnationId task_incarnation_{0};
 
-    tensorflow::CoordinatedTaskState state_ =
-        tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+    xla::coordination::CoordinatedTaskState state_ =
+        xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
     absl::Status status_;
     absl::Mutex last_heartbeat_mu_;
     uint64_t last_heartbeat_us_ ABSL_GUARDED_BY(last_heartbeat_mu_);
@@ -558,11 +558,11 @@ class CoordinationService {
   // be refreshed, for example, after a task has failed.
   void RefreshAliveness() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  static tensorflow::CoordinatedTaskStateInfo CreateTaskStateInfo(
+  static xla::coordination::CoordinatedTaskStateInfo CreateTaskStateInfo(
       TaskId task, const TaskState& state);
 
   // Gets the task states.
-  std::vector<tensorflow::CoordinatedTaskStateInfo> GetJobState()
+  std::vector<xla::coordination::CoordinatedTaskStateInfo> GetJobState()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Notifies all callbacks registered via WatchJobState.
@@ -576,7 +576,8 @@ class CoordinationService {
   const IncarnationId service_incarnation_{tsl::random::New64()};
   const Config config_;
 
-  std::function<tensorflow::DeviceInfo(const tensorflow::DeviceInfo& devices)>
+  std::function<xla::coordination::DeviceInfo(
+      const xla::coordination::DeviceInfo& devices)>
       post_aggregate_device_fn_;
 
   const std::string shutdown_barrier_id_ =
@@ -589,7 +590,7 @@ class CoordinationService {
   int64_t cluster_state_version_number_ ABSL_GUARDED_BY(state_mu_) = 0;
   std::vector<WatchJobStateCallback> watch_job_state_callbacks_
       ABSL_GUARDED_BY(state_mu_);
-  tensorflow::DeviceInfo cluster_devices_ ABSL_GUARDED_BY(state_mu_);
+  xla::coordination::DeviceInfo cluster_devices_ ABSL_GUARDED_BY(state_mu_);
 
   KeyValueStore store_;
 

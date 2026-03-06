@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -37,12 +38,10 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
 namespace {
-using tensorflow::CoordinatedTask;
-using tensorflow::KeyValueEntry;
+using xla::coordination::KeyValueEntry;
 
 using ::testing::_;
 using ::testing::DoAll;
