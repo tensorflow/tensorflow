@@ -14,7 +14,7 @@ load(
 )
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         # "//litert:__subpackages__",  # copybara:uncomment
         # copybara:uncomment "//third_party/odml/litert:__subpackages__",

@@ -8,7 +8,7 @@ load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_jni_library"
 # in Java. Please don't use them for other purposes.
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 

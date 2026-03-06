@@ -5,7 +5,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 # Libraries to support TfLite buffer / synchronization interoperability.
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],

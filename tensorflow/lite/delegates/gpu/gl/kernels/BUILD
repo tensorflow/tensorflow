@@ -12,7 +12,7 @@ load(
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "tflite_angle_heapcheck_deps")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

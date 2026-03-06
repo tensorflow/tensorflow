@@ -17,7 +17,7 @@ load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 load("//tensorflow/compiler/mlir/lite:symlink_files.bzl", "symlink_inputs")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
     features = [
         # Cannot use header_modules (parse_headers feature fails).
