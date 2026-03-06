@@ -1011,7 +1011,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
     // Create a regular dot with equivalent operand and output shape to compute
     // the mapping for HandleDotHelper.
     PrecisionConfig precision_config;
-    precision_config.mutable_operand_precision()->Resize(
+    precision_config.mutable_operand_precision()->resize(
         2, PrecisionConfig::DEFAULT);
     std::unique_ptr<HloInstruction> dot = HloInstruction::CreateDot(
         hlo->shape(), hlo->mutable_operand(0), hlo->mutable_operand(1),
