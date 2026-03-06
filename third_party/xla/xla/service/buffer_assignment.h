@@ -766,6 +766,10 @@ class BufferAssigner {
     buffer_assignment::BufferAssignmentAlgorithmProto::Value
         buffer_assignment_algorithm =
             buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
+
+    // Function to determine if a DUS is address change only.
+    std::function<bool(const HloInstruction*)> is_dus_address_change_only_fn =
+        [](const HloInstruction* instruction) { return false; };
   };
 
   static Colorer DefaultColorer() {

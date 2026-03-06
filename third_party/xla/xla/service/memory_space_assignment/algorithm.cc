@@ -4281,6 +4281,16 @@ AllocationRequest MsaAlgorithm::CreateAllocationRequest(
     }
     use_time = GetCorrectedUseTime(hlo_use);
   }
+  if (options_.is_dus_address_change_only_fn(hlo_use.instruction)) {
+    CHECK_NE(hlo_use.operand_number, 1)
+        << "Update operand is not expected to be materialized.";
+    const HloInstruction* update_operand = hlo_use.instruction->operand(1);
+    if (update_operand->opcode() == HloOpcode::kBitcast) {
+      update_operand = update_operand->operand(0);
+    }
+    latest_prefetch_time =
+        std::min(latest_prefetch_time, GetCorrectedUseTime(update_operand) - 1);
+  }
 
   // Add a required assignment in default memory if the use not allowed in
   // alternate memory.
