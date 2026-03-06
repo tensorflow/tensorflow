@@ -347,11 +347,18 @@ absl::Status PosixFileSystem::DeleteFile(const std::string& fname,
 
 absl::Status PosixFileSystem::CreateDir(const std::string& name,
                                         TransactionToken* token) {
+  return CreateDir(name, token, kDefaultMode);
+}
+
+absl::Status PosixFileSystem::CreateDir(const std::string& name,
+                                        TransactionToken* token,
+                                        uint32_t mode) {
   std::string translated = TranslateName(name);
   if (translated.empty()) {
     return absl::AlreadyExistsError(name);
   }
-  if (mkdir(translated.c_str(), 0755) != 0) {
+  uint32_t final_mode = (mode == kDefaultMode) ? 0755 : mode;
+  if (mkdir(translated.c_str(), final_mode) != 0) {
     return IOError(name, errno);
   }
   return absl::OkStatus();
