@@ -398,6 +398,9 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
     cpu_cfg =
         std::make_optional<Compiler::CpuTargetConfig>(target_machine_options);
   }
+  if (options.use_shardy_partitioner) {
+    hlo_module->mutable_config().set_use_shardy_partitioner(true);
+  }
   auto result =
       CompileExecutable(std::move(hlo_module), backend, std::move(gpu_cfg),
                         std::move(cpu_cfg), compilation_result);

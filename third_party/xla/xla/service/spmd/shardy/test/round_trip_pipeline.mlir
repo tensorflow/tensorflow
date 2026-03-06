@@ -45,6 +45,28 @@ func.func @main(
 
 // -----
 
+// Test open dim shardings.
+
+// Make sure open dim shardings are preserved.
+// CHECK-NOT: xla.sdy.sharding
+
+// CHECK: sdy.mesh @mesh = <["a"=2, "b"=2]>
+sdy.mesh @mesh = <["a"=2, "b"=2]>
+
+// CHECK-LABEL: func @main
+func.func @main(
+  // CHECK: %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}]>},
+  // CHECK: %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {}]>})
+  %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}]>},
+  %arg1: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {}]>}
+  // CHECK: (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>})
+  ) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+
+// -----
+
 // Test that a sharding on the result of a function is kept around. Due to how
 // StableHLO->HLO conversion works discarding any frontend attributes on the function
 // results, we copy the sharding to a temporary custom call before discarding it
