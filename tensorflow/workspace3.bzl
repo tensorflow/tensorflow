@@ -6,6 +6,14 @@ load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 def workspace():
     tf_vendored(name = "xla", path = "third_party/xla")
     tf_vendored(name = "tsl", path = "third_party/xla/third_party/tsl")
+    tf_http_archive(
+        name = "rules_cc",
+        sha256 = "5287821524d1c1d20f1c0ffa90bd2c2d776473dd8c84dafa9eb783150286d825",
+        strip_prefix = "rules_cc-0.2.11",
+        urls = tf_mirror_urls(
+            "https://github.com/bazelbuild/rules_cc/releases/download/0.2.11/rules_cc-0.2.11.tar.gz",
+        ),
+    )
 
     tf_http_archive(
         name = "io_bazel_rules_closure",
