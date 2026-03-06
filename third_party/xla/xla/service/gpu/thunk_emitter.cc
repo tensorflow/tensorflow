@@ -324,17 +324,10 @@ void AppendThunkSequence(ThunkSequence& thunks,
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConditional(
     const HloInstruction* instr) {
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
+  std::vector<ThunkSequence> branch_thunks;
   branch_thunks.reserve(instr->branch_count());
   for (auto comp : instr->branch_computations()) {
-    TF_ASSIGN_OR_RETURN(auto thunk_sequence, EmitHloComputation(comp));
-    Thunk::ThunkInfo branch_thunk_info =
-        Thunk::ThunkInfo::WithProfileAnnotation(
-            instr, ir_emitter_context_->GetNextThunkId());
-    branch_thunk_info.profile_annotation +=
-        absl::StrCat("_branch_", comp->name());
-    branch_thunks.push_back(std::make_unique<SequentialThunk>(
-        branch_thunk_info, std::move(thunk_sequence)));
+    TF_ASSIGN_OR_RETURN(branch_thunks.emplace_back(), EmitHloComputation(comp));
   }
   TF_ASSIGN_OR_RETURN(auto slice,
                       GetAllocationSliceForHlo(instr->operand(0), {}));
@@ -1392,22 +1385,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhile(
   TF_ASSIGN_OR_RETURN(
       auto pred, GetAllocationSliceForHlo(condition->root_instruction(), {}));
 
-  Thunk::ThunkInfo while_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+  Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
-  Thunk::ThunkInfo cond_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
-      instr, ir_emitter_context_->GetNextThunkId());
-  cond_thunk_info.profile_annotation += "_condition";
-  Thunk::ThunkInfo body_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
-      instr, ir_emitter_context_->GetNextThunkId());
-  body_thunk_info.profile_annotation += "_body";
-
   return GetThunkSequence(
-      std::make_unique<WhileThunk>(while_thunk_info, instr, pred,
-                                   std::make_unique<SequentialThunk>(
-                                       cond_thunk_info, std::move(cond_thunks)),
-                                   std::make_unique<SequentialThunk>(
-                                       body_thunk_info, std::move(body_thunks)),
-                                   trip_count));
+      std::make_unique<WhileThunk>(info, instr, pred, std::move(cond_thunks),
+                                   std::move(body_thunks), trip_count));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateState(

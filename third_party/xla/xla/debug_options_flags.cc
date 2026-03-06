@@ -480,6 +480,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
   opts.set_xla_early_exit_with_layouts(false);
   opts.set_xla_gpu_experimental_all_fusions_with_triton(false);
+  opts.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
 
   opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
   opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);
@@ -2807,6 +2808,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_ragged_all_to_all_use_barrier(),
       "If true, use the MultiGpuBarrierKernel in one-shot RaggedAllToAll "
       "thunk."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_use_ragged_dot_grouped_gemm",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_use_ragged_dot_grouped_gemm),
+      debug_options->xla_gpu_experimental_use_ragged_dot_grouped_gemm(),
+      "If true, use grouped GEMM (hipBLASLt) for ragged dot operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_scaled_dot_with_triton",
       bool_setter_for(
