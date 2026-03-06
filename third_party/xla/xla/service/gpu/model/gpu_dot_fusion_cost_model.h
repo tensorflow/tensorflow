@@ -26,19 +26,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/stream_executor/device_description.h"
 
-namespace xla {
-namespace gpu {
-
-namespace GpuDotFusionCostModel {
-
-struct DotProblemDimensions {
-  int64_t b;
-  int64_t m;
-  int64_t n;
-  int64_t k;
-
-  explicit DotProblemDimensions(const HloDotInstruction& dot);
-};
+namespace xla::gpu::gpu_dot_fusion_cost_model {
 
 // Returns OkStatus if the dot operation is supported by the cost model.
 absl::Status IsSupported(const HloDotInstruction* dot);
@@ -49,15 +37,16 @@ absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info);
 
-// Estimates the run time for a GPU DOT operation.
-absl::StatusOr<absl::Duration> EstimateRunTimeForDotOp(
-    const HloDotInstruction* dot, const se::DeviceDescription& device_info);
-
-absl::StatusOr<BlockLevelParameters> FindBestBlockLevelParameters(
-    const HloDotInstruction* dot, const se::DeviceDescription& device_info);
-}  // namespace GpuDotFusionCostModel
-
 namespace detail {
+
+struct DotProblemDimensions {
+  int64_t b;
+  int64_t m;
+  int64_t n;
+  int64_t k;
+
+  explicit DotProblemDimensions(const HloDotInstruction& dot);
+};
 
 // Returns the effective HBM bandwidth in bytes per second for a given dma_size.
 // dma_size is the total amount of data transferred to/from HBM in bytes.
@@ -85,13 +74,8 @@ absl::StatusOr<absl::Duration> CalculateComputeTimeWithTileAndWaveQuantization(
     const HloDotInstruction* dot, absl::Span<const int64_t> tile_shape,
     const se::DeviceDescription& device_info);
 
-const int kMinBlockDim = 32;
-const int kMaxBlockDim = 256;
-const int kMaxSplitK = 128;
-const int kNumWarpsPerBlock = 4;
 }  // namespace detail
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu::gpu_dot_fusion_cost_model
 
 #endif  // XLA_SERVICE_GPU_MODEL_GPU_DOT_FUSION_COST_MODEL_H_

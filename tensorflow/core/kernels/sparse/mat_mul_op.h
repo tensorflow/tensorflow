@@ -431,7 +431,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
     using Reducer = Eigen::internal::SumReducer<T>;
     using Index = typename TTypes<T>::Tensor::Index;
     output->flat<T>().device(device) = matmul_result_buffer.matrix<T>().reduce(
-        Eigen::array<Index, 1>({0}), Reducer());
+        Eigen::array<Index, 1>{0}, Reducer());
   }
 
   // Given a range [batch_and_row_begin, batch_and_row_end) which is a
