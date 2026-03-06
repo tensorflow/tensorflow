@@ -60,10 +60,6 @@ class NamedSharding {
 
     absl::Span<const AxisRef> axes() const { return axes_; }
 
-    // Returns the names of the axis in the dimension sharding. This should only
-    // be called for non-sub-axis.
-    std::vector<std::string> axis_names(const Mesh& mesh) const;
-
     bool is_closed() const { return is_closed_; }
 
     int64_t getShardedSize(const Mesh& mesh) const;
@@ -132,6 +128,7 @@ class NamedSharding {
   absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
   absl::Span<const AxisRef> manual_axes() const { return manual_axes_; }
   absl::Span<const OpMetadata> metadata() const { return metadata_; }
+  std::vector<OpMetadata>& mutable_metadata() { return metadata_; }
 
   // Returns number of dimensions.
   int64_t num_dimensions() const { return dim_shardings_.size(); }
@@ -148,6 +145,13 @@ class NamedSharding {
   int64_t num_devices() const {
     return mesh_.device_assignment().num_elements();
   }
+
+  // Returns the partitions for the sharding which can be used to construct a
+  // JAX PartitionSpec.
+  //
+  // This method is only used for JAX as it requires every dimension to be
+  // closed and no sub-axis.
+  std::vector<std::vector<std::string>> JAXPartitions() const;
 
   bool IsReplicated() const {
     return !IsMaximal() && AllDimShardingsEmpty(dim_shardings_) &&
