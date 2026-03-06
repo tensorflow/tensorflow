@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "xla/service/fusion_node_indexing_evaluation.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/elemental_ir_emitter.h"
-#include "xla/types.h"
-#include "tsl/platform/logging.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -33,11 +38,6 @@ FusionNodeIndexingEvaluation::FusionNodeIndexingEvaluation(
   index_usage_count_[fusion] = root_usage_count;
   RecomputeCache();
 }
-
-// This constant is arbitrarily chosen. Essentially we don't want to have too
-// much code duplication, because it slows down the compilation time. There is
-// a tradeoff between compilation time and runtime here.
-const int64_t FusionNodeIndexingEvaluation::kAllowedCodeDuplication = 15;
 
 namespace {
 
@@ -58,6 +58,26 @@ int64_t UserCount(const HloInstruction* hlo) {
   }
   return cnt;
 }
+
+// Returns the maximum number of times an instruction can be duplicated in a
+// fusion.
+int64_t AllowedCodeDuplication(const HloInstruction* instruction) {
+  // Arbitrary constant chosen by experimentation. This is a trade-off between
+  // compilation time and runtime. Smaller values allow for faster compilation
+  // but may result in suboptimal code. Small fusions are allowed to have higher
+  // code duplication.
+  constexpr int64_t kAllowedCodeDuplication = 15;
+  if (!instruction->shape().IsArray()) {
+    return kAllowedCodeDuplication;
+  }
+  static constexpr int64_t kSmallFusionThresholdElements = 2048;
+  int64_t elements = ShapeUtil::ElementsIn(instruction->shape());
+  if (elements <= kSmallFusionThresholdElements) {
+    return kAllowedCodeDuplication * 2;
+  }
+  return kAllowedCodeDuplication;
+}
+
 }  // namespace
 
 bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
@@ -71,14 +91,14 @@ bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
     return false;
   }
   int64_t emitted_instructions = EvaluateEmittedInstructions(producer);
-  return emitted_instructions > kAllowedCodeDuplication ||
+  return emitted_instructions > AllowedCodeDuplication(producer) ||
          (ElementalIrEmitter::OpInvalidatesCache(producer) &&
           (emitted_instructions > 1 || UserCount(producer) > 1));
 }
 
 bool FusionNodeIndexingEvaluation::MaxCodeDuplicationTooHigh() const {
   for (const auto& entry : index_usage_count_) {
-    if (entry.second > kAllowedCodeDuplication ||
+    if (entry.second > AllowedCodeDuplication(entry.first) ||
         (ElementalIrEmitter::OpInvalidatesCache(entry.first) &&
          (entry.second > 1 || UserCount(entry.first) > 1))) {
       return true;

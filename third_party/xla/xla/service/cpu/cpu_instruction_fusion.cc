@@ -107,9 +107,19 @@ bool BlockSubcomputationFusion(const HloInstruction* instruction,
   return false;
 }
 
+const int64_t kSmallTensorElements = 2048;
+
 }  // namespace
 
 bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
+  // Small instructions are cheap to duplicate.
+  if (instruction.shape().IsArray() &&
+      ShapeUtil::ElementsIn(instruction.shape()) <= kSmallTensorElements) {
+    fprintf(stderr, "Small tensor: %s\n", instruction.ToString().c_str());
+    return false;
+  } else {
+    fprintf(stderr, "Large tensor: %s\n", instruction.ToString().c_str());
+  }
   namespace m = match;
 
   switch (instruction.opcode()) {
@@ -352,6 +362,8 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
 
   if (!CanBeLoopFused(*producer)) {
+    fprintf(stderr, "Producer is not loop-fusible: %s\n",
+            producer->ToString().c_str());
     return FusionDecision::Forbid("Producer is not loop-fusible.");
   }
 
@@ -403,7 +415,12 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
         consumer->fused_instructions(), [](const HloInstruction* instr) {
           return instr->opcode() == HloOpcode::kReduce;
         });
-    if (num_fused_reductions > kMaxReductionsInFusion) {
+    int64_t max_reductions_allowed = kMaxReductionsInFusion;
+    if (consumer->shape().IsArray() &&
+        ShapeUtil::ElementsIn(consumer->shape()) <= kSmallTensorElements) {
+      max_reductions_allowed = 20;
+    }
+    if (num_fused_reductions > max_reductions_allowed) {
       return FusionDecision::Forbid(
           "Too many reductions inside single fusion.");
     }
@@ -419,8 +436,14 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
   // Output fusion is not currently supported on CPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
-    return FusionDecision::Forbid(
-        "Not fusing: producer is itself a fusion node.");
+    int64_t producer_elements = ShapeUtil::ElementsIn(producer->shape());
+    if (producer_elements > kSmallTensorElements) {
+      return FusionDecision::Forbid(
+          "Not fusing: producer fusion is too large.");
+    }
+    // Small producer fusion — allow merging via MergeFusionInstruction
+    VLOG(2) << "Allowing small producer fusion merge.";
+    fprintf(stderr, "Allowing small producer fusion merge.\n");
   }
 
   // Don't fuse if fusing would cause too much code duplication because of
@@ -467,6 +490,7 @@ FusionDecision CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
                  operand_index == 0 &&
                  ShapeUtil::ByteSizeOfElements(consumer->operand(1)->shape()) <
                      kFusionThresholdBytes) {
+        exit(1);
         VLOG(2) << "Fusing small matrix-vector product.";
         return FusionDecision::Allow();
       }
