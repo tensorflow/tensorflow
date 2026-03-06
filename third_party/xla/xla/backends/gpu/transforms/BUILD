@@ -3081,9 +3081,7 @@ cc_library(
     hdrs = ["triton_fusion_numerics_verifier.h"],
     tags = ["gpu"],
     deps = [
-        ":dot_algorithm_rewriter",
         ":fusion_wrapper",
-        ":gemm_rewriter",
         ":priority_fusion",
         ":tree_reduction_rewriter",
         "//xla:shape_util",

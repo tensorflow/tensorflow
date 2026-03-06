@@ -205,14 +205,6 @@ class HloPrintOptions {
     return *this;
   }
 
-  // If true, will attempt to sort the backend config's json representation
-  // before printing it. If the backend config is a raw string that is not json,
-  // it will be printed as is, without sorting.
-  HloPrintOptions& set_sort_backend_config(bool value) {
-    sort_backend_config_ = value;
-    return *this;
-  }
-
   // If true, infeed_config and outfeed_config will be printed.
   HloPrintOptions& set_print_infeed_outfeed_config(bool value) {
     print_infeed_outfeed_config_ = value;

@@ -69,11 +69,8 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:any_cc_proto",
         "@com_google_protobuf//:protobuf",
-        "@tsl//tsl/platform:blocking_counter",
         "@tsl//tsl/platform:fingerprint",
         "@tsl//tsl/platform:path",
-        "@tsl//tsl/profiler/lib:scoped_annotation",
-        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 

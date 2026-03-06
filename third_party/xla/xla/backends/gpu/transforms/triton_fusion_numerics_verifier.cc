@@ -27,9 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
-#include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
-#include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/backends/gpu/transforms/tree_reduction_rewriter.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -279,8 +277,7 @@ TritonFusionNumericsVerifier::FusionCacheKey CacheKeyForFusion(
   std::unique_ptr<HloModule> module = ExtractInstructionIntoNewModule(fusion);
   HloPrintOptions print_options = HloPrintOptions::ModuleFingerprint()
                                       .set_print_only_essential_constants(false)
-                                      .set_print_backend_config(true)
-                                      .set_sort_backend_config(true);
+                                      .set_print_backend_config(true);
   return module->ToString(print_options);
 }
 

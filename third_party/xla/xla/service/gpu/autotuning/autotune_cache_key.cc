@@ -35,7 +35,6 @@ std::string AutotuneCacheKey::HloInstructionToCanonicalString(
   auto options = HloPrintOptions::Canonical();
   if (instr.opcode() != HloOpcode::kFusion) {
     options.set_print_backend_config(true);
-    options.set_sort_backend_config(true);
     return instr.ToString(options);
   }
   options.set_print_subcomputation_mode(

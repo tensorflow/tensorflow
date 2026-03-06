@@ -61,10 +61,7 @@ limitations under the License.
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_utils.h"
 #include "xla/util.h"
-#include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
-#include "tsl/profiler/lib/scoped_annotation.h"
-#include "tsl/profiler/lib/traceme.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
@@ -74,7 +71,6 @@ namespace {
 tsl::Fprint128 GetFingerprint(const HloInstruction* instr) {
   auto options = HloPrintOptions::Fingerprint();
   options.set_print_backend_config(true);
-  options.set_sort_backend_config(true);
   options.set_print_operand_shape(true);
 
   return tsl::Fingerprint128(instr->ToString(options));
