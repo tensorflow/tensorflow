@@ -71,6 +71,7 @@ using ::mlir::StringAttr;
 using ::mlir::StringRef;
 using xla::sdy::kFrontendAttributesAttr;
 
+using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 using ::mlir::sdy::AxisRefAttr;
 using ::mlir::sdy::AxisRefListAttr;
@@ -584,6 +585,10 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
   CHECK_EQ(types.size(), 1);
   return TensorShardingPerValueAttr::get(
       context, convertToSdyShardingAttr(hloSharding, types[0], context));
+}
+
+bool isManualComputation(CallOp callOp) {
+  return callOp.getCallee().contains(kManualComputationFuncName);
 }
 
 }  // namespace sdy

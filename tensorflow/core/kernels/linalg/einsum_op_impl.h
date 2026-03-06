@@ -414,7 +414,7 @@ struct EinsumHelper {
         ctx, output->shaped<T, 1>({output_size}),
         const_cast<const Tensor&>(input_deduped)
             .shaped<T, 2>({output_size, reshape[kReduce]}),
-        Eigen::array<Index, 1>({1}), Reducer());
+        Eigen::array<Index, 1>{1}, Reducer());
     return absl::OkStatus();
   }
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <new>
 #include <optional>
 #include <set>
 #include <string>
@@ -76,6 +77,7 @@ limitations under the License.
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -87,6 +89,7 @@ limitations under the License.
 #include "xla/pjrt/profiling/test_util/mock_device_time_measurement.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
@@ -3173,6 +3176,37 @@ TEST(StreamExecutorGpuClientTest, FailedCrossHostReceiveArgsSizeMismatch) {
               "CrossHostReceiveBuffers: shapes, src_global_device_ids, and "
               "transfer_keys must have the same length, but got 1, 1, and "
               "2.")));
+}
+
+TEST(StreamExecutorGpuClientTest, GetAbiVersion) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(DefaultOptions()));
+
+  static constexpr char const* kAddProgram =
+      R"(
+HloModule Add.6, entry_computation_layout={(f32[], f32[])->(f32[], f32[])}
+
+ENTRY %Add.6 (a.1: f32[], b.2: f32[]) -> (f32[], f32[]) {
+  %a.1 = f32[] parameter(0)
+  %b.2 = f32[] parameter(1)
+  %add.3 = f32[] add(f32[] %a.1, f32[] %b.2)
+  %add.4 = f32[] add(f32[] %add.3, f32[] %add.3)
+  ROOT %tuple.5 = (f32[], f32[]) tuple(f32[] %add.3, f32[] %add.4)
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
+                       CompileExecutable(kAddProgram, *client));
+
+  LOG(ERROR) << typeid(*executable).name();
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutableAbiVersion> executable_abi_version,
+      executable->GetAbiVersion());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtRuntimeAbiVersion> runtime_abi_version,
+      client->RuntimeAbiVersion());
+  EXPECT_OK(runtime_abi_version->IsCompatibleWith(*executable_abi_version));
 }
 
 static std::string SuccessfulCrossHostTransferTestName(

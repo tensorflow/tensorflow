@@ -1614,6 +1614,11 @@ class PjRtLoadedExecutable {
   }
   // end of convenience forwarding methods
 
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+  GetAbiVersion() const {
+    return absl::UnimplementedError("GetAbiVersion not implemented.");
+  }
+
  protected:
   // Value returned internally from routines that enqueue an execution,
   // combining the result buffers with a future that becomes ready when the
@@ -1691,6 +1696,11 @@ class PjRtExecutableForwarder : public PjRtExecutable {
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
     return executable_->GetCompiledMemoryStats();
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
+      const override {
+    return executable_->GetAbiVersion();
   }
 
  private:
