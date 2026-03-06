@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/functional/overload.h"
 #include "absl/memory/memory.h"
@@ -28,6 +29,8 @@ limitations under the License.
 #include "riegeli/bytes/string_writer.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
@@ -88,6 +91,22 @@ GpuAotCompilationResult::LoadExecutable(
   return GpuExecutable::FromProto(GetExecutableProto(), device_description,
                                   platform_id->ToName(),
                                   GetDebugOptionsFromFlags(), symbol_resolver);
+}
+
+absl::StatusOr<CompiledMemoryStats>
+GpuAotCompilationResult::GetCompiledMemoryStats() const {
+  CompiledMemoryStats memory_stats{};
+  std::vector<BufferAllocation> allocations;
+  for (const auto& allocation :
+       GetExecutableProto().buffer_allocations().values()) {
+    allocations.push_back(BufferAllocation::FromProto(allocation));
+  }
+  std::vector<const BufferAllocation*> alloc_ptrs;
+  alloc_ptrs.reserve(allocations.size());
+  for (const BufferAllocation& alloc : allocations) {
+    alloc_ptrs.push_back(&alloc);
+  }
+  return memory_stats;
 }
 
 const GpuExecutableProto& GpuAotCompilationResult::GetExecutableProto() const {
