@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_restore_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/executable.h"
 #include "tensorflow/core/tfrt/mlrt/interpreter/builtin_kernels.h"
@@ -391,11 +392,14 @@ class KernelTest : public ::testing::TestWithParam<bool> {
             /*model_metadata=*/std::nullopt,
             &fallback_state_->process_function_library_runtime());
 
+    h2d_transfer_executor_factory_ =
+        std::make_unique<ifrt_serving::H2DTransferExecutorFactory>();
     TF_ASSERT_OK_AND_ASSIGN(client_, xla::ifrt::test_util::GetClient());
     resource_context_
         .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
             "IfrtModelContext", client_, ifrt_core_selector_.get(),
-            &GetThreadPool(), /*compilation_environment_proto=*/nullptr);
+            &GetThreadPool(), /*compilation_environment_proto=*/nullptr,
+            h2d_transfer_executor_factory_.get());
 
     tf_context_ = std::make_unique<Context>(fallback_request_state_.get(),
                                             &resource_context_);
@@ -438,6 +442,8 @@ class KernelTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<xla::ifrt::Client> client_;
   std::unique_ptr<tfd::KernelFallbackCompatRequestState>
       fallback_request_state_;
+  std::unique_ptr<ifrt_serving::H2DTransferExecutorFactory>
+      h2d_transfer_executor_factory_;
   std::unique_ptr<Context> tf_context_;
   tensorflow::ifrt_serving::IfrtModelContext* ifrt_model_context_;
 };
