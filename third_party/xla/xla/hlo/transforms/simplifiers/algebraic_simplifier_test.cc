@@ -11850,9 +11850,8 @@ TEST_F(AlgebraicSimplifierTest, CopyBitcastCopyDimSize1) {
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).value());
-  EXPECT_THAT(
-      m->entry_computation()->root_instruction(),
-      GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Bitcast(m::Parameter()))))));
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Parameter())))));
 }
 
 TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy2) {
@@ -11980,6 +11979,80 @@ TEST_F(AlgebraicSimplifierTest, BitcastUndoesBitcast) {
   ASSERT_TRUE(result);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, BitcastUnaryBitcast) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(e {
+    p0 = f32[10, 20] parameter(0)
+    b1 = f32[200] bitcast(p0)
+    neg = f32[200] negate(b1)
+    b2 = f32[20, 10] bitcast(neg)
+    t = tuple(b1, b2)
+  })"));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_is_layout_sensitive(false);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Bitcast(m::Parameter(0)),
+                                  m::Bitcast(m::Negate(m::Parameter(0))))));
+}
+
+TEST_F(AlgebraicSimplifierTest, BitcastElementwiseFusionBitcast) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+  HloModule test
+
+  wrapped_negate {
+    param0 = f32[200] parameter(0)
+    ROOT negate = f32[200] negate(param0)
+  }
+
+  ENTRY main {
+    p0 = f32[10, 20] parameter(0)
+    b1 = f32[200] bitcast(p0)
+    fusion = f32[200] fusion(b1), kind=kLoop, calls=wrapped_negate
+    b2 = f32[20, 10] bitcast(fusion)
+    t = tuple(b1, b2)
+  })"));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_is_layout_sensitive(false);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, BitcastUnaryBitcast_MultiUser) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(e {
+    p0 = f32[10, 20] parameter(0)
+    b1 = f32[200] bitcast(p0)
+    neg = f32[200] negate(b1)
+    b2 = f32[20, 10] bitcast(neg)
+    t = (f32[20, 10], f32[200]) tuple(b2, neg)
+  })"));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, BitcastUnaryBitcast_ElementTypeChange) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(e {
+    p0 = f32[10, 20] parameter(0)
+    b1 = s32[200] bitcast(p0)
+    neg = s32[200] negate(b1)
+    b2 = f32[20, 10] bitcast(neg)
+    ROOT t = f32[20, 10] bitcast(neg)
+  })"));
+  // Should not simplify because bitcasts change element type.
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, BitcastUnaryBitcast_TilingChange) {
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(R"(
+    e {
+      p0 = s32[2,512]{1,0:T(2,128)} parameter(0)
+      b1 = s32[512,2]{1,0:T(8,128)} bitcast(p0)
+      neg = s32[512,2]{1,0:T(8,128)} negate(b1)
+      b2 = s32[2,512]{1,0:T(2,128)} bitcast(neg)
+    }
+  )"));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_is_layout_sensitive(true);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
 }
 
 // Reverse(Reverse(A)) ==> A.
