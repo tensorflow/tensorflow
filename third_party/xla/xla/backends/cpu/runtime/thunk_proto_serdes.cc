@@ -875,7 +875,7 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
       break;
     case Thunk::Kind::kConvolution:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const ConvolutionThunk&>(thunk), proto));
+          absl::down_cast<const ConvolutionThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kDot:
       TF_RETURN_IF_ERROR(
