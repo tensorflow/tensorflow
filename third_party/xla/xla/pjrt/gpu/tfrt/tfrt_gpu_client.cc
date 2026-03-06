@@ -142,21 +142,12 @@ class UnboundedAsyncWorkRunner : public AsyncWorkRunner {
   explicit UnboundedAsyncWorkRunner(const std::string& name)
       : queue_(tsl::Env::Default(), name, {/*stack_size=*/512 * 1024}) {}
 
-  void Schedule(absl::AnyInvocable<void() &&> work) override {
-    // TSL TheadPool expects std::function that must be copyable, so we are
+  void Execute(Task task) final {
+    // UnboundedWorkQueue expects std::function that must be copyable, so we are
     // forced to do a little bit of manual memory management here.
-    queue_.Schedule(
-        [ptr = new absl::AnyInvocable<void() &&>(std::move(work))]() {
-          std::move (*ptr)();
-          delete ptr;
-        });
-  }
-
-  void ScheduleWhenReady(
-      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void() &&> work) override {
-    tsl::RunWhenReady(values, [this, work = std::move(work)]() mutable {
-      Schedule([work = std::move(work)]() mutable { std::move(work)(); });
+    queue_.Schedule([ptr = new Task(std::move(task))] {
+      std::move (*ptr)();
+      delete ptr;
     });
   }
 
