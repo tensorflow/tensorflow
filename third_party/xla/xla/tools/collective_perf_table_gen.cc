@@ -324,7 +324,7 @@ uint64_t GetNetworkThroughputBytesPerSec(absl::Duration runtime,
   return tensor_size_bytes * 1e9 / absl::ToInt64Nanoseconds(runtime);
 }
 
-IotaReplicaGroupList GetCollectiveDeviceList(
+IotaReplicaGroupList GetIotaReplicaGroupList(
     absl::string_view collective_device_list_unparsed) {
   auto device_list_or_status =
       xla::ParseCollectiveDeviceListBase(collective_device_list_unparsed);
@@ -484,7 +484,7 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
       for (absl::string_view replica_groups_raw : config_.replica_groups_list) {
         CHECK(collective_type != CollectiveType::UNSPECIFIED);
         IotaReplicaGroupList replica_groups =
-            GetCollectiveDeviceList(replica_groups_raw);
+            GetIotaReplicaGroupList(replica_groups_raw);
         int num_devices = replica_groups.num_devices_per_group() *
                           replica_groups.num_replica_groups();
 
