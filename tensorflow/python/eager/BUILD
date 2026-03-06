@@ -652,6 +652,7 @@ py_strict_library(
 py_strict_library(
     name = "backprop",
     srcs = ["backprop.py"],
+    lazy_imports = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":backprop_util",
