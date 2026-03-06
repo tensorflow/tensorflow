@@ -92,7 +92,10 @@ bool FunctionParameterCanonicalizer::Canonicalize(
   }
 
   // Fill positional arguments.
-  for (int i = 0; i < args_size; ++i) result[i] = PyTuple_GET_ITEM(args, i);
+  for (int i = 0; i < args_size; ++i) {
+    result[i] = PySequence_GetItem(args, i);
+    Py_DECREF(result[i]);
+  }
 
   // Fill default arguments.
   for (int i = std::max(positional_args_size_, args_size);
