@@ -26,20 +26,24 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace xla {
 // Implements the interfaces that are needed for the registered compiler.
 class StreamExecutorGpuCompiler : public PjRtCompiler {
  public:
   // Constructs a compiler for the default "gpu" platform.
-  explicit StreamExecutorGpuCompiler() = default;
+  explicit StreamExecutorGpuCompiler(PjRtPlatformId pjrt_platform_id)
+      : pjrt_platform_id_(pjrt_platform_id) {}
 
   // Constructs a compiler for the given platform.
-  explicit StreamExecutorGpuCompiler(stream_executor::Platform::Id platform_id);
+  explicit StreamExecutorGpuCompiler(PjRtPlatformId pjrt_platform_id,
+                                     stream_executor::PlatformId platform_id);
 
   // Setting CompileOptions.TargetConfig field will trigger deviceless
   // compilation, which will not query the GPU attached to the machine.
@@ -58,6 +62,8 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
+  PjRtPlatformId pjrt_platform_id() const { return pjrt_platform_id_; }
+
  private:
   std::optional<stream_executor::Platform::Id> requested_platform_id_;
   mutable absl::Mutex compiler_mutex_;
@@ -67,6 +73,8 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
   // GPU platform if none is specified). If one does not exist, creates one. The
   // compiler is cached for subsequent calls.
   absl::StatusOr<Compiler*> GetOrCreateCompiler();
+
+  PjRtPlatformId pjrt_platform_id_;
 };
 }  // namespace xla
 #endif  // XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_
