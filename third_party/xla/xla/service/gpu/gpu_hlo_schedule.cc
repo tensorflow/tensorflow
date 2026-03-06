@@ -447,8 +447,14 @@ absl::Status RunP2PSchedulePreparation(HloModule* module) {
 //
 // Returns said fingerprint.
 std::string TagWithFingerprint(HloModule* module) {
-  std::string fingerprint = module->GetFingerprint128(
-      HloPrintOptions::Canonical().set_print_backend_config(true));
+  std::string fingerprint =
+      module->GetFingerprint128(HloPrintOptions::Canonical()
+                                    .set_print_backend_config(true)
+                                    // The backend config is usually a JSON
+                                    // object, and the order of keys is not
+                                    // guaranteed. Sorting the keys makes the
+                                    // fingerprint deterministic.
+                                    .set_sort_backend_config(true));
   module->add_frontend_attribute(std::string(kFingerprintBeforeLHS),
                                  fingerprint);
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("

@@ -132,6 +132,7 @@ class NamedSharding {
   absl::Span<const AxisRef> unreduced_axes() const { return unreduced_axes_; }
   absl::Span<const AxisRef> manual_axes() const { return manual_axes_; }
   absl::Span<const OpMetadata> metadata() const { return metadata_; }
+  std::vector<OpMetadata>& mutable_metadata() { return metadata_; }
 
   // Returns number of dimensions.
   int64_t num_dimensions() const { return dim_shardings_.size(); }
