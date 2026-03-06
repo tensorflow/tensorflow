@@ -19,14 +19,23 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
+#include <variant>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/env.h"
 
 namespace xla {
+
+struct AsyncValueContinuation {
+  absl::InlinedVector<tsl::RCReference<tsl::AsyncValue>, 1> deps;
+  absl::AnyInvocable<void() &&> fn;
+
+  void Run() &&;
+};
 
 // A worker thread that runs a sequence of closures. Equivalent to a thread
 // pool of size 1.
@@ -43,12 +52,24 @@ class WorkerThread {
   // Adds 'fn' to the queue of closures to be executed by the worker thread.
   void Schedule(absl::AnyInvocable<void() &&> fn);
 
+  // Adds 'fn' to the queue of closures, but where the closure can return a
+  // continuation function. These continuations will run in order, but can block
+  // on async-values as dependencies.
+  void ScheduleWithOrderedContinuations(
+      absl::AnyInvocable<AsyncValueContinuation() &&> fn);
+
  private:
   bool WorkAvailable() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void ScheduleNextWaiter() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
+  using WorkUnit = std::variant<absl::AnyInvocable<AsyncValueContinuation() &&>,
+                                absl::AnyInvocable<void() &&>>;
   absl::Mutex mu_;
-  std::queue<absl::AnyInvocable<void() &&>> work_queue_ ABSL_GUARDED_BY(mu_);
+  std::queue<WorkUnit> work_queue_ ABSL_GUARDED_BY(mu_);
+  std::queue<AsyncValueContinuation> continuation_queue_ ABSL_GUARDED_BY(mu_);
+  int completed_continuation_waiter_ = -1;
+  int debug_queue_idx = 0;
 
   std::unique_ptr<tsl::Thread> thread_;
 };

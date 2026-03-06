@@ -1002,6 +1002,7 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
 
 absl::StatusOr<PjRtLoadedExecutable::Result>
 CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
+                                          AsyncValueContinuation& continuation,
                                           bool fill_future) const {
   CHECK(launch_args.extra_deps.get()) << "extra_deps is nullptr";
   CHECK(launch_args.control_deps.get()) << "control_deps is nullptr";
@@ -1025,6 +1026,8 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
   }
 
   TF_RETURN_IF_ERROR(results.inline_status);
+
+  continuation = std::move(results.continuation);
 
   return PjRtLoadedExecutable::Result(
       {/*future=*/std::move(results.future),
@@ -1087,7 +1090,10 @@ CommonPjRtLoadedExecutable::ExecuteHelperOnSingleDevice(
   TF_RETURN_IF_ERROR(ExecutePrepareWithOomRetries(
       launch_args, argument_handles, run_id, replica, partition, options,
       /*host_callback_idx=*/0, device));
-  return ExecuteLaunch(*launch_args, fill_future);
+  AsyncValueContinuation continuation;
+  auto results = ExecuteLaunch(*launch_args, continuation, fill_future);
+  std::move(continuation).Run();
+  return results;
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
@@ -1226,8 +1232,10 @@ CommonPjRtLoadedExecutable::Execute(
         const int replica = addressable_device_logical_ids_[i].replica;
         const int partition = addressable_device_logical_ids_[i].partition;
         PjRtDevice* device = addressable_devices_[i];
-        client()->LaunchOnDevice(
-            device, [&, context_id, i, replica, partition, device] {
+        client()->LaunchOnDeviceWithContinuation(
+            device,
+            [&, context_id, i, replica, partition,
+             device]() -> AsyncValueContinuation {
               tsl::profiler::TraceMeConsumer consumer(
                   [&] {
                     return tsl::profiler::TraceMeEncode(
@@ -1267,16 +1275,18 @@ CommonPjRtLoadedExecutable::Execute(
                   results[i] = first_failure_status;
                   // Abort phase 2 if Prepare fails for any core.
                   --launching;
-                  return;
+                  return {};
                 }
               }
 
               // Phase 2: Launch. It cannot fail.
-              results[i] =
-                  ExecuteLaunch(*launch_args, returned_futures.has_value());
+              AsyncValueContinuation continuation;
+              results[i] = ExecuteLaunch(*launch_args, continuation,
+                                         returned_futures.has_value());
 
               absl::MutexLock lock(mu);
               --launching;
+              return continuation;
             });
       }
     }

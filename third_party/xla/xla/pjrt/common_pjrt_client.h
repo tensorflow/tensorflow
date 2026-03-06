@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/worker_thread.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -74,6 +75,13 @@ class CommonPjRtClient : public PjRtClient {
   virtual void LaunchOnDevice(PjRtDevice* device,
                               absl::AnyInvocable<void()> execute_fn) const {
     async_work_runner()->Schedule(std::move(execute_fn));
+  }
+  virtual void LaunchOnDeviceWithContinuation(
+      PjRtDevice* device,
+      absl::AnyInvocable<AsyncValueContinuation() &&> execute_fn) const {
+    LaunchOnDevice(device, [execute_fn = std::move(execute_fn)]() mutable {
+      std::move(execute_fn)().Run();
+    });
   }
 
   virtual bool ShouldRetryOnOom(int attempts, PjRtDevice* device,
@@ -326,6 +334,7 @@ class PjRtRawLoadedExecutable {
     std::optional<tsl::Future<>> future;
     tsl::RCReference<PjRtDeviceEvent> primary_execute_event;
     absl::Status inline_status;
+    AsyncValueContinuation continuation;
   };
   virtual RawExecuteResult Execute(
       const ExecuteOptions& options,
@@ -430,6 +439,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       size_t host_callback_idx, PjRtDevice* device = nullptr) const;
 
   absl::StatusOr<Result> ExecuteLaunch(ExecuteLaunchArgs& launch_args,
+                                       AsyncValueContinuation& continuation,
                                        bool fill_future) const;
 
   // Parameter shapes.
