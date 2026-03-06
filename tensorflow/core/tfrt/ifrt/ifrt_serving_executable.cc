@@ -248,7 +248,11 @@ IfrtServingExecutable::Create(
                  xla::CompileOptions::EnvironmentOptionOverrides>
         compilation_env_or_overrides,
     TfToHloCompiler* tf_to_hlo_compiler,
-    IfrtPersistentCompilationCache* persistent_compilation_cache) {
+    IfrtPersistentCompilationCache* persistent_compilation_cache,
+    H2DTransferExecutorFactory* h2d_transfer_executor_factory) {
+  if (h2d_transfer_executor_factory == nullptr) {
+    return absl::InvalidArgumentError("H2DTransferExecutorFactory is null.");
+  }
   TF_ASSIGN_OR_RETURN(
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       GetCompileMetadata(*module, *client));
@@ -267,7 +271,7 @@ IfrtServingExecutable::Create(
       checkpoint_loader_queue, device_mgr, std::move(shape_representation_fn),
       ifrt_serving_core_selector, std::move(original_compile_metadata),
       std::move(device_list), compilation_env_or_overrides, tf_to_hlo_compiler,
-      persistent_compilation_cache));
+      persistent_compilation_cache, h2d_transfer_executor_factory));
 
   return executable;
 }
@@ -889,15 +893,9 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   input_handle_result_indices.reserve(inputs.size() -
                                       variable_arg_indices.size());
 
-  // TODO(b/445201291): Plumb the H2DTransferExecutorFactory from the
-  // IfrtServingExecutable constructor.
-  absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
-      user_inputs_h2d_transfer_executor =
-          h2d_transfer_executor_factory_ != nullptr
-              ? h2d_transfer_executor_factory_->CreateH2DTransferExecutor(
-                    *ifrt_client_)
-              : std::make_unique<H2DTransferExecutor>(*ifrt_client_);
-  TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor.status());
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<H2DTransferExecutor> user_inputs_h2d_transfer_executor,
+      h2d_transfer_executor_factory_->CreateH2DTransferExecutor(*ifrt_client_));
 
   std::vector<std::shared_ptr<xla::Shape>>* xla_input_shapes = nullptr;
   if (executable_bundle->xla_input_shapes.has_value()) {
@@ -981,11 +979,10 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(
-      auto input_futures,
-      (*user_inputs_h2d_transfer_executor)
-          ->ScheduledH2DTransfers(absl::MakeSpan(input_handles), thread_pool_));
-  TF_RETURN_IF_ERROR((*user_inputs_h2d_transfer_executor)->RunH2DTransfers());
+  TF_ASSIGN_OR_RETURN(auto input_futures,
+                      user_inputs_h2d_transfer_executor->ScheduledH2DTransfers(
+                          absl::MakeSpan(input_handles), thread_pool_));
+  TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor->RunH2DTransfers());
 
   std::vector<xla::ifrt::ArrayRef> transfer_result;
   transfer_result.resize(inputs.size());

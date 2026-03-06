@@ -81,6 +81,24 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
     bool allow_intervening_bitcast = false);
 
+// The function checks if the dynamic-slice's offset matches the expected
+// pattern for local slicing. It supports two cases:
+//  1. Direct offset calculation: The offset is calculated as `partition_id *
+//  shard_size`, where `shard_size` is the size of each shard in the
+//  all-gather dimension. Calls IsPerIdOffset to check this pattern recursively
+//  because this offset might involve series of other instructions. For example,
+//  the partition_id can pass through convert or clamp. See BacktrackToBase for
+//  such possible patterns.
+//  2. Indirect offset calculation: The offset is calculated as `(partition_id
+//  * shard_size) + constant`, where `constant` is a constant value.
+//
+// If the dynamic-slice's offset matches either of these patterns, the function
+// returns true. Otherwise, it returns false.
+bool IsDynamicSlicingLocalDeviceFromAllGather(
+    HloInstruction* ds, HloAllGatherInstruction* all_gather,
+    int64_t num_partitions, int64_t num_replicas, bool is_cross_module,
+    bool use_global_device_ids);
+
 // Checks whether AG(ICI) and its user DS(ICI) can be canceled out.
 std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     const HloAllGatherInstruction* ag, int64_t num_partitions,
