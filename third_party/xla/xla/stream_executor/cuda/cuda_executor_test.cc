@@ -71,7 +71,9 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
               ::testing::Field("major", &CudaComputeCapability::major, Ge(1)));
 
   DeviceInterconnectInfo info = result->device_interconnect_info();
-  if (result->cuda_compute_capability().IsAtLeastBlackwell() &&
+  // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
+  if (result->cuda_compute_capability().IsAtLeastHopper() &&
+      result->kernel_mode_driver_version().major() >= 545 &&
       info.active_links) {
     EXPECT_GE(info.active_links, 18);
 

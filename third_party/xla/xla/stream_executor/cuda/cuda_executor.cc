@@ -1866,12 +1866,19 @@ CudaExecutor::CreateDeviceDescription(int device_ordinal) {
     } else {
       LOG(ERROR) << p2p_link_count;
     }
-    absl::StatusOr<FabricInfo> fabric_info = GetDeviceFabricInfo(*device);
-    if (fabric_info.ok()) {
-      info.cluster_uuid = fabric_info->cluster_uuid;
-      info.clique_id = fabric_info->clique_id;
+    // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
+    if (desc.kernel_mode_driver_version().major() >= 545) {
+      absl::StatusOr<FabricInfo> fabric_info = GetDeviceFabricInfo(*device);
+      if (fabric_info.ok()) {
+        info.cluster_uuid = fabric_info->cluster_uuid;
+        info.clique_id = fabric_info->clique_id;
+      }
+      desc.set_device_interconnect_info(info);
+    } else {
+      VLOG(1) << "Skipping GPU Fabric info retrieval; NVIDIA driver r545+ "
+                 "is required. Current driver version: "
+              << desc.kernel_mode_driver_version();
     }
-    desc.set_device_interconnect_info(info);
   }
 
   {
