@@ -53,9 +53,12 @@ class MultiOutputFusionTest
   // Layout assignment assumes that there are no fusions in the input graph.
   // Since the purpose of this test is to send pre-fused graphs to XLA, we have
   // to do layout assignment ourselves.
+  // Dot strength reduction replaces dot with a multiply and it does require
+  // layout assignment to ensure compatible physical layouts.
   DebugOptions GetDebugOptionsForTest() const override {
     auto opts = HloPjRtTestBase::GetDebugOptionsForTest();
     opts.add_xla_disable_hlo_passes("layout-assignment");
+    opts.add_xla_disable_hlo_passes("dot-strength-reduction");
     return opts;
   }
 

@@ -1797,7 +1797,6 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:optimize_input_output_buffer_alias",
         "//xla/hlo/transforms/simplifiers:reduce_window_resizer",
         "//xla/hlo/transforms/simplifiers:reduce_window_rewriter",
-        "//xla/hlo/transforms/simplifiers:reshape_mover",
         "//xla/hlo/transforms/simplifiers:result_caster",
         "//xla/hlo/transforms/simplifiers:simplify_fp_conversions",
         "//xla/hlo/transforms/simplifiers:slice_sinker",

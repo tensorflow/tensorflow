@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/hlo_constant_splitter.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
-#include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/sort_simplifier.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/service/call_graph.h"
@@ -79,9 +78,6 @@ void AddSPMDPasses(
   spmd_simplify.AddPass<WhileLoopConstantSinking>();
   spmd_simplify.AddPass<WhileLoopSimplifier>();
 
-  ReshapeMoverOptions reshape_mover_options;
-  reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
-  spmd_simplify.AddPass<ReshapeMover>(reshape_mover_options);
   // Run AlgebraicSimplifier directly before HloConstantFolding, because we
   // need to simplify DynamicSlice(Broadcast) away. Constant folding of
   // DynamicSlice can be quite costly, as the whole operand will be evaluated.
