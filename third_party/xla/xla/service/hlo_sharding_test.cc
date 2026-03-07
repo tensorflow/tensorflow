@@ -1192,7 +1192,7 @@ TEST_F(HloShardingTest, ToNamedShardingMaximal) {
   HloSharding hlo_sharding = HloSharding::AssignDevice(5);
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
-  EXPECT_TRUE(named_sharding.IsMaximal());
+  EXPECT_TRUE(named_sharding.IsSingleDevice());
   EXPECT_EQ(*named_sharding.mesh().device_assignment().array().begin(), 5);
 }
 
@@ -1312,7 +1312,7 @@ TEST_P(HloShardingV3ToV2ToV3RoundTripTest, RoundTrip) {
 INSTANTIATE_TEST_SUITE_P(
     V3ToV2ToV3RoundTrip, HloShardingV3ToV2ToV3RoundTripTest,
     ::testing::Values(
-        NamedSharding::Replicate(), NamedSharding::MaximalSharding(3),
+        NamedSharding::Replicate(), NamedSharding::SingleDevice(3),
         test_utils::FromAxisNames(Mesh({2, 3}, {"axis_0", "axis_1"}),
                                   {{"axis_0"}, {"axis_1"}}),
         test_utils::FromAxisNames(Mesh({2, 2}, {"axis_0", "axis_1"}),

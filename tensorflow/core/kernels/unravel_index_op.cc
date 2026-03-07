@@ -99,7 +99,7 @@ class UnravelIndexOp : public OpKernel {
     OP_REQUIRES(ctx, check,
                 errors::InvalidArgument("index is out of bound as with dims"));
 
-    Eigen::array<bool, 1> reverse({true});
+    Eigen::array<bool, 1> reverse{true};
 
     Tensor strides_tensor;
     OP_REQUIRES_OK(ctx,

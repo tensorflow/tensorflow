@@ -31,10 +31,50 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+absl::StatusOr<bool> AllGatherSimplifier::CancelSingleDynamicSliceFromAllGather(
+    HloModule* module, HloInstruction* inst) {
+  if (inst->opcode() != HloOpcode::kAllGather) {
+    return false;
+  }
+
+  HloComputation* computation = inst->parent();
+
+  if (ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
+    TF_RETURN_IF_ERROR(
+        computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
+    return true;
+  }
+
+  HloAllGatherInstruction* all_gather = Cast<HloAllGatherInstruction>(inst);
+  const HloModuleConfig& config = module->config();
+  std::optional<ReduceScatterSpec> spec = AllGatherDynamicSliceCancellation(
+      all_gather, config.num_partitions(), config.replica_count(),
+      /*allow_multiple_split_dims=*/false,
+      /*allow_intervening_reshape=*/false, /*min_rank=*/1,
+      HloPredicateIsOp<HloOpcode::kPartitionId>,
+      HloPredicateIsOp<HloOpcode::kReplicaId>);
+
+  if (spec.has_value() &&
+      spec->split_dim == all_gather->all_gather_dimension()) {
+    CHECK_EQ(all_gather->users().size(), 1);
+    HloInstruction* ds = all_gather->users().front();
+    HloInstruction* ag_operand = all_gather->mutable_operand(0);
+    if (!ShapeUtil::Compatible(ds->shape(), ag_operand->shape())) {
+      return false;
+    }
+    TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(ag_operand));
+    TF_RETURN_IF_ERROR(computation->RemoveInstructionAndUnusedOperands(ds));
+    return true;
+  }
+
+  return false;
+}
 
 absl::StatusOr<bool> AllGatherSimplifier::RunImpl(
     HloModule* module,
@@ -42,38 +82,9 @@ absl::StatusOr<bool> AllGatherSimplifier::RunImpl(
   bool changed = false;
   for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
-      if (inst->opcode() != HloOpcode::kAllGather) {
-        continue;
-      }
-      if (ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
-        changed = true;
-        TF_RETURN_IF_ERROR(
-            computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
-      } else {
-        HloAllGatherInstruction* all_gather =
-            Cast<HloAllGatherInstruction>(inst);
-        const HloModuleConfig& config = module->config();
-        std::optional<ReduceScatterSpec> spec =
-            AllGatherDynamicSliceCancellation(
-                all_gather, config.num_partitions(), config.replica_count(),
-                /*allow_multiple_split_dims=*/false,
-                /*allow_intervening_reshape=*/false, /*min_rank=*/1,
-                HloPredicateIsOp<HloOpcode::kPartitionId>,
-                HloPredicateIsOp<HloOpcode::kReplicaId>);
-        if (spec.has_value() &&
-            spec->split_dim == all_gather->all_gather_dimension()) {
-          CHECK_EQ(all_gather->users().size(), 1);
-          HloInstruction* ds = all_gather->users().front();
-          HloInstruction* ag_operand = all_gather->mutable_operand(0);
-          if (!ShapeUtil::Compatible(ds->shape(), ag_operand->shape())) {
-            continue;
-          }
-          changed = true;
-          TF_RETURN_IF_ERROR(ds->ReplaceAllUsesWith(ag_operand));
-          TF_RETURN_IF_ERROR(
-              computation->RemoveInstructionAndUnusedOperands(ds));
-        }
-      }
+      TF_ASSIGN_OR_RETURN(bool local_changed,
+                          CancelSingleDynamicSliceFromAllGather(module, inst));
+      changed |= local_changed;
     }
   }
 
