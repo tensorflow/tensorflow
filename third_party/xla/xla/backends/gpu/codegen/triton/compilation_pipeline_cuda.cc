@@ -166,10 +166,9 @@ static void MakeLLIR(mlir::OpPassManager* pm,
       mt::createConvertTritonGPUToLLVMPass(cuda_cc_as_int, final_ptx_version));
   pm->addNestedPass<mlir::LLVM::LLVMFuncOp>(
       mlir::triton::gpu::createCanonicalizeLLVMIR());
-  pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
-  pm->addPass(mt::createConvertNVGPUToLLVM());
   pm->addPass(mt::createConvertWarpSpecializeToLLVM());
+  pm->addPass(mt::createConvertNVGPUToLLVM());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());

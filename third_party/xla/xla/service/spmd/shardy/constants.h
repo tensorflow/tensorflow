@@ -120,6 +120,10 @@ inline constexpr llvm::StringRef kInTupleShardings =
 inline constexpr llvm::StringRef kOutTupleShardings =
     "xla.sdy.tuple_results_shardings";
 
+// Attribute name for the original name of the func before flattening.
+inline constexpr llvm::StringRef kOriginalFuncName =
+    "xla.sdy.original_func_name";
+
 // Attribute name for the in shardings of a `ManualComputationOp`.
 inline constexpr llvm::StringRef kInShardings = "xla.sdy.in_shardings";
 
