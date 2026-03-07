@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
