@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -592,7 +593,7 @@ void TensorHandle::SetInferenceShape(
   }
   auto s = PartialTensorShape::MakePartialShape(dims.data(), num_dims,
                                                 &inference_shape_);
-  TF_DCHECK_OK(s);
+  DCHECK_OK(s);
 }
 
 absl::Status TensorHandle::CopyInferenceShape(TensorHandle* other) {

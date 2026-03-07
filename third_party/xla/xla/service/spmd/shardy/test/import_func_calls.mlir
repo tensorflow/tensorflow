@@ -549,3 +549,24 @@ func.func private @foo(%arg0: tensor<8x2xi32>, %arg1: tensor<8x2xi32>) -> (tenso
   %2 = stablehlo.dot %1, %arg0 : (tensor<2x8xi32>, tensor<8x2xi32>) -> tensor<2x2xi32>
   return %0, %2 : tensor<8x2xi32>, tensor<2x2xi32>
 }
+
+// -----
+
+// CHECK-LABEL: func @func_name_and_original_names_different
+func.func @func_name_and_original_names_different(%arg0: tensor<8x2xi32>) -> (tensor<8x2xi32>) {
+  // CHECK-NEXT: %[[NC:.*]] = sdy.named_computation<"bar">(%arg0) (%arg1: tensor<8x2xi32>) {
+  // CHECK-NEXT:   %[[NEGATE:.*]] = stablehlo.negate %arg1 : tensor<8x2xi32>
+  // CHECK-NEXT:   sdy.return %[[NEGATE]] : tensor<8x2xi32>
+  // CHECK-NEXT: } : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  // CHECK-NEXT: return %[[NC]] : tensor<8x2xi32>
+  %0 = call @foo(%arg0) : (tensor<8x2xi32>) -> tensor<8x2xi32>
+  return %0 : tensor<8x2xi32>
+}
+
+// CHECK-NOT: func private @foo
+// CHECK-NOT: func private @bar
+func.func private @foo(%arg0: tensor<8x2xi32>) -> (tensor<8x2xi32>)
+attributes { xla.sdy.original_func_name = "bar" } {
+  %0 = stablehlo.negate %arg0 : tensor<8x2xi32>
+  return %0 : tensor<8x2xi32>
+}
