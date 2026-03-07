@@ -238,16 +238,6 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
   return Internal("Unexpected instruction type.");
 }
 
-const CollectiveDeviceListBase& GetCollectiveDeviceList(
-    const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->device_list();
-}
-
-const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
-    const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->replica_groups();
-}
-
 absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
@@ -372,8 +362,8 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
       collective->GetModule()->config().static_device_assignment();
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(collective));
-  return GetParticipatingDevicesGroups(
-      device_assignment, GetCollectiveReplicaGroups(collective), mode);
+  return GetParticipatingDevicesGroups(device_assignment,
+                                       collective->replica_groups(), mode);
 }
 
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
@@ -469,8 +459,8 @@ GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
-      GetParticipatingFlattenedIdGroups(device_assignment,
-                                        GetCollectiveDeviceList(hlo), mode));
+      GetParticipatingFlattenedIdGroups(device_assignment, hlo->device_list(),
+                                        mode));
   return collective_device_list;
 }
 
@@ -656,7 +646,7 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
 absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
 GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
-  const CollectiveDeviceListBase& device_list = GetCollectiveDeviceList(hlo);
+  const CollectiveDeviceListBase& device_list = hlo->device_list();
   auto config = hlo->GetModule()->config();
 
   if (device_list.version() == CollectiveDeviceListVersion::kIota) {
