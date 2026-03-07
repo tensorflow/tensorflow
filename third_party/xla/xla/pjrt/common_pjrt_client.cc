@@ -1971,7 +1971,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
             copy_literal_async(generated.Await());
           } else {
             generated.OnReady(
-                *common_client->async_work_runner(),
+                common_client->async_work_runner()->AsExecutor(),
                 [copy_literal_async = std::move(copy_literal_async)](
                     const absl::StatusOr<MutableLiteralBase*>& value) mutable {
                   copy_literal_async(value);
