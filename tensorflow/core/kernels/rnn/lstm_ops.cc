@@ -70,12 +70,12 @@ void LSTMBlockCellFpropWithEigen(
   TensorBlasGemm<CPUDevice, T, false /* USE_CUBLAS */>::compute(
       ctx, d, false, false, typename gemm_compute_type<T>::type(1.f), const_xh,
       w, typename gemm_compute_type<T>::type(0.f), gates);
-  Eigen::array<Eigen::DenseIndex, 2> b_shape({1, b.dimensions()[0]});
-  Eigen::array<Eigen::DenseIndex, 2> broadcast_shape({cell.batch_size(), 1});
+  Eigen::array<Eigen::DenseIndex, 2> b_shape{1, b.dimensions()[0]};
+  Eigen::array<Eigen::DenseIndex, 2> broadcast_shape{cell.batch_size(), 1};
   gates.device(d) += b.reshape(b_shape).broadcast(broadcast_shape);
 
-  Eigen::array<Eigen::DenseIndex, 2> p_shape({1, cell.cell_size()});
-  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape({cell.batch_size(), 1});
+  Eigen::array<Eigen::DenseIndex, 2> p_shape{1, cell.cell_size()};
+  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape{cell.batch_size(), 1};
 
   // Input gate.
   if (use_peephole) {
@@ -157,8 +157,8 @@ void LSTMBlockCellBpropWithEigen(
   // dcs[t] += tanh'(cs[t]) .* dh[t] .* o[t] + dcs[t + 1] .* f[t + 1]
   dcs.device(d) = (co.constant(T(1)) - co * co) * h_grad * o + cs_grad;
 
-  Eigen::array<Eigen::DenseIndex, 2> p_shape({1, cell.cell_size()});
-  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape({cell.batch_size(), 1});
+  Eigen::array<Eigen::DenseIndex, 2> p_shape{1, cell.cell_size()};
+  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape{cell.batch_size(), 1};
   if (use_peephole) {
     dcs.device(d) =
         dcs + do_ * wco.reshape(p_shape).broadcast(p_broadcast_shape);
@@ -185,9 +185,9 @@ void LSTMBlockCellBpropWithEigen(
     cs_prev_grad.device(d) =
         cs_prev_grad + di * wci.reshape(p_shape).broadcast(p_broadcast_shape) +
         df * wcf.reshape(p_shape).broadcast(p_broadcast_shape);
-    wci_grad.device(d) = (di * cs_prev).sum(Eigen::array<int, 1>({0}));
-    wcf_grad.device(d) = (df * cs_prev).sum(Eigen::array<int, 1>({0}));
-    wco_grad.device(d) = (do_ * cs).sum(Eigen::array<int, 1>({0}));
+    wci_grad.device(d) = (di * cs_prev).sum(Eigen::array<int, 1>{0});
+    wcf_grad.device(d) = (df * cs_prev).sum(Eigen::array<int, 1>{0});
+    wco_grad.device(d) = (do_ * cs).sum(Eigen::array<int, 1>{0});
   }
 }
 
