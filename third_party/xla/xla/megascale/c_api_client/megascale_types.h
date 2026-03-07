@@ -31,6 +31,42 @@ namespace xla {
 namespace megascale {
 namespace c_api_client {
 
+class MultiSliceDeviceId {
+ public:
+  static absl::StatusOr<MultiSliceDeviceId> Create(int64_t megascale_id);
+  static absl::StatusOr<MultiSliceDeviceId> Create(int32_t slice_id,
+                                                   int32_t per_slice_device_id);
+
+  MultiSliceDeviceId(const MultiSliceDeviceId&) = default;
+  MultiSliceDeviceId& operator=(const MultiSliceDeviceId&) = default;
+
+  int32_t per_slice_device_id() const { return per_slice_device_id_; }
+  int32_t slice_id() const { return slice_id_; }
+  int64_t megascale_id() const { return megascale_id_; }
+
+  bool operator==(const MultiSliceDeviceId& rhs) const {
+    return megascale_id_ == rhs.megascale_id_;
+  }
+  bool operator!=(const MultiSliceDeviceId& rhs) const {
+    return megascale_id_ != rhs.megascale_id_;
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const MultiSliceDeviceId& m) {
+    return H::combine(std::move(h), m.megascale_id_);
+  }
+
+ private:
+  explicit MultiSliceDeviceId(int64_t megascale_id, int32_t slice_id,
+                              int32_t per_slice_device_id)
+      : megascale_id_(megascale_id),
+        slice_id_(slice_id),
+        per_slice_device_id_(per_slice_device_id) {}
+
+  int64_t megascale_id_;
+  int32_t slice_id_;
+  int32_t per_slice_device_id_;
+};
+
 class CApiPjRtClientContext {
  public:
   CApiPjRtClientContext(PJRT_Megascale_ClientContext* client_context,
