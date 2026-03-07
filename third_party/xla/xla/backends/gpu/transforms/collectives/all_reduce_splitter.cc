@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/all_reduce_splitter.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <variant>
@@ -207,7 +208,8 @@ static bool IsLogicalReduceScatter(const HloModule& module,
   HloInstruction* first_ar =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           ar.shape(), ar.operands(), ar.to_apply(),
-          CollectiveDeviceList(spec.replica_groups.first_ar_replica_groups),
+          std::make_shared<CollectiveDeviceList>(
+              spec.replica_groups.first_ar_replica_groups),
           ar.constrain_layout(), hlo_query::NextChannelId(module),
           ar.use_global_device_ids()));
 
@@ -377,16 +379,16 @@ static absl::StatusOr<bool> SplitAllReduce(const HloModuleConfig& config,
   HloInstruction* first_ar =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           ar.shape(), ar.operands(), ar.to_apply(),
-          CollectiveDeviceList(first_ar_replica_groups), ar.constrain_layout(),
-          channel_id, ar.use_global_device_ids()));
+          std::make_shared<CollectiveDeviceList>(first_ar_replica_groups),
+          ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
 
   // Create second AR.
   channel_id = next_channel_id++;
   HloInstruction* second_ar =
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           ds.shape(), {&ds}, ar.to_apply(),
-          CollectiveDeviceList(second_ar_replica_groups), ar.constrain_layout(),
-          channel_id, ar.use_global_device_ids()));
+          std::make_shared<CollectiveDeviceList>(second_ar_replica_groups),
+          ar.constrain_layout(), channel_id, ar.use_global_device_ids()));
 
   // Rewire.
   TF_RETURN_IF_ERROR(computation.ReplaceInstruction(&ar, first_ar));

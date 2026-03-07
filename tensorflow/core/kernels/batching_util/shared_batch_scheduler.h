@@ -28,6 +28,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <set>
 #include <utility>
 #include <variant>
@@ -154,6 +155,9 @@ class SharedBatchScheduler
     // the options provided in the first Create() call will be used to
     // initialize the global scheduler.
     bool use_global_scheduler = false;
+
+    // The startup delay for the batch threads. Useful for testing.
+    int64_t batch_threads_startup_delay_micros = 0;
   };
   // Ownership is shared between the caller of Create() and any queues created
   // via AddQueue().
@@ -462,12 +466,36 @@ class PriorityTaskQueue {
     std::vector<std::unique_ptr<TaskType>> tasks;
     int remaining_size = size;
 
-    while (remaining_size > 0 && !tasks_.empty()) {
-      auto it = tasks_.begin();
-      QueueEntry highest_priority_entry = RemoveEntryInternal(it);
+    while (remaining_size > 0 && !empty()) {
+      QueueEntry highest_priority_entry;
+      if (!split_tasks_buffer_.empty()) {
+        // Greedily draw from the split task buffer to ensure remainder
+        // pieces of an ongoing split are prioritized.
+        highest_priority_entry = PopFromBuffer();
+        // Since split_input_task_func_ chunks subtasks by
+        // max_execution_batch_size_, anything in the buffer absolutely must
+        // never exceed the remaining size.
+        if (highest_priority_entry.task->size() > remaining_size) {
+          LOG(ERROR) << "Task from split_tasks_buffer_ exceeds remaining_size.";
+          continue;
+        }
+      } else {
+        auto it = tasks_.begin();
+        highest_priority_entry = RemoveEntryInternal(it);
+      }
 
       if (enable_large_batch_splitting_ &&
           highest_priority_entry.task->size() > remaining_size) {
+        // Enforce that we only split a new task if the buffer is completely
+        // empty. It is invalid to have parts from multiple original tasks in
+        // the buffer.
+        if (!split_tasks_buffer_.empty()) {
+          LOG(ERROR)
+              << "Cannot split a new task when split_tasks_buffer_ is not "
+                 "empty.";
+          continue;
+        }
+
         // Split
         std::unique_ptr<TaskType> highest_priority_task_ptr =
             std::move(highest_priority_entry.task);
@@ -494,7 +522,7 @@ class PriorityTaskQueue {
           new_entry.start_time_micros =
               highest_priority_entry.start_time_micros;
           new_entry.criticality = highest_priority_entry.criticality;
-          AddEntryInternal(std::move(new_entry));
+          AddToBuffer(std::move(new_entry));
         }
       } else {
         remaining_size -= highest_priority_entry.task->size();
@@ -512,21 +540,27 @@ class PriorityTaskQueue {
   }
 
   std::optional<uint64_t> EarliestHighPriorityTaskStartTime() const {
+    if (!split_tasks_buffer_.empty()) {
+      return split_tasks_buffer_.front().start_time_micros;
+    }
     if (tasks_.empty()) {
       return std::nullopt;
     }
     return tasks_.begin()->start_time_micros;
   }
 
-  bool empty() const { return tasks_.empty(); }
+  bool empty() const { return tasks_.empty() && split_tasks_buffer_.empty(); }
 
-  int num_tasks() const { return tasks_.size(); }
+  int num_tasks() const { return tasks_.size() + split_tasks_buffer_.size(); }
 
   size_t size() const { return current_queue_size_; }
 
   size_t max_queue_depth() const { return max_queue_depth_; }
 
   std::optional<tsl::criticality::Criticality> HighestCriticality() const {
+    if (!split_tasks_buffer_.empty()) {
+      return split_tasks_buffer_.front().criticality;
+    }
     if (tasks_.empty()) {
       return std::nullopt;
     }
@@ -594,8 +628,29 @@ class PriorityTaskQueue {
     return std::move(entry);
   }
 
+  void AddToBuffer(QueueEntry entry) {
+    current_queue_size_ += entry.task->size();
+    start_times_.insert(entry.start_time_micros);
+    split_tasks_buffer_.push(std::move(entry));
+  }
+
+  QueueEntry PopFromBuffer() {
+    QueueEntry entry = std::move(split_tasks_buffer_.front());
+    split_tasks_buffer_.pop();
+    current_queue_size_ -= entry.task->size();
+    auto st_it = start_times_.find(entry.start_time_micros);
+    if (st_it != start_times_.end()) {
+      start_times_.erase(st_it);
+    }
+    return entry;
+  }
+
   std::multiset<QueueEntry> tasks_;
   std::multiset<uint64_t> start_times_;
+  // A FIFO buffer to hold trailing subpieces of split tasks.
+  // We use `queue` to guarantee strict sequential execution and enforce that
+  // only one task can be split and buffered at a given time.
+  std::queue<QueueEntry> split_tasks_buffer_;
   const size_t max_queue_depth_;
   size_t current_queue_size_ = 0;
   const std::function<absl::Status(
@@ -1059,6 +1114,8 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
   PeriodicFunction::Options periodic_fn_options;
   periodic_fn_options.thread_name_prefix =
       strings::StrCat(options.thread_pool_name, "_");
+  periodic_fn_options.startup_delay_micros =
+      options.batch_threads_startup_delay_micros;
   for (int i = 0; i < options.num_batch_threads; ++i) {
     std::unique_ptr<PeriodicFunction> thread(new PeriodicFunction(
         [this] { this->ThreadLogic(); },
