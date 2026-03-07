@@ -766,13 +766,13 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (opcode == HloOpcode::kAllGather) {
         instruction =
             CreateAllGather(shape, all_operands(), all_gather_dimension,
-                            *device_list, proto.constrain_layout(), channel_id,
-                            proto.use_global_device_ids());
+                            std::move(device_list), proto.constrain_layout(),
+                            channel_id, proto.use_global_device_ids());
       } else {
-        instruction =
-            CreateAllGatherStart(shape, all_operands(), all_gather_dimension,
-                                 *device_list, proto.constrain_layout(),
-                                 channel_id, proto.use_global_device_ids());
+        instruction = CreateAllGatherStart(
+            shape, all_operands(), all_gather_dimension, std::move(device_list),
+            proto.constrain_layout(), channel_id,
+            proto.use_global_device_ids());
       }
       break;
     }
@@ -791,26 +791,25 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.all_reduce_id() > 0) {
         channel_id = proto.all_reduce_id();
       }
-      std::unique_ptr<CollectiveDeviceListBase> device_list =
-          CollectiveDeviceListBase::DeviceListFromProto(proto);
+      auto device_list = CollectiveDeviceListBase::DeviceListFromProto(proto);
       if (opcode == HloOpcode::kAllReduce) {
         instruction =
             CreateAllReduce(shape, all_operands(), computations(0),
-                            *device_list, proto.constrain_layout(), channel_id,
-                            proto.use_global_device_ids());
+                            std::move(device_list), proto.constrain_layout(),
+                            channel_id, proto.use_global_device_ids());
       } else if (opcode == HloOpcode::kReduceScatter) {
         TF_RET_CHECK(proto.dimensions().size() == 1)
             << "ReduceScatter cannot have more than 1 scatter dimensions";
         int64_t scatter_dimension = proto.dimensions(0);
         instruction = CreateReduceScatter(
-            shape, all_operands(), computations(0), *device_list,
+            shape, all_operands(), computations(0), std::move(device_list),
             proto.constrain_layout(), channel_id, proto.use_global_device_ids(),
             scatter_dimension);
       } else {
-        instruction =
-            CreateAllReduceStart(shape, all_operands(), computations(0),
-                                 *device_list, proto.constrain_layout(),
-                                 channel_id, proto.use_global_device_ids());
+        instruction = CreateAllReduceStart(
+            shape, all_operands(), computations(0), std::move(device_list),
+            proto.constrain_layout(), channel_id,
+            proto.use_global_device_ids());
       }
       break;
     }
@@ -828,9 +827,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                "is specified";
         split_dimension = proto.dimensions(0);
       }
+      auto device_list = CollectiveDeviceListBase::DeviceListFromProto(proto);
       instruction =
-          CreateAllToAll(shape, all_operands(),
-                         *CollectiveDeviceListBase::DeviceListFromProto(proto),
+          CreateAllToAll(shape, all_operands(), std::move(device_list),
                          proto.constrain_layout(), channel_id, split_dimension);
       break;
     }
@@ -841,9 +840,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       TF_RET_CHECK(all_operands().size() == 6)
           << "RaggedAllToAll must have 6 operands";
-      instruction = CreateRaggedAllToAll(
-          shape, all_operands(),
-          *CollectiveDeviceListBase::DeviceListFromProto(proto), channel_id);
+      auto device_list = CollectiveDeviceListBase::DeviceListFromProto(proto);
+      instruction = CreateRaggedAllToAll(shape, all_operands(),
+                                         std::move(device_list), channel_id);
       break;
     }
     case HloOpcode::kCollectiveBroadcast: {
@@ -851,10 +850,9 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
+      auto device_list = CollectiveDeviceListBase::DeviceListFromProto(proto);
       instruction = CreateCollectiveBroadcast(
-          shape, all_operands(),
-          *CollectiveDeviceListBase::DeviceListFromProto(proto), false,
-          channel_id);
+          shape, all_operands(), std::move(device_list), false, channel_id);
       break;
     }
     case HloOpcode::kCollectivePermute:
@@ -1748,12 +1746,14 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    int64_t all_gather_dimension, const CollectiveDeviceListBase& device_list,
+    int64_t all_gather_dimension,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return std::make_unique<HloAllGatherInstruction>(
-      HloOpcode::kAllGather, shape, operands, all_gather_dimension, device_list,
-      constrain_layout, channel_id, use_global_device_ids);
+      HloOpcode::kAllGather, shape, operands, all_gather_dimension,
+      std::move(device_list), constrain_layout, channel_id,
+      use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllGather(
@@ -1762,19 +1762,21 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return CreateAllGather(shape, operands, all_gather_dimension,
-                         CollectiveDeviceList(replica_groups), constrain_layout,
-                         channel_id, use_global_device_ids);
+                         std::make_shared<CollectiveDeviceList>(replica_groups),
+                         constrain_layout, channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateAllGatherStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    int64_t all_gather_dimension, const CollectiveDeviceListBase& device_list,
+    int64_t all_gather_dimension,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
   return std::make_unique<HloAllGatherInstruction>(
       HloOpcode::kAllGatherStart, shape, operands, all_gather_dimension,
-      device_list, constrain_layout, channel_id, use_global_device_ids);
+      std::move(device_list), constrain_layout, channel_id,
+      use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1783,20 +1785,22 @@ HloInstruction::CreateAllGatherStart(
     int64_t all_gather_dimension, absl::Span<const ReplicaGroup> replica_groups,
     bool constrain_layout, const std::optional<int64_t>& channel_id,
     bool use_global_device_ids) {
-  return CreateAllGatherStart(shape, operands, all_gather_dimension,
-                              CollectiveDeviceList(replica_groups),
-                              constrain_layout, channel_id,
-                              use_global_device_ids);
+  return CreateAllGatherStart(
+      shape, operands, all_gather_dimension,
+      std::make_shared<CollectiveDeviceList>(replica_groups), constrain_layout,
+      channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids) {
   return std::make_unique<HloAllReduceInstruction>(
-      HloOpcode::kAllReduce, shape, operands, reduce_computation, device_list,
-      constrain_layout, channel_id, use_global_device_ids);
+      HloOpcode::kAllReduce, shape, operands, reduce_computation,
+      std::move(device_list), constrain_layout, channel_id,
+      use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllReduce(
@@ -1805,22 +1809,20 @@ HloInstruction::CreateAllGatherStart(
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
   return CreateAllReduce(shape, operands, reduce_computation,
-                         CollectiveDeviceList(replica_groups), constrain_layout,
-                         channel_id, use_global_device_ids);
+                         std::make_shared<CollectiveDeviceList>(replica_groups),
+                         constrain_layout, channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateReduceScatter(const Shape& shape,
-                                    absl::Span<HloInstruction* const> operands,
-                                    HloComputation* reduce_computation,
-                                    const CollectiveDeviceListBase& device_list,
-                                    bool constrain_layout,
-                                    const std::optional<int64_t>& channel_id,
-                                    bool use_global_device_ids,
-                                    int64_t scatter_dimension) {
+HloInstruction::CreateReduceScatter(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* reduce_computation,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids, int64_t scatter_dimension) {
   return std::make_unique<HloReduceScatterInstruction>(
-      shape, operands, reduce_computation, device_list, constrain_layout,
-      channel_id, use_global_device_ids, scatter_dimension);
+      shape, operands, reduce_computation, std::move(device_list),
+      constrain_layout, channel_id, use_global_device_ids, scatter_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1831,19 +1833,22 @@ HloInstruction::CreateReduceScatter(
     const std::optional<int64_t>& channel_id, bool use_global_device_ids,
     int64_t scatter_dimension) {
   return CreateReduceScatter(
-      shape, operands, reduce_computation, CollectiveDeviceList(replica_groups),
-      constrain_layout, channel_id, use_global_device_ids, scatter_dimension);
+      shape, operands, reduce_computation,
+      std::make_shared<CollectiveDeviceList>(replica_groups), constrain_layout,
+      channel_id, use_global_device_ids, scatter_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateAllReduceStart(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids) {
   return std::make_unique<HloAllReduceInstruction>(
       HloOpcode::kAllReduceStart, shape, operands, reduce_computation,
-      device_list, constrain_layout, channel_id, use_global_device_ids);
+      std::move(device_list), constrain_layout, channel_id,
+      use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1853,18 +1858,19 @@ HloInstruction::CreateAllReduceStart(
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id, bool use_global_device_ids) {
   return CreateAllReduceStart(
-      shape, operands, reduce_computation, CollectiveDeviceList(replica_groups),
-      constrain_layout, channel_id, use_global_device_ids);
+      shape, operands, reduce_computation,
+      std::make_shared<CollectiveDeviceList>(replica_groups), constrain_layout,
+      channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
     const std::optional<int64_t>& split_dimension) {
-  return std::make_unique<HloAllToAllInstruction>(shape, operands, device_list,
-                                                  constrain_layout, channel_id,
-                                                  split_dimension);
+  return std::make_unique<HloAllToAllInstruction>(
+      shape, operands, std::move(device_list), constrain_layout, channel_id,
+      split_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
@@ -1872,17 +1878,18 @@ HloInstruction::CreateAllReduceStart(
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id,
     const std::optional<int64_t>& split_dimension) {
-  return CreateAllToAll(shape, operands, CollectiveDeviceList(replica_groups),
+  return CreateAllToAll(shape, operands,
+                        std::make_shared<CollectiveDeviceList>(replica_groups),
                         constrain_layout, channel_id, split_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateRaggedAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
     const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloRaggedAllToAllInstruction>(
-      shape, operands, device_list, channel_id);
+      shape, operands, std::move(device_list), channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1890,17 +1897,18 @@ HloInstruction::CreateRaggedAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups,
     const std::optional<int64_t>& channel_id) {
-  return CreateRaggedAllToAll(shape, operands,
-                              CollectiveDeviceList(replica_groups), channel_id);
+  return CreateRaggedAllToAll(
+      shape, operands, std::make_shared<CollectiveDeviceList>(replica_groups),
+      channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCollectiveBroadcast(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id) {
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id) {
   return std::make_unique<HloCollectiveBroadcastInstruction>(
-      HloOpcode::kCollectiveBroadcast, shape, operands, device_list,
+      HloOpcode::kCollectiveBroadcast, shape, operands, std::move(device_list),
       constrain_layout, channel_id);
 }
 
@@ -1909,9 +1917,9 @@ HloInstruction::CreateCollectiveBroadcast(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id) {
-  return CreateCollectiveBroadcast(shape, operands,
-                                   CollectiveDeviceList(replica_groups),
-                                   constrain_layout, channel_id);
+  return CreateCollectiveBroadcast(
+      shape, operands, std::make_shared<CollectiveDeviceList>(replica_groups),
+      constrain_layout, channel_id);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -5977,12 +5985,13 @@ const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {
   return Cast<HloCollectiveInstruction>(this)->replica_groups();
 }
 
-const CollectiveDeviceListBase& HloInstruction::device_list() const {
+const std::shared_ptr<CollectiveDeviceListBase>& HloInstruction::device_list()
+    const {
   return Cast<HloCollectiveInstruction>(this)->device_list();
 }
 
 bool HloInstruction::has_replica_groups() const {
-  return device_list().num_replica_groups() > 0;
+  return device_list()->num_replica_groups() > 0;
 }
 
 const std::vector<std::pair<int64_t, int64_t>>&
