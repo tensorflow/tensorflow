@@ -49,6 +49,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -652,6 +653,23 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
   }
 
   return permutation;
+}
+
+mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
+  mlir::MLIRContext* context = element_type.getContext();
+  mlir::Type storage_type = StorageType(element_type);
+
+  // Don't add any attribute for default layouts as it adds a lot of noise to
+  // the printed IR.
+  if (LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return mlir::MemRefType::get(shape.dimensions(), storage_type);
+  }
+
+  auto minor_to_major_attr =
+      mlir::DenseI64ArrayAttr::get(context, shape.layout().minor_to_major());
+  auto layout = xtile::LayoutAttr::get(context, minor_to_major_attr);
+
+  return mlir::MemRefType::get(shape.dimensions(), storage_type, layout);
 }
 
 }  // namespace xla::xtile

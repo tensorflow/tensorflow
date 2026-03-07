@@ -537,6 +537,13 @@ class PjRtCApiClient : public PjRtClient {
   absl::Status InvokeCallbacks(PJRT_Callback_Type callback_type,
                                void* callback_args);
 
+  using ProgramVariant =
+      std::variant<xla::MaybeOwningMlirModule, xla::XlaComputation>;
+
+  // Serialize PJRT program, returns serialized code and format.
+  absl::StatusOr<std::pair<std::string, std::string>> SerializeProgram(
+      ProgramVariant program, const CompileOptions& options);
+
  private:
   void InitDevicesAndMemorySpaces();
   void InitAttributes();
@@ -554,9 +561,6 @@ class PjRtCApiClient : public PjRtClient {
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       std::variant<PjRtDevice*, PjRtMemorySpace*> device_or_memory,
       const Layout* device_layout);
-
-  absl::StatusOr<std::string> SerializeMlirModule(
-      MaybeOwningMlirModule module, const CompileOptions& options);
 
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
