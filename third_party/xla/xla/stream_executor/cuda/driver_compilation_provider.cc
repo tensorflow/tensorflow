@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor::cuda {
 absl::StatusOr<Assembly> DriverCompilationProvider::Compile(
@@ -140,33 +141,37 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   static_assert(sizeof(jit_options) / sizeof(jit_options[0]) ==
                 sizeof(jit_option_values) / sizeof(jit_option_values[0]));
 
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
+  RETURN_IF_ERROR(cuda::ToStatus(
       cuLinkCreate(sizeof(jit_options) / sizeof(jit_options[0]), jit_options,
                    jit_option_values, &link_state)));
+  absl::Cleanup link_state_cleaner = [&link_state] {
+    CHECK_EQ(cuLinkDestroy(link_state), CUDA_SUCCESS);
+  };
 
   // We have to make a copy here because we need a null-terminated string.
   for (const auto& input : inputs) {
     if (std::holds_alternative<RelocatableModule>(input)) {
       const RelocatableModule& module = std::get<RelocatableModule>(input);
-      TF_RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
+      RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
           link_state, CU_JIT_INPUT_CUBIN,
           absl::bit_cast<void*>(module.cubin.data()), module.cubin.size(),
           /*name=*/"", 0, nullptr, nullptr)));
     } else {
       const std::string& ptx = std::get<Ptx>(input).ptx;
-      TF_RETURN_IF_ERROR(cuda::ToStatus(cuLinkAddData(
+      CUresult result = cuLinkAddData(
           link_state, CU_JIT_INPUT_PTX, absl::bit_cast<void*>(ptx.data()),
-          ptx.size() + 1, /*name=*/"", 0, nullptr, nullptr)));
+          ptx.size() + 1, /*name=*/"", 0, nullptr, nullptr);
+      if (result != CUDA_SUCCESS) {
+        CHECK(error_log_buffer_size() <= kErrorLogBufferSize);
+        error_log_buffer.resize(error_log_buffer_size());
+        RETURN_IF_ERROR(cuda::ToStatus(result, error_log_buffer));
+      }
     }
   }
 
   void* cubin_out;
   size_t cubin_size;
   CUresult result = cuLinkComplete(link_state, &cubin_out, &cubin_size);
-
-  absl::Cleanup link_state_cleaner = [&link_state] {
-    CHECK_EQ(cuLinkDestroy(link_state), CUDA_SUCCESS);
-  };
 
   CHECK(error_log_buffer_size() <= kErrorLogBufferSize);
   error_log_buffer.resize(error_log_buffer_size());
@@ -177,11 +182,11 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
   std::string architecture =
       cc.GetPtxAsTargetName(CudaComputeCapability::CompileMode::kSass);
 
+  // Return status can be CUDA_SUCCESS with error in the log.
+  VLOG(3) << "Driver compilation error log output: " << error_log_buffer;
+  RETURN_IF_ERROR(CreateErrorFromPTXASLog(error_log_buffer, architecture,
+                                          options.cancel_if_reg_spill));
   if (result != CUDA_SUCCESS) {
-    VLOG(3) << "Driver compilation error log output: " << error_log_buffer;
-    TF_RETURN_IF_ERROR(CreateErrorFromPTXASLog(error_log_buffer, architecture,
-                                               options.cancel_if_reg_spill));
-
     return cuda::ToStatus(result, error_log_buffer);
   }
 
@@ -201,8 +206,15 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
 }
 
 absl::StatusOr<int> DriverCompilationProvider::GetLatestPtxIsaVersion() const {
-  return absl::UnimplementedError(
-      "GetLatestPtxIsaVersion is not implemented for " + name() + ".");
+  absl::StatusOr<Assembly> failed_compilation =
+      Compile(CudaComputeCapability::Hopper(), ".version 99.9\n", {});
+
+  if (failed_compilation.ok()) {
+    return absl::InternalError(
+        "compilation succeeded where it was expected to fail");
+  }
+  return GetLatestPtxIsaVersionFromUnsupportedVersionErrorLog(
+      failed_compilation.status().message());
 }
 
 }  // namespace stream_executor::cuda
