@@ -125,6 +125,8 @@ bool HasNegativeZero(PrimitiveType type) {
 
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 1:
+      return xla::S1;
     case 2:
       return xla::S2;
     case 4:
