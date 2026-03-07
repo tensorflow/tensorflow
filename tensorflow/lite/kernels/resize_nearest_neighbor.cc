@@ -108,9 +108,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (output->type == kTfLiteFloat32) {
     reference_ops::ResizeNearestNeighbor(
-        op_params, GetTensorShape(input), GetTensorData<int32>(input),
+        op_params, GetTensorShape(input), GetTensorData<float>(input),
         GetTensorShape(size), GetTensorData<int32>(size),
-        GetTensorShape(output), GetTensorData<int32>(output));
+        GetTensorShape(output), GetTensorData<float>(output));
   } else if (output->type == kTfLiteUInt8) {
     if (kernel_type == kReference) {
       reference_ops::ResizeNearestNeighbor(
