@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/local_rendezvous.h"
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <utility>
@@ -121,24 +122,8 @@ void LocalRendezvous::ItemQueue::push_back(Item* item) {
 
 LocalRendezvous::~LocalRendezvous() {
   // Before destroying this rendezvous instance, make sure all the done-callback
-  // calls have finished and the tensors have been released from the queue.
-  bool table_not_empty = false;
-  for (int i = 0; i < num_buckets_; ++i) {
-    auto& bucket = table_buckets_[i];
-    {
-      mutex_lock l(bucket.mu);
-      while (bucket.pending_callback_counter != 0) {
-        bucket.pending_callback_cond_var.wait_for(
-            l, std::chrono::milliseconds(50));
-      }
-    }
-    if (!bucket.table.empty()) {
-      table_not_empty = true;
-    }
-  }
-  if (table_not_empty) {
-    DoAbort(absl::CancelledError("LocalRendezvous deleted"));
-  }
+  // calls are run, and the tensors have been released from the queue.
+  DoAbort(absl::CancelledError("LocalRendezvous deleted"));
 }
 
 namespace {
@@ -163,11 +148,14 @@ absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
         ->IncrementBy(1);
   }
 
-  TF_RETURN_IF_ERROR(status());
-
   int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
+
+  if (auto s = status(); !s.ok()) {
+    bucket.mu.unlock();
+    return s;
+  }
 
   auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
   ItemQueue* queue = &it->second;
@@ -208,20 +196,12 @@ absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
   } else {
     queue->head = item->next;
   }
-  bucket.pending_callback_counter++;
   // Invoke the done-callback, without holding the lock.
   bucket.mu.unlock();
 
   DCHECK_EQ(item->type, Item::kRecv);
   (*item->recv_state.waiter)(absl::OkStatus(), send_args, item->args, val,
                              is_dead);
-  {
-    mutex_lock l(bucket.mu);
-    bucket.pending_callback_counter--;
-    if (bucket.pending_callback_counter == 0) {
-      bucket.pending_callback_cond_var.notify_all();
-    }
-  }
   // Delete the item at last since it may unref and destruct the rendezvous.
   delete item;
   return absl::OkStatus();
@@ -232,18 +212,17 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
                                 Rendezvous::DoneCallback done) {
   uint64_t key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
-  tsl::core::RefCountPtr<Rendezvous> rc_keep_alive;
-
-  auto s = status();
-  if (!s.ok()) {
-    // Rendezvous has been aborted.
-    done(s, Rendezvous::Args(), recv_args, Tensor(), false);
-    return;
-  }
 
   int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
+
+  if (auto s = status(); !s.ok()) {
+    bucket.mu.unlock();
+    // Rendezvous has been aborted.
+    done(s, Rendezvous::Args(), recv_args, Tensor(), false);
+    return;
+  }
 
   auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
   ItemQueue* queue = &it->second;
@@ -366,20 +345,12 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   } else {
     queue->head = item->next;
   }
-  bucket.pending_callback_counter++;
   // Invoke the done-callback, without holding the lock.
   bucket.mu.unlock();
 
   DCHECK_EQ(item->type, Item::kSend);
   done(absl::OkStatus(), item->args, recv_args, *item->send_state.value,
        item->send_state.is_dead);
-  {
-    mutex_lock l(bucket.mu);
-    bucket.pending_callback_counter--;
-    if (bucket.pending_callback_counter == 0) {
-      bucket.pending_callback_cond_var.notify_all();
-    }
-  }
   // Delete the item at last since it may unref and destruct the rendezvous.
   delete item;
 }
@@ -404,6 +375,7 @@ void LocalRendezvous::DoAbort(const absl::Status& status) {
   {
     mutex_lock l(mu_);
     status_.Update(status);
+    has_status_.store(true, std::memory_order_release);
   }
 
   // OUT_OF_RANGE implies a normal end of sequence (e.g. for tf.data),
@@ -445,6 +417,9 @@ void LocalRendezvous::DoAbort(const absl::Status& status) {
 }
 
 absl::Status LocalRendezvous::status() {
+  if (!has_status_.load(std::memory_order_acquire)) {
+    return absl::OkStatus();
+  }
   tf_shared_lock ml(mu_);
   return status_;
 }
