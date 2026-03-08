@@ -235,9 +235,8 @@ void DestroyStream(StreamExecutor* executor, CUstream stream) {
 }
 
 absl::Status SynchronizeStream(StreamExecutor* executor, CUstream stream) {
-  TraceMe trace(
-      [] { return TraceMeEncode("CudaStream::SynchronizeStream", {}); },
-      /*level=*/TraceMeLevel::kVerbose);
+  TraceMe trace("CudaStream::SynchronizeStream",
+                /*level=*/TraceMeLevel::kVerbose);
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   CHECK(stream != nullptr);
   return cuda::ToStatus(cuStreamSynchronize(stream),
@@ -253,9 +252,8 @@ CudaStream::~CudaStream() {
 }
 
 absl::Status CudaStream::BlockHostUntilDone() {
-  TraceMe trace(
-      [] { return TraceMeEncode("CudaStream::BlockHostUntilDone", {}); },
-      /*level=*/TraceMeLevel::kVerbose);
+  TraceMe trace("CudaStream::BlockHostUntilDone",
+                /*level=*/TraceMeLevel::kVerbose);
   TF_RETURN_IF_ERROR(SynchronizeStream(executor_, stream_handle_));
   absl::MutexLock lock(mutex_);
   mutex_.Await(absl::Condition(&no_pending_host_callbacks_));
@@ -361,7 +359,7 @@ absl::Status LaunchCudaKernel(
     unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_mem_bytes, CUstream stream,
     void** kernel_params, void** extra) {
-  TraceMe trace([] { return TraceMeEncode("LaunchCudaKernel", {}); },
+  TraceMe trace("LaunchCudaKernel",
                 /*level=*/TraceMeLevel::kVerbose);
 
   std::unique_ptr<ActivateContext> activation = executor->Activate();
@@ -385,9 +383,8 @@ absl::Status LaunchCudaKernel(
   }
 
   {
-    TraceMe trace(
-        [&] { return TraceMeEncode("LaunchCudaKernel/cuLaunchKernel", {}); },
-        /*level=*/TraceMeLevel::kVerbose);
+    TraceMe trace("LaunchCudaKernel/cuLaunchKernel",
+                  /*level=*/TraceMeLevel::kVerbose);
     return cuda::ToStatus(
         cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z,
                        block_dim_x, block_dim_y, block_dim_z, shared_mem_bytes,
@@ -408,7 +405,7 @@ absl::Status LaunchCudaKernel(
     unsigned int block_dim_y, unsigned int block_dim_z,
     unsigned int shared_mem_bytes, CUstream stream, void** kernel_params,
     void** extra) {
-  TraceMe trace([] { return TraceMeEncode("LaunchCudaKernel", {}); },
+  TraceMe trace("LaunchCudaKernel",
                 /*level=*/TraceMeLevel::kVerbose);
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   VLOG(2) << "launching kernel: " << kernel_name << "; cdx: " << cluster_dim_x
@@ -453,9 +450,8 @@ absl::Status LaunchCudaKernel(
   launch_config.numAttrs = 1;
 
   {
-    TraceMe trace(
-        [] { return TraceMeEncode("LaunchCudaKernel/cuLaunchKernelEx", {}); },
-        /*level=*/TraceMeLevel::kVerbose);
+    TraceMe trace("LaunchCudaKernel/cuLaunchKernelEx",
+                  /*level=*/TraceMeLevel::kVerbose);
     return cuda::ToStatus(
         cuLaunchKernelEx(&launch_config, function, kernel_params, extra),
         absl::StrCat("Failed to launch CUDA kernel: ", kernel_name,
@@ -473,7 +469,7 @@ absl::Status CudaStream::LaunchKernel(
     const ThreadDim& thread_dims, const BlockDim& block_dims,
     const std::optional<ClusterDim>& cluster_dims, void* function,
     absl::string_view name, void** args, int64_t shmem_bytes) {
-  TraceMe trace([] { return TraceMeEncode("CudaStream::LaunchKernel", {}); },
+  TraceMe trace("CudaStream::LaunchKernel",
                 /*level=*/TraceMeLevel::kVerbose);
 
   if (cluster_dims.has_value()) {
