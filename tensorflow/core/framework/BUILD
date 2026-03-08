@@ -1987,3 +1987,10 @@ tf_cc_test(
         "@com_google_benchmark//:benchmark",
     ],
 )
+
+filegroup(
+    name = "local_rendezvous_test_srcs",
+    srcs = [
+        "local_rendezvous.cc",
+    ],
+)
