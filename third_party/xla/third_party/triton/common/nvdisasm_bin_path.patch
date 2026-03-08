@@ -1,0 +1,25 @@
+--- a/python/triton/tools/disasm.py
++++ b/python/triton/tools/disasm.py
+@@ -79,13 +79,19 @@ def path_to_cuobjdump():
+     from triton import knobs
+     return knobs.nvidia.cuobjdump.path
+ 
++def path_to_nvdisasm():
++    from triton import knobs
++    return knobs.nvidia.nvdisasm.path
++
+ 
+ def extract(file_path, fun):
+     cuobjdump = path_to_cuobjdump()
++    env = os.environ.copy()
++    env["NVDISASM_PATH"] = os.path.dirname(path_to_nvdisasm())
+     if fun is None:
+-        sass_str = subprocess.check_output([cuobjdump, "-sass", file_path])
++        sass_str = subprocess.check_output([cuobjdump, "-sass", file_path], env=env)
+     else:
+-        sass_str = subprocess.check_output([cuobjdump, "-fun", fun, "-sass", file_path])
++        sass_str = subprocess.check_output([cuobjdump, "-fun", fun, "-sass", file_path], env=env)
+     sass_lines = sass_str.splitlines()
+     line_idx = 0
+     while line_idx < len(sass_lines):
+
