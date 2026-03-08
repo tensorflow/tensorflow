@@ -61,7 +61,7 @@ absl::StatusOr<bool> ReduceScatterDecomposer::RunImpl(
       // Create an all-reduce
       HloComputation *apply_clone = module->AddComputationAndUnifyNamesAndIds(
           rs->to_apply()->Clone(), /*is_entry=*/false);
-      HloInstruction *ar =
+      HloInstruction* ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               rs->operand(0)->shape(), rs->operands(), apply_clone,
               rs->device_list(), rs->constrain_layout(), channel_id,

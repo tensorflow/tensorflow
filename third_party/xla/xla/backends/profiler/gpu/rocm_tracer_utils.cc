@@ -108,5 +108,11 @@ absl::string_view AnnotationMap::LookUp(uint32_t correlation_id) {
   return it != map_.correlation_map.end() ? it->second : absl::string_view();
 }
 
+void AnnotationMap::Clear() {
+  absl::MutexLock lock(map_.mutex);
+  map_.correlation_map.clear();
+  map_.annotations.clear();
+}
+
 }  // namespace profiler
 }  // namespace xla
