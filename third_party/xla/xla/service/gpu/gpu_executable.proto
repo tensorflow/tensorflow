@@ -7,6 +7,7 @@ import "xla/service/gpu/ir_emission_utils.proto";
 import "xla/service/hlo.proto";
 import "xla/shape_util.proto";
 import "xla/stream_executor/device_description.proto";
+import "xla/stream_executor/abi/executable_abi_version.proto";
 import "xla/xla.proto";
 import "xla/xla_data.proto";
 
@@ -92,6 +93,9 @@ message GpuExecutableProto {
 
   // The constants used by the executable.
   repeated ConstantInfoProto constants = 12;
+
+  // The ABI version of the executable.
+  stream_executor.ExecutableAbiVersionProto executable_abi_version = 14;
 
   reserved 7;
 }
