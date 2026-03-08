@@ -15,11 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
-
-#include <memory>
-#include <string>
-#include <utility>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"

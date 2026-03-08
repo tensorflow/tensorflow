@@ -15,6 +15,12 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <type_traits>
+
+#include "absl/status/status.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"

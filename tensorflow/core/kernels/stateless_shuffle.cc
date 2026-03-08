@@ -15,8 +15,6 @@ limitations under the License.
 
 // Kernels of the StatelessShuffle op.
 
-#include <tuple>
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/shuffle_common.h"

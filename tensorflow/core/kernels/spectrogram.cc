@@ -17,6 +17,13 @@ limitations under the License.
 
 #include <math.h>
 
+#include <algorithm>
+#include <cmath>
+#include <complex>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "third_party/fft2d/fft.h"
 #include "tensorflow/core/lib/core/bits.h"
 
