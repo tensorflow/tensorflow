@@ -215,7 +215,7 @@ class AllReduceTest
     std::vector<Literal> expected_output_literals;
 
     const std::vector<ReplicaGroup>& replica_groups =
-        instr->device_list().replica_groups();
+        instr->device_list()->replica_groups();
     // Map each device to set of replica groups it belongs to.
     std::vector<std::vector<int64_t>> device_to_groups(num_replicas);
     for (const auto& replica_group : replica_groups) {
