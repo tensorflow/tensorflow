@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_container_util.h"
 #include "xla/layout.h"
 #include "xla/literal_util.h"
-#include "xla/map_util.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
@@ -264,10 +263,10 @@ bool VerifySubTilingDataContainment(const Shape& potential_sharded_shape,
 bool IsSubTilingOrEqualNamedSharding(const Shape& potential_sharded_shape,
                                      const NamedSharding& potential_subsharding,
                                      const NamedSharding& sharding) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return true;
   }
-  if (potential_subsharding.IsTileMaximal()) {
+  if (potential_subsharding.IsReplicatedOrSingleDevice()) {
     return false;
   }
 
@@ -529,6 +528,133 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge, HloSharding* dst) {
                                    /*minimum_tiles=*/dst->NumTiles() + 1, dst);
 }
 
+namespace {
+
+std::vector<OpMetadata> MergeMetadata(std::vector<OpMetadata> dst,
+                                      absl::Span<const OpMetadata> src) {
+  dst.reserve(dst.size() + src.size());
+  const absl::flat_hash_set<OpMetadata,
+                            protobuf_util::ProtobufHashBySerializationFunctor,
+                            protobuf_util::HaveSameSerializationFunctor>
+      metadata_set(dst.begin(), dst.end());
+  absl::c_copy_if(src, std::back_inserter(dst),
+                  [&metadata_set](const OpMetadata& data) {
+                    return !metadata_set.contains(data);
+                  });
+  return dst;
+}
+
+std::vector<AxisRef> GetUsedAxes(const NamedSharding& sharding,
+                                 int64_t exclude_dim,
+                                 absl::Span<const AxisRef> common_used_axes) {
+  std::vector<AxisRef> axes(common_used_axes.begin(), common_used_axes.end());
+  for (int64_t i = 0; i < sharding.dim_shardings().size(); ++i) {
+    if (i == exclude_dim) {
+      continue;
+    }
+    axes.insert(axes.end(), sharding.dim_shardings()[i].axes().begin(),
+                sharding.dim_shardings()[i].axes().end());
+  }
+  SortAndMergeAxes(axes, sharding.mesh());
+  return axes;
+}
+
+// Returns the merged axes if compatible, otherwise std::nullopt.
+std::optional<std::vector<AxisRef>> MergeDimensionAxes(
+    const NamedSharding::DimensionSharding& src_ds,
+    const NamedSharding::DimensionSharding& dst_ds,
+    std::vector<AxisRef> used_axes_dst, const Mesh& mesh) {
+  // Check if dst extends src.
+  if (src_ds.IsPrefixOf(dst_ds, mesh, mesh)) {
+    return std::vector<AxisRef>(dst_ds.axes().begin(), dst_ds.axes().end());
+  }
+
+  // Check if src strictly extends dst.
+  if (dst_ds.IsPrefixOf(src_ds, mesh, mesh)) {
+    std::vector<AxisRef> src_axes(src_ds.axes().begin(), src_ds.axes().end());
+    bool truncated = TruncateAxesByRemovingOverlaps(src_axes, used_axes_dst);
+
+    bool equals_dst = false;
+    if (src_axes.size() == dst_ds.axes().size()) {
+      if (src_axes.empty()) {
+        equals_dst = true;
+      } else if (src_axes.back() == dst_ds.axes().back()) {
+        equals_dst = true;
+      }
+    }
+
+    // If src was truncated down to dst, the shardings are incompatible since
+    // src's additional sharding axes conflict with the ones already used in
+    // dst.
+    if (equals_dst && truncated) {
+      return std::nullopt;
+    }
+    return std::move(src_axes);
+  }
+
+  return std::nullopt;
+}
+
+bool MergeNamedShardingIfCompatible(const NamedSharding& src,
+                                    NamedSharding* dst) {
+  if (!src.mesh().DeviceAssignmentEquals(dst->mesh()) ||
+      src.num_dimensions() != dst->num_dimensions()) {
+    return false;
+  }
+
+  if (src.manual_axes() != dst->manual_axes() ||
+      src.unreduced_axes() != dst->unreduced_axes()) {
+    return false;
+  }
+
+  int64_t rank = src.dim_shardings().size();
+  std::vector<NamedSharding::DimensionSharding> new_dim_shardings(rank);
+
+  std::vector<AxisRef> shared_fixed_axes;
+  shared_fixed_axes.reserve(dst->manual_axes().size() +
+                            dst->unreduced_axes().size() +
+                            dst->replicated_axes().size());
+  shared_fixed_axes.insert(shared_fixed_axes.end(), dst->manual_axes().begin(),
+                           dst->manual_axes().end());
+  shared_fixed_axes.insert(shared_fixed_axes.end(),
+                           dst->unreduced_axes().begin(),
+                           dst->unreduced_axes().end());
+  shared_fixed_axes.insert(shared_fixed_axes.end(),
+                           dst->replicated_axes().begin(),
+                           dst->replicated_axes().end());
+
+  // For each dimension, we want to find a compatible sharding that is as
+  // specific as possible (uses more axes). We do this by checking if the
+  // axes used in one sharding can extend the axes used in the other,
+  // without conflicting with axes used in other dimensions.
+  for (int64_t i = 0; i < rank; ++i) {
+    std::optional<std::vector<AxisRef>> merged_axes = MergeDimensionAxes(
+        src.dim_shardings()[i], dst->dim_shardings()[i],
+        GetUsedAxes(*dst, i, shared_fixed_axes), dst->mesh());
+
+    if (!merged_axes) {
+      return false;
+    }
+
+    bool is_closed = dst->dim_shardings()[i].is_closed();
+
+    new_dim_shardings[i] =
+        NamedSharding::DimensionSharding(std::move(*merged_axes), is_closed);
+  }
+
+  std::vector<OpMetadata> merged_metadata =
+      MergeMetadata(std::move(dst->mutable_metadata()), src.metadata());
+
+  *dst =
+      NamedSharding(dst->mesh(), new_dim_shardings,
+                    std::vector<AxisRef>(dst->replicated_axes().begin(),
+                                         dst->replicated_axes().end()),
+                    src.unreduced_axes(), src.manual_axes(), merged_metadata);
+  return true;
+}
+
+}  // namespace
+
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst) {
   CHECK(!to_merge.IsTuple() && !to_merge.IsManual() && !dst->IsTuple() &&
@@ -540,6 +666,17 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
     *dst = to_merge;
     return true;
   }
+
+  CHECK_EQ(to_merge.UseNamedShardingLeaf(), dst->UseNamedShardingLeaf());
+  if (to_merge.UseNamedShardingLeaf()) {
+    NamedSharding dst_named = dst->named_sharding();
+    if (MergeNamedShardingIfCompatible(to_merge.named_sharding(), &dst_named)) {
+      *dst = HloSharding(dst_named);
+      return true;
+    }
+    return false;
+  }
+
   if (!dst->HasPartialReplication()) {
     return false;
   }
@@ -627,7 +764,7 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
 
   std::optional<TileAssignment> compatible_tile_assignment;
   // We use two methods to find compatible_tile_assignment. The comparisons are
-  // liste below.
+  // listed below.
   // 1. In terms of compilation speed, the first method is usually faster than
   // the second one, especially when the number of devices is large.
   // 2. The first method is friendly to the iota tile assignment. If to_merge or
@@ -795,16 +932,8 @@ bool MergeShardingIfCompatible(const HloSharding& to_merge,
         TileAssignment(std::make_shared<const Array<int64_t>>(new_tile_array));
   }
 
-  std::vector<OpMetadata> merged_metadata(std::move(dst->metadata()));
-  merged_metadata.reserve(merged_metadata.size() + to_merge.metadata().size());
-  const absl::flat_hash_set<OpMetadata,
-                            protobuf_util::ProtobufHashBySerializationFunctor,
-                            protobuf_util::HaveSameSerializationFunctor>
-      metadata_set(merged_metadata.begin(), merged_metadata.end());
-  absl::c_copy_if(to_merge.metadata(), std::back_inserter(merged_metadata),
-                  [&metadata_set](const OpMetadata& data) {
-                    return !ContainsKey(metadata_set, data);
-                  });
+  std::vector<OpMetadata> merged_metadata =
+      MergeMetadata(std::move(dst->metadata()), to_merge.metadata());
   std::vector<OpSharding::Type> subgroup_types;
   if (to_merge_man_dim >= 0) {
     subgroup_types.push_back(OpSharding::MANUAL);
