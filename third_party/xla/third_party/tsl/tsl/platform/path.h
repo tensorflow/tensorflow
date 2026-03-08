@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tsl/platform/platform.h"
 #include "tsl/platform/stringpiece.h"
@@ -106,7 +107,16 @@ std::string CreateURI(absl::string_view scheme, absl::string_view host,
                       absl::string_view path);
 
 // Creates a temporary file name with an extension.
+// Returns the path to the temporary file or aborts the process on error.
 std::string GetTempFilename(const std::string& extension);
+
+// Creates a temporary file name with an extension in the given directory.
+// Returns the path to the temporary file or an error.
+//
+// For example, `GetTempFilename("/tmp", ".txt")` might return
+// `/tmp/random_filename.txt`.
+absl::StatusOr<std::string> GetTempFilename(const std::string& directory,
+                                            const std::string& extension);
 
 // Returns whether the test workspace directory is known. If it's known and dir
 // != nullptr then sets *dir to that.

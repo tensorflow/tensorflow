@@ -339,7 +339,7 @@ TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
   replica_groups[1].add_replica_ids(1);
   replica_groups[1].add_replica_ids(3);
   std::unique_ptr<HloInstruction> all_to_all = HloInstruction::CreateAllToAll(
-      shape, {p0.get()}, CollectiveDeviceList(replica_groups),
+      shape, {p0.get()}, std::make_shared<CollectiveDeviceList>(replica_groups),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt);
 
