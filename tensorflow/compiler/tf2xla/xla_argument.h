@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
