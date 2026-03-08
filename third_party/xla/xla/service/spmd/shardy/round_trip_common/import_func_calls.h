@@ -28,7 +28,8 @@ namespace sdy {
 //
 // NOTE: In case there are multiple call ops for the same callee, we will clone
 // the function body for each call op and emit a warning.
-std::unique_ptr<mlir::Pass> createImportFuncCallsPass();
+std::unique_ptr<mlir::Pass> createImportFuncCallsPass(
+    bool enableNativeNonFlatSupport);
 
 // Register the xla-sdy-import-calls pass.
 void registerImportFuncCallsPass();

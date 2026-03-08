@@ -184,6 +184,11 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::TypeRange types,
     mlir::MLIRContext* context);
 
+// Gets the original func name of the funcOp before flattenning via the
+// `kOriginalFuncName` attribute attached to `funcOp`. In case there is no such
+// attribute attached, returns the name of `funcOp`.
+mlir::StringRef getOriginalFuncName(mlir::func::FuncOp funcOp);
+
 }  // namespace sdy
 }  // namespace xla
 
