@@ -120,6 +120,8 @@ class RpcHelper {
       std::unique_ptr<AssembleArrayFromSingleDeviceArraysRequest> req);
   ResponseFuture<RemapArraysResponse> RemapArrays(
       std::unique_ptr<RemapArraysRequest> req);
+  ResponseFuture<BitcastArraysResponse> BitcastArrays(
+      std::unique_ptr<BitcastArraysRequest> req);
   ResponseFuture<ReshardArraysResponse> ReshardArrays(
       std::unique_ptr<ReshardArraysRequest> req);
   ResponseFuture<DisassembleIntoSingleDeviceArraysResponse>

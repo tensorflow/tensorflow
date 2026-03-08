@@ -297,7 +297,7 @@ NamedSharding convertToNamedSharding(
   if (sdyMesh.getAxes().empty()) {
     return sdyMesh.getDeviceIds().empty()
                ? NamedSharding::Replicate()
-               : NamedSharding::MaximalSharding(sdyMesh.getDeviceIds().front());
+               : NamedSharding::SingleDevice(sdyMesh.getDeviceIds().front());
   }
 
   std::vector<int64_t> axisSizes;
