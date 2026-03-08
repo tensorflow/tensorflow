@@ -432,12 +432,12 @@ namespace {
 class CustomDeviceAPI : public tensorflow::CustomDevice {
  public:
   CustomDeviceAPI(TFE_Context* context, TFE_CustomDevice device, void* info,
-                  string name)
+                  std::string name)
       : context_(context), device_(device), info_(info), name_(name) {}
 
   ~CustomDeviceAPI() override { device_.delete_device(info_); }
 
-  const string& name() override { return name_; }
+  const std::string& name() override { return name_; }
 
   absl::Status CopyTensorToDevice(
       ImmediateExecutionTensorHandle* handle,
@@ -456,7 +456,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
 
   absl::Status CopyTensorFromDevice(
       ImmediateExecutionTensorHandle* handle,
-      const tensorflow::string& target_device_name,
+      const std::string& target_device_name,
       ImmediateExecutionTensorHandle** result) override {
     TF_Status status;
     handle->Ref();
@@ -512,7 +512,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
   TFE_Context* context_;
   TFE_CustomDevice device_;
   void* info_;
-  string name_;
+  std::string name_;
 };
 
 // An adapter which wraps the shape/data produced by C custom devices and uses
@@ -1055,7 +1055,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const char* attr_name, TF_Status* status) {
   switch (default_value.value_case()) {
     case tensorflow::AttrValue::kS: {
-      const string& v = default_value.s();
+      const std::string& v = default_value.s();
       TFE_OpSetAttrString(op, attr_name, v.data(), v.size());
       break;
     }
@@ -1102,7 +1102,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
         absl::InlinedVector<size_t, 4> lengths_vector;
         lengths_vector.reserve(s_size);
         for (int i = 0; i < s_size; ++i) {
-          const string& v = default_value.list().s(i);
+          const std::string& v = default_value.list().s(i);
           values_vector.push_back(v.data());
           lengths_vector.push_back(v.size());
         }
