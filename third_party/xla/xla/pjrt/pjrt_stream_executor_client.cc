@@ -475,8 +475,8 @@ PjRtStreamExecutorClient::MakeDefaultShapeForMemorySpace(
     TF_ASSIGN_OR_RETURN(shape,
                         transfer_manager->ChooseCompactLayoutForShape(shape));
   }
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
+  auto* device =
+      absl::down_cast<PjRtStreamExecutorDevice*>(memory_space->devices()[0]);
   PjRtMemorySpace* default_memory_space =
       device->default_memory_space().value_or(nullptr);
   Shape on_device_shape = transfer_manager->HostShapeToDeviceShape(shape);
@@ -503,8 +503,8 @@ PjRtStreamExecutorClient::AllocateRawBuffer(
     bool retry_on_oom, tsl::AsyncValueRef<bool> allocate_after) {
   CHECK(allocate_after == nullptr)
       << "allocate_after is not supported for PjRtStreamExecutorClient.";
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
+  auto* device =
+      absl::down_cast<PjRtStreamExecutorDevice*>(memory_space->devices()[0]);
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
   PjRtMemorySpace* default_memory_space =
@@ -536,8 +536,8 @@ absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
 PjRtStreamExecutorClient::AllocateRawBufferForExecute(
     PjRtMemorySpace* memory_space, size_t on_device_bytes_count,
     bool retry_on_oom) {
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
+  auto* device =
+      absl::down_cast<PjRtStreamExecutorDevice*>(memory_space->devices()[0]);
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
   auto mem = RawSEDeviceMemory::CreateDelayedMemory();
@@ -561,11 +561,10 @@ PjRtStreamExecutorClient::DefineBuffer(
   definition_events.reserve(definition_device_events.size());
   for (auto& ev : definition_device_events) {
     definition_events.push_back(
-        tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(ev.get())
-            ->event());
+        absl::down_cast<PjRtStreamExecutorDeviceEvent*>(ev.get())->event());
   }
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
+  auto* device =
+      absl::down_cast<PjRtStreamExecutorDevice*>(memory_space->devices()[0]);
 
   auto dst_device_buffer = std::make_unique<TrackedDeviceBuffer>(
       device, std::move(raw_buffer), definition_events);
@@ -580,8 +579,8 @@ absl::StatusOr<std::pair<tsl::RCReference<CommonPjRtRawBuffer>,
 PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
                                                  size_t on_device_bytes_count) {
   auto buffer_promise = tsl::MakeIndirectAsyncValue();
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
+  auto* device =
+      absl::down_cast<PjRtStreamExecutorDevice*>(memory_space->devices()[0]);
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
   auto raw_buffer = tsl::MakeRef<PjRtStreamExecutorRawBuffer>(
@@ -606,8 +605,7 @@ PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
       return status;
     }
     buffer_promise->ForwardTo(
-        tensorflow::down_cast<xla::PjRtStreamExecutorRawBuffer*>(
-            raw_buffer->get())
+        absl::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer->get())
             ->device_buffer()
             .CopyRCRef());
     return absl::OkStatus();
@@ -619,7 +617,7 @@ PjRtStreamExecutorClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
 void PjRtStreamExecutorClient::WaitForAllocation(
     se::Stream* stream, const CommonPjRtRawBuffer& raw_buffer) {
   auto event =
-      tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(&raw_buffer)
+      absl::down_cast<const PjRtStreamExecutorRawBuffer*>(&raw_buffer)
           ->device_buffer()
           ->GetDefinitionEvent(async_work_runner(), /*nullptr_if_past=*/true);
   CHECK_OK(event.status());
@@ -645,7 +643,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
   PjRtMemorySpace* memory_space = raw_buffer->memory_space();
   PjRtDevice* device = memory_space->devices()[0];
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                      absl::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
 
   Shape on_host_shape = ShapeUtil::MakeShape(type, dims);
@@ -763,8 +761,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
         // allocation.
 
         se::DeviceAddressBase device_memory =
-            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
-                raw_buffer.get())
+            absl::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
                 ->device_buffer()
                 ->mem();
 
@@ -825,8 +822,8 @@ absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
                          tsl::RCReference<PjRtDeviceEvent>>>
 PjRtStreamExecutorClient::CreateLinkedEventPromise(
     PjRtMemorySpace* memory_space, absl::string_view debug_info) {
-  auto* device = tensorflow::down_cast<PjRtStreamExecutorDevice*>(
-      memory_space->devices()[0]);
+  auto* device =
+      absl::down_cast<PjRtStreamExecutorDevice*>(memory_space->devices()[0]);
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
   auto result = tsl::MakeRef<PjRtStreamExecutorDeviceEventPromise>(
@@ -882,7 +879,7 @@ PjRtStreamExecutorClient::LinearizeInto(
   CHECK_EQ(memory_space->devices().size(), 1);
   PjRtDevice* device = memory_space->devices().front();
   auto* local_device =
-      tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
+      absl::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
           ->local_device();
   auto* copy_stream = local_device->host_to_device_stream();
   BufferSequencingEventRef event =
@@ -905,7 +902,7 @@ PjRtStreamExecutorClient::LinearizeInto(
     // memory that has already been allocated, and a possible Event
     // allocation.
     auto device_memory =
-        tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
+        absl::down_cast<PjRtStreamExecutorRawBuffer*>(raw_buffer.get())
             ->device_buffer();
 
     se::Stream* h2d_stream = local_device->host_to_device_stream();
@@ -944,7 +941,7 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
       std::move(on_delete_callback));
 
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+                      absl::down_cast<PjRtStreamExecutorDevice*>(device)
                           ->GetLocalDeviceState());
 
   absl::InlinedVector<BufferSequencingEventRef, 2> definition_events;
@@ -974,7 +971,7 @@ absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaMap");
   TF_ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
+      absl::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
           ->GetLocalDeviceState());
   bool success = NeverRunOnFiber(async_work_runner(), [&]() {
     return local_device->compute_stream()->parent()->HostMemoryRegister(
@@ -993,7 +990,7 @@ absl::Status PjRtStreamExecutorClient::DmaUnmap(void* data) {
   tsl::profiler::TraceMe trace_me("PjRtStreamExecutorClient::DmaUnmap");
   TF_ASSIGN_OR_RETURN(
       LocalDeviceState * local_device,
-      tensorflow::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
+      absl::down_cast<PjRtStreamExecutorDevice*>(addressable_devices_[0])
           ->GetLocalDeviceState());
   bool success = NeverRunOnFiber(async_work_runner(), [&]() {
     return local_device->compute_stream()->parent()->HostMemoryUnregister(data);
@@ -1013,8 +1010,7 @@ absl::Status PjRtStreamExecutorDevice::TransferToInfeed(
   // Only support infeed to local device.
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return NeverRunOnFiber(
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client_)
-          ->async_work_runner(),
+      absl::down_cast<PjRtStreamExecutorClient*>(client_)->async_work_runner(),
       [&]() {
         return local_device->client()->TransferToInfeedLocal(
             literal, local_device->local_hardware_id().value());
@@ -1026,8 +1022,7 @@ absl::Status PjRtStreamExecutorDevice::TransferFromOutfeed(
   VLOG(1) << "PjRtStreamExecutorDevice::TransferFromOutfeed";
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device, GetLocalDeviceState());
   return NeverRunOnFiber(
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client_)
-          ->async_work_runner(),
+      absl::down_cast<PjRtStreamExecutorClient*>(client_)->async_work_runner(),
       [&]() {
         return local_device->client()->TransferFromOutfeedLocal(
             local_device->local_hardware_id().value(), literal);
@@ -1514,7 +1509,7 @@ MakeTupleHelper(
   // Then set each sub-tuple in turn from the parameters.
   for (const tsl::RCReference<CommonPjRtRawBuffer>& input : execution_inputs) {
     input_iterator->second.buf =
-        tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(input.get())
+        absl::down_cast<const PjRtStreamExecutorRawBuffer*>(input.get())
             ->device_buffer();
     input_iterator->second.is_donated = false;
     ++input_iterator;
@@ -1561,7 +1556,7 @@ WrapInputsInShapeTree(
       auto iterator_end = execution_input.end();
       CHECK(input_iterator != iterator_end);
       input_iterator->second.buf =
-          tensorflow::down_cast<const PjRtStreamExecutorRawBuffer*>(
+          absl::down_cast<const PjRtStreamExecutorRawBuffer*>(
               execution_inputs[i].get())
               ->device_buffer();
       input_iterator->second.is_donated = false;
@@ -1598,9 +1593,8 @@ PjRtStreamExecutorClient::RunAsync(
     if (alias) {
       auto& input = *arguments[alias->parameter_number].mutable_element(
           alias->parameter_index);
-      auto buf =
-          tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
-              ->device_buffer();
+      auto buf = absl::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
+                     ->device_buffer();
       if (buf.GetAsyncValue() == input.buf.GetAsyncValue()) {
         input.is_donated = true;
       }
@@ -1634,9 +1628,8 @@ PjRtStreamExecutorClient::RunAsync(
   absl::flat_hash_set<RawSEDeviceMemory*> output_args;
   se::DeviceAddressAllocator* allocator = ssb.memory_allocator();
   auto set_memory = [&](se::DeviceAddressBase mem, int i) -> absl::Status {
-    auto buf =
-        tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
-            ->device_buffer();
+    auto buf = absl::down_cast<PjRtStreamExecutorRawBuffer*>(results[i].get())
+                   ->device_buffer();
     if (buf.IsAvailable()) {
       if (buf->mem().opaque() != mem.opaque() ||
           buf->mem().size() != mem.size()) {
@@ -1647,7 +1640,7 @@ PjRtStreamExecutorClient::RunAsync(
     }
     RawSEDeviceMemory::ConstructDelayed(
         std::move(buf), mem,
-        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+        absl::down_cast<PjRtStreamExecutorDevice*>(device)
             ->local_device_state(),
         allocator);
     return absl::OkStatus();
@@ -1660,7 +1653,7 @@ PjRtStreamExecutorClient::RunAsync(
     }
     se_to_be_released.push_back(se::ScopedDeviceAddress<uint8_t>(
         released_ssb.buffer({}),
-        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+        absl::down_cast<PjRtStreamExecutorDevice*>(device)
             ->local_device_state()
             ->local_device_id()
             .value(),
@@ -1693,7 +1686,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     PjRtDeviceEventSet& extra_deps, PjRtDeviceEventSet& control_deps,
     bool is_predetermined_error, bool fill_future) && {
   const uint64_t start_time_usecs = tsl::Env::Default()->NowMicros();
-  int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
+  int device_ordinal = absl::down_cast<PjRtStreamExecutorDevice*>(device_)
                            ->local_device_state()
                            ->local_device_id()
                            .value();
@@ -1755,11 +1748,11 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
            on_device_executable_parameter_shapes_,
        replica = replica_, partition = partition_,
        extra_deps =
-           std::move(*tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(
-                         &extra_deps))
+           std::move(
+               *absl::down_cast<PjRtStreamExecutorDeviceEventSet*>(&extra_deps))
                .event_refs(),
        control_deps =
-           std::move(*tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(
+           std::move(*absl::down_cast<PjRtStreamExecutorDeviceEventSet*>(
                          &control_deps))
                .event_refs()]() mutable -> tsl::RCReference<PjRtDeviceEvent> {
     ExecutableRunOptions run_options;
@@ -1948,12 +1941,12 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       buffers_to_release.reserve(results.size() + inputs.size());
       for (auto& node : results) {
         buffers_to_release.push_back(
-            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
+            absl::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
                 ->device_buffer());
       }
       for (auto& node : inputs) {
         buffers_to_release.push_back(
-            tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
+            absl::down_cast<PjRtStreamExecutorRawBuffer*>(node.get())
                 ->device_buffer());
       }
       definition_event->AndThen(
@@ -2036,7 +2029,7 @@ PjRtStreamExecutorLoadedExecutable::StartRawExecutable(
     (*device_assignment)(0, 0) = device->id();
   }
   CHECK_EQ(device->process_index(), client_->process_index());
-  int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
+  int device_ordinal = absl::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->local_device_id()
                            .value();
@@ -2054,8 +2047,7 @@ PjRtStreamExecutorLoadedExecutable::StartRawExecutable(
 void PjRtStreamExecutorClient::LaunchOnDevice(
     PjRtDevice* device, absl::AnyInvocable<void()> execute_fn) const {
   const LocalDeviceState& device_state =
-      *tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
-           ->local_device_state();
+      *absl::down_cast<PjRtStreamExecutorDevice*>(device)->local_device_state();
   device_state.execute_thread()->Schedule(
       tsl::WithCurrentContext(std::move(execute_fn)));
 }
@@ -2503,8 +2495,7 @@ constexpr absl::string_view kPjRtClientName = "PjRtStreamExecutorClient";
 absl::StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
   const PjRtStreamExecutorLoadedExecutable* se_executable =
-      tensorflow::down_cast<const PjRtStreamExecutorLoadedExecutable*>(
-          &executable);
+      absl::down_cast<const PjRtStreamExecutorLoadedExecutable*>(&executable);
 
   Executable* built_executable = se_executable->executable()->executable();
   Compiler* compiler = client_->backend().compiler();
