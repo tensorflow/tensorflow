@@ -193,6 +193,12 @@ absl::StatusOr<uint32_t> DefineBitcastOp(ynn_subgraph_t subgraph,
   return out;
 }
 
+absl::StatusOr<uint32_t> DefineReshapeOp(ynn_subgraph_t subgraph,
+                                         TensorIdMap& tensor_ids,
+                                         const HloInstruction* instr) {
+  return DefineBitcastOp(subgraph, tensor_ids, instr);
+}
+
 absl::StatusOr<uint32_t> DefineUnaryOp(ynn_subgraph_t subgraph,
                                        TensorIdMap& tensor_ids,
                                        const HloInstruction* instr) {
@@ -589,6 +595,9 @@ absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(const HloComputation* computation,
                                             Literals& literals) {
   VLOG(3) << "Emit YNNPACK subgraph for computation: " << computation->name();
 
+  std::cerr << "shal1t7: comp = " << computation->ToString() << std::endl
+            << std::endl;
+
   TF_ASSIGN_OR_RETURN(
       YnnSubgraph subgraph, CreateYnnSubgraph([&](ynn_subgraph_t* subgraph) {
         return ynn_create_subgraph(
@@ -652,6 +661,16 @@ absl::StatusOr<YnnSubgraph> EmitYnnSubgraph(const HloComputation* computation,
         }
         TF_ASSIGN_OR_RETURN(tensor_ids[instr],
                             DefineBitcastOp(subgraph.get(), tensor_ids, instr));
+      } break;
+
+      case HloOpcode::kReshape: {
+        if (!IsReshapeOpSupportedByYnn(instr)) {
+          return InvalidArgument(
+              "Unsupported reshape instruction in YNN fusion: %s",
+              instr->ToString());
+        }
+        TF_ASSIGN_OR_RETURN(tensor_ids[instr],
+                            DefineReshapeOp(subgraph.get(), tensor_ids, instr));
       } break;
 
       case HloOpcode::kDot: {
