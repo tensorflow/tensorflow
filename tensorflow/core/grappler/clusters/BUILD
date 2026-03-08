@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/core:session_options",
         "//tensorflow/core/grappler:grappler_item",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
