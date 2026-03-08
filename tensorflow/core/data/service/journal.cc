@@ -16,12 +16,16 @@ limitations under the License.
 #include "tensorflow/core/data/service/journal.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "third_party/re2/re2.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"

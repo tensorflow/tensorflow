@@ -22,6 +22,8 @@ limitations under the License.
 #include <vector>
 
 #include "grpcpp/server_builder.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"

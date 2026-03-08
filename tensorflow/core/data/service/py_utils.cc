@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/call_once.h"
+#include "absl/log/log.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 
 namespace tensorflow {

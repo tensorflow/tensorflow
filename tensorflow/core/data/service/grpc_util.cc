@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
 #include <string>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
