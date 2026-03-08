@@ -17,6 +17,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"

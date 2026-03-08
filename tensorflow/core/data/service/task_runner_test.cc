@@ -13,16 +13,22 @@ limitations under the License.
 #include "tensorflow/core/data/service/task_runner.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/task_remover.h"
 
+#include <chrono>
+#include <cstdint>
+
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/thread_annotations.h"

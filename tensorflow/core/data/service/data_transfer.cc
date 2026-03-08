@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/data_transfer.h"
 
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/grpc_util.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/test_cluster.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -21,9 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"

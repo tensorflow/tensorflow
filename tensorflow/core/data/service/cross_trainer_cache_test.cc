@@ -14,16 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/cross_trainer_cache.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
+#include <gmock/gmock.h>
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"

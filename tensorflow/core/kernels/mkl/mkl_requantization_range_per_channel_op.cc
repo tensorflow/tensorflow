@@ -75,7 +75,7 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     const float* input_max_data = input_max.flat<float>().data();
     std::vector<float> ranges(depth);
     bool is_non_negative = true;
-    Eigen::array<int, 2> shuffling({1, 0});
+    Eigen::array<int, 2> shuffling{1, 0};
     auto input_matrix = input.flat_inner_dims<qint32>();
 
     // TODO(intel-tf): Verify performance of not transposing and finding min max
