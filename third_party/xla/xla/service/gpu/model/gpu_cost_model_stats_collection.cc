@@ -82,7 +82,7 @@ absl::StatusOr<absl::Duration> MaybeGetGemmCostModelForGemmTritonFusion(
       BlockLevelParameters::FromBlockLevelFusionConfig(
           config.fusion_backend_config().block_level_fusion_config());
 
-  return GpuDotFusionCostModel::EstimateRunTimeForDotOpWithBlockParameters(
+  return gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
       dot, block_params, device_info);
 }
 
