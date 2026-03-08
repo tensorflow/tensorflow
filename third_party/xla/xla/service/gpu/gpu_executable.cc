@@ -100,6 +100,7 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
@@ -296,7 +297,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(allocator.MutableAllocations()), std::move(params.alias_info),
       std::move(params.debug_options), std::move(params.constants),
       std::move(params.output_info), params.enable_debug_info_manager,
-      std::move(params.module_stats), std::move(thunk_sequence_proto)));
+      std::move(params.module_stats), std::move(thunk_sequence_proto),
+      std::move(params.executable_abi_version)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -314,7 +316,8 @@ GpuExecutable::GpuExecutable(
     std::vector<ConstantInfo> constants,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     bool enable_debug_info_manager, ModuleStats module_stats,
-    absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto)
+    absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
+    stream_executor::ExecutableAbiVersion executable_abi_version)
     : Executable(std::move(debug_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -335,7 +338,8 @@ GpuExecutable::GpuExecutable(
       constants_(std::move(constants)),
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(enable_debug_info_manager),
-      thunk_sequence_proto_(std::move(thunk_sequence_proto)) {
+      thunk_sequence_proto_(std::move(thunk_sequence_proto)),
+      executable_abi_version_(std::move(executable_abi_version)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -1484,6 +1488,8 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
     *proto.add_constants() = constant.ToProto();
   }
 
+  *proto.mutable_executable_abi_version() = executable_abi_version_.proto();
+
   return proto;
 }
 
@@ -1563,6 +1569,10 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
   params.module_name = proto.module_name();
   ASSIGN_OR_RETURN(params.program_shape,
                    ProgramShape::FromProto(proto.program_shape()));
+
+  ASSIGN_OR_RETURN(params.executable_abi_version,
+                   stream_executor::ExecutableAbiVersion::FromProto(
+                       proto.executable_abi_version()));
 
   return Create(std::move(params));
 }
