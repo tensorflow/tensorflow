@@ -5527,6 +5527,8 @@ def polyval(coeffs, x, name=None):
     p = coeffs[0]
     for c in coeffs[1:]:
       p = c + p * x
+    # Broadcast result to match x's shape for NumPy compatibility
+    p = array_ops.broadcast_to(p, array_ops.shape(x))
     return p
 
 
