@@ -154,6 +154,9 @@ class SharedBatchScheduler
     // the options provided in the first Create() call will be used to
     // initialize the global scheduler.
     bool use_global_scheduler = false;
+
+    // The startup delay for the batch threads. Useful for testing.
+    int64_t batch_threads_startup_delay_micros = 0;
   };
   // Ownership is shared between the caller of Create() and any queues created
   // via AddQueue().
@@ -1059,6 +1062,8 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
   PeriodicFunction::Options periodic_fn_options;
   periodic_fn_options.thread_name_prefix =
       strings::StrCat(options.thread_pool_name, "_");
+  periodic_fn_options.startup_delay_micros =
+      options.batch_threads_startup_delay_micros;
   for (int i = 0; i < options.num_batch_threads; ++i) {
     std::unique_ptr<PeriodicFunction> thread(new PeriodicFunction(
         [this] { this->ThreadLogic(); },

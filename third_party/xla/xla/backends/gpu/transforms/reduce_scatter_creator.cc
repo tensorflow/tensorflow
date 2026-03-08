@@ -94,7 +94,7 @@ absl::StatusOr<bool> ReduceScatterCreator::RunImpl(
         channel_id = next_channel_id++;
       }
 
-      HloInstruction *ars =
+      HloInstruction* ars =
           computation->AddInstruction(HloInstruction::CreateReduceScatter(
               scatter_shape, {rs_input}, ar->to_apply(), ar->device_list(),
               ar->constrain_layout(), channel_id, ar->use_global_device_ids(),

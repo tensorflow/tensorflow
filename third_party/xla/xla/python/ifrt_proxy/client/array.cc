@@ -555,7 +555,54 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::BitcastArrays(
     absl::Span<xla::ifrt::ArrayRef> arrays,
     absl::Span<const xla::ifrt::ArraySpec> specs,
     ArrayCopySemantics semantics) {
-  return absl::UnimplementedError("BitcastArrays is not implemented.");
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointBitcastArrays",
+                                        {{"n_arrays", n_arrays}});
+  });
+
+  if (rpc_helper->protocol_version() < protocol_version::kBitcastArrays) {
+    return absl::UnimplementedError(
+        absl::StrCat("BitcastArrays bitcast requires protocol version ",
+                     protocol_version::kBitcastArrays, ", but the server has ",
+                     rpc_helper->protocol_version()));
+  }
+  if (arrays.size() != specs.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "BitcastArrays requires arrays and specs to have same size, but got ",
+        arrays.size(), " vs ", specs.size()));
+  }
+  if (semantics == ArrayCopySemantics::kAlwaysCopy) {
+    return absl::InvalidArgumentError(
+        "BitcastArrays disallows kAlwaysCopy semantics");
+  }
+
+  auto req = std::make_unique<BitcastArraysRequest>();
+  TF_ASSIGN_OR_RETURN(*req->mutable_array_handles(),
+                      Array::GetHandles(arrays, semantics));
+  for (const auto& spec : specs) {
+    TF_RETURN_IF_ERROR(spec.ToProto(*req->add_array_specs(),
+                                    rpc_helper->ifrt_serdes_version()));
+  }
+  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+
+  std::vector<xla::ifrt::ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
+  for (int i = 0; i < arrays.size(); ++i) {
+    uint64_t result_handle = rpc_helper->NextHandle();
+    new_arrays.push_back(tsl::MakeRef<Array>(
+        client, rpc_helper, specs[i].dtype, specs[i].shape, specs[i].sharding,
+        ArrayHandle{result_handle}, specs[i].layout));
+    req->add_result_handles(result_handle);
+  }
+
+  rpc_helper->BitcastArrays(std::move(req));
+
+  if (semantics == ArrayCopySemantics::kDonateInput) {
+    for (const auto& array : arrays) {
+      array->Delete();
+    }
+  }
+  return new_arrays;
 }
 
 absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> Array::GetHandles(
