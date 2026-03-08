@@ -120,8 +120,8 @@ void importCallOp(
   TensorShardingPerValueAttr callOpResultShardings =
       mlir::sdy::getShardingPerValue(callOp);
   auto namedCompOp = NamedComputationOp::create(
-      rewriter, callOp->getLoc(), callOp->getResultTypes(), calleeName,
-      callOp.getOperands(),
+      rewriter, callOp->getLoc(), callOp->getResultTypes(),
+      getOriginalFuncName(funcOp), callOp.getOperands(),
       /*inShardings=*/getFuncArgShardings(callOp, funcOp, symbolTable),
       // TODO(b/439018088): Take func result shardings if call op result
       // shardings are empty.
