@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/stream_executor/mock_platform.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -80,6 +82,7 @@ DeviceDescription GetDeviceDescription() {
       GpuComputeCapability{::stream_executor::CudaComputeCapability::Volta()});
   device_description.set_driver_version({12, 3, 0});
   device_description.set_runtime_version({12, 3, 0});
+  device_description.set_compile_time_toolkit_version({12, 3, 0});
   return device_description;
 }
 
@@ -139,8 +142,12 @@ class GpuAotCompilationResultTest : public ::testing::Test {
     params.module_name = "test_module";
     params.enable_debug_info_manager = false;
     params.mlir_allocations = {BufferAllocation(0, 1024, 0)};
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
-                        GpuExecutable::Create(std::move(params)));
+    ASSIGN_OR_RETURN(
+        params.executable_abi_version,
+        stream_executor::ExecutableAbiVersion::FromDeviceDescription(
+            device_description_));
+    ASSIGN_OR_RETURN(std::unique_ptr<GpuExecutable> executable,
+                     GpuExecutable::Create(std::move(params)));
     return executable->ToProto();
   }
 
@@ -174,6 +181,7 @@ TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuAotCompilationResult> result,
       GpuAotCompilationResult::FromProto(reference_executable));
+
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_result,
                           result->SerializeAsString());
 
@@ -192,11 +200,33 @@ TEST_F(GpuAotCompilationResultTest, LoadExecutable) {
       std::unique_ptr<GpuAotCompilationResult> result,
       GpuAotCompilationResult::FromProto(reference_executable));
 
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        stream_executor::ExecutableAbiVersion executable_abi_version,
+        result->GetExecutableAbiVersion());
+    EXPECT_EQ(executable_abi_version.platform_name(), "CUDA");
+    EXPECT_EQ(executable_abi_version.proto()
+                  .cuda_platform_version()
+                  .cuda_toolkit_version(),
+              "12.3.0");
+  }
+
   EnsureCudaSymbolIsRegistered();
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
                           std::move(*result).LoadExecutable(
                               platform_.id(), GetDeviceDescription()));
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        stream_executor::ExecutableAbiVersion executable_abi_version,
+        executable->GetExecutableAbiVersion());
+    EXPECT_EQ(executable_abi_version.platform_name(), "CUDA");
+    EXPECT_EQ(executable_abi_version.proto()
+                  .cuda_platform_version()
+                  .cuda_toolkit_version(),
+              "12.3.0");
+  }
 
   auto* gpu_executable = dynamic_cast<GpuExecutable*>(executable.get());
   ASSERT_NE(gpu_executable, nullptr) << "Executable is not a GpuExecutable.";
