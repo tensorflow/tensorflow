@@ -18,6 +18,8 @@ limitations under the License.
 // end-to-end use of these ops in eval and polish the api a bit like taking two
 // SparseTensor rather than one dense and one sparse.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
 #define EIGEN_USE_THREADS
 
 #include <algorithm>

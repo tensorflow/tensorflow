@@ -165,6 +165,28 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_CreateMegascaleCollectives_Args,
 // NOLINTNEXTLINE(modernize-use-using)
 typedef PJRT_Error* PJRT_Megascale_CreateMegascaleCollectives(
     PJRT_Megascale_CreateMegascaleCollectives_Args* args);
+struct PJRT_Megascale_DeviceId_To_MegascaleId_Args {
+  size_t struct_size;
+  int32_t slice_id;
+  int32_t per_slice_device_id;
+  int64_t megascale_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_DeviceId_To_MegascaleId_Args,
+                          megascale_id);
+typedef PJRT_Error* PJRT_Megascale_DeviceId_To_MegascaleId(
+    PJRT_Megascale_DeviceId_To_MegascaleId_Args* args);
+
+struct PJRT_Megascale_MegascaleId_To_DeviceId_Args {
+  size_t struct_size;
+  int64_t megascale_id;
+  int32_t slice_id;             // out
+  int32_t per_slice_device_id;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_MegascaleId_To_DeviceId_Args,
+                          per_slice_device_id);
+typedef PJRT_Error* PJRT_Megascale_MegascaleId_To_DeviceId(
+    PJRT_Megascale_MegascaleId_To_DeviceId_Args* args);
+
 typedef struct PJRT_Megascale_Extension {
   PJRT_Extension_Base base;
   PJRT_Megascale_CreateClientContextFromPjRtClient*
@@ -183,9 +205,12 @@ typedef struct PJRT_Megascale_Extension {
       client_context_unblock_pending_work;
   PJRT_Megascale_ClientContext_MegascalePort* client_context_megascale_port;
   PJRT_Megascale_CreateMegascaleCollectives* create_megascale_collectives;
+  PJRT_Megascale_DeviceId_To_MegascaleId* device_id_to_megascale_id;
+  PJRT_Megascale_MegascaleId_To_DeviceId* megascale_id_to_device_id;
 } PJRT_Megascale_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension,
-                          create_megascale_collectives);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension, megascale_id_to_device_id);
+
+// NOLINTEND(modernize-use-using)
 
 #ifdef __cplusplus
 }
