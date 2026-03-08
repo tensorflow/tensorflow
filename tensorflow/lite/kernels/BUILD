@@ -535,6 +535,7 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",

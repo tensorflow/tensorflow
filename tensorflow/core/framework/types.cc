@@ -15,6 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/framework/types.h"
 
+#include <cstddef>
+#include <functional>
+#include <string>
+#include <unordered_map>
+
+#include "absl/log/log.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
