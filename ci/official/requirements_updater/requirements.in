@@ -13,7 +13,7 @@ gast == 0.4.0
 termcolor == 2.3.0
 wrapt == 1.16.0
 tblib == 2.0.0
-ml_dtypes >= 0.5.1, < 0.6.0
+ml_dtypes >= 0.5.4, < 0.6.0
 auditwheel >= 6.1.0
 # Install tensorboard, and keras
 # Note that here we want the latest version that matches TF major.minor version
@@ -36,7 +36,7 @@ requests >= 2.31.0
 packaging==23.2
 setuptools==78.1.1
 jax==0.4.7
-zstandard==0.23.0
+zstandard==0.25.0
 # The dependencies below are needed for TF wheel testing.
 tensorflow-io-gcs-filesystem==0.37.1 ; python_version <= "3.12"
 libclang >= 13.0.0
