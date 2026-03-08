@@ -17,6 +17,7 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/compiler/tf2xla/xla_argument.proto";
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/function.proto";
 
@@ -29,9 +30,11 @@ message TfGraphToHloCompilerOptions {
 }
 
 // Arguments used for a TfGraphToHloCompiler::Compile() call.
-// Next ID: 4
+// Next ID: 5
 message TfGraphToHloCompilerCompileCallArgs {
   string compile_options = 1;
   NameAttrList function = 2;
-  repeated string xla_arguments = 3;
+  // TODO: b/489869472 - Remove this field once it is no longer used.
+  repeated string xla_arguments = 3 [deprecated = true];
+  repeated tf2xla.XlaArgumentProto xla_args = 4;
 }
