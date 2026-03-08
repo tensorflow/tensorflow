@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -216,7 +217,8 @@ absl::InlinedVector<HloInstruction*, 4> GetIntraHostMetadata(
       computation->AddInstruction(HloInstruction::CreateAllToAll(
           /*shape=*/all_to_all_shape,
           /*operands=*/{all_to_all_input},
-          /*device_list=*/CollectiveDeviceList(replica_groups),
+          /*device_list=*/
+          std::make_shared<CollectiveDeviceList>(replica_groups),
           /*constrain_layout=*/false,
           /*channel_id=*/ragged_all_to_all->channel_id().has_value()
               ? std::make_optional(NextChannelId(*computation->parent()))
@@ -290,7 +292,8 @@ absl::StatusOr<bool> DecomposeDispatchRaggedAllToAll(
           /*shape=*/new_input_shape,
           /*operands=*/{ragged_all_to_all->mutable_operand(0)},
           /*all_gather_dimension=*/0,
-          /*device_list=*/CollectiveDeviceList(inter_host_replica_groups),
+          /*device_list=*/
+          std::make_shared<CollectiveDeviceList>(inter_host_replica_groups),
           /*constrain_layout=*/false,
           /*channel_id=*/ragged_all_to_all->channel_id().has_value()
               ? std::make_optional(NextChannelId(*computation->parent()))
@@ -310,7 +313,8 @@ absl::StatusOr<bool> DecomposeDispatchRaggedAllToAll(
           {all_gather_input, ragged_all_to_all->mutable_operand(1),
            intra_host_metadata[0], intra_host_metadata[1],
            intra_host_metadata[2], intra_host_metadata[3]},
-          /*device_list=*/CollectiveDeviceList(intra_host_replica_groups),
+          /*device_list=*/
+          std::make_shared<CollectiveDeviceList>(intra_host_replica_groups),
           /*channel_id=*/ragged_all_to_all->channel_id()));
 
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
@@ -411,7 +415,8 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
       computation->AddInstruction(HloInstruction::CreateRaggedAllToAll(
           /*shape=*/zero_broadcast->shape(),
           /*operands=*/intra_host_ragged_all_to_all_operands,
-          /*device_list=*/CollectiveDeviceList(intra_host_replica_groups),
+          /*device_list=*/
+          std::make_shared<CollectiveDeviceList>(intra_host_replica_groups),
           /*channel_id=*/ragged_all_to_all->channel_id().has_value()
               ? std::make_optional(NextChannelId(*computation->parent()))
               : std::nullopt));
@@ -419,7 +424,8 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
   HloInstruction* local_inputs =
       computation->AddInstruction(HloInstruction::CreateAllToAll(
           intra_host_ragged_all_to_all->shape(), {intra_host_ragged_all_to_all},
-          /*device_list=*/CollectiveDeviceList(inter_host_replica_groups),
+          /*device_list=*/
+          std::make_shared<CollectiveDeviceList>(inter_host_replica_groups),
           /*constrain_layout=*/false,
           /*channel_id=*/ragged_all_to_all->channel_id().has_value()
               ? std::make_optional(NextChannelId(*computation->parent()))
@@ -484,7 +490,8 @@ absl::StatusOr<bool> DecomposeCombineRaggedAllToAll(
       computation->AddInstruction(HloInstruction::CreateRaggedAllToAll(
           /*shape=*/ragged_all_to_all->shape(),
           /*operands=*/local_ragged_all_to_all_operands,
-          /*device_list=*/CollectiveDeviceList(degenerated_replica_groups),
+          /*device_list=*/
+          std::make_shared<CollectiveDeviceList>(degenerated_replica_groups),
           /*channel_id=*/ragged_all_to_all->channel_id()));
 
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(ragged_all_to_all,
