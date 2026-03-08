@@ -395,14 +395,11 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
   return MlirAttrsToMemoryKinds(main.getAllResultAttrs(), main.getNumResults());
 }
 
-// Make sure to choose delimiter that will never show up in Layout strings.
-static const char* kDelimiter = ";";
-
 static absl::StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
     absl::string_view attr) {
   // SkipEmpty() needed to avoid returning the empty string when attr is empty.
   std::vector<std::string> str_modes =
-      absl::StrSplit(attr, kDelimiter, absl::SkipEmpty());
+      absl::StrSplit(attr, kAttrValueDelimiter, absl::SkipEmpty());
   std::vector<LayoutMode> result;
   for (const std::string& str_mode : str_modes) {
     TF_ASSIGN_OR_RETURN(LayoutMode mode, LayoutMode::FromString(str_mode));
@@ -427,7 +424,7 @@ static absl::StatusOr<std::vector<MemorySpaceColor>>
 GetMemoryKindsFromFrontendAttr(absl::string_view attr) {
   // SkipEmpty() needed to avoid returning the empty string when attr is empty.
   std::vector<std::string> str_memory_spaces =
-      absl::StrSplit(attr, kDelimiter, absl::SkipEmpty());
+      absl::StrSplit(attr, kAttrValueDelimiter, absl::SkipEmpty());
 
   std::vector<MemorySpaceColor> result;
   result.reserve(str_memory_spaces.size());
@@ -460,7 +457,7 @@ absl::StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
                             program_shape.parameters(0).IsTuple()
                         ? program_shape.parameters(0).tuple_shapes().size()
                         : program_shape.parameters_size();
-  return GetLayoutModes(computation, "arg_layout_modes", num_args);
+  return GetLayoutModes(computation, kArgLayoutModesAttr, num_args);
 }
 
 absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
@@ -471,7 +468,7 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
                             program_shape.parameters(0).IsTuple()
                         ? program_shape.parameters(0).tuple_shapes().size()
                         : program_shape.parameters_size();
-  return GetMemoryKinds(computation, "arg_memory_spaces", num_args);
+  return GetMemoryKinds(computation, kArgMemorySpacesAttr, num_args);
 }
 
 absl::StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
@@ -481,7 +478,7 @@ absl::StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
   size_t num_outputs = program_shape.result().IsTuple()
                            ? program_shape.result().tuple_shapes().size()
                            : 1;
-  return GetLayoutModes(computation, "out_layout_modes", num_outputs);
+  return GetLayoutModes(computation, kOutLayoutModesAttr, num_outputs);
 }
 
 absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
@@ -491,7 +488,7 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
   size_t num_outputs = program_shape.result().IsTuple()
                            ? program_shape.result().tuple_shapes().size()
                            : 1;
-  return GetMemoryKinds(computation, "out_memory_spaces", num_outputs);
+  return GetMemoryKinds(computation, kOutMemorySpacesAttr, num_outputs);
 }
 
 absl::StatusOr<Shape> LayoutModeToXlaShape(

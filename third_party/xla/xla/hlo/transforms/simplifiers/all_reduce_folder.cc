@@ -209,10 +209,10 @@ absl::StatusOr<bool> AllReduceFolder::RunImpl(
       }
 
       // Create new all-reduce and delete the 2 existing ones.
-      HloInstruction *new_ar =
+      HloInstruction* new_ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
               ar0->shape(), ar0->operands(), ar0->to_apply(),
-              CollectiveDeviceList(*new_replica_groups),
+              std::make_shared<CollectiveDeviceList>(*new_replica_groups),
               /*constrain_layout=*/false, channel_id,
               ar0->use_global_device_ids()));
       TF_RETURN_IF_ERROR(ar1->ReplaceAllUsesWith(new_ar));

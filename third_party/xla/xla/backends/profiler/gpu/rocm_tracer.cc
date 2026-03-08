@@ -138,6 +138,7 @@ void RocmTracer::Enable(const RocmTracerOptions& options,
   }
   options_ = options;
   collector_ = collector;
+  annotation_map_.Clear();
   api_tracing_enabled_ = true;
   activity_tracing_enabled_ = true;
   rocprofiler_start_context(context_);
