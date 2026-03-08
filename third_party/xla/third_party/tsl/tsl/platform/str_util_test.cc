@@ -29,9 +29,9 @@ TEST(CEscape, Basic) {
   EXPECT_EQ(absl::CEscape("\320hi\200"), "\\320hi\\200");
 }
 
-string ExpectCUnescapeSuccess(absl::string_view source) {
-  string dest;
-  string error;
+std::string ExpectCUnescapeSuccess(absl::string_view source) {
+  std::string dest;
+  std::string error;
   EXPECT_TRUE(absl::CUnescape(source, &dest, &error)) << error;
   return dest;
 }
@@ -45,11 +45,11 @@ TEST(CUnescape, Basic) {
 }
 
 TEST(CUnescape, HandlesCopyOnWriteStrings) {
-  string dest = "hello";
-  string read = dest;
+  std::string dest = "hello";
+  std::string read = dest;
   // For std::string, read and dest now share the same buffer.
 
-  string error;
+  std::string error;
   absl::string_view source = "llohe";
   // CUnescape is going to write "llohe" to dest, so dest's buffer will be
   // reallocated, and read's buffer remains untouched.
@@ -58,7 +58,7 @@ TEST(CUnescape, HandlesCopyOnWriteStrings) {
 }
 
 TEST(StripTrailingWhitespace, Basic) {
-  string test;
+  std::string test;
   test = "hello";
   absl::StripTrailingAsciiWhitespace(&test);
   EXPECT_EQ(test, "hello");
@@ -81,7 +81,7 @@ TEST(StripTrailingWhitespace, Basic) {
 }
 
 TEST(RemoveLeadingWhitespace, Basic) {
-  string text = "  \t   \n  \r Quick\t";
+  std::string text = "  \t   \n  \r Quick\t";
   absl::string_view data(text);
   // check that all whitespace is removed
   EXPECT_EQ(str_util::RemoveLeadingWhitespace(&data), 11);
@@ -93,7 +93,7 @@ TEST(RemoveLeadingWhitespace, Basic) {
 
 TEST(RemoveLeadingWhitespace, TerminationHandling) {
   // check termination handling
-  string text = "\t";
+  std::string text = "\t";
   absl::string_view data(text);
   EXPECT_EQ(str_util::RemoveLeadingWhitespace(&data), 1);
   EXPECT_EQ(data, absl::string_view(""));
@@ -104,7 +104,7 @@ TEST(RemoveLeadingWhitespace, TerminationHandling) {
 }
 
 TEST(RemoveTrailingWhitespace, Basic) {
-  string text = "  \t   \n  \r Quick \t";
+  std::string text = "  \t   \n  \r Quick \t";
   absl::string_view data(text);
   // check that all whitespace is removed
   EXPECT_EQ(str_util::RemoveTrailingWhitespace(&data), 2);
@@ -116,7 +116,7 @@ TEST(RemoveTrailingWhitespace, Basic) {
 
 TEST(RemoveTrailingWhitespace, TerminationHandling) {
   // check termination handling
-  string text = "\t";
+  std::string text = "\t";
   absl::string_view data(text);
   EXPECT_EQ(str_util::RemoveTrailingWhitespace(&data), 1);
   EXPECT_EQ(data, absl::string_view(""));
@@ -127,7 +127,7 @@ TEST(RemoveTrailingWhitespace, TerminationHandling) {
 }
 
 TEST(RemoveWhitespaceContext, Basic) {
-  string text = "  \t   \n  \r Quick \t";
+  std::string text = "  \t   \n  \r Quick \t";
   absl::string_view data(text);
   // check that all whitespace is removed
   EXPECT_EQ(str_util::RemoveWhitespaceContext(&data), 13);
@@ -145,10 +145,10 @@ TEST(RemoveWhitespaceContext, Basic) {
 
 void TestConsumeLeadingDigits(absl::string_view s, int64_t expected,
                               absl::string_view remaining) {
-  uint64 v;
+  uint64_t v;
   absl::string_view input(s);
   if (str_util::ConsumeLeadingDigits(&input, &v)) {
-    EXPECT_EQ(v, static_cast<uint64>(expected));
+    EXPECT_EQ(v, static_cast<uint64_t>(expected));
     EXPECT_EQ(input, remaining);
   } else {
     EXPECT_LT(expected, 0);
@@ -200,7 +200,7 @@ TEST(ConsumeNonWhitespace, Basic) {
 }
 
 TEST(ConsumePrefix, Basic) {
-  string s("abcdef");
+  std::string s("abcdef");
   absl::string_view input(s);
   EXPECT_FALSE(absl::ConsumePrefix(&input, "abcdefg"));
   EXPECT_EQ(input, "abcdef");
@@ -232,7 +232,7 @@ TEST(StripPrefix, Basic) {
 }
 
 TEST(JoinStrings, Basic) {
-  std::vector<string> s;
+  std::vector<std::string> s;
   s = {"hi"};
   EXPECT_EQ(absl::StrJoin(s, " "), "hi");
   s = {"hi", "there", "strings"};
@@ -246,12 +246,12 @@ TEST(JoinStrings, Basic) {
 }
 
 TEST(JoinStrings, Join3) {
-  std::vector<string> s;
+  std::vector<std::string> s;
   s = {"hi"};
-  auto l1 = [](string* out, string s) { *out += s; };
+  auto l1 = [](std::string* out, std::string s) { *out += s; };
   EXPECT_EQ(str_util::Join(s, " ", l1), "hi");
   s = {"hi", "there", "strings"};
-  auto l2 = [](string* out, string s) { *out += s[0]; };
+  auto l2 = [](std::string* out, std::string s) { *out += s[0]; };
   EXPECT_EQ(str_util::Join(s, " ", l2), "h t s");
 }
 
@@ -321,7 +321,7 @@ TEST(SnakeCase, Basic) {
 }
 
 TEST(TitlecaseString, Basic) {
-  string s = "sparse_lookup";
+  std::string s = "sparse_lookup";
   str_util::TitlecaseString(&s, "_");
   ASSERT_EQ(s, "Sparse_Lookup");
 
