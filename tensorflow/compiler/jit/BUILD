@@ -822,6 +822,7 @@ tf_proto_library(
     srcs = ["tf_graph_to_hlo_compiler.proto"],
     protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
+    deps = ["//tensorflow/compiler/tf2xla:xla_argument_proto"],
 )
 
 cc_library(

@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/framework/variant.h"
 
-#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
+
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/types.pb.h"
 #if defined(__x86_64__)
 #include <xmmintrin.h>
 #endif
