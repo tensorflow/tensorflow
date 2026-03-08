@@ -1900,12 +1900,12 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAllGather) {
         return builder->AddInstruction(HloInstruction::CreateAllGather(
-            *shape, operands, dimensions->at(0), *device_list,
+            *shape, operands, dimensions->at(0), std::move(device_list),
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
       }
       return builder->AddInstruction(HloInstruction::CreateAllGatherStart(
-          *shape, operands, dimensions->at(0), *device_list,
+          *shape, operands, dimensions->at(0), std::move(device_list),
           constrain_layout ? *constrain_layout : false, channel_id,
           use_global_device_ids ? *use_global_device_ids : false));
     }
@@ -1961,19 +1961,19 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       }
       if (opcode == HloOpcode::kAllReduce) {
         return builder->AddInstruction(HloInstruction::CreateAllReduce(
-            *shape, operands, *to_apply, *device_list,
+            *shape, operands, *to_apply, std::move(device_list),
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false));
       }
       if (opcode == HloOpcode::kReduceScatter) {
         return builder->AddInstruction(HloInstruction::CreateReduceScatter(
-            *shape, operands, *to_apply, *device_list,
+            *shape, operands, *to_apply, std::move(device_list),
             constrain_layout ? *constrain_layout : false, channel_id,
             use_global_device_ids ? *use_global_device_ids : false,
             dimensions->at(0)));
       }
       return builder->AddInstruction(HloInstruction::CreateAllReduceStart(
-          *shape, operands, *to_apply, *device_list,
+          *shape, operands, *to_apply, std::move(device_list),
           constrain_layout ? *constrain_layout : false, channel_id,
           use_global_device_ids ? *use_global_device_ids : false));
     }
@@ -2000,7 +2000,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         split_dimension = dimensions->at(0);
       }
       return builder->AddInstruction(HloInstruction::CreateAllToAll(
-          *shape, operands, *device_list,
+          *shape, operands, std::move(device_list),
           constrain_layout ? *constrain_layout : false, channel_id,
           split_dimension));
     }
@@ -2020,7 +2020,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateRaggedAllToAll(
-          *shape, operands, *device_list, channel_id));
+          *shape, operands, std::move(device_list), channel_id));
     }
     case HloOpcode::kCollectiveBroadcast: {
       std::unique_ptr<CollectiveDeviceListBase> device_list =
@@ -2034,7 +2034,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return nullptr;
       }
       return builder->AddInstruction(HloInstruction::CreateCollectiveBroadcast(
-          *shape, operands, *device_list, false, channel_id));
+          *shape, operands, std::move(device_list), false, channel_id));
     }
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCollectivePermuteStart: {

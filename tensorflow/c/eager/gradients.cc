@@ -402,14 +402,14 @@ absl::Status SetAttrFloatList(AbstractOperation* op_, const char* attr_name,
                               const float* values, int num_values,
                               ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const float>(values, num_values));
+                         absl::Span<const const float>(values, num_values));
   return op_->SetAttrFloatList(attr_name, values, num_values);
 }
 absl::Status SetAttrIntList(AbstractOperation* op_, const char* attr_name,
                             const int64_t* values, int num_values,
                             ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(
-      attr_name, gtl::ArraySlice<const int64_t>(
+      attr_name, absl::Span<const const int64_t>(
                      reinterpret_cast<const int64_t*>(values), num_values));
   return op_->SetAttrIntList(attr_name, values, num_values);
 }
@@ -417,7 +417,7 @@ absl::Status SetAttrTypeList(AbstractOperation* op_, const char* attr_name,
                              const DataType* values, int num_values,
                              ForwardOperation* forward_op_) {
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const DataType>(values, num_values));
+                         absl::Span<const const DataType>(values, num_values));
   return op_->SetAttrTypeList(attr_name, values, num_values);
 }
 absl::Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
@@ -428,7 +428,7 @@ absl::Status SetAttrBoolList(AbstractOperation* op_, const char* attr_name,
     b[i] = values[i];
   }
   forward_op_->attrs.Set(attr_name,
-                         gtl::ArraySlice<const bool>(b.get(), num_values));
+                         absl::Span<const const bool>(b.get(), num_values));
   return op_->SetAttrBoolList(attr_name, values, num_values);
 }
 absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
