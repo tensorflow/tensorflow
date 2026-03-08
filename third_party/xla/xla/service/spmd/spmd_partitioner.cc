@@ -5133,7 +5133,7 @@ HloInstruction* CreateAllReduceListsOfLists(
                                                              false);
   return b->AddInstruction(HloInstruction::CreateAllReduce(
       operand->shape(), {operand}, reduction_clone,
-      CollectiveDeviceList(device_groups),
+      std::make_shared<CollectiveDeviceList>(device_groups),
       /*constrain_layout=*/false, channel_id,
       /*use_global_device_ids=*/true));
 }
@@ -5156,7 +5156,7 @@ HloInstruction* CreateAllToAllListsOfLists(
     }
   }
   return b->AddInstruction(HloInstruction::CreateAllToAll(
-      output_shape, operands, CollectiveDeviceList(groups),
+      output_shape, operands, std::make_shared<CollectiveDeviceList>(groups),
       /*constrain_layout=*/false, channel_id, split_dimension));
 }
 
@@ -5177,11 +5177,11 @@ HloInstruction* CreateAllGatherListsOfLists(
       }
     }
   }
-  return b->AddInstruction(
-      HloInstruction::CreateAllGather(ag_shape, {operand}, all_gather_dimension,
-                                      CollectiveDeviceList(device_groups),
-                                      /*constrain_layout=*/false, channel_id,
-                                      /*use_global_device_ids=*/true));
+  return b->AddInstruction(HloInstruction::CreateAllGather(
+      ag_shape, {operand}, all_gather_dimension,
+      std::make_shared<CollectiveDeviceList>(device_groups),
+      /*constrain_layout=*/false, channel_id,
+      /*use_global_device_ids=*/true));
 }
 
 std::optional<IotaReplicaGroupList> TryExpandingPartitionGroupList(
@@ -5216,7 +5216,8 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                   reduction->parent()->AddComputationAndUnifyNamesAndIds(
                       reduction->Clone(), false);
               return b->AddInstruction(HloInstruction::CreateAllReduce(
-                  operand->shape(), {operand}, reduction_clone, *expanded,
+                  operand->shape(), {operand}, reduction_clone,
+                  std::make_shared<IotaReplicaGroupList>(*expanded),
                   /*constrain_layout=*/false, channel_id,
                   /*use_global_device_ids=*/true));
             }
@@ -5262,7 +5263,8 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                        ? operands[0]->shape()
                                        : ShapeUtil::MakeTupleShape(shapes);
               return b->AddInstruction(HloInstruction::CreateAllToAll(
-                  output_shape, operands, *expanded,
+                  output_shape, operands,
+                  std::make_shared<IotaReplicaGroupList>(*expanded),
                   /*constrain_layout=*/false, channel_id, split_dimension));
             }
             return CreateAllToAllListsOfLists(num_replicas, num_partitions, b,
@@ -5278,7 +5280,8 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
               return b->AddInstruction(HloInstruction::CreateAllGather(
-                  ag_shape, {operand}, all_gather_dimension, *expanded,
+                  ag_shape, {operand}, all_gather_dimension,
+                  std::make_shared<IotaReplicaGroupList>(*expanded),
                   /*constrain_layout=*/false, channel_id,
                   /*use_global_device_ids=*/true));
             }
@@ -5504,7 +5507,7 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
     case HloOpcode::kAllToAll: {
       int64_t group_size;
       if (hlo->has_replica_groups()) {
-        group_size = hlo->device_list().num_devices_per_group();
+        group_size = hlo->device_list()->num_devices_per_group();
       } else {
         group_size = hlo->channel_id() ? num_partitions_ : num_replicas_;
       }
