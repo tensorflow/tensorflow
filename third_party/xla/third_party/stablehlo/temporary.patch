@@ -1,3 +1,27 @@
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
+@@ -203,7 +203,7 @@
+     %c = stablehlo.constant dense<1> : tensor<i64>
+     %0 = stablehlo.while(%iterArg = %arg0) : tensor<i64>
+     cond {
+-      %1 = stablehlo.compare  LT, %iterArg, %c : (tensor<i64>, tensor<i64>) -> tensor<i1>
++      %1 = stablehlo.compare LT, %iterArg, %c : (tensor<i64>, tensor<i64>) -> tensor<i1>
+       stablehlo.return %1 : tensor<i1>
+     } do {
+       %1 = stablehlo.subtract %iterArg, %c : tensor<i64>
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+@@ -347,7 +347,7 @@
+     %c = stablehlo.constant dense<1> : tensor<i64>
+     %0 = stablehlo.while(%iterArg = %arg0) : tensor<i64>
+     cond {
+-      %1 = stablehlo.compare  LT, %iterArg, %c : (tensor<i64>, tensor<i64>) -> tensor<i1>
++      %1 = stablehlo.compare LT, %iterArg, %c : (tensor<i64>, tensor<i64>) -> tensor<i1>
+       stablehlo.return %1 : tensor<i1>
+     } do {
+       %1 = stablehlo.subtract %iterArg, %c : tensor<i64>
 diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
 --- stablehlo/stablehlo/reference/Ops.cpp
 +++ stablehlo/stablehlo/reference/Ops.cpp
