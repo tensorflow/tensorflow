@@ -181,7 +181,7 @@ class SdyRoundTripShardMapImportPass
 
     // Clone multiple calls to the same function.
     module->walk([&](CallOp op) {
-      if (!op.getCallee().contains(kManualComputationFuncName)) {
+      if (!isManualComputation(op)) {
         return;
       }
       if (manualComputationCalleeNames.insert(op.getCallee()).second) {
@@ -200,7 +200,7 @@ class SdyRoundTripShardMapImportPass
       if (node->isExternal()) continue;
       if (node->getCallableRegion()
               ->walk([&](CallOp callOp) {
-                if (!callOp.getCallee().contains(kManualComputationFuncName)) {
+                if (!isManualComputation(callOp)) {
                   return mlir::WalkResult::advance();
                 }
                 rewriter.setInsertionPoint(callOp);

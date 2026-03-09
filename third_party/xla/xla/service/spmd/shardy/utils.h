@@ -184,6 +184,9 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::TypeRange types,
     mlir::MLIRContext* context);
 
+// Returns whether the call is for a manual computation.
+bool isManualComputation(mlir::func::CallOp callOp);
+
 }  // namespace sdy
 }  // namespace xla
 
