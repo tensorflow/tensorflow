@@ -1013,10 +1013,10 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
 HloCollectiveInstruction::HloCollectiveInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id)
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      device_list_(device_list.Clone()),
+      device_list_(std::move(device_list)),
       constrain_layout_(constrain_layout) {
   for (auto operand : operands) {
     AppendOperand(operand);
@@ -1084,9 +1084,10 @@ bool HloCollectiveInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 HloAllGatherInstruction::HloAllGatherInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands, int64_t all_gather_dimension,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids)
-    : HloCollectiveInstruction(opcode, shape, operands, device_list,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids)
+    : HloCollectiveInstruction(opcode, shape, operands, std::move(device_list),
                                constrain_layout, channel_id),
       all_gather_dimension_(all_gather_dimension),
       use_global_device_ids_(use_global_device_ids) {}
@@ -1096,10 +1097,10 @@ HloAllGatherInstruction::HloAllGatherInstruction(
     absl::Span<HloInstruction* const> operands, int64_t all_gather_dimension,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id, bool use_global_device_ids)
-    : HloAllGatherInstruction(opcode, shape, operands, all_gather_dimension,
-                              CollectiveDeviceList(replica_groups),
-                              constrain_layout, channel_id,
-                              use_global_device_ids) {}
+    : HloAllGatherInstruction(
+          opcode, shape, operands, all_gather_dimension,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          constrain_layout, channel_id, use_global_device_ids) {}
 
 void HloAllGatherInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
@@ -1144,9 +1145,10 @@ HloAllReduceInstructionBase::HloAllReduceInstructionBase(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids)
-    : HloCollectiveInstruction(opcode, shape, operands, device_list,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids)
+    : HloCollectiveInstruction(opcode, shape, operands, std::move(device_list),
                                constrain_layout, channel_id),
       use_global_device_ids_(use_global_device_ids) {
   AppendComputation(reduce_computation);
@@ -1204,12 +1206,13 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
 HloReduceScatterInstruction::HloReduceScatterInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-    int64_t scatter_dimension)
-    : HloAllReduceInstructionBase(
-          HloOpcode::kReduceScatter, shape, operands, reduce_computation,
-          device_list, constrain_layout, channel_id, use_global_device_ids),
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
+    bool use_global_device_ids, int64_t scatter_dimension)
+    : HloAllReduceInstructionBase(HloOpcode::kReduceScatter, shape, operands,
+                                  reduce_computation, std::move(device_list),
+                                  constrain_layout, channel_id,
+                                  use_global_device_ids),
       scatter_dimension_(scatter_dimension) {}
 
 HloReduceScatterInstruction::HloReduceScatterInstruction(
@@ -1218,10 +1221,11 @@ HloReduceScatterInstruction::HloReduceScatterInstruction(
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id, bool use_global_device_ids,
     int64_t scatter_dimension)
-    : HloReduceScatterInstruction(shape, operands, reduce_computation,
-                                  CollectiveDeviceList(replica_groups),
-                                  constrain_layout, channel_id,
-                                  use_global_device_ids, scatter_dimension) {}
+    : HloReduceScatterInstruction(
+          shape, operands, reduce_computation,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          constrain_layout, channel_id, use_global_device_ids,
+          scatter_dimension) {}
 
 void HloReduceScatterInstruction::PrintExtraAttributesImpl(
     AttributePrinter& printer, const HloPrintOptions& options) const {
@@ -1258,11 +1262,12 @@ HloReduceScatterInstruction::CloneWithNewOperandsImpl(
 
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id,
     const std::optional<int64_t>& split_dimension)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
-                               device_list, constrain_layout, channel_id),
+                               std::move(device_list), constrain_layout,
+                               channel_id),
       split_dimension_(split_dimension) {}
 
 HloAllToAllInstruction::HloAllToAllInstruction(
@@ -1270,9 +1275,10 @@ HloAllToAllInstruction::HloAllToAllInstruction(
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id,
     const std::optional<int64_t>& split_dimension)
-    : HloAllToAllInstruction(shape, operands,
-                             CollectiveDeviceList(replica_groups),
-                             constrain_layout, channel_id, split_dimension) {}
+    : HloAllToAllInstruction(
+          shape, operands,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          constrain_layout, channel_id, split_dimension) {}
 
 std::unique_ptr<HloInstruction>
 HloAllToAllInstruction::CloneWithNewOperandsImpl(
@@ -1312,10 +1318,10 @@ bool HloAllToAllInstruction::IdenticalSlowPathIgnoringChannelIdValues(
 
 HloRaggedAllToAllInstruction::HloRaggedAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
     const std::optional<int64_t>& channel_id)
     : HloCollectiveInstruction(HloOpcode::kRaggedAllToAll, shape, operands,
-                               device_list,
+                               std::move(device_list),
                                /*constrain_layout=*/false, channel_id) {}
 
 HloRaggedAllToAllInstruction::HloRaggedAllToAllInstruction(
@@ -1324,7 +1330,8 @@ HloRaggedAllToAllInstruction::HloRaggedAllToAllInstruction(
     absl::Span<const ReplicaGroup> replica_groups,
     const std::optional<int64_t>& channel_id)
     : HloRaggedAllToAllInstruction(
-          shape, operands, CollectiveDeviceList(replica_groups), channel_id) {}
+          shape, operands,
+          std::make_shared<CollectiveDeviceList>(replica_groups), channel_id) {}
 
 std::unique_ptr<HloInstruction>
 HloRaggedAllToAllInstruction::CloneWithNewOperandsImpl(
@@ -1346,9 +1353,9 @@ void HloRaggedAllToAllInstruction::PrintExtraAttributesImpl(
 HloCollectiveBroadcastInstruction::HloCollectiveBroadcastInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    const CollectiveDeviceListBase& device_list, bool constrain_layout,
-    const std::optional<int64_t>& channel_id)
-    : HloCollectiveInstruction(opcode, shape, operands, device_list,
+    std::shared_ptr<CollectiveDeviceListBase> device_list,
+    bool constrain_layout, const std::optional<int64_t>& channel_id)
+    : HloCollectiveInstruction(opcode, shape, operands, std::move(device_list),
                                constrain_layout, channel_id) {}
 
 HloCollectiveBroadcastInstruction::HloCollectiveBroadcastInstruction(
@@ -1356,9 +1363,10 @@ HloCollectiveBroadcastInstruction::HloCollectiveBroadcastInstruction(
     absl::Span<HloInstruction* const> operands,
     absl::Span<const ReplicaGroup> replica_groups, bool constrain_layout,
     const std::optional<int64_t>& channel_id)
-    : HloCollectiveBroadcastInstruction(opcode, shape, operands,
-                                        CollectiveDeviceList(replica_groups),
-                                        constrain_layout, channel_id) {}
+    : HloCollectiveBroadcastInstruction(
+          opcode, shape, operands,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          constrain_layout, channel_id) {}
 
 void HloCollectiveBroadcastInstruction::ToProto(
     HloInstructionProto* proto) const {
@@ -2267,7 +2275,8 @@ HloCallableInstruction::CloneAndAppendInstructionIntoCalledComputation(
 
   if (add_output) {
     int64_t user_count = instruction_to_append->user_count();
-    CHECK(user_count > 0 || instruction_to_append->IsRoot())
+    CHECK(user_count > 0 || instruction_to_append->IsRoot() ||
+          instruction_to_append->HasSideEffect())
         << "Unable to append instruction: " << instruction_to_append->ToString()
         << ", which has " << user_count << " users.";
     HloInstruction* root = called_computation_root();
