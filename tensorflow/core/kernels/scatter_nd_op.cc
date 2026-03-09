@@ -14,6 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/state_ops.cc.
+#include <limits>
+#include <memory>
+
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include <string>

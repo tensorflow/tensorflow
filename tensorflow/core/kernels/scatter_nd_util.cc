@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/scatter_nd_util.h"
 
+#include <cstdint>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {

@@ -15,12 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/save_restore_tensor.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <numeric>
-#include <unordered_map>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/env.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"

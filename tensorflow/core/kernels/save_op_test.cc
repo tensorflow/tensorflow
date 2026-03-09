@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <cstdint>
 #include <functional>
-#include <memory>
 
+#include "absl/log/log.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/io_ops.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
