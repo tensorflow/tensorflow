@@ -15,12 +15,9 @@ limitations under the License.
 
 #include "xla/megascale/c_api_client/megascale_types.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <string>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -77,71 +74,6 @@ absl::StatusOr<int> CApiPjRtClientContext::megascale_port() {
   RETURN_STATUS_IF_PJRT_ERROR(extension_->client_context_megascale_port(&args),
                               c_api_);
   return args.port;
-}
-
-PjRtCApiMultiSliceConfig::~PjRtCApiMultiSliceConfig() {
-  PJRT_Megascale_DeleteMultiSliceConfig_Args args;
-  args.struct_size = PJRT_Megascale_DeleteMultiSliceConfig_Args_STRUCT_SIZE;
-  args.multi_slice_config = config_;
-
-  std::unique_ptr<PJRT_Error, pjrt::PJRT_ErrorDeleter> error(
-      extension_->delete_multi_slice_config(&args),
-      pjrt::MakeErrorDeleter(c_api_));
-  if (error != nullptr) {
-    LOG(ERROR) << "Failed to delete PjRtCApiMultiSliceConfig: "
-               << pjrt::PjrtErrorToStatus(error.get(), c_api_);
-  }
-}
-
-int32_t PjRtCApiMultiSliceConfig::NumSlices() const {
-  PJRT_Megascale_MultiSliceConfig_NumSlices_Args args;
-  args.struct_size = PJRT_Megascale_MultiSliceConfig_NumSlices_Args_STRUCT_SIZE;
-  args.config = config_;
-  args.num_slices = 0;
-  CHECK(extension_->multi_slice_config_num_slices(&args) == nullptr);
-  return args.num_slices;
-}
-
-int32_t PjRtCApiMultiSliceConfig::SliceId() const {
-  PJRT_Megascale_MultiSliceConfig_SliceId_Args args;
-  args.struct_size = PJRT_Megascale_MultiSliceConfig_SliceId_Args_STRUCT_SIZE;
-  args.config = config_;
-  args.slice_id = 0;
-  CHECK(extension_->multi_slice_config_slice_id(&args) == nullptr);
-  return args.slice_id;
-}
-
-absl::flat_hash_map<int32_t, int32_t>
-PjRtCApiMultiSliceConfig::NumDevicesPerSlice() const {
-  PJRT_Megascale_MultiSliceConfig_GetNumDevicesPerSlice_Args args;
-  args.struct_size =
-      PJRT_Megascale_MultiSliceConfig_GetNumDevicesPerSlice_Args_STRUCT_SIZE;
-  args.config = config_;
-  CHECK(extension_->multi_slice_config_get_num_devices_per_slice(&args) ==
-        nullptr);
-
-  absl::flat_hash_map<int32_t, int32_t> result;
-  for (size_t i = 0; i < args.num_devices_per_slice_map; ++i) {
-    result[args.slice_ids[i]] = args.num_devices[i];
-  }
-
-  args.devices_per_slice_map_deleter(args.devices_per_slice_map_ptr);
-
-  return result;
-}
-
-std::string PjRtCApiMultiSliceConfig::Serialize() const {
-  CHECK(extension_ != nullptr);
-
-  PJRT_Megascale_MultiSliceConfig_Serialize_Args args;
-  args.struct_size = PJRT_Megascale_MultiSliceConfig_Serialize_Args_STRUCT_SIZE;
-  args.config = config_;
-  CHECK(extension_->multi_slice_config_serialize(&args) == nullptr);
-
-  std::string result(args.serialized, args.size);
-  args.serialized_config_deleter(args.serialized_config_ptr);
-
-  return result;
 }
 
 }  // namespace c_api_client

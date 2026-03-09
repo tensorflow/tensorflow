@@ -217,6 +217,7 @@ absl::StatusOr<EmitCollectiveResult> EmitCollectiveKernelThunk(
       ir_emitter_context->gpu_device_info();
   const auto make_thunk = [&](absl::string_view kernel_name,
                               int32_t shmem_bytes,
+                              std::optional<LaunchDimensions> launch_dimensions,
                               std::unique_ptr<llvm::Module> local_module) {
     return EmitCollectiveResult{
         std::make_unique<CollectiveKernelThunk>(
@@ -228,6 +229,7 @@ absl::StatusOr<EmitCollectiveResult> EmitCollectiveKernelThunk(
                 .debug_options()
                 .xla_gpu_unsupported_use_all_reduce_one_shot_kernel(),
             /*kernel_name=*/kernel_name,
+            /*launch_dimensions=*/launch_dimensions,
             /*shmem_bytes=*/shmem_bytes,
             /*is_multimem_enabled=*/false),
         std::move(local_module)};
@@ -235,7 +237,10 @@ absl::StatusOr<EmitCollectiveResult> EmitCollectiveKernelThunk(
   TF_ASSIGN_OR_RETURN(bool did_set_config, TrySetGpuBackendConfigForCollective(
                                                device_info, fusion_instr));
   if (!did_set_config) {
-    return make_thunk(/*kernel_name=*/"", 0, nullptr);
+    return make_thunk(/*kernel_name=*/"",
+                      /*shmem_bytes=*/0,
+                      /*launch_dimensions=*/std::nullopt,
+                      /*local_module=*/nullptr);
   }
   const HloFusionAnalysis fusion_analysis =
       HloFusionAnalysis::Create(*fusion_instr, device_info);
@@ -249,9 +254,9 @@ absl::StatusOr<EmitCollectiveResult> EmitCollectiveKernelThunk(
         result, emitter->Emit(*ir_emitter_context, *fusion_instr,
                               /*instr_override=*/instr, unmanaged_arguments));
   }
-  return make_thunk(result.kernel_thunk->kernel_name(),
-                    result.kernel_thunk->shmem_bytes(),
-                    std::move(result.llvm_module));
+  return make_thunk(
+      result.kernel_thunk->kernel_name(), result.kernel_thunk->shmem_bytes(),
+      result.kernel_thunk->launch_dimensions(), std::move(result.llvm_module));
 }
 
 // If the fusion instruction is a dynamic-slice-fusion instruction,

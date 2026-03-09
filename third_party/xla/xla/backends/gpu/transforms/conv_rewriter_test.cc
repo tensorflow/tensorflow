@@ -132,7 +132,7 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolve) {
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_filter_,
-          /*preferred_element_type=*/std::nullopt)
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
           .value(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -171,7 +171,7 @@ TEST_F(ConvRewriterTest, BackwardFilterConvolveEquivalentToForwardConvolution) {
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_filter_,
-          /*preferred_element_type=*/std::nullopt)
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
           .value(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -313,12 +313,12 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveEvenPadding) {
       DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(),
-      ShapeInference::InferConvolveShape(
-          output->shape(), reverse_kernel->shape(),
-          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
-          conv_dnums, /*preferred_element_type=*/std::nullopt)
-          .value()));
+      conv->shape(), ShapeInference::InferConvolveShape(
+                         output->shape(), reverse_kernel->shape(),
+                         /*feature_group_count=*/1, /*batch_group_count=*/1,
+                         conv_window, conv_dnums, /*sparsity_config=*/{},
+                         /*preferred_element_type=*/std::nullopt)
+                         .value()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -364,7 +364,7 @@ TEST_F(ConvRewriterTest, BackwardInputConvolve1x1Filter) {
           /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_input_,
-          /*preferred_element_type=*/std::nullopt)
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
           .value(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -399,7 +399,7 @@ TEST_F(ConvRewriterTest,
           output->shape(), kernel->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, default_conv_window_,
           tf_default_dnums_for_backward_input_,
-          /*preferred_element_type=*/std::nullopt)
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
           .value(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, default_conv_window_,
@@ -453,12 +453,13 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveUnevenPaddingOnGradients) {
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/std::nullopt)
-                         .value()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
+          .value()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -504,12 +505,13 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/std::nullopt)
-                         .value()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
+          .value()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -559,12 +561,13 @@ TEST_F(ConvRewriterTest, BackwardInputConvolveUnevenPaddingOnActivations) {
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/std::nullopt)
-                         .value()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
+          .value()));
 
   auto module = CreateNewVerifiedModule();
   const HloComputation* entry_computation =
@@ -615,12 +618,13 @@ TEST_F(ConvRewriterTest,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/std::nullopt)
-                         .value()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
+          .value()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =

@@ -406,12 +406,16 @@ cc_library(
     srcs = ["llvm_irgen_test_base.cc"],
     hdrs = ["llvm_irgen_test_base.h"],
     deps = [
-        ":codegen_test_base",
+        ":hlo_test_base",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/service:executable",
         "//xla/service:llvm_compiler",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:test",
     ],
 )
@@ -434,19 +438,6 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:ir_headers",
-    ],
-)
-
-cc_library(
-    name = "codegen_test_base",
-    testonly = True,
-    srcs = ["codegen_test_base.cc"],
-    hdrs = ["codegen_test_base.h"],
-    deps = [
-        ":hlo_test_base",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:compiler",
-        "//xla/service:executable",
     ],
 )
 
@@ -750,7 +741,6 @@ xla_test(
 
 xla_test(
     name = "params_test",
-    timeout = "long",
     srcs = ["params_test.cc"],
     shard_count = 15,
     tags = ["optonly"],
@@ -1715,14 +1705,16 @@ xla_test(
         "b200",
     ],
     data = ["data/cudnn_reproducer.hlo"],
-    tags = ["pjrt_migration_candidate"],
-    use_legacy_runtime = True,
     deps = [
-        ":hlo_test_base",
-        ":xla_internal_test_main",
+        ":hlo_pjrt_interpreter_reference_mixin",
+        "//xla:error_spec",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_util",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:test",
     ],
 )
 
@@ -2943,6 +2935,7 @@ xla_test(
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/ffi/api:c_api",
+        "//xla/runtime:device_id",
         "//xla/service:collective_ops_utils",
         "//xla/service:rendezvous",
         "//xla/service/gpu/tests:collective_ops_e2e_test_base",
@@ -3291,14 +3284,15 @@ xla_test(
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
+        ":local_client_test_base",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:packed_literal_reader",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/client:local_client",
         "//xla/service",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log:check",
@@ -3397,8 +3391,6 @@ xla_test(
 
 xla_test(
     name = "local_client_execute_test",
-    # TODO(b/79375911): Test times out in LLVM at normal size.
-    size = "large",
     srcs = ["local_client_execute_test.cc"],
     shard_count = 30,
     tags = [
@@ -3990,6 +3982,7 @@ cc_library(
             "tests:__pkg__",
             "tools:__pkg__",
         ]) + [
+            "//xla/codegen/intrinsic/accuracy:__pkg__",
             "//xla/tests/exhaustive:__pkg__",
         ],
         ["//visibility:public"],

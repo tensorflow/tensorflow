@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
@@ -249,22 +248,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CloneModuleIntoContext(
   llvm::raw_string_ostream os(bytecode);
   TF_RET_CHECK(mlir::succeeded(mlir::writeBytecodeToFile(module, os)));
   return support::ParseMlirModuleString(bytecode, context);
-}
-
-mlir::ModuleOp CloneModuleUsingBuilder(mlir::ModuleOp module,
-                                       mlir::OpBuilder& builder) {
-  // Create a stub for the new module.
-  mlir::ModuleOp cloned_module =
-      mlir::ModuleOp::create(  // ALLOW_MLIR_MODULE_OP_CREATE - does not work
-                               // with CreateMlirModuleOp.
-          builder, module.getLoc(), module.getName());
-  cloned_module->setAttrs(module->getAttrs());
-  mlir::IRMapping mapper;
-  // Clone each operation in the body of the module into the new module.
-  for (mlir::Operation& op : module.getBody()->getOperations()) {
-    cloned_module.getBody()->push_back(op.clone(mapper));
-  }
-  return cloned_module;
 }
 
 absl::StatusOr<std::vector<std::string>> ExpandPlatformNames(

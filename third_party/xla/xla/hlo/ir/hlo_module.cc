@@ -603,6 +603,10 @@ void HloModule::ToProto(HloModuleProto* proto) const {
     *proto->mutable_original_value_recovery_table() =
         original_value_recovery_table_.ToProto();
   }
+
+  if (!config().device_type().empty()) {
+    proto->set_device_type(config().device_type());
+  }
 }
 
 void HloModule::ToProtoWithConfig(HloModuleProtoWithConfig* proto) const {
@@ -880,6 +884,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
                                                   std::move(comp_envs))
                     : std::make_unique<HloModule>(proto.name(), module_config);
 
+  if (!proto.device_type().empty()) {
+    module->mutable_config().set_device_type(proto.device_type());
+  }
+
   // Sort the computations in the proto id's order.
   absl::c_sort(computations, [&](const std::unique_ptr<HloComputation>& a,
                                  const std::unique_ptr<HloComputation>& b) {
@@ -1109,6 +1117,9 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   TF_ASSIGN_OR_RETURN(HloModuleConfig config,
                       CreateModuleConfigFromShape(program_shape, debug_options,
                                                   execution_options));
+  if (!module.device_type().empty()) {
+    config.set_device_type(module.device_type());
+  }
   if (!config.has_static_device_assignment()) {
     if (module.has_device_assignment()) {
       // Get the proto from the execution options rather than the module proto.

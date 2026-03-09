@@ -5,38 +5,13 @@
 
 HloModule t, is_scheduled=true, entry_computation_layout={(f16[15,19],s8[19,17])->f16[15,17]}
 
-lhs {
-  ROOT p0 = f16[15,19] parameter(0)
-}
-
-rhs {
-  p0 = s8[19,17] parameter(0)
-  ROOT convert = f16[19,17] convert(p0)
-
-}
-
 dot_computation {
   p1 = f16[15,19] parameter(1)
-  lhs = f16[15,19] fusion(p1), kind=kCustom, calls=lhs,
-    backend_config={
-      fusion_backend_config:{
-        kind:"__triton_nested_gemm_fusion",
-        block_level_fusion_config:{
-          output_tiles:[{sizes:[64,64]}]
-        }
-      }
-    }
   p0 = s8[19,17] parameter(0)
-  rhs = f16[19,17] fusion(p0), kind=kCustom, calls=rhs,
-    backend_config={
-      fusion_backend_config:{
-        kind:"__triton_nested_gemm_fusion",
-        block_level_fusion_config:{
-          output_tiles:[{sizes:[64,32]}]
-        }
-      }
-    }
-  ROOT dot = f16[15,17] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  convert = f16[19,17] convert(p0)
+  ROOT dot = f16[15,17] dot(p1, convert),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
 }
 
 ENTRY e (p0: f16[15,19], p1: s8[19,17]) -> f16[15,17] {

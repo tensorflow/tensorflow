@@ -119,6 +119,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/layout_assignment.h"
 #include "xla/backends/gpu/transforms/move_copy_to_users.h"
 #include "xla/backends/gpu/transforms/nest_gemm_fusion.h"
+#include "xla/backends/gpu/transforms/onehot_rewriter.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_canonicalizer.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_decomposer.h"
 #include "xla/backends/gpu/transforms/ragged_all_to_all_multi_host_decomposer.h"
@@ -641,6 +642,7 @@ absl::Status RunOptimizationPasses(
       DebugOptions::DETECTION_MODE_NONE) {
     pipeline.AddPass<UnstableReductionDetector>();
   }
+  pipeline.AddPass<OneHotGatherRewriter>();
   pipeline.AddPass<RaggedDotRewriter>();
   if (!debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
     pipeline.AddPass<ScaledDotRewriter>();
@@ -1948,13 +1950,10 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // GemmFusionAutotuner runs hoist-fused-bitcasts and nest-gemm-fusion,
   // matching its behavior here.
   pipeline.AddPass<HoistFusedBitcasts>();
-  if (debug_options.xla_gpu_unsupported_disable_nested_gemm_fusions()) {
-    pipeline.AddPass<ConvertTritonGemmConfig>(
-        gpu_target_config.device_description, &mlir_context_);
-  } else {
-    pipeline.AddPass<NestGemmFusion>(gpu_target_config.device_description,
-                                     &mlir_context_);
-  }
+  pipeline.AddPass<ConvertTritonGemmConfig>(
+      gpu_target_config.device_description, &mlir_context_);
+  pipeline.AddPass<NestGemmFusion>(gpu_target_config.device_description,
+                                   &mlir_context_);
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
@@ -2354,61 +2353,6 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
     const se::DeviceDescription& device_description,
     const CompileOptions& options, const HloModule* debug_module) {
   tsl::profiler::TraceMe traceme("CompileAndLink");
-  llvm::Module* llvm_module = &*compile_module_results.llvm_module;
-
-  bool force_module_split =
-      module_config.debug_options().xla_llvm_force_inline_before_split();
-  if (force_module_split) {
-    for (llvm::Function& func : llvm_module->functions()) {
-      if (func.getNumUses() > 0 && !func.isDeclaration()) {
-        VLOG(4) << absl::StrFormat("Inlining function %s with %d users.\n",
-                                   func.getName().str(), func.getNumUses());
-        std::vector<llvm::CallInst*> calls_to_inline;
-        for (auto* user : func.users()) {
-          if (auto* call = llvm::dyn_cast<llvm::CallInst>(user)) {
-            calls_to_inline.push_back(call);
-          }
-        }
-        for (auto* call_to_inline : calls_to_inline) {
-          llvm::InlineFunctionInfo inline_function_info;
-          if (!llvm::InlineFunction(*call_to_inline, inline_function_info)
-                   .isSuccess()) {
-            return absl::InternalError("Can not inline function " +
-                                       func.getName().str());
-          };
-        }
-      }
-    }
-  }
-
-  // Record the name of some constant global variables and their initializers.
-  // We'll change the linkage type of these variables from external to internal
-  // to ensure constant-folding works properly after calling llvm::SplitModule.
-  llvm::DenseMap<llvm::StringRef, llvm::Constant*> const_initializer_map;
-  llvm::Module& module_with_constants =
-      (compile_module_results.llvm_module_constants == nullptr)
-          ? *llvm_module
-          : *compile_module_results.llvm_module_constants;
-  for (llvm::GlobalVariable& gv : module_with_constants.globals()) {
-    if (gv.hasName() && gv.isConstant() && gv.hasInitializer() &&
-        gv.hasExternalLinkage()) {
-      llvm::Constant* initializer = gv.getInitializer();
-      unsigned int num_elements = 0;
-      if (auto* caz =
-              llvm::dyn_cast<llvm::ConstantAggregateZero>(initializer)) {
-        num_elements = caz->getElementCount().getFixedValue();
-      } else if (auto* cds = llvm::dyn_cast<llvm::ConstantDataSequential>(
-                     initializer)) {
-        num_elements = cds->getNumElements();
-      }
-      if (num_elements > 0) {
-        const_initializer_map[gv.getName()] = initializer;
-      }
-    }
-  }
-
-  llvm_ir::DumpIrIfEnabled(*debug_module, *llvm_module,
-                           /*optimized=*/false, "inlined");
 
   absl::string_view cache_path =
       module_config.debug_options().xla_gpu_kernel_cache_file();
@@ -2418,7 +2362,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
     // The string is the function name for single-function modules (used to
     // cache them), empty for all other modules.
     std::string name;
-    std::unique_ptr<llvm::Module> module;
+    llvm::Module* module;
   };
   std::vector<NamedModule> llvm_modules;
   MaybeOwningThreadPool thread_pool = CreateMaybeOwningThreadPool(
@@ -2427,38 +2371,31 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
       /*default_thread_pool=*/options.thread_pool,
       /*default_parallelism=*/1);
   // Only single-function module are cacheable -> for caching try to get 1
-  // function per module. If caching is not used limit the number of modules to
-  // the number of threads.
-  int num_modules = CountFunctions(*llvm_module);
-  if (thread_pool && !use_cache) {
-    num_modules = std::max(1, std::min(thread_pool->NumThreads(), num_modules));
+  // function per module.
+
+  absl::flat_hash_set<std::string> compiled_functions;
+  llvm_modules.reserve(compile_module_results.llvm_modules.size() + 1);
+
+  int single_function_module_count = 0;
+  for (std::unique_ptr<llvm::Module>& module :
+       compile_module_results.llvm_modules) {
+    const std::string name = SingleFunctionName(*module);
+    if (!name.empty()) {
+      ++single_function_module_count;
+    }
+    llvm_modules.push_back({name, module.get()});
+    compiled_functions.insert(name);
   }
   if (compile_module_results.llvm_module_constants != nullptr) {
-    llvm_modules.reserve(num_modules + 1);
     llvm_modules.push_back(
-        {"", std::move(compile_module_results.llvm_module_constants)});
-  } else {
-    llvm_modules.reserve(num_modules);
+        {"", compile_module_results.llvm_module_constants.get()});
   }
-  int single_function_module_count = 0;
-  llvm::SplitModule(
-      *llvm_module, num_modules,
-      [&](std::unique_ptr<llvm::Module> module) {
-        // Change the linkage type of some global constant variables to internal
-        for (llvm::GlobalVariable& gv : module->globals()) {
-          if (gv.hasName() && gv.isConstant() && !gv.hasInitializer() &&
-              const_initializer_map.count(gv.getName()) != 0) {
-            gv.setInitializer(const_initializer_map[gv.getName()]);
-            gv.setLinkage(llvm::GlobalValue::InternalLinkage);
-          }
-        }
-        const std::string name = SingleFunctionName(*module);
-        if (!name.empty()) {
-          ++single_function_module_count;
-        }
-        llvm_modules.push_back({name, std::move(module)});
-      },
-      /*PreserveLocals=*/true, /*RoundRobin=*/true);
+
+  // FIXME(b/461711175) enable the following check to verify that modules
+  // contains single function with exception of "constants". Otherwise it's
+  // non-cacheable.
+  // EmitBitonicSortLLVMIR currently emits multiple.
+  // CHECK_GE(1, llvm_modules.size() - single_function_module_count);
   VLOG(2) << "Single-function cacheable modules: "
           << single_function_module_count << " / " << llvm_modules.size();
 
@@ -2535,7 +2472,7 @@ absl::StatusOr<GpuCompiler::BackendCompileResult> GpuCompiler::CompileAndLink(
       // current executable.
       int loaded_kernel_count = 0;
       for (const auto& [name, entry] : current_cache.entries()) {
-        if (llvm_module->getFunction(name) != nullptr) {
+        if (compiled_functions.contains(name)) {
           VLOG(5) << "Using the just compiled kernel for " << name;
           TF_RET_CHECK(entry.binary().empty())
               << name
@@ -2631,24 +2568,30 @@ GpuCompiler::CompileToBackendResult(
         CompileModuleToLlvmIr(
             module, llvm_context, target_triple_, data_layout_, PlatformId(),
             gpu_device_info, alias_info.get(),
-            std::move(buffer_size_bytes_function), llvm_options_lock,
-            /*split_constants_module=*/can_use_link_modules));
+            std::move(buffer_size_bytes_function), llvm_options_lock));
   }
 
-  if (user_pre_optimization_hook_) {
-    user_pre_optimization_hook_(*compile_module_results.llvm_module);
-    if (compile_module_results.llvm_module_constants != nullptr) {
-      user_pre_optimization_hook_(
-          *compile_module_results.llvm_module_constants);
+  for (const std::unique_ptr<llvm::Module>& llvm_module :
+       compile_module_results.llvm_modules) {
+    llvm_ir::DumpIrIfEnabled(*module, *llvm_module,
+                             /*optimized=*/false);
+    if (user_pre_optimization_hook_) {
+      user_pre_optimization_hook_(*llvm_module);
     }
   }
-
-  llvm_ir::DumpIrIfEnabled(*module, *compile_module_results.llvm_module,
-                           /*optimized=*/false);
   if (compile_module_results.llvm_module_constants != nullptr) {
     llvm_ir::DumpIrIfEnabled(*module,
                              *compile_module_results.llvm_module_constants,
                              /*optimized=*/false, "constants");
+    if (user_pre_optimization_hook_) {
+      user_pre_optimization_hook_(
+          *compile_module_results.llvm_module_constants);
+    }
+
+    if (!can_use_link_modules) {
+      compile_module_results.llvm_modules.push_back(
+          std::move(compile_module_results.llvm_module_constants));
+    }
   }
 
   BackendCompileResult backend_result;
@@ -2659,19 +2602,21 @@ GpuCompiler::CompileToBackendResult(
     ASSIGN_OR_RETURN(backend_result,
                      CompileAndLink(module->config(), compile_module_results,
                                     gpu_device_info, options, module));
+    LinkLlvmModulesInPlace(compile_module_results.llvm_modules);
   } else {
+    LinkLlvmModulesInPlace(compile_module_results.llvm_modules);
     if (compile_module_results.llvm_module_constants) {
       std::vector<std::unique_ptr<llvm::Module>> modules;
-      modules.push_back(std::move(compile_module_results.llvm_module));
+      modules.push_back(std::move(compile_module_results.llvm_modules[0]));
       modules.push_back(
           std::move(compile_module_results.llvm_module_constants));
       LinkLlvmModulesInPlace(modules);
-      compile_module_results.llvm_module = std::move(modules[0]);
+      compile_module_results.llvm_modules[0] = std::move(modules[0]);
     }
     ASSIGN_OR_RETURN(
         backend_result,
         CompileSingleModule(module->config(), gpu_device_info, module,
-                            &*compile_module_results.llvm_module,
+                            &*compile_module_results.llvm_modules[0],
                             /*relocatable=*/false, options,
                             /*shard_number=*/std::nullopt));
   }
@@ -2811,7 +2756,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
-        llvm_ir::DumpToString(res.compile_module_results.llvm_module.get());
+        llvm_ir::DumpToString(res.compile_module_results.llvm_modules[0].get());
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
     DCHECK_NE("", ir_module_string_before_opt);
   }
@@ -3172,15 +3117,14 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
 absl::StatusOr<std::unique_ptr<CompiledModule>>
 GpuCompiler::LoadAotCompilationResult(
     const std::string& serialized_aot_result) {
-  GpuExecutableProto gpu_executable_proto;
   auto reader =
       std::make_unique<riegeli::StringReader<>>(serialized_aot_result);
   ASSIGN_OR_RETURN(bool is_split_proto, IsSplitProto(*reader));
   if (is_split_proto) {
-    RETURN_IF_ERROR(ReadSplitProto(std::move(reader), gpu_executable_proto));
-    return GpuAotCompilationResult::FromProto(std::move(gpu_executable_proto));
+    return GpuAotCompilationResult::FromSerialized(std::move(reader));
   }
 
+  GpuExecutableProto gpu_executable_proto;
   if (!gpu_executable_proto.ParseFromString(serialized_aot_result)) {
     return InvalidArgument(
         "Failed to parse serialized AOT result as GpuExecutableProto.");
@@ -3296,16 +3240,26 @@ absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
       GetAutotunerBackends(stream_exec, target_config, alias_info,
                            debug_options, mlir_context));
 
-  bool do_not_autotune_cublas_and_cudnn =
+  bool do_not_autotune_cublas =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
       debug_options.xla_gpu_autotune_level() == 0 ||
       debug_options.xla_gpu_exclude_nondeterministic_ops();
-  auto should_autotune = [do_not_autotune_cublas_and_cudnn](
+  // We need to run miopen autotune to decompose unsuported fused convolutions
+  // TODO: Merge this with above once we are able to achieve the same with
+  // FissionBackend
+  bool do_not_autotune_cudnn =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      (do_not_autotune_cublas && !gpu_version.IsRocm());
+  auto should_autotune = [do_not_autotune_cublas, do_not_autotune_cudnn](
                              const HloInstruction& instruction) -> bool {
-    if (!do_not_autotune_cublas_and_cudnn &&
+    if (!do_not_autotune_cublas &&
         (instruction.opcode() == HloOpcode::kCustomCall &&
-         (IsCublasGemm(instruction) ||
-          IsCustomCallToDnnConvolution(instruction)))) {
+         IsCublasGemm(instruction))) {
+      return true;
+    }
+    if (!do_not_autotune_cudnn &&
+        (instruction.opcode() == HloOpcode::kCustomCall &&
+         IsCustomCallToDnnConvolution(instruction))) {
       return true;
     }
     if (instruction.opcode() != HloOpcode::kFusion) {

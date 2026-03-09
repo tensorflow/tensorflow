@@ -446,14 +446,6 @@ CustomCallThunk::BuildCallFrame(
   return call_frame;
 }
 
-namespace {
-// A per-execution state that holds state for prepare and initialize stages.
-struct PrepareAndInitState {
-  ffi::ExecutionState prepare;
-  ffi::ExecutionState init;
-};
-};  // namespace
-
 // Builds call options object for the custom call.
 //
 // `stream` and `buffer_allocations may only be non-null for options passed to
@@ -487,7 +479,7 @@ InvokeContext CustomCallThunk::BuildInvokeContext(
 
   if (execution_scoped_state) {
     auto [it, _] = execution_scoped_state->try_emplace(
-        this, std::in_place_type<PrepareAndInitState>);
+        this->thunk_info().thunk_id, std::in_place_type<PrepareAndInitState>);
     PrepareAndInitState& prepare_and_init =
         tsl::any_cast<PrepareAndInitState>(it->second);
     prepare_state = &prepare_and_init.prepare;
@@ -755,9 +747,16 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::FromProto(
   }
   std::unique_ptr<ffi::ExecutionState> execution_state;
   if (proto.has_execution_state()) {
-    TF_ASSIGN_OR_RETURN(
-        auto state, ffi::ExecutionState::FromProto(proto.execution_state()));
-    execution_state = std::make_unique<ffi::ExecutionState>(std::move(state));
+    auto state = ffi::ExecutionState::FromProto(proto.execution_state());
+    if (state.ok()) {
+      execution_state =
+          std::make_unique<ffi::ExecutionState>(std::move(state.value()));
+    } else {
+      LOG(WARNING)
+          << "Failed to deserialize the custom call execution state. Falling "
+             "back to runtime instantiaton of the execution state. Reason: "
+          << state.status();
+    }
   }
 
   return CustomCallThunk::Create(

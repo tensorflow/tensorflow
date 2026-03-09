@@ -64,12 +64,14 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_stream_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_tpu_topology_extension.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_multi_slice_config.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_phase_compiler.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/extensions/cross_host_transfers/pjrt_c_api_cross_host_transfers_extension.h"
 #include "xla/pjrt/extensions/executable_metadata/executable_metadata_extension.h"
 #include "xla/pjrt/extensions/host_allocator/host_allocator_extension.h"
 #include "xla/pjrt/extensions/host_allocator/host_allocator_interface_impl.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_api.h"
@@ -642,7 +644,7 @@ InitializeArgsAndCompileAot(const PJRT_Api* c_api, PjRtClient* client,
 }  // namespace
 
 absl::StatusOr<std::string> PjRtCApiClient::SerializeMlirModule(
-    mlir::ModuleOp module, const CompileOptions& options) {
+    MaybeOwningMlirModule module, const CompileOptions& options) {
   if (!pjrt_c_api()) {
     llvm::report_fatal_error("pjrt_c_api is null");
   }
@@ -650,31 +652,32 @@ absl::StatusOr<std::string> PjRtCApiClient::SerializeMlirModule(
   const std::string version_string = GetPluginStablehloVersionOrDefault(this);
   TF_ASSIGN_OR_RETURN(
       std::string serialized,
-      xla::Serialize(module, version_string,
+      xla::Serialize(module.mlir_module(), version_string,
                      /*inplace=*/options.allow_in_place_mlir_modification));
   if (options.allow_in_place_mlir_modification) {
     // If we're allowed to modify the computation, free the functions in the
     // MLIR. We don't use them anymore, and this reduces peak memory.
-    module.getBody()->clear();
+    module.mlir_module().getBody()->clear();
   }
   return serialized;
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiClient::Compile(
-    mlir::ModuleOp module, CompileOptions options) {
+    MaybeOwningMlirModule module, CompileOptions options) {
   TF_ASSIGN_OR_RETURN(const PjRtTopologyDescription* const topology,
                       GetTopologyDescription());
   TF_ASSIGN_OR_RETURN(const std::string serialized,
-                      SerializeMlirModule(module, options));
+                      SerializeMlirModule(std::move(module), options));
   return InitializeArgsAndCompileAot(c_api_, this, options, *topology,
                                      serialized,
                                      std::string(pjrt::kMlirFormat));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-PjRtCApiClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+PjRtCApiClient::CompileAndLoad(MaybeOwningMlirModule module,
+                               CompileOptions options) {
   TF_ASSIGN_OR_RETURN(const std::string serialized,
-                      SerializeMlirModule(module, options));
+                      SerializeMlirModule(std::move(module), options));
   return InitializeArgsAndCompile(this, c_api_, c_client_.get(), options,
                                   serialized, std::string(pjrt::kMlirFormat));
 }
@@ -3013,6 +3016,13 @@ PjRtCApiLoadedExecutable::GetCommonExecuteArgs(
   args.options = &c_options;
   args.options->struct_size = PJRT_ExecuteOptions_STRUCT_SIZE;
   args.options->launch_id = options.launch_id;
+  args.options->multi_slice_config = nullptr;
+  if (options.multi_slice_config != nullptr) {
+    args.options->multi_slice_config =
+        tsl::down_cast<const pjrt::PjRtCApiMultiSliceConfig*>(
+            options.multi_slice_config)
+            ->get();
+  }
   for (auto i : options.non_donatable_input_indices) {
     non_donatable_input_indices_storage.push_back(i);
   }
@@ -3908,6 +3918,40 @@ void PjRtCApiBuffer::CopyToRemoteDevice(
 #endif
 }
 
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiBuffer::Bitcast(
+    PrimitiveType element_type, absl::Span<const int64_t> dims,
+    const Layout* device_layout) {
+  const PJRT_Api* api = client_->pjrt_c_api();
+  if (api->pjrt_api_version.major_version == 0 &&
+      api->pjrt_api_version.minor_version < 98) {
+    return absl::UnimplementedError(
+        "PJRT_Buffer_Bitcast requires PJRT C API version 0.98 or higher.");
+  }
+  if (api->PJRT_Buffer_Bitcast == nullptr) {
+    return absl::UnimplementedError(
+        "PJRT_Buffer_Bitcast not available in this version of "
+        "the PjRT plugin");
+  }
+  PJRT_Buffer_Bitcast_Args args;
+  args.struct_size = PJRT_Buffer_Bitcast_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.buffer = c_buffer();
+  args.element_type = pjrt::ConvertToPjRtBufferType(element_type);
+  args.dims = dims.data();
+  args.num_dims = dims.size();
+  pjrt::BufferMemoryLayoutData c_layout_data;
+  if (device_layout != nullptr) {
+    TF_ASSIGN_OR_RETURN(c_layout_data,
+                        pjrt::ConvertToBufferMemoryLayoutData(*device_layout));
+    args.device_layout = &c_layout_data.c_layout;
+  } else {
+    args.device_layout = nullptr;
+  }
+  RETURN_STATUS_IF_PJRT_ERROR(api->PJRT_Buffer_Bitcast(&args), api);
+  return std::unique_ptr<PjRtBuffer>(
+      std::make_unique<PjRtCApiBuffer>(client_, args.out_buffer));
+}
+
 PjRtCApiExternalReference::~PjRtCApiExternalReference() {
   PJRT_Buffer_DecreaseExternalReferenceCount_Args args;
   args.struct_size =
@@ -4461,11 +4505,11 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
-    CompileOptions options, mlir::ModuleOp module,
+    CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
   std::string target_version = GetPluginStablehloVersionOrDefault(client);
   TF_ASSIGN_OR_RETURN(std::string serialized,
-                      xla::Serialize(module, target_version));
+                      xla::Serialize(module.mlir_module(), target_version));
   std::string format(pjrt::kMlirFormat);
   return InitializeArgsAndCompileAot(c_api_, client, options, topology,
                                      serialized, format);

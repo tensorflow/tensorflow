@@ -26,6 +26,7 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <ostream>
 #include <string>
 #include <tuple>
@@ -56,6 +57,11 @@ std::ostream& operator<<(std::ostream& os, const PackIdentifier& p) {
 namespace {
 
 using testing::ElementsAreArray;
+using testing::Eq;
+using testing::Ge;
+using testing::IsNull;
+using testing::Ne;
+using testing::Not;
 
 static xnn_fingerprint kDefaultFingerprint{/*id=*/0xf00d, /*value=*/0xb33f};
 
@@ -313,6 +319,7 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
+  EXPECT_FALSE(header.stale);
 
   const cache::schema::BufferList* const packed_weights =
       cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
@@ -373,6 +380,54 @@ TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
   EXPECT_THAT(GetBufferData(buffer1), ElementsAreArray(payload1));
   EXPECT_THAT(GetBufferData(buffer2), ElementsAreArray(payload2));
   EXPECT_THAT(GetBufferData(buffer3), ElementsAreArray(payload3));
+}
+
+TEST(CacheMissHandlerTest, ReserveThenAppendWorks) {
+  const int kBufferSize = 5;
+  const size_t kMinOffset = 12;
+  CacheMissHandler cache_miss_handler;
+  cache_miss_handler.SetMinOffset(kMinOffset);
+  double* ptr = reinterpret_cast<double*>(
+      cache_miss_handler.Reserve(kBufferSize * sizeof(double)));
+  EXPECT_THAT(ptr, Not(IsNull()));
+  std::iota(ptr, ptr + kBufferSize, 1);
+
+  const PackIdentifier dummy_id{2, 3, 4};
+  BufferLocation loc = cache_miss_handler.Append(
+      dummy_id, ptr, kBufferSize * sizeof(double), kDefaultFingerprint.id);
+  EXPECT_THAT(loc.size, Eq(kBufferSize * sizeof(double)));
+  EXPECT_THAT(loc.offset, Ge(kMinOffset));
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(1));
+}
+
+TEST(CacheMissHandlerTest, AppendWithoutReserveWorks) {
+  const double kData[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  const size_t kMinOffset = 12;
+  CacheMissHandler cache_miss_handler;
+  cache_miss_handler.SetMinOffset(kMinOffset);
+  const PackIdentifier dummy_id{2, 3, 4};
+  BufferLocation loc = cache_miss_handler.Append(dummy_id, kData, sizeof(kData),
+                                                 kDefaultFingerprint.id);
+  EXPECT_THAT(loc.size, Eq(sizeof(kData)));
+  EXPECT_THAT(loc.offset, Ge(kMinOffset));
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(1));
+}
+
+TEST(CacheMissHandlerTest, MultipleAppendsReturnDifferentOffsets) {
+  const size_t kMinOffset = 12;
+  const double kData[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  CacheMissHandler cache_miss_handler;
+  cache_miss_handler.SetMinOffset(kMinOffset);
+  const PackIdentifier dummy_id1{2, 3, 4};
+  BufferLocation loc1 = cache_miss_handler.Append(
+      dummy_id1, kData, sizeof(kData), kDefaultFingerprint.id);
+  const PackIdentifier dummy_id2{1, 3, 4};
+  BufferLocation loc2 = cache_miss_handler.Append(
+      dummy_id2, kData, sizeof(kData), kDefaultFingerprint.id);
+  EXPECT_THAT(loc1.offset, Ne(loc2.offset));
+  EXPECT_THAT(loc1.offset, Ge(kMinOffset));
+  EXPECT_THAT(loc2.offset, Ge(kMinOffset));
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(2));
 }
 
 struct FakeContext {
@@ -687,15 +742,13 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
     if (IsSkipped()) {
       return;
     }
-
     ASSERT_TRUE(cache_provider.StartBuildStep());
-
     pack_id_1 = ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1,
                                 kWeightIndex1, kBiasIndex);
     pack_id_2 = ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed2,
                                 kWeightIndex2);
-
     ASSERT_TRUE(cache_provider.StopBuildStep());
+    cache_provider.StopBuild();
   }
 
   xnn_weights_cache_look_up_key LookUpKey1() const {
@@ -706,6 +759,10 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
     return ctx.LookUpKey(kAlgoSeed2, kWeightIndex2);
   }
 
+  xnn_weights_cache_look_up_key InvalidLookUpKey() const {
+    return ctx.LookUpKey(kAlgoSeed3, kWeightIndex2);
+  }
+
   PackIdentifier pack_id_1;
   PackIdentifier pack_id_2;
 };
@@ -714,8 +771,43 @@ INSTANTIATE_TEST_SUITE_P(Test, LoadMMapWeightCacheProviderTest, TestVariants(),
                          TestVariant::Name);
 
 TEST_P(LoadMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
-  xnn_weights_cache_look_up_key look_up_key{};
+  xnn_weights_cache_look_up_key look_up_key = InvalidLookUpKey();
   EXPECT_EQ(cache_provider.LookUp(&look_up_key), SIZE_MAX);
+}
+
+TEST_P(LoadMMapWeightCacheProviderTest,
+       InsertOutsideOfBuildStepMarksCacheAsStale) {
+  char data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  xnn_weights_cache_look_up_key look_up_key = InvalidLookUpKey();
+  EXPECT_THAT(cache_provider.ReserveSpace(sizeof(data)), Not(IsNull()));
+  EXPECT_THAT(cache_provider.LookUpOrInsert(&look_up_key, data, sizeof(data)),
+              Not(Eq(SIZE_MAX)));
+  // Note: the in-memory weight cache doesn't write to a file so we don't care.
+  if (use_explicit_fd || !use_in_memory_cache) {
+    // Delete the cache provider to force a sync of the stale state.
+    cache_provider = MMapWeightCacheProvider();
+    EXPECT_THAT(IsCompatibleCacheFile(tmp_file), Eq(false));
+  }
+}
+
+TEST_P(LoadMMapWeightCacheProviderTest, LoadingAStaleFileRestartsABuild) {
+  char data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  xnn_weights_cache_look_up_key look_up_key = InvalidLookUpKey();
+  ASSERT_FALSE(cache_provider.IsBuilding());
+  EXPECT_THAT(cache_provider.ReserveSpace(sizeof(data)), Not(IsNull()));
+  EXPECT_THAT(cache_provider.LookUpOrInsert(&look_up_key, data, sizeof(data)),
+              Not(Eq(SIZE_MAX)));
+  // Note: the in-memory weight cache doesn't write to a file so we don't care.
+  if (use_in_memory_cache) {
+    return;
+  }
+  // Delete the cache provider to force a sync of the stale state.
+  cache_provider = MMapWeightCacheProvider();
+  EXPECT_FALSE(IsCompatibleCacheFile(tmp_file));
+
+  EXPECT_TRUE(cache_provider.LoadOrStartBuild(tmp_file.GetCPath(),
+                                              tmp_file.Duplicate()));
+  EXPECT_TRUE(cache_provider.CanStartBuildStep());
 }
 
 TEST_P(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {

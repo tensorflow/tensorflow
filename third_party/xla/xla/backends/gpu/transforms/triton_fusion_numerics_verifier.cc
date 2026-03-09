@@ -135,21 +135,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> NewHloModuleFromFusionComputation(
   TF_RETURN_IF_ERROR(InlineModuleFusions(new_module.get()));
   TreeReductionRewriter tree_reduction_rewriter(gpu_device_info);
   TF_RETURN_IF_ERROR(tree_reduction_rewriter.Run(new_module.get()).status());
-  TF_RETURN_IF_ERROR(DotAlgorithmRewriter().Run(new_module.get()).status());
-  TF_RETURN_IF_ERROR(
-      GemmRewriter(gpu_device_info.gpu_compute_capability(),
-                   gpu_device_info.runtime_version(),
-                   GemmRewriterOptions{GemmRewriterOptions::DType::kFp8Only,
-                                       GemmRewriterOptions::BiasMode::kBias})
-          .Run(new_module.get())
-          .status());
-  TF_RETURN_IF_ERROR(
-      GemmRewriter(gpu_device_info.gpu_compute_capability(),
-                   gpu_device_info.runtime_version(),
-                   GemmRewriterOptions{GemmRewriterOptions::DType::kNonFp8Only,
-                                       GemmRewriterOptions::BiasMode::kBias})
-          .Run(new_module.get())
-          .status());
   PriorityFusion fusion_pass(
       /*thread_pool=*/nullptr, gpu_device_info, alias_info,
       HloCostAnalysis::Options{}, mlir_context);

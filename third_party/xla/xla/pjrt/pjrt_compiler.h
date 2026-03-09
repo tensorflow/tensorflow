@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -407,8 +408,20 @@ class PjRtCompiler {
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, MaybeOwningMlirModule module,
+      const PjRtTopologyDescription& topology, PjRtClient* client) {
+    // Until the mlir::ModuleOp overload is removed, we need to implement this
+    // overload in terms of the mlir::ModuleOp overload.
+    return Compile(std::move(options), module.mlir_module(), topology, client);
+  }
+
+  [[deprecated("Use MaybeOwningMlirModule overload instead")]]
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
+      const PjRtTopologyDescription& topology, PjRtClient* client) {
+    return absl::UnimplementedError(
+        "Compile with MLIR Module is not implemented.");
+  }
 
   virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
   DeserializePjRtTopologyDescription(const std::string& serialized_topology) {
@@ -455,6 +468,11 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 // Variant of `PjRtCompile` that accepts an MLIR module.
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+    CompileOptions options, MaybeOwningMlirModule module,
+    const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
+
+[[deprecated("Use MaybeOwningMlirModule overload instead")]]
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);

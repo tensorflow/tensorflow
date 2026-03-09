@@ -602,7 +602,7 @@ absl::StatusOr<ArrayRef> MakeStringArrayFromHostBuffer(
       return absl::InvalidArgumentError(absl::StrCat(
           "Only fully replicated shardings are supported for making "
           "BasicStringArrays: got: ",
-          sharding->DebugString()));
+          sharding));
     }
     return absl::OkStatus();
   }();
@@ -721,8 +721,8 @@ absl::StatusOr<ArrayRef> AssembleStringArrayFromSingleDeviceStringArrays(
     if (basic_string_array->sharding().devices()->size() != 1) {
       return absl::InvalidArgumentError(
           absl::StrFormat("All single device arrays must have single device "
-                          "sharding. got: %s for shard index: %d",
-                          basic_string_array->sharding().DebugString(), i));
+                          "sharding. got: %v for shard index: %d",
+                          basic_string_array->sharding(), i));
     }
 
     basic_string_array->buffers().OnReady(
@@ -1055,8 +1055,8 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
       !sharding->IsFullyReplicated()) {
     return InvalidArgument(
         "Only SingleDeviceSharding or fully-replicated sharding is supported: "
-        "sharding=%s",
-        sharding->DebugString());
+        "sharding=%v",
+        sharding);
   }
   TF_ASSIGN_OR_RETURN(auto primitive_type, ToPrimitiveType(dtype));
 
@@ -1065,8 +1065,8 @@ absl::StatusOr<ArrayRef> PjRtClient::MakeArrayFromHostBuffer(
   auto count =
       std::make_shared<std::atomic<int>>(ifrt_addressable_devices.size());
   if (ifrt_addressable_devices.empty()) {
-    return InvalidArgument("Cannot copy array to non-addressable device: %s",
-                           sharding->devices()->DebugString());
+    return InvalidArgument("Cannot copy array to non-addressable device: %v",
+                           sharding->devices());
   }
   std::shared_ptr<const xla::PjRtLayout> pjrt_layout;
   const xla::Layout* xla_layout;
@@ -1232,8 +1232,8 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     return InvalidArgument(
         "Only SingleDeviceSharding, OpaqueSharding, ConcreteSharding, "
         "ConcreteEvenSharding, ShardingParamSharding, HloSharding are "
-        "supported: sharding=%s",
-        sharding->DebugString());
+        "supported: sharding=%v",
+        sharding);
   }
   if (single_device_shard_semantics == SingleDeviceShardSemantics::kAllShards &&
       !sharding->devices()->IsFullyAddressable()) {
@@ -1264,15 +1264,15 @@ absl::StatusOr<ArrayRef> PjRtClient::AssembleArrayFromSingleDeviceArrays(
     auto* array = static_cast<PjRtCompatibleArray*>(arrays[i].get());
     if (array->dtype() != dtype) {
       return InvalidArgument(
-          "Every input must have the same dtype: %s (shard 0) vs. %s (shard "
+          "Every input must have the same dtype: %v (shard 0) vs. %v (shard "
           "%d)",
-          dtype.DebugString(), array->dtype().DebugString(), i);
+          dtype, array->dtype(), i);
     }
     if (array->sharding().devices()->size() != 1) {
       return InvalidArgument(
           "Every input must use a single device sharding, but input %d has "
-          "sharding=%s",
-          i, array->sharding().DebugString());
+          "sharding=%v",
+          i, array->sharding());
     }
     switch (array_copy_semantics) {
       case ArrayCopySemantics::kAlwaysCopy:
@@ -1732,7 +1732,60 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::BitcastArrays(
     absl::Span<xla::ifrt::ArrayRef> arrays,
     absl::Span<const xla::ifrt::ArraySpec> specs,
     ArrayCopySemantics semantics) {
-  return Unimplemented("BitcastArrays not available with pjrt-ifrt client.");
+  if (arrays.size() != specs.size()) {
+    return absl::InvalidArgumentError("arrays and specs must be the same size");
+  }
+  if (semantics == ArrayCopySemantics::kAlwaysCopy) {
+    return absl::InvalidArgumentError(
+        "BitcastArrays disallows ArrayCopySemantics::kAlwaysCopy");
+  }
+  if (semantics != ArrayCopySemantics::kDonateInput) {
+    return absl::UnimplementedError(
+        "PjRt-IFRT requires ArrayCopySemantics::kDonateInput for "
+        "BitcastArrays");
+  }
+
+  std::vector<ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
+  for (int i = 0; i < arrays.size(); ++i) {
+    auto* pjrt_array = llvm::dyn_cast<PjRtArray>(arrays[i].get());
+    if (pjrt_array == nullptr) {
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Array %d is not a PjRtArray", i));
+    }
+
+    absl::Span<const std::shared_ptr<PjRtBuffer>> buffers =
+        pjrt_array->pjrt_buffers();
+    PjRtBuffers new_buffers;
+    new_buffers.reserve(buffers.size());
+
+    TF_ASSIGN_OR_RETURN(PrimitiveType element_type,
+                        ToPrimitiveType(specs[i].dtype));
+    TF_ASSIGN_OR_RETURN(const Shape& new_shard_shape,
+                        specs[i].sharding->GetShardShape(specs[i].shape));
+    const xla::Layout* device_layout = nullptr;
+    if (specs[i].layout != nullptr) {
+      device_layout = &specs[i].layout->xla_layout();
+    }
+
+    for (const std::shared_ptr<PjRtBuffer>& buffer : buffers) {
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<PjRtBuffer> new_buffer,
+          buffer->Bitcast(element_type, new_shard_shape.dims(), device_layout));
+      new_buffers.push_back(std::move(new_buffer));
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        tsl::RCReference<PjRtArray> new_array,
+        PjRtArray::Create(this, specs[i].dtype, specs[i].shape,
+                          specs[i].sharding, std::move(new_buffers),
+                          specs[i].layout));
+    new_arrays.push_back(std::move(new_array));
+  }
+  for (ArrayRef& array : arrays) {
+    array->Delete();
+  }
+  return new_arrays;
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(

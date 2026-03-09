@@ -14,7 +14,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -135,7 +135,7 @@ py_strict_library(
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/python:schema_util",
         "//tensorflow/python/platform:gfile",
-        "@flatbuffers//:runtime_py",
+        "@pypi_flatbuffers//:pkg",
     ],
 )
 
@@ -157,7 +157,7 @@ py_strict_library(
     srcs = ["test_utils.py"],
     deps = [
         "//tensorflow/lite/python:schema_py",
-        "@flatbuffers//:runtime_py",
+        "@pypi_flatbuffers//:pkg",
     ],
 )
 

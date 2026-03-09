@@ -197,10 +197,6 @@ class HloRunnerInterface {
     // saved modules are coming from after the HLO pass pipeline, so triggering
     // another run will likely cause errors.
     bool run_hlo_passes = false;
-
-    // If true, executes on multiple threads using se::Stream::ExecuteOnStream.
-    // Otherwise, executes using xla::Executable::ExecuteOnStreams.
-    bool use_threads = false;
   };
 
   HloRunnerInterface() = default;

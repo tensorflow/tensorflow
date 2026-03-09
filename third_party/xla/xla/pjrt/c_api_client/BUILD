@@ -25,6 +25,22 @@ package_group(
 )
 
 cc_library(
+    name = "pjrt_c_api_multi_slice_config",
+    srcs = ["pjrt_c_api_multi_slice_config.cc"],
+    hdrs = ["pjrt_c_api_multi_slice_config.h"],
+    visibility = internal_visibility([":friends"]),
+    deps = [
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_multi_slice_extension_hdrs",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_client",
     srcs = [
         "pjrt_c_api_client.cc",
@@ -36,6 +52,7 @@ cc_library(
     ],
     visibility = internal_visibility([":friends"]),
     deps = [
+        ":pjrt_c_api_multi_slice_config",
         "//xla:future",
         "//xla:literal",
         "//xla:shape_util",
@@ -47,6 +64,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//xla/mlir_hlo:mhlo_passes",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:partial_program_utils",
         "//xla/pjrt:pjrt_abi_version",
@@ -137,6 +155,7 @@ xla_cc_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_client",

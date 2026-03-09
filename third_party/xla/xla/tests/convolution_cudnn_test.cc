@@ -13,24 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
 
+#include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/error_spec.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/service/hlo_module_util.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using ConvolutionHloTest = HloTestBase;
+using ConvolutionHloTest =
+    HloPjRtInterpreterReferenceMixin<gpu::HloPjRtGpuTestBase>;
 
 TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32) {
   // This convolution should be transformed to "cudnn-conv" and vectorized as
   // INT8x32_CONFIG on GPUs.
-  constexpr char kHlo[] = R"(
+  constexpr absl::string_view kHlo = R"(
 HloModule TestModule
 
 ENTRY TestComputation {
@@ -44,19 +53,15 @@ ENTRY TestComputation {
 TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Bias) {
   // cudnnConvolutionBiasActivationForward() for int8 is only supported on GPUs
   // with compute capability 6.1 or later.
-  if (!backend()
-           .default_stream_executor()
-           ->GetDeviceDescription()
-           .cuda_compute_capability()
-           .IsAtLeast(6, 1)) {
-    return;
+  if (!device_description().cuda_compute_capability().IsAtLeast(6, 1)) {
+    GTEST_SKIP() << "Skipping test for CUDA compute capability < 6.1";
   }
 
   // This convolution with the following add/relu ops should be transformed to
   // "cudnn-conv-bias-activation" and vectorized as INT8x32_CONFIG on GPUs.
   // In order to verify this with non-zero bias and without adding test-specific
   // code to HLO evaluator, the overflow is then cleared by taking a remainder.
-  constexpr char kHlo[] = R"(
+  constexpr absl::string_view kHlo = R"(
 HloModule TestModule
 
 ENTRY TestComputation {
@@ -81,14 +86,10 @@ TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32BiasNonConst) {
   // second with vectorization enabled. The reference implementation
   // (Interpreter) does not support the fused conv-add-relu-clamp operation,
   // thus cannot be used.
-  if (backend()
-          .default_stream_executor()
-          ->GetDeviceDescription()
-          .cuda_compute_capability()
-          .major != 8) {
-    return;
+  if (device_description().cuda_compute_capability().major != 8) {
+    GTEST_SKIP() << "Skipping test on unsupported device.";
   }
-  constexpr char kHloBase[] = R"(
+  constexpr absl::string_view kHloBase = R"(
 HloModule TestModule, entry_computation_layout={(s8[4,48,48,64]{3,2,1,0},s8[64,3,3,64]{3,2,1,0},s8[64]{0})->s8[4,48,48,64]{3,2,1,0}}
 
 ENTRY TestComputation {
@@ -103,7 +104,7 @@ ENTRY TestComputation {
         \"workspace_size\":\"0\"}}}"
   ROOT get-tuple-element.1 = s8[4,48,48,64]{3,2,1,0} get-tuple-element(cudnn-conv-bias-activation.3), index=0
 })";
-  constexpr char kHloVectorized[] = R"(
+  constexpr absl::string_view kHloVectorized = R"(
 HloModule TestModule, entry_computation_layout={(s8[4,48,48,64]{3,2,1,0},s8[64,3,3,64]{3,2,1,0},s8[64]{0})->s8[4,48,48,64]{3,2,1,0}}
 
 ENTRY TestComputation {
@@ -132,27 +133,9 @@ ENTRY TestComputation {
                                       /*run_hlo_passes=*/false));
 }
 
-class HloCompareModulesTest : public HloTestBase {
- public:
-  HloCompareModulesTest(std::string hlo_base, std::string hlo_test,
-                        bool run_hlo_passes)
-      : hlo_base_(std::move(hlo_base)),
-        hlo_test_(std::move(hlo_test)),
-        run_hlo_passes_(run_hlo_passes) {}
-
-  void TestBody() override {
-    EXPECT_TRUE(RunAndCompareTwoModules(hlo_base_, hlo_test_, ErrorSpec{0, 0},
-                                        run_hlo_passes_));
-  }
-
- private:
-  std::string hlo_base_, hlo_test_;
-  bool run_hlo_passes_;
-};
-
 TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Revectorize) {
   // Compare re-vectorized custom call vs the default version.
-  constexpr char kHlo[] = R"(
+  constexpr absl::string_view kHlo = R"(
 HloModule TestModule
 
 ENTRY TestComputation {
@@ -164,7 +147,7 @@ ENTRY TestComputation {
         backend_config="{\"cudnn_conv_backend_config\":{\"activation_mode\":\"0\",\"conv_result_scale\":1,\"side_input_scale\":0}}"
   ROOT %gte = s8[4,48,48,64] get-tuple-element(%conv), index=0
 })";
-  constexpr char kHloVectorized[] = R"(
+  constexpr absl::string_view kHloVectorized = R"(
 HloModule TestModule
 
 ENTRY TestComputation {
@@ -179,11 +162,12 @@ ENTRY TestComputation {
   %gte = s8[4,48,48,16,4] get-tuple-element(%conv), index=0
   ROOT reshape.3 = s8[4,48,48,64] reshape(%gte)
 })";
-  HloCompareModulesTest(kHlo, kHloVectorized, /*run_hlo_passes=*/true)
-      .TestBody();
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(kHlo, kHloVectorized, ErrorSpec{0, 0}, true));
 }
 
-class ReorderFilterHloTest : public ::testing::TestWithParam<std::tuple<
+class ReorderFilterHloTest : public ConvolutionHloTest,
+                             public ::testing::WithParamInterface<std::tuple<
                                  /*input_features=*/int64_t,
                                  /*output_features=*/int64_t,
                                  /*spatial_size=*/int64_t>> {};
@@ -221,8 +205,8 @@ ENTRY TestComputation {
 })",
       shape);
 
-  HloCompareModulesTest(hloTranspose, hloCustomCall, /*run_hlo_passes=*/false)
-      .TestBody();
+  EXPECT_TRUE(RunAndCompareTwoModules(hloTranspose, hloCustomCall,
+                                      ErrorSpec{0, 0}, false));
 }
 
 INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterHloTest,
@@ -231,7 +215,9 @@ INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterHloTest,
                              /*output_features=*/::testing::Values(32, 64),
                              /*spatial_size=*/::testing::Values(1, 3, 5)));
 
-class ReorderFilterAndBiasHloTest : public ::testing::TestWithParam<int64_t> {};
+class ReorderFilterAndBiasHloTest
+    : public ConvolutionHloTest,
+      public ::testing::WithParamInterface<int64_t> {};
 
 TEST_P(ReorderFilterAndBiasHloTest, TestCudnnReorderFilterAndBias) {
   // This test verifies that the bias reordering works correctly; the filter
@@ -266,8 +252,8 @@ ENTRY TestComputation {
 })",
       bias_size);
 
-  HloCompareModulesTest(hloTranspose, hloCustomCall, /*run_hlo_passes=*/false)
-      .TestBody();
+  EXPECT_TRUE(RunAndCompareTwoModules(hloTranspose, hloCustomCall,
+                                      ErrorSpec{0, 0}, false));
 }
 
 INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterAndBiasHloTest,
@@ -275,9 +261,12 @@ INSTANTIATE_TEST_SUITE_P(CudnnReorderSuite, ReorderFilterAndBiasHloTest,
 
 // Regression test for algorithm 14.
 TEST_F(ConvolutionHloTest, TestCudnnConvBiasActivationForward) {
-  const std::string& filename = tsl::io::JoinPath(
+  const std::string filename = tsl::io::JoinPath(
       tsl::testing::XlaSrcRoot(), "tests", "data", "cudnn_reproducer.hlo");
-  EXPECT_TRUE(RunAndCompareFromFile(filename, ErrorSpec{1e-3, 1e-3}));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest()));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 1e-3}));
 }
 
 }  // namespace

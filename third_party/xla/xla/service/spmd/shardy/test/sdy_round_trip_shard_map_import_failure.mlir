@@ -49,20 +49,15 @@ func.func @xla.sdy.manual_computation_body(%arg0: tensor<4xf32>) -> tensor<4xf32
   return %2 : tensor<4xf32>
 }
 
-func.func @non_flat_call_graph_on_manual_comps_post_order(%arg0: tensor<8xf32>) -> (tensor<8xf32>) {
+func.func @non_flat_but_tree_call_graph_on_manual_comps_multiple_calls_to_same_func_post_order(%arg0: tensor<8xf32>) -> (tensor<8xf32>) {
   %0 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%arg0) {mhlo.frontend_attributes = {xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh, [{\22a\22}]>]>", xla.sdy.manual_axes = "#sdy<manual_axes{\22a\22}>"}} : (tensor<8xf32>) -> (tensor<4xf32>)
   %1 = call @xla.sdy.manual_computation_body(%0) : (tensor<4xf32>) -> tensor<4xf32>
   %2 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%1) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\22a\22}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh, [{\22a\22}]>]>"}} : (tensor<4xf32>) -> (tensor<8xf32>)
 
-  %3 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%arg0) {mhlo.frontend_attributes = {xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh, [{\22c\22}]>]>", xla.sdy.manual_axes = "#sdy<manual_axes{\22c\22}>"}} : (tensor<8xf32>) -> (tensor<2xf32>)
-  %4 = call @xla.sdy.manual_computation_body.another(%3) : (tensor<2xf32>) -> tensor<2xf32>
-  %5 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%4) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\22c\22}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh, [{\22c\22}]>]>"}} : (tensor<2xf32>) -> (tensor<8xf32>)
+  %3 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%arg0) {mhlo.frontend_attributes = {xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh, [{\22a\22}]>]>", xla.sdy.manual_axes = "#sdy<manual_axes{\22a\22}>"}} : (tensor<8xf32>) -> (tensor<4xf32>)
+  %4 = call @xla.sdy.manual_computation_body(%3) : (tensor<4xf32>) -> tensor<4xf32>
+  %5 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%4) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\22a\22}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh, [{\22a\22}]>]>"}} : (tensor<4xf32>) -> (tensor<8xf32>)
   %6 = stablehlo.add %2, %5 : tensor<8xf32>
 
-  %7 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%arg0) {mhlo.frontend_attributes = {xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh, [{\22a\22}]>]>", xla.sdy.manual_axes = "#sdy<manual_axes{\22a\22}>"}} : (tensor<8xf32>) -> (tensor<4xf32>)
-  %8 = call @xla.sdy.manual_computation_body(%7) : (tensor<4xf32>) -> tensor<4xf32>
-  %9 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%8) {mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\22a\22}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh, [{\22a\22}]>]>"}} : (tensor<4xf32>) -> (tensor<8xf32>)
-  %10 = stablehlo.add %6, %9 : tensor<8xf32>
-
-  return %10 : tensor<8xf32>
+  return %6 : tensor<8xf32>
 }

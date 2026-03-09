@@ -21,7 +21,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -31,19 +32,19 @@ namespace cpu {
 
 namespace {
 
-class TreeReductionRewriterTest : public CpuCodegenTest {
+class TreeReductionRewriterTest : public HloHardwareIndependentTestBase {
  public:
   void MatchTreeReducedHlo(absl::string_view hlo, absl::string_view pattern) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            ParseAndReturnVerifiedModule(hlo));
+    auto optimized_module = ParseAndReturnVerifiedModule(hlo).value();
+    (void)TreeReductionRewriter().Run(optimized_module.get());
+    EXPECT_TRUE(RunFileCheck(optimized_module->ToString(), pattern).value());
+  }
 
-    TreeReductionRewriter tree_reduction_rewriter;
-    TF_ASSERT_OK(tree_reduction_rewriter.Run(optimized_module.get()));
-
-    absl::StatusOr<bool> filecheck_result =
-        RunFileCheck(optimized_module->ToString(), pattern);
-    TF_ASSERT_OK(filecheck_result.status());
-    EXPECT_TRUE(filecheck_result.value());
+  void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern) {
+    auto optimized_module = ParseAndReturnVerifiedModule(hlo).value();
+    (void)AlgebraicSimplifier(AlgebraicSimplifierOptions())
+        .Run(optimized_module.get());
+    EXPECT_TRUE(RunFileCheck(optimized_module->ToString(), pattern).value());
   }
 };
 
@@ -164,7 +165,7 @@ ENTRY main {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-// CHECK: ROOT {{.*}} = f32[] copy
+// CHECK: ROOT {{.*}} = f32[] constant
       )");
 }
 

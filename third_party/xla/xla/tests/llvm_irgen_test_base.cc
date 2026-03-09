@@ -16,15 +16,34 @@ limitations under the License.
 #include "xla/tests/llvm_irgen_test_base.h"
 
 #include <functional>
+#include <memory>
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
+#include "xla/service/executable.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
+
+absl::StatusOr<std::unique_ptr<Executable>>
+LlvmIrGenTestBase::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
+                                       bool run_optimization_passes) {
+  if (run_optimization_passes) {
+    TF_ASSIGN_OR_RETURN(hlo_module, backend().compiler()->RunHloPasses(
+                                        std::move(hlo_module),
+                                        backend().default_stream_executor(),
+                                        /*device_allocator=*/nullptr));
+  }
+  return backend().compiler()->RunBackend(std::move(hlo_module),
+                                          backend().default_stream_executor(),
+                                          /*device_allocator=*/nullptr);
+}
 
 void LlvmIrGenTestBase::SetIrHook(bool match_optimized_ir) {
   auto llvm_compiler = GetLLVMCompiler();
@@ -72,20 +91,6 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(const std::string& hlo_text,
                           ParseAndReturnVerifiedModule(hlo_text, config));
   CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir,
                      run_optimization_passes);
-}
-
-void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
-    std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
-    const std::string& pattern, bool match_optimized_ir) {
-  SetIrHook(match_optimized_ir);
-  absl::Status status =
-      CompileToAotCompilationResult(std::move(hlo_module), options).status();
-  ResetIrHook();
-  TF_ASSERT_OK(status);
-
-  absl::StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
-  ASSERT_TRUE(filecheck_result.ok());
-  EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
 
 LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {

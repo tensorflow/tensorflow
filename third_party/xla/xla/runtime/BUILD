@@ -107,7 +107,9 @@ cc_library(
     hdrs = ["hang_watchdog.h"],
     deps = [
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

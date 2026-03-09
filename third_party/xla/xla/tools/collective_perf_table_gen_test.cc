@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 
 namespace xla::gpu {
 namespace {
@@ -31,13 +31,9 @@ using ::testing::Each;
 using ::testing::Gt;
 using ::testing::Property;
 
-class CollectivePerfTableGenTest : public HloTestBase {
+class CollectivePerfTableGenTest : public HloPjRtGpuTestBase {
   void SetUp() override {
-    if (!backend()
-             .default_stream_executor()
-             ->GetDeviceDescription()
-             .gpu_compute_capability()
-             .IsCuda()) {
+    if (!device_description().gpu_compute_capability().IsCuda()) {
       GTEST_SKIP() << "Not built with --config=cuda";
     }
     cfg_.dry_run = true;

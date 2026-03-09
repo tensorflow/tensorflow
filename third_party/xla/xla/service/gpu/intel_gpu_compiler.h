@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
-#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -39,6 +38,17 @@ class IntelGpuCompiler : public GpuCompiler {
       se::dnn::VersionInfo dnn_version,
       const se::SemanticVersion& toolkit_version,
       CompilationStats* compilation_stats) override;
+
+  absl::Status AddConvAndGemmAutotuningPass(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      const se::GpuComputeCapability& gpu_version,
+      const CompileOptions& options, AutotuneConfig& autotune_config,
+      tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
+      const Compiler::GpuTargetConfig* target_config,
+      const MultiProcessKeyValueStore& key_value_store,
+      const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
+      const DebugOptions& debug_options, mlir::MLIRContext* mlir_context,
+      HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
 
   absl::StatusOr<BackendCompileResult> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,

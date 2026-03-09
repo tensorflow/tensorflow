@@ -22,19 +22,18 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -610,11 +609,13 @@ ThunkMetadataProto Thunk::ToMetadataProto() const {
 }
 
 ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
-    const Thunk& root_thunk) {
+    const ThunkSequence& thunk_sequence) {
   ThunkMetadataListProto metadata_list_proto;
-  root_thunk.Walk([&metadata_list_proto](const Thunk* thunk) {
-    *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
-  });
+  for (auto& thunk : thunk_sequence) {
+    thunk->Walk([&metadata_list_proto](const Thunk* thunk) {
+      *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
+    });
+  }
   return metadata_list_proto;
 }
 

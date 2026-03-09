@@ -825,6 +825,7 @@ class HloModule {
 
   // Getter for the stack frame DAG.
   const StackFrames& stack_frames() const { return stack_frames_; }
+  StackFrames& mutable_stack_frames() { return stack_frames_; }
 
   // Finalizes this module by destroying internal data structures that might be
   // used for building or modifying the module. It is undefined behavior to

@@ -1261,13 +1261,17 @@ TEST(ArrayImplTest, CopyToSameDevices) {
 
 TEST(ArrayImplTest, BitcastArrays) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "Skipping test; needs at least 2 addressable devices.";
+  }
 
   DType dtype(DType::kF32);
   Shape shape({});
   Shape shard_shape({});
   std::vector<float> data(1);
   absl::c_iota(data, 3);
-  absl::Span<Device* const> devices = client->addressable_devices();
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList(devices));
   ShardingRef sharding = ConcreteEvenSharding::Create(
@@ -1293,7 +1297,7 @@ TEST(ArrayImplTest, BitcastArrays) {
 
   auto new_arrays =
       client->BitcastArrays(absl::MakeSpan(&array, 1), {new_array_spec},
-                            ArrayCopySemantics::kReuseInput);
+                            ArrayCopySemantics::kDonateInput);
   if (absl::IsUnimplemented(new_arrays.status())) {
     // This specific bitcast operation may not be supported by the runtime.
     GTEST_SKIP() << "Skipping test; bitcast is unimplemented.";
@@ -1689,9 +1693,9 @@ TEST(ArrayImplTest, CopyArraysExhaustive) {
   for (Memory* const src_memory : src_device->Memories()) {
     for (Device* const dst_device : client->addressable_devices()) {
       for (Memory* const dst_memory : dst_device->Memories()) {
-        SCOPED_TRACE(absl::StrCat(
-            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
-            dst_device->DebugString(), " ", dst_memory->DebugString()));
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
 
         ShardingRef sharding =
             SingleDeviceSharding::Create(src_device, src_memory->Kind());
@@ -1742,9 +1746,9 @@ TEST(ArrayImplTest, CopyArraysSubByteDType) {
   for (Memory* const src_memory : src_device->Memories()) {
     for (Device* const dst_device : client->addressable_devices()) {
       for (Memory* const dst_memory : dst_device->Memories()) {
-        SCOPED_TRACE(absl::StrCat(
-            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
-            dst_device->DebugString(), " ", dst_memory->DebugString()));
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
 
         ShardingRef sharding =
             SingleDeviceSharding::Create(src_device, src_memory->Kind());
@@ -1790,9 +1794,9 @@ TEST(ArrayImplTest, CopyPoisonedArray) {
   for (Memory* const src_memory : src_device->Memories()) {
     for (Device* const dst_device : client->addressable_devices()) {
       for (Memory* const dst_memory : dst_device->Memories()) {
-        SCOPED_TRACE(absl::StrCat(
-            src_device->DebugString(), " ", src_memory->DebugString(), " -> ",
-            dst_device->DebugString(), " ", dst_memory->DebugString()));
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
 
         ArraySpec array_spec = {
             /*dtype=*/DType(DType::kF32),

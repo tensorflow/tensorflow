@@ -29,6 +29,18 @@ def RewriteClusterToIfrtCallPass: Pass<"rewrite-cluster-to-ifrt-call", "mlir::Mo
   let constructor = "CreateRewriteClusterToIfrtCallPass()";
  }
 
+def PropagateStaticShapesPass : Pass<"propagate-static-shapes", "mlir::ModuleOp"> {
+  let summary = "Propagates static shapes from `tf.SetStaticDimensionBounds` to `tf.IfrtCall`";
+
+  let description = [{
+    This pass propagates static shape information from `tf.SetStaticDimensionBounds`
+    to `tf.IfrtCall` operands and the arguments of its callee function.
+    `tf.SetStaticDimensionBounds` is then replaced with its input.
+  }];
+
+  let constructor = "CreatePropagateStaticShapesPass()";
+}
+
 def SinkVariableAsNamedArrayPass: Pass<"sink-variable-as-named-array", "mlir::ModuleOp"> {
   let summary = "Sink variable tensor for tpu device as named IFRT array for tf.IfrtCall";
 

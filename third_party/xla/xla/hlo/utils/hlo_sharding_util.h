@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/hlo/ir/named_sharding.h"
 #include "xla/layout.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/dot_as_convolution_util.h"
@@ -398,6 +397,10 @@ class DeviceGroupTileAssignment : public TileAssignment {
 // Represents grouping devices in a tiled sharding along certain dimensions.
 // Elements in group dimensions define different device groups, and the sharding
 // represents the in-group sharding.
+//
+// GroupedSharding is only defined for tiled sharding (HloShardingV1/V2), for
+// NamedSharding (HloShardingV3) use V3ToV2Sharding() to convert it to Tiled
+// sharding first.
 struct GroupedSharding {
   GroupedSharding(DeviceGroupTileAssignment device_groups,
                   DimensionVector group_dims, DimensionVector group_dim_sizes,
@@ -419,7 +422,7 @@ struct GroupedSharding {
 };
 
 // Creates a GroupedSharding for a tiled sharding with group dim shard sizes.
-GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+GroupedSharding GroupShardingOnDims(const HloSharding& input_sharding,
                                     absl::Span<const int64_t> group_dims,
                                     absl::Span<const int64_t> group_dim_shards,
                                     bool subgroup_manual = false);
@@ -431,7 +434,7 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
 
 // Same as above, but exclude group dims instead.
 GroupedSharding GroupShardingOnAllDimsExcept(
-    const HloSharding& sharding, absl::Span<const int64_t> non_group_dims,
+    const HloSharding& input_sharding, absl::Span<const int64_t> non_group_dims,
     bool subgroup_manual = false);
 
 // Creates a GroupedSharding by trying to do the following in sequence:
@@ -451,7 +454,7 @@ GroupedSharding GroupShardingOnAllDimsExcept(
 // assignment, and should be used with AlignGroup where its tile assignment
 // doesn't matter and will always align to some other tile assignment.
 GroupedSharding GroupShardingOnReplicatedDim(
-    const HloSharding& sharding, int64_t num_groups, int64_t num_tiles,
+    const HloSharding& input_sharding, int64_t num_groups, int64_t num_tiles,
     int64_t data_rank, absl::Span<const int64_t> replicable_dims = {});
 
 // Get group sharding for replicated sharding.
@@ -460,7 +463,7 @@ GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
                                              const int64_t data_rank);
 
 // Get group sharding for each manual subgroup.
-GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
+GroupedSharding GetManualSubgroupSharding(const HloSharding& input_sharding);
 
 // Create a group sharding over the partially replicated dimension re-using an
 // existing device group subdivision to avoid unexpected devices reordering.
@@ -555,16 +558,6 @@ void ReplicateBoundaryShardingsIfIndivisible(
 absl::Status CanonicalizeLayoutAfterShardingPropagation(
     HloModule* module, absl::Span<const bool> update_output_layout,
     absl::Span<const bool> update_parameters_layout);
-
-// Returns true iff the specified hlo or sharding has a spatially partitioned
-// sharding (tiled or replicated) that can be propagated by sharding
-// propagation.
-bool IsSpatiallyPartitioned(const HloSharding& sharding);
-
-// Similar to above but takes a instruction as an input.
-inline bool IsSpatiallyPartitioned(const HloInstruction* hlo) {
-  return hlo->has_sharding() && IsSpatiallyPartitioned(hlo->sharding());
-}
 
 // Implementation for returning a improved sharding from another sharding.
 std::optional<HloSharding> ReturnImprovedShardingImpl(

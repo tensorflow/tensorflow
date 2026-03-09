@@ -115,26 +115,3 @@ module @module_missing_devices_sdy_partitioned attributes {ifrt.compile_options_
     return %0 : tensor<2x2xi32>
   }
 }
-
-// -----
-
-// expected-error @+2 {{'func.func' op can't lower sharding of input #0. Sharding: #ifrt.sharding_param<1x1 to [0] on 1> uses 1 devices while computation uses 2 devices}}
-module @arg_w_different_num_devices_sdy_partitioned attributes {ifrt.num_devices = 2, ifrt.compile_options_key = "test_override"} {
-  func.func @main(
-      %arg0: tensor<2x2xi32> {
-        ifrt.sharding=#ifrt.sharding_param<1x1 to [0] on 1>}) {
-    return
-  }
-}
-
-// -----
-
-// expected-error @+2 {{'func.func' op can't lower sharding of output #0. Sharding: #ifrt.sharding_param<2x1 to [0] on 2> uses 2 devices while computation uses 4 devices}}
-module @res_w_different_num_devices_sdy_partitioned attributes {ifrt.num_devices = 4, ifrt.compile_options_key = "test_override"} {
-  func.func @main()
-      -> (tensor<2x2xi32> {
-        ifrt.sharding=#ifrt.sharding_param<2x1 to [0] on 2>}) {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    return %0 : tensor<2x2xi32>
-  }
-}

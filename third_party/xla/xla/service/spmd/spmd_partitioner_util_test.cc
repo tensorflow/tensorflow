@@ -171,8 +171,9 @@ TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsAcrossTargetDims) {
   EXPECT_TRUE(v3_group_list.has_value());
   EXPECT_EQ(v3_group_list->num_replica_groups(), 64);
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 16);
-  EXPECT_EQ(v3_group_list->ToString(),
-            "mesh[axis_0=8,axis_1=8,axis_2=16] {axis_0:(2)4,axis_1:(2)4}");
+  EXPECT_EQ(
+      v3_group_list->ToString(),
+      "mesh['axis_0'=8,'axis_1'=8,'axis_2'=16] {'axis_0':(2)4,'axis_1':(2)4}");
 
   // V3 Sharding (Will correctly reflect the real mesh axis names)
   NamedSharding named_sharding(Mesh({8, 8, 16}, {"a", "b", "c"}));
@@ -182,7 +183,8 @@ TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsAcrossTargetDims) {
   EXPECT_TRUE(v3_group_list.has_value());
   EXPECT_EQ(v3_group_list->num_replica_groups(), 64);
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 16);
-  EXPECT_EQ(v3_group_list->ToString(), "mesh[a=8,b=8,c=16] {a:(2)4,b:(2)4}");
+  EXPECT_EQ(v3_group_list->ToString(),
+            "mesh['a'=8,'b'=8,'c'=16] {'a':(2)4,'b':(2)4}");
 }
 
 TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplication) {
@@ -194,7 +196,7 @@ TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplication) {
   EXPECT_EQ(v3_group_list->num_replica_groups(), 4);
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 2);
   EXPECT_EQ(v3_group_list->ToString(),
-            "mesh[axis_0=2,axis_1=2,axis_2=2] {axis_1}");
+            "mesh['axis_0'=2,'axis_1'=2,'axis_2'=2] {'axis_1'}");
 
   // V3 Sharding (Will correctly reflect the real mesh axis names)
   NamedSharding named_sharding(Mesh({2, 2, 2}, {"Q", "K", "V"}));
@@ -203,7 +205,7 @@ TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplication) {
   EXPECT_TRUE(v3_group_list.has_value());
   EXPECT_EQ(v3_group_list->num_replica_groups(), 4);
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 2);
-  EXPECT_EQ(v3_group_list->ToString(), "mesh[Q=2,K=2,V=2] {K}");
+  EXPECT_EQ(v3_group_list->ToString(), "mesh['Q'=2,'K'=2,'V'=2] {'K'}");
 }
 
 TEST(SPMDPartitionerUtilTest, ReturnNulloptForEmptyReplicationDims) {

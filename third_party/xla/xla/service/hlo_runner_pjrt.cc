@@ -658,8 +658,6 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
           absl::Span<PjRtDevice* const> id_to_device_ptr)
           -> absl::StatusOr<
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
-        TF_RET_CHECK(options.use_threads);
-
         // The underlying data is modified concurrently. We don't need to
         // protect access as each replica writes only to its own slot.
         std::vector<absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>>

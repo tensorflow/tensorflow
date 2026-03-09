@@ -73,6 +73,7 @@ common --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
 # conflict when precompiling. Disable to avoid that problem.
 # See https://github.com/bazel-contrib/rules_python/issues/2445
 common --@rules_python//python/config_settings:precompile=force_disabled
+common --@rules_python//python/config_settings:bootstrap_impl=script --repo_env=RULES_PYTHON_ENABLE_PIPSTAR=0
 
 # Do not do this. This is how gRPC builds itself by default, but we don't want
 # that as it would link protobuf into its own set of dynamic libraries, which
@@ -310,8 +311,6 @@ common:icpx_clang --copt=-fclang-abi-compat=17
 # Hermetic SYCL Configuration
 common:sycl_hermetic --config=sycl
 common:sycl_hermetic --repo_env=SYCL_BUILD_HERMETIC=1
-common:sycl_hermetic --repo_env=ONEAPI_VERSION=2025.1
-common:sycl_hermetic --repo_env=OS=ubuntu_24.10
 
 # Options to disable default on features
 common:nonccl --define=no_nccl_support=true

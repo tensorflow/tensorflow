@@ -57,10 +57,11 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 // When reading a cache file, the cache should be rejected if `version`
 // doesn't match `kVersion`.
 struct XNNPackCacheHeader {
-  enum : uint64_t { kInvalidHeader = 0, kVersion = 3 };
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 4 };
   uint64_t version;
   uint64_t buffer_list_offset;
   uint64_t buffer_list_size;
+  uint8_t stale;
 };
 
 // Checks if the file at the given path is compatible with the current XNNPack
@@ -220,6 +221,60 @@ class WeightCacheBuilder {
   std::atomic<bool> is_build_step_ = false;
 };
 
+// This class handles cache misses when a cache is loaded (vs. being built).
+//
+// It substitutes itself to the file by storing packed data in buffers
+// allocated on the fly that aren't persisted to the cache file.
+class CacheMissHandler {
+ public:
+  // Reserves space in the data buffer for the required size in bytes and
+  // returns the address of that space.
+  //
+  // A call to `Reserve` should alway be followed by a call to `Append`.
+  [[nodiscard /*The pointer to reserved space should be used.*/]]
+  void* Reserve(size_t size);
+
+  // Adds a buffer to the cache.
+  //
+  // The buffer space must have been reserved before using `Reserve`. If not, a
+  // new call to `Reserve` will be done and the data will be copied over.
+  [[nodiscard /*The location to the appended data should be saved.*/]]
+  BufferLocation Append(PackIdentifier pack_id, const void* data, uint64_t size,
+                        int fingerprint_id);
+
+  // Sets the reference offset from which all the cache miss offsets will be
+  // derived from. This avoids overwriting an offset that's already in use.
+  void SetMinOffset(size_t min_offset) { min_offset_ = min_offset; }
+
+  // Checks if the number of Reserve and Append calls are consistent.
+  bool ConsistentReserveAppendCalls() const noexcept {
+    return reserve_count_ == append_count_;
+  }
+
+  // Checks if cache misses have happened.
+  bool HasCacheMisses() const noexcept { return append_count_; }
+
+  size_t BufferCount() const noexcept { return buffers_.size(); }
+
+ private:
+  struct Buffer {
+    // Unaligned buffer holding at least loc.size elements.
+    std::unique_ptr<uint8_t[]> data;
+    BufferLocation loc;
+    // `kMinAlignement`-aligned pointer within data, holding at least loc.size
+    // elements.
+    uint8_t* ptr;
+    // True if an Append operation matching this buffer was called.
+    bool used;
+  };
+  std::vector<Buffer> buffers_;
+  // Holds a location that is bigger than all of the locations held in the
+  // cache. This is to avoid clashing with the stored offsets.
+  size_t min_offset_ = 0;
+  size_t append_count_ = 0;
+  size_t reserve_count_ = 0;
+};
+
 // Allows XNNPack to directly load packed weights from disk instead of having to
 // repack them every time.
 //
@@ -240,6 +295,7 @@ class MMapWeightCacheProvider {
   MMapWeightCacheProvider& operator=(const MMapWeightCacheProvider&) = delete;
   MMapWeightCacheProvider(MMapWeightCacheProvider&&);
   MMapWeightCacheProvider& operator=(MMapWeightCacheProvider&&);
+  ~MMapWeightCacheProvider();
 
   // Changes the file path to save the cache to.
   //
@@ -377,6 +433,10 @@ class MMapWeightCacheProvider {
   // C interface: `xnn_weights_cache_provider` callback.
   static enum xnn_status delete_cache(void* context);
 
+  // Checks if caches misses have happened and updates the cache file stale
+  // flag.
+  bool WriteCacheMissFlag();
+
  private:
   // Hashes a cache key to lookup in `cache_key_to_identifier_`.
   PackIdentifier BuildPackIdentifier(const xnn_weights_cache_look_up_key& key);
@@ -419,6 +479,8 @@ class MMapWeightCacheProvider {
   // Used to build the cache.
   WeightCacheBuilder builder_;
 
+  // Handles cache misses when not building the cache file.
+  CacheMissHandler cache_miss_handler_;
 
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.

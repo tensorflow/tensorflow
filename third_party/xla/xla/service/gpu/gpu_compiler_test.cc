@@ -1469,10 +1469,8 @@ TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterAutotuner) {
   VerifyPassRunsAtLeastOnceBefore("autotuner", "hoist-fused-bitcasts");
 }
 
-TEST_F(PassOrderTest, NestGemmFusionRunsAfterHoistFusedBitcasts) {
-  // NestGemmFusion expect to see __triton_gemm custom call with a backend
-  // config created by gemm_fusion_autotuner.
-  VerifyPassOrder("hoist-fused-bitcasts", "nest_gemm_fusion");
+TEST_F(PassOrderTest, ConvertTritonGemmConfigRunsAfterHoistFusedBitcasts) {
+  VerifyPassOrder("hoist-fused-bitcasts", "convert_triton_gemm_config");
 }
 
 TEST_F(PassOrderTest,

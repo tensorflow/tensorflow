@@ -31,7 +31,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/primitive_util.h"
@@ -46,6 +49,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -159,6 +163,41 @@ NvshmemCollectiveDoneThunk::NvshmemCollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
     : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {}
+
+absl::StatusOr<ThunkProto> NvshmemCollectiveDoneThunk::ToProto() const {
+  ThunkProto thunk_proto;
+  *thunk_proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  NvshmemCollectiveDoneThunkProto* nvshmem_proto =
+      thunk_proto.mutable_nvshmem_collective_done_thunk();
+  nvshmem_proto->set_thunk_kind(Thunk::KindToProto(kind()));
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  if (async_events_id.has_value()) {
+    nvshmem_proto->set_async_events_unique_id(async_events_id->value());
+  }
+  return thunk_proto;
+}
+
+absl::StatusOr<std::unique_ptr<NvshmemCollectiveDoneThunk>>
+NvshmemCollectiveDoneThunk::FromProto(
+    ThunkInfo thunk_info, const NvshmemCollectiveDoneThunkProto& thunk_proto,
+    CollectiveThunk::AsyncEventsMap& async_events_map) {
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
+  if (thunk_proto.has_async_events_unique_id()) {
+    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
+        async_events_map[AsyncEventsUniqueId{
+            thunk_proto.async_events_unique_id()}];
+    if (!events) {
+      events = std::make_shared<CollectiveThunk::AsyncEvents>();
+    }
+    async_events = events;
+  }
+
+  ASSIGN_OR_RETURN(Thunk::Kind kind,
+                   Thunk::KindFromProto(thunk_proto.thunk_kind()));
+  return std::make_unique<NvshmemCollectiveDoneThunk>(
+      kind, std::move(thunk_info), async_events);
+}
 
 absl::Status NvshmemCollectiveDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {

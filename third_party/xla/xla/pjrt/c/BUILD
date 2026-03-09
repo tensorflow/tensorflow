@@ -97,6 +97,15 @@ cc_library(
 cc_library(
     name = "pjrt_c_api_megascale_extension_hdrs",
     hdrs = ["pjrt_c_api_megascale_extension.h"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_multi_slice_extension_hdrs",
+    ],
+)
+
+cc_library(
+    name = "pjrt_c_api_multi_slice_extension_hdrs",
+    hdrs = ["pjrt_c_api_multi_slice_extension.h"],
     deps = [":pjrt_c_api_hdrs"],
 )
 
@@ -197,6 +206,28 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "pjrt_c_api_multi_slice_internal_types",
+    hdrs = ["pjrt_c_api_multi_slice_internal_types.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//xla/pjrt:pjrt_executable"],
+)
+
+cc_library(
+    name = "pjrt_c_api_multi_slice_internal",
+    srcs = ["pjrt_c_api_multi_slice_internal.cc"],
+    hdrs = ["pjrt_c_api_multi_slice_internal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+        ":pjrt_c_api_helpers",
+        ":pjrt_c_api_multi_slice_extension_hdrs",
+        ":pjrt_c_api_multi_slice_internal_types",
+        ":pjrt_c_api_wrapper_impl",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 cc_library(
@@ -343,6 +374,7 @@ cc_library(
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_layouts_extension_hdrs",
         ":pjrt_c_api_memory_descriptions_extension_hdrs",
+        ":pjrt_c_api_multi_slice_internal_types",
         ":pjrt_c_api_shardings_extension_hdrs",
         "//xla:future",
         "//xla:literal",
@@ -352,6 +384,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -379,6 +412,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/functional:overload",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

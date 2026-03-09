@@ -50,6 +50,86 @@ using ::testing::Not;
 
 using HloInstructionTest = HloHardwareIndependentTestBase;
 
+TEST_F(HloInstructionTest, SparsityConfigToString_RHSOnly) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  // Add a dummy convolution to test sparsity config.
+  // convolution(256x256, 256x256), dim_labels=bf_io->bf
+  HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
+  HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  SparsityConfig sparsity_config;
+  sparsity_config.mutable_rhs()->set_block_size(4);
+  sparsity_config.mutable_rhs()->set_num_non_zero(1);
+  sparsity_config.mutable_rhs()->set_dimension(0);
+  sparsity_config.mutable_rhs()->set_stride(1);
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
+      /*lhs=*/lhs,
+      /*rhs=*/rhs,
+      /*feature_group_count=*/1,
+      /*batch_group_count=*/1,
+      /*window=*/Window(),
+      /*dimension_numbers=*/dnums,
+      /*precision_config=*/PrecisionConfig(),
+      /*sparsity_config=*/sparsity_config));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      conv->ToString(),
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={rhs={sparsity=1x4 dimension=0 stride=1}})");
+}
+
+TEST_F(HloInstructionTest, SparsityConfigToString_LHSAndRHS) {
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder builder("main");
+  // Add a dummy convolution to test sparsity config.
+  // convolution(256x256, 256x256), dim_labels=bf_io->bf
+  HloInstruction* lhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(BF16, {256, 256}), "lhs"));
+  HloInstruction* rhs = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(BF16, {64, 256}), "rhs"));
+  SparsityConfig sparsity_config;
+  sparsity_config.mutable_rhs()->set_block_size(4);
+  sparsity_config.mutable_rhs()->set_num_non_zero(1);
+  sparsity_config.mutable_rhs()->set_dimension(0);
+  sparsity_config.mutable_rhs()->set_stride(1);
+  sparsity_config.mutable_lhs()->set_block_size(4);
+  sparsity_config.mutable_lhs()->set_num_non_zero(1);
+  sparsity_config.mutable_lhs()->set_dimension(0);
+  sparsity_config.mutable_lhs()->set_stride(1);
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_input_feature_dimension(1);
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_output_batch_dimension(0);
+  dnums.set_output_feature_dimension(1);
+  HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      /*shape=*/ShapeUtil::MakeShape(BF16, {256, 256}),
+      /*lhs=*/lhs,
+      /*rhs=*/rhs,
+      /*feature_group_count=*/1,
+      /*batch_group_count=*/1,
+      /*window=*/Window(),
+      /*dimension_numbers=*/dnums,
+      /*precision_config=*/PrecisionConfig(),
+      /*sparsity_config=*/sparsity_config));
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(
+      conv->ToString(),
+      R"(%convolution = bf16[256,256]{1,0} convolution(%lhs, %rhs), dim_labels=bf_io->bf, sparsity_config={lhs={sparsity=1x4 dimension=0 stride=1} rhs={sparsity=1x4 dimension=0 stride=1}})");
+}
+
 TEST_F(HloInstructionTest, GetStackTraceStringFromStackFrameId) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder("main");

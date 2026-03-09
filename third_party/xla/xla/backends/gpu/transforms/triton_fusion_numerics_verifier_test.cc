@@ -150,36 +150,20 @@ TEST_P(TritonFusionNumericsVerifierTest, VerifyExactSoftmaxFusionNumerics) {
 }
 
 TEST_P(TritonFusionNumericsVerifierTest, VerifyNestedGemmNumerics) {
+  if (GetParam() == F64) {
+    // TODO(b/446827313): f64 fails at the moment as
+    // 'Algorithm not supported by the ElementalIrEmitter: ALG_DOT_F64_F64_F64'.
+    GTEST_SKIP() << "Skipping test for F64.";
+  }
   constexpr absl::string_view kNestedGemmFusionHloText = R"(
-flhs {
-  ROOT flhs.p0 = $0[16,16] parameter(0)
-}
-
-frhs {
-  frhs.p0 = $0[16,16] parameter(0)
-  ROOT frhs.root = $0[16,16] abs(frhs.p0)
-}
-
 fdot {
   fdot.p0 = $0[16,16] parameter(0)
   fdot.p1 = $0[16,16] parameter(1)
-  fdot.lhs = $0[16,16] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "16"]}]
-      }
-    }
-  }
-  fdot.rhs = $0[16,16]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "16"]}]
-      }
-    }
-  }
-  ROOT fdot.root = $0[16,16]{1,0} dot(fdot.lhs, fdot.rhs),
+  abs = $0[16,16] abs(fdot.p1)
+  ROOT fdot.root = $0[16,16]{1,0} dot(fdot.p0, abs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    algorithm=dot_$0_$0_$0
+    algorithm=dot_$0_$0_$0,
+    backend_config={"sizes":["16"]}
 }
 
 ENTRY entry {
@@ -238,64 +222,14 @@ ENTRY main{
 TEST_P(TritonFusionNumericsVerifierTest, VerifyMultipleNestedFusionNumerics) {
   constexpr absl::string_view kMultiOutputFusionHloText = R"(
 HloModule m
-lhs_computation (p0: bf16[128,512]) -> bf16[128,512] {
-  ROOT p0 = bf16[128,512]{1,0} parameter(0)
-}
-
-rhs_computation (p0: bf16[256,512]) -> bf16[256,512] {
-  ROOT p0 = bf16[256,512]{1,0} parameter(0)
-}
-
-concat_computation (p0: bf16[128,512], p1: bf16[256,512]) -> bf16[384,512] {
-  p0 = bf16[128,512]{1,0} parameter(0)
-  lhs_f = bf16[128,512]{1,0} fusion(p0), kind=kCustom, calls=lhs_computation, backend_config={
-    "operation_queue_id":"0",
-    "wait_on_operation_queues":[],
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
-  p1 = bf16[256,512]{1,0} parameter(1)
-  rhs_f = bf16[256,512]{1,0} fusion(p1), kind=kCustom, calls=rhs_computation, backend_config={
-    "operation_queue_id":"0",
-    "wait_on_operation_queues":[],
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion"}}
-  ROOT concat = bf16[384,512]{1,0} concatenate(lhs_f, rhs_f), dimensions={0}
-}
-
-dot_rhs_computation (p0: bf16[512,512]) -> bf16[512,512] {
-  ROOT p0 = bf16[512,512]{1,0} parameter(0)
-}
-
 gemm_computation (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384,512] {
   p0 = bf16[128,512]{1,0} parameter(0)
   p1 = bf16[256,512]{1,0} parameter(1)
-  concat_f = bf16[384,512]{1,0} fusion(p0, p1), kind=kCustom,
-    calls=concat_computation, backend_config={
-    "operation_queue_id":"0",
-    "wait_on_operation_queues":[],
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion",
-      "block_level_fusion_config":{
-        "num_warps":"8",
-        "output_tiles":[{"sizes":["128","32"]}],
-        "num_ctas":1,
-        "num_stages":4,
-        "is_tma_allowed":false}}}
   p2 = bf16[512,512]{1,0} parameter(2)
-  dot_rhs_f = bf16[512,512]{1,0} fusion(p2), kind=kCustom,
-    calls=dot_rhs_computation, backend_config={
-    "operation_queue_id":"0",
-    "wait_on_operation_queues":[],
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion",
-      "block_level_fusion_config":{
-        "num_warps":"8",
-        "output_tiles":[{"sizes":["32","256"]}],
-        "num_ctas":1,
-        "num_stages":4,
-        "is_tma_allowed":false}}}
-  ROOT dot = bf16[384,512]{1,0} dot(concat_f, dot_rhs_f),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  concat = bf16[384,512]{1,0} concatenate(p0, p1), dimensions={0}
+  ROOT dot = bf16[384,512]{1,0} dot(concat, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={"sizes":["32"]}
 }
 
 ENTRY main (p0: bf16[128,512], p1: bf16[256,512], p2: bf16[512,512]) -> bf16[384,512] {

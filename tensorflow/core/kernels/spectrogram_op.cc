@@ -114,7 +114,7 @@ class AudioSpectrogramOp : public OpKernel {
   }
 
  private:
-  int32 window_size_;
+  int32_t window_size_;
   int32_t stride_;
   bool magnitude_squared_;
 };

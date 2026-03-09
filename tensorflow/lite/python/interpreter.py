@@ -409,6 +409,7 @@ class Interpreter:
       experimental_preserve_all_tensors=False,
       experimental_disable_delegate_clustering=False,
       experimental_default_delegate_latest_features=False,
+      experimental_compress_quantization_zero_points=False,
   ):
     """Constructor.
 
@@ -449,6 +450,8 @@ class Interpreter:
         model. Default is False.
       experimental_default_delegate_latest_features: If true, default delegates
         may enable all flag protected features. Default is False;
+      experimental_compress_quantization_zero_points: If true, compress
+        quantization zero points in the model. Default is False.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -457,6 +460,10 @@ class Interpreter:
       warnings.warn(_INTERPRETER_DELETION_WARNING)
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
+
+    self._experimental_compress_quantization_zero_points = (
+        experimental_compress_quantization_zero_points
+    )
 
     actual_resolver_type = experimental_op_resolver_type
     if experimental_preserve_all_tensors and (
@@ -496,6 +503,7 @@ class Interpreter:
           experimental_disable_delegate_clustering,
           int(num_threads or 1),
           experimental_default_delegate_latest_features,
+          experimental_compress_quantization_zero_points,
       )
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
@@ -519,6 +527,7 @@ class Interpreter:
           experimental_disable_delegate_clustering,
           int(num_threads or 1),
           experimental_default_delegate_latest_features,
+          experimental_compress_quantization_zero_points,
       )
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
@@ -987,6 +996,10 @@ class Interpreter:
 
   def reset_all_variables(self):
     return self._interpreter.ResetVariableTensors()
+
+  @property
+  def experimental_compress_quantization_zero_points(self):
+    return self._experimental_compress_quantization_zero_points
 
   # Experimental and subject to change.
   def _native_handle(self):

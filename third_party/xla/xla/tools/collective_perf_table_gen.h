@@ -124,7 +124,6 @@ class CollectivePerfTableGen {
   std::vector<ExecutionProfile> Run(PjRtLoadedExecutable& executable);
 
   Config config_;
-  std::unique_ptr<Backend> backend_;
   std::unique_ptr<PjRtEnvironment> pjrt_env_;
 };
 

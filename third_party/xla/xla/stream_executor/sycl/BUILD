@@ -32,7 +32,7 @@ cc_library(
     name = "sycl_platform_id",
     srcs = ["sycl_platform_id.cc"],
     hdrs = ["sycl_platform_id.h"],
-    deps = ["//xla/stream_executor:platform"],
+    deps = ["//xla/stream_executor:platform_id"],
 )
 
 cc_library(
@@ -334,6 +334,7 @@ xla_test(
     tags = [
         "gpu",
         "oneapi-only",
+        "pjrt_migration_candidate",
     ],
     use_legacy_runtime = True,
     deps = [

@@ -443,6 +443,21 @@ absl::StatusOr<xla::Shape> CommonPjRtClient::MakeDefaultShapeForMemorySpace(
     const xla::Layout* layout) const {
   if (layout) {
     *shape.mutable_layout() = *layout;
+    if (primitive_util::IsSubByteNonPredType(shape.element_type())) {
+      TF_ASSIGN_OR_RETURN(
+          xla::Layout default_layout,
+          (*GetTopologyDescription())
+              ->GetDefaultLayout(shape.element_type(), shape.dimensions()));
+      if (default_layout.element_size_in_bits() !=
+          shape.layout().element_size_in_bits()) {
+        return InvalidArgument(
+            "Device buffers require %d bits per element for an element type "
+            "%s, but got layout %s for shape %s",
+            default_layout.element_size_in_bits(),
+            PrimitiveType_Name(shape.element_type()), layout->ToString(),
+            shape.ToString());
+      }
+    }
   } else {
     TF_ASSIGN_OR_RETURN(
         *shape.mutable_layout(),
@@ -496,6 +511,35 @@ void CommonPjRtBufferImpl::CopyToRemoteDevice(
       memory_space(), std::move(raw_buffer), std::move(definition_events),
       std::move(usage_event_promise), std::move(serialized_descriptor),
       std::move(on_done));
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::Bitcast(
+    xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
+    const Layout* device_layout) {
+  if (!primitive_util::IsArrayType(on_device_shape_.element_type()) ||
+      !primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Bitcast can only be used on array types.");
+  }
+  TF_ASSIGN_OR_RETURN(const Shape shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dims));
+  TF_ASSIGN_OR_RETURN(Shape new_on_device_shape,
+                      client()->MakeDefaultShapeForMemorySpace(
+                          memory_space(), shape, device_layout));
+  if (ShapeUtil::ArraySize(on_device_shape_) !=
+      ShapeUtil::ArraySize(new_on_device_shape)) {
+    return InvalidArgument(
+        "Bitcast requires a new on-device shape to have the same size of %d "
+        "bytes, but got %d bytes.",
+        ShapeUtil::ArraySize(on_device_shape_),
+        ShapeUtil::ArraySize(new_on_device_shape));
+  }
+
+  std::unique_ptr<AbstractTrackedDeviceBuffer> device_buffer = ReleaseBuffer();
+  if (device_buffer == nullptr) {
+    return InvalidArgument("Bitcast was called on deleted or donated buffer.");
+  }
+  return std::make_unique<CommonPjRtBufferImpl>(
+      new_on_device_shape, std::move(device_buffer), memory_space());
 }
 
 void CommonPjRtClient::ScheduleRemoteSend(
@@ -1182,58 +1226,58 @@ CommonPjRtLoadedExecutable::Execute(
         const int replica = addressable_device_logical_ids_[i].replica;
         const int partition = addressable_device_logical_ids_[i].partition;
         PjRtDevice* device = addressable_devices_[i];
-        client()->LaunchOnDevice(device, [&, context_id, i, replica, partition,
-                                          device] {
-          tsl::profiler::TraceMeConsumer consumer(
-              [&] {
-                return tsl::profiler::TraceMeEncode(
-                    absl::StrFormat(
-                        "[%d] CommonPjRtLoadedExecutable::Execute (%s)", i,
-                        name()),
-                    {{"name", name()},
-                     {"replica", replica},
-                     {"partition", partition},
-                     {"global_device_id", device->global_device_id()}});
-              },
-              tsl::profiler::ContextType::kPjRt, context_id);
+        client()->LaunchOnDevice(
+            device, [&, context_id, i, replica, partition, device] {
+              tsl::profiler::TraceMeConsumer consumer(
+                  [&] {
+                    return tsl::profiler::TraceMeEncode(
+                        absl::StrFormat(
+                            "[%d] CommonPjRtLoadedExecutable::Execute (%s)", i,
+                            name()),
+                        {{"name", name()},
+                         {"replica", replica},
+                         {"partition", partition},
+                         {"global_device_id", device->global_device_id()}});
+                  },
+                  tsl::profiler::ContextType::kPjRt, context_id);
 
-          // Two phase launch. Phase 1: Prepare on all cores. Abort
-          // launch on prepare failure.
-          std::optional<ExecuteLaunchArgs> launch_args;
-          absl::Status launch_status =
-              ExecutePrepareWithOomRetries(launch_args, argument_handles[i],
-                                           run_id, replica, partition, options,
-                                           /*host_callback_idx=*/i);
-          // Wait for prepare to finish on all cores.
-          if (client()->supports_two_phase_launch()) {
-            absl::MutexLock lock(mu);
-            preparing--;
-            auto done_preparing = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-              return preparing == 0;
-            };
-            mu.Await(absl::Condition(&done_preparing));
-            if (!launch_status.ok()) {
-              if (failed == 0) {
-                first_failure_status = launch_status;
+              // Two phase launch. Phase 1: Prepare on all cores. Abort
+              // launch on prepare failure.
+              std::optional<ExecuteLaunchArgs> launch_args;
+              absl::Status launch_status = ExecutePrepareWithOomRetries(
+                  launch_args, argument_handles[i], run_id, replica, partition,
+                  options,
+                  /*host_callback_idx=*/i);
+              // Wait for prepare to finish on all cores.
+              if (client()->supports_two_phase_launch()) {
+                absl::MutexLock lock(mu);
+                preparing--;
+                auto done_preparing = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+                  return preparing == 0;
+                };
+                mu.Await(absl::Condition(&done_preparing));
+                if (!launch_status.ok()) {
+                  if (failed == 0) {
+                    first_failure_status = launch_status;
+                  }
+                  failed++;
+                }
+                if (failed > 0) {
+                  // Poison results for all cores.
+                  results[i] = first_failure_status;
+                  // Abort phase 2 if Prepare fails for any core.
+                  --launching;
+                  return;
+                }
               }
-              failed++;
-            }
-            if (failed > 0) {
-              // Poison results for all cores.
-              results[i] = first_failure_status;
-              // Abort phase 2 if Prepare fails for any core.
+
+              // Phase 2: Launch. It cannot fail.
+              results[i] =
+                  ExecuteLaunch(*launch_args, returned_futures.has_value());
+
+              absl::MutexLock lock(mu);
               --launching;
-              return;
-            }
-          }
-
-          // Phase 2: Launch. It cannot fail.
-          results[i] =
-              ExecuteLaunch(*launch_args, returned_futures.has_value());
-
-          absl::MutexLock lock(mu);
-          --launching;
-        });
+            });
       }
     }
 
@@ -1927,7 +1971,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
             copy_literal_async(generated.Await());
           } else {
             generated.OnReady(
-                common_client->async_work_runner()->AsExecutor(),
+                *common_client->async_work_runner(),
                 [copy_literal_async = std::move(copy_literal_async)](
                     const absl::StatusOr<MutableLiteralBase*>& value) mutable {
                   copy_literal_async(value);

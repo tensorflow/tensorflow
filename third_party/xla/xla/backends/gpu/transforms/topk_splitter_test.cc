@@ -31,10 +31,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/topk_rewriter.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
@@ -43,7 +45,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using TopkSplitterTest = HloTestBase;
+using TopkSplitterTest = HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase>;
+using HardwareIndependentTopkSplitterTest = HloHardwareIndependentTestBase;
 
 constexpr absl::string_view kComparator = R"(
   %compare {
@@ -57,7 +60,7 @@ constexpr absl::string_view kComparator = R"(
     ROOT %select.40633 = pred[] select(pred[] %broadcast.40631, pred[] %compare.40632, pred[] %broadcast.40631)
   })";
 
-TEST_F(TopkSplitterTest, SplitsTopK) {
+TEST_F(HardwareIndependentTopkSplitterTest, SplitsTopK) {
   const std::string hlo_string = absl::Substitute(R"(
 HloModule module
 $0
@@ -84,7 +87,7 @@ ENTRY cluster {
             m::Tuple(slice_result(sorted, 0), slice_result(sorted, 1))));
 }
 
-TEST_F(TopkSplitterTest, SplitsTopKNoBatchDimension) {
+TEST_F(HardwareIndependentTopkSplitterTest, SplitsTopKNoBatchDimension) {
   const std::string hlo_string = absl::Substitute(R"(
 HloModule module
 $0
@@ -111,7 +114,7 @@ ENTRY cluster {
             m::Tuple(slice_result(sorted, 0), slice_result(sorted, 1))));
 }
 
-TEST_F(TopkSplitterTest, SplitFailsUnderThreshold) {
+TEST_F(HardwareIndependentTopkSplitterTest, SplitFailsUnderThreshold) {
   const std::string hlo_string = absl::Substitute(R"(
 HloModule module
 $0
@@ -142,7 +145,7 @@ ENTRY cluster {
               absl_testing::IsOkAndHolds(false));
 }
 
-TEST_F(TopkSplitterTest, SplitFailsLargeK) {
+TEST_F(HardwareIndependentTopkSplitterTest, SplitFailsLargeK) {
   const std::string hlo_string = absl::Substitute(R"(
 HloModule module
 $0
@@ -210,7 +213,8 @@ ENTRY cluster {
   EXPECT_TRUE(RunAndCompare(std::move(module), std::nullopt, round_trip));
 }
 
-TEST_F(TopkSplitterTest, HandlesDimensionsEqualToThresholdCorrectly) {
+TEST_F(HardwareIndependentTopkSplitterTest,
+       HandlesDimensionsEqualToThresholdCorrectly) {
   // This test was added since initially TopkSplitter was going into an
   // infinite loop when the split threshold was equal to the dimension of the
   // input.

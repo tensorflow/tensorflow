@@ -737,28 +737,51 @@ void EventForest::ProcessTensorFlowLoop() {
   }
 }
 
-void EventForest::AddPlane(
-    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    XPlane* plane) {
+XPlaneVisitor& EventForest::AddVisitor(
+    EventForest::OldXPlaneVisitorFactory visitor_factory, XPlane* plane) {
+  visitors_.push_back(visitor_factory(plane));
+  return visitors_.back();
+}
+
+XPlaneVisitor& EventForest::AddVisitor(
+    EventForest::XPlaneVisitorFactory visitor_factory, XPlane* plane) {
+  unique_visitors_.push_back(visitor_factory(plane));
+  return *unique_visitors_.back().get();
+}
+
+template <typename Factory>
+void EventForest::AddPlane(Factory visitor_factory, XPlane* plane) {
   if (registered_planes_.contains(plane)) {
     return;
   }
   registered_planes_.insert(plane);
   CreateStatMetadata(plane);
-  planes_.push_back({plane, visitor_factory(plane)});
+  planes_.push_back({plane, AddVisitor(visitor_factory, plane)});
 }
 
-void EventForest::AddSpace(
-    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    XSpace* space) {
+void EventForest::AddSpace(OldXPlaneVisitorFactory visitor_factory,
+                           XSpace* space) {
   for (XPlane& plane : *space->mutable_planes()) {
     AddPlane(visitor_factory, &plane);
   }
 }
 
-void EventForest::AddPlanes(
-    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
-    const std::vector<XPlane*>& planes) {
+void EventForest::AddPlanes(OldXPlaneVisitorFactory visitor_factory,
+                            const std::vector<XPlane*>& planes) {
+  for (XPlane* plane : planes) {
+    AddPlane(visitor_factory, plane);
+  }
+}
+
+void EventForest::AddSpace(XPlaneVisitorFactory visitor_factory,
+                           XSpace* space) {
+  for (XPlane& plane : *space->mutable_planes()) {
+    AddPlane(visitor_factory, &plane);
+  }
+}
+
+void EventForest::AddPlanes(XPlaneVisitorFactory visitor_factory,
+                            const std::vector<XPlane*>& planes) {
   for (XPlane* plane : planes) {
     AddPlane(visitor_factory, plane);
   }

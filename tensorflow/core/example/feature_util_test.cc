@@ -15,10 +15,12 @@ limitations under the License.
 #include "tensorflow/core/example/feature_util.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -497,6 +499,56 @@ TEST(AppendFeatureValuesTest, StringViewVariablesUsingIterators) {
   EXPECT_EQ("FOO", tag_ro.Get(0));
   EXPECT_EQ("BAR", tag_ro.Get(1));
   EXPECT_EQ("BAZ", tag_ro.Get(2));
+}
+
+TEST(ExtendAndGetSpanTest, FloatValues) {
+  Example example;
+
+  Feature* feature = GetFeature("tag", &example);
+
+  constexpr float kDefaultValue = -1.0f;
+
+  absl::Span<float> values = ExtendAndGetSpan(feature, 3, kDefaultValue);
+  EXPECT_EQ(values.size(), 3);
+  EXPECT_EQ(values[0], kDefaultValue);
+  EXPECT_EQ(values[1], kDefaultValue);
+  EXPECT_EQ(values[2], kDefaultValue);
+
+  // Also verify if writing elements to the span is effective.
+
+  values[0] = 10.1;
+  values[1] = 20.2;
+  values[2] = 30.3;
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  EXPECT_EQ(values[0], tag_ro.Get(0));
+  EXPECT_EQ(values[1], tag_ro.Get(1));
+  EXPECT_EQ(values[2], tag_ro.Get(2));
+}
+
+TEST(ExtendAndGetSpanTest, Int64Values) {
+  Example example;
+
+  Feature* feature = GetFeature("tag", &example);
+
+  constexpr int64_t kDefaultValue = -1;
+
+  absl::Span<int64_t> values = ExtendAndGetSpan(feature, 3, kDefaultValue);
+  EXPECT_EQ(values.size(), 3);
+  EXPECT_EQ(values[0], kDefaultValue);
+  EXPECT_EQ(values[1], kDefaultValue);
+  EXPECT_EQ(values[2], kDefaultValue);
+
+  // Also verify if writing elements to the span is effective.
+
+  values[0] = 10;
+  values[1] = 20;
+  values[2] = 30;
+
+  auto tag_ro = GetFeatureValues<protobuf_int64>("tag", example);
+  EXPECT_EQ(values[0], tag_ro.Get(0));
+  EXPECT_EQ(values[1], tag_ro.Get(1));
+  EXPECT_EQ(values[2], tag_ro.Get(2));
 }
 
 TEST(GetFeatureTest, WritesAVectorToFeature) {

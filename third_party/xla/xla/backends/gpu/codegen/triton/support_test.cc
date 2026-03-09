@@ -187,6 +187,10 @@ auto AllDevicesToTest() {
 #endif
 }
 
+stream_executor::GpuComputeCapability DefaultDeviceForTesting() {
+  return AllDevicesToTest()[0];
+}
+
 // Generates all the possible test combinations for a given opcodes. A test
 // combination is a tuple of the form (data_type, opcode, compute_capability).
 auto AllTestCombinationsForOpcodes(absl::Span<const HloOpcode> opcodes) {
@@ -583,16 +587,17 @@ ENTRY triton_computation {
         any_is(PrimitiveType::F8E4M3FN) && any_is(PrimitiveType::F8E5M2);
   }
 
-  // Crashes due to unsupported/unspecified rounding mode.
-  crashes_on_failure |= (data_type_in == PrimitiveType::F64 &&
-                         (data_type_out == PrimitiveType::F8E4M3FN ||
-                          data_type_out == PrimitiveType::F8E5M2));
+  if (cc.IsCuda()) {
+    // Crashes due to unsupported/unspecified rounding mode.
+    crashes_on_failure |= (data_type_in == PrimitiveType::F64 &&
+                           (data_type_out == PrimitiveType::F8E4M3FN ||
+                            data_type_out == PrimitiveType::F8E5M2));
 
-  // Crashes due to unsupported conversion.
-  crashes_on_failure |= (data_type_out == PrimitiveType::F64 &&
-                         (data_type_in == PrimitiveType::F8E4M3FN ||
-                          data_type_in == PrimitiveType::F8E5M2));
-
+    // Crashes due to unsupported conversion.
+    crashes_on_failure |= (data_type_out == PrimitiveType::F64 &&
+                           (data_type_in == PrimitiveType::F8E4M3FN ||
+                            data_type_in == PrimitiveType::F8E5M2));
+  }
   RunSupportTest(
       std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
       crashes_on_failure ? ExpectedFailMode::kCrash : ExpectedFailMode::kFail);
@@ -633,12 +638,22 @@ ENTRY triton_computation {
                                      data_type, opcode));
 
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
-  if (opcode == HloOpcode::kDivide &&
-      (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
-       data_type == PrimitiveType::F8E5M2 ||
-       data_type == PrimitiveType::F8E4M3FN)) {
-    fail_mode = ExpectedFailMode::kCrash;
-  };
+  if (cc.IsCuda()) {
+    if (opcode == HloOpcode::kDivide &&
+        (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
+         data_type == PrimitiveType::F8E5M2 ||
+         data_type == PrimitiveType::F8E4M3FN)) {
+      fail_mode = ExpectedFailMode::kCrash;
+    }
+  } else {
+    if (((opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum) &&
+         (data_type == PrimitiveType::F8E5M2 ||
+          data_type == PrimitiveType::F8E4M3FN ||
+          data_type == PrimitiveType::F8E5M2FNUZ ||
+          data_type == PrimitiveType::F8E4M3FNUZ))) {
+      fail_mode = ExpectedFailMode::kCrash;
+    }
+  }
 
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc, fail_mode);
 }
@@ -667,11 +682,21 @@ ENTRY triton_computation {
                                      data_type, opcode));
 
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
-  if (opcode == HloOpcode::kDivide &&
-      (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
-       data_type == PrimitiveType::F8E5M2 ||
-       data_type == PrimitiveType::F8E4M3FN)) {
-    fail_mode = ExpectedFailMode::kCrash;
+  if (cc.IsCuda()) {
+    if (opcode == HloOpcode::kDivide &&
+        (data_type == PrimitiveType::BF16 || data_type == PrimitiveType::F16 ||
+         data_type == PrimitiveType::F8E5M2 ||
+         data_type == PrimitiveType::F8E4M3FN)) {
+      fail_mode = ExpectedFailMode::kCrash;
+    }
+  } else {
+    if (((opcode == HloOpcode::kMaximum || opcode == HloOpcode::kMinimum) &&
+         (data_type == PrimitiveType::F8E5M2 ||
+          data_type == PrimitiveType::F8E4M3FN ||
+          data_type == PrimitiveType::F8E5M2FNUZ ||
+          data_type == PrimitiveType::F8E4M3FNUZ))) {
+      fail_mode = ExpectedFailMode::kCrash;
+    }
   }
 
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{}, cc, fail_mode);
@@ -725,7 +750,20 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, data_type, opcode));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc);
+
+  bool skip_failure_branch_to_avoid_crash = false;
+  if (cc.IsRocm()) {
+    skip_failure_branch_to_avoid_crash =
+        (opcode == HloOpcode::kClamp || opcode == HloOpcode::kSelect) &&
+        (data_type == PrimitiveType::F8E5M2 ||
+         data_type == PrimitiveType::F8E4M3FN ||
+         data_type == PrimitiveType::F8E5M2FNUZ ||
+         data_type == PrimitiveType::F8E4M3FNUZ);
+  }
+
+  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 32}, cc,
+                 skip_failure_branch_to_avoid_crash ? ExpectedFailMode::kCrash
+                                                    : ExpectedFailMode::kFail);
 }
 
 constexpr std::array kTestedOpsTernaryElementwise = {HloOpcode::kSelect,
@@ -769,6 +807,10 @@ ENTRY triton_computation {
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type, opcode));
   bool crashes_on_failure = data_type == PrimitiveType::F8E4M3FN ||
                             data_type == PrimitiveType::F8E5M2;
+  if (cc.IsRocm()) {
+    crashes_on_failure |= data_type == PrimitiveType::F8E5M2FNUZ ||
+                          data_type == PrimitiveType::F8E4M3FNUZ;
+  }
   RunSupportTest(
       std::move(ti), /*output_tile_sizes=*/{1}, cc,
       crashes_on_failure ? ExpectedFailMode::kCrash : ExpectedFailMode::kFail);
@@ -792,7 +834,7 @@ ENTRY triton_computation {
                           ParseTemplateAndGetInstruction(kHloTestTemplate, F32,
                                                          HloOpcode::kReduce));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{3, 4},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_P(
@@ -840,6 +882,10 @@ ENTRY triton_computation {
 
   bool crashes_on_failure = data_type == PrimitiveType::F8E4M3FN ||
                             data_type == PrimitiveType::F8E5M2;
+  if (cc.IsRocm()) {
+    crashes_on_failure |= data_type == PrimitiveType::F8E5M2FNUZ ||
+                          data_type == PrimitiveType::F8E4M3FNUZ;
+  }
   RunSupportTest(
       std::move(ti), /*output_tile_sizes=*/{1}, cc,
       crashes_on_failure ? ExpectedFailMode::kCrash : ExpectedFailMode::kFail);
@@ -875,7 +921,7 @@ ENTRY triton_computation {
 }
 
 TEST_F(ReduceTest, ReduceWithNonConstReduceValueIsSupportedWithTriton) {
-  const se::GpuComputeCapability cc = se::CudaComputeCapability::Ampere();
+  const se::GpuComputeCapability cc = DefaultDeviceForTesting();
   const std::string kHloTestTemplate = R"(
 add {
   Arg_0 = $0[] parameter(0)
@@ -957,9 +1003,12 @@ ENTRY triton_computation {
   if (opcode == HloOpcode::kDivide && (data_type == BF16 || data_type == F16)) {
     fail_mode = ExpectedFailMode::kCrash;
   }
-  if (data_type == F8E4M3FN || data_type == F8E5M2) {
+  if (data_type == F8E4M3FN || data_type == F8E5M2 ||
+      data_type == PrimitiveType::F8E5M2FNUZ ||
+      data_type == PrimitiveType::F8E4M3FNUZ) {
     fail_mode = ExpectedFailMode::kFailOrCrash;
   }
+
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1}, cc, fail_mode);
 }
 
@@ -1087,33 +1136,11 @@ using ConcatenateTest = SupportTestWithTypeAndDeviceParam;
 TEST_P(ConcatenateTest, IsTritonSupportedConcatenate) {
   auto [data_type, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
-nest0 {
-  ROOT p0 = $0[128] parameter(0)
-}
-
-nest1 {
-  ROOT p0 = $0[128] parameter(0)
-}
-
-nest2 {
-  ROOT p0 = $0[128] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[128] parameter(0)
   p1 = $0[128] parameter(1)
   p2 = $0[128] parameter(2)
-
-  fusion0 = $0[128] fusion(p0), kind=kCustom, calls=nest0, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":["64"]}]}}}
-  fusion1 = $0[128] fusion(p1), kind=kCustom, calls=nest1, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":["64"]}]}}}
-  fusion2 = $0[128] fusion(p2), kind=kCustom, calls=nest2, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":["64"]}]}}}
-  ROOT result = $0[384] concatenate(fusion0, fusion1, fusion2), dimensions={0}
+  ROOT result = $0[384] concatenate(p0, p1, p2), dimensions={0}
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
@@ -1913,35 +1940,21 @@ TEST_P(DotTypesTest, Dot) {
       fail_mode = ExpectedFailMode::kFailOrCrash;
     }
   }
+  if (input_type == F8E5M2FNUZ || result_type == F8E5M2FNUZ ||
+      input_type == F8E4M3FNUZ || result_type == F8E4M3FNUZ) {
+    if (auto* cuda_cc = cc.cuda_compute_capability()) {
+      // Hits llvm::report_fatal_error during Triton compilation.
+      fail_mode = ExpectedFailMode::kFailOrCrash;
+    }
+  }
 
   std::string hlo_text = R"(
-flhs {
-  ROOT result = $0[128,256] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[256,512] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[128,256] parameter(0)
   p1 = $0[256,512] parameter(1)
-  lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  rhs = $0[256,512]{1,0} fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "32"]}]
-      }
-    }
-  }
-  ROOT result = $1[128,512]{1,0} dot(lhs, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = $1[128,512]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
 }
 )";
   hlo_text = absl::Substitute(
@@ -1990,33 +2003,12 @@ TEST_P(MixedF8DotTest, MixedF8Dot) {
   }
 
   std::string hlo_text = R"(
-flhs {
-  result = $0[128,256] parameter(0)
-}
-
-frhs {
-  result = $1[256,512] parameter(0)
-}
-
 triton_computation {
   p0 = $0[128,256] parameter(0)
   p1 = $1[256,512] parameter(1)
-  lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  rhs = $1[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "32"]}]
-      }
-    }
-  }
-  result = f32[128,512] dot(lhs, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = f32[128,512] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
 }
 )";
   hlo_text = absl::Substitute(
@@ -2037,254 +2029,132 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     MixedF8DotTest::ParamToString);
 
+// TODO(b/446827313): review tests: some of them are redundant after removing of
+// nested fusions.
+
 TEST_F(DotTest, NonFusionRhs) {
   const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[128,256] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[128,256] parameter(0)
   p1 = $0[256,512] parameter(1)
-  lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  ROOT result = $0[128,512] dot(lhs, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = $0[128,512] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, NonFusionLhs) {
   const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[256,512] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[128,256] parameter(0)
   p1 = $0[256,512] parameter(1)
-  rhs = $0[256,512] fusion(p1), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  ROOT result = $0[128,512] dot(p0, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT result = $0[128,512] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, SingleBatchDim) {
   const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[16,128,256] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[16,256,512] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[16,128,256] parameter(0)
   p1 = $0[16,256,512] parameter(1)
-  lhs = $0[16,128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["1", "16", "64"]}]
-      }
-    }
-  }
-  rhs = $0[16,256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["1", "64", "32"]}]
-      }
-    }
-  }
-  ROOT result = $0[16,128,512] dot(lhs, rhs),
+  ROOT result = $0[16,128,512] dot(p0, p1),
     lhs_batch_dims={0}, lhs_contracting_dims={2},
-    rhs_batch_dims={0}, rhs_contracting_dims={1}
+    rhs_batch_dims={0}, rhs_contracting_dims={1},
+    backend_config={sizes:[64]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, MultipleNonContractingDimensions) {
   const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[16,128,256] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[16,256,512] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[16,128,256] parameter(0)
   p1 = $0[16,256,512] parameter(1)
-  lhs = $0[16,128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["1", "16", "64"]}]
-      }
-    }
-  }
-  rhs = $0[16,256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["1", "64", "32"]}]
-      }
-    }
-  }
-  ROOT result = $0[16,128,16,512] dot(lhs, rhs),
-    lhs_contracting_dims={2}, rhs_contracting_dims={1}
+  ROOT result = $0[16,128,16,512] dot(p0, p1),
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    backend_config={sizes:[64]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{1, 16, 1, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, MultipleContractingDimensions) {
   const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[128,16,256] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[16,256,512] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[128,16,256] parameter(0)
-  lhs = $0[128,16,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "4", "64"]}]
-      }
-    }
-  }
   p1 = $0[16,256,512] parameter(1)
-  rhs = $0[16,256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "4", "32"]}]
-      }
-    }
-  }
-  ROOT result = $0[128,512] dot(lhs, rhs),
+  ROOT result = $0[128,512] dot(p0, p1),
     lhs_contracting_dims={1, 2},
-    rhs_contracting_dims={0, 1}
+    rhs_contracting_dims={0, 1},
+    backend_config={"sizes":["64", "4"]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, NonDefaultDimensionOrder_kmkn) {
   // Multiplying as [k, m] x [k, n] = [m, n].
   const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[256,128] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[256,512] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[256,128] parameter(0)
   p1 = $0[256,512] parameter(1)
-  lhs = $0[256,128] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "16"]}]
-      }
-    }
-  }
-  rhs = $0[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "32"]}]
-      }
-    }
-  }
-  ROOT result = $0[128,512] dot(lhs, rhs),
+  ROOT result = $0[128,512] dot(p0, p1),
     lhs_contracting_dims={0},
-    rhs_contracting_dims={0}
+    rhs_contracting_dims={0},
+    backend_config={sizes:[64]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 TEST_F(DotTest, NonDefaultDimensionOrder_mknk) {
   // Muliplying as [m, k] x [n, k] = [m, n].
   const std::string kHloTestTemplate = R"(
-flhs {
-  ROOT result = $0[128,256] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[512,256] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[128,256] parameter(0)
   p1 = $0[512,256] parameter(1)
-  lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  rhs = $0[512,256] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["32", "64"]}]
-      }
-    }
-  }
-  ROOT result = $0[128,512] dot(lhs, rhs),
+  ROOT result = $0[128,512] dot(p0, p1),
     lhs_contracting_dims={1},
-    rhs_contracting_dims={1}
+    rhs_contracting_dims={1},
+    backend_config={sizes:[64]}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 se::CudaComputeCapability::Ampere());
+                 DefaultDeviceForTesting());
 }
 
 class DotPrecisionTest
@@ -2309,35 +2179,14 @@ TEST_P(DotPrecisionTest, OperandPrecision) {
   auto [data_type, lhs_precision, rhs_precision, cc] = GetParam();
   std::string hlo_text = absl::Substitute(
       R"(
-flhs {
-  ROOT result = $0[128,256] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[256,512] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[128,256] parameter(0)
   p1 = $0[256,512] parameter(1)
-  lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  rhs = $0[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "32"]}]
-      }
-    }
-  }
-  ROOT result = $0[128,512] dot(lhs, rhs),
+  ROOT result = $0[128,512] dot(p0, p1),
     lhs_contracting_dims={1},
     rhs_contracting_dims={0},
-    operand_precision={$1, $2}
+    operand_precision={$1, $2},
+    backend_config={sizes:[64]}
 }
 )",
       primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -2390,35 +2239,14 @@ TEST_P(DotPrecisionAlgorithmTest, Algorithm) {
   auto [data_type, algorithm, cc] = GetParam();
   std::string hlo_text =
       absl::Substitute(R"(
-flhs {
-  ROOT result = $0[128,256] parameter(0)
-}
-
-frhs {
-  ROOT result = $0[256,512] parameter(0)
-}
-
 ENTRY triton_computation {
   p0 = $0[128,256] parameter(0)
   p1 = $0[256,512] parameter(1)
-  lhs = $0[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "64"]}]
-      }
-    }
-  }
-  rhs = $0[256,512] fusion(p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "32"]}]
-      }
-    }
-  }
-  ROOT result = $0[128,512] dot(lhs, rhs),
+  ROOT result = $0[128,512] dot(p0, p1),
     lhs_contracting_dims={1},
     rhs_contracting_dims={0},
-    algorithm=$1
+    algorithm=$1,
+    backend_config={sizes:[64]}
 }
 )",
                        primitive_util::LowercasePrimitiveTypeName(data_type),
@@ -2435,8 +2263,9 @@ ENTRY triton_computation {
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kDot));
   ExpectedFailMode fail_mode = ExpectedFailMode::kFail;
-  if (absl::c_linear_search(std::vector{F8E5M2, F8E4M3FN, F8E4M3, S8},
-                            data_type)) {
+  if (absl::c_linear_search(
+          std::vector{F8E5M2, F8E4M3FN, F8E4M3, S8, F8E5M2FNUZ, F8E4M3FNUZ},
+          data_type)) {
     fail_mode = ExpectedFailMode::kFailOrCrash;
   }
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc, fail_mode);
@@ -2482,93 +2311,6 @@ INSTANTIATE_TEST_SUITE_P(
       return primitive_util::LowercasePrimitiveTypeName(info.param);
     });
 
-class FusionKindsTest
-    : public SupportTest,
-      public ::testing::WithParamInterface<
-          std::tuple<absl::string_view, se::GpuComputeCapability>> {};
-
-TEST_P(FusionKindsTest, OperandOfDot) {
-  auto [kind, cc] = GetParam();
-  const std::string hlo_text = absl::Substitute(
-      R"(
-flhs {
-  ROOT result = f32[128,256] parameter(0)
-}
-
-frhs {
-  ROOT result = f32[256,512] parameter(0)
-}
-
-ENTRY triton_computation {
-  p0 = f32[128,256] parameter(0)
-  p1 = f32[256,512] parameter(1)
-  lhs = f32[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{"kind":"$0", "block_level_fusion_config":{
-    "output_tiles":[{"sizes":["16", "64"]}]}}}
-  rhs = f32[256,512]{1,0} fusion(p1), kind=kCustom, calls=frhs,
-    backend_config={ "fusion_backend_config":{ "kind":"$0",
-    "block_level_fusion_config": {"output_tiles":[{"sizes":["64", "32"]}]}}}
-  ROOT result = f32[128,512]{1,0} dot(lhs, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-)",
-      kind);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32}, cc);
-}
-
-std::string FusionKindsTestName(
-    const ::testing::TestParamInfo<
-        std::tuple<absl::string_view, se::GpuComputeCapability>>& data) {
-  auto [kind, cc] = data.param;
-  return absl::StrCat(kind, "_", ComputeCapabilityToString(cc));
-}
-
-TEST_P(FusionKindsTest, OperandOfConcatenate) {
-  auto [kind, cc] = GetParam();
-  const std::string hlo_text = absl::Substitute(
-      R"(
-nest0 {
-  ROOT p0 = f32[128] parameter(0)
-}
-
-nest1 {
-  ROOT p0 = f32[128] parameter(0)
-}
-
-ENTRY triton_computation {
-  p0 = f32[128] parameter(0)
-  p1 = f32[128] parameter(1)
-
-  fusion0 = f32[128] fusion(p0), kind=kCustom, calls=nest0, backend_config={
-    "fusion_backend_config":{"kind":"$0",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":["64"]}]}}}
-  fusion1 = f32[128] fusion(p1), kind=kCustom, calls=nest1, backend_config={
-    "fusion_backend_config":{"kind":"$0",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":["64"]}]}}}
-  ROOT result = f32[256] concatenate(fusion0, fusion1), dimensions={0}
-}
-)",
-      kind);
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{64}, cc);
-}
-
-std::vector<absl::string_view> FusionKindsForTest() {
-  return {kTritonFusionKind, kTritonNestedGemmFusionKind, "__invalid"};
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    FusionTestSuite, FusionKindsTest,
-    ::testing::Combine(::testing::ValuesIn(FusionKindsForTest()),
-                       ::testing::ValuesIn(AllDevicesToTest())),
-    FusionKindsTestName);
-
 using FusionTest = SupportTest;
 
 TEST_F(FusionTest, FusionComputationIsCheckedRecursively) {
@@ -2606,7 +2348,7 @@ ENTRY triton_computation {
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
-  se::GpuComputeCapability cc = se::CudaComputeCapability::Ampere();
+  se::GpuComputeCapability cc = DefaultDeviceForTesting();
   ASSERT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{64, 32}, cc);
 }

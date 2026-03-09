@@ -19,8 +19,8 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class AsyncCommandBufferTest : public HloTestBase {};
+class AsyncCommandBufferTest : public HloPjRtGpuTestBase {};
 
 HloModuleConfig GetModuleConfig() {
   // Disable command buffer scheduling pass as we already have explicit command

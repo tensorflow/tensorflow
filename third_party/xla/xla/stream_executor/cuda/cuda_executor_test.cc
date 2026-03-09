@@ -46,7 +46,6 @@ using testing::Ge;
 using ::testing::HasSubstr;
 using testing::IsEmpty;
 using testing::Not;
-using testing::VariantWith;
 
 TEST(CudaExecutorTest, CreateDeviceDescription) {
   CudaPlatform platform;
@@ -55,10 +54,12 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
                           CudaExecutor::CreateDeviceDescription(0));
 
-  constexpr SemanticVersion kNullVersion{0, 0, 0};
-  EXPECT_NE(result->runtime_version(), kNullVersion);
-  EXPECT_NE(result->driver_version(), kNullVersion);
-  EXPECT_NE(result->compile_time_toolkit_version(), kNullVersion);
+  EXPECT_TRUE(result->runtime_version().IsValid());
+  EXPECT_TRUE(result->driver_version().IsValid());
+  EXPECT_TRUE(result->compile_time_toolkit_version().IsValid());
+  EXPECT_TRUE(result->cub_version().IsValid());
+
+  EXPECT_GT(result->kernel_mode_driver_version().major(), 300);
 
   EXPECT_GT(result->pcie_bandwidth(), 1024 * 1024);
   EXPECT_THAT(result->platform_version(), Not(IsEmpty()));
@@ -70,7 +71,9 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
               ::testing::Field("major", &CudaComputeCapability::major, Ge(1)));
 
   DeviceInterconnectInfo info = result->device_interconnect_info();
-  if (result->cuda_compute_capability().IsAtLeastBlackwell() &&
+  // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
+  if (result->cuda_compute_capability().IsAtLeastHopper() &&
+      result->kernel_mode_driver_version().major() >= 545 &&
       info.active_links) {
     EXPECT_GE(info.active_links, 18);
 

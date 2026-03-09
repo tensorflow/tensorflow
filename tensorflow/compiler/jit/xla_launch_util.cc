@@ -136,8 +136,9 @@ absl::StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
 }
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
-    xla::LocalClient* client, se::DeviceMemoryAllocator* xla_allocator,
-    int device_ordinal, bool allocate_xla_tensors, bool use_multiple_streams)
+    xla::LocalClient* client,
+    stream_executor::DeviceAddressAllocator* xla_allocator, int device_ordinal,
+    bool allocate_xla_tensors, bool use_multiple_streams)
     : client_(client),
       xla_allocator_(xla_allocator),
       allocate_xla_tensors_(allocate_xla_tensors),
@@ -150,11 +151,10 @@ XlaComputationLaunchContext::XlaComputationLaunchContext(
 }
 
 // Fills in `execution_input` with `buffer` for `index`.
-static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
-                                         const xla::ShapeIndex& index,
-                                         se::DeviceMemoryBase buffer,
-                                         bool donate_buffer, int device_ordinal,
-                                         se::DeviceMemoryAllocator* allocator) {
+static void PopulateExecutionInputBuffer(
+    xla::ExecutionInput& execution_input, const xla::ShapeIndex& index,
+    stream_executor::DeviceAddressBase buffer, bool donate_buffer,
+    int device_ordinal, stream_executor::DeviceAddressAllocator* allocator) {
   xla::MaybeOwningDeviceAddress* in_buffer =
       execution_input.MutableBuffer(index);
   if (donate_buffer) {
@@ -163,7 +163,8 @@ static void PopulateExecutionInputBuffer(xla::ExecutionInput& execution_input,
     // succeeds, we'll take back that duplicate ownership in
     // GetOrCreateTensorForOutput. If execution fails, the ExecutionInput will
     // release that duplicate ownership automatically.
-    *in_buffer = se::OwningDeviceMemory(buffer, device_ordinal, allocator);
+    *in_buffer = stream_executor::ScopedDeviceAddress<uint8_t>(
+        buffer, device_ordinal, allocator);
   } else {
     *in_buffer = buffer;
   }
@@ -220,7 +221,8 @@ XlaComputationLaunchContext::PopulateInputs(
 
     arguments.emplace_back(&device_shape);
     xla::ExecutionInput& execution_input = arguments.back();
-    se::DeviceMemoryBase dmem = XlaTensor::DeviceMemoryFromTensor(*t);
+    stream_executor::DeviceAddressBase dmem =
+        XlaTensor::DeviceMemoryFromTensor(*t);
     PopulateExecutionInputBuffer(execution_input, root_index, dmem,
                                  donate_buffer, device_ordinal_,
                                  xla_allocator_);
@@ -230,7 +232,8 @@ XlaComputationLaunchContext::PopulateInputs(
 
 // Construct the tensor for the given type and buffer.
 static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
-                         se::DeviceMemoryBase buffer, Allocator* allocator) {
+                         stream_executor::DeviceAddressBase buffer,
+                         Allocator* allocator) {
   size_t expected_size = shape.num_elements() * DataTypeSize(dtype);
   auto* tensor_buffer = new XlaTensorBuffer(buffer.opaque(), expected_size,
                                             buffer.size(), allocator);
@@ -264,15 +267,17 @@ static absl::StatusOr<Tensor> GetOrCreateTensorForOutput(
         ctx->input(tf_param).dtype() != DT_RESOURCE
             ? ctx->input(tf_param)
             : *resource_vars_snapshots.at(missing_ctx_input_prefix + tf_param);
-    se::DeviceMemoryBase input_buffer =
+    stream_executor::DeviceAddressBase input_buffer =
         XlaTensor::DeviceMemoryFromTensor(input_tensor);
-    se::DeviceMemoryBase output_buffer = output.buffer({output_num});
+    stream_executor::DeviceAddressBase output_buffer =
+        output.buffer({output_num});
     if (input_buffer.opaque() == output_buffer.opaque()) {
       // In the case of a donated buffer, both input_tensor and output think
       // they have ownership of the buffer (see comment in
       // PopulateExecutionInputBuffer). Release ownership from output to avoid
       // double free.
-      output.set_buffer(se::OwningDeviceMemory(), {output_num});
+      output.set_buffer(stream_executor::ScopedDeviceAddress<uint8_t>(),
+                        {output_num});
       return input_tensor;
     }
   }
@@ -292,10 +297,12 @@ static absl::StatusOr<Tensor> GetOrCreateTensorForOutput(
     return output_tensor;
   }
 
-  se::DeviceMemoryBase output_buffer = output.buffer({output_num});
+  stream_executor::DeviceAddressBase output_buffer =
+      output.buffer({output_num});
   Tensor output_tensor =
       MakeTensor(output_dtype, output_shape, output_buffer, output_allocator);
-  output.set_buffer(se::OwningDeviceMemory(), {output_num});
+  output.set_buffer(stream_executor::ScopedDeviceAddress<uint8_t>(),
+                    {output_num});
   return output_tensor;
 }
 

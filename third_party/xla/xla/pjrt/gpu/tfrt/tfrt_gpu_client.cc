@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -141,21 +142,12 @@ class UnboundedAsyncWorkRunner : public AsyncWorkRunner {
   explicit UnboundedAsyncWorkRunner(const std::string& name)
       : queue_(tsl::Env::Default(), name, {/*stack_size=*/512 * 1024}) {}
 
-  void Schedule(absl::AnyInvocable<void() &&> work) override {
-    // TSL TheadPool expects std::function that must be copyable, so we are
+  void Execute(Task task) final {
+    // UnboundedWorkQueue expects std::function that must be copyable, so we are
     // forced to do a little bit of manual memory management here.
-    queue_.Schedule(
-        [ptr = new absl::AnyInvocable<void() &&>(std::move(work))]() {
-          std::move (*ptr)();
-          delete ptr;
-        });
-  }
-
-  void ScheduleWhenReady(
-      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
-      absl::AnyInvocable<void() &&> work) override {
-    tsl::RunWhenReady(values, [this, work = std::move(work)]() mutable {
-      Schedule([work = std::move(work)]() mutable { std::move(work)(); });
+    queue_.Schedule([ptr = new Task(std::move(task))] {
+      std::move (*ptr)();
+      delete ptr;
     });
   }
 
@@ -423,18 +415,20 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
-    mlir::ModuleOp module, CompileOptions options) {
-  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, topology_));
-  return Compile(module, options, /*lookup_addressable_devices=*/false);
+    MaybeOwningMlirModule module, CompileOptions options) {
+  TF_RETURN_IF_ERROR(
+      pjrt::MaybeDumpCompileInputs(options, module.mlir_module(), topology_));
+  return Compile(std::move(module), options,
+                 /*lookup_addressable_devices=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
-    mlir::ModuleOp module, CompileOptions options,
+    MaybeOwningMlirModule module, CompileOptions options,
     bool lookup_addressable_devices) {
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
-      module, xla_computation,
+      module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options,
       mlir::mhlo::getGpuChloToHighLevelMhloOptions()));
@@ -446,13 +440,16 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                      GetArgLayoutModes(module));
+                      GetArgLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                      GetOutputLayoutModes(module));
+                      GetOutputLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                      GetArgMemoryKinds(module));
+                      GetArgMemoryKinds(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                      GetOutputMemoryKinds(module));
+                      GetOutputMemoryKinds(module.mlir_module()));
+
+  // MLIR module no longer required - release any memory if owned.
+  module = MaybeOwningMlirModule();
 
   // If auto-sharding modifies shapes of arguments and/or result,
   // we get a callback to restore the layouts. Let us restore the layouts
@@ -497,9 +494,10 @@ TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+TfrtGpuClient::CompileAndLoad(MaybeOwningMlirModule module,
+                              CompileOptions options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      Compile(module, options,
+                      Compile(std::move(module), options,
                               /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
 }

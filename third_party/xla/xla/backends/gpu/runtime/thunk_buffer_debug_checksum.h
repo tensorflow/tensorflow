@@ -18,14 +18,14 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
-absl::Status RunChecksumPassInternal(SequentialThunk* root_thunk,
+absl::Status RunChecksumPassInternal(ThunkSequence* thunk_sequence,
                                      const DebugOptions& debug_options,
                                      const HloModule* absl_nonnull hlo_module,
                                      ThunkPassBufferAllocator& allocator);

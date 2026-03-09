@@ -84,7 +84,7 @@ absl::StatusOr<se::DeviceAddressHandle> AllocateMemory(
       executor,
       executor->Allocate(
           size, static_cast<int64_t>(stream_executor::MemoryType::kP2P)));
-  if (local_buffer_alloc.memory().is_null()) {
+  if (local_buffer_alloc.address().is_null()) {
     return absl::InternalError(absl::StrFormat(
         "Failed to allocate %s for all-reduce.", debug_buffer_name));
   }
@@ -297,17 +297,20 @@ absl::Status CollectiveKernelThunk::Initialize(const InitializeParams& params) {
     if (!per_stream_state_.contains(params.executor)) {
       StreamMemory* memory_state = per_stream_memory_.at(params.executor).get();
       // Step1: We needs 1 atomic flag per block per device on each device.
-      // One-shot kernel expects that the signal flags buffer is zeroed out.
+      // The kernel expects that the signal flags buffer is zeroed out.
       // Initial state of device memory is undefined, so we need to zero out
       // the buffer. The kernel will take care of leaving the buffer in
       // correct state after use, so we don't need to zero out after
       // initialization.
       TF_RETURN_IF_ERROR(params.executor->SynchronousMemZero(
-          memory_state->signal_buffers_handle.memory_ptr(),
-          memory_state->signal_buffers_handle.memory().size()));
+          memory_state->signal_buffers_handle.address_ptr(),
+          memory_state->signal_buffers_handle.address().size()));
       // Create a kernel for execution.
       std::unique_ptr<se::Kernel> kernel = nullptr;
       if (!kernel_name_.empty()) {
+        TF_RET_CHECK(launch_dimensions_.has_value())
+            << "Launch dimensions are not set for when using emitted "
+               "collective kernel.";
         if (!params.src.binary.empty()) {
           TF_ASSIGN_OR_RETURN(
               kernel,
@@ -479,12 +482,11 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   const uint32_t buffer_index = state->invocation_count % kNumBuffers;
   const AllReduceStrategy strategy =
       GetAllReduceStrategy(GetInputSizeBytes(), is_multimem_enabled_);
-  const LaunchDimensions launch_dimensions =
-      AllReduceLaunchDimensions(buffer.element_count, num_devices, strategy);
   // In case of two-shot we want to increment in multiples of 2.
   state->invocation_count += 1 + static_cast<uint32_t>(strategy);
   XLA_VLOG_DEVICE(3, device_ordinal)
-      << "Performing one-shot all-reduce for clique " << clique_key.ToString();
+      << "Performing " << strategy << " all-reduce for clique "
+      << clique_key.ToString();
 
   se::DeviceAddressBase input_buffer_ptr =
       state->remote_buffer_ptrs[buffer_index];
@@ -493,12 +495,16 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "input_buffer_ptr: " << input_buffer_ptr.opaque()
       << " signal_buffer_ptr: " << signal_buffer_ptr.opaque();
-  XLA_VLOG_DEVICE(3, device_ordinal)
-      << "launch dimensions: " << launch_dimensions.num_blocks() << "x"
-      << launch_dimensions.num_threads_per_block()
-      << "(block x threadsPerBlock)";
 
   if (state->kernel != nullptr) {
+    TF_RET_CHECK(launch_dimensions_.has_value())
+        << "Launch dimensions are not set for when using emitted "
+           "collective kernel.";
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "Emitted kernel launch dimensions: "
+        << launch_dimensions_->num_blocks() << "x"
+        << launch_dimensions_->num_threads_per_block()
+        << "(block x threadsPerBlock)";
     TF_ASSIGN_OR_RETURN(se::DeviceAddressBase remote_buffers,
                         GetParameterDeviceMemoryBase(
                             state->metadata, /*num_parameters=*/kNumParameters,
@@ -516,9 +522,16 @@ absl::Status CollectiveKernelThunk::ExecuteOnStream(
         /* signal_value= */ state->invocation_count,
         signal_buffers,
         remote_buffers};
-    return ExecuteKernelOnStream(*state->kernel, kernel_args, launch_dimensions,
+    return ExecuteKernelOnStream(*state->kernel, kernel_args,
+                                 launch_dimensions_.value(),
                                  /*cluster_dim=*/std::nullopt, stream);
   }
+  const LaunchDimensions launch_dimensions =
+      AllReduceLaunchDimensions(buffer.element_count, num_devices, strategy);
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "CUDA kernel launch dimensions: " << launch_dimensions.num_blocks()
+      << "x" << launch_dimensions.num_threads_per_block()
+      << "(block x threadsPerBlock)";
 
   // TODO(b/407736956): Change this to emitted kernel.
   return RunAllReduceKernel(

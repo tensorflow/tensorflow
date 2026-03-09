@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -969,7 +970,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
             argument_literal_j.shape(),
             [&](const Shape& subshape, const ShapeIndex& index) {
               if (subshape.IsArray()) {
-                for (int64_t k = 0; k < subshape.dimensions_size(); ++k) {
+                for (int64_t k = 0; k < subshape.dimensions().size(); ++k) {
                   if (subshape.is_dynamic_dimension(k)) {
                     argument_literal_j.SetDynamicSize(k, index, 0);
                   }
@@ -1453,9 +1454,10 @@ template <typename R, typename T>
 absl::StatusOr<std::unique_ptr<R>> ConvertAndCallCompiler(
     bool compile_as_stablehlo, HloModule* hlo_module, T&& compile_function) {
   auto compile_and_log =
-      [&](const auto& module) -> absl::StatusOr<std::unique_ptr<R>> {
+      [&](auto&& module) -> absl::StatusOr<std::unique_ptr<R>> {
     VLOG(1) << "FunctionalHloRunner: compilation started.";
-    TF_ASSIGN_OR_RETURN(auto result, compile_function(module));
+    TF_ASSIGN_OR_RETURN(
+        auto result, compile_function(std::forward<decltype(module)>(module)));
     VLOG(1) << "FunctionalHloRunner: compile succeeded.";
     return result;
   };
@@ -1463,14 +1465,14 @@ absl::StatusOr<std::unique_ptr<R>> ConvertAndCallCompiler(
   if (compile_as_stablehlo) {
     mlir::DialectRegistry registry;
     mlir::func::registerAllExtensions(registry);
-    mlir::MLIRContext context(registry);
+    auto context = std::make_unique<mlir::MLIRContext>(registry);
     TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> stablehlo_module,
-                        ConvertHloToStablehlo(context, hlo_module));
-    return compile_and_log(*stablehlo_module);
-  } else {
-    XlaComputation computation(hlo_module->ToProto());
-    return compile_and_log(computation);
+                        ConvertHloToStablehlo(*context, hlo_module));
+    return compile_and_log(
+        MaybeOwningMlirModule(std::move(context), std::move(stablehlo_module)));
   }
+  XlaComputation computation(hlo_module->ToProto());
+  return compile_and_log(computation);
 }
 
 }  // namespace
@@ -1487,9 +1489,9 @@ absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       CompleteCompileOptions(*hlo_module, compile_options, preproc_options));
 
   return ConvertAndCallCompiler<PjRtLoadedExecutable>(
-      preproc_options.compile_as_stablehlo, hlo_module,
-      [&](const auto& module) {
-        return client.CompileAndLoad(module, modified_compile_options);
+      preproc_options.compile_as_stablehlo, hlo_module, [&](auto&& module) {
+        return client.CompileAndLoad(std::forward<decltype(module)>(module),
+                                     modified_compile_options);
       });
 }
 
@@ -1506,9 +1508,10 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompleteCompileOptions(*hlo_module, compile_options, preproc_options));
 
   return ConvertAndCallCompiler<PjRtExecutable>(
-      preproc_options.compile_as_stablehlo, hlo_module,
-      [&](const auto& module) {
-        return PjRtCompile(modified_compile_options, module, topology, &client);
+      preproc_options.compile_as_stablehlo, hlo_module, [&](auto&& module) {
+        return PjRtCompile(modified_compile_options,
+                           std::forward<decltype(module)>(module), topology,
+                           &client);
       });
 }
 

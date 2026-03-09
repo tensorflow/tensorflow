@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>

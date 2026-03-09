@@ -673,6 +673,11 @@ bool SubProcess::WaitInternal(int* status) {
   return WaitOrCheckRunningInternal(/*flags=*/0, status) == WaitStatus::kExited;
 }
 
+bool SubProcess::running() const {
+  absl::MutexLock lock(&proc_mu_);
+  return running_;
+}
+
 bool SubProcess::CheckRunning() {
   int status;
   return WaitOrCheckRunningInternal(WNOHANG, &status) ==

@@ -20,11 +20,14 @@ limitations under the License.
 #include <memory>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/die_if_null.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/time/clock.h"
@@ -37,7 +40,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/shape.h"
@@ -373,9 +375,11 @@ absl::StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
   return absl::Nanoseconds(std::move(cupti_tracer).getMedianKernelTimeNs());
 }
 
-HloOpProfiler::HloOpProfiler(HloRunner& runner)
-    : runner_(runner),
-      dev_info_(runner.backend().stream_executors()[0]->GetDeviceDescription()),
+HloOpProfiler::HloOpProfiler(HloRunnerInterface* const absl_nonnull runner,
+                             const stream_executor::DeviceDescription* const
+                             absl_nonnull device_description)
+    : runner_(*ABSL_DIE_IF_NULL(runner)),
+      dev_info_(*ABSL_DIE_IF_NULL(device_description)),
       // Twice the runtime of a copy (chain_length = 0) kernel.
       min_duration_(2 * MeasureOpChainDuration(HloOpcode::kNegate, F32, 0)
                             .value_or(absl::ZeroDuration())) {

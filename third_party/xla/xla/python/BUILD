@@ -371,6 +371,8 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/synchronization",
         "@nanobind",
     ],

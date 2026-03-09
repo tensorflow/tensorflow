@@ -55,7 +55,8 @@ absl::Status RewriteLayoutWithShardedShape(
     const std::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     XlaShapeLayoutHelpers::ShapeDeterminationFns shape_determination_fns,
     xla::Shape* xla_shape) {
-  if (sharding && !sharding->IsTileMaximal() && !sharding->IsManual()) {
+  if (sharding && !sharding->IsReplicatedOrSingleDevice() &&
+      !sharding->IsManual()) {
     // After sharding, per core shape might have different layout. For example,
     // before sharding, a shape [128, 128] will be assigned default
     // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,

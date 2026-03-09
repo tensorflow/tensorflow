@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cleanup_optimization_barrier_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/downcast_x64_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
@@ -363,6 +364,7 @@ inline void registerTensorFlowLitePasses() {
   Register<UnfoldLargeSplatConstantPass>();
   Register<SplitMergedOperandsPass>();
   Register<CleanupOptimizationBarrierPass>();
+  Register<DowncastX64Pass>();
 
   // Utility Passes
   Register<DenseToDenseResourceElementsPass>();

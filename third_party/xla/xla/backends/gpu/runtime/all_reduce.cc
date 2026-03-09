@@ -23,9 +23,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/Support/MathExtras.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
@@ -70,7 +71,7 @@ static constexpr auto kAddBF16Tags =
 static constexpr auto kOrPredTags = TagRegistry<bool, ReductionKind::MAX>{};
 // Heuristic maxima after some benchmarking.
 static constexpr int64_t kMaxBlocksPerGrid = 24;
-static constexpr int64_t kMaxThreadsPerBlock = 512;
+static constexpr uint64_t kMaxThreadsPerBlock = 512;
 static constexpr int64_t kWarpSize = 32;
 
 template <typename TagType>
@@ -191,7 +192,10 @@ LaunchDimensions AllReduceLaunchDimensions(int64_t elements, int64_t num_ranks,
   // Maximum number of threads such that each thread has elements to process.
   const int64_t total_threads =
       RoundUpTo(elements_per_rank / se::gpu::kNumElementsPerThread, kWarpSize);
-  threads_per_block = std::min(kMaxThreadsPerBlock, total_threads);
+  // Triton expects power of 2 for threads_per_block / threads_per_warp.
+  // Since threads_per_warp is 32 for all NVIDIA GPUs, power of 2 is guaranteed.
+  threads_per_block =
+      std::min(kMaxThreadsPerBlock, llvm::PowerOf2Ceil(total_threads));
   blocks_per_grid = std::min(kMaxBlocksPerGrid,
                              CeilOfRatio(total_threads, threads_per_block));
   return LaunchDimensions(blocks_per_grid, threads_per_block);
@@ -216,9 +220,13 @@ bool IsAllReduceKernelSupported(int64_t num_ranks, int64_t num_elements,
         << "Number of elements is not aligned to the alignment requirement.";
     return false;
   }
-
-  // The kernel is only supported for up to 8 devices.
-  return num_ranks <= stream_executor::gpu::kMaxNumAllReduceInputPtrs;
+  if (num_ranks > stream_executor::gpu::kMaxNumAllReduceInputPtrs) {
+    VLOG(3) << "AllReduce XLA implementation does not support more than "
+            << se::gpu::kMaxNumAllReduceInputPtrs << " ranks."
+            << " Required number of ranks: " << num_ranks;
+    return false;
+  }
+  return true;
 }
 
 absl::Status RunAllReduceKernel(

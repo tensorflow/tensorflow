@@ -106,40 +106,15 @@ TEST_F(TritonEmitterDevicelessTest,
   // correctly preserve trivial dimensions, causing symbolic tile analysis to
   // produce an incorrect reshape.
   const std::string kHloText = R"(
-parameter0 {
-  p0 = bf16[1,5,4] parameter(0)
-  convert = f32[1,5,4] convert(p0)
-  slice = f32[1,5,2] slice(convert), slice={[0:1], [0:5], [2:4]}
-  ROOT bitcast = f32[5,2] bitcast(slice)
-}
-
-parameter1 {
-  ROOT p0 = f32[5,20]{0,1} parameter(0)
-}
-
 fusion {
   p0 = bf16[1,5,4] parameter(0)
   p1 = f32[5,20]{0,1} parameter(1)
-  fusion0 = f32[5,2] fusion(p0), kind=kCustom, calls=parameter0,
-    backend_config={"fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion",
-      "block_level_fusion_config":{
-        "num_warps":"2",
-        "output_tiles":[{"sizes":["16","16"]}],
-        "num_ctas":1,
-        "num_stages":1,
-        "is_tma_allowed":false}}}
-  fusion1 = f32[5,20]{0,1} fusion(p1), kind=kCustom, calls=parameter1,
-    backend_config={"fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion",
-      "block_level_fusion_config":{
-        "num_warps":"2",
-        "output_tiles":[{"sizes":["16","16"]}],
-        "num_ctas":1,
-        "num_stages":1,
-        "is_tma_allowed":false}}}
-  ROOT dot = f32[2,20] dot(fusion0, fusion1),
-    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  convert = f32[1,5,4] convert(p0)
+  slice = f32[1,5,2] slice(convert), slice={[0:1], [0:5], [2:4]}
+  bitcast = f32[5,2] bitcast(slice)
+  ROOT dot = f32[2,20] dot(bitcast, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 
 ENTRY entry {
@@ -177,38 +152,13 @@ ENTRY entry {
 TEST_F(WarpSpecializationTritonEmitterTest,
        ExtraWarpsAreRequestedForWarpSpecialization) {
   const std::string hlo_text = R"(
-flhs {
-  ROOT flhs.p0 = f16[256,256] parameter(0)
-}
-
-frhs {
-  ROOT frhs.p0 = f16[256,256] parameter(0)
-}
-
 fdot {
   fdot.p0 = f16[256,256] parameter(0)
   fdot.p1 = f16[256,256] parameter(1)
-  fdot.lhs = f16[256,256] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["128", "64"]}],
-        "is_tma_allowed":"1",
-        "is_warp_specialization_allowed":"1"
-      }
-    }
-  }
-  fdot.rhs = f16[256,256]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["64", "128"]}],
-        "is_tma_allowed":"1",
-        "is_warp_specialization_allowed":"1"
-      }
-    }
-  }
-  ROOT fdot.root = f16[256,256]{1,0} dot(fdot.lhs, fdot.rhs),
+  ROOT fdot.root = f16[256,256]{1,0} dot(fdot.p0, fdot.p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    algorithm=dot_f16_f16_f32
+    algorithm=dot_f16_f16_f32,
+    backend_config={sizes:[64]}
 }
 
 ENTRY entry {

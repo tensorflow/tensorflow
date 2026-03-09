@@ -42,7 +42,9 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_collectives_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_megascale_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_multi_slice_extension.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_multi_slice_config.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -484,6 +486,17 @@ absl::StatusOr<PJRT_Collectives_Extension*> GetCollectivesExtension(
   return extension;
 }
 
+absl::StatusOr<PJRT_MultiSlice_Extension*> GetMultiSliceExtension(
+    const PJRT_Api* c_api) {
+  PJRT_MultiSlice_Extension* extension =
+      pjrt::FindExtension<PJRT_MultiSlice_Extension>(
+          c_api, PJRT_Extension_Type_MultiSlice);
+  if (extension == nullptr) {
+    return absl::InternalError("MultiSlice extension is not available.");
+  }
+  return extension;
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
@@ -491,6 +504,8 @@ absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
   TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
                       GetMegascaleExtension(c_api));
+  TF_ASSIGN_OR_RETURN(PJRT_MultiSlice_Extension * multi_slice_extension,
+                      GetMultiSliceExtension(c_api));
 
   PJRT_Megascale_CreateAoTConfig_Args args;
   args.struct_size = PJRT_Megascale_CreateAoTConfig_Args_STRUCT_SIZE;
@@ -502,8 +517,8 @@ absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
 
   RETURN_STATUS_IF_PJRT_ERROR(extension->create_aot_config(&args), c_api);
 
-  return std::make_unique<PjRtCApiMultiSliceConfig>(args.multi_slice_config,
-                                                    c_api, extension);
+  return std::make_unique<pjrt::PjRtCApiMultiSliceConfig>(
+      args.multi_slice_config, c_api, multi_slice_extension);
 }
 
 absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
@@ -515,6 +530,8 @@ CreateMultiSliceMegascaleConfig(
     std::shared_ptr<CApiPjRtClientContext> megascale_client_ctx) {
   const PJRT_Api* c_api = megascale_client_ctx->c_api();
   const PJRT_Megascale_Extension* extension = megascale_client_ctx->extension();
+  TF_ASSIGN_OR_RETURN(PJRT_MultiSlice_Extension * multi_slice_extension,
+                      GetMultiSliceExtension(c_api));
 
   std::string endpoint_addresses_str = endpoint_addresses.SerializeAsString();
   std::string dcn_topology_str = dcn_topology.SerializeAsString();
@@ -538,8 +555,8 @@ CreateMultiSliceMegascaleConfig(
                               c_api);
 
   CHECK(args.multi_slice_config != nullptr);
-  return std::make_unique<PjRtCApiMultiSliceConfig>(args.multi_slice_config,
-                                                    c_api, extension);
+  return std::make_unique<pjrt::PjRtCApiMultiSliceConfig>(
+      args.multi_slice_config, c_api, multi_slice_extension);
 }
 
 absl::StatusOr<std::shared_ptr<CApiPjRtClientContext>>

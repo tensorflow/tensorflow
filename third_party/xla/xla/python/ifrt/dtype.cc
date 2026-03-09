@@ -321,7 +321,7 @@ std::string DType::DebugString() const {
 }
 
 std::ostream& operator<<(std::ostream& os, const DType& dtype) {
-  return os << dtype.DebugString();
+  return os << absl::StrCat(dtype);
 }
 
 }  // namespace ifrt

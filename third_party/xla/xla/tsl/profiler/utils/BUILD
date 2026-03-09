@@ -263,6 +263,7 @@ cc_library(
     deps = [
         ":xplane_schema",
         ":xplane_visitor",
+        "@com_google_absl//absl/memory",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )

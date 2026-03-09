@@ -257,13 +257,13 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   }
   absl::StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, dnums,
+      /*batch_group_count=*/1, window, dnums, SparsityConfig(),
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.value(), x, transpose_y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
-      DefaultPrecisionConfig(2)));
+      DefaultPrecisionConfig(2), SparsityConfig()));
 
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
@@ -316,7 +316,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   }
   absl::StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, dnums,
+      /*batch_group_count=*/1, window, dnums, SparsityConfig(),
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
@@ -381,6 +381,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   absl::StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
+      /*sparsity_config=*/SparsityConfig(),
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
@@ -451,6 +452,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   absl::StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
+      /*sparsity_config=*/SparsityConfig(),
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(

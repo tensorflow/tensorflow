@@ -23,7 +23,10 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -40,8 +43,6 @@ namespace gpu {
 // to have a single parent class for all gpu comm backends.
 class NvshmemCollectiveThunk : public Thunk {
  public:
-  NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
-
   absl::Status Prepare(const PrepareParams& params) override;
 
   absl::Status Initialize(const InitializeParams& params) override;
@@ -61,6 +62,8 @@ class NvshmemCollectiveThunk : public Thunk {
   bool IsAsyncStart() const override { return async_events_ != nullptr; }
 
  protected:
+  NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
+
   virtual absl::Status RunNvshmemCollective(const ExecuteParams& params,
                                             se::Stream& stream) = 0;
   virtual const CollectiveConfig& config() const = 0;
@@ -84,6 +87,12 @@ class NvshmemCollectiveDoneThunk : public Thunk {
       std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<NvshmemCollectiveDoneThunk>> FromProto(
+      ThunkInfo thunk_info, const NvshmemCollectiveDoneThunkProto& thunk_proto,
+      CollectiveThunk::AsyncEventsMap& async_events_map);
 
   std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
 

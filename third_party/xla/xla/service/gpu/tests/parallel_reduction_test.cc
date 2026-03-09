@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -25,23 +26,25 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/tests/gpu_pjrt_codegen_test.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-class ParallelReductionTest : public GpuCodegenTest {
+class ParallelReductionTest
+    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtInterpreterReferenceMixin<
+        GpuPjRtCodegenTest>::GetDebugOptionsForTest();
     // The test contains a MOF fusion and the XLA optimizer passes
     // don't like this.
     debug_options.set_xla_disable_all_hlo_passes(true);
@@ -76,14 +79,14 @@ ENTRY %cluster {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
-    CompileAndVerifyIr(std::move(hlo_module),
-                       R"(CHECK:      switch {{.*}} label {{.*}} [
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               R"(CHECK:      switch {{.*}} label {{.*}} [
                           CHECK-NEXT:   label
                           CHECK-NEXT: ])",
-                       /*match_optimized_ir=*/false);
+                               /*match_optimized_ir=*/false));
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -116,13 +119,13 @@ ENTRY %cluster {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-    CompileAndVerifyIr(std::move(hlo_module),
-                       R"(CHECK:      switch {{.*}} label {{.*}} [
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               R"(CHECK:      switch {{.*}} label {{.*}} [
                           CHECK-NEXT:   label
                           CHECK-NEXT: ])",
-                       /*match_optimized_ir=*/false);
+                               /*match_optimized_ir=*/false));
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -305,18 +308,19 @@ ENTRY %cluster {
 
   // Because of b/249976438 mul0 and mul2 will make first and last groups merge.
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
 
-    CompileAndVerifyIr(std::move(hlo_module),
-                       R"(CHECK:      switch {{.*}} label {{.*}} [
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               R"(CHECK:      switch {{.*}} label {{.*}} [
                           CHECK-NEXT:   label
                           CHECK-NEXT: ])",
-                       /*match_optimized_ir=*/false);
+                               /*match_optimized_ir=*/false));
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-class ParallelReductionTestBase : public HloTestBase {};
+class ParallelReductionTestBase
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {};
 
 TEST_F(ParallelReductionTestBase, ParallelReductionsWithAliasing) {
   const char* hlo_text = R"(
@@ -353,8 +357,8 @@ ENTRY e {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(hlo_text));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(hlo_text));
   EXPECT_TRUE(
       hlo_module->input_output_alias_config().ParameterMustAlias(2, {}));
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));

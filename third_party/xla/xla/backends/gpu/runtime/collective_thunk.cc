@@ -472,20 +472,6 @@ std::optional<AsyncEventsUniqueId> CollectiveThunk::GetAsyncEventsUniqueId()
   return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
-absl::StatusOr<CollectiveThunkProto> CollectiveThunk::ToCollectiveThunkProto()
-    const {
-  CollectiveThunkProto proto;
-
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (!async_events_id.has_value()) {
-    return absl::FailedPreconditionError("AsyncEvents is not set.");
-  }
-  proto.set_async_events_unique_id(async_events_id->value());
-  proto.set_thunk_kind(Thunk::KindToProto(kind()));
-
-  return proto;
-}
-
 CollectiveDoneThunk::CollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)

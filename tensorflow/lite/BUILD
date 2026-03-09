@@ -15,7 +15,7 @@ package_group(
 )
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

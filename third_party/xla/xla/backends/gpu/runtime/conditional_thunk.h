@@ -70,13 +70,8 @@ class ConditionalThunk : public Thunk {
     return branch_index_buffer_index_;
   }
 
-  absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Thunk*)> callback) override;
-
-  absl::Status TransformAllNestedThunks(
-      absl::FunctionRef<
-          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-          fn) override;
+  absl::Status WalkNested(Walker callback) override;
+  absl::Status TransformNested(Transformer callback) override;
 
   bool branch_index_is_bool() const { return branch_index_is_bool_; }
 

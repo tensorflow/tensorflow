@@ -1167,6 +1167,39 @@ TEST_P(ShardingParamShardingTest, IndexDomainWithReplication) {
   }
 }
 
+TEST_P(ShardingParamShardingTest, IndexDomainZeroRank) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  ShardingParam param{/*dim_shards=*/{},
+                      {/*permutation=*/{0}, /*axis_sizes=*/{6}}};
+  TF_ASSERT_OK_AND_ASSIGN(
+      ShardingRef param_sharding,
+      ShardingParamSharding::Create(param, device_list, MemoryKind()));
+
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        param_sharding->IndexDomains(Shape({}),
+                                     SingleDeviceShardSemantics::kAllShards));
+    EXPECT_THAT(index_domains, ElementsAre(IndexDomain(Index({}), Shape({})),
+                                           IndexDomain(Index({}), Shape({})),
+                                           IndexDomain(Index({}), Shape({})),
+                                           IndexDomain(Index({}), Shape({})),
+                                           IndexDomain(Index({}), Shape({})),
+                                           IndexDomain(Index({}), Shape({}))));
+  }
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        param_sharding->IndexDomains(
+            Shape({}), SingleDeviceShardSemantics::kAddressableShards));
+    // The first 4 devices are addressable.
+    EXPECT_THAT(index_domains, ElementsAre(IndexDomain(Index({}), Shape({})),
+                                           IndexDomain(Index({}), Shape({})),
+                                           IndexDomain(Index({}), Shape({})),
+                                           IndexDomain(Index({}), Shape({}))));
+  }
+}
+
 TEST_P(ShardingParamShardingTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       *ShardingParamSharding::Create(

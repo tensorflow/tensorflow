@@ -2435,8 +2435,7 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
       }
       return;
     }
-    if (sharding.IsReplicated() || sharding.IsTileMaximal() ||
-        sharding.IsManual()) {
+    if (sharding.IsReplicatedOrSingleDevice() || sharding.IsManual()) {
       return;
     }
     tiled_shardings.push_back(sharding);
@@ -2536,8 +2535,8 @@ bool IsShardingMisaligned(const HloSharding& sharding, const Shape& shape) {
     return false;
   }
 
-  if (sharding.IsReplicated() || sharding.IsManual() || sharding.IsUnknown() ||
-      sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice() || sharding.IsManual() ||
+      sharding.IsUnknown()) {
     return false;
   }
 

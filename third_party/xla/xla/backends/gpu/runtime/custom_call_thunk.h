@@ -78,6 +78,12 @@ class CustomCallThunk : public Thunk {
     std::unique_ptr<xla::ffi::Ffi> execute;
   };
 
+  // A per-execution state that holds state for prepare and initialize stages.
+  struct PrepareAndInitState {
+    ffi::ExecutionState prepare;
+    ffi::ExecutionState init;
+  };
+
   using CustomCallTarget =
       std::function<void(stream_executor::Stream*, void**, const char*, size_t,
                          XlaCustomCallStatus*)>;

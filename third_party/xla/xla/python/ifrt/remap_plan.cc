@@ -612,13 +612,7 @@ absl::Status RemapPlan::ToProto(RemapPlanProto& proto,
 
 std::string RemapPlan::DebugString() const {
   auto format_array_specs = [](absl::Span<const ArraySpec> array_specs) {
-    return absl::StrCat(
-        "[",
-        absl::StrJoin(array_specs, ",",
-                      [](std::string* out, const ArraySpec& spec) {
-                        absl::StrAppend(out, spec.DebugString());
-                      }),
-        "]");
+    return absl::StrCat("[", absl::StrJoin(array_specs, ","), "]");
   };
   auto format_mappings = [](absl::Span<const Mapping> mappings) {
     return absl::StrCat(

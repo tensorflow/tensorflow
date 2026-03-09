@@ -638,6 +638,7 @@ cc_library(
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:serdes",
+        "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt:test_util",
         "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/ifrt/ir/tests:executable_impl_test_base",

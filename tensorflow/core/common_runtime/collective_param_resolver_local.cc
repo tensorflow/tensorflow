@@ -46,7 +46,7 @@ namespace tensorflow {
 CollectiveParamResolverLocal::CollectiveParamResolverLocal(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
     DeviceResolverInterface* dev_resolver,
-    NcclCommunicatorInterface* nccl_communicator, const string& task_name)
+    NcclCommunicatorInterface* nccl_communicator, const std::string& task_name)
     : nccl_(config.experimental().collective_nccl()),
       dev_mgr_(dev_mgr),
       dev_resolver_(dev_resolver),
@@ -87,10 +87,10 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   }
 }
 
-string TaskNameFromDeviceName(const string& device_name) {
+std::string TaskNameFromDeviceName(const std::string& device_name) {
   DeviceNameUtils::ParsedName parsed_device;
   CHECK(DeviceNameUtils::ParseFullName(device_name, &parsed_device));
-  string task_name;
+  std::string task_name;
   CHECK(DeviceNameUtils::GetTaskName(parsed_device, &task_name));
   return task_name;
 }
@@ -240,7 +240,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
           gr->group.members.push_back(std::move(member));
           new_device = true;
           if (VLOG_IS_ON(1)) {
-            string dev_buf;
+            std::string dev_buf;
             for (const auto& m : gr->group.members) {
               absl::StrAppend(&dev_buf, ",", m.device.name());
             }
@@ -302,15 +302,15 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
 namespace {
 struct DevRec {
-  string task;
-  string device;
+  std::string task;
+  std::string device;
   int original_rank;
   int local_rank;
   int global_rank;
   const DeviceLocality* locality;
 };
-typedef std::unordered_map<string, DevRec> TaskDeviceMap;
-typedef std::unordered_map<string, TaskDeviceMap> GlobalDeviceMap;
+typedef std::unordered_map<std::string, DevRec> TaskDeviceMap;
+typedef std::unordered_map<std::string, TaskDeviceMap> GlobalDeviceMap;
 
 // Create a populated GlobalDeviceMap from CollInstanceParams and localities.
 GlobalDeviceMap BuildDevRecs(const CollGroupParams& gp) {
@@ -329,15 +329,15 @@ GlobalDeviceMap BuildDevRecs(const CollGroupParams& gp) {
   return gdm;
 }
 
-bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
-  std::vector<string> split_gpu_ring_order_str =
+bool ParseRingOrder(const std::string& gpu_ring_order_str, TaskDeviceMap* tdm) {
+  std::vector<std::string> split_gpu_ring_order_str =
       str_util::Split(gpu_ring_order_str, ',');
   if (split_gpu_ring_order_str.size() != tdm->size()) return false;
 
   // gpu id -> local rank
-  gtl::FlatMap<int32, int32> gpu_ranks;
+  gtl::FlatMap<int32_t, int32_t> gpu_ranks;
   for (int32_t rank = 0;
-       rank < static_cast<int32>(split_gpu_ring_order_str.size()); ++rank) {
+       rank < static_cast<int32_t>(split_gpu_ring_order_str.size()); ++rank) {
     int32_t tmp;
     if (absl::SimpleAtoi(split_gpu_ring_order_str[rank], &tmp)) {
       gpu_ranks[tmp] = rank;
@@ -360,7 +360,7 @@ bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
   return true;
 }
 
-void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
+void OrderTaskDeviceMap(const std::string& gpu_ring_order, TaskDeviceMap* tdm) {
   CHECK_GT(tdm->size(), 0);  // Should never be called with 0 devices
 
   // If a valid ring order has been passed in via ConfigProto, use that.
@@ -370,8 +370,8 @@ void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
   // We now assign a ring order based on link strengths.  Note that this
   // algorithm is not optimal and may not always find the best ring order.
   int least_rank = -1;
-  string next_device;
-  std::set<string> selected;
+  std::string next_device;
+  std::set<std::string> selected;
   // Starting device is one with the least initial rank.
   for (const auto& it : *tdm) {
     if (least_rank < 0 || it.second.original_rank < least_rank) {
@@ -403,7 +403,7 @@ void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
     if (parsed_name.type == "GPU") {
       for (const InterconnectLink& il : dr->locality->links().link()) {
         parsed_name.id = il.device_id();
-        string endpoint_device =
+        std::string endpoint_device =
             DeviceNameUtils::ParsedNameToString(parsed_name);
         // Skip the device if we've already seen it.
         if (selected.find(endpoint_device) != selected.end()) {
@@ -445,7 +445,7 @@ void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
 // rank order for all the devices in the group, that is appropriate for a ring
 // algorithm.
 GlobalDeviceMap EstablishGlobalRank(const CollGroupParams& gp,
-                                    const string& gpu_ring_order) {
+                                    const std::string& gpu_ring_order) {
   VLOG(1) << "EstablishGlobalRank";
   GlobalDeviceMap gdm = BuildDevRecs(gp);
   for (auto& iter : gdm) {
@@ -453,12 +453,12 @@ GlobalDeviceMap EstablishGlobalRank(const CollGroupParams& gp,
     OrderTaskDeviceMap(gpu_ring_order, &tdm);
   }
   // Connect the global rank order by the lexicographical order of the tasks.
-  std::set<string> tasks;
+  std::set<std::string> tasks;
   for (const CollGroupMember& member : gp.members) {
     tasks.insert(member.task);
   }
   int next_rank = 0;
-  for (const string& task : tasks) {
+  for (const std::string& task : tasks) {
     TaskDeviceMap* tdm = &gdm[task];
     for (auto& it : *tdm) {
       it.second.global_rank = it.second.local_rank + next_rank;
@@ -501,10 +501,10 @@ void CollectiveParamResolverLocal::FinishGroup(GroupRec* gr) {
   CompleteDefaultRanking(&gr->group);
   SetDevPerTask(&gr->group);
   gr->group.num_tasks =
-      static_cast<int32>(gr->group.num_devices_per_task.size());
+      static_cast<int32_t>(gr->group.num_devices_per_task.size());
 }
 
-void CollectiveParamResolverLocal::CancelGroup(int32 group_key) {
+void CollectiveParamResolverLocal::CancelGroup(int32_t group_key) {
   std::vector<StatusCallback> pending_done;
   GroupRec* gr = nullptr;
   {
@@ -530,7 +530,7 @@ void CollectiveParamResolverLocal::CancelGroup(int32 group_key) {
   }
 }
 
-void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
+void CollectiveParamResolverLocal::SetDefaultRank(const std::string& device,
                                                   CollectiveParams* cp) {
   CHECK_EQ(cp->group.group_size, cp->group.members.size()) << cp->ToString();
   for (int i = 0; i < cp->group.group_size; ++i) {
@@ -576,7 +576,7 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(CollGroupParams* gp) {
   }
 
   if (VLOG_IS_ON(2)) {
-    string buf;
+    std::string buf;
     for (const auto& m : new_members)
       absl::StrAppend(&buf, "\n", m.device.name());
     VLOG(2) << "Optimized device order for group " << gp->group_key << ": "
@@ -705,7 +705,8 @@ void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceLocal(
-    const string& device, CollectiveParams* cp, const StatusCallback& done) {
+    const std::string& device, CollectiveParams* cp,
+    const StatusCallback& done) {
   VLOG(1) << "CompleteInstanceLocal " << device
           << " instance_key: " << cp->instance.instance_key << " group_key "
           << cp->group.group_key;
@@ -729,7 +730,7 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
-    const string& device, CollectiveParams* cp, InstanceRec* ir,
+    const std::string& device, CollectiveParams* cp, InstanceRec* ir,
     const StatusCallback& done) {
   auto expected_shape = cp->instance.shape;
   absl::Status status;

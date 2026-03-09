@@ -1,8 +1,12 @@
-// RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline -split-input-file 2>&1 | FileCheck %s
+// RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline -split-input-file 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
+// RUN: sdy_opt %s -xla-sdy-round-trip-testing-pipeline='enable-hlo-sharding-v3=true' -split-input-file 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // COMPILER API OP TESTS.
 // These would be needed to work for round-tripping in JAX integration.
+//
+// Note that in HloShardingV3 case, we don't preserve sharding priority field as
+// present in sdy sharding as sharding priorities are not yet supported in JAX.
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // Basic test with no meshes or shardings
@@ -30,7 +34,8 @@ sdy.mesh @mesh = <["a"=2, "b"=2, "c"=2]>
 
 // CHECK-LABEL: func @main
 func.func @main(
-  // CHECK: %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>})
+  // CHECK-V2: %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>})
+  // CHECK-V3: %arg0: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}]>})
   %arg0: tensor<8x16xf32>           {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}
   ) -> (tensor<8x16xf32>) {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
@@ -55,7 +60,8 @@ sdy.mesh @mesh = <["a"=2, "b"=2]>
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32>)
   %arg0: tensor<8x16xf32>
-  // CHECK-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
+  // CHECK-V2-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
+  // CHECK-V3-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}]>}) {
   ) -> (tensor<8x16xf32>              {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
   // CHECK: stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
@@ -76,9 +82,11 @@ sdy.mesh @mesh = <["a"=2, "b"=2]>
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32>)
   %arg0: tensor<8x16xf32>
-  // CHECK-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
+  // CHECK-V2-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
+  // CHECK-V3-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}]>}) {
   ) -> (tensor<8x16xf32>              {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
-  // CHECK:  sdy.sharding_constraint %arg0 <@mesh, [{"b", ?}, {"a"}p4]> : tensor<8x16xf32>
+  // CHECK-V2:  sdy.sharding_constraint %arg0 <@mesh, [{"b", ?}, {"a"}p4]> : tensor<8x16xf32>
+  // CHECK-V3:  sdy.sharding_constraint %arg0 <@mesh, [{"b", ?}, {"a"}]> : tensor<8x16xf32>
   %0 = sdy.sharding_constraint %arg0 <@mesh, [{"b", ?}, {"a"}p4]> : tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
 }
@@ -100,7 +108,8 @@ sdy.mesh @mesh = <["a"=2, "b"=2]>
 func.func @main(
   // CHECK: %arg0: tensor<8x16xf32>)
   %arg0: tensor<8x16xf32>
-  // CHECK-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
+  // CHECK-V2-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
+  // CHECK-V3-SAME: -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}]>}) {
   ) -> (tensor<8x16xf32>              {sdy.sharding = #sdy.sharding<@mesh, [{"a", ?}, {"b"}p4]>}) {
   return %arg0 : tensor<8x16xf32>
 }
@@ -109,6 +118,8 @@ func.func @main(
 
 // Test sharding just on the ReturnOp operand's defining op but not FuncOp
 // result.
+// For HloShardingV3 case we expect FuncOp result to have same shardings as
+// ReturnOp operand.
 
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: xla.sdy.sharding
@@ -117,14 +128,17 @@ func.func @main(
 sdy.mesh @mesh = <["a"=2, "b"=2, "c"=2]>
 
 // CHECK-LABEL:      @main(
-// CHECK-SAME:   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}p4]>},
+// CHECK-V2-SAME:   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}p4]>},
+// CHECK-V3-SAME:   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}]>},
 // CHECK-SAME:   %arg1: tensor<8x8xf32>, %arg2: tensor<8x8xf32>
-// CHECK-SAME:   ) -> tensor<8x8xf32> {
+// CHECK-V2-SAME:   ) -> tensor<8x8xf32> {
+// CHECK-V3-SAME:   ) -> (tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"c", ?}]>}) {
 func.func @main(
   %arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {"b"}p4]>},
   %arg1: tensor<8x8xf32>, %arg2: tensor<8x8xf32>) -> tensor<8x8xf32> {
   // CHECK:      %[[ADD:.*]] = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
-  // CHECK-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %0 <@mesh, [{}, {"c", ?}p1]> : tensor<8x8xf32>
+  // CHECK-V2-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %0 <@mesh, [{}, {"c", ?}p1]> : tensor<8x8xf32>
+  // CHECK-V3-NEXT: %[[WSC:.*]] = sdy.sharding_constraint %0 <@mesh, [{}, {"c", ?}]> : tensor<8x8xf32>
   // CHECK-NEXT: return %[[WSC]] : tensor<8x8xf32>
   %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
   %1 = sdy.sharding_constraint %0 <@mesh, [{}, {"c", ?}p1]> : tensor<8x8xf32>
@@ -157,16 +171,21 @@ func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x8xf32> {
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 // Test FuncOp with multiple result shardings.
+// Note that in HloShardingV3 case, we don't preserve sdy mesh names as sdy
+// shardings are directly converted to HloShardingV3 and not stored in frontend
+// attributes during sdy round trip and HloShardingV3 doesn't store mesh names.
 
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: xla.sdy.sharding
 
-// CHECK: sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
+// CHECK-V2: sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
+// CHECK-V3: sdy.mesh @mesh = <["x"=8, "y"=4]>
 sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
 
 // CHECK-LABEL: func @main
 func.func @main(
-  // CHECK: %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>}) {
+  // CHECK-V2: %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>}) {
+  // CHECK-V3: %arg0: tensor<8x16xf32>) -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", ?}, {"y"}]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{?}, {"y"}]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}) {
   %arg0: tensor<8x16xf32>) ->           (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", ?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{?}, {"y"}p4]>}, tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x"}, {"y"}p1]>}) {
   // CHECK-NEXT: %[[ADD:.*]] = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>
   %0 = stablehlo.add %arg0, %arg0 : tensor<8x16xf32>

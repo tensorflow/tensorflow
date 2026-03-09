@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/statusor.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/InitAllDialects.h"
@@ -95,7 +96,6 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
   // programs into, and run the to VHLO conversion passes. It is necessary to
   // do this because these passes change all the types in the context.
   mlir::MLIRContext tmp_context;
-  mlir::OpBuilder tmp_builder(&tmp_context);
   // Keeps track of the atom programs that have already been serialized.
   absl::flat_hash_set<std::string> converted_atom_program_names;
 
@@ -136,10 +136,16 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     }
 
     // Clone the module into a tmp context.
-    auto tmp_module = CloneModuleUsingBuilder(stablehlo_module, tmp_builder);
-    absl::Cleanup erase_tmp_module = [&]() { tmp_module.erase(); };
+    absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> tmp_module =
+        CloneModuleIntoContext(stablehlo_module, tmp_context);
+    if (!tmp_module.ok()) {
+      return stablehlo_module->emitOpError()
+             << "failed to clone module into tmp context";
+    }
+
     // Convert the tmp module as VHLO.
-    if (auto unstable_dialect = FindPotentiallyUnstableDialects(tmp_module)) {
+    if (auto unstable_dialect =
+            FindPotentiallyUnstableDialects(tmp_module->get())) {
       return stablehlo_module->emitOpError()
              << "unapproved dialect for serialization to VHLO: "
              << *unstable_dialect;
@@ -155,7 +161,8 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     bool allow_other_dialects = mixed_serialization_ok <=
                                 vhlo::Version::fromString(vhlo_target_version_);
     if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
-            tmp_module, vhlo_target_version_, os, allow_other_dialects))) {
+            tmp_module->get(), vhlo_target_version_, os,
+            allow_other_dialects))) {
       return stablehlo_module->emitOpError() << "failed to serialize to VHLO";
     }
     return mlir::WalkResult::advance();

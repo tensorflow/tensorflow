@@ -1023,6 +1023,11 @@ HloCollectiveInstruction::HloCollectiveInstruction(
   }
 }
 
+void HloCollectiveInstruction::set_device_list(
+    std::shared_ptr<CollectiveDeviceListBase> device_list) {
+  device_list_ = std::move(device_list);
+}
+
 void HloCollectiveInstruction::ToProto(HloInstructionProto* proto) const {
   HloChannelInstruction::ToProto(proto);
 
@@ -3118,13 +3123,15 @@ HloConvolutionInstruction::HloConvolutionInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config)
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config)
     : HloInstruction(HloOpcode::kConvolution, shape),
       feature_group_count_(feature_group_count),
       batch_group_count_(batch_group_count),
       window_(window),
       convolution_dimension_numbers_(dimension_numbers),
-      precision_config_(precision_config) {
+      precision_config_(precision_config),
+      sparsity_config_(sparsity_config) {
   if (window_util::HasBaseDilation(window)) {
     SetAndSanitizeName(StrCat(name(), "-base-dilated"));
   }
@@ -3172,6 +3179,7 @@ void HloConvolutionInstruction::ToProto(HloInstructionProto* proto) const {
   if (kind != CONVOLUTION_KIND_UNSET) {
     proto->set_conv_kind(kind);
   }
+  *proto->mutable_sparsity_config() = sparsity_config_;
 }
 
 void HloConvolutionInstruction::PrintExtraAttributesImpl(
@@ -3198,6 +3206,13 @@ void HloConvolutionInstruction::PrintExtraAttributesImpl(
     });
   }
   PrintPrecisionConfig(printer, precision_config_);
+  if (sparsity_config_.has_lhs() || sparsity_config_.has_rhs()) {
+    printer.Next([this](Printer* printer) {
+      printer->Append("sparsity_config={");
+      printer->Append(SparsityConfigToString(sparsity_config_));
+      printer->Append("}");
+    });
+  }
 }
 
 bool HloConvolutionInstruction::IdenticalSlowPath(
@@ -3217,8 +3232,10 @@ bool HloConvolutionInstruction::IdenticalSlowPath(
          protobuf_util::HaveSameSerialization(
              convolution_dimension_numbers(),
              casted_other.convolution_dimension_numbers()) &&
-         protobuf_util::HaveSameSerialization(precision_config(),
-                                              casted_other.precision_config());
+         protobuf_util::HaveSameSerialization(
+             precision_config(), casted_other.precision_config()) &&
+         protobuf_util::HaveSameSerialization(sparsity_config(),
+                                              casted_other.sparsity_config());
 }
 
 std::unique_ptr<HloInstruction>
@@ -3229,7 +3246,7 @@ HloConvolutionInstruction::CloneWithNewOperandsImpl(
   return std::make_unique<HloConvolutionInstruction>(
       shape, new_operands[0], new_operands[1], feature_group_count_,
       batch_group_count_, window(), convolution_dimension_numbers_,
-      precision_config_);
+      precision_config_, sparsity_config_);
 }
 
 HloReduceWindowInstruction::HloReduceWindowInstruction(

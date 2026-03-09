@@ -643,10 +643,9 @@ std::string PjRtArray::DebugString() const {
       layout_ptr.ok() ? (*layout_ptr)->ToString() : "<unknown>";
 
   return absl::StrFormat(
-      "PjRtArray(dtype=%s; shape=%s; sharding=%s; layout=%s)",
-      dtype_.DebugString(),
-      std::visit([](const auto& shape) { return shape.DebugString(); }, shape_),
-      sharding_->DebugString(), layout_str);
+      "PjRtArray(dtype=%v; shape=%s; sharding=%v; layout=%s)", dtype_,
+      std::visit([](const auto& shape) { return absl::StrCat(shape); }, shape_),
+      sharding_, layout_str);
 }
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> PjRtArray::pjrt_layout()

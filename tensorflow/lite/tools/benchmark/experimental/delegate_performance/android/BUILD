@@ -6,7 +6,7 @@ load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "android_binary_with_tflite", "android_library_with_tflite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/lite/tools/benchmark/experimental/delegate_performance/android:__subpackages__"],
     licenses = ["notice"],
 )

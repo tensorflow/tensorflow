@@ -29,25 +29,23 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include <algorithm>
-#include <atomic>
 #include <deque>
 #include <functional>
-#include <map>
-#include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -65,26 +63,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
-#include "xla/types.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
 #include "tsl/platform/base64.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/numbers.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {

@@ -211,7 +211,7 @@ TfLiteMiniBenchmarkSettingsCustomValidationInfo(
 }
 
 void TfLiteMiniBenchmarkSettingsSetFlatBufferData(
-    TfLiteMiniBenchmarkSettings* settings, uint8_t* flatbuffer_data,
+    TfLiteMiniBenchmarkSettings* settings, const uint8_t* flatbuffer_data,
     size_t flatbuffer_data_size) {
   settings->flatbuffer_data = flatbuffer_data;
   settings->flatbuffer_data_size = flatbuffer_data_size;

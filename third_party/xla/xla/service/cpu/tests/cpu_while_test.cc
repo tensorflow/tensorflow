@@ -20,10 +20,10 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -32,8 +32,10 @@ namespace xla {
 namespace cpu {
 namespace {
 
+class CpuWhileTest : public HloPjRtTestBase {};
+
 // Verifies fix for b/233647273.
-TEST_F(CpuCodegenTest, While) {
+TEST_F(CpuWhileTest, While) {
   const std::string hlo_text = R"(
 HloModule module
 
@@ -66,9 +68,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
-
   // Compile and execute the computation.
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(const Literal result, Execute(std::move(module), {}));
 
   // Check the output correctness.
@@ -77,7 +78,7 @@ ENTRY entry {
 
 // Add a small while loop that calls sort to verify that the small call emitter
 // can deal with thread local buffers.
-TEST_F(CpuCodegenTest, WhileSort) {
+TEST_F(CpuWhileTest, WhileSort) {
   const std::string hlo_text = R"(
     HloModule sort_loop
 
@@ -119,11 +120,11 @@ TEST_F(CpuCodegenTest, WhileSort) {
     }
   )";
 
+  // Compile and execute the computation.
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
 
   Literal input = LiteralUtil::CreateR1<float>({3, 1, 4, 2});
 
-  // Compile and execute the computation.
   TF_ASSERT_OK_AND_ASSIGN(const Literal result,
                           Execute(std::move(module), {&input}));
 
@@ -136,7 +137,7 @@ TEST_F(CpuCodegenTest, WhileSort) {
 // attempted deref of a nullptr in eigen runtime dot call. This test is not
 // intended to verify the correctness of the result, just that it does not
 // result in an error.
-TEST_F(CpuCodegenTest, WhileDotDoesNotError) {
+TEST_F(CpuWhileTest, WhileDotDoesNotError) {
   constexpr absl::string_view hlo_text = R"(
     HloModule Complex_1.44, entry_computation_layout={(f32[1,2,2]{2,1,0}, f32[1,2,2]{2,1,0})->f32[]}
 
@@ -271,17 +272,13 @@ TEST_F(CpuCodegenTest, WhileDotDoesNotError) {
     }
   )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-
-  Literal input_real =
-      LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}});
-  Literal input_imag =
-      LiteralUtil::CreateR3<float>({{{9, 10}, {11, 12}}, {{13, 14}, {15, 16}}});
-
   // No need to check the values of the Literal, just that it returns a valid
   // result.
-  TF_EXPECT_OK(Execute(module->Clone(), {&input_real, &input_imag}));
+  Literal input_real = LiteralUtil::CreateR3<float>({{{1, 2}, {3, 4}}});
+  Literal input_imag = LiteralUtil::CreateR3<float>({{{9, 10}, {11, 12}}});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  TF_EXPECT_OK(Execute(std::move(module), {&input_real, &input_imag}));
 }
 
 }  // namespace

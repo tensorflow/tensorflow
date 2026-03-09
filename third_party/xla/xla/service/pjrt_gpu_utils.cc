@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {

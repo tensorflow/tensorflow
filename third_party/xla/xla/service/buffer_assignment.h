@@ -840,6 +840,8 @@ class BufferAssigner {
                                 absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,
       bool run_whole_module_heap_simulation, BufferAssignment* assignment,
+      buffer_assignment::BufferAssignmentAlgorithmProto::Value
+          buffer_assignment_algorithm,
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,

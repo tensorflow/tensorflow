@@ -438,6 +438,7 @@ TEST_F(SubProcessTest, ExitStatusNormal) {
   EXPECT_FALSE(proc.CheckRunning());
   EXPECT_TRUE(proc.exit_normal());
   EXPECT_EQ(proc.exit_status(), 0);
+  EXPECT_EQ(proc.exit_code(), 0);
 }
 
 TEST_F(SubProcessTest, KillStatus) {
@@ -450,6 +451,7 @@ TEST_F(SubProcessTest, KillStatus) {
   EXPECT_TRUE(proc.Wait());
   EXPECT_FALSE(proc.exit_normal());
   EXPECT_EQ(proc.exit_status(), SIGKILL);
+  EXPECT_EQ(proc.exit_code(), -256);
 }
 
 TEST_F(SubProcessTest, ExitStderr) {
@@ -463,6 +465,19 @@ TEST_F(SubProcessTest, ExitStderr) {
   proc.Communicate(nullptr, nullptr, nullptr);
   EXPECT_NE(proc.exit_status(), 0);
   EXPECT_FALSE(proc.exit_normal());
+  EXPECT_EQ(proc.exit_code(), 1);
+}
+
+TEST_F(SubProcessTest, Running) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  EXPECT_FALSE(proc.running());
+  EXPECT_TRUE(proc.Start());
+  EXPECT_TRUE(proc.running());
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_FALSE(proc.running());
 }
 }  // namespace
 }  // namespace tsl

@@ -986,11 +986,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      instruction = CreateConvolve(
-          shape, operands(0), operands(1),
-          std::max<int64_t>(proto.feature_group_count(), 1),
-          std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
-          proto.convolution_dimension_numbers(), precision_config);
+      instruction =
+          CreateConvolve(shape, operands(0), operands(1),
+                         std::max<int64_t>(proto.feature_group_count(), 1),
+                         std::max<int64_t>(proto.batch_group_count(), 1),
+                         proto.window(), proto.convolution_dimension_numbers(),
+                         precision_config, proto.sparsity_config());
       if (proto.conv_kind() != CONVOLUTION_KIND_UNSET) {
         HloConvolutionInstruction::ConvKind conv_kind =
             HloConvolutionInstruction::ConvKind::UNSET;
@@ -1648,10 +1649,11 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
-    const PrecisionConfig& precision_config) {
+    const PrecisionConfig& precision_config,
+    const SparsityConfig& sparsity_config) {
   return std::make_unique<HloConvolutionInstruction>(
       shape, lhs, rhs, feature_group_count, batch_group_count, window,
-      dimension_numbers, precision_config);
+      dimension_numbers, precision_config, sparsity_config);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -5471,6 +5473,27 @@ std::string RaggedDotDimensionNumbersToString(
   return StrJoin(result, ", ");
 }
 
+std::string SparsityConfigToString(const SparsityConfig& sparsity_config) {
+  std::vector<std::string> result;
+  if (sparsity_config.has_lhs()) {
+    std::string sparsity_str =
+        absl::StrCat(sparsity_config.lhs().num_non_zero(), "x",
+                     sparsity_config.lhs().block_size());
+    result.push_back(StrCat("lhs={sparsity=", sparsity_str,
+                            " dimension=", sparsity_config.lhs().dimension(),
+                            " stride=", sparsity_config.lhs().stride(), "}"));
+  }
+  if (sparsity_config.has_rhs()) {
+    std::string sparsity_str =
+        absl::StrCat(sparsity_config.rhs().num_non_zero(), "x",
+                     sparsity_config.rhs().block_size());
+    result.push_back(StrCat("rhs={sparsity=", sparsity_str,
+                            " dimension=", sparsity_config.rhs().dimension(),
+                            " stride=", sparsity_config.rhs().stride(), "}"));
+  }
+  return StrJoin(result, " ");
+}
+
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums) {
   auto len_required = [](int64_t a, int64_t b, absl::Span<const int64_t> cs) {
@@ -6099,6 +6122,15 @@ const DotDimensionNumbers& HloInstruction::dot_dimension_numbers() const {
 const RaggedDotDimensionNumbers& HloInstruction::ragged_dot_dimension_numbers()
     const {
   return Cast<HloRaggedDotInstruction>(this)->ragged_dot_dimension_numbers();
+}
+
+const SparsityConfig& HloInstruction::sparsity_config() const {
+  return Cast<HloConvolutionInstruction>(this)->sparsity_config();
+}
+
+void HloInstruction::set_sparsity_config(
+    const SparsityConfig& sparsity_config) {
+  Cast<HloConvolutionInstruction>(this)->set_sparsity_config(sparsity_config);
 }
 
 const DomainMetadata& HloInstruction::operand_side_metadata() const {

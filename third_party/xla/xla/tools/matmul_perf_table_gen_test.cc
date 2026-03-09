@@ -22,9 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tsl/platform/env.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
@@ -32,13 +30,9 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-class MatmulPerfTableGenTest : public HloTestBase {
+class MatmulPerfTableGenTest : public HloPjRtGpuTestBase {
   void SetUp() override {
-    if (!backend()
-             .default_stream_executor()
-             ->GetDeviceDescription()
-             .gpu_compute_capability()
-             .IsCuda()) {
+    if (!device_description().gpu_compute_capability().IsCuda()) {
       GTEST_SKIP() << "Not built with --config=cuda";
     }
   }
@@ -62,7 +56,7 @@ TEST_F(MatmulPerfTableGenTest, DryRunsSpecifiedSweepSpace) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   DeviceHloInstructionProfiles profiles = gen.ComputeTable();
 
   EXPECT_EQ(profiles.entries_size(), 1);
@@ -87,7 +81,7 @@ TEST_F(MatmulPerfTableGenTest, DryRunsFactorSweepSpace) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   DeviceHloInstructionProfiles profiles = gen.ComputeTable();
 
   EXPECT_EQ(profiles.entries_size(), 1);
@@ -112,7 +106,7 @@ TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesOperands) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   DeviceHloInstructionProfiles profiles = gen.ComputeTable();
 
   EXPECT_EQ(profiles.entries_size(), 1);
@@ -138,7 +132,7 @@ TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesFlops) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   DeviceHloInstructionProfiles profiles = gen.ComputeTable();
 
   EXPECT_EQ(profiles.entries_size(), 1);
@@ -169,7 +163,7 @@ TEST_F(MatmulPerfTableGenTest, CompactsTable) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "f16", "f32"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   TF_ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
                           MatmulPerfTableGen::Compact(gen.ComputeTable()));
 
@@ -203,7 +197,7 @@ TEST_F(MatmulPerfTableGenTest, CompactTableInDeterministicOrder) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   TF_ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
                           MatmulPerfTableGen::Compact(gen.ComputeTable()));
 

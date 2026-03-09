@@ -433,19 +433,13 @@ absl::Status DynamicSliceThunk::ExecuteOnStream(const ExecuteParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status DynamicSliceThunk::WalkNested(
-    absl::FunctionRef<absl::Status(Thunk*)> callback) {
+absl::Status DynamicSliceThunk::WalkNested(Walker callback) {
   return embedded_thunk_->Walk(callback);
 }
 
-absl::Status DynamicSliceThunk::TransformAllNestedThunks(
-    absl::FunctionRef<
-        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-        fn) {
-  TF_RETURN_IF_ERROR(embedded_thunk_->TransformAllNestedThunks(fn));
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk,
-                      fn(std::move(embedded_thunk_)));
+absl::Status DynamicSliceThunk::TransformNested(Transformer callback) {
+  TF_RETURN_IF_ERROR(embedded_thunk_->TransformNested(callback));
+  TF_ASSIGN_OR_RETURN(auto thunk, callback(std::move(embedded_thunk_)));
   embedded_thunk_ = SequentialThunk::FromThunk(std::move(thunk));
   return absl::OkStatus();
 }
@@ -714,7 +708,7 @@ absl::StatusOr<std::unique_ptr<DynamicSliceThunk>> DynamicSliceThunk::FromProto(
         BufferAllocation::FromProto(fake_allocation_proto));
   }
 
-  std::vector<std::unique_ptr<Thunk>> embedded_thunks;
+  ThunkSequence embedded_thunks;
   for (const auto& thunk_proto : proto.embedded_thunk().thunks()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Thunk> embedded_thunk,
                         deserializer(thunk_proto, fake_allocations));

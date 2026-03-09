@@ -1264,10 +1264,10 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "fake_python_env_test",
+    name = "python_env_test",
     # Test size is marked as large because it showed a big runtime init overhead in build tests.
     size = "large",
-    srcs = ["fake_python_env_test.cc"],
+    srcs = ["python_env_test.cc"],
     args = [
         "/some/path/to/pythontest.runfiles/org_tensorflow/stuff/to/run.py",
     ],
@@ -1281,7 +1281,6 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
         "//tensorflow/core:test",
     ],
 )

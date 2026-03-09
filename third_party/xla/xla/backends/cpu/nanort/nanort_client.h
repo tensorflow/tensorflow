@@ -35,6 +35,7 @@ class NanoRtClient {
   // backend.
   absl::StatusOr<std::unique_ptr<NanoRtExecutable>> Compile(
       const XlaComputation& computation,
+      const Compiler::CompileOptions& compile_options = {},
       const ExecutableBuildOptions& executable_build_options =
           ExecutableBuildOptions());
 

@@ -285,9 +285,6 @@ CollectivePermuteStartThunk::FromProto(
 }
 
 absl::StatusOr<ThunkProto> CollectivePermuteStartThunk::ToProto() const {
-  CHECK_EQ(config_.validation_kind, P2PConfig::ValidationKind::kValid);
-  CHECK(config_.source_target_to_bounds.empty());
-
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 

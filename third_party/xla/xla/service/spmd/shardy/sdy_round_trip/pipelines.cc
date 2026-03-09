@@ -61,13 +61,12 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport,
-                                   bool importFuncCalls,
                                    bool liftAndDedupMeshes,
                                    bool enableHloShardingV3) {
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
   pm.addPass(createSdyRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm, importFuncCalls);
+  addCommonPostImportPasses(pm);
   if (liftAndDedupMeshes) {
     // Lift and dedup meshes required here because of sdy shardings added
     // directly to hlo in tf2xla.
@@ -114,9 +113,6 @@ struct SdyRoundTripImportPipelineOptions
   Option<bool> enableConstantImport{*this, "enable-constant-import",
                                     llvm::cl::desc("Enable constant import."),
                                     llvm::cl::init(true)};
-  Option<bool> importFuncCalls{*this, "import-func-calls",
-                               llvm::cl::desc("Import func calls."),
-                               llvm::cl::init(false)};
   Option<bool> liftAndDedupMeshes{*this, "lift-and-dedup-meshes",
                                   llvm::cl::desc("Lift and dedup meshes."),
                                   llvm::cl::init(false)};
@@ -129,9 +125,9 @@ struct SdyRoundTripImportPipelineOptions
 
 void sdyRoundTripImportPipeline(
     mlir::OpPassManager& pm, const SdyRoundTripImportPipelineOptions& options) {
-  addSdyRoundTripImportPipeline(
-      pm, options.enableConstantImport, options.importFuncCalls,
-      options.liftAndDedupMeshes, options.enableHloShardingV3);
+  addSdyRoundTripImportPipeline(pm, options.enableConstantImport,
+                                options.liftAndDedupMeshes,
+                                options.enableHloShardingV3);
 }
 
 }  // namespace

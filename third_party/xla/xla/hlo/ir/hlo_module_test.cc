@@ -1345,5 +1345,52 @@ TEST(HloModuleTest, OnTheFlyCanonicalizeStackFrameId) {
   EXPECT_EQ(i2->metadata().stack_frame_id(), 1);
 }
 
+TEST(HloModuleTest, DeviceTypeSerialization) {
+  const char* hlo = R"(
+    HloModule test_module
+    ENTRY main {
+      ROOT p0 = f32[128] parameter(0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+  module->mutable_config().set_device_type("GPU");
+
+  // Test ToProto
+  HloModuleProto proto = module->ToProto();
+  EXPECT_EQ(proto.device_type(), "GPU");
+
+  // Verify CreateFromProto picks it up
+
+  // Case 1: Config matches but has different device type (should be
+  // overwritten).
+  HloModuleConfig config_tpu = module->config();
+  config_tpu.set_device_type("TPU");
+
+  auto status_or_module_from_proto =
+      HloModule::CreateFromProto(proto, config_tpu);
+  ASSERT_TRUE(status_or_module_from_proto.ok());
+  std::unique_ptr<HloModule> module_from_proto =
+      std::move(status_or_module_from_proto).value();
+
+  EXPECT_EQ(module_from_proto->config().device_type(), "GPU");
+
+  // Case 2: Config is default (should be set)
+  // Create config from proto (which we verified sets device type)
+  // But let's unset it to be sure CreateFromProto does the work.
+  auto status_or_config_default =
+      HloModule::CreateModuleConfigFromProto(proto, DebugOptions());
+  ASSERT_TRUE(status_or_config_default.ok());
+  HloModuleConfig config_default = std::move(status_or_config_default).value();
+  config_default.set_device_type("");
+
+  auto status_or_module_from_proto_2 =
+      HloModule::CreateFromProto(proto, config_default);
+  ASSERT_TRUE(status_or_module_from_proto_2.ok());
+  std::unique_ptr<HloModule> module_from_proto_2 =
+      std::move(status_or_module_from_proto_2).value();
+  EXPECT_EQ(module_from_proto_2->config().device_type(), "GPU");
+}
+
 }  // namespace
 }  // namespace xla

@@ -103,7 +103,7 @@ cc_library(
     name = "cuda_platform_id",
     srcs = ["cuda_platform_id.cc"],
     hdrs = ["cuda_platform_id.h"],
-    deps = ["//xla/stream_executor:platform"],
+    deps = ["//xla/stream_executor:platform_id"],
 )
 
 cc_library(
@@ -120,20 +120,26 @@ cc_library(
         ":cuda_executor",
         ":cuda_memory_allocator",
         ":cuda_platform_id",
+        ":cuda_runtime_abi_version",
+        ":cuda_runtime_abi_version_registration",  # buildcleaner: keep
         ":cuda_status",
+        ":cuda_version_parser",
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:executor_cache",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/abi:runtime_abi_version",
         "//xla/stream_executor/platform:initialize",
         "//xla/tsl/cuda:nvml",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
@@ -142,7 +148,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_cuda//cuda:cudnn_header",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:status",
         "@tsl//tsl/platform:statusor",
@@ -1344,6 +1352,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -1360,6 +1369,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cuda_headers",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:fingerprint",
@@ -2736,6 +2746,60 @@ cuda_library(
         "//xla/stream_executor/gpu:gpu_kernel_registry",
         "//xla/stream_executor/gpu:gpu_test_kernel_traits",
         "@com_google_absl//absl/base",
+    ],
+    alwayslink = 1,
+)
+
+tf_proto_library(
+    name = "cuda_runtime_abi_version_proto",
+    srcs = ["cuda_runtime_abi_version.proto"],
+)
+
+cc_library(
+    name = "cuda_runtime_abi_version",
+    srcs = ["cuda_runtime_abi_version.cc"],
+    hdrs = ["cuda_runtime_abi_version.h"],
+    deps = [
+        ":cuda_platform_id",
+        ":cuda_runtime_abi_version_proto_cc",
+        "//xla/stream_executor:platform_id",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/abi:executable_abi_version",
+        "//xla/stream_executor/abi:runtime_abi_version",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "cuda_runtime_abi_version_test",
+    srcs = ["cuda_runtime_abi_version_test.cc"],
+    deps = [
+        ":cuda_runtime_abi_version",
+        ":cuda_runtime_abi_version_proto_cc",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/abi:executable_abi_version",
+        "//xla/stream_executor/abi:executable_abi_version_proto_cc",
+        "//xla/stream_executor/abi:runtime_abi_version_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cuda_runtime_abi_version_registration",
+    srcs = ["cuda_runtime_abi_version_registration.cc"],
+    deps = [
+        ":cuda_platform_id",
+        ":cuda_runtime_abi_version",
+        "//xla/stream_executor/abi:runtime_abi_version_manager",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = 1,
 )

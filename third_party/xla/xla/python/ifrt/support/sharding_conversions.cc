@@ -168,8 +168,8 @@ absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
   // `minor_to_major` order.
   ShardingParam::MinorToMajor minor_to_major;
   if (hlo_sharding.IsReplicated() || hlo_sharding.IsUnreduced() ||
-      (hlo_sharding.IsTileMaximal() && hlo_sharding.HasUniqueDevice() &&
-       num_devices == 1)) {
+      (hlo_sharding.IsReplicatedOrSingleDevice() &&
+       hlo_sharding.HasUniqueDevice() && num_devices == 1)) {
     // Convert replicated, unreduced, or TileMaximal. Only single-device
     // TileMaximal conversion is supported. These shardings are represented
     // as ShardingParam with a single axis (at index 0) of size num_devices.

@@ -478,8 +478,12 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     // debugging.
     std::string required_assignment_source;
 
-    bool equals_ignoring_time(const RequiredMemoryAssignment& other) const {
-      return memory_space == other.memory_space && offset == other.offset;
+    bool memory_space_and_offset_equal(
+        const RequiredMemoryAssignment& other) const {
+      return std::forward_as_tuple(memory_space,
+                                   offset ? offset->offset : -1) ==
+             std::forward_as_tuple(other.memory_space,
+                                   other.offset ? other.offset->offset : -1);
     }
 
     bool operator==(const RequiredMemoryAssignment& other) const {
@@ -735,7 +739,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // constraints into account. If the use already has a preferred offset in the
   // alternate memory space (e.g., due to prior allocations), the offset derived
   // from aliasing considerations must match the existing preferred offset.
-  AliasedOffset* UpdatePreferredOffsetForUse(
+  AliasedOffset* CheckOrUpdatePreferredOffsetForUse(
       const AllocationValue::Use& use, AliasedOffset* preferred_offset) const;
 
   // Propagate the allocation at the use time to any aliases that this use might
@@ -1186,6 +1190,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // instruction.
   const std::vector<const HloInstruction*>* GetRepeatedInstructionList(
       const HloInstruction* instruction) const;
+
+  // Adds an operand to the alternate memory map.
+  void AddOperandToAlternateMemoryMap(const HloInstruction* instruction,
+                                      int operand_number,
+                                      const ShapeIndex& index);
 
   // Returns true if the interval is pinned in the alternate memory. Buffers are
   // pinned when their layout has the alternate memory space before MSA runs.

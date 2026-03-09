@@ -76,6 +76,9 @@ py_strict_test(
 tf_py_strict_test(
     name = "tpu_embedding_v3_cpu_ops_test",
     srcs = ["tpu_embedding_v3_cpu_ops_test.py"],
+    exec_properties = {
+        "cpp_link.mem": "16g",
+    },
     shard_count = 8,
     tags = ["no_oss"],
     deps = [

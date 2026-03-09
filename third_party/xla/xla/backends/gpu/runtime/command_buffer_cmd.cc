@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
@@ -67,13 +68,14 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/call_frame.h"
+#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/invoke.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -112,6 +114,7 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/unique_any.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -911,9 +914,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
       Command::RecordParams new_record_params = record_params;
       std::vector<const se::CommandBuffer::Command*> dependencies;
 
-      for (int64_t i = 0; i < trip_count_.value(); ++i) {
+      ScopedWhileLoop loop("record_fn", trip_count_);
+      for (int64_t i = 0; i < *trip_count_; loop.IncLoopIteration(), ++i) {
         CommandExecutor::RecordId record_id(i);
-        new_record_params.unroll_iteration = i;
         TF_ASSIGN_OR_RETURN(dependencies,
                             cond_commands_.RecordCreate(
                                 execute_params, new_record_params,
@@ -934,9 +937,9 @@ absl::StatusOr<const se::CommandBuffer::Command*> WhileCmd::Record(
 
       Command::RecordParams new_record_params = record_params;
 
-      for (int64_t i = 0; i < trip_count_.value(); ++i) {
+      ScopedWhileLoop loop("record_fn", trip_count_);
+      for (int64_t i = 0; i < *trip_count_; loop.IncLoopIteration(), ++i) {
         CommandExecutor::RecordId record_id(i);
-        new_record_params.unroll_iteration = i;
         TF_RETURN_IF_ERROR(
             cond_commands_.RecordUpdate(execute_params, new_record_params,
                                         child_command_buffer, record_id));
@@ -1343,6 +1346,19 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
 
   RunId run_id = execute_params.collective_params->run_id;
 
+  // Lookup per-execution state for prepare and init stages.
+  ffi::ExecutionState* prepare_state = nullptr;
+  ffi::ExecutionState* initialize_state = nullptr;
+  if (execute_params.execution_scoped_state) {
+    auto it = execute_params.execution_scoped_state->find(thunk_id_);
+    if (it != execute_params.execution_scoped_state->end()) {
+      auto& state =
+          tsl::any_cast<CustomCallThunk::PrepareAndInitState>(it->second);
+      prepare_state = &state.prepare;
+      initialize_state = &state.init;
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(
       auto nested_cmd,
       se::TraceCommandBufferFactory::Create(
@@ -1354,8 +1370,17 @@ CustomCallCmd::RecordXlaFfiCall(const Thunk::ExecuteParams& execute_params,
                 ffi::InvokeContext::GpuContext{
                     stream,
                     execute_params.buffer_allocations->memory_allocator(),
+                    execute_params.collective_params,
+                    /*collective_clique_requests=*/nullptr,
+                    /*collective_memory_requests=*/nullptr,
+                    /*collective_cliques=*/nullptr,
+                    /*collective_memory=*/execute_params.collective_memory,
                 },
-                ffi::InvokeContext::StateContext{execution_state_.get()},
+                ffi::InvokeContext::StateContext{
+                    /*instantiate=*/execution_state_.get(),
+                    /*prepare=*/prepare_state,
+                    /*initialize=*/initialize_state,
+                },
                 /*called_computation=*/nullptr,  // TODO(b/342285364)
                 execute_params.ffi_execution_context};
             return ffi::Invoke(ffi::GetXlaFfiApi(), handler_, *call_frame,
@@ -1877,24 +1902,6 @@ absl::StatusOr<const se::CommandBuffer::Command*> RecvCmd::Record(
   P2PConfig::SourceTargetMapEntry source_target =
       P2PConfig::GetSourceTarget(p2p_config_.id_to_source_target, current_id);
 
-  bool should_run = false;
-  switch (p2p_config_.validation_kind) {
-    case P2PConfig::ValidationKind::kValid:
-      should_run = true;
-      break;
-    case P2PConfig::ValidationKind::kInvalid:
-      should_run = false;
-      break;
-    case P2PConfig::ValidationKind::kConditional:
-      return absl::UnimplementedError(
-          "Conditional validation is not supported in RecvCmd CommandBuffer");
-  }
-
-  if (!should_run) {
-    VLOG(3) << "[" << device_ordinal << "] Skipping Recv";
-    return nullptr;
-  }
-
   const std::optional<int64_t> source_id = source_target.source;
   std::function<absl::Status(se::Stream*)> trace = [&](se::Stream* stream) {
     return RunRecv(device_buffer_pair, *stream, *comm, current_id, source_id,
@@ -1985,21 +1992,8 @@ absl::StatusOr<const se::CommandBuffer::Command*> SendCmd::Record(
   P2PConfig::SourceTargetMapEntry source_target =
       P2PConfig::GetSourceTarget(p2p_config_.id_to_source_target, current_id);
 
-  bool should_run = false;
-  switch (p2p_config_.validation_kind) {
-    case P2PConfig::ValidationKind::kValid:
-      should_run = true;
-      break;
-    case P2PConfig::ValidationKind::kInvalid:
-      should_run = false;
-      break;
-    case P2PConfig::ValidationKind::kConditional:
-      return absl::UnimplementedError(
-          "Conditional validation is not supported in SendCmd CommandBuffer");
-  }
-
   std::optional<int64_t> target_id = source_target.target;
-  if (!target_id || !should_run) {
+  if (!target_id) {
     VLOG(3) << "[" << device_ordinal << "] Skipping Send";
     return nullptr;
   }
@@ -2239,7 +2233,7 @@ absl::StatusOr<const se::CommandBuffer::Command*> DynamicSliceFusionCmd::Record(
   int64_t* offsets_alloc = [&] {
     absl::MutexLock lock(mutex_);
     return reinterpret_cast<int64_t*>(
-        offsets_allocs_.at(stream.parent())->opaque());
+        offsets_allocs_.at(stream.parent())->address().opaque());
   }();
 
   auto offset_value = [&](int64_t arg_idx, int64_t offset_idx) -> int64_t& {
@@ -2451,19 +2445,16 @@ DynamicSliceCopyFusionCmd::Record(const Thunk::ExecuteParams& execute_params,
                 << mem_size_ << " from " << src_with_offset.opaque()
                 << " (offset " << src_offset << ") to "
                 << dst_with_offset.opaque() << " (offset " << dst_offset
-                << "), dependends_on_loop: " << offsets_.depends_on_loop;
+                << "), depends_on_loop: " << offsets_.depends_on_loop;
         return command_buffer->CreateMemcpyD2D(
             &dst_with_offset, src_with_offset, mem_size_, dependencies);
       },
-      [&](const se::CommandBuffer::Command* command) {
+      [&](const se::CommandBuffer::Command* command) -> absl::Status {
         int64_t iteration_index = 0;
         if (offsets_.depends_on_loop) {
-          if (WhileThunk::RunningWhileThunkLoop()) {
-            TF_ASSIGN_OR_RETURN(iteration_index,
-                                WhileThunk::CurrentLoopIteration());
-          } else {
-            iteration_index = record_params.unroll_iteration;
-          }
+          const WhileLoopState* state = IsInsideWhileLoop();
+          TF_RET_CHECK(state) << "DynamicSliceCopyFusionCmd depends on loop";
+          iteration_index = state->loop_iteration;
         }
         int64_t src_offset = offsets_.src_offsets[iteration_index];
         int64_t dst_offset = offsets_.dst_offsets[iteration_index];

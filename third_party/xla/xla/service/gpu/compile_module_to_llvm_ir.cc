@@ -69,7 +69,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -79,6 +78,7 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
@@ -130,9 +130,8 @@ std::string Phase(absl::string_view phase_name, const HloModule* module) {
                          module->name(), module->unique_id());
 }
 
-bool UseCache(const DebugOptions& options, bool split_constants_module) {
-  return split_constants_module &&
-         options.xla_gpu_enable_llvm_module_compilation_parallelism() &&
+bool UseCache(const DebugOptions& options) {
+  return options.xla_gpu_enable_llvm_module_compilation_parallelism() &&
          !options.xla_gpu_kernel_cache_file().empty();
 }
 
@@ -205,11 +204,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     se::Platform::Id platform_id, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
-    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
-    bool split_constants_module) {
+    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
-  const bool use_cache =
-      UseCache(hlo_module->config().debug_options(), split_constants_module);
+  const bool use_cache = UseCache(hlo_module->config().debug_options());
 
   CompileModuleResults results = InitializeResults(hlo_module);
 
@@ -248,29 +245,17 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
       "GpuCompiler::RunBackend - IR emission for ", hlo_module->name()));
 
-  TF_ASSIGN_OR_RETURN(auto sequential_thunk,
-                      thunk_emitter.EmitHloEntryComputation(hlo_module));
+  ASSIGN_OR_RETURN(auto sequential_thunk,
+                   thunk_emitter.EmitHloEntryComputation(hlo_module));
   results.executable = std::move(sequential_thunk);
 
-  // Assemble the LLVM module with all kernels.
-  std::vector<std::unique_ptr<llvm::Module>> modules =
-      thunk_emitter.ConsumeKernelModules();
-
-  if (split_constants_module) {
-    results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
-  } else {
-    modules.push_back(thunk_emitter.ConsumeConstantsModule());
+  results.llvm_modules = thunk_emitter.ConsumeKernelModules();
+  if (results.llvm_modules.empty()) {
+    results.llvm_modules.push_back(
+        ir_emitter_context.CreateLLVMModule(hlo_module->name()));
   }
 
-  if (modules.empty()) {
-    results.llvm_module =
-        ir_emitter_context.CreateLLVMModule(hlo_module->name());
-  } else {
-    LinkLlvmModulesInPlace(modules);
-    CHECK_EQ(modules.size(), 1);
-
-    results.llvm_module = std::move(modules[0]);
-  }
+  results.llvm_module_constants = thunk_emitter.ConsumeConstantsModule();
 
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).

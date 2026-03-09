@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_TSL_PLATFORM_DEFAULT_SUBPROCESS_H_
 
 #include <errno.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <functional>
@@ -95,6 +96,11 @@ class SubProcess {
   //    because the process doesn't exist.
   virtual bool Kill(int signal);
 
+  // running()
+  //    Return true if the process is currently running. This just checks the
+  //    most-recently-known status.
+  virtual bool running() const;
+
   // CheckRunning()
   //    Check to see if the process is still running.
   //    @return false, if the process has exited;
@@ -131,6 +137,14 @@ class SubProcess {
   //  (zero return code, no signal).
   virtual inline bool exit_normal() const { return exit_status() == 0; }
 
+  //  Return the exit code, assuming that the process wasn't killed by
+  //  a signal.
+  virtual inline int exit_code() const {
+    int status = exit_status();
+    return WIFEXITED(status) ? WEXITSTATUS(status)
+                             : static_cast<int>(WaitStatus::kWasKilled);
+  }
+
   // Communicate()
   //    Read from stdout and stderr and writes to stdin until all pipes have
   //    closed, then waits for the process to exit.
@@ -162,6 +176,10 @@ class SubProcess {
     kStillRunning = 0,
     kExited = 1,
     kNotRunning = 2,
+    // "exit code" if the process was killed.
+    // This is returned if you ask for exit_code(), and the process was
+    // actually killed (in which case there isn't really an exit code).
+    kWasKilled = -256,
   };
   WaitStatus WaitOrCheckRunningInternal(int flags, int* status);
 

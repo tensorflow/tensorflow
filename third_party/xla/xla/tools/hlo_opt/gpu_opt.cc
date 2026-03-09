@@ -235,7 +235,13 @@ class GpuOptProvider : public CompiledOptProvider {
             gpu_compiler->GetDataLayout(), platform->id(), device_description,
             alias_info.get(), std::move(buffer_size_bytes_function),
             llvm_options_lock));
-    return llvm_ir::DumpToString(results.llvm_module.get());
+
+    if (results.llvm_module_constants) {
+      results.llvm_modules.push_back(std::move(results.llvm_module_constants));
+    }
+    gpu::LinkLlvmModulesInPlace(results.llvm_modules);
+
+    return llvm_ir::DumpToString(results.llvm_modules[0].get());
   }
 };
 

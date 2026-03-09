@@ -34,10 +34,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "google/protobuf/descriptor.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
@@ -46,8 +48,6 @@ limitations under the License.
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/service/compiler.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -316,41 +316,6 @@ struct ExecuteOptions {
       }
     }());
   }
-};
-
-// Static memory usage for a compiled program.
-// The on-device memory needed to run an executable is at least
-//   generated_code_size_in_bytes
-//   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
-//   + temp_size_in_bytes.
-struct CompiledMemoryStats {
-  // Device default memory (e.g., HBM for GPU/TPU) usage stats.
-  int64_t generated_code_size_in_bytes = 0;
-  int64_t argument_size_in_bytes = 0;
-  int64_t output_size_in_bytes = 0;
-  int64_t peak_memory_in_bytes = 0;
-  // How much argument is reused for output.
-  int64_t alias_size_in_bytes = 0;
-  int64_t temp_size_in_bytes = 0;
-  int64_t total_size_in_bytes = 0;
-
-  // Host memory usage stats.
-  int64_t host_generated_code_size_in_bytes = 0;
-  int64_t host_argument_size_in_bytes = 0;
-  int64_t host_output_size_in_bytes = 0;
-  int64_t host_alias_size_in_bytes = 0;
-  int64_t host_temp_size_in_bytes = 0;
-
-  std::string serialized_buffer_assignment;
-
-  std::string DebugString() const;
-
-  CompiledMemoryStatsProto ToProto() const;
-
-  static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
-
-  void PopulateBufferStatsFromAllocations(
-      absl::Span<const BufferAllocation* const> allocs);
 };
 
 class PjRtExecutable {

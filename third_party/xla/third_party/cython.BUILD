@@ -1,4 +1,5 @@
 # Modified version of @cython//:BUILD.bazel
+load("@rules_python//python:defs.bzl", "py_binary", "py_library")
 
 py_library(
     name = "cython_lib",

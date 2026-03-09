@@ -133,7 +133,6 @@ CollectiveOpsE2ETestBase::ExecuteReplicated(
   HloRunnerInterface::ReplicatedExecuteOptions options;
   options.num_devices = num_devices;
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = true;
 
   return test_runner().ExecuteReplicated(
       /*executable_provider=*/

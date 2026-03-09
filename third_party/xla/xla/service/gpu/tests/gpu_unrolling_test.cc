@@ -16,17 +16,16 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/debug_options_flags.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/tests/gpu_pjrt_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class GpuUnrollingTest : public GpuCodegenTest {};
+class GpuUnrollingTest : public GpuPjRtCodegenTest {};
 
 const char *const kAddModule = R"(
     HloModule test_module
@@ -50,8 +49,8 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(kAddModule, config).value();
 
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
+  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               R"(
 ; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK-NOT: load float
 ; CHECK-NOT: store float
@@ -59,12 +58,12 @@ TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
 ; CHECK: load <4 x float>
 ; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/true);
+                               /*match_optimized_ir=*/true));
 }
 
 TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
 
   const char *const kUnfusedAddModule = R"(
@@ -77,8 +76,8 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
+  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               R"(
 ; CHECK-LABEL: @wrapped_add
 ; CHECK-NOT: load float
 ; CHECK-NOT: store float
@@ -86,12 +85,12 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedAdd) {
 ; CHECK: load <4 x float>
 ; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/true);
+                               /*match_optimized_ir=*/true));
 }
 
 TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
   HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
   config.set_debug_options(debug_options);
 
   const char *const kUnfusedAddModule = R"(
@@ -104,18 +103,18 @@ TEST_F(GpuUnrollingTest, UnrollUnfusedSine) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kUnfusedAddModule, config).value();
 
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
+  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               R"(
 ; CHECK: load <4 x float>
 ; CHECK-NOT: load <4 x float>
 ; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/true);
+                               /*match_optimized_ir=*/true));
 }
 
 TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   HloModuleConfig config;
-  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  auto debug_options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
   // Disable layout assignment for this test.  Layout assignment does not expect
   // fusions to be present, and so it does the wrong thing.
   debug_options.add_xla_disable_hlo_passes("layout-assignment");
@@ -141,8 +140,8 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kMultiOutputFusionModule, config).value();
 
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(
+  EXPECT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               R"(
 ; CHECK-LABEL: @{{[a-z_]*}}fusion
 ; CHECK-NOT: load float
 ; CHECK-NOT: store float
@@ -151,7 +150,7 @@ TEST_F(GpuUnrollingTest, UnrollMultiOutputFusion) {
 ; CHECK: store <4 x float>
 ; CHECK: store <4 x float>
       )",
-                     /*match_optimized_ir=*/true);
+                               /*match_optimized_ir=*/true));
 }
 
 }  // namespace

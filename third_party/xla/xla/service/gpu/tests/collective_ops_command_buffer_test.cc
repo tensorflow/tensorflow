@@ -152,7 +152,6 @@ TEST_F(CollectiveOpsCommandBufferPeerAccessTest, RaggedAllToAll_Simple) {
   options.num_devices = kNumReplicas;
   options.arguments = {&arg0};
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = true;
 
   // Multiple executions to Warm-up (may run thunks) and
   // Create (record and execute command buffer)
@@ -240,7 +239,6 @@ TEST_F(CollectiveOpsCommandBufferTest, SendRecv_Simple) {
   options.num_devices = kNumReplicas;
   options.arguments = {&arg0};
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = true;
 
   // Multiple executions to Warm-up (may run thunks) and
   // Create (record and execute command buffer)

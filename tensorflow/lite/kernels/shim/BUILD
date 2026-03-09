@@ -6,7 +6,7 @@ load("//tensorflow:tensorflow.bzl", "if_android", "if_mobile", "if_not_mobile", 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_compatible_with = get_compatible_with_portable(),
     # The public targets are marked public individually
     default_visibility = ["//tensorflow:__subpackages__"],

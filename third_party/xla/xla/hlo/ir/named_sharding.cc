@@ -165,6 +165,18 @@ bool DimensionSharding::IsPrefixOf(const DimensionSharding& other,
   return true;
 }
 
+std::vector<std::string> NamedSharding::DimensionSharding::axis_names(
+    const Mesh& mesh) const {
+  std::vector<std::string> names;
+  names.reserve(axes_.size());
+  for (const AxisRef& axis : axes_) {
+    CHECK(!axis.sub_axis_info().has_value())
+        << "axis_names should only be called for non-sub-axis.";
+    names.push_back(std::string(mesh.axis_names()[axis.mesh_axis_index()]));
+  }
+  return names;
+}
+
 int64_t DimensionSharding::getShardedSize(const Mesh& mesh) const {
   return std::accumulate(axes_.begin(), axes_.end(), 1,
                          [&mesh](int64_t cur, const AxisRef& axis) {

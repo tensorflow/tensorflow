@@ -170,8 +170,10 @@ absl::Status CoordinationServiceAgent::Connect() {
           absl::Milliseconds(backoff) * distribution(generator);
       LOG(INFO) << absl::Substitute(
           "Coordination service agent failed to register with the leader "
-          "(attempt #$0, will try again after $1). Error status: $2",
-          attempt, absl::FormatDuration(backoff_duration),
+          "(attempt #$0, will try again after $1, deadline is $2, now is $3,"
+          "total timeout is $4). Error status: $5",
+          attempt, absl::FormatDuration(backoff_duration), deadline,
+          absl::Now(), absl::FormatDuration(config_.cluster_register_timeout),
           connect_status.ToString());
       absl::SleepFor(backoff_duration);
     }

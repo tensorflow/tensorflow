@@ -135,7 +135,7 @@ void DestroyAcquiredCliques() {
   ProcessGpuCliques& state = GetProcessGpuCliques();
   absl::MutexLock lock(state.mu);
 
-  // Destroy cliques in a determenistic order, which guarantees that we destroy
+  // Destroy cliques in a deterministic order, which guarantees that we destroy
   // smaller cliques first, which is required for cliques that could be split
   // from the parent clique. When process shut down we do not destroy cliques
   // and let the operating system to collect all resources.
@@ -419,6 +419,8 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
     }
 
     if (!created_comms.ok()) {
+      LOG(ERROR) << "Failed to initialize GPU clique " << clique_key << ": "
+                 << created_comms.status();
       return created_comms.status();
     }
 

@@ -56,7 +56,6 @@ limitations under the License.
 #include <algorithm>
 #include <cassert>
 #include <cctype>
-#include <cstdarg>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -107,16 +106,6 @@ ABSL_FLAG(std::string, toc_section_name, "filewrapper_toc",
 ABSL_FLAG(std::string, strip, "", "Leading prefix to strip off file names.");
 
 namespace {
-
-void FatalError(const char* fmt, ...) {
-  fprintf(stderr, "%s: ", "filewrapper");
-  std::va_list args;
-  va_start(args, fmt);
-  vfprintf(stderr, fmt, args);
-  va_end(args);
-  fprintf(stderr, "\n");
-  exit(1);
-}
 
 // Determine the "runfiles" directory from argv[0].
 std::string RunFiles(int argc, char** argv) {
@@ -344,7 +333,8 @@ void WriteHeader(const std::string& filename, const std::string& comment,
                  const std::string& base, const std::string& runfiles) {
   std::ofstream hdr(filename, std::ios_base::out | std::ios_base::trunc);
   if (!hdr.is_open()) {
-    FatalError("Unable to open header file '%s' for writing", filename.c_str());
+    LOG(QFATAL) << absl::StrFormat(
+        "Unable to open header file '%s' for writing", filename);
   }
 
   hdr << comment << "//  Output: " << filename << "\n\n";
@@ -371,7 +361,7 @@ void WriteHeader(const std::string& filename, const std::string& comment,
   hdr << "#endif  // " << guard << "\n";
   hdr.close();
   if (hdr.fail()) {
-    FatalError("Error during header creation");
+    LOG(QFATAL) << "Error during header creation";
   }
 }
 
@@ -409,7 +399,8 @@ std::vector<Initializer> EmbedFiles(const std::vector<std::string>& infiles,
     std::streamoff size = 0;
     std::ifstream f_in(filename, std::ios_base::in | std::ios_base::binary);
     if (!f_in.is_open()) {
-      FatalError("Unable to open input file '%s'", filename.c_str());
+      LOG(QFATAL) << absl::StrFormat("Unable to open input file '%s'",
+                                     filename);
     }
 
     const std::streampos offset = f_cc.tellp();
@@ -454,7 +445,8 @@ std::vector<Initializer> EmbedFiles(const std::vector<std::string>& infiles,
 
     f_in.close();
     if (!f_in.eof()) {
-      FatalError("Unable to read input file '%s'", filename.c_str());
+      LOG(QFATAL) << absl::StrFormat("Unable to read input file '%s'",
+                                     filename);
     }
 
     Initializer initializer(filename, symbol, size, digest);

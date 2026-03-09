@@ -3,6 +3,7 @@ load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
+    "if_llvm_aarch32_available",
     "if_llvm_aarch64_available",
     "if_llvm_powerpc_available",
     "if_llvm_riscv_available",
@@ -93,6 +94,15 @@ cc_library(
     name = "ir_compiler",
     srcs = ["ir_compiler.cc"],
     hdrs = ["ir_compiler.h"],
+    defines = if_llvm_aarch32_available(["XLA_LLVM_AARCH32_AVAILABLE=1"]) + if_llvm_aarch64_available([
+        "XLA_LLVM_AARCH64_AVAILABLE=1",
+    ]) + if_llvm_powerpc_available([
+        "XLA_LLVM_POWERPC_AVAILABLE=1",
+    ]) + if_llvm_system_z_available([
+        "XLA_LLVM_S390X_AVAILABLE=1",
+    ]) + if_llvm_x86_available([
+        "XLA_LLVM_X86_AVAILABLE=1",
+    ]),
     deps = [
         ":kernel_api_ir_builder",
         ":polynomial_approximations",
@@ -107,6 +117,7 @@ cc_library(
         "//xla/service/cpu:cpu_options",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/llvm_ir:llvm_util",
+        "//xla/tools:llvm_targets",  # fixdeps: keep
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
@@ -150,31 +161,26 @@ xla_cc_test(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:AArch64AsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:ARMAsmParser",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:AsmParser",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
-    ] + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
-    ]) + if_llvm_powerpc_available([
-        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
-    ]) + if_llvm_riscv_available([
-        "@llvm-project//llvm:RISCVCodeGen",  # fixdeps: keep
-    ]) + if_llvm_system_z_available([
-        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86AsmParser",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
-    ]),
+    ],
 )
 
 cc_library(

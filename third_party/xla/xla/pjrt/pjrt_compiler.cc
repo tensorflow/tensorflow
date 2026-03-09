@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/tsl/platform/errors.h"
@@ -211,21 +213,26 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
-    CompileOptions options, mlir::ModuleOp module,
+    CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  auto topology_compiler = topology.compiler();
-  if (topology_compiler.has_value()) {
+  if (std::optional<PjRtCompiler*> topology_compiler = topology.compiler()) {
     return (*topology_compiler)
-        ->Compile(std::move(options), module, topology, client);
+        ->Compile(std::move(options), std::move(module), topology, client);
   }
-
   auto platform_name = topology.platform_name();
   auto compiler_variant = options.compiler_variant.value_or("");
-  std::pair<std::string, std::string> key{std::string(platform_name),
-                                          std::string(compiler_variant)};
   TF_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
                       GetPjRtCompiler(platform_name, compiler_variant));
-  return compiler->Compile(std::move(options), module, topology, client);
+  return compiler->Compile(std::move(options), std::move(module), topology,
+                           client);
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
+    CompileOptions options, mlir::ModuleOp module,
+    const PjRtTopologyDescription& topology, PjRtClient* client) {
+  return PjRtCompile(std::move(options),
+                     MaybeOwningMlirModule(std::move(module)), topology,
+                     client);
 }
 
 absl::Status PjRtPhaseCompiler::RegisterPhase(

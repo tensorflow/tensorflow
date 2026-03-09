@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -181,9 +183,9 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   return result;
 }
 
-absl::StatusOr<Type> PrimitiveTypeToMlirType(mlir::ImplicitLocOpBuilder& b,
-
-                                             PrimitiveType t) {
+absl::StatusOr<Type> PrimitiveTypeToMlirType(
+    mlir::ImplicitLocOpBuilder& b, PrimitiveType t,
+    const std::optional<se::GpuComputeCapability>& gpu_cc) {
   switch (t) {
     case F64:
       return b.getF64Type();
@@ -223,6 +225,18 @@ absl::StatusOr<Type> PrimitiveTypeToMlirType(mlir::ImplicitLocOpBuilder& b,
       return b.getType<mlir::Float8E8M0FNUType>();
     case F4E2M1FN:
       return b.getType<mlir::Float4E2M1FNType>();
+    case F8E5M2FNUZ:
+      if (gpu_cc.has_value() && !gpu_cc.value().IsRocm()) {
+        return absl::UnimplementedError(
+            "F8E5M2FNUZ is not supported on this GPU.");
+      }
+      return b.getType<mlir::Float8E5M2FNUZType>();
+    case F8E4M3FNUZ:
+      if (gpu_cc.has_value() && !gpu_cc.value().IsRocm()) {
+        return absl::UnimplementedError(
+            "F8E4M3FNUZ is not supported on this GPU.");
+      }
+      return b.getType<mlir::Float8E4M3FNUZType>();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
@@ -245,6 +259,8 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
   if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;
   if (mlir::isa<mlir::Float8E8M0FNUType>(t)) return F8E8M0FNU;
+  if (mlir::isa<mlir::Float8E5M2FNUZType>(t)) return F8E5M2FNUZ;
+  if (mlir::isa<mlir::Float8E4M3FNUZType>(t)) return F8E4M3FNUZ;
   // NOLINTEND(google-readability-braces-around-statements)
   return absl::UnimplementedError("Unsupported type in getPrimitiveType.\n");
 }

@@ -109,23 +109,12 @@ class DotTest : public SupportTestBase,
         primitive_util::LowercasePrimitiveTypeName(output_type);
 
     const std::string kHloTestTemplate = R"(
-lhs {
-  ROOT p0 = $0[92,11]{1,0} parameter(0)
-}
-rhs {
-  ROOT p0 = $1[11,63]{1,0} parameter(0)
-}
 triton_computation {
   p0 = $0[92,11]{1,0} parameter(0)
   p1 = $1[11,63]{1,0} parameter(1)
-  lhs_fusion = $0[92,11]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[16,16]}]}}}
-  rhs_fusion = $1[11,63]{1,0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}]}}}
-  ROOT dot = $2[92,63]{1,0} $3(lhs_fusion, rhs_fusion),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot = $2[92,63]{1,0} $3(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 
 ENTRY e {
@@ -257,29 +246,16 @@ TEST_P(DynamicSliceTest, IsTritonSupportedDynamicSlice) {
 
   constexpr absl::string_view kHloTestTemplate =
       R"(
-lhs {
-  p0 = $0[$2,$3] parameter(0)
-  p1 = $1[] parameter(1)
-  p2 = $1[] parameter(2)
-  ds = $0[5,2] dynamic-slice(p0, p1, p2), dynamic_slice_sizes={5,2}
-  ROOT convert = f32[5,2] convert(ds)
-}
-rhs {
-  ROOT p0 = f32[2,4] parameter(0)
-}
 triton_computation {
   dynamic_slice_input = $0[$2,$3] parameter(0)
   dot_rhs = f32[2,4] parameter(1)
   start_index0 = $1[] parameter(2)
   start_index1 = $1[] parameter(3)
-  lhs = f32[5,2] fusion(dynamic_slice_input, start_index0, start_index1), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[32,32]}]}}}
-  rhs = f32[2,4] fusion(dot_rhs), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[32,32]}]}}}
-  ROOT dot = f32[5, 4] dot(lhs, rhs),
-          lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ds = $0[5,2] dynamic-slice(dynamic_slice_input, start_index0, start_index1), dynamic_slice_sizes={5,2}
+  convert = f32[5,2] convert(ds)
+  ROOT dot = f32[5, 4] dot(convert, dot_rhs),
+          lhs_contracting_dims={1}, rhs_contracting_dims={0},
+          backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -362,23 +338,12 @@ class SupportLegacyTest : public HloHardwareIndependentTestBase,
 
 TEST_F(SupportLegacyTest, UnsupportedDotOutputTypeFailsCanTritonHandleGEMM) {
   const std::string kHloTest = R"(
-lhs {
-  ROOT p0 = f32[92,11]{1,0} parameter(0)
-}
-rhs {
-  ROOT p0 = f32[11,63]{1,0} parameter(0)
-}
 triton_computation {
   p0 = f32[92,11]{1,0} parameter(0)
   p1 = f32[11,63]{1,0} parameter(1)
-  lhs_fusion = f32[92,11]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[16,16]}]}}}
-  rhs_fusion = f32[11,63]{1,0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}]}}}
-  ROOT dot = pred[92,63]{1,0} dot(lhs_fusion, rhs_fusion),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot = pred[92,63]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 ENTRY e {
   parameter_0 = f32[92,11]{1,0} parameter(0)
@@ -401,23 +366,12 @@ ENTRY e {
 
 TEST_F(SupportLegacyTest, UnsupportedIntFloatDotFailsCanTritonHandleGEMM) {
   const std::string kHloTest = R"(
-lhs {
-  ROOT p0 = s8[92,11]{1,0} parameter(0)
-}
-rhs {
-  ROOT p0 = s8[11,63]{1,0} parameter(0)
-}
 triton_computation {
   p0 = s8[92,11]{1,0} parameter(0)
   p1 = s8[11,63]{1,0} parameter(1)
-  lhs_fusion = s8[92,11]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[16,16]}]}}}
-  rhs_fusion = s8[11,63]{1,0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}]}}}
-  ROOT dot = f32[92,63]{1,0} dot(lhs_fusion, rhs_fusion),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot = f32[92,63]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 ENTRY e {
   parameter_0 = s8[92,11]{1,0} parameter(0)
@@ -442,23 +396,12 @@ ENTRY e {
 TEST_F(SupportLegacyTest,
        UnsupportedDifferentOperandTypesDotFailsCanTritonHandleGEMM) {
   const std::string kHloTest = R"(
-lhs {
-  ROOT p0 = f16[92,11]{1,0} parameter(0)
-}
-rhs {
-  ROOT p0 = f32[11,63]{1,0} parameter(0)
-}
 triton_computation {
   p0 = f16[92,11]{1,0} parameter(0)
   p1 = f32[11,63]{1,0} parameter(1)
-  lhs_fusion = f16[92,11]{1,0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[16,16]}]}}}
-  rhs_fusion = f32[11,63]{1,0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[16,32]}]}}}
-  ROOT dot = f32[92,63]{1,0} dot(lhs_fusion, rhs_fusion),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot = f32[92,63]{1,0} dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 ENTRY e {
   parameter_0 = f16[92,11]{1,0} parameter(0)
@@ -481,24 +424,13 @@ ENTRY e {
 
 TEST_F(SupportLegacyTest, DotWithMultipleBatchDimensionsIsSupportedWithTriton) {
   const std::string kHloTest = R"(
-lhs {
-  ROOT p0 = f32[2,2,2,2] parameter(0)
-}
-rhs {
-  ROOT p0 = f32[2,2,2,2] parameter(0)
-}
 triton_computation {
   p0 = f32[2,2,2,2] parameter(0)
   p1 = f32[2,2,2,2] parameter(1)
-  lhs_fusion = f32[2,2,2,2] fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1,2,2]}]}}}
-  rhs_fusion = f32[2,2,2,2] fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1,2,2]}]}}}
-  ROOT dot = f32[2,2,2,2] dot(lhs_fusion, rhs_fusion),
+  ROOT dot = f32[2,2,2,2] dot(p0, p1),
     lhs_contracting_dims={3}, lhs_batch_dims={1,0},
-    rhs_contracting_dims={2}, rhs_batch_dims={1,0}
+    rhs_contracting_dims={2}, rhs_batch_dims={1,0},
+    backend_config={sizes:[2]}
 }
 
 ENTRY e {
@@ -534,23 +466,12 @@ ENTRY e {
 TEST_F(SupportLegacyTest,
        UnsupportedDotWithNoNonContractingDimensionsFailsGracefullyWithTriton) {
   const std::string kHloTest = R"(
-lhs {
-  ROOT p0 = f32[2]{0} parameter(0)
-}
-rhs {
-  ROOT p0 = f32[2]{0} parameter(0)
-}
 triton_computation {
   p0 = f32[2]{0} parameter(0)
   p1 = f32[2]{0} parameter(1)
-  lhs_fusion = f32[2]{0} fusion(p0), kind=kCustom, calls=lhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1]}]}}}
-  rhs_fusion = f32[2]{0} fusion(p1), kind=kCustom, calls=rhs,
-    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config":{"output_tiles":[{"sizes":[1,1]}]}}}
-  ROOT dot = f32[] dot(lhs_fusion, rhs_fusion),
-    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT dot = f32[] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0},
+    backend_config={sizes:[1]}
 }
 
 ENTRY e {

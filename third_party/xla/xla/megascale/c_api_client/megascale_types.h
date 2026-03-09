@@ -17,9 +17,7 @@ limitations under the License.
 #define XLA_MEGASCALE_C_API_CLIENT_MEGASCALE_TYPES_H_
 
 #include <cstdint>
-#include <string>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
@@ -27,7 +25,6 @@ limitations under the License.
 #include "xla/megascale/dcn_topology.pb.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_megascale_extension.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/tsl/platform/logging.h"
 
 namespace xla {
@@ -59,27 +56,6 @@ class CApiPjRtClientContext {
 
  private:
   PJRT_Megascale_ClientContext* client_context_;
-  const PJRT_Api* c_api_;
-  const PJRT_Megascale_Extension* extension_;
-};
-
-class PjRtCApiMultiSliceConfig : public xla::MultiSliceConfig {
- public:
-  PjRtCApiMultiSliceConfig(PJRT_MultiSlice_Config* config,
-                           const PJRT_Api* c_api,
-                           const PJRT_Megascale_Extension* extension)
-      : config_(config), c_api_(c_api), extension_(CHECK_NOTNULL(extension)) {}
-
-  ~PjRtCApiMultiSliceConfig() override;
-
-  int32_t NumSlices() const override;
-  int32_t SliceId() const override;
-  absl::flat_hash_map<int32_t, int32_t> NumDevicesPerSlice() const override;
-  std::string Serialize() const override;
-  PJRT_MultiSlice_Config* get() const { return config_; }
-
- private:
-  PJRT_MultiSlice_Config* config_;
   const PJRT_Api* c_api_;
   const PJRT_Megascale_Extension* extension_;
 };

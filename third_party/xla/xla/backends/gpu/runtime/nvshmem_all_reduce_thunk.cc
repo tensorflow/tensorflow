@@ -23,7 +23,9 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -34,12 +36,14 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -103,6 +107,17 @@ NvshmemAllReduceStartThunk::NvshmemAllReduceStartThunk(
           GetAllReduceConfigInst(inst), std::move(buffers),
           IsGPUSyncCollective(*inst)) {}
 
+NvshmemAllReduceStartThunk::NvshmemAllReduceStartThunk(
+    ThunkInfo thunk_info, AllReduceConfig config,
+    std::vector<CollectiveThunk::Buffer> buffers,
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    : NvshmemAllReduceReduceScatterThunkBase(
+          Thunk::kNvshmemAllReduceStart, std::move(thunk_info),
+          std::move(config), std::move(buffers),
+          /*is_sync=*/async_events == nullptr) {
+  set_async_events(std::move(async_events));
+}
+
 absl::Status NvshmemAllReduceStartThunk::CheckImplementable(
     const HloAllReduceInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
@@ -114,6 +129,64 @@ absl::Status NvshmemAllReduceStartThunk::CheckImplementable(
 CollectiveOpGroupMode NvshmemAllReduceStartThunk::GetGroupMode(
     const HloAllReduceInstruction* inst) {
   return impl::GetGroupModeInst(inst);
+}
+
+absl::StatusOr<ThunkProto> NvshmemAllReduceStartThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  NvshmemAllReduceStartThunkProto* thunk_proto =
+      proto.mutable_nvshmem_all_reduce_start_thunk();
+
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  if (async_events_id.has_value()) {
+    thunk_proto->set_async_events_unique_id(async_events_id->value());
+  }
+
+  for (const CollectiveThunk::Buffer& buffer : buffers_) {
+    TF_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+  }
+
+  *thunk_proto->mutable_collective_config() = config_.config.ToProto();
+  thunk_proto->set_reduction_kind(ToReductionKindProto(config_.reduction_kind));
+
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<NvshmemAllReduceStartThunk>>
+NvshmemAllReduceStartThunk::FromProto(
+    ThunkInfo thunk_info, const NvshmemAllReduceStartThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    CollectiveThunk::AsyncEventsMap& async_events_map) {
+  std::vector<CollectiveThunk::Buffer> buffers;
+  buffers.reserve(thunk_proto.buffers_size());
+  for (const CollectiveBufferProto& buffer_proto : thunk_proto.buffers()) {
+    TF_ASSIGN_OR_RETURN(
+        buffers.emplace_back(),
+        CollectiveThunk::Buffer::FromProto(buffer_proto, buffer_allocations));
+  }
+
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
+  if (thunk_proto.has_async_events_unique_id()) {
+    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
+        async_events_map[AsyncEventsUniqueId{
+            thunk_proto.async_events_unique_id()}];
+    if (!events) {
+      events = std::make_shared<CollectiveThunk::AsyncEvents>();
+    }
+    async_events = events;
+  }
+
+  CollectiveConfig config =
+      CollectiveConfig::FromProto(thunk_proto.collective_config());
+  ASSIGN_OR_RETURN(ReductionKind reduction_kind,
+                   FromReductionKindProto(thunk_proto.reduction_kind()));
+
+  return absl::WrapUnique<NvshmemAllReduceStartThunk>(
+      new NvshmemAllReduceStartThunk(
+          std::move(thunk_info),
+          AllReduceConfig{std::move(config), reduction_kind},
+          std::move(buffers), async_events));
 }
 
 absl::Status NvshmemAllReduceStartThunk::RunNvshmemCollective(

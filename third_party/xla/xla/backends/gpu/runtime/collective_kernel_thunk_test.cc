@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
@@ -193,11 +194,14 @@ CollectiveKernelThunkMetadata CreateCollectiveKernelThunk(
                      /*destination_memory_space=*/0}};
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = kProfileName;
+  const LaunchDimensions launch_dimensions(
+      /*block_x_count=*/1, /*thread_x_count_per_block=*/kNumElements);
   result.thunk = std::make_unique<CollectiveKernelThunk>(
       std::move(thunk_info), collective_config, ReductionKind::SUM,
       /*is_async=*/false, result.buffers,
       /*is_collective_kernel_enabled=*/true,
       /*kernel_name=*/kKernelName,
+      /*launch_dimensions=*/launch_dimensions,
       /*shmem_bytes=*/0,
       /*is_multimem_enabled=*/is_multimem_enabled);
   result.total_buffer_size = total_buffer_size;

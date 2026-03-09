@@ -96,7 +96,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallTopK(
 
   const HloSharding& sharding = hlo->operand(0)->sharding();
   // No support for partial replicate yet.
-  if (sharding.IsTileMaximal() || sharding.IsReplicated() ||
+  if (sharding.IsReplicatedOrSingleDevice() ||
       sharding.HasPartialReplication()) {
     return DefaultAction(hlo);
   }
@@ -403,8 +403,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
                                      ? hlo->sharding().tuple_elements()[0]
                                      : hlo->sharding();
 
-  TF_RET_CHECK(
-      !(element_sharding.IsReplicated() || element_sharding.IsTileMaximal()))
+  TF_RET_CHECK(!element_sharding.IsReplicatedOrSingleDevice())
       << "MultiRotate op requires sharding along the rotate dimension.";
 
   input = input.Reshard(element_sharding);
@@ -636,8 +635,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_Wrap(
   PartitionedHlo input = GetPartitionedHlo(hlo->operand(0));
   HloSharding element_sharding = hlo->sharding();
 
-  TF_RET_CHECK(
-      !(element_sharding.IsReplicated() || element_sharding.IsTileMaximal()))
+  TF_RET_CHECK(!element_sharding.IsReplicatedOrSingleDevice())
       << "Wrap op requires sharding along the wrap dimension.";
 
   input = input.Reshard(element_sharding);

@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_passes.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/transforms/converter_pass_options_setter.h"
+#include "tensorflow/compiler/mlir/lite/transforms/downcast_x64_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/pass.h"
@@ -655,6 +656,12 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     if (pass_config.canonicalizing_inf_as_min_max_float)
       pass_manager->addPass(mlir::TFL::CreateCanonicalizeBoundaryValuePass());
 
+    if (!converter_flags.enable_x64()) {
+      pass_manager->addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::CreateDowncastX64Pass());
+      pass_manager->addPass(mlir::createCanonicalizerPass());
+    }
+
     // This pass should be always at the end of the model
     // conversion (even after quantization). Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes
@@ -673,6 +680,11 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
     // This pass should always run before the end of the model conversion.
     if (pass_config.canonicalizing_inf_as_min_max_float)
       pass_manager->addPass(mlir::TFL::CreateCanonicalizeBoundaryValuePass());
+    if (!converter_flags.enable_x64()) {
+      pass_manager->addNestedPass<mlir::func::FuncOp>(
+          mlir::TFL::CreateDowncastX64Pass());
+      pass_manager->addPass(mlir::createCanonicalizerPass());
+    }
   }
 
   if (pass_config.unfold_large_splat_constant) {

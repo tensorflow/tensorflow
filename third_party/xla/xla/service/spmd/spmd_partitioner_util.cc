@@ -301,7 +301,7 @@ bool EvenlyPartitions(const Shape& shape, const HloSharding& sharding) {
   if (sharding.IsManual()) {
     return true;
   }
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return sharding.IsReplicated();
   }
   if (shape.IsArray()) {
@@ -359,7 +359,7 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
   if (sharding.IsReplicated()) {
     return shape;
   }
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     if (partition_id == *sharding.UniqueDevice()) {
       return shape;
     }
@@ -399,7 +399,7 @@ std::vector<HloInstruction*> MakePartitionOffsets(
 
 std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     const HloSharding& sharding, HloInstruction* partition_id, SpmdBuilder* b) {
-  CHECK(!sharding.IsTileMaximal());
+  CHECK(!sharding.IsReplicatedOrSingleDevice());
   auto dimensions = sharding.dimensions();
   if (sharding.ReplicateOnLastTileDim()) {
     dimensions.remove_suffix(1);
@@ -410,7 +410,7 @@ std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
 
 Shape GetPaddedShapeForUnevenPartitioning(const Shape& base_shape,
                                           const HloSharding& sharding) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return base_shape;
   }
   if (EvenlyPartitions(base_shape, sharding)) {
@@ -905,7 +905,7 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
 }
 
 std::optional<int64_t> UniqueTiledDim(const HloSharding& sharding) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return std::nullopt;
   }
   int64_t dim = -1;
@@ -1917,7 +1917,7 @@ std::optional<HloInstruction*> ExchangeHaloAndGetValidData(
 
 HloInstruction* HaloExchangeToPadOnLeft(PartitionedHlo& original,
                                         absl::Span<const int64_t> dims) {
-  if (original.sharding().IsTileMaximal()) {
+  if (original.sharding().IsReplicatedOrSingleDevice()) {
     return original.hlo();
   }
   // Create a window config to halo exchange for unevenly partitioned reverse
@@ -2073,7 +2073,7 @@ std::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
   }
   const HloSharding& sharding = sort->operand(0)->sharding();
 
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return std::nullopt;
   }
 
@@ -2121,7 +2121,7 @@ HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
 
 // Check if a dimension is sharded.
 int64_t ShardCountAtDim(const HloSharding& sharding, int64_t dim) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return 1;
   }
   if (dim == -1) {
@@ -2135,7 +2135,8 @@ int64_t ShardCountAtDim(const HloSharding& sharding, int64_t dim) {
 std::optional<std::vector<std::pair<int64_t, int64_t>>>
 GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target) {
-  if (source.IsTileMaximal() || target.IsTileMaximal() ||
+  if (source.IsReplicatedOrSingleDevice() ||
+      target.IsReplicatedOrSingleDevice() ||
       source.num_dimensions() != target.num_dimensions() ||
       source.NumTiles() != target.NumTiles()) {
     return std::nullopt;
@@ -2219,7 +2220,8 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
 
 bool CanReshardWithCollectivePermute(const HloSharding& source,
                                      const HloSharding& target) {
-  return !source.IsTileMaximal() && !target.IsTileMaximal() &&
+  return !source.IsReplicatedOrSingleDevice() &&
+         !target.IsReplicatedOrSingleDevice() &&
          source.dimensions() == target.dimensions() &&
          source.ReplicateOnLastTileDim() == target.ReplicateOnLastTileDim() &&
          source.tile_assignment() != target.tile_assignment();
@@ -2300,7 +2302,8 @@ std::optional<GroupedSharding> AlignGroupsWithInternal(
       }
     }
   }
-  if (matching_groups && !grouped_sharding.sharding.IsTileMaximal()) {
+  if (matching_groups &&
+      !grouped_sharding.sharding.IsReplicatedOrSingleDevice()) {
     auto tiles = [&] {
       auto array =
           grouped_sharding.sharding.tile_assignment().shared_array_clone();
@@ -2438,7 +2441,7 @@ HloInstruction* PerGroupSliceFromReplicated(
 std::optional<std::vector<int64_t>> FindMatchingPartitionedDimsForGrouping(
     const HloSharding& sharding,
     const hlo_sharding_util::DeviceGroupTileAssignment& device_groups) {
-  if (sharding.IsTileMaximal() || device_groups.num_groups() < 2) {
+  if (sharding.IsReplicatedOrSingleDevice() || device_groups.num_groups() < 2) {
     return std::nullopt;
   }
   const int64_t num_devices = sharding.num_devices();
@@ -3195,7 +3198,7 @@ PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,
 
 DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
     const HloInstruction* hlo) {
-  CHECK(!hlo->sharding().IsTileMaximal());
+  CHECK(!hlo->sharding().IsReplicatedOrSingleDevice());
 
   DynamicUpdateSliceAnalysis analysis;
 

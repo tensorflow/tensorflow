@@ -77,14 +77,14 @@ class DistributedRuntimeClient
     // Exposed so tests can override this behavior to something non-fatal.
     std::function<void(absl::Status)> missed_heartbeat_callback =
         [](const absl::Status& status) {
-          LOG(QFATAL) << "Terminating process because the JAX distributed "
-                         "service detected fatal errors. This most likely "
-                         "indicates that another task died; see the other task "
-                         "logs for more details. Disable Python buffering, "
-                         "i.e. `python -u`, to be sure to see all the "
-                         "previous output. "
-                         "absl::Status: "
-                      << status;
+          LOG(FATAL) << "Terminating process because the JAX distributed "
+                        "service detected fatal errors. This most likely "
+                        "indicates that another task died; see the other task "
+                        "logs for more details. Disable Python buffering, "
+                        "i.e. `python -u`, to be sure to see all the "
+                        "previous output. "
+                        "absl::Status: "
+                     << status;
         };
 
     // For testing. Should the client explicitly Shutdown() on destruction?

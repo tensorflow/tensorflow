@@ -84,7 +84,6 @@ def main():
 
     for metric_name, metric_data in metrics.items():
       val = metric_data.get("value")
-      unit = metric_data.get("unit")
 
       if val is None:
         continue
@@ -94,9 +93,6 @@ def main():
       except (ValueError, TypeError):
         print(f"::warning::Skipping non-numeric metric '{metric_name}': {val}")
         continue
-
-      if unit:
-        metric_name = f"{metric_name} ({unit})"
 
       summary = summary_pb2.Summary(
           value=[summary_pb2.Summary.Value(tag=metric_name, simple_value=val)]
