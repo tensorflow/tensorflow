@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
