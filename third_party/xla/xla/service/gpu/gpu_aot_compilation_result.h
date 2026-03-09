@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/service/compiled_module.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 
@@ -79,6 +80,12 @@ class GpuAotCompilationResult : public CompiledModule {
 
   std::shared_ptr<HloModule> shared_optimized_module() final {
     return hlo_module_;
+  }
+
+  absl::StatusOr<stream_executor::ExecutableAbiVersion>
+  GetExecutableAbiVersion() const final {
+    return stream_executor::ExecutableAbiVersion::FromProto(
+        GetExecutableProto().executable_abi_version());
   }
 
  private:

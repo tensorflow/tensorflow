@@ -95,6 +95,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
             errorHandle,
             options.getNumThreads(),
             options.getUseXNNPACK(),
+            options.getCompressQuantizationZeroPoints(),
             delegateHandles);
     this.originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
     addDelegates(options);
@@ -112,6 +113,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
               errorHandle,
               options.getNumThreads(),
               options.getUseXNNPACK(),
+              options.getCompressQuantizationZeroPoints(),
               delegateHandles);
     }
     if (options.allowFp16PrecisionForFp32 != null) {
@@ -659,6 +661,7 @@ class NativeInterpreterWrapper implements AutoCloseable {
       long errorHandle,
       int numThreads,
       boolean useXnnpack,
+      boolean compressQuantizationZeroPoints,
       List<Long> delegateHandles);
 
   private static native long createCancellationFlag(long interpreterHandle);
