@@ -41,7 +41,7 @@ std::unique_ptr<mlir::Pass> CreateConvertFloatAMDPass(
 std::unique_ptr<mlir::Pass> CreateConvertFloatAMDPass(
     const stream_executor::RocmComputeCapability& cc);
 std::unique_ptr<mlir::Pass> CreateConvertIndexTypePass();
-std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass();
+std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass(int max_unroll_factor = 0);
 std::unique_ptr<mlir::Pass> CreatePeelLoopsPass();
 std::unique_ptr<mlir::Pass> CreateLowerXlaSharedPass();
 std::unique_ptr<mlir::Pass> CreateRecoverExp2Pass();
