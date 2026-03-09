@@ -416,11 +416,10 @@ using RngT = std::conditional_t<
     std::conditional_t<std::numeric_limits<IntT>::is_signed, int16_t, uint16_t>,
     IntT>;
 template <typename IntT>
-void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
-                                              std::minstd_rand0* engine,
-                                              bool no_duplicates, IntT min,
-                                              IntT max,
-                                              std::optional<IntT> alignment) {
+void PopulateWithRandomIntegralDataWithBounds(
+    Literal* literal, std::minstd_rand0* engine, bool no_duplicates, IntT min,
+    IntT max, std::optional<IntT> alignment,
+    std::optional<IntT> index_known_zeroes) {
   CHECK_NOTNULL(engine);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
@@ -445,6 +444,9 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
       value = static_cast<IntT>(generator(*engine));
       if (alignment.has_value()) {
         value = (value / alignment.value()) * alignment.value();
+      }
+      if (index_known_zeroes.has_value()) {
+        value &= ~index_known_zeroes.value();
       }
     }
   }
@@ -752,7 +754,9 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random,
   return MakeFakeLiteral(shape, engine.get(), /*limit=*/std::nullopt,
                          /*is_sorted=*/false,
                          /*no_duplicates=*/false, use_large_range,
-                         /*max_bits_of_precision=*/std::nullopt);
+                         /*max_bits_of_precision=*/std::nullopt,
+                         /*index_alignment=*/std::nullopt,
+                         /*index_known_zeroes=*/std::nullopt);
 }
 
 absl::StatusOr<Literal> MakeFakeLiteral(
@@ -760,7 +764,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision,
-    std::optional<int64_t> alignment,
+    std::optional<int64_t> index_alignment,
+    std::optional<uint64_t> index_known_zeroes,
     std::function<double(std::minstd_rand0*)> float_generator) {
   if (shape.IsTuple()) {
     std::vector<Literal> elements;
@@ -771,7 +776,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
           Literal element,
           MakeFakeLiteral(element_shape, engine, limit, is_sorted,
                           no_duplicates, use_large_range, max_bits_of_precision,
-                          alignment, float_generator));
+                          index_alignment, index_known_zeroes,
+                          float_generator));
       elements.push_back(std::move(element));
     }
     return LiteralUtil::MakeTupleOwned(std::move(elements));
@@ -824,12 +830,17 @@ absl::StatusOr<Literal> MakeFakeLiteral(
               }
             }
             std::optional<NativeT> alignment_native = std::nullopt;
-            if (alignment.has_value()) {
-              alignment_native = static_cast<NativeT>(*alignment);
+            if (index_alignment.has_value()) {
+              alignment_native = static_cast<NativeT>(*index_alignment);
+            }
+            std::optional<NativeT> index_known_zeroes_native = std::nullopt;
+            if (index_known_zeroes.has_value()) {
+              index_known_zeroes_native =
+                  static_cast<NativeT>(*index_known_zeroes);
             }
             PopulateWithRandomIntegralDataWithBounds<NativeT>(
-                &literal, engine, /*no_duplicate*/ no_duplicates, min, max,
-                alignment_native);
+                &literal, engine, no_duplicates, min, max, alignment_native,
+                index_known_zeroes_native);
             if (is_sorted) {
               std::sort(literal.data<NativeT>().begin(),
                         literal.data<NativeT>().end());
