@@ -79,7 +79,8 @@ class _SummaryContextManager:
     self._writer = writer
     if step is not None:
       step = ops.convert_to_tensor(step, dtypes.int64)
-      if step.shape.num_elements() is not None and step.shape.num_elements() != 1:
+      n = step.shape.num_elements()
+      if n is not None and n != 1:
         raise ValueError(
             "Argument `step` must be a scalar. "
             f"Received step with shape {step.shape}."
@@ -254,7 +255,8 @@ def set_step(step):
   """
   if step is not None:
     step = ops.convert_to_tensor(step, dtypes.int64)
-    if step.shape.num_elements() is not None and step.shape.num_elements() != 1:
+    n = step.shape.num_elements()
+    if n is not None and n != 1:
       raise ValueError(
           "Argument `step` must be a scalar. "
           f"Received step with shape {step.shape}."
