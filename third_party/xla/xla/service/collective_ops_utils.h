@@ -81,12 +81,6 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
 
-const CollectiveDeviceListBase& GetCollectiveDeviceList(
-    const HloInstruction* hlo);
-
-const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
-    const HloInstruction* hlo);
-
 // Returns the group formation mode of instr, assuming that instr is, or is
 // derived from on the following instructions:
 //   * HloAllGatherInstruction
