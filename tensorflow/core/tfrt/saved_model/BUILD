@@ -244,6 +244,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/log:check",
         "@tf_runtime//:hostcontext",
     ],
 )
