@@ -798,8 +798,8 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   }
 
   // Flattens a `Future<Future<T>>` to `Future<T>`
-  template <typename U = T, std::enable_if_t<internal::IsFuture<U>::value &&
-                                             !is_move_only>* = nullptr>
+  template <typename U = T,
+            std::enable_if_t<internal::IsFuture<U>::value>* = nullptr>
   [[nodiscard]] Future<internal::future_type_t<typename U::value_type>>
   Flatten() const&;
 
@@ -1331,10 +1331,11 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 }
 
 template <typename T>
-template <typename U, std::enable_if_t<internal::IsFuture<U>::value &&
-                                       !Future<T>::is_move_only>*>
+template <typename U, std::enable_if_t<internal::IsFuture<U>::value>*>
 Future<internal::future_type_t<typename U::value_type>> Future<T>::Flatten()
     const& {
+  static_assert(!is_move_only,
+                "Cannot flatten an lvalue of a move-only Future");
   using R = internal::future_type_t<typename U::value_type>;
   auto [promise, future] = MakePromise<R>();
 
@@ -1720,9 +1721,13 @@ class JoinStatic
   template <std::size_t... Is, typename... Futures>
   static void OnReady(std::shared_ptr<JoinStatic> self,
                       std::index_sequence<Is...>, Futures... futures) {
-    (std::forward<Futures>(futures).OnReady([self](auto value) {
-      self->OnReady(std::integral_constant<size_t, Is>{}, std::move(value));
-    }),
+    auto wrap_on_ready = [](auto self, auto index, auto&& future) {
+      std::forward<decltype(future)>(future).OnReady([self, index](auto value) {
+        self->OnReady(index, std::move(value));
+      });
+    };
+    (wrap_on_ready(self, std::integral_constant<size_t, Is>{},
+                   std::forward<Futures>(futures)),
      ...);
   }
 
