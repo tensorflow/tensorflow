@@ -18,13 +18,10 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/const_init.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -42,11 +39,8 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
-#include "xla/hlo/ir/hlo_clone_context.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/autotuning/autotune_cache_key.h"
-#include "xla/service/gpu/autotuning/autotuner_status_key.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -75,8 +69,6 @@ using ResultAndInserted = AutotunerUtil::ResultAndInserted;
 static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
     *new AutotuneCacheMap();
-static AutotunerUtil::CacheStats autotune_cache_stats
-    ABSL_GUARDED_BY(autotune_cache_mu);
 
 absl::StatusOr<std::string> GetBase64EncodedSha256Hash(absl::string_view s) {
   llvm::SHA256 sha256;
@@ -297,101 +289,6 @@ TryFindInAllCacheTypes(const AutotuneCacheKey& key, absl::string_view cache_dir)
 }
 }  // namespace
 
-absl::StatusOr<AutotuneConfig> AutotuneConfig::FromDebugOptions(
-    const DeviceOrDevicelessConfig& config, const DebugOptions& opts) {
-  int autotune_level = opts.xla_gpu_autotune_level();
-
-  bool should_init_buffers = autotune_level >= 2;
-  bool should_reinit_output_buffer = autotune_level >= 3;
-  bool should_check_correctness = autotune_level >= 4;
-  bool should_skip_wrong_results = autotune_level >= 5;
-
-  bool should_crash_on_check_failure =
-      opts.xla_gpu_crash_on_verification_failures();
-
-  bool exhaustive_tiling_search = opts.xla_gpu_exhaustive_tiling_search();
-
-  bool should_require_complete_aot_autotune_results =
-      opts.xla_gpu_require_complete_aot_autotune_results();
-
-  std::string autotune_cache_dir = opts.xla_gpu_per_fusion_autotune_cache_dir();
-  DebugOptions_AutotuneCacheMode autotune_cache_mode =
-      opts.xla_gpu_experimental_autotune_cache_mode();
-
-  std::optional<std::vector<AutotuneResult::TritonGemmKey>>
-      gemm_config_overrides;
-  const std::string& override_file =
-      opts.xla_gpu_gemm_autotuner_override_file();
-  if (!override_file.empty()) {
-    std::string file_content;
-    TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
-                                             &file_content));
-    TritonGemmConfigsProto configs;
-    if (!tsl::protobuf::TextFormat::ParseFromString(file_content, &configs)) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Could not parse override file: ", override_file));
-    }
-    gemm_config_overrides.emplace();
-    absl::c_copy(configs.config(), std::back_inserter(*gemm_config_overrides));
-    LOG(INFO) << "Loaded " << gemm_config_overrides->size()
-              << " gemm config overrides from " << override_file;
-  }
-
-  return AutotuneConfig(
-      config, should_init_buffers, should_reinit_output_buffer,
-      should_check_correctness, should_skip_wrong_results,
-      should_crash_on_check_failure, exhaustive_tiling_search,
-      should_require_complete_aot_autotune_results, autotune_cache_dir,
-      autotune_cache_mode, gemm_config_overrides);
-}
-
-/*static*/ absl::StatusOr<bool> AutotunerUtil::IsInCache(
-    const AutotuneCacheKey& key, const AutotuneConfig& config) {
-  TF_ASSIGN_OR_RETURN(std::optional<AutotuneResult> opt_res,
-                      TryFindInCache(key, config.autotune_cache_dir()));
-  return opt_res.has_value();
-}
-
-/*static*/ absl::StatusOr<bool> AutotunerUtil::AddResult(
-    const AutotuneCacheKey& key, AutotuneResult result,
-    const AutotuneConfig& config) {
-  TF_ASSIGN_OR_RETURN(
-      ResultAndInserted result_and_inserted,
-      AddResultToCaches(key, std::move(result), config.autotune_cache_dir(),
-                        config.autotune_cache_mode()));
-  return result_and_inserted.inserted;
-}
-
-/*static*/ absl::StatusOr<AutotuneResult> AutotunerUtil::Autotune(
-    const HloInstruction* instr, const AutotuneConfig& config,
-    const AutotuneNoCacheFn& autotune_fn) {
-  const AutotuneCacheKey key(config.GetDeviceDescription(), *instr);
-  TF_ASSIGN_OR_RETURN(std::optional<AutotuneResult> opt_res,
-                      TryFindInCache(key, config.autotune_cache_dir()));
-  if (opt_res.has_value()) {
-    return opt_res.value();
-  }
-
-  // Cache miss.
-  if (config.should_require_complete_aot_autotune_results()) {
-    absl::Status s = NotFound(
-        "Complete XLA AOT autotuning results are required, but no AOT result "
-        "was found for key: %s",
-        key.ToString());
-    tsl::errors::InsertPayloads(
-        s, {{std::string(kAutotuneCacheRequiredErrorPayloadKey), ""}});
-    return s;
-  }
-
-  TF_ASSIGN_OR_RETURN(AutotuneResult autotune_result, autotune_fn());
-
-  TF_ASSIGN_OR_RETURN(ResultAndInserted result_and_inserted,
-                      AddResultToCaches(key, std::move(autotune_result),
-                                        config.autotune_cache_dir(),
-                                        config.autotune_cache_mode()));
-  return result_and_inserted.result;
-}
-
 absl::StatusOr<std::optional<AutotuneResult>> AutotunerUtil::TryFindInCache(
     const AutotuneCacheKey& key, absl::string_view cache_dir)
     ABSL_LOCKS_EXCLUDED(autotune_cache_mu) {
@@ -413,12 +310,6 @@ absl::StatusOr<std::optional<AutotuneResult>> AutotunerUtil::TryFindInCache(
     }
   }
 
-  {
-    auto cache_hit = cached.second.has_value();
-    absl::MutexLock lock(autotune_cache_mu);
-    autotune_cache_stats.cache_hits += cache_hit ? 1 : 0;
-    autotune_cache_stats.cache_misses += cache_hit ? 0 : 1;
-  }
   return std::move(cached.second);
 }
 
@@ -528,16 +419,6 @@ bool IsTextProtoPath(absl::string_view file_path) {
   LOG(INFO) << "Autotune results loaded from file: " << resolved_path;
 
   return absl::OkStatus();
-}
-
-/*static*/ AutotunerUtil::CacheStats AutotunerUtil::GetCacheStats() {
-  absl::MutexLock lock(autotune_cache_mu);
-  return autotune_cache_stats;
-}
-
-/*static*/ void AutotunerUtil::ClearCacheStats() {
-  absl::MutexLock lock(autotune_cache_mu);
-  autotune_cache_stats = CacheStats();
 }
 
 void AddVersionToAutotuneResults(AutotuneResults& results) {

@@ -205,6 +205,7 @@ xla_test(
         ":sycl_platform_id",
         ":sycl_stream",
         "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
@@ -340,6 +341,7 @@ xla_test(
     deps = [
         ":sycl_executor",
         "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:intel_gpu_compiler",
