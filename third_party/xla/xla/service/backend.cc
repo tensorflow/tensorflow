@@ -98,7 +98,7 @@ struct Backend::IntraOpThreadPool {
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto computation_placer,
-                      ComputationPlacer::GetForPlatform(platform));
+                      ComputationPlacer::GetForPlatform(platform->id()));
   std::unique_ptr<Backend> backend(new Backend(
       platform, std::move(compiler), stream_executors, transfer_manager,
       computation_placer, options.intra_op_parallelism_threads()));
