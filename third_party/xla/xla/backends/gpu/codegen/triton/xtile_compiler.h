@@ -84,7 +84,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context);
+    mlir::MLIRContext& mlir_context, bool use_experimental_tiling = false);
 
 // Compiles a given Triton module to LLVM IR.
 // If `emit_kernels` is false, then the function skips emitting
