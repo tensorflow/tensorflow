@@ -100,6 +100,11 @@ TfLiteStatus GetOutputSafe(const TfLiteContext* context, const TfLiteNode* node,
 const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
                                            const TfLiteNode* node, int index);
 
+// Returns true if `tensor_index` is backed by an external buffer identifier in
+// the current subgraph.
+bool IsTensorBackedByExternalBuffer(const TfLiteContext* context,
+                                    int tensor_index);
+
 #ifndef TF_LITE_STATIC_MEMORY
 // Note: You must check if result is not null:
 //
