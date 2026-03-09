@@ -30,7 +30,7 @@ exports_files([
 
 xla_package_groups()
 
-bzl_library(
+bzzl_library(
     name = "package_groups_bzl",
     srcs = ["package_groups.bzl"],
     visibility = ["//visibility:public"],
