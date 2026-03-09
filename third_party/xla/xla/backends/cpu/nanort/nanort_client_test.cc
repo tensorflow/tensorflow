@@ -80,7 +80,7 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> GetExecutable(
   if (export_executable) {
     TF_ASSIGN_OR_RETURN(auto exported, client.Export(executable.get()));
     CpuAotCompilationResult* aot_compilation_result =
-        tsl::down_cast<CpuAotCompilationResult*>(exported.get());
+        absl::down_cast<CpuAotCompilationResult*>(exported.get());
     return NanoRtExecutable::Create(aot_compilation_result->proto(),
                                     executable->program_shape());
   }
