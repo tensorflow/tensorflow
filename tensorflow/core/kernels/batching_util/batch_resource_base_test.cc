@@ -528,6 +528,70 @@ TEST_F(SplitInputTaskEvictionTest, EvictedSubtasksDoNotCrash) {
   EXPECT_EQ(context_->mutable_output(0), nullptr);
 }
 
+TEST_F(SplitInputTaskEvictionTest, DoubleSplitSucceeds) {
+  // Set up a BatchTask with a real OpKernelContext, shared output and status.
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
+  task->inputs.push_back(
+      Tensor(DataType::DT_INT64, TensorShape({6, 4})));  // size = 6
+  task->context = context_.get();
+  // Allocate the outer vector for the TensorMatrix
+  task->output = std::make_shared<BatchResourceBase::TensorMatrix>();
+  task->status = std::make_shared<ThreadSafeStatus>();
+  task->guid = 0;
+  task->start_time = 0;
+
+  auto shared_status = task->status;
+  absl::Notification done;
+  task->set_done_callback([&done]() { done.Notify(); });
+
+  // Split the task: open_batch_remaining_slot=2, max_batch_size=4.
+  // Input size 6 > 2, so it splits into [2, 4] = 2 subtasks.
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>> output_tasks;
+  TF_ASSERT_OK(
+      BatchResourceBase::SplitInputTask(&task, /*open_batch_remaining_slot=*/2,
+                                        /*max_batch_size=*/4, &output_tasks));
+  ASSERT_EQ(output_tasks.size(), 2);
+
+  // output_tasks[0] is size 2, split_index 0
+  // output_tasks[1] is size 4, split_index 1
+
+  // Take the second subtask (size 4) and split it further.
+  // open_batch_remaining_slot=1, max_batch_size=3.
+  // Input size 4 > 1, so it splits into [1, 3] = 2 sub-subtasks.
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>>
+      double_split_output_tasks;
+  TF_ASSERT_OK(BatchResourceBase::SplitInputTask(
+      &output_tasks[1], /*open_batch_remaining_slot=*/1, /*max_batch_size=*/3,
+      &double_split_output_tasks));
+  ASSERT_EQ(double_split_output_tasks.size(), 2);
+
+  // Populate outputs for sub-tasks.
+  // For output_tasks[0]: split_index=0, output_index=0
+  (*output_tasks[0]->output)[0][0] =
+      Tensor(DataType::DT_INT64, TensorShape({2, 4}));
+  // For double_split_output_tasks:
+  // These share output_tasks[1]'s results matrix (which has 2 slots).
+  // split_index 0 and 1, output_index 0.
+  (*double_split_output_tasks[0]->output)[0][0] =
+      Tensor(DataType::DT_INT64, TensorShape({1, 4}));
+  (*double_split_output_tasks[1]->output)[1][0] =
+      Tensor(DataType::DT_INT64, TensorShape({3, 4}));
+
+  for (auto& subtask : double_split_output_tasks) {
+    subtask->FinishTask(absl::OkStatus());
+  }
+  output_tasks[0]->FinishTask(absl::OkStatus());
+
+  // Wait for the original task's done_callback to be called.
+  ASSERT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(5)));
+
+  // Check that the final status is OK.
+  TF_EXPECT_OK(shared_status->status());
+  // Verify that the output was set on the context.
+  ASSERT_NE(context_->mutable_output(0), nullptr);
+  EXPECT_EQ(context_->mutable_output(0)->shape(), TensorShape({6, 4}));
+}
+
 class TestTpuCostMeasurement : public CostMeasurement {
  public:
   using CostMeasurement::CostMeasurement;
