@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_TESTS_EXECUTABLE_IMPL_TEST_BASE_H_
-#define XLA_PYTHON_IFRT_IR_TESTS_EXECUTABLE_IMPL_TEST_BASE_H_
+#ifndef XLA_PYTHON_IFRT_IR_IFRT_IR_LOADED_EXECUTABLE_TEST_BASE_H_
+#define XLA_PYTHON_IFRT_IR_IFRT_IR_LOADED_EXECUTABLE_TEST_BASE_H_
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -32,7 +34,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/shape.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/test.h"
 
 namespace xla {
@@ -40,9 +41,9 @@ namespace ifrt {
 namespace test_util {
 
 // Base class to help create tests that compile and execute IFRT IR.
-class IfrtIrExecutableImplTestBase : public testing::Test {
+class IfrtIrLoadedExecutableTestBase : public testing::Test {
  public:
-  IfrtIrExecutableImplTestBase();
+  IfrtIrLoadedExecutableTestBase();
   void SetUp() override;
 
  protected:
@@ -70,9 +71,12 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
                                        ShardingParam sharding_param,
                                        DeviceListRef device_list);
 
+  int32_t GetNumDevices();
+
   // Picks a given number of devices.
-  // Error when `count` is larger than the total number of devices.
-  absl::StatusOr<DeviceListRef> PickDevices(int count);
+  // Errors if `count` is larger than the total number of devices.
+  absl::StatusOr<DeviceListRef> PickDevices(
+      int count, std::optional<absl::string_view> platform_name = std::nullopt);
 
   mlir::MLIRContext mlir_context_;
   std::shared_ptr<Client> client_;
@@ -82,4 +86,4 @@ class IfrtIrExecutableImplTestBase : public testing::Test {
 }  // namespace ifrt
 }  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_TESTS_EXECUTABLE_IMPL_TEST_BASE_H_
+#endif  // XLA_PYTHON_IFRT_IR_IFRT_IR_LOADED_EXECUTABLE_TEST_BASE_H_
