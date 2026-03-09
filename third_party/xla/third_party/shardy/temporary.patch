@@ -1,109 +1,15 @@
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 92fd46d..2ae570d 100644
+index 2ae570d..ec90599 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "5ff5a1f14761ecc7160125aadb38c59d29f58e5c"
--    LLVM_SHA256 = "3ea3a5a8f7b8abdd2268a0ecb3b704bbbfa3f2df422cb2754a4408999e4f669b"
-+    LLVM_COMMIT = "a14f9f822f4813a803eb21797fe90b6367683bcb"
-+    LLVM_SHA256 = "5e818253655449734617aaec033b0c452ce417e4a9545bb6aea19b37615f344f"
+-    LLVM_COMMIT = "a14f9f822f4813a803eb21797fe90b6367683bcb"
+-    LLVM_SHA256 = "5e818253655449734617aaec033b0c452ce417e4a9545bb6aea19b37615f344f"
++    LLVM_COMMIT = "42d07c38e22768360a66548407a28332340efb20"
++    LLVM_SHA256 = "a28290d8a9db067aa7fc1bd0347d28b29b75403e1804faf36c704b8aee705727"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index d74e30f..53c2ba7 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -14,4 +14,89 @@ diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/referen
-  
-      // use FFT to compute the IFFT steps
-      auto d_irfft = fftDims.pop_back_val();
-+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo.mlir b/stablehlo/stablehlo/tests/ops_stablehlo.mlir
-+--- stablehlo/stablehlo/tests/ops_stablehlo.mlir
-++++ stablehlo/stablehlo/tests/ops_stablehlo.mlir
-+@@ -1113,7 +1113,7 @@
-+ 
-+ // -----
-+ 
-+-func.func @dynamic_broadcast_in_dim_c1(%arg0: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi62> {
-++func.func @dynamic_broadcast_in_dim_c1(%arg0: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi64> {
-+   // expected-error@+1 {{expects operand and result to have compatible element type}}
-+   %0 = "stablehlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = array<i64: 1, 2>} : (tensor<?x?xi32>, tensor<3xi64>) -> tensor<?x?x?xi64>
-+   func.return %0 : tensor<?x?x?xi64>
-+@@ -2008,7 +2008,7 @@
-+ 
-+ // -----
-+ 
-+-func.func @infeed_c1(%token: !stablehlo.token) -> tensor<3x3xi32> {
-++func.func @infeed_c1(%token: !stablehlo.token) {
-+   // expected-error@+1 {{result is expected to be at least of size 1, but got 0}}
-+   "stablehlo.infeed"(%token) {infeed_config = "foobar", layout=[[[0]], [0]]} : (!stablehlo.token) -> ()
-+   func.return
-+@@ -2243,7 +2243,7 @@
-+ 
-+ // -----
-+ 
-+-func.func @recv_c3(%token: !stablehlo.token) -> (!stablehlo.token, !stablehlo.token) {
-++func.func @recv_c3(%token: !stablehlo.token) -> !stablehlo.token {
-+   // expected-error@+1 {{everything but the last element of result types is expected to be of tensor type, but got '!stablehlo.token'}}
-+   %0:2 = "stablehlo.recv"(%token) {
-+     channel_handle = #stablehlo.channel_handle<
-+@@ -2295,7 +2295,7 @@
-+ 
-+ // -----
-+ 
-+-func.func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
-++func.func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<3xui64>, tensor<10x12xui32>) {
-+   // expected-error@+1 {{output state shape must be compatible with initial state shape. Got: 'tensor<2xui64>' and 'tensor<3xui64>'}}
-+   %0, %1 = "stablehlo.rng_bit_generator"(%arg0) {rng_algorithm = #stablehlo<rng_algorithm DEFAULT>} : (tensor<2xui64>) -> (tensor<3xui64>, tensor<10x12xui32>)
-+   func.return %0, %1 : tensor<3xui64>, tensor<10x12xui32>
-+diff --ruN a/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir b/stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
-+--- stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
-++++ stablehlo/stablehlo/tests/ops_stablehlo_quantized.mlir
-+@@ -726,7 +726,7 @@
-+ 
-+ // -----
-+ 
-+-func.func @negative_dynamic_update_slice_pertensor_quantization(%operand: tensor<3x4x!quant.uniform<i8:f32:0, {0.1:-30}>>, %update: tensor<1x4x!quant.uniform<i8:f32:0, {0.1:-30}>>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4x!quant.uniform<i8:f32, 1.0:17>> {
-++func.func @negative_dynamic_update_slice_pertensor_quantization(%operand: tensor<3x4x!quant.uniform<i8:f32:0, {0.1:-30}>>, %update: tensor<1x4x!quant.uniform<i8:f32:0, {0.1:-30}>>, %start_indices0: tensor<i64>, %start_indices1: tensor<i64>) -> tensor<3x4x!quant.uniform<i8:f32:0, {0.1:-30}>> {
-+   // expected-error-re@+1 {{operand #0 must be ranked tensor of {{.*}}, but got 'tensor<3x4x!quant.uniform<i8:f32:0, {1.000000e-01:-30}>>'}}
-+   %0 = "stablehlo.dynamic_update_slice"(%operand, %update, %start_indices0, %start_indices1) : (tensor<3x4x!quant.uniform<i8:f32:0, {0.1:-30}>>, tensor<1x4x!quant.uniform<i8:f32:0, {0.1:-30}>>, tensor<i64>, tensor<i64>) -> tensor<3x4x!quant.uniform<i8:f32:0, {0.1:-30}>>
-+   func.return %0 : tensor<3x4x!quant.uniform<i8:f32:0, {0.1:-30}>>
-+@@ -1198,7 +1198,7 @@
-+ 
-+ func.func @dot_general_c16(
-+   %arg0: tensor<2x3x4x!quant.uniform<i8:f32, 1.0:17>>,
-+-  %arg1: tensor<2x3x5x!quant.uniform<i8:f32:0, {0.1:0, 0.1:0}>>) -> tensor<2x4x5x!quant.uniform<i8:f32:0, {0.1:-30, 0.1:-30, 0.1:-30}>> {
-++  %arg1: tensor<2x3x5x!quant.uniform<i8:f32:0, {0.1:0, 0.1:0}>>) -> tensor<3x4x5x!quant.uniform<i8:f32:0, {0.1:-30, 0.1:-30, 0.1:-30}>> {
-+   // expected-error@+1 {{Quantization dimension of rhs should not be in the contracting dimension of rhs}}
-+   %0 = "stablehlo.dot_general"(%arg0, %arg1) {
-+     dot_dimension_numbers = #stablehlo.dot<
-+diff --ruN a/stablehlo/stablehlo/tests/verify_reduce.mlir b/stablehlo/stablehlo/tests/verify_reduce.mlir
-+--- stablehlo/stablehlo/tests/verify_reduce.mlir
-++++ stablehlo/stablehlo/tests/verify_reduce.mlir
-+@@ -146,7 +146,7 @@
-+ // -----
-+ 
-+ func.func @reduce_c2(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xi32>,
-+-    %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xf32>) {
-++    %arg2: tensor<f32>, %arg3: tensor<f32>) -> (tensor<?xf32>, tensor<?xi32>) {
-+ 
-+   // expected-error@+1 {{The type of reduction-region's parameter at index 3 is different than the corresponding result type: 'tensor<i32>' vs 'tensor<f32>'}}
-+   %0:2 = "stablehlo.reduce"(%arg0, %arg1, %arg2, %arg3) ({
-+diff --ruN a/stablehlo/stablehlo/tests/verify_reduce_window.mlir b/stablehlo/stablehlo/tests/verify_reduce_window.mlir
-+--- stablehlo/stablehlo/tests/verify_reduce_window.mlir
-++++ stablehlo/stablehlo/tests/verify_reduce_window.mlir
-+@@ -100,8 +100,7 @@
-+ // -----
-+ 
-+ func.func @reduce_window_c1(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
-+-                    %init0: tensor<f32>, %init1: tensor<i32>) ->
-+-                      (tensor<2x2xf32>, tensor<2x2xi32>) {
-++                    %init0: tensor<f32>, %init1: tensor<i32>) {
-+   // expected-error@+1 {{requires at least 1 input value}}
-+   "stablehlo.reduce_window"() ({
-+     ^bb0():
- 
