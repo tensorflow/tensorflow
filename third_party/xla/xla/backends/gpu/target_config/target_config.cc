@@ -50,6 +50,8 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
       return get_b200();
     case GpuModel::B300:
       return get_b300();
+    case GpuModel::BMG_G21:
+      return get_bmg_g21();
     case GpuModel::H100_PCIE:
       return get_h100_pcie();
     case GpuModel::H100_SXM:

@@ -292,6 +292,7 @@ cc_library(
     ],
     deps = [
         ":sycl_context",
+        ":sycl_device_description",
         ":sycl_event",
         ":sycl_gpu_runtime",
         ":sycl_kernel",
@@ -486,6 +487,42 @@ xla_test(
         ":sycl_platform_id",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "sycl_device_description",
+    srcs = ["sycl_device_description.cc"],
+    hdrs = ["sycl_device_description.h"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":oneapi_compute_capability",
+        ":sycl_gpu_runtime",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/gpu:read_numa_node",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_test(
+    name = "sycl_device_description_test",
+    srcs = ["sycl_device_description_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_device_description",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )
