@@ -711,10 +711,14 @@ XlaOp Digamma(XlaOp input) {
         y - pi * Cos(pi * reduced_input) / Sin(pi * reduced_input);
     XlaOp real_result = Select(need_to_reflect, reflection, y);
 
-    // Digamma has poles at negative integers and zero; return nan for those.
-    return Select(And(Le(input, zero), Eq(input, Floor(input))),
-                  FullLike(input, std::numeric_limits<float>::quiet_NaN()),
-                  real_result);
+    // Digamma has poles at negative integers and zero; return nan for negative integers,
+    // and -inf for zero.
+    XlaOp is_zero = Eq(input, zero);
+    XlaOp is_negative_integer = And(Lt(input, zero), Eq(input, Floor(input)));
+    XlaOp result_with_nan = Select(is_negative_integer,
+                                   FullLike(input, std::numeric_limits<float>::quiet_NaN()),
+                                   real_result);
+    return Select(is_zero, FullLike(input, -std::numeric_limits<float>::infinity()), result_with_nan);
   };
 
   auto& b = *input.builder();
