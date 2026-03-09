@@ -16,10 +16,14 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -28,6 +32,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
@@ -37,6 +42,7 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -44,6 +50,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -625,6 +632,118 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   proto.set_execution_stream_id(execution_stream_id.value());
   proto.set_thunk_id(thunk_id.value());
   return proto;
+}
+
+//===----------------------------------------------------------------------===//
+// ThunkSequence implementation.
+//===----------------------------------------------------------------------===//
+
+// Returns index of the nearest thunk before `i` that conflicts on buffers.
+static std::optional<int64_t> PrevDep(
+    absl::Span<const BufferUse::ReadWriteSet> rw_sets, int64_t i) {
+  for (int64_t j = i - 1; j >= 0; --j) {
+    if (rw_sets[j].HasConflicts(rw_sets[i])) {
+      return j;
+    }
+  }
+  return std::nullopt;
+}
+
+// Returns index of the nearest thunk after `i` that conflicts on buffers.
+static std::optional<int64_t> NextDep(
+    absl::Span<const BufferUse::ReadWriteSet> rw_sets, int64_t i) {
+  for (int64_t j = i + 1; j < rw_sets.size(); ++j) {
+    if (rw_sets[j].HasConflicts(rw_sets[i])) {
+      return j;
+    }
+  }
+  return std::nullopt;
+}
+
+absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
+  for (auto& thunk : *this) {
+    RETURN_IF_ERROR(thunk->Walk(callback));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::TransformNested(Thunk::Transformer callback) {
+  for (std::unique_ptr<Thunk>& thunk : *this) {
+    RETURN_IF_ERROR(thunk->TransformNested(callback));
+    ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
+  }
+  return absl::OkStatus();
+}
+
+// Format: one line per thunk, columns aligned:
+//
+//   ID:  KIND [prev=PPP (D) | next=NNN (D)] DESCRIPTION
+//
+//   ID:   three-digit thunk id
+//   KIND: thunk kind, padded to the width of the longest kind
+//   PPP:  thunk id of the nearest preceding thunk with a buffer conflict,
+//         or "source" if there is no preceding conflict
+//   NNN:  thunk id of the nearest following thunk with a buffer conflict,
+//         or "sink" if there is no following conflict
+//   D:    distance (in thunks) to that conflict
+//
+// Example:
+//   001: kReplicaId      [source       | next=002 (1)] ...
+//   002: kAllReduceStart [prev=001 (1) | next=003 (1)] ...
+//   003: kAllReduceDone  [prev=002 (1) | sink        ] ...
+std::string ThunkSequence::ToString(int indent) const {
+  std::string indent_str(indent * 2, ' ');
+
+  if (empty()) {
+    return absl::StrCat(indent_str, "No thunks.");
+  }
+
+  // Pre-compute buffer read-write sets for all thunks in this sequence.
+  std::vector<BufferUse::ReadWriteSet> rw_sets(size());
+  for (size_t i = 0; i < size(); ++i) {
+    at(i)->Walk([&](auto* thunk) { rw_sets[i].AddAll(thunk->buffer_uses()); });
+  }
+
+  // Find a thunk with a longest kind string representation.
+  size_t max_thunk_kind_len = 0;
+  for (const auto& thunk : *this) {
+    max_thunk_kind_len = std::max(max_thunk_kind_len,
+                                  Thunk::KindToString(thunk->kind()).length());
+  }
+
+  // Pre-compute prev/next dependency strings and find max column widths.
+  std::vector<std::string> prev_strs(size()), next_strs(size());
+  size_t max_prev_len = 0, max_next_len = 0;
+  for (int64_t i = 0; i < size(); ++i) {
+    std::optional<int64_t> prev = PrevDep(rw_sets, i);
+    std::optional<int64_t> next = NextDep(rw_sets, i);
+    prev_strs[i] =
+        prev.has_value()
+            ? absl::StrFormat("prev=%03d (%d)",
+                              at(*prev)->thunk_info().thunk_id.value(),
+                              i - *prev)
+            : "source";
+    next_strs[i] =
+        next.has_value()
+            ? absl::StrFormat("next=%03d (%d)",
+                              at(*next)->thunk_info().thunk_id.value(),
+                              *next - i)
+            : "sink";
+    max_prev_len = std::max(max_prev_len, prev_strs[i].size());
+    max_next_len = std::max(max_next_len, next_strs[i].size());
+  }
+
+  std::string result;
+  for (int64_t i = 0; i < size(); ++i) {
+    const std::unique_ptr<Thunk>& thunk = at(i);
+    absl::StrAppendFormat(
+        &result, "%s%03d: %-*s [%-*s | %-*s] %s\n", indent_str,
+        thunk->thunk_info().thunk_id.value(), max_thunk_kind_len,
+        Thunk::KindToString(thunk->kind()), max_prev_len, prev_strs[i],
+        max_next_len, next_strs[i], thunk->ToString(indent + 1));
+  }
+
+  return result;
 }
 
 }  // namespace xla::gpu

@@ -618,15 +618,23 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     std::vector<ConfigResult>& results) {
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigResult* best_result = nullptr;
+  std::vector<std::string> failures;
   for (ConfigResult& result : results) {
-    if (!result.failure.has_value() && result.duration < min_duration) {
+    if (result.failure.has_value()) {
+      failures.push_back(result.failure->ToString());
+    } else if (result.duration < min_duration) {
       min_duration = result.duration;
       best_result = &result;
     }
   }
 
   if (best_result == nullptr) {
-    return absl::NotFoundError("No valid config found!");
+    std::string message = "No valid config found!";
+    if (!failures.empty()) {
+      absl::StrAppend(&message, " Failures: ", failures.size(), "\n",
+                      absl::StrJoin(failures, "\n"));
+    }
+    return absl::NotFoundError(message);
   }
 
   if (autotune_config_.optimize_scratch_bytes) {

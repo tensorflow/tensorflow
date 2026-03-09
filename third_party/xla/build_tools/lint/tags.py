@@ -70,6 +70,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "requires-gpu-sm80-only": "Requires exactly sm80.",
     "requires-gpu-sm90-only": "Requires exactly sm90.",
     "requires-gpu-sm100-only": "Requires exactly sm100.",
+    "requires-gpu-sm103-only": "Requires exactly sm103.",
     "full": "Test requires a full GPU, not a partitioned one. No effect in"
             " OSS.",
     "gpu": "Catch-all tag for targets that should be built/tested on GPU CI",
@@ -94,6 +95,7 @@ _TAGS_TO_DOCUMENTATION_MAP = {
     "xla_h100": "Runs on an h100.",
     "xla_b200": "Runs on a b200.",
     "xla_gb200": "Runs on a gb200.",
+    "xla_gb300": "Runs on a gb300.",
     # Below tags are consumed by `xla_test`.
     "test_migrated_to_hlo_runner_pjrt": (
         "Adds the appropriate `xla/tests:pjrt_$BACKEND_client_registry` to the"

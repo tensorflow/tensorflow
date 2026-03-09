@@ -20,6 +20,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -43,6 +44,8 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
+
+namespace se = ::stream_executor;
 
 namespace {
 
@@ -339,11 +342,52 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> RaggedToGeneral(
                                    ragged_dot->precision_config());
 }
 
+bool IsFP16Operation(const HloInstruction* ragged_dot) {
+  return (ragged_dot->shape().element_type() == F16) &&
+         (ragged_dot->operand(0)->shape().element_type() == F16) &&
+         (ragged_dot->operand(1)->shape().element_type() == F16);
+}
+
+bool IsBF16Operation(const HloInstruction* ragged_dot) {
+  return (ragged_dot->shape().element_type() == BF16) &&
+         (ragged_dot->operand(0)->shape().element_type() == BF16) &&
+         (ragged_dot->operand(1)->shape().element_type() == BF16);
+}
+
+bool CanBeHandledByGpublasltGroupGemm(
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const HloInstruction* instruction) {
+  // Currently only Hipblaslt supports GroupGemm.
+  // The current status of  Hipblaslt support for GroupGemm is as follows:
+  // For MI300 targets (gfx942) : datatype supported FP16 and BF16
+  // For MI350/355 targets (gfx950) : datatype supported FP16 only
+
+  if (const auto* rocm_cc = gpu_compute_capability.rocm_compute_capability()) {
+    const std::string& gfx_version = rocm_cc->gfx_version();
+    VLOG(2) << "RaggedDotRewriter running on ROCm device: " << gfx_version;
+
+    if (gfx_version == "gfx942" &&
+        (IsFP16Operation(instruction) || IsBF16Operation(instruction))) {
+      return true;
+    }
+
+    if (gfx_version == "gfx950" && IsFP16Operation(instruction)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  const bool has_grouped_gemm =
+      module->config()
+          .debug_options()
+          .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
+      module->config().debug_options().xla_gpu_enable_cublaslt();
   if (module->config()
           .debug_options()
           .xla_gpu_experimental_use_ragged_dot_fusion()) {
@@ -356,7 +400,13 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kRaggedDot) {
-        ragged_dots.push_back(Cast<HloRaggedDotInstruction>(instruction));
+        if (!(has_grouped_gemm && gpu_compute_capability_.has_value() &&
+              CanBeHandledByGpublasltGroupGemm(gpu_compute_capability_.value(),
+                                               instruction))) {
+          // Only ragged-dot that cannot be lowered through Gpublaslt GroupGemm
+          // are added to the list of operations to rewrite in regular dot.
+          ragged_dots.push_back(Cast<HloRaggedDotInstruction>(instruction));
+        }
       }
     }
   }
