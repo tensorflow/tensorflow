@@ -436,6 +436,7 @@ tf_cuda_library(
         ":eager_executor",
         ":kernel_and_device",
         ":tensor_handle_data",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
     ] + select({
         "//tensorflow:android": [
