@@ -840,19 +840,11 @@ TEST_P(CompilationProviderTest, ParallelCompileAndLinkReturnsSameResult) {
 TEST_P(CompilationProviderTest,
        QueryLatestPtxIsaVersionReturnsAValidPtxIsaVersion) {
   CompilationProvider* provider = compilation_provider();
-  if (dynamic_cast<SubprocessCompilationProvider*>(provider) ||
-      dynamic_cast<NvptxcompilerCompilationProvider*>(provider) ||
-      dynamic_cast<NvJitLinkCompilationProvider*>(provider) ||
-      dynamic_cast<CompositeCompilationProvider*>(provider)) {
-    TF_ASSERT_OK_AND_ASSIGN(int latest_ptx_isa_version,
-                            provider->GetLatestPtxIsaVersion());
-    EXPECT_GE(latest_ptx_isa_version, 80);
-    // Update when PTX 20.0 comes out.
-    EXPECT_LE(latest_ptx_isa_version, 200);
-  } else {
-    EXPECT_THAT(provider->GetLatestPtxIsaVersion(),
-                absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
-  }
+  TF_ASSERT_OK_AND_ASSIGN(int latest_ptx_isa_version,
+                          provider->GetLatestPtxIsaVersion());
+  EXPECT_GE(latest_ptx_isa_version, 80);
+  // Update when PTX 20.0 comes out.
+  EXPECT_LE(latest_ptx_isa_version, 200);
 }
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(CompilationProviderTest);

@@ -1604,8 +1604,8 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
-          /*device_list=*/
-          IotaReplicaGroupList(8, 1024),
+
+          std::make_shared<IotaReplicaGroupList>(8, 1024),
           /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
