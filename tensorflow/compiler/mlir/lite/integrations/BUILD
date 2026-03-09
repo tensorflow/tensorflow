@@ -66,6 +66,7 @@ pybind_extension(
 py_test(
     name = "py_bindings_test",
     srcs = ["py_bindings_test.py"],
+    strict_deps = False,
     deps = [
         "//tensorflow/compiler/mlir/lite/integrations/python/mlir",
     ],

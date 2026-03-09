@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_combined_defs.bzl", "tf_xla_combined_py_test")
@@ -43,10 +44,11 @@ package_group(
 
 generate_backend_suites()
 
-py_strict_library(
+py_library(
     name = "xla_test",
     testonly = 1,
     srcs = ["xla_test.py"],
+    strict_deps = True,
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -67,23 +69,25 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_utils",
     testonly = 1,
     srcs = [
         "__init__.py",
         "test_utils.py",
     ],
+    strict_deps = True,
     deps = [
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "xla_test_test",
     size = "small",
     srcs = ["xla_test_test.py"],
+    strict_deps = True,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
@@ -2912,10 +2916,11 @@ tf_cuda_cc_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lstm",
     testonly = 1,
     srcs = ["lstm.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

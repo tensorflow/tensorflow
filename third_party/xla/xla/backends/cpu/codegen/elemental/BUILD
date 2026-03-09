@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -45,9 +45,10 @@ cc_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "concatenate_kernel_emitter_test",
     srcs = ["concatenate_kernel_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
