@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -47,10 +48,20 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
 
   for (HloScanInstruction* scan : scans) {
     // Skip if not a plain inclusive sum.
-    if (scan->is_reverse()) {
+    if (scan->is_reverse() || !scan->is_associative()) {
       continue;
     }
-    if (scan->operand_count() != 2) {
+    if (scan->inputs().size() != 1 || scan->inits().size() != 1) {
+      continue;
+    }
+    if (absl::c_any_of(scan->users(), [](HloInstruction* user) {
+          return user->opcode() != HloOpcode::kGetTupleElement ||
+                 user->tuple_index() > 0;
+        })) {
+      continue;
+    }
+    HloInstruction* init = scan->inits().front();
+    if (!init->IsConstant() || !init->literal().IsZero({})) {
       continue;
     }
     HloInstruction* root = scan->to_apply()->root_instruction();
@@ -90,12 +101,11 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     // Create the custom call.
     Shape scratch_shape =
         ShapeUtil::MakeShape(U8, {0});  // Empty shape, assigned later.
-    Shape new_result_shape =
-        ShapeUtil::MakeTupleShape({scan->shape(), scratch_shape});
+    Shape new_result_shape = ShapeUtil::MakeTupleShape({shape, scratch_shape});
 
     HloInstruction* custom_call =
         computation->AddInstruction(HloInstruction::CreateCustomCall(
-            new_result_shape, absl::MakeSpan(scan->operands()),
+            new_result_shape, absl::MakeSpan(scan->operands()).first(1),
             kCubDeviceScanUnassignedScratchSizeTarget));
 
     CubScanOptions::Kind kind = [&]() {
@@ -116,10 +126,7 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     options.set_is_reverse(scan->is_reverse());
     TF_RETURN_IF_ERROR(custom_call->set_backend_config(options));
 
-    HloInstruction* get_tuple_element = computation->AddInstruction(
-        HloInstruction::CreateGetTupleElement(scan->shape(), custom_call, 0));
-
-    TF_RETURN_IF_ERROR(scan->ReplaceAllUsesWith(get_tuple_element));
+    TF_RETURN_IF_ERROR(scan->ReplaceAllUsesWith(custom_call));
     TF_RETURN_IF_ERROR(computation->RemoveInstruction(scan));
     changed = true;
   }

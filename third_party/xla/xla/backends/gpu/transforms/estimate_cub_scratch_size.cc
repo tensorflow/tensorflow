@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/estimate_cub_scratch_size.h"
 
+#include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <vector>
 
@@ -169,18 +169,27 @@ absl::Status EstimateCubScratchSize::RunOnSortInstruction(
 // Rewrites a single scan instruction with a custom call.
 absl::Status EstimateCubScratchSize::RunOnScanInstruction(
     HloCustomCallInstruction* custom_call) {
+  // TODO(csigg): We use kCubDeviceScanUnassignedScratchSizeTarget as an initial
+  // CC target to indicate that the scratch size needs to be determined. There
+  // is also kCubDeviceScanTarget, but it's unused and we use
+  // 'xla.gpu.ext.cub_scan' instead. There are also some unused wrapper
+  // functions around them. The same applies for sort. We should clean this up.
+  // For scan specifically, the instantiate and execute FFI handlers have
+  // different attributes. It might make sense to register them under different
+  // names so that the execute handler doesn't need a dummy type attribute.
   CHECK_EQ(custom_call->custom_call_target(),
            kCubDeviceScanUnassignedScratchSizeTarget);
-  TF_ASSIGN_OR_RETURN(CubScanOptions options,
-                      custom_call->backend_config<CubScanOptions>());
+  ASSIGN_OR_RETURN(CubScanOptions options,
+                   custom_call->backend_config<CubScanOptions>());
 
-  TF_ASSIGN_OR_RETURN(ffi::HandlerRegistration handler,
-                      ffi::FindHandler("xla.gpu.cub.scan", platform_name_));
+  ASSIGN_OR_RETURN(ffi::HandlerRegistration handler,
+                   ffi::FindHandler("xla.gpu.ext.cub_scan", platform_name_));
 
   ffi::CallFrameBuilder builder(0, 0);
+
   ffi::CallFrameBuilder::AttributesBuilder attrs;
-  int64_t scratch_size = 0;
-  attrs.Insert("temp_bytes", absl::bit_cast<int64_t>(&scratch_size));
+  xla::PrimitiveType type = custom_call->operand(0)->shape().element_type();
+  attrs.Insert("element_type", static_cast<int32_t>(type));
   attrs.Insert("vector_length", options.vector_length());
   attrs.Insert("row_length", options.row_length());
   attrs.Insert("column_length", options.column_length());
@@ -189,21 +198,32 @@ absl::Status EstimateCubScratchSize::RunOnScanInstruction(
   builder.AddAttributes(attrs.Build());
   ffi::CallFrame call_frame = builder.Build();
 
-  TF_RETURN_IF_ERROR(ffi::Invoke(ffi::GetXlaFfiApi(), handler.bundle.initialize,
-                                 call_frame, ffi::InvokeContext{},
-                                 XLA_FFI_ExecutionStage_INITIALIZE));
+  ffi::ExecutionState state;
+  ffi::InvokeContext context{};
+  context.state_context = {&state, nullptr, nullptr};
+  RETURN_IF_ERROR(ffi::Invoke(ffi::GetXlaFfiApi(), handler.bundle.instantiate,
+                              call_frame, context,
+                              XLA_FFI_ExecutionStage_INSTANTIATE));
+  ASSIGN_OR_RETURN(size_t* scratch_size_ptr, state.Get<size_t>());
 
-  // Update the custom call.
+  // Replace the custom call with one that has a scratch size.
   Shape new_shape = custom_call->shape();
   new_shape.mutable_tuple_shapes()->back() =
-      ShapeUtil::MakeShape(U8, {static_cast<int64_t>(scratch_size)});
+      ShapeUtil::MakeShape(U8, {static_cast<int64_t>(*scratch_size_ptr)});
   HloInstruction* new_custom_call =
       custom_call->AddInstruction(HloInstruction::CreateCustomCall(
-          new_shape, absl::MakeSpan(custom_call->operands()),
-          "xla.gpu.ext.cub_scan"));
+          new_shape, custom_call->operands(), "xla.gpu.ext.cub_scan"));
   static_cast<HloCustomCallInstruction*>(new_custom_call)
       ->set_api_version(CustomCallApiVersion::API_VERSION_TYPED_FFI);
   new_custom_call->SetupDerivedInstruction(custom_call);
+  std::string backend_config = absl::StrFormat(
+      "{element_type = %d : i32, vector_length = %d : i64, "
+      "row_length = %d : i64, column_length = %d : i64, kind = %d : i32, "
+      "is_reverse = %s}",
+      static_cast<int32_t>(type), options.vector_length(), options.row_length(),
+      options.column_length(), static_cast<int32_t>(options.kind()),
+      options.is_reverse() ? "true" : "false");
+  new_custom_call->set_raw_backend_config_string(backend_config);
   RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
       custom_call, new_custom_call));
   return absl::OkStatus();
