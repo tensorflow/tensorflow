@@ -495,7 +495,8 @@ class HloInstruction {
   // order of inputs from different participants.
   static std::unique_ptr<HloInstruction> CreateAllGather(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64_t all_gather_dimension, const CollectiveDeviceListBase& device_list,
+      int64_t all_gather_dimension,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       bool constrain_layout, const std::optional<int64_t>& channel_id,
       bool use_global_device_ids);
 
@@ -515,7 +516,8 @@ class HloInstruction {
   // conjunction of a AllGatherDone op that synchronizes and returns the result.
   static std::unique_ptr<HloInstruction> CreateAllGatherStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64_t all_gather_dimension, const CollectiveDeviceListBase& device_list,
+      int64_t all_gather_dimension,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       bool constrain_layout, const std::optional<int64_t>& channel_id,
       bool use_global_device_ids);
 
@@ -542,8 +544,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateAllReduce(
@@ -558,9 +561,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReduceScatter(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-      int64_t scatter_dimension);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids, int64_t scatter_dimension);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateReduceScatter(
@@ -586,8 +589,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduceStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateAllReduceStart(
@@ -624,8 +628,8 @@ class HloInstruction {
   // performs AllToAll and then concatenates the results into a single array.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension = std::nullopt);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -732,7 +736,7 @@ class HloInstruction {
   //
   static std::unique_ptr<HloInstruction> CreateRaggedAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& device_list,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -747,8 +751,8 @@ class HloInstruction {
   // on that replica is a tensor consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
@@ -2346,9 +2350,9 @@ class HloInstruction {
   const std::vector<ReplicaGroup>& replica_groups() const;
 
   // Delegates to HloCollectiveInstruction::device_list.
-  const CollectiveDeviceListBase& device_list() const;
+  const std::shared_ptr<CollectiveDeviceListBase>& device_list() const;
 
-  // Returns true if device_list().num_replica_groups() > 0.
+  // Returns true if device_list()->num_replica_groups() > 0.
   bool has_replica_groups() const;
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.

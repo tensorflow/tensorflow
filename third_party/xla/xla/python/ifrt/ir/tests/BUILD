@@ -1,5 +1,3 @@
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
@@ -90,72 +88,4 @@ xla_cc_binary(
         "@stablehlo//:register",
         "@stablehlo//:version",
     ],
-)
-
-cc_library(
-    name = "executable_impl_test_base",
-    testonly = True,
-    srcs = ["executable_impl_test_base.cc"],
-    hdrs = ["executable_impl_test_base.h"],
-    visibility = ["//xla/python/ifrt:users"],
-    deps = [
-        "//xla:status_macros",
-        "//xla/mlir/utils:error_util",
-        "//xla/python/ifrt",
-        "//xla/python/ifrt:serdes",
-        "//xla/python/ifrt:test_util",
-        "//xla/python/ifrt/ir:ifrt_ir_program",
-        "//xla/python/ifrt/ir:ifrt_ir_program_serdes",
-        "//xla/python/ifrt/ir:sharding_param",
-        "//xla/python/ifrt/ir:version",
-        "//xla/python/ifrt/ir/transforms:passes",
-        "//xla/python/ifrt/support:module_parsing",
-        "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Parser",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@stablehlo//:version",
-    ],
-)
-
-cc_library(
-    name = "executable_impl_test_lib",
-    testonly = True,
-    srcs = ["executable_impl_test_lib.cc"],
-    visibility = ["//xla/python/ifrt:users"],
-    deps = [
-        ":executable_impl_test_base",
-        "//xla/pjrt:pjrt_executable",
-        "//xla/python/ifrt",
-        "//xla/python/ifrt:test_util",
-        "//xla/python/ifrt/hlo:hlo_program",
-        "//xla/python/ifrt/ir:atom_program_compiler",
-        "//xla/python/ifrt/ir:ifrt_ir_program",
-        "//xla/python/ifrt/ir:sharding_param",
-        "//xla/python/pjrt_ifrt:xla_ifrt",
-        "//xla/service:computation_placer_hdr",
-        "//xla/tsl/concurrency:ref_count",
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = True,
-)
-
-build_test(
-    name = "executable_test_no_impl",
-    targets = [":executable_impl_test_lib"],
 )
