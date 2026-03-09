@@ -1094,7 +1094,7 @@ cc_library(
         "//xla/service/cpu:cpu_executable",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/service/gpu:gpu_symbol_repository",
-        "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/service/gpu/autotuning:autotuner_cache",
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:platform",
@@ -1195,7 +1195,7 @@ xla_test(
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
         "//xla/service/gpu:gpu_symbol_repository",
-        "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/service/gpu/autotuning:autotuner_cache",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
