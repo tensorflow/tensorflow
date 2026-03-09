@@ -15,8 +15,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"

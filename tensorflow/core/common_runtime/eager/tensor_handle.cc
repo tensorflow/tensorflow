@@ -14,22 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 
-#include <algorithm>
 #include <cstddef>
-#include <map>
-#include <memory>
-#include <queue>
+#include <cstdint>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/variant.h"
+#include "absl/utility/utility.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"

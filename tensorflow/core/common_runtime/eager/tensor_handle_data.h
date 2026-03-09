@@ -18,7 +18,9 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
+#include "absl/status/status.h"
 #include "absl/types/variant.h"
+#include "absl/utility/utility.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
