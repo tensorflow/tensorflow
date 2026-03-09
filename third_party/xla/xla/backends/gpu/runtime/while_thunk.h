@@ -23,24 +23,21 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // WhileThunk implements the while instruction on GPU by invoking a thunk
 // sequence for the while 'condition' computation, and (conditionally) another
@@ -59,10 +56,9 @@ namespace gpu {
 class WhileThunk : public Thunk {
  public:
   // Constructs a WhileThunk to compute while instruction 'hlo'.
-  WhileThunk(ThunkInfo thunk_info, const HloInstruction* loop,
+  WhileThunk(ThunkInfo thunk_info,
              const BufferAllocation::Slice& condition_result_buffer_index,
-             std::unique_ptr<SequentialThunk> condition_thunk_sequence,
-             std::unique_ptr<SequentialThunk> body_thunk_sequence,
+             ThunkSequence condition_thunks, ThunkSequence body_thunks,
              std::optional<int64_t> trip_count = std::nullopt);
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
@@ -71,13 +67,13 @@ class WhileThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  SequentialThunk* condition_thunk_sequence() const {
-    return condition_thunk_sequence_.get();
+  const ThunkExecutor& condition_executor() const {
+    return condition_executor_;
   }
+  ThunkExecutor& condition_executor() { return condition_executor_; }
 
-  SequentialThunk* body_thunk_sequence() const {
-    return body_thunk_sequence_.get();
-  }
+  const ThunkExecutor& body_executor() const { return body_executor_; }
+  ThunkExecutor& body_executor() { return body_executor_; }
 
   const BufferAllocation::Slice& condition_result_buffer() const {
     return condition_result_buffer_index_;
@@ -112,10 +108,9 @@ class WhileThunk : public Thunk {
       const Deserializer& deserializer);
 
  private:
-  const HloInstruction* loop_;
   const BufferAllocation::Slice condition_result_buffer_index_;
-  std::unique_ptr<SequentialThunk> condition_thunk_sequence_;
-  std::unique_ptr<SequentialThunk> body_thunk_sequence_;
+  ThunkExecutor condition_executor_;
+  ThunkExecutor body_executor_;
   std::optional<int64_t> trip_count_;
 
   // Host memory pool for transferring predicate value from device to host.
@@ -124,7 +119,6 @@ class WhileThunk : public Thunk {
       host_memory_pools_ ABSL_GUARDED_BY(mutex_);
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_WHILE_THUNK_H_
