@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
 #include "xla/literal.h"
