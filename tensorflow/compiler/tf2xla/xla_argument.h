@@ -24,8 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
+#include "tensorflow/compiler/tf2xla/xla_argument.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -134,6 +136,11 @@ struct XlaArgument {
   // unnecessary HBM usage.
   bool requires_broadcast = false;
   std::optional<ManagedStackTrace> definition_stack_trace;
+
+  // Converts between proto and struct.
+  tf2xla::XlaArgumentProto ToProto() const;
+  static absl::StatusOr<XlaArgument> FromProto(
+      const tf2xla::XlaArgumentProto& proto);
 };
 
 // Returns true if any of `args` is an uninitialized resource variable.

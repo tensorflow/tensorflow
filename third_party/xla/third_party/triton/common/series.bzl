@@ -24,11 +24,10 @@ common_patch_list = [
     "//third_party/triton:common/construction_order.patch",
     "//third_party/triton:common/include_functional.patch",
     "//third_party/triton:common/launcher.patch",
-    "//third_party/triton:common/align_tensormap_128.patch",
     "//third_party/triton:common/disable_amd_test.patch",
     "//third_party/triton:common/avoid-0fc-mid-ptwas-128.patch",
-    "//third_party/triton:common/fix_use_after_free_in_lower_kernel_barriers.patch",
     "//third_party/triton:common/remove_already_default_ods_setting.patch",
     "//third_party/triton:common/wgmma_pipeline_fix.patch",
+    "//third_party/triton:common/nvdisasm_bin_path.patch",
     # Add new patches just above this line
 ]

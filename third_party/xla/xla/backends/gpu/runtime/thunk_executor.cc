@@ -77,7 +77,7 @@ absl::Status ThunkExecutor::ExecuteOnStream(
     // If progress tracker is installed for current thread, verify that a
     // thunk progress record exists for the given `thunk`.
     if (tracker) {
-      absl::MutexLock lock(&tracker->mu);
+      absl::MutexLock lock(tracker->mu);
       if (!tracker->map.contains(thunk.get())) {
         return Internal(
             "[thunk=%d/%d] Progress tracker is missing a record for thunk `%s`",
@@ -101,7 +101,7 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 
     // Maybe track thunk execution to report the progress.
     if (tracker) {
-      absl::MutexLock lock(&tracker->mu);
+      absl::MutexLock lock(tracker->mu);
       // Record when thunk was executed last time.
       tracker->map.at(thunk).executed = absl::Now();
 
@@ -157,14 +157,14 @@ ThunkExecutor::ScopedProgressTracker::~ScopedProgressTracker() {
     CHECK_EQ(installed_progress_tracker, events_.get())  // Crash OK
         << "Tried to destroy progress tracker on a different thread";
     installed_progress_tracker = nullptr;
-    absl::MutexLock lock(&events_->mu);
+    absl::MutexLock lock(events_->mu);
     events_->map.clear();
   }
 }
 
 std::vector<ThunkExecution> ThunkExecutor::ScopedProgressTracker::CollectThunks(
     se::Event::Status status, bool most_recent_first, size_t n) {
-  absl::MutexLock lock(&events_->mu);
+  absl::MutexLock lock(events_->mu);
 
   // Helper struct for sorting executed thunks by timestamp before lazily
   // polling event status. We keep a pointer to the map entry to avoid copying
