@@ -650,8 +650,9 @@ class FuncGraph(ops.Graph):
     return self._function_captures._create_placeholder_helper(  # pylint: disable=protected-access
         self, tensor, name)
 
-  def _experimental_capture_side_input_by_ref(self, identifier: Hashable,
-                                              func: Callable[[], Any]) ->...:
+  def _experimental_capture_side_input_by_ref(
+      self, identifier: Hashable, func: Callable[[], Any]
+  ):
     """Implement capturing side input by reference for tf.function.
 
     Note that this API will only register the capture in the func_graph where
@@ -708,7 +709,6 @@ class FuncGraph(ops.Graph):
     Returns:
       A nested structure with the same structure as the side input. Tensors
         are replaced with placehoders, and non-tensors remain the same.
-
     """
     if context.executing_eagerly():
       return func()
