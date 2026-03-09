@@ -143,7 +143,7 @@ TEST_P(CpuVectorizationTest, DoIt) {
   std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
   auto compiler = GetCpuCompiler();
-  auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler.get());
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
   TF_ASSERT_OK(CompileAheadOfTimeAndVerifyIr(llvm_compiler, options,
                                              std::move(hlo_module), check_lines,
                                              /*match_optimized_ir=*/true));
@@ -334,7 +334,7 @@ TEST_P(JitVectorizationTest, JitX86UpToIsa) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   auto compiler = GetCpuCompiler();
-  auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler.get());
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler.get());
   Compiler::CompileOptions compile_options;
   compile_options.device_allocator = nullptr;
   TF_ASSERT_OK(CompileAndVerifyIr(llvm_compiler, compile_options,
