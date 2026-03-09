@@ -28,6 +28,11 @@ pytype_strict_library(
 )
 
 pytype_strict_library(
+    name = "check_header_guards",
+    srcs = ["check_header_guards.py"],
+)
+
+pytype_strict_library(
     name = "diff_parser",
     srcs = ["diff_parser.py"],
     visibility = ["//visibility:public"],
@@ -73,6 +78,15 @@ py_test(
     srcs = ["generate_compile_commands_test.py"],
     deps = [
         ":generate_compile_commands",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+py_test(
+    name = "check_header_guards_test",
+    srcs = ["check_header_guards_test.py"],
+    deps = [
+        ":check_header_guards",
         "@absl_py//absl/testing:absltest",
     ],
 )
