@@ -127,6 +127,22 @@ TEST(RocmTracerTest, AnnotationMapWorks) {
   EXPECT_EQ(result, annotation);
 }
 
+TEST(RocmTracerTest, AnnotationMapClear) {
+  RocmTracer& tracer = RocmTracer::GetRocmTracerSingleton();
+  AnnotationMap* map = tracer.annotation_map();
+  ASSERT_NE(map, nullptr);
+
+  map->Add(100, "op_a");
+  map->Add(101, "op_b");
+  EXPECT_EQ(map->LookUp(100), "op_a");
+  EXPECT_EQ(map->LookUp(101), "op_b");
+
+  map->Clear();
+
+  EXPECT_TRUE(map->LookUp(100).empty());
+  EXPECT_TRUE(map->LookUp(101).empty());
+}
+
 // Simple collector that tracks received events for verification.
 class EventCapturingCollector : public RocmTraceCollector {
  public:
