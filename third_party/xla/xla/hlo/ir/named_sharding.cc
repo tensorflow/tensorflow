@@ -249,7 +249,7 @@ std::string NamedSharding::ToString(bool include_metadata) const {
     return result;
   }
 
-  if (IsMaximal()) {
+  if (IsSingleDevice()) {
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
@@ -476,16 +476,6 @@ NamedSharding FromAxisNames(
 
 namespace {
 
-bool CompareAxisRefs(const AxisRef& a, const AxisRef& b, const Mesh& mesh) {
-  if (a.mesh_axis_index() != b.mesh_axis_index()) {
-    return a.mesh_axis_index() < b.mesh_axis_index();
-  }
-  int64_t a_pre = a.sub_axis_info() ? a.sub_axis_info()->pre_size : 1;
-  int64_t b_pre = b.sub_axis_info() ? b.sub_axis_info()->pre_size : 1;
-
-  return a_pre != b_pre ? a_pre < b_pre : a.size(mesh) < b.size(mesh);
-}
-
 absl::Status VerifyAndTrack(
     const AxisRef& axis, const Mesh& mesh,
     absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
@@ -503,9 +493,7 @@ absl::Status VerifyAndTrack(
 absl::Status VerifySortedAxes(
     absl::Span<const AxisRef> axes, absl::string_view name, const Mesh& mesh,
     absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
-  if (!absl::c_is_sorted(axes, [&](const AxisRef& a, const AxisRef& b) {
-        return CompareAxisRefs(a, b, mesh);
-      })) {
+  if (!absl::c_is_sorted(axes)) {
     return absl::InvalidArgumentError(
         absl::StrCat(name,
                      " axes must be sorted by mesh axis index and "
