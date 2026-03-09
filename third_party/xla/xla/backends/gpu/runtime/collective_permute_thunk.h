@@ -143,10 +143,12 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
   }
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     const GpuCliqueKey& clique_key,
-                                     se::Stream& stream,
-                                     Communicator& comm) override;
+  // No rendezvous needed when using P2P memcpy in local mode instead of NCCL.
+  bool RequiresRendezvous() const override { return !p2p_memcpy_enabled_; }
+
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
 
  private:
   const P2PConfig config_;

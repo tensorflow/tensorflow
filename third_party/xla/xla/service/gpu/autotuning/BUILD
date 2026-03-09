@@ -4,13 +4,11 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//xla/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
-load("//xla/util:build_defs.bzl", "embed_files")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -22,54 +20,6 @@ package_group(
     name = "friends",
     includes = [
         "//xla:friends",
-    ],
-)
-
-cc_library(
-    name = "dot_search_space",
-    srcs = ["dot_search_space.cc"],
-    hdrs = ["dot_search_space.h"],
-    tags = ["gpu"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla/backends/gpu/codegen/triton:tma_utils",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/utils:hlo_traversal",
-        "//xla/service/gpu:matmul_utils",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/gpu:tma_metadata",
-        "//xla/tsl/lib/core:bits",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_protobuf//:protobuf_lite",
-        "@llvm-project//llvm:Support",
-        "@tsl//tsl/platform:protobuf",
-    ],
-)
-
-xla_cc_test(
-    name = "dot_search_space_test",
-    srcs = ["dot_search_space_test.cc"],
-    tags = ["gpu"],
-    deps = [
-        ":dot_search_space",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service/gpu:matmul_utils",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_description_proto_cc",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -156,29 +106,22 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "autotuner_util",
-    srcs = ["autotuner_util.cc"],
-    hdrs = ["autotuner_util.h"],
+    name = "autotuner_cache",
+    srcs = ["autotuner_cache.cc"],
+    hdrs = ["autotuner_cache.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":autotune_cache_key",
-        ":autotuner_status_key",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
         "//xla/service:dump",
-        "//xla/stream_executor:device_address_allocator",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -205,7 +148,6 @@ cc_library(
     hdrs = ["autotuner_compile_util.h"],
     tags = ["gpu"],
     deps = [
-        ":autotuner_util",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:util",
@@ -221,9 +163,10 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel_stats",
         "//xla/stream_executor:stream",
-        "//xla/stream_executor/gpu:redzone_allocator",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -298,8 +241,8 @@ tf_proto_library(
 )
 
 xla_cc_test(
-    name = "autotuner_util_test",
-    srcs = ["autotuner_util_test.cc"],
+    name = "autotuner_cache_test",
+    srcs = ["autotuner_cache_test.cc"],
     data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
     tags = [
         "gpu",
@@ -307,8 +250,7 @@ xla_cc_test(
     ],
     deps = [
         ":autotune_cache_key",
-        ":autotuner_status_key",
-        ":autotuner_util",
+        ":autotuner_cache",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:xla_proto_cc",
@@ -329,7 +271,7 @@ xla_cc_test(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -373,46 +315,5 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
-    ],
-)
-
-filegroup(
-    name = "all_default_configs",
-    data = glob(["default_configs/*.txtpb"]),
-)
-
-exports_files(glob([
-    "default_configs/*.txtpb",
-]))
-
-embed_files(
-    name = "embed_default_configs",
-    srcs = glob(["default_configs/*.txtpb"]),
-    compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
-    cpp_namespace = "xla::gpu::configs",
-)
-
-cc_library(
-    name = "triton_configs",
-    srcs = ["triton_configs.cc"],
-    hdrs = ["triton_configs.h"],
-    deps = [
-        ":embed_default_configs",
-        "//xla:autotuning_proto_cc",
-        "//xla/service/gpu:matmul_utils",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_protobuf//:protobuf",
-    ],
-)
-
-xla_cc_test(
-    name = "triton_configs_test",
-    srcs = ["triton_configs_test.cc"],
-    deps = [
-        ":triton_configs",
-        "@com_google_googletest//:gtest_main",
     ],
 )

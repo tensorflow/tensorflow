@@ -468,6 +468,11 @@ class Thunk {
 
   static absl::string_view KindToString(Thunk::Kind kind);
 
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, Kind kind) {
+    sink.Append(KindToString(kind));
+  }
+
   ExecutionStreamId execution_stream_id() const {
     return thunk_info_.execution_stream_id;
   }
@@ -545,6 +550,8 @@ class Thunk {
   virtual bool IsAsyncDone() const { return false; }
 
  protected:
+  friend class ThunkSequence;
+
   // Walks all nested thunks and calls `callback` for them.
   using Walker = absl::FunctionRef<absl::Status(Thunk*)>;
   virtual absl::Status WalkNested(Walker callback) { return absl::OkStatus(); }
@@ -566,14 +573,21 @@ class ThunkSequence : public std::vector<std::unique_ptr<Thunk>> {
  public:
   using std::vector<std::unique_ptr<Thunk>>::vector;
 
-  // Apply transformer callback to all thunks in *this sequence.
-  absl::Status TransformNested(Thunk::Transformer callback) {
-    for (std::unique_ptr<Thunk>& thunk : *this) {
-      RETURN_IF_ERROR(thunk->TransformNested(callback));
-      ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
-    }
-    return absl::OkStatus();
+  // Creates a thunks sequence from a single thunk.
+  static ThunkSequence Of(std::unique_ptr<Thunk> thunk) {
+    ThunkSequence thunks;
+    thunks.push_back(std::move(thunk));
+    return thunks;
   }
+
+  // Walks/Transforms all thunks nested in *this sequence.
+  absl::Status WalkNested(Thunk::Walker callback);
+  absl::Status TransformNested(Thunk::Transformer callback);
+
+  // Creates a human-readable representation of a thunk sequence. For each thunk
+  // prints its id, kind, nearest buffer dependencies (prev/next), and the
+  // thunk-specific description. Useful for diagnosing suboptimal schedules.
+  std::string ToString(int indent) const;
 };
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);

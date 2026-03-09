@@ -18,10 +18,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include <gtest/gtest.h>
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_aot_compilation_result.h"
 #include "xla/service/cpu/test_target_triple_helper.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla::cpu {
 namespace {

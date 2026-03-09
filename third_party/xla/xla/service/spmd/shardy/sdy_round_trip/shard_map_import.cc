@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cassert>
 #include <memory>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseSet.h"
@@ -165,6 +166,31 @@ mlir::LogicalResult rewriteManualComputation(
   return mlir::success();
 }
 
+void cloneManualComputations(
+    ModuleOp moduleOp, SymbolTable& symbolTable,
+    mlir::SymbolTableCollection& symbolTableCollection) {
+  mlir::CallGraph callGraph(moduleOp);
+  llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
+  for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
+    if (node->isExternal()) {
+      continue;
+    }
+    node->getCallableRegion()->walk([&](CallOp callOp) {
+      if (!isManualComputation(callOp)) {
+        return;
+      }
+      // TODO(b/446881697): Clone just the body on demand like in
+      // shardy/stablehlo_round_trip/shard_map_import.cc.
+      FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
+      CHECK(funcOp) << "Failed to lookup function: "
+                    << callOp.getCallee().str();
+      callOp.setCallee(
+          symbolTable.insert(cloneFuncRecursively(funcOp, symbolTable)));
+    });
+  }
+  // TODO(enver): Clean up uncalled functions.
+}
+
 class SdyRoundTripShardMapImportPass
     : public mlir::PassWrapper<SdyRoundTripShardMapImportPass,
                                mlir::OperationPass<ModuleOp>> {
@@ -177,22 +203,8 @@ class SdyRoundTripShardMapImportPass
     mlir::SymbolTableCollection symbolTableCollection;
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(module);
     mlir::IRRewriter rewriter(module);
-    llvm::SmallDenseSet<StringRef> manualComputationCalleeNames;
 
-    // Clone multiple calls to the same function.
-    module->walk([&](CallOp op) {
-      if (!op.getCallee().contains(kManualComputationFuncName)) {
-        return;
-      }
-      if (manualComputationCalleeNames.insert(op.getCallee()).second) {
-        return;
-      }
-      // TODO(b/446881697): Clone just the body on demand like in
-      // shardy/stablehlo_round_trip/shard_map_import.cc.
-      FuncOp funcOp = symbolTable.lookup<FuncOp>(op.getCallee()).clone();
-      op.setCallee(symbolTable.insert(funcOp));
-      manualComputationCalleeNames.insert(funcOp.getName());
-    });
+    cloneManualComputations(module, symbolTable, symbolTableCollection);
 
     mlir::CallGraph callGraph(module);
     llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
@@ -200,15 +212,16 @@ class SdyRoundTripShardMapImportPass
       if (node->isExternal()) continue;
       if (node->getCallableRegion()
               ->walk([&](CallOp callOp) {
-                if (!callOp.getCallee().contains(kManualComputationFuncName)) {
-                  return mlir::WalkResult::advance();
-                }
-                rewriter.setInsertionPoint(callOp);
-                if (mlir::failed(rewriteManualComputation(callOp, rewriter,
-                                                          symbolTable))) {
-                  callOp.emitError(
-                      "failed to rewrite func.call to manual computation");
-                  return mlir::WalkResult::interrupt();
+                if (isManualComputation(callOp)) {
+                  rewriter.setInsertionPoint(callOp);
+                  if (mlir::failed(rewriteManualComputation(callOp, rewriter,
+                                                            symbolTable))) {
+                    // TODO(enver): Return callOp.emitError direcly here and
+                    // elsewhere.
+                    callOp.emitError(
+                        "failed to rewrite func.call to manual computation");
+                    return mlir::WalkResult::interrupt();
+                  }
                 }
                 return mlir::WalkResult::advance();
               })
@@ -233,9 +246,11 @@ class SdyRoundTripShardMapImportPass
       }
     });
 
-    // Erase all manual computation func ops that now have no call ops.
-    for (StringRef calleeName : manualComputationCalleeNames) {
-      symbolTable.erase(symbolTable.lookup(calleeName));
+    // Erase all manual computation func ops as now they have no call ops.
+    for (FuncOp funcOp : llvm::make_early_inc_range(module.getOps<FuncOp>())) {
+      if (isManualComputation(funcOp)) {
+        symbolTable.erase(symbolTable.lookup(funcOp.getName()));
+      }
     }
   }
 

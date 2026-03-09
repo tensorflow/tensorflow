@@ -1696,7 +1696,7 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::RunImpl(
     bool changed = false;
     // Rewrite FP8 convolutions and supported adjacent pointwise ops into a
     // ForwardGraph Custom Call.
-    if (!compute_capability_.IsRocm()) {
+    if (!compute_capability_.IsRocm() && !compute_capability_.IsOneAPI()) {
       auto* cc = compute_capability_.cuda_compute_capability();
       TF_ASSIGN_OR_RETURN(
           changed, F8GraphConv(comp, *cc, dnn_version_, toolkit_version_));
