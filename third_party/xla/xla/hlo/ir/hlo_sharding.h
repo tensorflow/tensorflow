@@ -234,7 +234,7 @@ class HloSharding {
   bool IsSingleDeviceLeaf() const {
     DCHECK(!IsTuple());
     if (UseNamedShardingLeaf()) {
-      return named_sharding_->IsMaximal();
+      return named_sharding_->IsSingleDevice();
     }
     return single_device_;
   }

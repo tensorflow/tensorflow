@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_multimem_registry.h"
@@ -118,10 +119,15 @@ void CheckProtoRoundTrip(const DynamicSliceThunk& thunk,
       [](const ThunkProto& thunk_proto,
          absl::Span<const BufferAllocation> fake_allocations_span)
       -> absl::StatusOr<std::unique_ptr<Thunk>> {
-    return DeserializeThunkProto(thunk_proto, fake_allocations_span,
-                                 /*hlo_module*/ nullptr,
-                                 /*platform_name=*/"TEST_PLATFORM",
-                                 /*gpu_compute_capability=*/{});
+    google::protobuf::RepeatedPtrField<ThunkProto> thunk_protos;
+    *thunk_protos.Add() = thunk_proto;
+    TF_ASSIGN_OR_RETURN(
+        ThunkSequence sequence,
+        DeserializeThunkSequenceProto(thunk_protos, fake_allocations_span,
+                                      /*hlo_module=*/nullptr,
+                                      /*platform_name=*/"TEST_PLATFORM",
+                                      /*gpu_compute_capability=*/{}));
+    return std::move(sequence.front());
   };
 
   TF_ASSERT_OK_AND_ASSIGN(
