@@ -456,27 +456,27 @@ static absl::Status ToProto(const CollectiveThunk& thunk, ThunkProto& proto) {
   switch (thunk.collective_kind()) {
     case CollectiveThunk::CollectiveKind::kAllGather:
       TF_RETURN_IF_ERROR(
-          ToProto(tsl::down_cast<const AllGatherThunk&>(thunk),
+          ToProto(absl::down_cast<const AllGatherThunk&>(thunk),
                   *collective_thunk_proto->mutable_all_gather_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kAllReduce:
       TF_RETURN_IF_ERROR(
-          ToProto(tsl::down_cast<const AllReduceThunk&>(thunk),
+          ToProto(absl::down_cast<const AllReduceThunk&>(thunk),
                   *collective_thunk_proto->mutable_all_reduce_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kAllToAll:
       TF_RETURN_IF_ERROR(
-          ToProto(tsl::down_cast<const AllToAllThunk&>(thunk),
+          ToProto(absl::down_cast<const AllToAllThunk&>(thunk),
                   *collective_thunk_proto->mutable_all_to_all_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kReduceScatter:
       TF_RETURN_IF_ERROR(
-          ToProto(tsl::down_cast<const ReduceScatterThunk&>(thunk),
+          ToProto(absl::down_cast<const ReduceScatterThunk&>(thunk),
                   *collective_thunk_proto->mutable_reduce_scatter_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kCollectivePermute:
       TF_RETURN_IF_ERROR(
-          ToProto(tsl::down_cast<const CollectivePermuteThunk&>(thunk),
+          ToProto(absl::down_cast<const CollectivePermuteThunk&>(thunk),
                   *collective_thunk_proto->mutable_collective_permute_thunk()));
       break;
   }
@@ -843,81 +843,81 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
   switch (thunk.kind()) {
     case Thunk::Kind::kCollective:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const CollectiveThunk&>(thunk), proto));
+          absl::down_cast<const CollectiveThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kConditional:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const ConditionalThunk&>(thunk), proto));
+          absl::down_cast<const ConditionalThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kFft:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const FftThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(absl::down_cast<const FftThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kRngGetAndUpdateState:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const RngGetAndUpdateStateThunk&>(thunk), proto));
+          absl::down_cast<const RngGetAndUpdateStateThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kKernel:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const KernelThunkBase&>(thunk), proto));
+          absl::down_cast<const KernelThunkBase&>(thunk), proto));
       break;
     case Thunk::Kind::kCall:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const CallThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(absl::down_cast<const CallThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kCopy:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const CopyThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(absl::down_cast<const CopyThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kCustomCall:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const CustomCallThunk&>(thunk), proto));
+          absl::down_cast<const CustomCallThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kConvolution:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const ConvolutionThunk&>(thunk), proto));
+          absl::down_cast<const ConvolutionThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kDot:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const DotThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(absl::down_cast<const DotThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kInfeed:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const InfeedThunk&>(thunk), proto));
+          absl::down_cast<const InfeedThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kOutfeed:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const OutfeedThunk&>(thunk), proto));
+          absl::down_cast<const OutfeedThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kSort:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const SortThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(absl::down_cast<const SortThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kTopK:
       TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const TopKThunk&>(thunk), proto));
+          ::xla::cpu::ToProto(absl::down_cast<const TopKThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kWhile:
-      TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const WhileThunk&>(thunk), proto));
+      TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
+          absl::down_cast<const WhileThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kPartitionId:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           static_cast<const PartitionIdThunk&>(
-              tsl::down_cast<const internal::LogicalIdThunk<
+              absl::down_cast<const internal::LogicalIdThunk<
                   internal::LogicalIdKind::kPartitionId>&>(thunk)),
           proto));
       break;
     case Thunk::Kind::kReplicaId:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           static_cast<const ReplicaIdThunk&>(
-              tsl::down_cast<const internal::LogicalIdThunk<
+              absl::down_cast<const internal::LogicalIdThunk<
                   internal::LogicalIdKind::kReplicaId>&>(thunk)),
           proto));
       break;
     case Thunk::Kind::kYnnFusion:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const YnnFusionThunk&>(thunk), proto));
+          absl::down_cast<const YnnFusionThunk&>(thunk), proto));
       break;
     default:
       return absl::UnimplementedError(
