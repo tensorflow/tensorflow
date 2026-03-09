@@ -794,6 +794,8 @@ message DebugOptions {
   // regular dot.
   optional bool xla_gpu_experimental_use_ragged_dot_fusion = 401;
 
+  optional bool xla_gpu_experimental_use_ragged_dot_grouped_gemm = 501;
+
   // If true, PTX compilation will fail if a kernel spills registers.
   // This is meant for debugging and only applies to CUDA PTX compilation.
   optional bool xla_gpu_fail_ptx_compilation_on_register_spilling = 353;
