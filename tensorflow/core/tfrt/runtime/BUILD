@@ -19,6 +19,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/infra/mira/...",
+        # copybara:uncomment "//third_party/neptune/runtime/...",
         # copybara:uncomment "//third_party/pathways/google/serving/...",
         # copybara:uncomment "//learning/serving/...",
         # copybara:uncomment "//smartass/brain/...",

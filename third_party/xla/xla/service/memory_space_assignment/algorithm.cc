@@ -1888,6 +1888,12 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
           hlo_live_range_.instruction_schedule().at(position.instruction);
     }
     const int64_t memory_space = buffer_coloring.memory_space;
+    // Memory space 5 corresponds to Host memory. While memory coloring is used
+    // to denote inputs/outputs in host memory for custom calls, host memory
+    // cannot be allocated by MSA, so we skip host memory colorings.
+    if (memory_space == 5) {
+      continue;
+    }
     HloValue& value = alias_analysis_.dataflow_analysis().GetUniqueValueAt(
         position.instruction, position.index);
     TF_ASSIGN_OR_RETURN(const MemorySpace memory_space_enum,

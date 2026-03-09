@@ -280,6 +280,7 @@ tf_cc_test(
         "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
         "//tensorflow/core/tfrt/ifrt:ifrt_model_context",
         "//tensorflow/core/tfrt/ifrt:ifrt_serving_core_selector",
+        "//tensorflow/core/tfrt/ifrt:sharding_utils",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "@com_google_absl//absl/status",

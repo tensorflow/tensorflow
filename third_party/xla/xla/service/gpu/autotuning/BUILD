@@ -156,29 +156,22 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "autotuner_util",
-    srcs = ["autotuner_util.cc"],
-    hdrs = ["autotuner_util.h"],
+    name = "autotuner_cache",
+    srcs = ["autotuner_cache.cc"],
+    hdrs = ["autotuner_cache.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":autotune_cache_key",
-        ":autotuner_status_key",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
         "//xla/service:dump",
-        "//xla/stream_executor:device_address_allocator",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -205,7 +198,6 @@ cc_library(
     hdrs = ["autotuner_compile_util.h"],
     tags = ["gpu"],
     deps = [
-        ":autotuner_util",
         "//xla:executable_run_options",
         "//xla:shape_util",
         "//xla:util",
@@ -221,9 +213,10 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel_stats",
         "//xla/stream_executor:stream",
-        "//xla/stream_executor/gpu:redzone_allocator",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
@@ -298,8 +291,8 @@ tf_proto_library(
 )
 
 xla_cc_test(
-    name = "autotuner_util_test",
-    srcs = ["autotuner_util_test.cc"],
+    name = "autotuner_cache_test",
+    srcs = ["autotuner_cache_test.cc"],
     data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
     tags = [
         "gpu",
@@ -307,8 +300,7 @@ xla_cc_test(
     ],
     deps = [
         ":autotune_cache_key",
-        ":autotuner_status_key",
-        ":autotuner_util",
+        ":autotuner_cache",
         "//xla:autotune_results_proto_cc",
         "//xla:autotuning_proto_cc",
         "//xla:xla_proto_cc",
@@ -329,7 +321,7 @@ xla_cc_test(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
