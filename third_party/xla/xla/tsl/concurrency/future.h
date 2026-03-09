@@ -743,14 +743,16 @@ class Future : public internal::FutureBase<absl::StatusOr<T>> {
   }
 
   // Flattens a `Future<Future<T>>` to `Future<T>`
-  template <typename U = T, std::enable_if_t<internal::IsFuture<U>::value &&
-                                             !is_move_only>* = nullptr>
-  Future<internal::future_type_t<typename U::value_type>> Flatten() const&;
+  template <typename U = T>
+  auto Flatten() const& -> std::enable_if_t<
+      internal::IsFuture<U>::value && !is_move_only,
+      Future<internal::future_type_t<typename U::value_type>>>;
 
   // Flattens a `Future<Future<T>>` to `Future<T>`
-  template <typename U = T,
-            std::enable_if_t<internal::IsFuture<U>::value>* = nullptr>
-  Future<internal::future_type_t<typename U::value_type>> Flatten() &&;
+  template <typename U = T>
+  auto Flatten() && -> std::enable_if_t<
+      internal::IsFuture<U>::value,
+      Future<internal::future_type_t<typename U::value_type>>>;
 
  private:
   friend class FutureHelpers;
@@ -1271,10 +1273,10 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 }
 
 template <typename T>
-template <typename U, std::enable_if_t<internal::IsFuture<U>::value &&
-                                       !Future<T>::is_move_only>*>
-[[nodiscard]] Future<internal::future_type_t<typename U::value_type>>
-Future<T>::Flatten() const& {
+template <typename U>
+auto Future<T>::Flatten() const& -> std::enable_if_t<
+    internal::IsFuture<U>::value && !Future<T>::is_move_only,
+    Future<internal::future_type_t<typename U::value_type>>> {
   using R = internal::future_type_t<typename U::value_type>;
   auto [promise, future] = MakePromise<R>();
 
@@ -1299,9 +1301,10 @@ Future<T>::Flatten() const& {
 }
 
 template <typename T>
-template <typename U, std::enable_if_t<internal::IsFuture<U>::value>*>
-[[nodiscard]] Future<internal::future_type_t<typename U::value_type>>
-Future<T>::Flatten() && {
+template <typename U>
+auto Future<T>::Flatten() && -> std::enable_if_t<
+    internal::IsFuture<U>::value,
+    Future<internal::future_type_t<typename U::value_type>>> {
   using R = internal::future_type_t<typename U::value_type>;
   auto [promise, future] = MakePromise<R>();
 
@@ -1638,10 +1641,13 @@ class JoinStatic
 
   template <std::size_t... Is, typename... Futures>
   static void OnReady(std::shared_ptr<JoinStatic> self,
-                      std::index_sequence<Is...>, Futures... futures) {
-    (std::forward<Futures>(futures).OnReady([self](auto value) {
-      self->OnReady(std::integral_constant<size_t, Is>{}, std::move(value));
-    }),
+                      std::index_sequence<Is...>, Futures&&... futures) {
+    auto on_ready_fn = [self](auto idx, auto&& future) {
+      std::forward<decltype(future)>(future).OnReady(
+          [self, idx](auto value) { self->OnReady(idx, std::move(value)); });
+    };
+    (on_ready_fn(std::integral_constant<size_t, Is>{},
+                 std::forward<Futures>(futures)),
      ...);
   }
 

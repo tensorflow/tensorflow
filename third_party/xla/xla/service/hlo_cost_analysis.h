@@ -442,7 +442,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
           "HloCostAnalysis::Options{\n"
           " per_second_rates: %s\n"
           " min_latency_seconds: %s\n"
-          " count_multiple_input_accesses: %d\n"
+          " count_multiple_input_accesses: %v\n"
           "}",
           per_second_rates.ToString(), min_latencies_seconds.ToString(),
           count_multiple_input_accesses);

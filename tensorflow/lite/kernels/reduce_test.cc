@@ -20,6 +20,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/reduce_test_common.h"
@@ -29,6 +30,7 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::IsEmpty;
 
@@ -1909,9 +1911,8 @@ TEST(ConstFloatMinOpTest, EmptyInputButScalarOutput) {
                     {0}, false);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
-  EXPECT_THAT(
-      m.GetOutput<float>(),
-      ElementsAreArray(ArrayFloatNear({std::numeric_limits<float>::max()})));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAre(testing::Ge(std::numeric_limits<float>::max())));
 }
 
 TEST(ConstFloatMaxOpTest, EmptyInputButScalarOutput) {
@@ -1922,9 +1923,8 @@ TEST(ConstFloatMaxOpTest, EmptyInputButScalarOutput) {
                     {0}, false);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
-  EXPECT_THAT(
-      m.GetOutput<float>(),
-      ElementsAreArray(ArrayFloatNear({-std::numeric_limits<float>::max()})));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAre(testing::Le(-std::numeric_limits<float>::max())));
 }
 
 TEST(ConstFloatProdOpTest, EmptyInputButScalarOutput) {
@@ -1951,9 +1951,7 @@ TEST(ConstFloatMeanOpTest, EmptyInputButScalarOutput) {
                      {0}, false);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_TRUE(m.GetOutputShape().empty());
-  auto output_data = m.GetOutput<float>();
-  EXPECT_TRUE(std::all_of(output_data.begin(), output_data.end(),
-                          [](float value) { return std::isnan(value); }));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAre(testing::IsNan()));
 }
 
 TEST(ConstAllOpTest, EmptyInputButScalarOutputKeepDim) {

@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -68,7 +68,7 @@ class DeterminismTest : public GpuCodegenTest {
     for (int i = 0; i < num_runs; ++i) {
       // Clear the autotune cache every iteration to ensure autotuning, if run,
       // is deterministic.
-      AutotunerUtil::ClearAutotuneResults();
+      AutotunerCache::ClearAutotuneResults();
 
       TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                               ParseAndReturnVerifiedModule(hlo_string));
@@ -221,7 +221,7 @@ ENTRY e {
   // implementation details to succeed. Thus, it tests that there is no
   // autotuning happening in a brittle way. Fix this when refactoring the
   // autotuner.
-  AutotunerUtil::ClearAutotuneResults();
+  AutotunerCache::ClearAutotuneResults();
   MatchOptimizedHlo(kHloText, R"(
     CHECK: ENTRY
     CHECK: __triton_nested_gemm_fusion
@@ -242,7 +242,7 @@ TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
   debug_options_.set_xla_gpu_cudnn_gemm_fusion_level(0);
   ASSERT_TRUE(debug_options_.xla_gpu_exclude_nondeterministic_ops());
   ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
-  AutotunerUtil::ClearAutotuneResults();
+  AutotunerCache::ClearAutotuneResults();
   // The default config is not used when autotuning is on.
   // TODO(b/431794189): it's not very clear why test considers (32, 32) tiling
   // to be the default. It seems to pick (16, 16) and it does not change
