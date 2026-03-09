@@ -1303,10 +1303,21 @@ TEST(ArrayImplTest, BitcastArrays) {
     GTEST_SKIP() << "Skipping test; bitcast is unimplemented.";
   }
   TF_ASSERT_OK(new_arrays.status());
-
-  // If the bitcast was successful, the output array should have the new spec.
   ASSERT_THAT(*new_arrays, SizeIs(1));
 
+  // The input array should have been donated and marked as deleted.
+  EXPECT_TRUE(array->IsDeleted());
+
+  // Some IFRT implementations that do not support bitcasting may not
+  // immediately return `UnimplementedError` from `BitcastArrays`, but use an
+  // error array because of asynchronous dispatch.
+  absl::Status new_array_status = new_arrays->front()->GetReadyFuture().Await();
+  if (absl::IsUnimplemented(new_array_status)) {
+    GTEST_SKIP() << "Skipping test; bitcast is unimplemented.";
+  }
+  TF_ASSERT_OK(new_array_status);
+
+  // If the bitcast was successful, the output array should have the new spec.
   ASSERT_EQ(new_arrays->front()->dtype(), new_array_spec.dtype);
   ASSERT_EQ(new_arrays->front()->shape(), new_array_spec.shape);
   ASSERT_EQ(new_arrays->front()->shared_ptr_sharding(),
