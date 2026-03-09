@@ -1,4 +1,4 @@
-/* Copyright 2023 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,126 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/rocm/cub_sort_kernel_rocm.h"
+
 #include <cstddef>
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "Eigen/Core"
+#include "rocm/include/hip/hip_bfloat16.h"
+#include "rocm/include/hip/hip_fp16.h"
 #include "rocm/include/hip/hip_runtime.h"
-#include "rocm/include/hipcub/backend/rocprim/device/device_radix_sort.hpp"
-#include "rocm/include/hipcub/backend/rocprim/device/device_segmented_radix_sort.hpp"
-#include "rocm/include/rocprim/thread/radix_key_codec.hpp"
-#include "rocm/include/rocprim/type_traits.hpp"
-#include "rocm/rocm_config.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"  // IWYU pragma: keep
-#include "xla/stream_executor/rocm/rocm_status.h"
-#include "tsl/platform/bfloat16.h"
-
-// Required for sorting Eigen::half and bfloat16.
-namespace rocprim {
-
-#if (TF_ROCM_VERSION >= 50200 && TF_ROCM_VERSION < 70000)
-namespace detail {
-template <>
-struct float_bit_mask<Eigen::half> {
-  static constexpr uint16_t sign_bit = 0x8000;
-  static constexpr uint16_t exponent = 0x7C00;
-  static constexpr uint16_t mantissa = 0x03FF;
-  using bit_type = uint16_t;
-};
-
-template <>
-struct float_bit_mask<tsl::bfloat16> {
-  static constexpr uint16_t sign_bit = 0x8000;
-  static constexpr uint16_t exponent = 0x7F80;
-  static constexpr uint16_t mantissa = 0x007F;
-  using bit_type = uint16_t;
-};
-
-template <>
-struct radix_key_codec_base<Eigen::half>
-    : radix_key_codec_floating<Eigen::half, uint16_t> {};
-template <>
-struct radix_key_codec_base<tsl::bfloat16>
-    : radix_key_codec_floating<tsl::bfloat16, uint16_t> {};
-}  // namespace detail
-#else   // TF_ROCM_VERSION >= 70000
-namespace traits {
-
-template <>
-struct define<Eigen::half> {
-  using float_bit_mask =
-      rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7C00, 0x03FF>;
-  using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
-  using number_format = rocprim::traits::number_format::values<
-      traits::number_format::kind::floating_point_type>;
-};
-
-template <>
-struct define<tsl::bfloat16> {
-  using float_bit_mask =
-      rocprim::traits::float_bit_mask::values<uint16_t, 0x8000, 0x7F80, 0x007F>;
-  using is_arithmetic = rocprim::traits::is_arithmetic::values<true>;
-  using number_format = rocprim::traits::number_format::values<
-      traits::number_format::kind::floating_point_type>;
-};
-
-}  // namespace traits
-#endif  // TF_ROCM_VERSION >= 50200 && TF_ROCM_VERSION < 70000
-
-};  // namespace rocprim
 
 namespace stream_executor {
 namespace rocm {
 namespace {
-
-template <typename KeyT>
-absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
-                         const void* d_keys_in, void* d_keys_out,
-                         size_t num_items, bool descending,
-                         hipStream_t stream) {
-  auto err =
-      descending
-          ? hipcub::DeviceRadixSort::SortKeysDescending<KeyT>(
-                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
-                static_cast<KeyT*>(d_keys_out), num_items, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, stream)
-          : hipcub::DeviceRadixSort::SortKeys<KeyT>(
-                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
-                static_cast<KeyT*>(d_keys_out), num_items, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, stream);
-  return stream_executor::gpu::ToStatus(err);
-}
-
-template <typename KeyT>
-absl::Status CubSortKeys(void* d_temp_storage, size_t& temp_bytes,
-                         const void* d_keys_in, void* d_keys_out,
-                         size_t num_items, bool descending, size_t batch_size,
-                         hipStream_t stream) {
-  if (batch_size == 1) {
-    return CubSortKeys<KeyT>(d_temp_storage, temp_bytes, d_keys_in, d_keys_out,
-                             num_items, descending, stream);
-  }
-  void* d_offsets = static_cast<char*>(d_temp_storage) + temp_bytes;
-  int* start_offsets =
-      d_temp_storage != nullptr ? static_cast<int*>(d_offsets) : nullptr;
-  int* end_offsets = start_offsets != nullptr ? start_offsets + 1 : nullptr;
-  auto err =
-      descending
-          ? hipcub::DeviceSegmentedRadixSort::SortKeysDescending<KeyT>(
-                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
-                static_cast<KeyT*>(d_keys_out), num_items, batch_size,
-                start_offsets, end_offsets, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, stream)
-          : hipcub::DeviceSegmentedRadixSort::SortKeys<KeyT>(
-                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
-                static_cast<KeyT*>(d_keys_out), num_items, batch_size,
-                start_offsets, end_offsets, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, stream);
-  return stream_executor::gpu::ToStatus(err);
-}
 
 template <typename KeyT>
 absl::Status CubSortKeysExecute(
@@ -150,63 +46,6 @@ absl::Status CubSortKeysGetScratchSize(size_t* temp_bytes, size_t num_items,
                                        size_t batch_size) {
   return CubSortKeys<KeyT>(nullptr, *temp_bytes, nullptr, nullptr, num_items,
                            false, batch_size, nullptr);
-}
-
-template <typename KeyT, typename ValT>
-absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
-                          const void* d_keys_in, void* d_keys_out,
-                          const void* d_values_in, void* d_values_out,
-                          size_t num_items, bool descending,
-                          hipStream_t stream) {
-  auto err =
-      descending
-          ? hipcub::DeviceRadixSort::SortPairsDescending<KeyT, ValT>(
-                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
-                static_cast<KeyT*>(d_keys_out),
-                static_cast<const ValT*>(d_values_in),
-                static_cast<ValT*>(d_values_out), num_items, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, stream)
-          : hipcub::DeviceRadixSort::SortPairs<KeyT, ValT>(
-                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
-                static_cast<KeyT*>(d_keys_out),
-                static_cast<const ValT*>(d_values_in),
-                static_cast<ValT*>(d_values_out), num_items, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, stream);
-  return stream_executor::gpu::ToStatus(err);
-}
-
-template <typename KeyT, typename ValT>
-absl::Status CubSortPairs(void* d_temp_storage, size_t& temp_bytes,
-                          const void* d_keys_in, void* d_keys_out,
-                          const void* d_values_in, void* d_values_out,
-                          size_t num_items, bool descending, size_t batch_size,
-                          hipStream_t stream) {
-  if (batch_size == 1) {
-    return CubSortPairs<KeyT, ValT>(d_temp_storage, temp_bytes, d_keys_in,
-                                    d_keys_out, d_values_in, d_values_out,
-                                    num_items, descending, stream);
-  }
-  void* d_offsets = static_cast<char*>(d_temp_storage) + temp_bytes;
-  int* start_offsets =
-      d_temp_storage != nullptr ? static_cast<int*>(d_offsets) : nullptr;
-  int* end_offsets = start_offsets != nullptr ? start_offsets + 1 : nullptr;
-  auto err =
-      descending
-          ? hipcub::DeviceSegmentedRadixSort::SortPairsDescending<KeyT, ValT>(
-                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
-                static_cast<KeyT*>(d_keys_out),
-                static_cast<const ValT*>(d_values_in),
-                static_cast<ValT*>(d_values_out), num_items, batch_size,
-                start_offsets, end_offsets, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, stream)
-          : hipcub::DeviceSegmentedRadixSort::SortPairs<KeyT, ValT>(
-                d_temp_storage, temp_bytes, static_cast<const KeyT*>(d_keys_in),
-                static_cast<KeyT*>(d_keys_out),
-                static_cast<const ValT*>(d_values_in),
-                static_cast<ValT*>(d_values_out), num_items, batch_size,
-                start_offsets, end_offsets, /*begin_bit=*/0,
-                /*end_bit=*/sizeof(KeyT) * 8, stream);
-  return stream_executor::gpu::ToStatus(err);
 }
 
 template <typename KeyT, typename ValT>

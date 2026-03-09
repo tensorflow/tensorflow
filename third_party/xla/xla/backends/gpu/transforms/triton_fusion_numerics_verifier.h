@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/service/gpu/autotuning/autotuner_compile_util.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream.h"

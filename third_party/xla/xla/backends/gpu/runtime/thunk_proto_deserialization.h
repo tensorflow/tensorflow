@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_
 
-#include <memory>
 #include <optional>
 
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -39,8 +39,8 @@ namespace xla::gpu {
 // - `symbol_resolver` is used to deserialize custom kernels where the kernel is
 //   not inlined in the proto, but rather loaded at runtime via symbol
 //   resolution.
-absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
-    const ThunkProto& thunk_proto,
+absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
+    const tsl::protobuf::RepeatedPtrField<ThunkProto>& thunk_protos,
     absl::Span<const BufferAllocation> buffer_allocations,
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,

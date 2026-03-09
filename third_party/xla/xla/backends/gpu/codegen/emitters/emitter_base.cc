@@ -372,7 +372,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 
   mlir::PassManager pm(&mlir_context);
   emitters::RegisterOptimizationPasses(pm);
-  AddLoopTransformationPasses(pm, device);
+  AddLoopTransformationPasses(pm, device, unroll_factor());
   AddLoweringPasses(pm, device);
 
   TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), *fusion.GetModule(), pm,
@@ -481,7 +481,8 @@ absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
 }
 
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
-                                 const se::DeviceDescription& device) {
+                                 const se::DeviceDescription& device,
+                                 int max_unroll_factor) {
   pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<FuncOp>(
       emitters::CreateLowerXlaToScfPass(device.threads_per_warp()));
@@ -505,7 +506,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(emitters::CreateVectorizeLoadsAndStoresPass(device));
-  pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass());
+  pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass(max_unroll_factor));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
