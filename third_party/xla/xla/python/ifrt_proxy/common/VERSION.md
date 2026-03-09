@@ -144,3 +144,9 @@
 *   Changes:
     *   Added support for `Client::MakeArrayFromHostBuffer` with a non-null
         `layout` argument.
+
+## Version kBitcastArrays
+
+*   Added date: 2026-03-05
+*   Changes:
+    *   Added support for `Client::BitcastArrays`.
