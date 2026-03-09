@@ -244,12 +244,15 @@ AMDGPUCompiler::CompileTargetBinary(
     XLA_SCOPED_LOGGING_TIMER_IF(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco",
         module_config.debug_options().xla_enable_scoped_logging_timers());
+    // NODE: module_config.compilation_cache_key() is not used in the current
+    // implementation of CompileToHsaco since it invalidates the persistent
+    // file cache.
     TF_ASSIGN_OR_RETURN(
         hsaco_result,
         amdgpu::CompileToHsaco(llvm_module,
                                device_description.gpu_compute_capability(),
                                module_config.debug_options(),
-                               module_config.compilation_cache_key()));
+                               "" /*module_config.compilation_cache_key()*/));
   }
 
   return BackendCompileResult{"", std::move(hsaco_result.hsaco),
