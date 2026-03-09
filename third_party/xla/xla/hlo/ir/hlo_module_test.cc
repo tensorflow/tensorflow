@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 namespace {
@@ -1390,6 +1391,51 @@ TEST(HloModuleTest, DeviceTypeSerialization) {
   std::unique_ptr<HloModule> module_from_proto_2 =
       std::move(status_or_module_from_proto_2).value();
   EXPECT_EQ(module_from_proto_2->config().device_type(), "GPU");
+}
+
+class TestCacheEntry : public HloModule::CacheEntry {
+ public:
+  explicit TestCacheEntry(tsl::Fprint128 key, int value)
+      : key_(key), value_(value) {}
+  tsl::Fprint128 GetCacheKey() const override { return key_; }
+  int value() const { return value_; }
+
+ private:
+  tsl::Fprint128 key_;
+  int value_;
+};
+
+TEST(HloModuleTest, ModuleLevelCacheAPIs) {
+  HloModule module("test_module", HloModuleConfig());
+  tsl::Fprint128 key1{1, 2};
+  tsl::Fprint128 key2{3, 4};
+
+  auto entry1 = std::make_shared<TestCacheEntry>(key1, 10);
+  auto entry2 = std::make_shared<TestCacheEntry>(key2, 20);
+
+  EXPECT_TRUE(module.SetCacheEntry(entry1));
+  EXPECT_TRUE(module.SetCacheEntry(entry2));
+
+  auto retrieved1 = module.GetCacheEntry<TestCacheEntry>(key1);
+  ASSERT_NE(retrieved1, nullptr);
+  EXPECT_EQ(retrieved1->value(), 10);
+
+  auto retrieved2 = module.GetCacheEntry<TestCacheEntry>(key2);
+  ASSERT_NE(retrieved2, nullptr);
+  EXPECT_EQ(retrieved2->value(), 20);
+
+  // Test non-existent entry
+  tsl::Fprint128 key3{5, 6};
+  EXPECT_EQ(module.GetCacheEntry<TestCacheEntry>(key3), nullptr);
+
+  // Test overwrite = false (default)
+  auto entry1_new = std::make_shared<TestCacheEntry>(key1, 100);
+  EXPECT_FALSE(module.SetCacheEntry(entry1_new));
+  EXPECT_EQ(module.GetCacheEntry<TestCacheEntry>(key1)->value(), 10);
+
+  // Test overwrite = true
+  EXPECT_TRUE(module.SetCacheEntry(entry1_new, /*overwrite=*/true));
+  EXPECT_EQ(module.GetCacheEntry<TestCacheEntry>(key1)->value(), 100);
 }
 
 }  // namespace

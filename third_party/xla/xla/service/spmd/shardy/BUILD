@@ -144,6 +144,7 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/sdy_round_trip:dedup_meshes",
         "//xla/service/spmd/shardy/sdy_round_trip:export_ops",
         "//xla/service/spmd/shardy/sdy_round_trip:export_shardy_attrs",
+        "//xla/service/spmd/shardy/sdy_round_trip:flatten_call_graph",
         "//xla/service/spmd/shardy/sdy_round_trip:import_shardy_attrs",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
         "//xla/service/spmd/shardy/sdy_round_trip:shard_map_export",

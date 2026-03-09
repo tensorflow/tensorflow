@@ -53,8 +53,9 @@ class OneHotGatherRewriterTest
       absl::string_view hlo_string, absl::string_view check_pattern,
       std::optional<std::vector<Literal>> custom_arguments = std::nullopt) {
     auto test_preprocessor = [&](HloModule* module) {
-      module->mutable_config().mutable_debug_options().set_xla_enable_fast_math(
-          true);
+      module->mutable_config()
+          .mutable_debug_options()
+          .set_xla_gpu_experimental_enable_onehot_rewriter(true);
       OneHotGatherRewriter rewriter;
       ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(rewriter, module));
       EXPECT_TRUE(changed);
@@ -85,8 +86,9 @@ class OneHotGatherRewriterTest
 
   void RunPassAndVerifyNoChange(absl::string_view hlo_string) {
     ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-    module->mutable_config().mutable_debug_options().set_xla_enable_fast_math(
-        true);
+    module->mutable_config()
+        .mutable_debug_options()
+        .set_xla_gpu_experimental_enable_onehot_rewriter(true);
     OneHotGatherRewriter rewriter;
     ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(rewriter, module.get()));
     EXPECT_FALSE(changed);
@@ -384,8 +386,9 @@ TEST_F(OneHotGatherRewriterTest, DepthLimitExceeded) {
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  module->mutable_config().mutable_debug_options().set_xla_enable_fast_math(
-      true);
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_onehot_rewriter(true);
 
   OneHotGatherRewriter rewriter;
   ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(rewriter, module.get()));
@@ -629,8 +632,9 @@ ENTRY main {
 )";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  module->mutable_config().mutable_debug_options().set_xla_enable_fast_math(
-      true);
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_onehot_rewriter(true);
   OneHotGatherRewriter rewriter;
   ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(rewriter, module.get()));
   EXPECT_FALSE(changed);
@@ -727,7 +731,7 @@ ENTRY main {
   RunPassAndVerifyNoChange(hlo_string);
 }
 
-TEST_F(OneHotGatherRewriterTest, RequiresFastMath) {
+TEST_F(OneHotGatherRewriterTest, RequiresOneHotRewriterFlag) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -748,8 +752,10 @@ ENTRY main {
 )";
 
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_string));
-  // xla_enable_fast_math is false by default.
-  EXPECT_FALSE(module->config().debug_options().xla_enable_fast_math());
+  // xla_gpu_experimental_enable_onehot_rewriter is false by default.
+  EXPECT_FALSE(module->config()
+                   .debug_options()
+                   .xla_gpu_experimental_enable_onehot_rewriter());
   OneHotGatherRewriter rewriter;
   ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(rewriter, module.get()));
   EXPECT_FALSE(changed);

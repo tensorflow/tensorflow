@@ -327,6 +327,7 @@ void convertManualComputationOp(
       FuncOp::create(rewriter, loc, kInlineableManualComputationFuncName,
                      rewriter.getFunctionType(op.getBody().getArgumentTypes(),
                                               terminator->getOperandTypes()));
+  funcOp.setVisibility(mlir::SymbolTable::Visibility::Private);
   mlir::StringAttr funcName = symbolTable.insert(funcOp);
 
   rewriter.setInsertionPointAfter(op);

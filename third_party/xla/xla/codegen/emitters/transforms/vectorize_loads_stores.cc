@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -132,7 +133,7 @@ int64_t GetAlignmentOfRemainder(mlir::AffineExpr expr,
 // Attempts to extract the vector type for the given loop. This means:
 // - checks that the lower bound is 0
 // - checks that the step is 1
-// - checks that the upper bound is 2, 4, or 8.
+// - checks that the upper bound is a power of 2 between 2 and 32.
 // Returns a vector type with the given upper bound and the tensor's element
 // type.
 // All tensors are 1D after flatten-tensors pass.
@@ -151,10 +152,14 @@ mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type,
       mlir::getConstantIntValue(loop.getLowerBound()) != 0) {
     return nullptr;
   }
-  std::optional<int> vector_size =
+  std::optional<int64_t> vector_size =
       mlir::getConstantIntValue(loop.getUpperBound());
-  if (vector_size != 2 && vector_size != 4 && vector_size != 8) {
+  if (vector_size < 2 || vector_size > 32 ||
+      !absl::has_single_bit(static_cast<unsigned int>(*vector_size))) {
     return nullptr;  // Unsupported vector size.
+  }
+  if (tensor_type.getElementTypeBitWidth() * *vector_size > 256) {
+    return nullptr;  // Vector size is too large.
   }
   if (tensor_type.getShape().back() % *vector_size) {
     return nullptr;  // Misaligned start indices.

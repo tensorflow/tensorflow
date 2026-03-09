@@ -26,6 +26,7 @@ package_group(
         # copybara:uncomment "//quality/webanswers/servo2/...",
         "//tensorflow/core/tfrt/saved_model/python",  #python wrapping
         "//tensorflow/core/tfrt/saved_model/utils/...",
+        "//third_party/neptune/runtime/...",
         "//smartass/brain/inference/...",
     ],
 )
@@ -244,6 +245,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/log:check",
         "@tf_runtime//:hostcontext",
     ],
 )
