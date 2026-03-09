@@ -332,6 +332,9 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
 // Return the size of given type in bytes. Return 0 in case of string.
 int TfLiteTypeGetSize(TfLiteType type);
 
+// Return the size of given type in bits. Returns 0 in case of string.
+int TfLiteTypeGetSizeBits(TfLiteType type);
+
 // Whether the current platform is mobile (Android or iOS).
 bool IsMobilePlatform();
 

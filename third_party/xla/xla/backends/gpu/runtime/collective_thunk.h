@@ -157,8 +157,16 @@ class CollectiveThunk : public Thunk {
   bool IsP2PCollective() const { return is_p2p_; }
 
  protected:
-  // Run collective operation on a given stream and return if the first call
-  // rendezvous with other participants is needed.
+  // Returns true if the first call to this collective operation has to be
+  // guarded with a rendezvous synchronization with other local participants
+  // before and after running the collective operation itself.
+  //
+  // This is done as a workaround for NCCL deadlocks that can be triggered when
+  // NCCL kernel execution races with a thunk before or after the collective
+  // one that calls CUDA APIs that trigger a deadlock.
+  virtual bool RequiresRendezvous() const = 0;
+
+  // Run collective operation on a given stream.
   //
   // A collective thunk is normally an independent operation in a sense that
   // different instances of the same collective thunk communicate each other.
@@ -169,10 +177,10 @@ class CollectiveThunk : public Thunk {
   //
   //  Send(src_target={0,1})
   //  Recv(src_target={0,1})
-  virtual absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                             const GpuCliqueKey& clique_key,
-                                             se::Stream& stream,
-                                             Communicator& comm) = 0;
+  virtual absl::Status RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
+                                     se::Stream& stream,
+                                     Communicator& comm) = 0;
 
   virtual const CollectiveConfig& config() const = 0;
   virtual CollectiveStreamId GetAsyncStreamId() const { return stream_id_; }
@@ -184,15 +192,15 @@ class CollectiveThunk : public Thunk {
 
   std::shared_ptr<AsyncEvents> async_events_;
 
-  // After a first call to this particular instance of a collective thunk we do
-  // a round of rendezvous to make sure that all participants successfully
-  // allocated on-device state required for executing collective operation. This
-  // is required to avoid deadlocks when one device goes too far ahead and
-  // causes a deadlock in CUDA driver (root cause is mysterious).
-  //
-  // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
-  // sure that all NCCL resources are allocated just once.
-  RendezvousFlag first_call_rendezvous_flag_;
+  // Before and after a first call to this particular instance of a collective
+  // thunk we do a round of rendezvous to make sure that all participants are
+  // ready to execute the collective operation and that all of them successfully
+  // allocated on-device state required for it. This is required to avoid
+  // deadlocks when one device goes too far ahead and causes a deadlock in CUDA
+  // driver (root cause rumored to be fixed in 590 driver series).
+  RendezvousFlag pre_call_rendezvous_flag_;
+  RendezvousFlag post_call_rendezvous_flag_;
+
   bool is_p2p_;
 };
 

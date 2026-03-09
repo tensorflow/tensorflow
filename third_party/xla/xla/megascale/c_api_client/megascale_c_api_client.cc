@@ -37,7 +37,9 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
+#include "xla/megascale/addresses.pb.h"
 #include "xla/megascale/c_api_client/megascale_types.h"
+#include "xla/megascale/dcn_topology.pb.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_collectives_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
 // Return error future if not success and frees the PJRT_Error returned by

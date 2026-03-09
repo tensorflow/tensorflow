@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/stacktrace_handler.h"

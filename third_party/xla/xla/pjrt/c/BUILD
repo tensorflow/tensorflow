@@ -425,6 +425,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@tsl//tsl/profiler/lib:connected_traceme",
         "@tsl//tsl/profiler/lib:context_types_hdrs",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )
 

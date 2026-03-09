@@ -39,6 +39,16 @@ static absl::StatusOr<ExecutableAbiVersion> CreateForCuda(
   return ExecutableAbiVersion::FromProto(std::move(proto));
 }
 
+// Returns a minimal ABI version for ROCm with no platform-specific version
+// info. Compatibility checks will treat this as always-compatible, preserving
+// pre-existing ROCm behavior until proper ABI versioning is designed.
+static absl::StatusOr<ExecutableAbiVersion> CreateForRocm(
+    const DeviceDescription& /*device_description*/) {
+  ExecutableAbiVersionProto proto;
+  proto.set_platform_name("ROCm");
+  return ExecutableAbiVersion::FromProto(std::move(proto));
+}
+
 absl::StatusOr<ExecutableAbiVersion> ExecutableAbiVersion::FromProto(
     const ExecutableAbiVersionProto& proto) {
   return ExecutableAbiVersion(proto);
@@ -48,6 +58,9 @@ ExecutableAbiVersion::FromDeviceDescription(
     const DeviceDescription& device_description) {
   if (device_description.gpu_compute_capability().IsCuda()) {
     return CreateForCuda(device_description);
+  }
+  if (device_description.gpu_compute_capability().IsRocm()) {
+    return CreateForRocm(device_description);
   }
 
   return absl::UnimplementedError(

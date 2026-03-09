@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "llvm/IR/BasicBlock.h"

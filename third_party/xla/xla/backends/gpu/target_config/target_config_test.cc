@@ -64,11 +64,13 @@ INSTANTIATE_TEST_SUITE_P(
         {"A6000", GpuModel::A6000, true},
         {"B200", GpuModel::B200, true},
         {"B300", GpuModel::B300, true},
+        {"BMG_G21", GpuModel::BMG_G21, true},
         {"H100_PCIE", GpuModel::H100_PCIE, true},
         {"H100_SXM", GpuModel::H100_SXM, true},
         {"MI200", GpuModel::MI200, true},
         {"P100", GpuModel::P100, true},
         {"V100", GpuModel::V100, true},
+        {"GB200", GpuModel::GB200, true},
     }),
     [](const ::testing::TestParamInfo<GetGpuTargetConfigTest::ParamType>&
            info) { return info.param.test_name; });
