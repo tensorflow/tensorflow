@@ -1616,7 +1616,11 @@ class ReadySetLt {
       // Try to favor paths that are dependent of chains of async operations
       // with long latency as we want to get to them as soon as possible to
       // overlap them with computation.
-      CMP_PROPERTY(GetAsyncDepth(), "kAsyncDepth");
+      if (top_down_scheduling_) {
+        CMP_PROPERTY(GetAsyncHeight(), "kAsyncHeight");
+      } else {
+        CMP_PROPERTY(GetAsyncDepth(), "kAsyncDepth");
+      }
 
       // Favor nodes that are the closest in amount of latency they hide
       // with the highest amount of latency that needs to be hidden to avoid
@@ -2828,6 +2832,8 @@ HloScheduleGraph::HloScheduleGraph(
   auto latency_estimator = scheduling_context->GetLatencyEstimator();
   auto async_tracker = scheduling_context->GetAsyncTracker();
   auto alias_analysis = scheduling_context->GetAliasAnalysis();
+  bool top_down_scheduling =
+      scheduling_context->GetAsyncTracker()->GetConfig().top_down_scheduling;
 
   const int n_inst = post_order_instructions->size();
   // Allocating the graph nodes. One for each of the instructions in the
@@ -2921,6 +2927,9 @@ HloScheduleGraph::HloScheduleGraph(
     }
     if (n->IsSupportedAsyncStart() && HasForceDelayAsyncAttribute(instr)) {
       n->SetForceDelay(true);
+    }
+    if (top_down_scheduling) {
+      n->SetTopDownScheduling(true);
     }
   }
 
@@ -3261,7 +3270,37 @@ void HloScheduleGraph::InitializeGraphAnalysis() {
       }
     }
   }
+  for (const HloInstruction* instr : original_order_) {
+    HloGraphNode& node = GetNode(instr);
+    current_rank[&node] = node.GetOutdegree();
+    node.SetAsyncHeight(0.0);
+    if (node.GetOutdegree() == 0) {
+      stack.push_back(&node);
+    }
+  }
+  while (!stack.empty()) {
+    auto* node = stack.back();
+    stack.pop_back();
+    if (node->IsSupportedAsyncStart()) {
+      for (auto& succ : node->GetSuccessors()) {
+        node->SetAsyncHeight(
+            std::max(succ.Target().GetAsyncHeight() + succ.Latency(),
+                     node->GetAsyncHeight()));
+      }
+    } else {
+      for (auto& succ : node->GetSuccessors()) {
+        node->SetAsyncHeight(
+            std::max(succ.Target().GetAsyncHeight(), node->GetAsyncHeight()));
+      }
+    }
+    for (auto& pred : node->GetPredecessors()) {
+      if (--current_rank[&pred.Target()] == 0) {
+        stack.push_back(&pred.Target());
+      }
+    }
+  }
 }
+
 void HloScheduleGraph::AnnotateGraph(
     const AnnotationTracker* annotation_tracker) {
   const HloComputation* comp = original_order_[0]->parent();
