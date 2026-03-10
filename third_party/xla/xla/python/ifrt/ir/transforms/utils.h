@@ -35,9 +35,13 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/sharding.h"
 
 namespace xla {
 namespace ifrt {
@@ -91,6 +95,22 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides);
+
+// Creates a `ShardingRef` from an `IfrtArrayType`.
+//
+// The logical devices from the `IfrtArrayType` represent indices into the
+// device_list.
+absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
+    IfrtArrayType array_type, Client* client, const DeviceListRef& device_list);
+
+// Creates an `ArraySpec` from a `mlir::Type`.
+//
+// Returns an error if the array_type is not an `IfrtArrayType`.
+//
+// The logical devices from the `IfrtArrayType` represent indices into the
+// device_list.
+absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
+    mlir::Type array_type, Client* client, const DeviceListRef& device_list);
 
 }  // namespace ifrt
 }  // namespace xla

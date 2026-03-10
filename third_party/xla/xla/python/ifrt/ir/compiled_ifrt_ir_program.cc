@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/no_destructor.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -39,10 +38,8 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
-#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -52,7 +49,6 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
-#include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/program_interpreter.h"
@@ -62,9 +58,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/support/module_parsing.h"
-#include "xla/python/ifrt/support/sharding_conversions.h"
-#include "xla/python/pjrt_ifrt/xla_sharding.h"
-#include "xla/status_macros.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
@@ -94,68 +87,6 @@ class FutureExecutor : public tsl::Executor {
         [task = std::move(task)]() mutable { std::move(task)(); });
   }
 };
-
-absl::StatusOr<ArraySpec> ToArraySpec(IfrtArrayType array, Client* client,
-                                      const std::vector<Device*>& devices) {
-  TF_ASSIGN_OR_RETURN(DType dtype,
-                      ToIfrtDType(array.getShape().getElementType()));
-  absl::InlinedVector<Device*, 1> client_devices;
-  client_devices.reserve(array.getDevices().size());
-  for (int logical_id : array.getDevices()) {
-    TF_RET_CHECK(devices[logical_id] != nullptr);
-    client_devices.push_back(devices[logical_id]);
-  }
-  auto sharding_attr =
-      mlir::dyn_cast<IfrtShardingParamAttr>(array.getShardingAttr());
-  TF_RET_CHECK(sharding_attr != nullptr);
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client->MakeDeviceList(client_devices));
-  TF_ASSIGN_OR_RETURN(
-      xla::HloSharding hlo_sharding,
-      xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
-  return ArraySpec{
-      /*dtype=*/dtype,
-      /*shape=*/Shape(array.getShape().getShape()),
-      /*sharding=*/
-      HloSharding::Create(std::move(device_list), array.MemoryKind(),
-                          std::move(hlo_sharding))};
-}
-
-absl::StatusOr<std::vector<ArraySpec>> ExtractInSpecs(
-    mlir::ModuleOp mlir_module, Client* client,
-    const std::vector<Device*>& devices) {
-  auto main_func = mlir_module.lookupSymbol<mlir::func::FuncOp>("main");
-  TF_RET_CHECK(main_func != nullptr) << "Can't find `main` function";
-  std::vector<ArraySpec> in_specs;
-  in_specs.reserve(main_func.getNumArguments());
-  for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
-    auto array_type = mlir::dyn_cast<IfrtArrayType>(arg_type);
-    TF_RET_CHECK(array_type != nullptr)
-        << "Unsupported argument type `" << mlir::debugString(arg_type) << "`";
-    TF_ASSIGN_OR_RETURN(ArraySpec spec,
-                        ToArraySpec(array_type, client, devices));
-    in_specs.push_back(spec);
-  }
-  return in_specs;
-}
-
-absl::StatusOr<std::vector<ArraySpec>> ExtractOutSpecs(
-    mlir::ModuleOp mlir_module, Client* client,
-    const std::vector<Device*>& devices) {
-  auto main_func = mlir_module.lookupSymbol<mlir::func::FuncOp>("main");
-  TF_RET_CHECK(main_func != nullptr) << "Can't find `main` function";
-  std::vector<ArraySpec> out_specs;
-  out_specs.reserve(main_func.getNumResults());
-  for (const mlir::Type result_type : main_func.getResultTypes()) {
-    auto array_type = mlir::dyn_cast<IfrtArrayType>(result_type);
-    TF_RET_CHECK(array_type != nullptr)
-        << "Unsupported return type `" << mlir::debugString(result_type) << "`";
-    TF_ASSIGN_OR_RETURN(ArraySpec spec,
-                        ToArraySpec(array_type, client, devices));
-    out_specs.push_back(spec);
-  }
-  return out_specs;
-}
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
     const ArraySpec& arg_spec, Client* client) {
@@ -336,6 +267,8 @@ CompiledIfrtIrProgram::Create(
     TF_ASSIGN_OR_RETURN(devices.emplace_back(),
                         client->LookupDevice(device_id));
   }
+  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
+                      client->MakeDeviceList(devices));
 
   mlir::ModuleOp mlir_module = ifrt_ir_program->mlir_module;
   // Load the dialects necessary to compile the IFRT IR module.
@@ -372,7 +305,7 @@ CompiledIfrtIrProgram::Create(
     createIfrtPopulateAtomProgramMetadataPipeline(pm);
 
     OutlinedAtomProgramsToCompiledPipelineOptions compile_pipeline_options;
-    for (const auto device : devices) {
+    for (const auto device : device_list->devices()) {
       compile_pipeline_options.platform_names.push_back(
           std::string(device->PlatformName()));
     }
@@ -392,21 +325,27 @@ CompiledIfrtIrProgram::Create(
 
   // Extract input and output specs from the modified `mlir_module`, which has
   // all array shardings specified.
-  TF_ASSIGN_OR_RETURN(std::vector<ArraySpec> in_specs,
-                      ExtractInSpecs(mlir_module, client, devices));
-  TF_ASSIGN_OR_RETURN(std::vector<ArraySpec> out_specs,
-                      ExtractOutSpecs(mlir_module, client, devices));
-
   mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
+  std::vector<ArraySpec> in_specs;
+  in_specs.reserve(main_func.getNumArguments());
+  for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
+    TF_ASSIGN_OR_RETURN(ArraySpec spec,
+                        ArraySpecFromMlirType(arg_type, client, device_list));
+    in_specs.push_back(std::move(spec));
+  }
+  std::vector<ArraySpec> out_specs;
+  out_specs.reserve(main_func.getNumResults());
+  for (const mlir::Type result_type : main_func.getResultTypes()) {
+    TF_ASSIGN_OR_RETURN(ArraySpec spec, ArraySpecFromMlirType(
+                                            result_type, client, device_list));
+    out_specs.push_back(std::move(spec));
+  }
   std::vector<int> donatable_input_indices;
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
     if (main_func.getArgAttr(idx, kIfrtDonatedArgAttrName) != nullptr) {
       donatable_input_indices.push_back(idx);
     }
   }
-
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client->MakeDeviceList(devices));
 
   // Perform the rest of the work once all atom programs are successfully
   // compiled since they need information from the compiled executables.

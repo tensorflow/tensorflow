@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
@@ -44,13 +43,11 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
@@ -60,10 +57,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
-#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
-#include "xla/python/ifrt/support/sharding_conversions.h"
-#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -77,7 +71,6 @@ namespace ifrt {
 using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::TraceMeEncode;
 
-using ArrayRef = ::xla::ifrt::ArrayRef;
 using ExecuteOptions = ::xla::ifrt::LoadedExecutable::ExecuteOptions;
 using ExecuteResult = ::xla::ifrt::LoadedExecutable::ExecuteResult;
 
@@ -86,8 +79,7 @@ namespace {
 // Opaque handle that represents an array. Zero is reserved for null.
 using ArrayHandle = uintptr_t;
 
-static xla::ifrt::MemoryKind kPinnedHostMemoryKind(
-    xla::PinnedHostMemorySpace::kKind);
+static MemoryKind kPinnedHostMemoryKind(xla::PinnedHostMemorySpace::kKind);
 
 // Array with additional metadata (e.g., if it can be donated).
 struct ArrayState {
@@ -98,31 +90,6 @@ struct ArrayState {
 // Assigns a unique handle to the given MLIR value.
 ArrayHandle ToArrayHandle(mlir::Value value) {
   return reinterpret_cast<ArrayHandle>(value.getAsOpaquePointer());
-}
-
-// Returns an xla::ifrt::Sharding for the given IFRT array type.
-absl::StatusOr<xla::ifrt::ShardingRef> GetSharding(
-    xla::ifrt::IfrtArrayType array_type, xla::ifrt::Client* client,
-    const xla::ifrt::DeviceListRef& devices) {
-  const absl::Span<xla::ifrt::Device* const> in_devices = devices->devices();
-  absl::InlinedVector<xla::ifrt::Device*, 1> out_devices;
-  out_devices.reserve(array_type.getDevices().size());
-  for (int logical_id : array_type.getDevices()) {
-    out_devices.push_back(in_devices[logical_id]);
-  }
-  auto sharding_param_attr =
-      mlir::dyn_cast_or_null<xla::ifrt::IfrtShardingParamAttr>(
-          array_type.getShardingAttr());
-  TF_RET_CHECK(sharding_param_attr)
-      << "Array type: " << mlir::debugString(array_type)
-      << " if not of type `IfrtShardingParamAttr`";
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client->MakeDeviceList(std::move(out_devices)));
-  TF_ASSIGN_OR_RETURN(
-      xla::HloSharding hlo_sharding,
-      xla::ifrt::support::ToHloSharding(sharding_param_attr.getSharding()));
-  return xla::ifrt::HloSharding::Create(
-      std::move(device_list), array_type.MemoryKind(), std::move(hlo_sharding));
 }
 
 std::string PrettyPrintGeneric(mlir::Operation* op) {
@@ -139,7 +106,7 @@ struct Environment {
   }
 
   // IFRT client for execution.
-  xla::ifrt::Client* client;
+  Client* client;
   // Name of the program.
   std::string program_name;
   // Set of donated program arguments, which can be deleted after their last
@@ -157,12 +124,11 @@ struct Environment {
 };
 
 absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
-    xla::ifrt::Client* client, absl::string_view program_name,
-    mlir::ModuleOp mlir_module,
-    std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables,
-    xla::ifrt::DeviceListRef devices) {
-  mlir::func::FuncOp main_func = xla::ifrt::GetMainFunction(mlir_module);
-  if (!main_func->hasAttr(xla::ifrt::kIfrtFunctionAttrName)) {
+    Client* client, absl::string_view program_name, mlir::ModuleOp mlir_module,
+    std::shared_ptr<AtomExecutableMap> atom_program_executables,
+    DeviceListRef devices) {
+  mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
+  if (!main_func->hasAttr(kIfrtFunctionAttrName)) {
     return absl::InvalidArgumentError(
         absl::StrCat("`main` function of IFRT IR program: ", program_name,
                      " is not an IFRT function."));
@@ -175,7 +141,7 @@ absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
 namespace {
 
 struct ProgramInterpreterState {
-  xla::ifrt::Client* client;
+  Client* client;
   std::string program_name;
 
   std::vector<ArrayHandle> input_handles;
@@ -183,10 +149,9 @@ struct ProgramInterpreterState {
 
   std::vector<absl::AnyInvocable<absl::Status(Environment& env) const>> op_fns;
 
-  absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult> Run(
-      absl::Span<xla::ifrt::ArrayRef> arrays,
-      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-      std::optional<xla::ifrt::DeviceListRef> devices) const {
+  absl::StatusOr<ExecuteResult> Run(
+      absl::Span<ArrayRef> arrays, const ExecuteOptions& options,
+      std::optional<DeviceListRef> devices) const {
     TraceMe traceme([&]() {
       return TraceMeEncode("DispatchProgram",
                            {{"ifrt_ir_program", program_name}});
@@ -201,7 +166,7 @@ struct ProgramInterpreterState {
     }
 
     for (int idx = 0; idx < arrays.size(); ++idx) {
-      const xla::ifrt::ArrayRef& array = arrays[idx];
+      const ArrayRef& array = arrays[idx];
       if (array->IsDeleted()) {
         return absl::InvalidArgumentError(
             absl::StrCat("Input array #", idx, " of program ", program_name,
@@ -256,14 +221,13 @@ ProgramInterpreter::BuildExecuteFn() {
   state.client = client_;
   state.program_name = program_name_;
 
-  mlir::func::FuncOp main_func = xla::ifrt::GetMainFunction(mlir_module_);
+  mlir::func::FuncOp main_func = GetMainFunction(mlir_module_);
 
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
     // Add to the environment the arrays that are used.
     const ArrayHandle handle = arg.use_empty() ? 0 : ToArrayHandle(arg);
     state.input_handles.push_back(handle);
-    if (main_func.getArgAttr(idx, xla::ifrt::kIfrtDonatedArgAttrName) !=
-        nullptr) {
+    if (main_func.getArgAttr(idx, kIfrtDonatedArgAttrName) != nullptr) {
       state.donated_input_indices.insert(idx);
     }
   }
@@ -273,8 +237,8 @@ ProgramInterpreter::BuildExecuteFn() {
   for (mlir::Operation& op : main_func.getOps()) {
     auto op_fn =
         llvm::TypeSwitch<const mlir::Operation&, absl::StatusOr<OpFn>>(op)
-            .Case<xla::ifrt::CallLoadedExecutableOp, xla::ifrt::RemapArraysOp,
-                  xla::ifrt::CopyArraysOp, mlir::func::ReturnOp>(
+            .Case<CallLoadedExecutableOp, RemapArraysOp, CopyArraysOp,
+                  mlir::func::ReturnOp>(
                 [this](const auto& op) { return HandleOp(op); })
             .Default([](const mlir::Operation& op) {
               return absl::InvalidArgumentError(absl::StrCat(
@@ -307,8 +271,8 @@ struct CallLoadedExecutableOpState {
   absl::flat_hash_set<int> donated_arg_idxs;
   absl::flat_hash_set<ArrayHandle> dead_inputs;
 
-  xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
-  std::shared_ptr<xla::ifrt::LoadedExecutable> executable;
+  ExecuteOptions execute_options;
+  std::shared_ptr<LoadedExecutable> executable;
 
   std::vector<ArrayHandle> output_handles;
   bool is_leaf_op;
@@ -326,7 +290,7 @@ struct CallLoadedExecutableOpState {
     });
     VLOG(3) << pretty_print;
 
-    xla::ifrt::LoadedExecutable::ExecuteOptions options = execute_options;
+    ExecuteOptions options = execute_options;
     options.fill_status = env.fill_status;
 
     std::vector<ArrayHandle> arrays_to_remove;
@@ -381,8 +345,7 @@ struct CallLoadedExecutableOpState {
             env.client->CopyArrays(
                 absl::MakeSpan(non_donatable_pinned_host_inputs),
                 /*devices=*/std::nullopt,
-                /*memory_kind=*/std::nullopt,
-                xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+                /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
         for (int idx = 0; idx < copied_pinned_host_inputs.size(); ++idx) {
           env.handle_to_array[non_donatable_pinned_host_inputs_handles[idx]] =
               ArrayState{
@@ -401,7 +364,7 @@ struct CallLoadedExecutableOpState {
           env.handle_to_array.find(input_handles[idx])->second.array);
     }
 
-    TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,
+    TF_ASSIGN_OR_RETURN(ExecuteResult result,
                         executable->Execute(absl::MakeSpan(inputs), options,
                                             /*devices=*/std::nullopt));
     TF_RET_CHECK(result.outputs.size() == output_handles.size())
@@ -442,12 +405,11 @@ struct CallLoadedExecutableOpState {
 }  // namespace
 
 absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
-    xla::ifrt::CallLoadedExecutableOp call_loaded_op) {
+    CallLoadedExecutableOp call_loaded_op) {
   CallLoadedExecutableOpState state;
   state.pretty_print = PrettyPrint(call_loaded_op);
 
-  xla::ifrt::LoadedExecutableOp loaded_exec_op =
-      call_loaded_op.getCalleeOp(symbol_table_);
+  LoadedExecutableOp loaded_exec_op = call_loaded_op.getCalleeOp(symbol_table_);
   state.atom_program_name = loaded_exec_op.getSymName().str();
 
   // Get the loaded executable for the atom program.
@@ -502,7 +464,7 @@ namespace {
 struct RemapArraysOpState {
   std::string pretty_print;
 
-  xla::ifrt::RemapPlan remap_plan;
+  RemapPlan remap_plan;
   std::vector<ArrayHandle> input_handles;
   absl::flat_hash_set<ArrayHandle> dead_inputs;
   bool remap_is_donated;
@@ -564,9 +526,9 @@ struct RemapArraysOpState {
         << pretty_print;
 
     // Apply the remap arrays operation.
-    xla::ifrt::ArrayCopySemantics copy_semantics =
-        *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
-                    : xla::ifrt::ArrayCopySemantics::kReuseInput;
+    ArrayCopySemantics copy_semantics = *is_donated
+                                            ? ArrayCopySemantics::kDonateInput
+                                            : ArrayCopySemantics::kReuseInput;
     TF_ASSIGN_OR_RETURN(auto out_arrays, env.client->RemapArrays(
                                              remap_plan, absl::MakeSpan(inputs),
                                              copy_semantics));
@@ -600,74 +562,57 @@ struct RemapArraysOpState {
 }  // namespace
 
 absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
-    xla::ifrt::RemapArraysOp remap_op) {
+    RemapArraysOp remap_op) {
   RemapArraysOpState state;
   state.pretty_print = PrettyPrint(remap_op);
 
   // Construct the mappings of the remap plan.
-  auto mappings =
-      std::make_shared<std::vector<xla::ifrt::RemapPlan::Mapping>>();
+  auto mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
   mappings->reserve(remap_op.getMappings().size());
   for (const auto& array_mapping : remap_op.getMappings()) {
     const auto array_mapping_attr =
-        llvm::cast<xla::ifrt::IfrtArrayMappingAttr>(array_mapping);
+        llvm::cast<IfrtArrayMappingAttr>(array_mapping);
     auto& mapping = mappings->emplace_back();
     mapping.in_array = array_mapping_attr.getInArrayIndex();
     mapping.out_array = array_mapping_attr.getOutArrayIndex();
     mapping.from.reserve(array_mapping_attr.getMappings().size());
     mapping.to.reserve(array_mapping_attr.getMappings().size());
     for (const auto& m : array_mapping_attr.getMappings()) {
-      const auto mapping_attr = llvm::cast<xla::ifrt::IfrtMappingAttr>(m);
+      const auto mapping_attr = llvm::cast<IfrtMappingAttr>(m);
       auto from_shards = mapping_attr.getFromShards();
       auto to_shards = mapping_attr.getToShards();
-      mapping.from.push_back(xla::ifrt::RemapPlan::Interval{
+      mapping.from.push_back(RemapPlan::Interval{
           from_shards.getStart(), from_shards.getEnd(), from_shards.getStep()});
-      mapping.to.push_back(xla::ifrt::RemapPlan::Interval{
+      mapping.to.push_back(RemapPlan::Interval{
           to_shards.getStart(), to_shards.getEnd(), to_shards.getStep()});
     }
   };
 
   // Get the input specs of the remap plan and the input arrays.
-  std::vector<xla::ifrt::ArraySpec> input_specs;
-  input_specs.reserve(remap_op.getOutputs().size());
-  for (const auto [idx, input] : llvm::enumerate(remap_op.getInputs())) {
+  std::vector<ArraySpec> input_specs;
+  input_specs.reserve(remap_op.getInputs().size());
+  for (const mlir::Value input : remap_op.getInputs()) {
     state.input_handles.push_back(ToArrayHandle(input));
-
-    const auto array_type =
-        llvm::cast<xla::ifrt::IfrtArrayType>(input.getType());
     TF_ASSIGN_OR_RETURN(
-        xla::ifrt::DType dtype,
-        xla::ifrt::ToIfrtDType(array_type.getShape().getElementType()));
-    TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
-                        GetSharding(array_type, client_, devices_));
-    input_specs.push_back(xla::ifrt::ArraySpec{
-        /*dtype=*/dtype,
-        /*shape=*/xla::ifrt::Shape(array_type.getShape().getShape()),
-        /*sharding=*/std::move(sharding)});
-
+        ArraySpec spec,
+        ArraySpecFromMlirType(input.getType(), client_, devices_));
+    input_specs.push_back(std::move(spec));
     if (liveness_.isDeadAfter(input, remap_op)) {
       state.dead_inputs.insert(ToArrayHandle(input));
     }
   }
 
   // Get the output specs of the remap plan.
-  std::vector<xla::ifrt::ArraySpec> output_specs;
+  std::vector<ArraySpec> output_specs;
   output_specs.reserve(remap_op.getOutputs().size());
-  for (const auto [idx, output] : llvm::enumerate(remap_op.getOutputs())) {
-    const auto array_type =
-        llvm::cast<xla::ifrt::IfrtArrayType>(output.getType());
+  for (const mlir::Value output : remap_op.getOutputs()) {
     TF_ASSIGN_OR_RETURN(
-        xla::ifrt::DType dtype,
-        xla::ifrt::ToIfrtDType(array_type.getShape().getElementType()));
-    TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
-                        GetSharding(array_type, client_, devices_));
-    output_specs.push_back(xla::ifrt::ArraySpec{
-        /*dtype=*/dtype,
-        /*shape=*/xla::ifrt::Shape(array_type.getShape().getShape()),
-        /*sharding=*/std::move(sharding)});
+        ArraySpec spec,
+        ArraySpecFromMlirType(output.getType(), client_, devices_));
+    output_specs.push_back(std::move(spec));
   }
 
-  state.remap_plan = xla::ifrt::RemapPlan{
+  state.remap_plan = RemapPlan{
       /*input_specs=*/std::move(input_specs),
       /*output_specs=*/std::move(output_specs),
       /*mappings=*/std::move(mappings),
@@ -695,7 +640,7 @@ struct CopyArraysOpState {
   bool copy_is_donated;
 
   std::vector<ArrayHandle> output_handles;
-  xla::ifrt::ShardingRef new_sharding;
+  ShardingRef new_sharding;
 
   absl::Status Run(Environment& env) const {
     TraceMe traceme([&]() {
@@ -751,9 +696,8 @@ struct CopyArraysOpState {
            "The copy arrays op has no inputs. "
         << pretty_print;
 
-    auto array_copy_semantics =
-        *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
-                    : xla::ifrt::ArrayCopySemantics::kAlwaysCopy;
+    auto array_copy_semantics = *is_donated ? ArrayCopySemantics::kDonateInput
+                                            : ArrayCopySemantics::kAlwaysCopy;
     // It is safe to get the devices and memory kind from the first output
     // because all outputs use the same devices and have the same memory kind.
     TF_ASSIGN_OR_RETURN(auto copied_arrays,
@@ -789,7 +733,7 @@ struct CopyArraysOpState {
 }  // namespace
 
 absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
-    xla::ifrt::CopyArraysOp copy_arrays_op) {
+    CopyArraysOp copy_arrays_op) {
   CopyArraysOpState state;
   state.pretty_print = PrettyPrint(copy_arrays_op);
 
@@ -801,13 +745,14 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   }
   state.copy_is_donated = copy_arrays_op.getDonated();
 
-  const auto out_array_type = llvm::cast<xla::ifrt::IfrtArrayType>(
-      copy_arrays_op.getOutputs().front().getType());
+  const auto out_array_type =
+      llvm::cast<IfrtArrayType>(copy_arrays_op.getOutputs().front().getType());
   TF_RET_CHECK(out_array_type != nullptr)
       << "Output array #0 is not of type `IfrtArrayType`. "
       << state.pretty_print;
-  TF_ASSIGN_OR_RETURN(state.new_sharding,
-                      GetSharding(out_array_type, client_, devices_));
+  TF_ASSIGN_OR_RETURN(
+      state.new_sharding,
+      ShardingFromIfrtArrayType(out_array_type, client_, devices_));
 
   for (const auto output : copy_arrays_op.getOutputs()) {
     const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
@@ -855,7 +800,7 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
 }
 
 std::string ProgramInterpreter::PrettyPrint(mlir::Operation* op) {
-  if (auto call_op = mlir::dyn_cast<xla::ifrt::CallLoadedExecutableOp>(op)) {
+  if (auto call_op = mlir::dyn_cast<CallLoadedExecutableOp>(op)) {
     return absl::StrCat(call_op->getName().getStringRef().str(), " `",
                         call_op.getCalleeOp(symbol_table_).getSymName().str(),
                         "` from:\n", GetPrettyLocation(call_op->getLoc()));
