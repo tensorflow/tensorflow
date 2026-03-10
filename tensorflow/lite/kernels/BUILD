@@ -3463,4 +3463,12 @@ tflite_combine_cc_tests(
     deps_conditions = [":test_main"],
 )
 
+# Test the XNNPACK delegate
+tflite_combine_cc_tests(
+    name = "combined_all_kernel_with_xnnpack_tests",
+    args = ["--use_xnnpack=true"],
+    deps_conditions = [":test_main"],
+    shard_count = 50,
+)
+
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_tests")
