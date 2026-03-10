@@ -44,6 +44,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
@@ -55,10 +57,13 @@ limitations under the License.
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/support/sharding_conversions.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -80,6 +85,9 @@ namespace {
 
 // Opaque handle that represents an array. Zero is reserved for null.
 using ArrayHandle = uintptr_t;
+
+static xla::ifrt::MemoryKind kPinnedHostMemoryKind(
+    xla::PinnedHostMemorySpace::kKind);
 
 // Array with additional metadata (e.g., if it can be donated).
 struct ArrayState {
@@ -105,16 +113,16 @@ absl::StatusOr<xla::ifrt::ShardingRef> GetSharding(
   auto sharding_param_attr =
       mlir::dyn_cast_or_null<xla::ifrt::IfrtShardingParamAttr>(
           array_type.getShardingAttr());
-  TF_RET_CHECK(sharding_param_attr != nullptr)
+  TF_RET_CHECK(sharding_param_attr)
       << "Array type: " << mlir::debugString(array_type)
       << " if not of type `IfrtShardingParamAttr`";
   TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       client->MakeDeviceList(std::move(out_devices)));
-  TF_ASSIGN_OR_RETURN(auto sharding,
-                      xla::ifrt::ShardingParamSharding::Create(
-                          sharding_param_attr.getSharding(),
-                          std::move(device_list), array_type.MemoryKind()));
-  return sharding;
+  TF_ASSIGN_OR_RETURN(
+      xla::HloSharding hlo_sharding,
+      xla::ifrt::support::ToHloSharding(sharding_param_attr.getSharding()));
+  return xla::ifrt::HloSharding::Create(
+      std::move(device_list), array_type.MemoryKind(), std::move(hlo_sharding));
 }
 
 std::string PrettyPrintGeneric(mlir::Operation* op) {
@@ -304,6 +312,9 @@ struct CallLoadedExecutableOpState {
 
   std::vector<ArrayHandle> output_handles;
   bool is_leaf_op;
+  // TODO(b/488047351): Remove this attribute once MPMD reshards are outlined in
+  // IFRT IR.
+  bool is_mpmd_reshard;
 
   absl::Status Run(Environment& env) const {
     TraceMe traceme([&]() {
@@ -318,38 +329,76 @@ struct CallLoadedExecutableOpState {
     xla::ifrt::LoadedExecutable::ExecuteOptions options = execute_options;
     options.fill_status = env.fill_status;
 
+    std::vector<ArrayHandle> arrays_to_remove;
+    {
+      std::vector<ArrayRef> non_donatable_pinned_host_inputs;
+      std::vector<ArrayHandle> non_donatable_pinned_host_inputs_handles;
+      for (int idx = 0; idx < input_handles.size(); ++idx) {
+        const ArrayHandle handle = input_handles[idx];
+
+        auto array_it = env.handle_to_array.find(handle);
+        TF_RET_CHECK(array_it != env.handle_to_array.end())
+            << "Input array #" << idx << " not found. " << pretty_print;
+        if (array_it->second.array->IsDeleted()) {
+          // We explicitly check here for deletion in order to provide a more
+          // informative error message.
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Input array #", idx, "` has already been deleted or donated. ",
+              pretty_print));
+        }
+
+        bool is_donated = donated_arg_idxs.contains(idx);
+        if (is_donated && !array_it->second.can_be_donated) {
+          VLOG(2) << "Atom program donates input #" << idx
+                  << ", but it has not been donated to the IFRT IR program. "
+                     "Input will not be donated. \n"
+                  << pretty_print;
+          // TODO(b/401105456): Do not special case pinned host arrays once
+          // non-donatable pinned host inputs are supported.
+          if (!is_mpmd_reshard &&
+              array_it->second.array->sharding().memory_kind() ==
+                  kPinnedHostMemoryKind) {
+            non_donatable_pinned_host_inputs.push_back(array_it->second.array);
+            non_donatable_pinned_host_inputs_handles.push_back(handle);
+          } else {
+            options.non_donatable_input_indices.insert(idx);
+          }
+          is_donated = false;
+        }
+        if (is_donated || dead_inputs.contains(handle)) {
+          arrays_to_remove.push_back(handle);
+        }
+        if (!is_donated && is_mpmd_reshard) {
+          options.non_donatable_input_indices.insert(idx);
+        }
+      }
+
+      // TODO(b/401105456): Remove this CopyArrays call once non-donatable
+      // pinned host inputs are supported.
+      if (!non_donatable_pinned_host_inputs.empty()) {
+        TF_ASSIGN_OR_RETURN(
+            std::vector<ArrayRef> copied_pinned_host_inputs,
+            env.client->CopyArrays(
+                absl::MakeSpan(non_donatable_pinned_host_inputs),
+                /*devices=*/std::nullopt,
+                /*memory_kind=*/std::nullopt,
+                xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+        for (int idx = 0; idx < copied_pinned_host_inputs.size(); ++idx) {
+          env.handle_to_array[non_donatable_pinned_host_inputs_handles[idx]] =
+              ArrayState{
+                  /*array=*/std::move(copied_pinned_host_inputs[idx]),
+                  /*can_be_donated=*/false,
+              };
+        }
+      }
+    }
+
     // Get the inputs of the loaded executable.
     std::vector<ArrayRef> inputs;
-    std::vector<ArrayHandle> arrays_to_remove;
+    inputs.reserve(input_handles.size());
     for (int idx = 0; idx < input_handles.size(); ++idx) {
-      const ArrayHandle handle = input_handles[idx];
-
-      auto array_it = env.handle_to_array.find(handle);
-      TF_RET_CHECK(array_it != env.handle_to_array.end())
-          << "Input array #" << idx << " not found. " << pretty_print;
-      if (array_it->second.array->IsDeleted()) {
-        // We explicitly check here for deletion in order to provide a more
-        // informative error message.
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Input array #", idx, "` has already been deleted or donated. ",
-            pretty_print));
-      }
-      inputs.push_back(array_it->second.array);
-
-      bool is_donated = donated_arg_idxs.contains(idx);
-      if (is_donated && !array_it->second.can_be_donated) {
-        VLOG(2) << "Atom program donates input #" << idx
-                << ", but it has not been donated to the IFRT IR program. "
-                   "Input will not be donated. \n"
-                << pretty_print;
-        is_donated = false;
-      }
-      if (is_donated || dead_inputs.contains(handle)) {
-        arrays_to_remove.push_back(handle);
-      }
-      if (!is_donated) {
-        options.non_donatable_input_indices.insert(idx);
-      }
+      inputs.push_back(
+          env.handle_to_array.find(input_handles[idx])->second.array);
     }
 
     TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,
@@ -419,6 +468,14 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     if (liveness_.isDeadAfter(input, call_loaded_op)) {
       state.dead_inputs.insert(ToArrayHandle(input));
     }
+  }
+
+  if (auto module_type = call_loaded_op->getAttrOfType<mlir::StringAttr>(
+          kIfrtModuleTypeAttrName);
+      module_type != nullptr && module_type == kIfrtModuleTypeMpmdReshard) {
+    state.is_mpmd_reshard = true;
+  } else {
+    state.is_mpmd_reshard = false;
   }
 
   state.is_leaf_op = true;
