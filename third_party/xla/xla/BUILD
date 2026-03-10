@@ -1098,7 +1098,6 @@ cc_library(
         ":shape_util",
         ":util",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
     ],
