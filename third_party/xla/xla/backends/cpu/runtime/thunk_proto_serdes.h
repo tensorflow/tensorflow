@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/serdes_base.h"
 #include "xla/backends/cpu/runtime/thunk.h"
@@ -58,6 +60,26 @@ class ThunkSequenceSerDesProtobuf : public SerDesBase<ThunkSequence> {
  private:
   const HloModule* hlo_module_;
   const std::vector<BufferAllocation>* buffer_allocations_;
+};
+
+// Registry for Thunk serialization/deserialization.
+class ThunkSerDesRegistry {
+ public:
+  using ToProtoFn = std::function<absl::Status(const Thunk&, ThunkProto&)>;
+  using FromProtoFn = std::function<absl::StatusOr<std::unique_ptr<Thunk>>(
+      const ThunkProto&, const std::vector<BufferAllocation>&)>;
+
+  static ThunkSerDesRegistry& Get();
+
+  absl::Status Register(Thunk::Kind kind, ToProtoFn to_proto,
+                        FromProtoFn from_proto);
+
+  absl::StatusOr<ToProtoFn> GetToProtoFn(Thunk::Kind kind) const;
+  absl::StatusOr<FromProtoFn> GetFromProtoFn(Thunk::Kind kind) const;
+
+ private:
+  absl::flat_hash_map<Thunk::Kind, ToProtoFn> to_proto_fns_;
+  absl::flat_hash_map<Thunk::Kind, FromProtoFn> from_proto_fns_;
 };
 
 }  // namespace xla::cpu

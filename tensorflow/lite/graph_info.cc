@@ -61,7 +61,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
   }
 
   // Actually partition the graph.
-  void Partition() {
+  TfLiteStatus Partition() {
     // Initialize here to make Partition() re-entrant.
     node_subsets_->clear();
     tensor_epochs_.clear();
@@ -104,6 +104,10 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
         // This happens when an input of subgraph is also an output of subgraph.
         continue;
       }
+      if (output_epoch < 0 ||
+          output_epoch >= static_cast<int>(node_subsets_->size())) {
+        return kTfLiteError;
+      }
       NodeSubset& output_subset = (*node_subsets_)[output_epoch];
       output_subset.output_tensors.push_back(output_index);
     }
@@ -115,6 +119,7 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
       Uniquefy(&node_subset.input_tensors);
       Uniquefy(&node_subset.output_tensors);
     }
+    return kTfLiteOk;
   }
 
  private:
@@ -287,11 +292,10 @@ TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
       }
     }
   }
-  PartitionGraphIntoIndependentNodeSubsetsImpl(
-      info, nodes_to_partition, node_subsets, greedily, *control_edges,
-      disable_node_fusion)
+  return PartitionGraphIntoIndependentNodeSubsetsImpl(
+             info, nodes_to_partition, node_subsets, greedily, *control_edges,
+             disable_node_fusion)
       .Partition();
-  return kTfLiteOk;
 }
 
 }  // namespace tflite

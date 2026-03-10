@@ -78,27 +78,6 @@ Fusion into the custom calls, i.e. pattern-matching custom calls with the
 producers/consumers and rewriting them into the new custom calls is not allowed.
 In that case, it should be replaced with a proper fusion pass.
 
-#### Horizontal scaling
-
-Contributions to horizontal scaling encompass HLO optimizations, cost model
-improvements, library updates, and various infrastructure modifications. Due to
-the difficulty of reproducing the performance gains and the limited need for the
-multi-host configurations internally, we adhere to strict acceptance criteria:
-
-We prioritize minimally invasive changes that carry low risk.
-
-##### What we generally accept:
-
-* Updates to libraries handling inter-GPU or interhost communication.
-
-* Performance table updates for new platforms.
-
-##### What we generally reject:
-
-* HLO rewrites or runtime changes tailored to a specific model.
-
-* Infrastructure changes that introduce new flags, technical debt or regressions.
-
 #### Backends & Autotuning
 Backends for the unnested ops, e.g. custom calls and fusions, should implement
 [CodegenBackend](https://github.com/openxla/xla/blob/main/xla/backends/autotuner/codegen_backend.h)

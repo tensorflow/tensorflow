@@ -499,7 +499,7 @@ absl::StatusOr<ThunkProto> RaggedAllToAllStartThunk::ToProto() const {
   return proto;
 }
 
-absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
+absl::Status RaggedAllToAllStartThunk::RunCollective(
     const ExecuteParams& params, const GpuCliqueKey& clique_key,
     se::Stream& stream, Communicator& comm) {
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
@@ -522,21 +522,19 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
 
   if (should_use_one_shot_kernel &&
       !use_multi_gpu_barrier_in_one_shot_kernel_) {
-    TF_RETURN_IF_ERROR(RunOneShotRaggedAllToAll(
+    return RunOneShotRaggedAllToAll(
         clique_key, stream, state->rank, state->start_event.get(),
         state->end_event.get(), config_.num_total_updates,
-        config_.num_input_rows, config_.num_row_elements, device_buffers));
-    return false;
+        config_.num_input_rows, config_.num_row_elements, device_buffers);
   }
 
   if (should_use_one_shot_kernel && use_multi_gpu_barrier_in_one_shot_kernel_) {
-    TF_RETURN_IF_ERROR(RunOneShotRaggedAllToAll(
+    return RunOneShotRaggedAllToAll(
         clique_key, stream, state->rank,
         state->barrier_signal_buffer.address(),  // Buff peers write signals to
         state->barrier_signal_value.address(),   // Local monotonic step counter
         config_.num_total_updates, config_.num_input_rows,
-        config_.num_row_elements, device_buffers, *state->participants));
-    return false;
+        config_.num_row_elements, device_buffers, *state->participants);
   }
 
   // Get buffer allocs to load sizes and offsets of ragged tensors from device
@@ -548,12 +546,10 @@ absl::StatusOr<bool> RaggedAllToAllStartThunk::RunCollective(
         state->host_buffer_allocs[i]->address().opaque()));
   }
 
-  RETURN_IF_ERROR(
-      RunRaggedAllToAll(config_.num_row_elements, config_.num_total_updates,
-                        device_buffers, stream, comm, ragged_metadata_allocs,
-                        state->output_offsets_device_buffer.address(),
-                        config_.config.use_symmetric_buffer));
-  return true;
+  return RunRaggedAllToAll(config_.num_row_elements, config_.num_total_updates,
+                           device_buffers, stream, comm, ragged_metadata_allocs,
+                           state->output_offsets_device_buffer.address(),
+                           config_.config.use_symmetric_buffer);
 }
 
 // Executes the rendezvous to exchange buffer addresses and barrier signal
