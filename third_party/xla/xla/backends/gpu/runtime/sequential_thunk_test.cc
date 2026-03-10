@@ -149,13 +149,13 @@ TEST(SequentialThunkTest, ToString) {
   thunk_info.thunk_id = ThunkId(4);
   SequentialThunk sequential_thunk(thunk_info, std::move(thunks));
   EXPECT_EQ(sequential_thunk.ToString(/*indent=*/0),
-            "001: kGemm\t\n"
-            "002: kGemm\t\n"
-            "003: kGemm\t\n");
+            "001: kGemm [source | sink] \n"
+            "002: kGemm [source | sink] \n"
+            "003: kGemm [source | sink] \n");
   EXPECT_EQ(sequential_thunk.ToString(/*indent=*/1),
-            "  001: kGemm\t\n"
-            "  002: kGemm\t\n"
-            "  003: kGemm\t\n");
+            "  001: kGemm [source | sink] \n"
+            "  002: kGemm [source | sink] \n"
+            "  003: kGemm [source | sink] \n");
 }
 
 TEST(SequentialThunkTest, TransformNested) {
