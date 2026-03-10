@@ -767,7 +767,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/lite/core:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
     ],
 )
 
