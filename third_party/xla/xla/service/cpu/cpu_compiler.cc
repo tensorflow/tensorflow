@@ -502,11 +502,15 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     // because internally YNNPACK already performs tiled reduction for the
     // innermost dimension with a tile size of 16.
     pipeline->AddPass<TreeReductionRewriter>(
-        /*reduce_window_size=*/1024, [](const HloInstruction* hlo) {
+        /*reduce_window_size=*/1024,
+        /*reduce_window_size_stride_one_dim=*/std::nullopt,
+        [](const HloInstruction* hlo) {
           return IsReduceLikeOpOffloadedToYnn(hlo);
         });
     pipeline->AddPass<TreeReductionRewriter>(
-        /*reduce_window_size=*/32, [](const HloInstruction* hlo) {
+        /*reduce_window_size=*/32,
+        /*reduce_window_size_stride_one_dim=*/std::nullopt,
+        [](const HloInstruction* hlo) {
           return !IsReduceLikeOpOffloadedToYnn(hlo);
         });
   }

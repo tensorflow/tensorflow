@@ -16,18 +16,12 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_ROCM_TRACER_H_
 #define XLA_BACKENDS_PROFILER_GPU_ROCM_TRACER_H_
 
-#include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
 
 namespace xla {
 namespace profiler {
@@ -104,9 +98,10 @@ class RocmTracer {
   };
 
   using kernel_info_map_t =
-      std::unordered_map<rocprofiler_kernel_id_t, ProfilerKernelInfo>;
+      absl::flat_hash_map<rocprofiler_kernel_id_t, ProfilerKernelInfo>;
 
-  using agent_info_map_t = std::unordered_map<uint64_t, rocprofiler_agent_v0_t>;
+  using agent_info_map_t =
+      absl::flat_hash_map<uint64_t, rocprofiler_agent_v0_t>;
 
   using callback_name_info = rocprofiler::sdk::callback_name_info;
 

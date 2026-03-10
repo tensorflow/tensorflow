@@ -79,7 +79,6 @@ MakeRunnerAndGetDeviceDescription() {
   gpu_config.collective_memory_size = 0;
   GpuClientOptions options;
   options.allocator_config = std::move(gpu_config);
-  options.use_tfrt_gpu_client = true;
 
   absl::StatusOr<std::unique_ptr<PjRtClient>> client =
       GetXlaPjrtGpuClient(options);

@@ -111,55 +111,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  switch (output->type) {
-    case kTfLiteFloat32: {
-      reference_ops::Reverse<float>(axes, num_axes, GetTensorShape(input),
-                                    GetTensorData<float>(input),
-                                    GetTensorData<float>(output));
-      break;
-    }
-    case kTfLiteUInt8:
-    case kTfLiteInt8: {
+  switch (TfLiteTypeGetSizeBits(output->type)) {
+    case 8: {
       reference_ops::Reverse<uint8_t>(axes, num_axes, GetTensorShape(input),
                                       GetTensorData<uint8_t>(input),
                                       GetTensorData<uint8_t>(output));
       break;
     }
-    case kTfLiteInt16: {
+    case 16: {
       reference_ops::Reverse<int16_t>(axes, num_axes, GetTensorShape(input),
                                       GetTensorData<int16_t>(input),
                                       GetTensorData<int16_t>(output));
       break;
     }
-    case kTfLiteInt32: {
+    case 32: {
       reference_ops::Reverse<int32_t>(axes, num_axes, GetTensorShape(input),
                                       GetTensorData<int32_t>(input),
                                       GetTensorData<int32_t>(output));
       break;
     }
-    case kTfLiteInt64: {
+    case 64: {
       reference_ops::Reverse<int64_t>(axes, num_axes, GetTensorShape(input),
                                       GetTensorData<int64_t>(input),
                                       GetTensorData<int64_t>(output));
-      break;
-    }
-    case kTfLiteBool: {
-      reference_ops::Reverse<bool>(axes, num_axes, GetTensorShape(input),
-                                   GetTensorData<bool>(input),
-                                   GetTensorData<bool>(output));
-      break;
-    }
-    case kTfLiteFloat16: {
-      reference_ops::Reverse<Eigen::half>(axes, num_axes, GetTensorShape(input),
-                                          GetTensorData<Eigen::half>(input),
-                                          GetTensorData<Eigen::half>(output));
-      break;
-    }
-    case kTfLiteBFloat16: {
-      reference_ops::Reverse<Eigen::bfloat16>(
-          axes, num_axes, GetTensorShape(input),
-          GetTensorData<Eigen::bfloat16>(input),
-          GetTensorData<Eigen::bfloat16>(output));
       break;
     }
     default: {

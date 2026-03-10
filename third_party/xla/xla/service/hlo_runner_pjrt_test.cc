@@ -136,13 +136,13 @@ ENTRY %constant_s32 () -> s32[] {
 
 // Fake module with run_hlo_passes=false.
 constexpr absl::string_view kModuleSerializedName =
-    "a83d1d9a594b0f1fbc4227408abcdc6a.bin";
+    "a83d1d9a594b0f1fbc4227408abcdc6a.bin.gz";
 // Fake module with run_hlo_passes=true.
 constexpr absl::string_view kModuleWithRunHloPassesSerializedName =
-    "1f51ba5f389ad07cbe268573dd21a94e.bin";
+    "1f51ba5f389ad07cbe268573dd21a94e.bin.gz";
 // Fake module with a compilation environment set.
 constexpr absl::string_view kModuleWithCompEnvSerializedName =
-    "9385c25a58e7d6d47e56af1dd950b7d1.bin";
+    "9385c25a58e7d6d47e56af1dd950b7d1.bin.gz";
 
 class ArtifactDirTest : public ::testing::Test {
  public:
@@ -219,13 +219,39 @@ TEST_F(CompilePhaseHloRunnerPjRtTest,
   ASSERT_EQ(children[0], kModuleWithCompEnvSerializedName);
 }
 
+// Tests that a CreateExecutable call with a different device assignment
+// places the file in a different location.
+TEST_F(CompilePhaseHloRunnerPjRtTest,
+       CreateExecutablePlacesFilesCorrectlyWithDeviceAssignment) {
+  CompilePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
+                                   artifact_dir_);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m1, CreateFakeModule());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m2, CreateFakeModule());
+
+  DeviceAssignment da1(1, 2);
+  da1.FillIota(0);
+  m1->mutable_config().set_static_device_assignment(da1);
+
+  DeviceAssignment da2(1, 2);
+  da2.FillIota(1);
+  m2->mutable_config().set_static_device_assignment(da2);
+
+  TF_ASSERT_OK(
+      runner.CreateExecutable(std::move(m1), /*run_hlo_passes=*/false));
+  TF_ASSERT_OK(
+      runner.CreateExecutable(std::move(m2), /*run_hlo_passes=*/false));
+
+  std::vector<std::string> children;
+  TF_ASSERT_OK(tsl::Env::Default()->GetChildren(artifact_dir_, &children));
+  EXPECT_EQ(children.size(), 2);
+}
+
 using ExecutePhaseHloRunnerPjRtTest = ArtifactDirTest;
 
 // Tests that a call to CreateExecutable reads the file from the correct path
 // and deserializes the right contents.
 TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
-  TF_ASSERT_OK(tsl::WriteStringToFile(
-      tsl::Env::Default(),
+  TF_ASSERT_OK(CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
   absl::Notification notification;
   std::optional<std::string> serialized_representation_read = std::nullopt;
@@ -249,8 +275,7 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest, CreateExecutableReadsFileCorrectly) {
 
 TEST_F(ExecutePhaseHloRunnerPjRtTest,
        CreateExecutableFailsOnDuplicateLoadIfFeatureEnabled) {
-  TF_ASSERT_OK(tsl::WriteStringToFile(
-      tsl::Env::Default(),
+  TF_ASSERT_OK(CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
   ExecutePhaseHloRunnerPjRt runner(std::make_unique<FakeClient>(),
                                    artifact_dir_);
@@ -267,8 +292,7 @@ TEST_F(ExecutePhaseHloRunnerPjRtTest,
 
 TEST_F(ExecutePhaseHloRunnerPjRtTest,
        CreateExecutableSucceedsOnDuplicateLoadIfFeatureDisabled) {
-  TF_ASSERT_OK(tsl::WriteStringToFile(
-      tsl::Env::Default(),
+  TF_ASSERT_OK(CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
       tsl::io::JoinPath(artifact_dir_, kModuleSerializedName), "hello world"));
   ExecutePhaseHloRunnerPjRt runner(
       std::make_unique<FakeClient>(), artifact_dir_,
