@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/service/gpu/llvm_gpu_backend/ptx_version_util.h"
 
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+
 namespace xla::gpu::nvptx {
 
 namespace {
 constexpr stream_executor::SemanticVersion kFallbackPtxVersion{6, 5, 0};
 constexpr stream_executor::SemanticVersion kMaxPtxVersion{9, 0, 0};
+// Blackwell (sm_120/sm_120a) requires PTX 8.7+; PTX 8.5 does not support it.
+constexpr stream_executor::SemanticVersion kMinPtxVersionForSm120{8, 7, 0};
 }  // namespace
 
 stream_executor::SemanticVersion
@@ -50,4 +54,16 @@ DetermineHighestSupportedPtxVersionFromCudaVersion(
   // Return maximum known PTX version.
   return kMaxPtxVersion;
 }
+
+stream_executor::SemanticVersion GetMinimumPtxVersionForComputeCapability(
+    stream_executor::CudaComputeCapability compute_capability) {
+  // Blackwell (sm_120, sm_120a) requires PTX 8.7 or higher. PTX 8.5 does not
+  // support target 'sm_120' (LLVM ERROR). See e.g. GitHub Issue #111958.
+  if (compute_capability.major >= stream_executor::CudaComputeCapability::
+                                      CudaComputeCapabilities::kBlackwell_12) {
+    return kMinPtxVersionForSm120;
+  }
+  return kFallbackPtxVersion;
+}
+
 }  // namespace xla::gpu::nvptx

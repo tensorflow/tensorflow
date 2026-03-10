@@ -65,7 +65,10 @@ cc_library(
     name = "ptx_version_util",
     srcs = ["ptx_version_util.cc"],
     hdrs = ["ptx_version_util.h"],
-    deps = ["//xla/stream_executor:semantic_version"],
+    deps = [
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+    ],
 )
 
 cc_library(
