@@ -171,7 +171,7 @@ class MetricDef : public AbstractMetricDef {
   MetricDef(const absl::string_view name, const absl::string_view description,
             const LabelDesc&... label_descriptions)
       : AbstractMetricDef(metric_kind, internal::GetValueType<Value>(), name,
-                          description, {label_descriptions...}) {
+                          description, {std::string(label_descriptions)...}) {
     static_assert(sizeof...(LabelDesc) == NumLabels,
                   "Mismatch between Counter<NumLabels> and number of label "
                   "descriptions.");

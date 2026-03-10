@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/monitoring/cell_reader-inl.h"
 #include "xla/tsl/lib/monitoring/collected_metrics.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
@@ -82,7 +83,7 @@ class CellReader {
   //
   // NOTE: if a tfstreamz with `metric_name` does not exists, the `CellReader`
   // will construct without issue, but the `Read` calls will CHECK-fail.
-  explicit CellReader(const std::string& metric_name);
+  explicit CellReader(absl::string_view metric_name);
   virtual ~CellReader() = default;
   CellReader(const CellReader&) = delete;
   CellReader& operator=(const CellReader&) = delete;
@@ -123,13 +124,13 @@ class CellReader {
 };
 
 template <typename ValueType>
-CellReader<ValueType>::CellReader(const std::string& metric_name)
+CellReader<ValueType>::CellReader(absl::string_view metric_name)
     : metric_name_(metric_name), initial_metrics_(internal::CollectMetrics()) {}
 
 template <typename ValueType>
 template <typename... LabelType>
 ValueType CellReader<ValueType>::Read(const LabelType&... labels) {
-  std::vector<std::string> labels_list{labels...};
+  std::vector<std::string> labels_list{std::string(labels)...};
   std::unique_ptr<CollectedMetrics> metrics = internal::CollectMetrics();
   ValueType value = internal::GetLatestValueOrDefault<ValueType>(
       *metrics, metric_name_, labels_list);
@@ -144,7 +145,7 @@ ValueType CellReader<ValueType>::Read(const LabelType&... labels) {
 template <typename ValueType>
 template <typename... LabelType>
 ValueType CellReader<ValueType>::Delta(const LabelType&... labels) {
-  std::vector<std::string> labels_list{labels...};
+  std::vector<std::string> labels_list{std::string(labels)...};
   std::unique_ptr<CollectedMetrics> metrics = internal::CollectMetrics();
   ValueType value = internal::GetLatestValueOrDefault<ValueType>(
       *metrics, metric_name_, labels_list,
