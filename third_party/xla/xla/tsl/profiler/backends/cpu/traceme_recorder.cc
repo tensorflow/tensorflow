@@ -162,10 +162,17 @@ class ThreadLocalRecorder {
 
 // This method is performance critical and should be kept fast. It is called
 // when tracing stops.
-/* static */ TraceMeRecorder::Events TraceMeRecorder::Consume() {
+/* static */ TraceMeRecorder::Events TraceMeRecorder::Consume(
+    bool clean_dead_threads) {
   TraceMeRecorder::Events result;
   SplitEventTracker split_event_tracker;
-  auto recorders = PerThread<ThreadLocalRecorder>::StopRecording();
+  // Use StartRecording instead of StopRecording so that we don't unregister
+  // live threads while extracting data progressively. If we are completely
+  // stopping the tracer, `clean_dead_threads` will be true, and we can safely
+  // unregister dead threads.
+  auto recorders = clean_dead_threads
+                       ? PerThread<ThreadLocalRecorder>::StopRecording()
+                       : PerThread<ThreadLocalRecorder>::StartRecording();
   for (auto& recorder : recorders) {
     auto events = recorder->Consume(&split_event_tracker);
     if (!events.empty()) {
@@ -203,7 +210,7 @@ class ThreadLocalRecorder {
   TraceMeRecorder::Events events;
   if (internal::g_trace_level.exchange(
           kTracingDisabled, std::memory_order_acq_rel) != kTracingDisabled) {
-    events = Consume();
+    events = Consume(/*clean_dead_threads=*/true);
   }
   // Clear the filter bitmap.
   internal::g_trace_filter_bitmap.store(std::numeric_limits<uint64_t>::max(),

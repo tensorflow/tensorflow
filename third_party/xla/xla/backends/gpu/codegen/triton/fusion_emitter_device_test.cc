@@ -131,6 +131,24 @@ class TritonEmitterTest
   }
 };
 
+class NewTilingEmitterParameterizedTest
+    : public TritonEmitterTest,
+      public ::testing::WithParamInterface<bool> {
+ public:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
+        GetParam());
+    return debug_options;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(NewTilingEmitterParameterizedTestSuite,
+                         NewTilingEmitterParameterizedTest, ::testing::Bool(),
+                         [](const ::testing::TestParamInfo<bool>& info) {
+                           return info.param ? "new_tiling" : "old_tiling";
+                         });
+
 class TmaParameterizedTritonEmitterTest
     : public TritonEmitterTest,
       public ::testing::WithParamInterface<bool> {};
@@ -275,7 +293,7 @@ CHECK: arith.ori {{.*}} : i1
 }
 
 // TODO(bchetioui): turn this into a general binary elementwise test.
-TEST_F(TritonEmitterTest, MinimumIsEmittedCorrectly) {
+TEST_P(NewTilingEmitterParameterizedTest, MinimumIsEmittedCorrectly) {
   constexpr absl::string_view kHloText = R"(
 computation {
   p0 = f32[8,4] parameter(0)
@@ -298,7 +316,15 @@ ENTRY entry_computation {
           "num_stages":"1"}}}
 })";
 
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+  if (GetParam()) {
+    TF_EXPECT_OK(
+        CreateTritonIrFromHloTextAndFileCheck(kHloText, "computation", R"(
+           // CHECK:xtile.entry_func
+           // CHECK-NEXT: xtile.return
+        )"));
+  } else {
+    EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
+  }
 }
 
 TEST_F(TritonEmitterTest, DivByZeroIsEmittedCorrectly) {

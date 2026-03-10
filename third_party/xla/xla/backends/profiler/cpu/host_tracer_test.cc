@@ -161,6 +161,69 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   EXPECT_EQ(e6.DisplayName(), "Iterator::ParallelMap");
 }
 
+TEST(HostTracerTest, CollectsTraceMeEventsProgressively) {
+  int64_t thread_id;
+  std::string thread_name = "MyThreadName";
+  std::string serialized_space;
+
+  std::unique_ptr<Thread> traced_thread(
+      Env::Default()->StartThread(ThreadOptions(), thread_name, [&] {
+        ASSERT_TRUE(Env::Default()->GetCurrentThreadName(&thread_name));
+        thread_id = Env::Default()->GetCurrentThreadId();
+
+        auto tracer = CreateHostTracer({});
+
+        TF_ASSERT_OK(tracer->Start());
+        {
+          TraceMe traceme("phase1");
+        }
+
+        // Consume should pull "phase1" without stopping the tracer.
+        std::string dummy_output;
+        TF_ASSERT_OK(tracer->Consume(&dummy_output));
+
+        {
+          TraceMe traceme("phase2");
+        }
+
+        // Consume should pull "phase2" without stopping the tracer.
+        TF_ASSERT_OK(tracer->Consume(&dummy_output));
+
+        {
+          TraceMe traceme("phase3");
+        }
+        TF_ASSERT_OK(tracer->Stop());
+
+        // Serialize will output the combined trace (phase1 + phase2 + phase3)
+        // to the string.
+        TF_ASSERT_OK(tracer->Serialize("", &serialized_space));
+      }));
+  traced_thread.reset();      // Join thread, waiting for completion.
+  ASSERT_NO_FATAL_FAILURE();  // Test for failure in child thread.
+
+  tensorflow::profiler::XSpace space;
+  ASSERT_TRUE(space.ParseFromString(serialized_space));
+
+  ASSERT_EQ(space.planes_size(), 1);
+  const auto& plane = space.planes(0);
+  XPlaneVisitor xplane(&plane);
+  ASSERT_EQ(plane.name(), ::tsl::profiler::kHostThreadsPlaneName);
+  ASSERT_EQ(plane.lines_size(), 1);
+  const auto& line = plane.lines(0);
+  EXPECT_EQ(line.id(), thread_id);
+  ASSERT_EQ(line.events_size(), 3);
+
+  const auto& events = line.events();
+  XEventVisitor e0(&xplane, &line, &events[0]);
+  EXPECT_EQ(e0.Name(), "phase1");
+
+  XEventVisitor e1(&xplane, &line, &events[1]);
+  EXPECT_EQ(e1.Name(), "phase2");
+
+  XEventVisitor e2(&xplane, &line, &events[2]);
+  EXPECT_EQ(e2.Name(), "phase3");
+}
+
 TEST(HostTracerTest, CollectEventsFromThreadPool) {
   auto thread_pool =
       std::make_unique<tsl::thread::ThreadPool>(/*env=*/Env::Default(),

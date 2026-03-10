@@ -98,6 +98,11 @@ class TraceMeRecorder {
   // Events passed to Record after Stop has started will be dropped.
   static Events Stop();
 
+  // Gathers events from all active threads, and clears their buffers.
+  // If `clean_dead_threads` is true, it also cleans up trackers for dead
+  // threads.
+  static TF_MUST_USE_RESULT Events Consume(bool clean_dead_threads = false);
+
   // Returns whether we're currently recording. Racy, but cheap!
   static inline bool Active(int level = 1) {
     return internal::g_trace_level.load(std::memory_order_acquire) >= level;
@@ -124,9 +129,6 @@ class TraceMeRecorder {
   // Clears events from all active threads that were added due to Record
   // racing with Stop.
   static void Clear();
-
-  // Gathers events from all active threads, and clears their buffers.
-  static TF_MUST_USE_RESULT Events Consume();
 };
 
 }  // namespace profiler

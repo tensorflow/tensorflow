@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_COLLECTION_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -38,6 +39,11 @@ class ProfilerCollection : public ProfilerInterface {
   absl::Status Stop() override;
 
   absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
+
+  absl::Status Consume(std::string* output) override;
+
+  absl::Status Serialize(const std::string& input,
+                         std::string* output) override;
 
  private:
   std::vector<std::unique_ptr<ProfilerInterface>> profilers_;
