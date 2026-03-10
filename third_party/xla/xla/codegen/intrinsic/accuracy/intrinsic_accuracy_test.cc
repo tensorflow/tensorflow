@@ -236,6 +236,9 @@ std::vector<IntrinsicAccuracyTestParam> GetAccuracyTestParams() {
       {"log-plus-one", F32, accuracy::kGoldenLog1p, accuracy::kLog1pF32Budget},
       {"log-plus-one", F64, accuracy::kGoldenLog1p, accuracy::kLog1pF64Budget},
 
+      {"log", F32, accuracy::kGoldenLog, accuracy::kLogF32Budget},
+      {"log", F64, accuracy::kGoldenLog, accuracy::kLogF64Budget},
+
       {"rsqrt", F32, accuracy::kGoldenRsqrt, accuracy::kRsqrtF32Budget},
       {"rsqrt", F64, accuracy::kGoldenRsqrt, accuracy::kRsqrtF64Budget},
 

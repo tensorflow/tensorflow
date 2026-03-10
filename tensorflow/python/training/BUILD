@@ -70,6 +70,7 @@ py_strict_library(
 
 py_strict_library(
     name = "training",
+    lazy_imports = True,
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_minigo:__subpackages__",
