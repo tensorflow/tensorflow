@@ -34,11 +34,9 @@ limitations under the License.
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_loaded_executable.h"
+#include "xla/python/ifrt/ir/ifrt_ir_loaded_executable_test_base.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/program_memory_tracer.h"
-#include "xla/python/ifrt/ir/tests/executable_impl_test_base.h"
-#include "xla/python/ifrt/support/module_parsing.h"
-#include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -54,16 +52,7 @@ typedef absl::flat_hash_map<std::string, absl::Span<xla::ifrt::Device* const>>
 constexpr int64_t kGiB = 1024 * 1024 * 1024;
 
 class ProgramMemoryTracerTest
-    : public xla::ifrt::test_util::IfrtIrExecutableImplTestBase {
- public:
-  ProgramMemoryTracerTest() {
-    xla::ifrt::support::RegisterMlirDialects(mlir_context_);
-  }
-
-  void SetUp() override {
-    ASSERT_OK_AND_ASSIGN(client_, xla::ifrt::test_util::GetClient());
-  }
-
+    : public xla::ifrt::test_util::IfrtIrLoadedExecutableTestBase {
  protected:
   std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> CreateCompileOptions(
       const xla::ifrt::DeviceListRef& devices) {
