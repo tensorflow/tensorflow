@@ -96,40 +96,34 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   type::SpaceToDepth(op_params, GetTensorShape(input),                     \
                      GetTensorData<scalar>(input), GetTensorShape(output), \
                      GetTensorData<scalar>(output))
-  switch (input->type) {  // Already know in/out types are same.
-    case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, float);
-      } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, float);
-      }
-      break;
-    case kTfLiteUInt8:
+  // Already know in/out types are same.
+  switch (TfLiteTypeGetSizeBits(input->type)) {
+    case 8:
       if (kernel_type == kReference) {
         TF_LITE_SPACE_TO_DEPTH(reference_ops, uint8_t);
       } else {
         TF_LITE_SPACE_TO_DEPTH(optimized_ops, uint8_t);
       }
       break;
-    case kTfLiteInt8:
+    case 16:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, int8_t);
+        TF_LITE_SPACE_TO_DEPTH(reference_ops, uint16_t);
       } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, int8_t);
+        TF_LITE_SPACE_TO_DEPTH(optimized_ops, uint16_t);
       }
       break;
-    case kTfLiteInt32:
+    case 32:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, int32_t);
+        TF_LITE_SPACE_TO_DEPTH(reference_ops, uint32_t);
       } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, int32_t);
+        TF_LITE_SPACE_TO_DEPTH(optimized_ops, uint32_t);
       }
       break;
-    case kTfLiteInt64:
+    case 64:
       if (kernel_type == kReference) {
-        TF_LITE_SPACE_TO_DEPTH(reference_ops, int64_t);
+        TF_LITE_SPACE_TO_DEPTH(reference_ops, uint64_t);
       } else {
-        TF_LITE_SPACE_TO_DEPTH(optimized_ops, int64_t);
+        TF_LITE_SPACE_TO_DEPTH(optimized_ops, uint64_t);
       }
       break;
     default:

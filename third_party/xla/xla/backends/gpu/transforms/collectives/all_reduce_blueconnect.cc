@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -293,7 +294,8 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
   HloInstruction* reduce_scatter =
       computation.AddInstruction(HloInstruction::CreateReduceScatter(
           reduce_scatter_shape, flat_operands, all_reduce->to_apply(),
-          CollectiveDeviceList(decomposed_groups->scatter_gather_groups),
+          std::make_shared<CollectiveDeviceList>(
+              decomposed_groups->scatter_gather_groups),
           /*constrain_layout=*/false, get_channel_id(),
           all_reduce->use_global_device_ids(),
           /*scatter_dimension=*/0));
@@ -302,7 +304,8 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
       computation.AddInstruction(HloInstruction::CreateAllReduce(
           reduce_scatter_shape, GetOutputs(*reduce_scatter),
           all_reduce->to_apply(),
-          CollectiveDeviceList(decomposed_groups->new_all_reduce_groups),
+          std::make_shared<CollectiveDeviceList>(
+              decomposed_groups->new_all_reduce_groups),
           /*constrain_layout=*/false, all_reduce->channel_id(),
           all_reduce->use_global_device_ids()));
 
@@ -312,7 +315,8 @@ static absl::StatusOr<bool> TryDecomposeAllReduce(
       computation.AddInstruction(HloInstruction::CreateAllGather(
           all_gather_shape, GetOutputs(*new_all_reduce),
           /*all_gather_dimension=*/0,
-          CollectiveDeviceList(decomposed_groups->scatter_gather_groups),
+          std::make_shared<CollectiveDeviceList>(
+              decomposed_groups->scatter_gather_groups),
           /*constrain_layout=*/false, get_channel_id(),
           all_reduce->use_global_device_ids()));
 

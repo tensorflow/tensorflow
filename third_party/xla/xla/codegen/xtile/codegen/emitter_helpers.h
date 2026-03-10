@@ -265,6 +265,9 @@ mlir::Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder,
 absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
     mlir::MemRefType memref);
 
+// Function to get a MemRefType from a Shape.
+mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type);
+
 }  // namespace xla::xtile
 
 #endif  // XLA_CODEGEN_XTILE_CODEGEN_EMITTER_HELPERS_H_
