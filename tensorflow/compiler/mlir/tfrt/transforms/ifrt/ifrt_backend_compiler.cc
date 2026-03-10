@@ -110,7 +110,8 @@ CompileAndRegisterIfrtPrograms(absl::string_view model_name,
             ifrt_model_context.GetIfrtServingCoreSelector(),
             ifrt_model_context.GetCompilationEnvOrOverrides(),
             ifrt_model_context.GetTfToHloCompiler(),
-            ifrt_model_context.GetPersistentCompilationCache()));
+            ifrt_model_context.GetPersistentCompilationCache(),
+            ifrt_model_context.GetH2DTransferExecutorFactory()));
 
     // Register the Ifrt program to `ServingExecutableRegistry` so that
     // the client TF program can invoke them via `IfrtCall` op.

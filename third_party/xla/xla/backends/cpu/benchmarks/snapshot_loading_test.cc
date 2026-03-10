@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <string>
 
-#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
 #include "xla/hlo/parser/hlo_parser.h"

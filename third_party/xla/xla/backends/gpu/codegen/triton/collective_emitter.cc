@@ -196,12 +196,13 @@ std::optional<AllReduceInfo> MaybeBuildAllReduceInfo(
            .xla_gpu_unsupported_use_all_reduce_one_shot_kernel()) {
     return std::nullopt;
   }
-  if (all_reduce->device_list().replica_groups().empty()) {
+  if (all_reduce->device_list()->replica_groups().empty()) {
     VLOG(1) << "Replica groups are empty for " << all_reduce->name()
             << ". Codegen will not be supported.";
     return std::nullopt;
   }
-  const int64_t num_devices = all_reduce->device_list().num_devices_per_group();
+  const int64_t num_devices =
+      all_reduce->device_list()->num_devices_per_group();
   const std::optional<ReductionKind> reduction_kind =
       MatchReductionComputation(all_reduce->called_computations().front());
   if (!reduction_kind.has_value()) {
@@ -298,7 +299,8 @@ GetBlockLevelFusionConfigForAllReduce(
 absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
     const HloComputation* computation,
     const HloAllReduceInstruction* all_reduce) {
-  const int32_t num_devices = all_reduce->device_list().num_devices_per_group();
+  const int32_t num_devices =
+      all_reduce->device_list()->num_devices_per_group();
   std::vector<Shape> unmanaged_arguments;
   unmanaged_arguments.reserve(computation->num_parameters() +
                               kNumCollectiveMetadataArgs);
