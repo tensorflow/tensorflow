@@ -804,6 +804,17 @@ TEST(ExecutableTest, ExecutableSerialization) {
     // Verify donated_input field
     bool expected_donated = donated_input_indices_set.contains(i);
     EXPECT_EQ(metadata.parameter_specs(i).donated_input(), expected_donated);
+
+    // Verify shape and dtype fields
+    if (metadata.parameter_specs(i).has_dtype()) {
+      EXPECT_EQ(
+          static_cast<int32_t>(metadata.parameter_specs(i).dtype().kind()),
+          static_cast<int32_t>(xla::ifrt::DType::kS32));
+    }
+    if (metadata.parameter_specs(i).has_shape()) {
+      EXPECT_THAT(metadata.parameter_specs(i).shape().dims(),
+                  testing::ElementsAre(2, 3));
+    }
   }
 
   absl::string_view serialized_pjrt_executable = *serialized_executable;
