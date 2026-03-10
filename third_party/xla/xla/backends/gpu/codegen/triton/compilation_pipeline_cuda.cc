@@ -44,7 +44,6 @@ static void MakeTTIR(mlir::OpPassManager* pm,
                      const stream_executor::CudaComputeCapability& cuda_cc) {
   pm->addPass(mt_xla::CreateRoundF32ToTF32ForTf32DotRewritePass());
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createTritonRewriteTensorPointer());
   if (!cuda_cc.IsAtLeastHopper()) {
     pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   }

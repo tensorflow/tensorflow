@@ -41,7 +41,6 @@ namespace mt = ::mlir::triton;
 // @triton//:third_party/amd/backend/compiler.py
 static void MakeTTIR(mlir::OpPassManager* pm) {
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createTritonRewriteTensorPointer());
   // if not amd.supports_tdm(arch)
   // pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   pm->addPass(mlir::createCanonicalizerPass());

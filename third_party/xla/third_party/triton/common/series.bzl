@@ -26,7 +26,6 @@ common_patch_list = [
     "//third_party/triton:common/launcher.patch",
     "//third_party/triton:common/disable_amd_test.patch",
     "//third_party/triton:common/avoid-0fc-mid-ptwas-128.patch",
-    "//third_party/triton:common/remove_already_default_ods_setting.patch",
     "//third_party/triton:common/wgmma_pipeline_fix.patch",
     "//third_party/triton:common/nvdisasm_bin_path.patch",
     "//third_party/triton:common/llvm_cl880654778.patch",

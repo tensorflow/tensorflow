@@ -1335,7 +1335,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,378 @@
+@@ -0,0 +1,379 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1406,6 +1406,7 @@ new file mode 100644
 +    "unit/test_knobs.py",  # testing binary and file path utilites, which do not work in google's environment
 +    "unit/test_perf_warning.py",  # No backtraces in non-debug builds.
 +    "unit/runtime/test_build.py",  # this tests OSS launcher, we implement this differently in g3
++    "unit/runtime/test_no_torch_dispatch.py",  # we run tests differently in g3 & we only use torch in g3 for testing, see third_party/py/triton/google/BUILD
 +
 +    # requires 2 GPUs to run
 +    "unit/runtime/test_peer_access.py",  # this requires 2 GPUs to run, we have a separate target for it
