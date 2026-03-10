@@ -277,6 +277,10 @@ TEST(GpuCollectivesTest, CreateSymmetricMemory) {
   ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                        CreateExecutors(platform, 2));
 
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
+
   ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
 
   EXPECT_TRUE(comms[0]->platform_comm().handle);
@@ -354,6 +358,10 @@ TEST(GpuCollectivesTest, CreateDeviceComm) {
 
   ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
                        CreateExecutors(platform, 2));
+
+  if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
+    GTEST_SKIP() << "Test requires peer access between devices";
+  }
 
   ASSERT_OK_AND_ASSIGN(auto comms, CreateCommunicators(executors, {kD0, kD1}));
 

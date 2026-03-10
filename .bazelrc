@@ -530,8 +530,8 @@ common:windows --config=clang_local
 common:linux --experimental_guard_against_concurrent_changes
 
 # Configure short or long logs
-common:short_logs --output_filter=DONT_MATCH_ANYTHING
-common:verbose_logs --output_filter=
+common:short_logs --output_filter=DONT_MATCH_ANYTHING --experimental_ui_max_stdouterr_bytes=-1
+common:verbose_logs --output_filter= --experimental_ui_max_stdouterr_bytes=-1
 
 # Instruction set optimizations
 # TODO(gunan): Create a feature in toolchains for avx/avx2 to
@@ -665,7 +665,7 @@ common:rbe_linux_cuda --config=rbe_linux_cpu
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 # Update UMD version when RBE CUDA driver is updated.
-common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.1"
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.2"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
