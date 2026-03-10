@@ -38,6 +38,7 @@ enum class GpuModel {
   MI200,
   P100,
   V100,
+  GB200,
 };
 
 // Description of a target device for compilation.

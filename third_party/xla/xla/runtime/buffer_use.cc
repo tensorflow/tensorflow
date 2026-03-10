@@ -64,7 +64,7 @@ bool BufferUse::ReadWriteSet::HasConflicts(const BufferUse& use) const {
              : overlaps(write_, use);
 }
 
-bool BufferUse::ReadWriteSet::HasConflicts(const ReadWriteSet& other) {
+bool BufferUse::ReadWriteSet::HasConflicts(const ReadWriteSet& other) const {
   return absl::c_any_of(
              other.read_,
              [&](const BufferUse& other) { return HasConflicts(other); }) ||
