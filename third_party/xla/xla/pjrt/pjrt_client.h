@@ -41,7 +41,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
@@ -647,23 +646,11 @@ class PjRtClient {
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       MaybeOwningMlirModule module, CompileOptions options) {
-    return Compile(module.mlir_module(), std::move(options));
-  }
-  virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      MaybeOwningMlirModule module, CompileOptions options) {
-    return CompileAndLoad(module.mlir_module(), std::move(options));
-  }
-
-  [[deprecated("Use MaybeOwningMlirModule overload instead")]]
-  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp module, CompileOptions options) {
     return absl::UnimplementedError(
         "Compile with MLIR Module is not supported.");
   }
-
-  [[deprecated("Use MaybeOwningMlirModule overload instead")]]
   virtual absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) {
+      MaybeOwningMlirModule module, CompileOptions options) {
     return absl::UnimplementedError(
         "CompileAndLoad with MLIR Module is not supported.");
   }
