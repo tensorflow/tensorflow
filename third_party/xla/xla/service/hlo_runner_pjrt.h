@@ -203,6 +203,9 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
+  static absl::Status WriteCompressedExecutable(
+      absl::string_view path, absl::string_view serialized_executable);
+
  private:
   std::string artifact_dir_;
 };
@@ -234,6 +237,8 @@ class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
+  static absl::Status ReadCompressedExecutable(
+      absl::string_view path, tsl::tstring* serialized_executable);
 
  private:
   std::string artifact_dir_;

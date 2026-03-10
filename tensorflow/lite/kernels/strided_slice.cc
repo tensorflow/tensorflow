@@ -37,11 +37,6 @@ namespace ops {
 namespace builtin {
 namespace strided_slice {
 
-enum KernelType {
-  kReference,
-  kGenericOptimized,
-};
-
 constexpr int kInputTensor = 0;
 constexpr int kBeginTensor = 1;
 constexpr int kEndTensor = 2;
@@ -239,7 +234,6 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-template <KernelType kernel_type>
 TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   StridedSliceContext op_context(context, node);
 
@@ -248,59 +242,31 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   }
   StridedSliceParams op_params = BuildStridedSliceParams(&op_context, true);
 
-  switch (op_context.input->type) {
-    case kTfLiteFloat32:
-      reference_ops::StridedSlice<float>(
-          op_params, op_context.effective_input_shape, op_context.input,
-          GetTensorShape(op_context.output), op_context.output);
-      break;
-    case kTfLiteFloat16:
-      reference_ops::StridedSlice<Eigen::half>(
-          op_params, op_context.effective_input_shape, op_context.input,
-          GetTensorShape(op_context.output), op_context.output);
-      break;
-    case kTfLiteBFloat16:
-      reference_ops::StridedSlice<Eigen::bfloat16>(
-          op_params, op_context.effective_input_shape, op_context.input,
-          GetTensorShape(op_context.output), op_context.output);
-      break;
-    case kTfLiteInt32:
-      reference_ops::StridedSlice<int32_t>(
-          op_params, op_context.effective_input_shape, op_context.input,
-          GetTensorShape(op_context.output), op_context.output);
-      break;
-    case kTfLiteInt64:
-      reference_ops::StridedSlice<int64_t>(
-          op_params, op_context.effective_input_shape, op_context.input,
-          GetTensorShape(op_context.output), op_context.output);
-      break;
-    case kTfLiteUInt8:
-      reference_ops::StridedSlice<uint8_t>(
-          op_params, op_context.effective_input_shape, op_context.input,
-          GetTensorShape(op_context.output), op_context.output);
-      break;
-    case kTfLiteUInt32:
-      reference_ops::StridedSlice<uint32_t>(
-          op_params, op_context.effective_input_shape, op_context.input,
-          GetTensorShape(op_context.output), op_context.output);
-      break;
-    case kTfLiteInt8:
+  if (op_context.input->type == kTfLiteString) {
+    reference_ops::StridedSlice<string>(
+        op_params, op_context.effective_input_shape, op_context.input,
+        GetTensorShape(op_context.output), op_context.output);
+    return kTfLiteOk;
+  }
+
+  switch (TfLiteTypeGetSizeBits(op_context.input->type)) {
+    case 8:
       reference_ops::StridedSlice<int8_t>(
           op_params, op_context.effective_input_shape, op_context.input,
           GetTensorShape(op_context.output), op_context.output);
       break;
-    case kTfLiteInt16:
+    case 16:
       reference_ops::StridedSlice<int16_t>(
           op_params, op_context.effective_input_shape, op_context.input,
           GetTensorShape(op_context.output), op_context.output);
       break;
-    case kTfLiteBool:
-      reference_ops::StridedSlice<bool>(
+    case 32:
+      reference_ops::StridedSlice<int32_t>(
           op_params, op_context.effective_input_shape, op_context.input,
           GetTensorShape(op_context.output), op_context.output);
       break;
-    case kTfLiteString:
-      reference_ops::StridedSlice<string>(
+    case 64:
+      reference_ops::StridedSlice<int64_t>(
           op_params, op_context.effective_input_shape, op_context.input,
           GetTensorShape(op_context.output), op_context.output);
       break;
@@ -356,19 +322,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     SetTensorToPersistentRo(op_context.output);
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
     op_data->noop = true;
-    return EvalImpl<kGenericOptimized>(context, node);
+    return EvalImpl(context, node);
   }
   return ResizeOutputTensor(context, &op_context);
 }
 
-template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   StridedSliceContext op_context(context, node);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
   if (op_data->noop) {
     return kTfLiteOk;
   }
-  return EvalImpl<kernel_type>(context, node);
+  return EvalImpl(context, node);
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -381,17 +346,13 @@ void Free(TfLiteContext* context, void* buffer) {
 }  // namespace strided_slice
 
 TfLiteRegistration* Register_STRIDED_SLICE_REF() {
-  static TfLiteRegistration r = {
-      strided_slice::Init, strided_slice::Free, strided_slice::Prepare,
-      strided_slice::Eval<strided_slice::kReference>};
+  static TfLiteRegistration r = {strided_slice::Init, strided_slice::Free,
+                                 strided_slice::Prepare, strided_slice::Eval};
   return &r;
 }
 
 TfLiteRegistration* Register_STRIDED_SLICE() {
-  static TfLiteRegistration r = {
-      strided_slice::Init, strided_slice::Free, strided_slice::Prepare,
-      strided_slice::Eval<strided_slice::kGenericOptimized>};
-  return &r;
+  return Register_STRIDED_SLICE_REF();
 }
 
 }  // namespace builtin
