@@ -422,7 +422,7 @@ cc_library(
     srcs = ["llvm_irgen_test_base.cc"],
     hdrs = ["llvm_irgen_test_base.h"],
     deps = [
-        ":hlo_test_base",
+        ":hlo_test_base_legacy",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/service:executable",

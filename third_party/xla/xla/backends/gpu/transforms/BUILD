@@ -727,7 +727,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:semantic_version",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_test_base_legacy",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/protobuf:dnn_proto_cc",
         "//xla/tsl/util:command_line_flags",
@@ -755,7 +755,6 @@ xla_test(
         "amdgpu_any",
     ] + if_oss(["nvgpu_any"]),
     shard_count = 10,
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":cudnn_fused_conv_rewriter_test_common",
@@ -773,7 +772,6 @@ xla_test(
     #fail_if_no_test_linked = False,  # NOLINT=Only tests AMD GPUs.
     #fail_if_no_test_selected = False,  # NOLINT=Only tests AMD GPUs.
     shard_count = 4,
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":cudnn_fused_conv_rewriter_test_common",
@@ -871,7 +869,6 @@ xla_test(
     srcs = ["cudnn_norm_rewriter_test.cc"],
     backends = ["gpu"],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":cudnn_norm_rewriter",
@@ -1097,7 +1094,6 @@ xla_test(
     name = "dot_dimension_sorter_test",
     srcs = ["dot_dimension_sorter_test.cc"],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":dot_dimension_sorter",
@@ -1484,7 +1480,6 @@ xla_test(
     name = "gemm_broadcast_folding_rewriter_test",
     srcs = ["gemm_broadcast_folding_rewriter_test.cc"],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":gemm_broadcast_folding_rewriter",

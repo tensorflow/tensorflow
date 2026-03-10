@@ -3341,7 +3341,6 @@ xla_test(
     tags = [
         "manual",
         "notap",
-        "pjrt_migration_candidate",
     ],
     use_legacy_runtime = True,
     deps = [
@@ -3358,7 +3357,6 @@ xla_test(
         "//xla/stream_executor:mock_stream_executor",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tests:test_utils",
         "//xla/tsl/lib/core:status_test_util",

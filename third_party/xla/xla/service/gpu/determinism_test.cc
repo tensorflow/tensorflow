@@ -36,7 +36,6 @@ limitations under the License.
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -48,7 +47,7 @@ namespace gpu {
 
 class DeterminismTest : public GpuCodegenTest {
  public:
-  DeterminismTest() : debug_options_(HloTestBase::GetDebugOptionsForTest()) {
+  DeterminismTest() : debug_options_(GpuCodegenTest::GetDebugOptionsForTest()) {
     debug_options_.set_xla_gpu_exclude_nondeterministic_ops(true);
   }
 
@@ -107,7 +106,7 @@ class DeterminismTest : public GpuCodegenTest {
                          absl::string_view expected_hlo_regex,
                          TimerCreation timer_creation) {
     if (timer_creation == TimerCreation::kAllowed) {
-      HloTestBase::MatchOptimizedHlo(hlo_string, expected_hlo_regex);
+      GpuCodegenTest::MatchOptimizedHlo(hlo_string, expected_hlo_regex);
       return;
     }
 

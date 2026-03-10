@@ -158,7 +158,6 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":analytical_latency_estimator",

@@ -54,7 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -77,7 +77,7 @@ static const std::initializer_list<absl::string_view> kf16f32f64{"f16", "f32",
                                                                  "f64"};
 static const std::initializer_list<absl::string_view> kf16f32{"f16", "f32"};
 
-class CudnnFusedConvRewriterHloTest : public HloTestBase {
+class CudnnFusedConvRewriterHloTest : public HloTestBaseLegacy {
  public:
   bool IsCuda() const {
     return backend()
@@ -113,9 +113,9 @@ class CudnnFusedConvRewriterHloTest : public HloTestBase {
   }
 
   CudnnFusedConvRewriterHloTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/false,
-                    /*allow_mixed_precision_in_hlo_verifier=*/false,
-                    /*instruction_can_change_layout_func=*/{}) {}
+      : HloTestBaseLegacy(/*verifier_layout_sensitive=*/false,
+                          /*allow_mixed_precision_in_hlo_verifier=*/false,
+                          /*instruction_can_change_layout_func=*/{}) {}
 };
 
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {

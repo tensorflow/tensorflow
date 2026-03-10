@@ -336,10 +336,7 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = [
-        "no_mac",
-        "pjrt_migration_candidate",
-    ],
+    tags = ["no_mac"],
     use_legacy_runtime = True,
     deps = [
         ":test_utils",
@@ -434,10 +431,7 @@ xla_test(
         "CUBLAS_EMULATION_STRATEGY": "performant",  # Trigger single precision emulation (F32_F32_F32) with BF16x9 cublas algorithm. It was introduced in cublas 12.9.
     },
     shard_count = 30,
-    tags = [
-        "no_mac",
-        "pjrt_migration_candidate",
-    ],
+    tags = ["no_mac"],
     use_legacy_runtime = True,
     deps = [
         ":test_utils",
@@ -682,10 +676,7 @@ xla_test(
         "b200",
         "amdgpu_any",
     ],
-    tags = [
-        "no_mac",
-        "pjrt_migration_candidate",
-    ],
+    tags = ["no_mac"],
     use_legacy_runtime = True,
     deps = [
         ":support",
