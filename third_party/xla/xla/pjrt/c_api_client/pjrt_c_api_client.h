@@ -223,6 +223,13 @@ class PjRtCApiCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, mlir::ModuleOp module,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override {
+    return Compile(options, MaybeOwningMlirModule(std::move(module)), topology,
+                   client);
+  }
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
@@ -399,6 +406,15 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp module, CompileOptions options) override {
+    return Compile(MaybeOwningMlirModule(std::move(module)), options);
+  }
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+      mlir::ModuleOp module, CompileOptions options) override {
+    return CompileAndLoad(MaybeOwningMlirModule(std::move(module)), options);
+  }
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       MaybeOwningMlirModule module, CompileOptions options) override;

@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
-#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 
@@ -77,7 +76,7 @@ class SamplePhaseCompiler : public xla::PjRtPhaseCompiler {
       xla::PjRtClient* client) override;
 
   absl::StatusOr<std::unique_ptr<xla::PjRtExecutable>> Compile(
-      xla::CompileOptions options, xla::MaybeOwningMlirModule module,
+      xla::CompileOptions options, mlir::ModuleOp module,
       const xla::PjRtTopologyDescription& topology,
       xla::PjRtClient* client) override;
 };

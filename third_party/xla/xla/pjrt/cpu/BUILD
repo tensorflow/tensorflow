@@ -360,7 +360,6 @@ xla_cc_test(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/mlir_hlo",
-        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology",
         "//xla/pjrt/plugin/xla_cpu:cpu_topology_description",

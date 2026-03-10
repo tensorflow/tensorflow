@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_phase_compile_sample_plugin.h"
@@ -132,8 +131,7 @@ TEST_F(SamplePhaseCompilerTest, TestSamplePhaseCompilerCompileWithMlirModule) {
   mlir::ModuleOp module;
   xla::PjRtClient* client = nullptr;
   auto status =
-      phase_compiler_->Compile(options, xla::MaybeOwningMlirModule(module),
-                               *topology_description_, client);
+      phase_compiler_->Compile(options, module, *topology_description_, client);
   EXPECT_THAT(status, absl_testing::StatusIs(absl::StatusCode::kUnimplemented));
 }
 

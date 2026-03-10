@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
@@ -290,6 +291,15 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
+  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      mlir::ModuleOp mlir_module, CompileOptions options) override {
+    return Compile(MaybeOwningMlirModule(std::move(mlir_module)), options);
+  }
+  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
+      mlir::ModuleOp mlir_module, CompileOptions options) override {
+    return CompileAndLoad(MaybeOwningMlirModule(std::move(mlir_module)),
+                          options);
+  }
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       MaybeOwningMlirModule mlir_module, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(

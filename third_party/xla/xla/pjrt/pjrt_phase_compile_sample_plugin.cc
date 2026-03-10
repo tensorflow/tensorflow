@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
-#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -183,8 +182,7 @@ SamplePhaseCompiler::Compile(xla::CompileOptions options,
 }
 
 absl::StatusOr<std::unique_ptr<xla::PjRtExecutable>>
-SamplePhaseCompiler::Compile(xla::CompileOptions options,
-                             xla::MaybeOwningMlirModule module,
+SamplePhaseCompiler::Compile(xla::CompileOptions options, mlir::ModuleOp module,
                              const xla::PjRtTopologyDescription& topology,
                              xla::PjRtClient* client) {
   return absl::UnimplementedError(
