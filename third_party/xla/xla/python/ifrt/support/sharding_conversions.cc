@@ -27,25 +27,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/python/ifrt/sharding.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace support {
-
-absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding) {
-  if (auto* sharding_param_sharding =
-          llvm::dyn_cast<xla::ifrt::ShardingParamSharding>(&sharding)) {
-    return ToOpSharding(sharding_param_sharding->sharding_param());
-  }
-  return absl::InvalidArgumentError(
-      "Only conversion from `ShardingParamSharding` to `OpSharding` is "
-      "supported.");
-}
 
 absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param) {
   OpSharding op_sharding;
@@ -112,7 +100,8 @@ absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param) {
   return op_sharding;
 }
 
-absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
+absl::StatusOr<xla::HloSharding> ToHloSharding(
+    const ShardingParam& sharding_param) {
   auto axis_sizes = sharding_param.minor_to_major().axis_sizes;
   llvm::SmallVector<int64_t> reshape_dims;
   reshape_dims.reserve(axis_sizes.size());
@@ -123,7 +112,7 @@ absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   }
   if (device_count == 1) {
     // Generate single-device sharding as TileMaximal.
-    return HloSharding::Replicate();
+    return xla::HloSharding::Replicate();
   }
   if (!sharding_param.unreduced_axes().empty()) {
     if (sharding_param.unreduced_axes().size() ==
@@ -153,14 +142,14 @@ absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param) {
   if (device_count != cum_size) {
     // Add the replicated dimension.
     dims.push_back(device_count / cum_size);
-    return HloSharding::PartialTile(
+    return xla::HloSharding::PartialTile(
         TileAssignment(dims, reshape_dims, permutation));
   }
-  return HloSharding::IotaTile(dims, reshape_dims, permutation);
+  return xla::HloSharding::IotaTile(dims, reshape_dims, permutation);
 }
 
-absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                              int rank, int num_devices) {
+absl::StatusOr<ShardingParam> ToShardingParam(
+    const xla::HloSharding& hlo_sharding, int rank, int num_devices) {
   // `dim_shards` has size equal to the rank of the array, with each entry
   // representing the number of shards for the corresponding dimension.
   // `minor_to_major.permutation` and `minor_to_major.axis_sizes` must be

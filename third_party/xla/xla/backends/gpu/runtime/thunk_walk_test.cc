@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
@@ -103,22 +104,17 @@ TEST(ThunkWalkTest, ConditionalThunk) {
   ThunkSequence thunk_sequence;
   thunk_sequence.push_back(std::move(thunk));
 
-  auto sequential_thunk = std::make_unique<SequentialThunk>(
-      Thunk::ThunkInfo(), std::move(thunk_sequence));
-  SequentialThunk* sequential_thunk_ptr = sequential_thunk.get();
-
   BufferAllocation alloc(0, 1024, 0);
   BufferAllocation::Slice slice(&alloc, 0, 4);
   Shape shape = ShapeUtil::MakeShape(S32, {});
 
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
-  branch_thunks.push_back(std::move(sequential_thunk));
+  std::vector<ThunkSequence> branch_thunks;
+  branch_thunks.push_back(std::move(thunk_sequence));
   ConditionalThunk conditional_thunk(Thunk::ThunkInfo(), {slice, shape},
                                      std::move(branch_thunks));
 
   EXPECT_THAT(GetAllThunks(&conditional_thunk),
-              UnorderedElementsAre(thunk_ptr, sequential_thunk_ptr,
-                                   &conditional_thunk));
+              UnorderedElementsAre(thunk_ptr, &conditional_thunk));
 }
 
 TEST(ThunkWalkTest, WhileThunk) {
@@ -134,19 +130,13 @@ TEST(ThunkWalkTest, WhileThunk) {
   ThunkSequence body_thunk_sequence;
   body_thunk_sequence.push_back(std::move(body_thunk));
 
-  WhileThunk while_thunk(
-      Thunk::ThunkInfo(), /*loop=*/nullptr, BufferAllocation::Slice(),
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
-                                        std::move(condition_thunk_sequence)),
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
-                                        std::move(body_thunk_sequence)));
+  WhileThunk while_thunk(Thunk::ThunkInfo(), BufferAllocation::Slice(),
+                         std::move(condition_thunk_sequence),
+                         std::move(body_thunk_sequence));
 
-  EXPECT_THAT(GetAllThunks(&while_thunk),
-              // `WhileThunk` wraps the `condition_thunk_sequence` and
-              // `body_thunk_sequence` in `SequentialThunks`, which is why
-              // iterate over more than the three expected `Thunks`.
-              IsSupersetOf<const Thunk*>(
-                  {condition_thunk_ptr, body_thunk_ptr, &while_thunk}));
+  EXPECT_THAT(
+      GetAllThunks(&while_thunk),
+      UnorderedElementsAre(condition_thunk_ptr, body_thunk_ptr, &while_thunk));
 }
 
 }  // namespace
