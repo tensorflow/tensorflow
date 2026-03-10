@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/tools/xla_compile_lib.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/types.h"
 
 namespace xla {
 namespace xla_compile {
@@ -109,6 +108,10 @@ int main(int argc, char* argv[]) {
                 "The target triple."),
       tsl::Flag("use_shardy_partitioner", &options.use_shardy_partitioner,
                 "Whether to use the Shardy partitioner."),
+      tsl::Flag("num_partitions", &options.num_partitions,
+                "The number of partitions."),
+      tsl::Flag("num_replicas", &options.num_replicas,
+                "The number of replicas."),
   };
 
   std::string usage = xla::xla_compile::kUsageHeader;

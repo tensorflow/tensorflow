@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/tools/xla_compile_lib.h"
 
 #include <cmath>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -41,6 +42,9 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/stream_executor_executable.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/executable.h"
@@ -89,7 +93,7 @@ static absl::StatusOr<std::string> AotCompileCpuExecutable(
 static absl::StatusOr<std::string> CompileGpuExecutable(
     std::unique_ptr<HloModule> hlo_module,
     std::optional<Compiler::GpuTargetConfig> target_config,
-    CompilationResult& result) {
+    CompilationResult& result, int32_t num_partitions, int32_t num_replicas) {
   TF_ASSIGN_OR_RETURN(std::string platform_name,
                       xla::PlatformUtil::CanonicalPlatformName("gpu"));
   platform_name = absl::AsciiStrToUpper(platform_name);
@@ -105,8 +109,10 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
 
   if (aot) {
     AotCompilationOptions aot_options(platform_id);
-    GpuTopology topology =
-        GetSingleDeviceGpuTopology(/*platform_version=*/"", *target_config);
+    GpuTopology topology(/*platform_version=*/"",
+                         /*num_partitions=*/num_partitions,
+                         /*num_hosts_per_partition=*/1,
+                         /*num_devices_per_host=*/num_replicas, *target_config);
     aot_options.set_gpu_topology(topology);
     // We need the optimized module, so we call RunHloPasses ourselves above.
     aot_options.set_run_backend_only(true);
@@ -114,11 +120,19 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     TF_ASSIGN_OR_RETURN(
         std::vector<std::unique_ptr<CompiledModule>> aot_results,
         gpu_compiler->CompileAheadOfTime(std::move(hlo_module), aot_options));
-    TF_ASSIGN_OR_RETURN(std::string compile_result,
-                        aot_results[0]->SerializeAsString());
-    *result.mutable_hlo_module() =
-        aot_results[0]->optimized_module()->ToProto();
-    return compile_result;
+    if (!aot_results.empty() && aot_results[0]->optimized_module() != nullptr) {
+      *result.mutable_hlo_module() =
+          aot_results[0]->optimized_module()->ToProto();
+    }
+    xla::CompileOptions compile_options;
+    compile_options.executable_build_options.set_num_replicas(num_replicas);
+    compile_options.executable_build_options.set_num_partitions(num_partitions);
+    StreamExecutorExecutable stream_executor_executable(
+        compile_options, std::move(aot_results), /*num_replicas=*/num_replicas,
+        /*num_partitions=*/num_partitions, /*name=*/"xla_compile",
+        /*fingerprint=*/"fake_fingerprint",
+        /*default_memory_kind=*/"fake_memory_kind");
+    return stream_executor_executable.SerializeExecutable();
   }
   TF_ASSIGN_OR_RETURN(
       auto platform,
@@ -143,13 +157,14 @@ absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
     std::optional<Compiler::GpuTargetConfig> gpu_target_config,
     std::optional<Compiler::CpuTargetConfig> cpu_target_config,
-    CompilationResult& result) {
+    int32_t num_partitions, int32_t num_replicas, CompilationResult& result) {
   if (backend == BackendType::kCpu) {
     return AotCompileCpuExecutable(std::move(hlo_module),
                                    std::move(cpu_target_config));
   }
   return CompileGpuExecutable(std::move(hlo_module),
-                              std::move(gpu_target_config), result);
+                              std::move(gpu_target_config), result,
+                              num_partitions, num_replicas);
 }
 
 absl::Status WriteResultFile(const absl::string_view result_output_file,
@@ -401,9 +416,10 @@ absl::Status XlaCompileMain(const XlaCompileOptions& options) {
   if (options.use_shardy_partitioner) {
     hlo_module->mutable_config().set_use_shardy_partitioner(true);
   }
-  auto result =
-      CompileExecutable(std::move(hlo_module), backend, std::move(gpu_cfg),
-                        std::move(cpu_cfg), compilation_result);
+
+  auto result = CompileExecutable(
+      std::move(hlo_module), backend, std::move(gpu_cfg), std::move(cpu_cfg),
+      options.num_partitions, options.num_replicas, compilation_result);
   *compilation_result.mutable_status() = tsl::StatusToProto(result.status());
   if (!result.ok()) {
     return result.status();
