@@ -25,6 +25,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -155,6 +156,10 @@ class MpmdLoadedExecutable final
   GetMpmdHloModules() const override;
   absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>
   GetMpmdCostAnalysis() const override;
+
+  tsl::Future<> Delete(int64_t deletion_stream_id) override {
+    return tsl::Future<>(absl::OkStatus());
+  }
 
   static char ID;  // NOLINT
 
