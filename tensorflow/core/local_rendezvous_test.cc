@@ -60,9 +60,8 @@ TEST(LocalRendezvous, Stress) {
       });
     }
     if (i % 2 == 0) {
-      // TODO: uncomment to trigger the deadlock.
-      // threads.emplace_back(
-      //    [&] { rendezvous->StartAbort(absl::CancelledError("Cancelled")); });
+      threads.emplace_back(
+          [&] { rendezvous->StartAbort(absl::CancelledError("Cancelled")); });
     }
     if (i % 4 == 0 && cm) {
       cm->StartCancelWithStatus(absl::CancelledError("Cancelled"));
@@ -95,8 +94,7 @@ TEST(LocalRendezvous, CancelDestroyRace) {
     std::thread abort_thread(
         [&] { cm.StartCancelWithStatus(absl::CancelledError("Cancelled")); });
     rendezvous->Send(key, args, Tensor(), false).IgnoreError();
-    // TODO: uncomment to trigger use-after-free.
-    // rendezvous.reset();
+    rendezvous.reset();
     abort_thread.join();
     ASSERT_EQ(1, recv_count);
   }
