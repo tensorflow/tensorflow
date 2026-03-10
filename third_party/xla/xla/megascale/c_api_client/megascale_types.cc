@@ -26,10 +26,58 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_megascale_extension.h"
+#include "xla/pjrt/pjrt_api.h"
+#include "xla/pjrt/plugin/plugin_names.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace megascale {
 namespace c_api_client {
+
+namespace {
+
+absl::StatusOr<const PJRT_Megascale_Extension*> GetExtension(
+    const PJRT_Api** c_api_out = nullptr) {
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  if (c_api_out != nullptr) {
+    *c_api_out = c_api;
+  }
+  PJRT_Megascale_Extension* extension =
+      pjrt::FindExtension<PJRT_Megascale_Extension>(
+          c_api, PJRT_Extension_Type_Megascale);
+  if (extension == nullptr) {
+    return absl::InternalError("Megascale extension is not available.");
+  }
+  return extension;
+}
+
+}  // namespace
+
+absl::StatusOr<MultiSliceDeviceId> MultiSliceDeviceId::Create(
+    int64_t megascale_id) {
+  const PJRT_Api* c_api;
+  TF_ASSIGN_OR_RETURN(const PJRT_Megascale_Extension* ext,
+                      GetExtension(&c_api));
+  PJRT_Megascale_MegascaleId_To_DeviceId_Args args;
+  args.struct_size = PJRT_Megascale_MegascaleId_To_DeviceId_Args_STRUCT_SIZE;
+  args.megascale_id = megascale_id;
+  RETURN_STATUS_IF_PJRT_ERROR(ext->megascale_id_to_device_id(&args), c_api);
+  return MultiSliceDeviceId(megascale_id, args.slice_id,
+                            args.per_slice_device_id);
+}
+
+absl::StatusOr<MultiSliceDeviceId> MultiSliceDeviceId::Create(
+    int32_t slice_id, int32_t per_slice_device_id) {
+  const PJRT_Api* c_api;
+  TF_ASSIGN_OR_RETURN(const PJRT_Megascale_Extension* ext,
+                      GetExtension(&c_api));
+  PJRT_Megascale_DeviceId_To_MegascaleId_Args args;
+  args.struct_size = PJRT_Megascale_DeviceId_To_MegascaleId_Args_STRUCT_SIZE;
+  args.slice_id = slice_id;
+  args.per_slice_device_id = per_slice_device_id;
+  RETURN_STATUS_IF_PJRT_ERROR(ext->device_id_to_megascale_id(&args), c_api);
+  return MultiSliceDeviceId(args.megascale_id, slice_id, per_slice_device_id);
+}
 
 CApiPjRtClientContext::~CApiPjRtClientContext() {
   PJRT_Megascale_DeleteClientContext_Args args;

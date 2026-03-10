@@ -203,7 +203,8 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision,
-    bool generate_aligned_ds_indices) {
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr) {
   int64_t index_bound = INT64_MAX;
   // Used for operations like DUS / DS which need to be aligned when they appear
   // in a fusion.
@@ -211,6 +212,7 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
   bool no_duplicates = false;
   bool needs_constant = false;
   bool needs_sorted_indices = false;
+  std::optional<uint64_t> index_known_zeroes = std::nullopt;
   ConstantType constant_type = ConstantType::kUnknown;
   for (const HloUse& hlo_use : constrained_uses) {
     HloInstruction* use = hlo_use.instruction;
@@ -244,6 +246,19 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
               break;
             default:
               break;
+          }
+          if (get_index_known_zeroes != nullptr) {
+            if (std::optional<uint64_t> current_known_zeroes =
+                    get_index_known_zeroes(use, sliced_dim)) {
+              if (index_known_zeroes.has_value()) {
+                // If we have multiple uses with different masks, we take the
+                // union of known zeroes.
+                index_known_zeroes =
+                    *index_known_zeroes | *current_known_zeroes;
+              } else {
+                index_known_zeroes = current_known_zeroes;
+              }
+            }
           }
         }
         break;
@@ -304,10 +319,10 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeFakeLiteral(param_shape, engine,
-                           std::pair<int64_t, int64_t>(0, index_bound),
-                           needs_sorted_indices, no_duplicates, use_large_range,
-                           max_bits_of_precision, index_alignment);
+    return MakeFakeLiteral(
+        param_shape, engine, std::pair<int64_t, int64_t>(0, index_bound),
+        needs_sorted_indices, no_duplicates, use_large_range,
+        max_bits_of_precision, index_alignment, index_known_zeroes);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
@@ -337,12 +352,14 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
     const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision,
-    bool generate_aligned_ds_indices) {
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr) {
   const auto constrained_uses =
       FindConstrainedUses(dataflow, param, treat_gte_as_data_formatting);
   return CreateLiteralForConstrainedUses(
       constrained_uses, param, param_shape, engine, use_large_range,
-      max_bits_of_precision, generate_aligned_ds_indices);
+      max_bits_of_precision, generate_aligned_ds_indices,
+      get_index_known_zeroes);
 }
 
 }  // namespace
@@ -351,29 +368,33 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine,
-    bool generate_aligned_ds_indices) {
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes) {
   if (!pseudo_random) {
-    return MakeFakeArguments(
-        module, nullptr, use_large_range, treat_gte_as_data_formatting,
-        max_bits_of_precision, generate_aligned_ds_indices);
+    return MakeFakeArguments(module, nullptr, use_large_range,
+                             treat_gte_as_data_formatting,
+                             max_bits_of_precision, generate_aligned_ds_indices,
+                             get_index_known_zeroes);
   }
   if (engine == nullptr) {
     auto new_engine =
         pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
-    return MakeFakeArguments(
-        module, new_engine.get(), use_large_range, treat_gte_as_data_formatting,
-        max_bits_of_precision, generate_aligned_ds_indices);
+    return MakeFakeArguments(module, new_engine.get(), use_large_range,
+                             treat_gte_as_data_formatting,
+                             max_bits_of_precision, generate_aligned_ds_indices,
+                             get_index_known_zeroes);
   }
   return MakeFakeArguments(module, engine, use_large_range,
                            treat_gte_as_data_formatting, max_bits_of_precision,
-                           generate_aligned_ds_indices);
+                           generate_aligned_ds_indices, get_index_known_zeroes);
 }
 
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
     std::optional<int64_t> max_bits_of_precision,
-    bool generate_aligned_ds_indices) {
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
@@ -390,10 +411,11 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
                                    : params[i]->shape();
 
     TF_ASSIGN_OR_RETURN(
-        arguments[i], MakeConstrainedArgument(
-                          *dataflow, *params[i], param_shape, engine,
-                          use_large_range, treat_gte_as_data_formatting,
-                          max_bits_of_precision, generate_aligned_ds_indices));
+        arguments[i],
+        MakeConstrainedArgument(
+            *dataflow, *params[i], param_shape, engine, use_large_range,
+            treat_gte_as_data_formatting, max_bits_of_precision,
+            generate_aligned_ds_indices, get_index_known_zeroes));
   }
   return std::move(arguments);
 }

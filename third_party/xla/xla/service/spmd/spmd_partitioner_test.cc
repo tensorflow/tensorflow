@@ -532,9 +532,9 @@ ENTRY entry {
   EXPECT_NE(all_gather, nullptr);
 
   // Verify all-gather instruction contains ReplicaGroupV2.
-  EXPECT_TRUE(all_gather->device_list().version() ==
+  EXPECT_TRUE(all_gather->device_list()->version() ==
               CollectiveDeviceListVersion::kIota);
-  EXPECT_EQ(all_gather->device_list(),
+  EXPECT_EQ(*all_gather->device_list(),
             IotaReplicaGroupList(
                 /*num_replica_groups=*/1, /*num_devices_per_group=*/4,
                 /*reshape_dims=*/{4}, /*transpose_perm=*/{0}));
@@ -597,7 +597,7 @@ ENTRY entry {
   EXPECT_EQ(all_to_all->replica_groups().size(), 1);
   EXPECT_EQ(all_to_all->replica_groups()[0].replica_ids_size(), 8);
   if (GetParam() == ShardingFormatPicker::ShardingType::kBestEffortV2) {
-    EXPECT_EQ(all_to_all->device_list(),
+    EXPECT_EQ(*all_to_all->device_list(),
               IotaReplicaGroupList(
                   /*num_replica_groups=*/1, /*num_devices_per_group=*/8,
                   /*reshape_dims=*/{4, 2}, /*transpose_perm=*/{1, 0}));
@@ -2008,9 +2008,9 @@ ENTRY entry {
             module->entry_computation()->instructions().end());
 
   // Verify all-reduce instruction contains ReplicaGroupV2.
-  EXPECT_EQ((*all_reduce_instruction)->device_list().version(),
+  EXPECT_EQ((*all_reduce_instruction)->device_list()->version(),
             CollectiveDeviceListVersion::kIota);
-  EXPECT_EQ((*all_reduce_instruction)->device_list(),
+  EXPECT_EQ(*(*all_reduce_instruction)->device_list(),
             IotaReplicaGroupList(
                 /*num_replica_groups=*/1, /*num_devices_per_group=*/8,
                 /*reshape_dims=*/{8}, /*transpose_perm=*/{0}));
@@ -3154,6 +3154,139 @@ ENTRY entry {
             op::Shape("s32[128,7,257]"));
   EXPECT_THAT(root, AllOf(op::Sort(param0, param1),
                           op::Shape("(f32[128,7,257], s32[128,7,257])")));
+}
+
+TEST_P(SpmdPartitioningTest, CustomCallRotateRight) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[12] parameter(0), sharding={devices=[4]<=[4]}
+  ROOT %custom-call = f32[12] custom-call(%param0),
+    custom_call_target="_SPMDInternalOp_RotateRight",
+    backend_config="dimension=0,amount=2",
+    sharding={devices=[4]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(op::Parameter(0), op::Shape("f32[3]"));
+  auto rotate = op::Concatenate(op::CollectivePermute(op::Slice(param0)),
+                                op::Slice(param0));
+  EXPECT_THAT(root, AllOf(rotate, op::Shape("f32[3]")));
+}
+
+TEST_P(SpmdPartitioningTest, CustomCallMultiRotate) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[12] parameter(0), sharding={devices=[4]<=[4]}
+  ROOT %custom-call = (f32[12], f32[12], f32[12]) custom-call(%param0),
+    custom_call_target="_SPMDInternalOp_MultiRotate",
+    backend_config="dimension=0,left_amount=1,right_amount=1",
+    sharding={{devices=[4]<=[4]}, {devices=[4]<=[4]}, {devices=[4]<=[4]}}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto super_shard = op::Concatenate(op::CollectivePermute(_), op::Parameter(0),
+                                     op::CollectivePermute(_));
+  EXPECT_THAT(root,
+              AllOf(op::Tuple(op::Slice(super_shard), op::Slice(super_shard),
+                              op::Slice(super_shard)),
+                    op::Shape("(f32[3], f32[3], f32[3])")));
+}
+
+TEST_P(SpmdPartitioningTest, CustomCallWrap) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[12] parameter(0), sharding={devices=[4]<=[4]}
+  ROOT %custom-call = f32[20] custom-call(%param0),
+    custom_call_target="_SPMDInternalOp_Wrap",
+    backend_config="dimension=0,left_amount=1,right_amount=1",
+    sharding={devices=[4]<=[4]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto slice_idx = op::Multiply(
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
+      op::Constant());
+
+  auto super_shard = op::Concatenate(op::CollectivePermute(_), op::Parameter(0),
+                                     op::CollectivePermute(_));
+  EXPECT_THAT(root, AllOf(op::DynamicSlice(op::Pad(super_shard, _), slice_idx),
+                          op::Shape("f32[5]")));
+}
+
+TEST_P(SpmdPartitioningTest, CustomCallMultiSlice) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f64[1536] parameter(0), sharding={devices=[2]<=[2]}
+  ROOT %custom-call = (f64[1520]{0}, f64[1520]{0}, f64[1520]{0}, f64[1520]{0}) custom-call(%param0),
+    custom_call_target="_SPMDInternalOp_MultiSlice",
+    sharding={{devices=[2]<=[2]}, {devices=[2]<=[2]}, {devices=[2]<=[2]}, {devices=[2]<=[2]}},
+    backend_config="dimension=0,amount=3,start_indices=[6],limit_indices=[1526],strides=[1]"
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  auto super_shard = op::Concatenate(op::CollectivePermute(_), op::Parameter(0),
+                                     op::CollectivePermute(_));
+
+  auto slice_idx = op::Add(op::Multiply(op::Reshape(op::DynamicSlice(
+                                            op::Constant(), op::PartitionId())),
+                                        op::Constant()),
+                           op::Constant());
+  auto pre_slice = op::DynamicSlice(super_shard, slice_idx);
+  EXPECT_THAT(root,
+              AllOf(op::Tuple(op::Slice(pre_slice), op::Slice(pre_slice),
+                              op::Slice(pre_slice), op::Slice(pre_slice)),
+                    op::Shape("(f64[760], f64[760], f64[760], f64[760])")));
+}
+
+TEST_P(SpmdPartitioningTest, CustomCallMultiSlice2) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f64[1536] parameter(0), sharding={devices=[2]<=[2]}
+  ROOT %custom-call = (f64[1520]{0}, f64[1520]{0}) custom-call(%param0),
+    custom_call_target="_SPMDInternalOp_MultiSlice",
+    sharding={{devices=[2]<=[2]}, {devices=[2]<=[2]}},
+    backend_config="dimension=0,amount=1,start_indices=[7],limit_indices=[1527],strides=[1]"
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  auto super_shard =
+      op::Concatenate(op::CollectivePermute(_), op::Parameter(0));
+
+  auto slice_idx = op::Add(op::Multiply(op::Reshape(op::DynamicSlice(
+                                            op::Constant(), op::PartitionId())),
+                                        op::Constant()),
+                           op::Constant());
+  auto pre_slice = op::DynamicSlice(super_shard, slice_idx);
+  EXPECT_THAT(root, AllOf(op::Tuple(op::Slice(pre_slice), op::Slice(pre_slice)),
+                          op::Shape("(f64[760], f64[760])")));
 }
 
 TEST_P(SpmdPartitioningTest, PartitionCustomCall) {
@@ -12151,9 +12284,9 @@ ENTRY %module {
   EXPECT_TRUE(all_to_all != nullptr);
   if (GetParam() ==
       test_only::ShardingFormatPicker::ShardingType::kBestEffortV2) {
-    EXPECT_EQ(all_to_all->device_list().version(),
+    EXPECT_EQ(all_to_all->device_list()->version(),
               CollectiveDeviceListVersion::kIota);
-    EXPECT_EQ(all_to_all->device_list(),
+    EXPECT_EQ(*all_to_all->device_list(),
               IotaReplicaGroupList(
                   /*num_replica_groups=*/4, /*num_devices_per_group=*/2,
                   /*reshape_dims=*/{2, 2, 2}, /*transpose_perm=*/{0, 2, 1}));

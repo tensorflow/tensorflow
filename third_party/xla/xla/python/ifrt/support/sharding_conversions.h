@@ -19,31 +19,23 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/ir/sharding_param.h"
-#include "xla/python/ifrt/sharding.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace ifrt {
 namespace support {
 
-// Converts a Sharding to an OpSharding.
-//
-// The function currently supports only `ShardingParamSharding`. It assumes that
-// `sharding_param` is valid.
-//
-// Returns error if the given sharding is of a type for which conversion is
-// not supported.
-absl::StatusOr<OpSharding> ToOpSharding(const Sharding& sharding);
-
 // Converts ShardingParam to OpSharding.
 //
 // The function assumes that `sharding_param` is valid.
-absl::StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param);
+absl::StatusOr<xla::OpSharding> ToOpSharding(
+    const ShardingParam& sharding_param);
 
 // Converts ShardingParam to HloSharding.
 //
 // This assumes that `sharding_param` is valid.
-absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param);
+absl::StatusOr<xla::HloSharding> ToHloSharding(
+    const ShardingParam& sharding_param);
 
 // Converts HloSharding to ShardingParam.
 //
@@ -53,8 +45,8 @@ absl::StatusOr<HloSharding> ToHloSharding(const ShardingParam& sharding_param);
 // Only a subset of HloShardings are supported: REPLICATED (including MAXIMAL
 // on single-device), partially replicated, fully partitioned shardings.
 // (Non-fully-replicated) MAXIMAL and MANUAL shardings are not supported.
-absl::StatusOr<ShardingParam> ToShardingParam(const HloSharding& hlo_sharding,
-                                              int rank, int num_devices);
+absl::StatusOr<ShardingParam> ToShardingParam(
+    const xla::HloSharding& hlo_sharding, int rank, int num_devices);
 
 }  // namespace support
 }  // namespace ifrt

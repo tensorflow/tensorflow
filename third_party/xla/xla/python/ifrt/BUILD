@@ -506,7 +506,6 @@ cc_library(
         ":user_context",
         "//xla:shape_util",
         "//xla/pjrt:pjrt_layout",
-        "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/lib/core:status_test_util",
