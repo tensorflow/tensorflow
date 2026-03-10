@@ -1,3 +1,27 @@
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -141,16 +141,16 @@
+ namespace side_effects {
+ 
+ struct SendResource : ::mlir::SideEffects::Resource::Base<SendResource> {
+-  StringRef getName() final { return "SendResource"; }
++  StringRef getName() const final { return "SendResource"; }
+ };
+ struct RecvResource : ::mlir::SideEffects::Resource::Base<RecvResource> {
+-  StringRef getName() final { return "RecvResource"; }
++  StringRef getName() const final { return "RecvResource"; }
+ };
+ struct InfeedResource : ::mlir::SideEffects::Resource::Base<InfeedResource> {
+-  StringRef getName() final { return "InfeedResource"; }
++  StringRef getName() const final { return "InfeedResource"; }
+ };
+ struct OutfeedResource : ::mlir::SideEffects::Resource::Base<OutfeedResource> {
+-  StringRef getName() final { return "OutfeedResource"; }
++  StringRef getName() const final { return "OutfeedResource"; }
+ };
+ 
+ }  // end namespace side_effects
 diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
 --- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
 +++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
