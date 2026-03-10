@@ -63,6 +63,9 @@ limitations under the License.
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/spmd/shardy/constants.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
+#include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_import.h"
 #include "xla/shape.h"
@@ -590,7 +593,9 @@ void addStablehloImportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createImportShardingsPass(allowPropagationToArgs,
                                        allowPropagationToResults));
   pm.addPass(createStablehloRoundTripShardMapImportPass());
-  addCommonPostImportPasses(pm);
+  pm.addPass(createImportSdyCustomCallsPass());
+  pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
+  pm.addPass(createImportFuncCallsPass());
 }
 
 void registerStablehloImportPipeline() {
