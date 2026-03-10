@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_layout.pb.h"
 

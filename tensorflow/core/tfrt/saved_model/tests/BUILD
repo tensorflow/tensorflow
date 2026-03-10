@@ -625,6 +625,7 @@ cc_library(
         "//tensorflow/core/tfrt/ifrt:ifrt_model_context",
         "//tensorflow/core/tfrt/ifrt:ifrt_model_restore_context",
         "//tensorflow/core/tfrt/ifrt:ifrt_serving_core_selector",
+        "//tensorflow/core/tfrt/ifrt:sharding_utils",
         "//tensorflow/core/tfrt/mlrt/kernel:ifrt_ops_kernel",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/saved_model:saved_model_cpu",

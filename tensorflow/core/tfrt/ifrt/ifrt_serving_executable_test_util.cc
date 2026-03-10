@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 namespace tensorflow {
@@ -78,6 +79,8 @@ IfrtServingExecutableTestHelper::IfrtServingExecutableTestHelper(
   context_ = std::make_unique<mlir::MLIRContext>(registry_);
   ifrt_persistent_compilation_cache_ =
       std::make_unique<IfrtPersistentCompilationCache>();
+  h2d_transfer_executor_factory_ =
+      std::make_unique<H2DTransferExecutorFactory>();
 }
 
 std::unique_ptr<IfrtServingExecutable>
@@ -91,7 +94,8 @@ IfrtServingExecutableTestHelper::MakeExecutable(int64_t program_id,
       &ifrt_restore_tensor_registry_, work_queue_.get(), device_mgr_.get(),
       tensorflow::IdentityShapeRepresentationFn(), core_selector_.get(),
       /*compilation_environment_proto=*/nullptr, &tf_to_hlo_compiler_,
-      ifrt_persistent_compilation_cache_.get());
+      ifrt_persistent_compilation_cache_.get(),
+      h2d_transfer_executor_factory_.get());
   TF_CHECK_OK(executable_or.status());
   return std::move(executable_or.value());
 }

@@ -891,7 +891,7 @@ cc_library(
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu/autotuning:autotune_cache_key",
-        "//xla/service/gpu/autotuning:autotuner_util",
+        "//xla/service/gpu/autotuning:autotuner_cache",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:errors",
         "//xla/tsl/protobuf:dnn_proto_cc",

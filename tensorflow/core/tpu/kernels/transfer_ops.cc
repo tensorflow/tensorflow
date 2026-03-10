@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 
+#include <cstdint>
 #include <deque>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "xla/literal.h"
