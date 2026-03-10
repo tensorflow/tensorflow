@@ -36,15 +36,3 @@ cc_library(
         "@tsl//tsl/platform:statusor",
     ],
 )
-
-cc_library(
-    name = "testing_pipeline",
-    srcs = ["testing_pipeline.cc"],
-    hdrs = ["testing_pipeline.h"],
-    deps = [
-        ":stablehlo_to_hlo_to_stablehlo",
-        "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Pass",
-    ],
-)
