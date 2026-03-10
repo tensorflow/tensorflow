@@ -149,7 +149,7 @@ cc_library(
         "//xla/service:interpreter_plugin",  # reference backend
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_test_base_legacy",
         "@com_google_absl//absl/base:core_headers",
     ],
 )
