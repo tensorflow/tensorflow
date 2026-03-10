@@ -146,6 +146,10 @@ class IfrtIrLoadedExecutable
   // entire IFRT IR program.
   absl::StatusOr<IfrtIrProgramMemoryStats> GetIfrtIrProgramMemoryStats() const;
 
+  tsl::Future<> Delete(int64_t deletion_stream_id) override {
+    return tsl::Future<>(absl::OkStatus());
+  }
+
   static char ID;  // NOLINT
 
  private:

@@ -1026,6 +1026,10 @@ class NanoExecutable final
     return devices_;
   }
 
+  tsl::Future<> Delete(int64_t deletion_stream_id) override {
+    return tsl::Future<>(absl::OkStatus());
+  }
+
   static char ID;  // NOLINT
 
  private:

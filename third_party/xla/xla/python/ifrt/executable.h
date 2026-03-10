@@ -312,6 +312,18 @@ class LoadedExecutable
 
   virtual absl::Span<Device* const> addressable_devices() const = 0;
 
+  // Deletes the executable (if supported), such that any side-effects of the
+  // deletion are serialized after already dispatched executions/deletions
+  // using the same execution/deletion stream ID. The returned future will be
+  // triggered after the executable has been deleted, but implementations that
+  // do not track the completion of the deletion operation may make the future
+  // immediately ready with an OK status.
+  //
+  // Also see `ExecuteOptions.execution_stream_id`.
+  //
+  // After calling `Delete()`, `Execute()` should not be called.
+  virtual tsl::Future<> Delete(int64_t deletion_stream_id) = 0;
+
   static char ID;  // NOLINT
 };
 

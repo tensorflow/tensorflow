@@ -367,6 +367,10 @@ class PjRtLoadedExecutable final
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));
   }
 
+  tsl::Future<> Delete(int64_t deletion_stream_id) override {
+    return tsl::Future<>(absl::OkStatus());
+  }
+
   static char ID;  // NOLINT
 
  private:

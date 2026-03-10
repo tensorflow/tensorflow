@@ -113,6 +113,10 @@ class LoadedExecutable final
   std::optional<DeviceListRef> devices() const override;
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
 
+  tsl::Future<> Delete(int64_t deletion_stream_id) override {
+    return tsl::Future<>(absl::OkStatus());
+  }
+
   static char ID;  // NOLINT
 
  private:
