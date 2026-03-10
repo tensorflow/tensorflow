@@ -3263,11 +3263,22 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
   CHECK(!hlo->sharding().IsReplicatedOrSingleDevice());
 
   DynamicUpdateSliceAnalysis analysis;
+  bool is_enzyme_opt_enabled = hlo->parent()
+                                   ->parent()
+                                   ->config()
+                                   .debug_options()
+                                   .xla_enable_enzyme_comms_opt();
 
   bool update_on_a_single_partition = true;
   bool has_partitioned_slice_dim_with_dynamic_index = false;
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      if (is_enzyme_opt_enabled && hlo->sharding().dimension(i) != 1) {
+        update_on_a_single_partition = false;
+        if (!hlo->operand(i + 2)->IsConstant()) {
+          has_partitioned_slice_dim_with_dynamic_index = true;
+        }
+      }
       continue;
     }
     analysis.slice_dims.push_back(i);
@@ -3313,11 +3324,6 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
   }
 
   // For now, only enable Method 3 if enzyme optimization is enabled.
-  bool is_enzyme_opt_enabled = hlo->parent()
-                                   ->parent()
-                                   ->config()
-                                   .debug_options()
-                                   .xla_enable_enzyme_comms_opt();
   if (!is_enzyme_opt_enabled &&
       analysis.method == DynamicUpdateSliceMethod::
                              kAllPartitionedSliceDimsHaveConstantIndices) {
