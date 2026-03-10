@@ -596,6 +596,20 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
   @test_util.run_deprecated_v1
+  def testComplexReciprocalInfiniteInputs(self):
+    values = [0.0 + np.inf * 1j, np.inf + 0.0j, np.inf + np.inf * 1j]
+    for dtype in (np.complex64, np.complex128):
+      with self.subTest(dtype=dtype):
+        x = np.array(values, dtype=dtype)
+        expected = np.zeros_like(x)
+        with test_util.force_cpu():
+          result = self.evaluate(math_ops.reciprocal(ops.convert_to_tensor(x)))
+          self.assertAllEqual(expected, result)
+        with test_util.use_gpu():
+          result = self.evaluate(math_ops.reciprocal(ops.convert_to_tensor(x)))
+          self.assertAllEqual(expected, result)
+
+  @test_util.run_deprecated_v1
   def testGradGrad(self):
     np.random.seed(7)
     shape = (5,)

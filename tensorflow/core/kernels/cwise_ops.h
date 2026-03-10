@@ -151,6 +151,65 @@ struct functor_traits<div_no_nan_op<T, /*IsComplex=*/false>> {
   };
 };
 
+template <typename T>
+struct scalar_complex_quotient_op {
+  using Complex = std::complex<T>;
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Complex operator()(
+      const Complex& a, const Complex& b) const {
+    const T ar = a.real();
+    const T ai = a.imag();
+    const T br = b.real();
+    const T bi = b.imag();
+
+    const bool numerator_is_finite =
+        numext::isfinite(ar) && numext::isfinite(ai);
+    const bool denominator_has_inf = numext::isinf(br) || numext::isinf(bi);
+    if (TF_PREDICT_FALSE(numerator_is_finite && denominator_has_inf &&
+                         !numext::isnan(br) && !numext::isnan(bi))) {
+      return Complex(T(0), T(0));
+    }
+
+    const T abs_br = numext::abs(br);
+    const T abs_bi = numext::abs(bi);
+    if (abs_br >= abs_bi) {
+      const T ratio = bi / br;
+      const T denom = br + bi * ratio;
+      return Complex((ar + ai * ratio) / denom, (ai - ar * ratio) / denom);
+    }
+
+    const T ratio = br / bi;
+    const T denom = br * ratio + bi;
+    return Complex((ar * ratio + ai) / denom, (ai * ratio - ar) / denom);
+  }
+};
+
+template <typename T>
+struct functor_traits<scalar_complex_quotient_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_quotient_op<std::complex<T>>>::Cost,
+    PacketAccess = false,
+  };
+};
+
+template <typename T>
+struct scalar_complex_inverse_op {
+  using Complex = std::complex<T>;
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Complex operator()(
+      const Complex& x) const {
+    return scalar_complex_quotient_op<T>()(Complex(T(1), T(0)), x);
+  }
+};
+
+template <typename T>
+struct functor_traits<scalar_complex_inverse_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_complex_quotient_op<T>>::Cost,
+    PacketAccess = false,
+  };
+};
+
 // Whether or not complex division produces a NaN depends on the underlying
 // implementation. Some compilers (e.g. gcc) use a simple method that divides
 // by |b|^2, which may underflow to 0 for b != 0.
@@ -169,24 +228,17 @@ struct div_no_nan_op<T, /*IsComplex=*/true> {
         return T(0);
       }
     }
-    return scalar_quotient_op<T>()(a, b);
-  }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
-                                                        const Packet& b) const {
-    const Packet numerator = pmul(a, pconj(b));
-    const Packet mask = por(pcmp_eq(b, pzero(a)), pcmp_eq(numerator, pzero(a)));
-    const Packet quotient = pdiv(a, b);
-    return pandnot(quotient, mask);
+    return scalar_complex_quotient_op<typename NumTraits<T>::Real>()(a, b);
   }
 };
 
 template <typename T>
 struct functor_traits<div_no_nan_op<T, /*IsComplex=*/true>> {
   enum {
-    Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::MulCost,
-    PacketAccess = packet_traits<T>::HasMul && packet_traits<T>::HasDiv &&
-                   packet_traits<T>::HasConj,
+    Cost = functor_traits<
+               scalar_complex_quotient_op<typename NumTraits<T>::Real>>::Cost +
+           NumTraits<T>::MulCost,
+    PacketAccess = false,
   };
 };
 
@@ -842,6 +894,10 @@ template <typename T>
 struct inverse : base<T, Eigen::internal::scalar_inverse_op<T>> {};
 
 template <typename T>
+struct inverse<std::complex<T>>
+    : base<std::complex<T>, Eigen::internal::scalar_complex_inverse_op<T>> {};
+
+template <typename T>
 struct square : base<T, Eigen::internal::scalar_square_op<T>> {};
 
 template <typename T>
@@ -998,6 +1054,10 @@ struct mul_no_nan : base<T, Eigen::internal::mul_no_nan_op<T>> {};
 
 template <typename T>
 struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
+
+template <typename T>
+struct div<std::complex<T>>
+    : base<std::complex<T>, Eigen::internal::scalar_complex_quotient_op<T>> {};
 
 template <typename T>
 struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
