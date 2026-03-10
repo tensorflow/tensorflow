@@ -115,10 +115,11 @@ class AllReduceStartThunk : public AllReduceReduceScatterThunkBase {
   absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     const GpuCliqueKey& clique_key,
-                                     se::Stream& stream,
-                                     Communicator& comm) override;
+  bool RequiresRendezvous() const override { return true; }
+
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
 
  private:
   std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk_;
@@ -156,10 +157,11 @@ class ReduceScatterStartThunk : public AllReduceReduceScatterThunkBase {
   absl::StatusOr<ThunkProto> ToProto() const override;
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     const GpuCliqueKey& clique_key,
-                                     se::Stream& stream,
-                                     Communicator& comm) override;
+  bool RequiresRendezvous() const override { return true; }
+
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
 };
 
 // -----------------------------------------------------------------------------

@@ -1,6 +1,6 @@
-diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
---- a/icu4c/source/common/udata.cpp	2019-04-17 12:03:04.000000000 +0000
-+++ b/icu4c/source/common/udata.cpp	2020-07-14 23:49:37.836668741 +0000
+diff -ru a/source/common/udata.cpp b/source/common/udata.cpp
+--- a/source/common/udata.cpp	2024-01-01 00:00:00.000000000 +0000
++++ b/source/common/udata.cpp	2024-01-01 00:00:00.000000000 +0000
 @@ -18,11 +18,10 @@
  
  #include "unicode/utypes.h"  /* U_PLATFORM etc. */
@@ -22,8 +22,8 @@ diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
   * to its data package, if it is linked in.
   */
 -/*
--extern const void *uprv_getICUData_collation(void) ATTRIBUTE_WEAK;
--extern const void *uprv_getICUData_conversion(void) ATTRIBUTE_WEAK;
+-extern const void *uprv_getICUData_collation() ATTRIBUTE_WEAK;
+-extern const void *uprv_getICUData_conversion() ATTRIBUTE_WEAK;
 -*/
 +U_CDECL_BEGIN
 +const void *uprv_getICUData_conversion(void) ATTRIBUTE_WEAK;
@@ -33,22 +33,22 @@ diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
   *                                                                      *
 @@ -710,10 +708,11 @@
          if (uprv_getICUData_collation) {
-             setCommonICUDataPointer(uprv_getICUData_collation(), FALSE, pErrorCode);
+             setCommonICUDataPointer(uprv_getICUData_collation(), false, pErrorCode);
          }
 +        */
          if (uprv_getICUData_conversion) {
-             setCommonICUDataPointer(uprv_getICUData_conversion(), FALSE, pErrorCode);
+             setCommonICUDataPointer(uprv_getICUData_conversion(), false, pErrorCode);
          }
 -        */
 +
  #if !defined(ICU_DATA_DIR_WINDOWS)
  // When using the Windows system data, we expect only a single data file.
-         setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT, FALSE, pErrorCode);
+         setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT, false, pErrorCode);
          {
-diff -ru a/icu4c/source/common/unicode/uconfig.h b/icu4c/source/common/unicode/uconfig.h
---- a/icu4c/source/common/unicode/uconfig.h	2019-04-17 12:03:04.000000000 +0000
-+++ b/icu4c/source/common/unicode/uconfig.h	2020-07-14 23:49:37.836668741 +0000
-@@ -55,6 +55,11 @@
+diff -ru a/source/common/unicode/uconfig.h b/source/common/unicode/uconfig.h
+--- a/source/common/unicode/uconfig.h	2024-01-01 00:00:00.000000000 +0000
++++ b/source/common/unicode/uconfig.h	2024-01-01 00:00:00.000000000 +0000
+@@ -53,6 +53,11 @@
  #include "uconfig_local.h"
  #endif
  

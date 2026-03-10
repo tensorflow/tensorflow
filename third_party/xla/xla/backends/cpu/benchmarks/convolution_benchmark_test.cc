@@ -18,12 +18,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/base/no_destructor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "xla/backends/cpu/benchmarks/hlo_benchmark_runner.h"
-#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"
+#include "xla/backends/cpu/benchmarks/multi_benchmark_config.h"  // IWYU pragma: keep
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
@@ -46,12 +45,6 @@ struct TypeConfig {
 
 static const int64_t kValidPadding = 0;
 static const int64_t kSamePadding = 1;
-
-static const std::vector<TypeConfig>& GetTypeConfigs() {
-  static const absl::NoDestructor<std::vector<TypeConfig>> v(
-      {{F64, F64, F64}, {F32, F32, F32}, {BF16, BF16, F32}, {S8, S8, S32}});
-  return *v;
-}
 
 Literal GetRandomLiteral(PrimitiveType type, const Shape& shape,
                          std::minstd_rand0& engine) {
@@ -77,8 +70,7 @@ static void ConvBenchmark(benchmark::State& state,
                           int64_t input_channels,
                           absl::Span<const int64_t> kernel_dims, int64_t stride,
                           int64_t output_channels, int64_t feature_group_count,
-                          int padding_mode, int type_config_idx) {
-  const auto& types = GetTypeConfigs()[type_config_idx];
+                          int padding_mode, const TypeConfig& config) {
   std::vector<int64_t> padding(num_spatial_dims);
   std::vector<int64_t> output_spatial_dims(num_spatial_dims);
 
@@ -114,7 +106,7 @@ static void ConvBenchmark(benchmark::State& state,
     input_shape_dims.push_back(d);
   }
   input_shape_dims.push_back(input_channels);
-  auto input_shape = ShapeUtil::MakeShape(types.input, input_shape_dims);
+  auto input_shape = ShapeUtil::MakeShape(config.input, input_shape_dims);
 
   std::vector<int64_t> kernel_shape_dims;
   for (int64_t d : kernel_dims) {
@@ -122,17 +114,17 @@ static void ConvBenchmark(benchmark::State& state,
   }
   kernel_shape_dims.push_back(filter_channels);
   kernel_shape_dims.push_back(output_channels);
-  auto kernel_shape = ShapeUtil::MakeShape(types.kernel, kernel_shape_dims);
+  auto kernel_shape = ShapeUtil::MakeShape(config.kernel, kernel_shape_dims);
 
   std::vector<int64_t> output_shape_dims = {batch};
   for (int64_t d : output_spatial_dims) {
     output_shape_dims.push_back(d);
   }
   output_shape_dims.push_back(output_channels);
-  auto output_shape = ShapeUtil::MakeShape(types.output, output_shape_dims);
+  auto output_shape = ShapeUtil::MakeShape(config.output, output_shape_dims);
 
-  auto input = GetRandomLiteral(types.input, input_shape, engine);
-  auto kernel = GetRandomLiteral(types.kernel, kernel_shape, engine);
+  auto input = GetRandomLiteral(config.input, input_shape, engine);
+  auto kernel = GetRandomLiteral(config.kernel, kernel_shape, engine);
   std::vector<const Literal*> args = {&input, &kernel};
 
   std::string window_size = absl::StrJoin(kernel_dims, "x");
@@ -166,7 +158,8 @@ static void ConvBenchmark(benchmark::State& state,
 }
 
 static void BM_Conv2D(benchmark::State& state,
-                      const HloBenchmarkOptions& options, int type_config_idx) {
+                      const HloBenchmarkOptions& options,
+                      const TypeConfig& config) {
   ConvBenchmark(state, options, 2, /*batch=*/state.range(0),
                 /*spatial_dims=*/{state.range(1), state.range(2)},
                 /*input_channels=*/state.range(3),
@@ -174,13 +167,12 @@ static void BM_Conv2D(benchmark::State& state,
                 /*stride=*/state.range(6),
                 /*output_channels=*/state.range(7),
                 /*feature_group_count=*/1,
-                /*padding_mode=*/state.range(8),
-                /*type_config_idx=*/type_config_idx);
+                /*padding_mode=*/state.range(8), config);
 }
 
 static void BM_GroupedConv2D(benchmark::State& state,
                              const HloBenchmarkOptions& options,
-                             int type_config_idx) {
+                             const TypeConfig& config) {
   ConvBenchmark(state, options, 2, /*batch=*/state.range(0),
                 /*spatial_dims=*/{state.range(1), state.range(2)},
                 /*input_channels=*/state.range(3),
@@ -188,12 +180,12 @@ static void BM_GroupedConv2D(benchmark::State& state,
                 /*stride=*/state.range(6),
                 /*output_channels=*/state.range(7),
                 /*feature_group_count=*/state.range(8),
-                /*padding_mode=*/kSamePadding,
-                /*type_config_idx=*/type_config_idx);
+                /*padding_mode=*/kSamePadding, config);
 }
 
 static void BM_Conv1D(benchmark::State& state,
-                      const HloBenchmarkOptions& options, int type_config_idx) {
+                      const HloBenchmarkOptions& options,
+                      const TypeConfig& config) {
   ConvBenchmark(state, options, 1, /*batch=*/state.range(0),
                 /*spatial_dims=*/{state.range(1)},
                 /*input_channels=*/state.range(2),
@@ -201,13 +193,12 @@ static void BM_Conv1D(benchmark::State& state,
                 /*stride=*/state.range(4),
                 /*output_channels=*/state.range(5),
                 /*feature_group_count=*/1,
-                /*padding_mode=*/state.range(6),
-                /*type_config_idx=*/type_config_idx);
+                /*padding_mode=*/state.range(6), config);
 }
 
 static void BM_GroupedConv1D(benchmark::State& state,
                              const HloBenchmarkOptions& options,
-                             int type_config_idx) {
+                             const TypeConfig& config) {
   ConvBenchmark(state, options, 1, /*batch=*/state.range(0),
                 /*spatial_dims=*/{state.range(1)},
                 /*input_channels=*/state.range(2),
@@ -215,8 +206,7 @@ static void BM_GroupedConv1D(benchmark::State& state,
                 /*stride=*/state.range(4),
                 /*output_channels=*/state.range(5),
                 /*feature_group_count=*/state.range(6),
-                /*padding_mode=*/kSamePadding,
-                /*type_config_idx=*/type_config_idx);
+                /*padding_mode=*/kSamePadding, config);
 }
 
 // Regular strided 1D convolution. Shapes come from an actual use case.
@@ -498,7 +488,8 @@ static void BM_GroupedConv2DTransposedStrided(benchmark::State& state,
       options));
 }
 
-void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
+void AddConv2DArgs(::benchmark::internal::Benchmark* b,
+                   const TypeConfig& config) {
   auto add_args = [&](const std::vector<int64_t>& shape_args) {
     b->Args(shape_args);
   };
@@ -509,7 +500,7 @@ void AddConv2DArgs(::benchmark::internal::Benchmark* b, int type_config) {
   // // Shapes from XLA convolution tests
 
   // This test case hits b/473570788.
-  if (type_config == 0) {
+  if (config.input == F64) {
     add_args({8, 5, 5, 1, 1, 1, 1, 32, kSamePadding});
   }
   add_args({8, 5, 5, 4, 1, 1, 1, 32, kSamePadding});
@@ -590,66 +581,61 @@ void AddGroupedConv2DArgs(::benchmark::internal::Benchmark* b) {
   add_args({16, 7, 7, 1024, 3, 3, 1, 1024, 1024});
 }
 
-void RegisterBenchmarks() {
-  const auto& configs = GetTypeConfigs();
-  for (int i = 0; i < configs.size(); ++i) {
-    const auto& config = configs[i];
+void RegisterBenchmarksForConfig(const TypeConfig& config) {
+  {
     std::string name = absl::StrFormat(
         "BM_Conv2D_%s_%s_%s",
         primitive_util::LowercasePrimitiveTypeName(config.input),
         primitive_util::LowercasePrimitiveTypeName(config.kernel),
         primitive_util::LowercasePrimitiveTypeName(config.output));
     auto* b = benchmark::RegisterBenchmark(
-        name.c_str(), [i](benchmark::State& state) {
-          BM_Conv2D(state, HloBenchmarkOptions(), i);
+        name.c_str(), [&config](benchmark::State& state) {
+          BM_Conv2D(state, HloBenchmarkOptions(), config);
         });
     b->MeasureProcessCPUTime();
     b->ArgNames({"b", "h", "w", "i", "kh", "kw", "s", "o", "pad"});
-    AddConv2DArgs(b, i);
+    AddConv2DArgs(b, config);
   }
 
-  for (int i = 0; i < configs.size(); ++i) {
-    const auto& config = configs[i];
+  {
     std::string name = absl::StrFormat(
         "BM_GroupedConv2D_%s_%s_%s",
         primitive_util::LowercasePrimitiveTypeName(config.input),
         primitive_util::LowercasePrimitiveTypeName(config.kernel),
         primitive_util::LowercasePrimitiveTypeName(config.output));
     auto* b = benchmark::RegisterBenchmark(
-        name.c_str(), [i](benchmark::State& state) {
-          BM_GroupedConv2D(state, HloBenchmarkOptions(), i);
+        name.c_str(), [&config](benchmark::State& state) {
+          BM_GroupedConv2D(state, HloBenchmarkOptions(), config);
         });
     b->MeasureProcessCPUTime();
     b->ArgNames({"b", "h", "w", "i", "kh", "kw", "s", "o", "g"});
     AddGroupedConv2DArgs(b);
   }
 
-  for (int i = 0; i < configs.size(); ++i) {
-    const auto& config = configs[i];
+  {
     std::string name = absl::StrFormat(
         "BM_Conv1D_%s_%s_%s",
         primitive_util::LowercasePrimitiveTypeName(config.input),
         primitive_util::LowercasePrimitiveTypeName(config.kernel),
         primitive_util::LowercasePrimitiveTypeName(config.output));
     auto* b = benchmark::RegisterBenchmark(
-        name.c_str(), [i](benchmark::State& state) {
-          BM_Conv1D(state, HloBenchmarkOptions(), i);
+        name.c_str(), [&config](benchmark::State& state) {
+          BM_Conv1D(state, HloBenchmarkOptions(), config);
         });
     b->MeasureProcessCPUTime();
     b->ArgNames({"b", "w", "i", "kw", "s", "o", "pad"});
     AddConv1DArgs(b);
   }
 
-  for (int i = 0; i < configs.size(); ++i) {
-    const auto& config = configs[i];
+  {
     std::string name = absl::StrFormat(
         "BM_GroupedConv1D_%s_%s_%s",
         primitive_util::LowercasePrimitiveTypeName(config.input),
         primitive_util::LowercasePrimitiveTypeName(config.kernel),
         primitive_util::LowercasePrimitiveTypeName(config.output));
     auto* b = benchmark::RegisterBenchmark(
-        name.c_str(), [i](benchmark::State& state) {
-          BM_GroupedConv1D(state, HloBenchmarkOptions(), i);
+        name.c_str(), [&config](benchmark::State& state) {
+          BM_GroupedConv1D(state, HloBenchmarkOptions(), config);
         });
     b->MeasureProcessCPUTime();
     b->ArgNames({"b", "w", "i", "kw", "s", "o", "g"});
@@ -657,10 +643,27 @@ void RegisterBenchmarks() {
   }
 }
 
+void RegisterBenchmarks() {
+#if defined(XLA_CPU_CONVOLUTION_BENCHMARK_INPUT) &&  \
+    defined(XLA_CPU_CONVOLUTION_BENCHMARK_KERNEL) && \
+    defined(XLA_CPU_CONVOLUTION_BENCHMARK_OUTPUT)
+  static const TypeConfig config = {XLA_CPU_CONVOLUTION_BENCHMARK_INPUT,
+                                    XLA_CPU_CONVOLUTION_BENCHMARK_KERNEL,
+                                    XLA_CPU_CONVOLUTION_BENCHMARK_OUTPUT};
+  RegisterBenchmarksForConfig(config);
+#else
+#error XLA_CPU_CONVOLUTION_BENCHMARK_... must be defined
+#endif
+}
+
 static int registration = [] {
   RegisterBenchmarks();
   return 0;
 }();
+
+#ifdef XLA_CPU_CONVOLUTION_BENCHMARK_IS_F32
+// These benchmarks are hardcoded to use F32 types, so we only register them
+// if we're building for F32.
 
 // -------------------------------------------------------------------------- //
 // 1D and 2D strided convolutions
@@ -671,7 +674,6 @@ XLA_CPU_BENCHMARK(BM_Conv1DStrided)
     ->Args({1, 129})
     ->Args({3, 129});
 XLA_CPU_BENCHMARK(BM_Conv1DTransposedStrided)
-    ->MeasureProcessCPUTime()
     ->MeasureProcessCPUTime()
     ->Args({129, 1})
     ->Args({129, 3});
@@ -695,6 +697,8 @@ XLA_CPU_BENCHMARK(BM_GroupedConv2DTransposedStrided)
     ->MeasureProcessCPUTime()
     ->Args({128, 128, 128})
     ->Args({128, 128, 16});
+
+#endif  // XLA_CPU_CONVOLUTION_BENCHMARK_IS_F32
 
 }  // namespace
 }  // namespace xla::cpu

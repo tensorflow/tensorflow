@@ -907,10 +907,17 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Handlers for specific custom call targets.
   // go/keep-sorted start
   absl::Status HandleCustomCallSPMDInternal_MultiRotate(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_MultiSlice(HloInstruction* hlo);
   absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
   absl::Status HandleCustomCallSPMDInternal_Wrap(HloInstruction* hlo);
   absl::Status HandleCustomCallTopK(HloInstruction* hlo);
   // go/keep-sorted end
+
+  absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+  ConstructHaloExchangeSuperShard(const HloInstruction* input_operand,
+                                  int64_t dim, int64_t left_amount,
+                                  int64_t right_amount, bool handle_last_shard,
+                                  int64_t post_halo_shard_size);
 };
 
 }  // namespace spmd

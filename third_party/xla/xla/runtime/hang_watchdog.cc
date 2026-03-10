@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/runtime/hang_watchdog.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <cstdlib>
 #include <functional>
@@ -24,7 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -67,7 +67,7 @@ HangWatchdog::CancelCallback HangWatchdog::Abort(absl::string_view action,
   // Only one thread actually aborts the process. We wait 10 seconds before
   // aborting to give other hang watchdogs a chance to trigger their cancel
   // callbacks and log useful debugging information.
-  static absl::once_flag abort_once;
+  static std::atomic<bool> abort_scheduled(false);
 
   return [action = std::string(action), duration,
           pre_abort = std::move(pre_abort)]() mutable {
@@ -77,13 +77,14 @@ HangWatchdog::CancelCallback HangWatchdog::Abort(absl::string_view action,
       std::move(pre_abort)();
     }
 
-    absl::call_once(abort_once, [&] {
+    // Check if we are the first watchdog that triggered the process abort.
+    if (!abort_scheduled.exchange(true)) {
       LOG(ERROR) << absl::StreamFormat(
           "%s: prepare to abort the process to avoid infinite hangs.", action);
       absl::SleepFor(absl::Seconds(10));
       LOG(FATAL) << absl::StreamFormat(
           "%s: abort the process to avoid infinite hangs.", action);
-    });
+    }
   };
 }
 
@@ -99,7 +100,7 @@ std::shared_ptr<HangWatchdog::Guard> HangWatchdog::Watch(
                        absl::LocalTimeZone()));
 
   {  // Track newly created guard.
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     guards_.push_back(guard);
   }
 
@@ -112,7 +113,7 @@ std::shared_ptr<HangWatchdog::Guard> HangWatchdog::Watch(
 
 std::pair<std::shared_ptr<HangWatchdog::Guard>, absl::Time>
 HangWatchdog::ExtractTimedOutGuard() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
 
   absl::Time deadline = absl::InfiniteFuture();
   for (auto it = guards_.begin(); it != guards_.end();) {

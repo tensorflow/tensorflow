@@ -101,7 +101,7 @@ class ThunkExecutor::ScopedProgressTracker {
   ScopedProgressTracker& operator=(ScopedProgressTracker&&) = default;
 
   size_t num_thunks() const {
-    absl::MutexLock lock(&events_->mu);
+    absl::MutexLock lock(events_->mu);
     return events_->map.size();
   }
 

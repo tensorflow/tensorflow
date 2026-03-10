@@ -189,9 +189,10 @@ absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
-    const ExecuteParams& params, const GpuCliqueKey& clique_key,
-    se::Stream& stream, Communicator& comm) {
+absl::Status AllReduceStartThunk::RunCollective(const ExecuteParams& params,
+                                                const GpuCliqueKey& clique_key,
+                                                se::Stream& stream,
+                                                Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
@@ -203,15 +204,11 @@ absl::StatusOr<bool> AllReduceStartThunk::RunCollective(
           clique_key, *params.stream->parent(), *params.collective_params));
 
   if (use_collective_kernel) {
-    TF_RETURN_IF_ERROR(collective_kernel_thunk_->ExecuteOnStream(params));
-    return false;  // No need for "first" invocation to rendezvous when not
-                   // using nccl.
+    return collective_kernel_thunk_->ExecuteOnStream(params);
   }
 
-  TF_RETURN_IF_ERROR(RunAllReduce(config_.reduction_kind, device_buffers,
-                                  stream, comm,
-                                  config_.config.use_symmetric_buffer));
-  return true;
+  return RunAllReduce(config_.reduction_kind, device_buffers, stream, comm,
+                      config_.config.use_symmetric_buffer);
 }
 
 absl::StatusOr<std::unique_ptr<AllReduceStartThunk>>
@@ -382,17 +379,15 @@ absl::StatusOr<ThunkProto> ReduceScatterStartThunk::ToProto() const {
   return proto;
 }
 
-absl::StatusOr<bool> ReduceScatterStartThunk::RunCollective(
+absl::Status ReduceScatterStartThunk::RunCollective(
     const ExecuteParams& params, const GpuCliqueKey& clique_key,
     se::Stream& stream, Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
                              config_.config.operand_element_type));
-  TF_RETURN_IF_ERROR(RunReduceScatter(config_.reduction_kind, device_buffers,
-                                      stream, comm,
-                                      config_.config.use_symmetric_buffer));
-  return true;
+  return RunReduceScatter(config_.reduction_kind, device_buffers, stream, comm,
+                          config_.config.use_symmetric_buffer);
 }
 
 absl::Status RunReduceScatter(ReductionKind reduction_kind,
