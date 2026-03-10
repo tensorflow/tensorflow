@@ -1146,6 +1146,9 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableLeafShapeWithStatus(
       done_shape, [&](Shape* subshape, const ShapeIndex& output_shape_index) {
+        if (subshape->IsToken()) {
+          return absl::OkStatus();
+        }
         std::queue<InstructionAndShapeIndex> queue;
         queue.push(InstructionAndShapeIndex(call_done, output_shape_index));
 

@@ -1396,6 +1396,31 @@ ENTRY main {
 )");
 }
 
+TEST_F(GemmFusionTest, RaggedDotNotBecomesFusion) {
+  absl::string_view module_string = R"(
+  HloModule module
+
+  ENTRY main {
+    p0 = bf16[64,9]{1,0} parameter(0)
+    p1 = bf16[2,9,8]{2,1,0} parameter(1)
+    p2 = s64[2]{0} parameter(2)
+    ROOT ragged-dot = bf16[64,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
+  module->mutable_config().mutable_debug_options().set_xla_gpu_enable_cublaslt(
+      true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          GemmFusion(gpu_version_).Run(module.get()));
+  EXPECT_FALSE(changed);
+}
+
 // A test fixture class for testing the threshold for small matrices.
 class SmallDotGemmFusionTest : public GemmFusionTest {
  public:

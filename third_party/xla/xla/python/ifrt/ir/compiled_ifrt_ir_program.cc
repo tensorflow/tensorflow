@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
@@ -61,6 +62,8 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/python/ifrt/support/sharding_conversions.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/concurrency/future.h"
@@ -92,63 +95,62 @@ class FutureExecutor : public tsl::Executor {
   }
 };
 
-absl::StatusOr<xla::ifrt::ArraySpec> ToArraySpec(
-    xla::ifrt::IfrtArrayType array, xla::ifrt::Client* client,
-    const std::vector<xla::ifrt::Device*>& devices) {
-  TF_ASSIGN_OR_RETURN(
-      xla::ifrt::DType dtype,
-      xla::ifrt::ToIfrtDType(array.getShape().getElementType()));
-  absl::InlinedVector<xla::ifrt::Device*, 1> client_devices;
+absl::StatusOr<ArraySpec> ToArraySpec(IfrtArrayType array, Client* client,
+                                      const std::vector<Device*>& devices) {
+  TF_ASSIGN_OR_RETURN(DType dtype,
+                      ToIfrtDType(array.getShape().getElementType()));
+  absl::InlinedVector<Device*, 1> client_devices;
   client_devices.reserve(array.getDevices().size());
   for (int logical_id : array.getDevices()) {
     TF_RET_CHECK(devices[logical_id] != nullptr);
     client_devices.push_back(devices[logical_id]);
   }
   auto sharding_attr =
-      mlir::dyn_cast<xla::ifrt::IfrtShardingParamAttr>(array.getShardingAttr());
+      mlir::dyn_cast<IfrtShardingParamAttr>(array.getShardingAttr());
   TF_RET_CHECK(sharding_attr != nullptr);
   TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       client->MakeDeviceList(client_devices));
-  TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
-                      xla::ifrt::ShardingParamSharding::Create(
-                          sharding_attr.getSharding(), std::move(device_list),
-                          array.MemoryKind()));
-  return xla::ifrt::ArraySpec{
+  TF_ASSIGN_OR_RETURN(
+      xla::HloSharding hlo_sharding,
+      xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
+  return ArraySpec{
       /*dtype=*/dtype,
-      /*shape=*/xla::ifrt::Shape(array.getShape().getShape()),
-      /*sharding=*/std::move(sharding)};
+      /*shape=*/Shape(array.getShape().getShape()),
+      /*sharding=*/
+      HloSharding::Create(std::move(device_list), array.MemoryKind(),
+                          std::move(hlo_sharding))};
 }
 
-absl::StatusOr<std::vector<xla::ifrt::ArraySpec>> ExtractInSpecs(
-    mlir::ModuleOp mlir_module, xla::ifrt::Client* client,
-    const std::vector<xla::ifrt::Device*>& devices) {
+absl::StatusOr<std::vector<ArraySpec>> ExtractInSpecs(
+    mlir::ModuleOp mlir_module, Client* client,
+    const std::vector<Device*>& devices) {
   auto main_func = mlir_module.lookupSymbol<mlir::func::FuncOp>("main");
   TF_RET_CHECK(main_func != nullptr) << "Can't find `main` function";
-  std::vector<xla::ifrt::ArraySpec> in_specs;
+  std::vector<ArraySpec> in_specs;
   in_specs.reserve(main_func.getNumArguments());
   for (const mlir::Type arg_type : main_func.getArgumentTypes()) {
-    auto array_type = mlir::dyn_cast<xla::ifrt::IfrtArrayType>(arg_type);
+    auto array_type = mlir::dyn_cast<IfrtArrayType>(arg_type);
     TF_RET_CHECK(array_type != nullptr)
         << "Unsupported argument type `" << mlir::debugString(arg_type) << "`";
-    TF_ASSIGN_OR_RETURN(xla::ifrt::ArraySpec spec,
+    TF_ASSIGN_OR_RETURN(ArraySpec spec,
                         ToArraySpec(array_type, client, devices));
     in_specs.push_back(spec);
   }
   return in_specs;
 }
 
-absl::StatusOr<std::vector<xla::ifrt::ArraySpec>> ExtractOutSpecs(
-    mlir::ModuleOp mlir_module, xla::ifrt::Client* client,
-    const std::vector<xla::ifrt::Device*>& devices) {
+absl::StatusOr<std::vector<ArraySpec>> ExtractOutSpecs(
+    mlir::ModuleOp mlir_module, Client* client,
+    const std::vector<Device*>& devices) {
   auto main_func = mlir_module.lookupSymbol<mlir::func::FuncOp>("main");
   TF_RET_CHECK(main_func != nullptr) << "Can't find `main` function";
-  std::vector<xla::ifrt::ArraySpec> out_specs;
+  std::vector<ArraySpec> out_specs;
   out_specs.reserve(main_func.getNumResults());
   for (const mlir::Type result_type : main_func.getResultTypes()) {
-    auto array_type = mlir::dyn_cast<xla::ifrt::IfrtArrayType>(result_type);
+    auto array_type = mlir::dyn_cast<IfrtArrayType>(result_type);
     TF_RET_CHECK(array_type != nullptr)
         << "Unsupported return type `" << mlir::debugString(result_type) << "`";
-    TF_ASSIGN_OR_RETURN(xla::ifrt::ArraySpec spec,
+    TF_ASSIGN_OR_RETURN(ArraySpec spec,
                         ToArraySpec(array_type, client, devices));
     out_specs.push_back(spec);
   }
@@ -156,7 +158,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArraySpec>> ExtractOutSpecs(
 }
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
-    const xla::ifrt::ArraySpec& arg_spec, xla::ifrt::Client* client) {
+    const ArraySpec& arg_spec, Client* client) {
   TF_ASSIGN_OR_RETURN(auto shard_shape,
                       arg_spec.sharding->GetShardShape(arg_spec.shape));
   return client->GetDefaultPjRtLayout(
@@ -167,36 +169,31 @@ absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> BuildDefaultLayout(
 
 absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>
 GetParameterLayoutFromLoadedExecutable(
-    xla::ifrt::Client* client,
-    const AtomExecutableMap& atom_program_executables,
-    absl::Span<const xla::ifrt::ArraySpec> in_specs,
-    absl::Span<const xla::ifrt::ArraySpec> out_specs,
+    Client* client, const AtomExecutableMap& atom_program_executables,
+    absl::Span<const ArraySpec> in_specs, absl::Span<const ArraySpec> out_specs,
     mlir::SymbolTableCollection& symbol_table,
     ifrt::CallLoadedExecutableOp& call_op, int param_operand_number) {
   // The parameter is used by a CallLoadedExecutableOp, return the layout
   // from the atom program executable.
-  xla::ifrt::LoadedExecutableOp loaded_exec_op =
-      call_op.getCalleeOp(symbol_table);
+  LoadedExecutableOp loaded_exec_op = call_op.getCalleeOp(symbol_table);
   auto atom_program_name = loaded_exec_op.getSymName().str();
   auto exec_it = atom_program_executables.find(atom_program_name);
   if (exec_it != atom_program_executables.end()) {
     TF_ASSIGN_OR_RETURN(auto exec_layouts,
                         exec_it->second->GetParameterLayouts());
     return std::move(exec_layouts[param_operand_number]);
-  } else {
-    return absl::FailedPreconditionError(absl::StrFormat(
-        "Could not find SPMD executable %s", atom_program_name));
   }
+  return absl::FailedPreconditionError(
+      absl::StrFormat("Could not find SPMD executable %s", atom_program_name));
 }
 
-absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
-                             xla::ifrt::Client* client,
+absl::Status PopulateLayouts(mlir::ModuleOp mlir_module, Client* client,
                              const AtomExecutableMap& atom_program_executables,
-                             absl::Span<xla::ifrt::ArraySpec> in_specs,
-                             absl::Span<xla::ifrt::ArraySpec> out_specs) {
+                             absl::Span<ArraySpec> in_specs,
+                             absl::Span<ArraySpec> out_specs) {
   tsl::profiler::TraceMe traceme("PopulateLayouts");
 
-  auto main_func = xla::ifrt::GetMainFunction(mlir_module);
+  auto main_func = GetMainFunction(mlir_module);
   mlir::SymbolTableCollection symbol_table;
 
   for (mlir::BlockArgument& arg : main_func.getArguments()) {
@@ -226,8 +223,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
               "used only by CallLoadedExecutableOp ops. Parameter %d is used "
               "by %s",
               arg.getArgNumber(),
-              xla::ifrt::OperationToString(use.getOwner(),
-                                           mlir::OpPrintingFlags())));
+              OperationToString(use.getOwner(), mlir::OpPrintingFlags())));
         }
         auto call_op = llvm::cast<ifrt::CallLoadedExecutableOp>(use.getOwner());
         TF_ASSIGN_OR_RETURN(
@@ -285,10 +281,9 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
       continue;
     }
     auto op_result = llvm::cast<mlir::OpResult>(return_operand.get());
-    if (xla::ifrt::CallLoadedExecutableOp owner_call_op =
-            llvm::dyn_cast<xla::ifrt::CallLoadedExecutableOp>(
-                op_result.getOwner())) {
-      xla::ifrt::LoadedExecutableOp loaded_exec_op =
+    if (CallLoadedExecutableOp owner_call_op =
+            llvm::dyn_cast<CallLoadedExecutableOp>(op_result.getOwner())) {
+      LoadedExecutableOp loaded_exec_op =
           owner_call_op.getCalleeOp(symbol_table);
       auto atom_program_name = loaded_exec_op.getSymName().str();
       auto exec_it = atom_program_executables.find(atom_program_name);
@@ -313,8 +308,7 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
       return absl::FailedPreconditionError(absl::StrFormat(
           "Layouts are supported only for programs that have outputs produced "
           "by a CallLoadedExecutableOp. Produced by %s",
-          xla::ifrt::OperationToString(op_result.getOwner(),
-                                       mlir::OpPrintingFlags())));
+          OperationToString(op_result.getOwner(), mlir::OpPrintingFlags())));
     }
   }
 
@@ -325,18 +319,18 @@ absl::Status PopulateLayouts(mlir::ModuleOp mlir_module,
 
 tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>>
 CompiledIfrtIrProgram::Create(
-    std::unique_ptr<xla::ifrt::IfrtIRProgram> ifrt_ir_program,
-    std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> ifrt_ir_compile_options,
-    xla::ifrt::Client* client,
-    std::shared_ptr<xla::ifrt::AtomProgramCompiler> atom_program_compiler) {
+    std::unique_ptr<IfrtIRProgram> ifrt_ir_program,
+    std::unique_ptr<IfrtIRCompileOptions> ifrt_ir_compile_options,
+    Client* client,
+    std::shared_ptr<AtomProgramCompiler> atom_program_compiler) {
   TraceMe traceme("ProgramCompiler::CompileForInterpreter");
 
   // Sharing the compile options with the passes and when pipeline is done add
   // it to the CompiledIfrtIrProgram.
-  std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options =
+  std::shared_ptr<IfrtIRCompileOptions> compile_options =
       std::move(ifrt_ir_compile_options);
 
-  std::vector<xla::ifrt::Device*> devices;
+  std::vector<Device*> devices;
   devices.reserve(compile_options->device_assignments.size());
   for (const auto& device_id : compile_options->device_assignments) {
     TF_ASSIGN_OR_RETURN(devices.emplace_back(),
@@ -352,18 +346,17 @@ CompiledIfrtIrProgram::Create(
 
   // Add the bounded executables to the atom program executable map so that
   // they can be used by the interpreter
-  auto atom_executable_future_map =
-      std::make_shared<xla::ifrt::AtomExecutableFutureMap>();
+  auto atom_executable_future_map = std::make_shared<AtomExecutableFutureMap>();
   for (const auto& [key, exec] : compile_options->loaded_exec_binding) {
     atom_executable_future_map->insert({key, exec});
   }
   // Extract bindings.
-  std::shared_ptr<xla::ifrt::AtomExecutableMap> bound_executable_map =
-      std::make_shared<xla::ifrt::AtomExecutableMap>(
+  std::shared_ptr<AtomExecutableMap> bound_executable_map =
+      std::make_shared<AtomExecutableMap>(
           compile_options->loaded_exec_binding.begin(),
           compile_options->loaded_exec_binding.end());
 
-  std::vector<xla::ifrt::DeviceId> device_assignments =
+  std::vector<DeviceId> device_assignments =
       compile_options->device_assignments;
 
   // Run lowering passes.
@@ -374,16 +367,16 @@ CompiledIfrtIrProgram::Create(
                     compile_options->mlir_dump_func_re,
                     compile_options->mlir_enable_timing);
 
-    xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
+    createIfrtToOutlinedAtomProgramsPipeline(pm);
 
-    xla::ifrt::createIfrtPopulateAtomProgramMetadataPipeline(pm);
+    createIfrtPopulateAtomProgramMetadataPipeline(pm);
 
     OutlinedAtomProgramsToCompiledPipelineOptions compile_pipeline_options;
     for (const auto device : devices) {
       compile_pipeline_options.platform_names.push_back(
           std::string(device->PlatformName()));
     }
-    TF_RETURN_IF_ERROR(xla::ifrt::createOutlinedAtomProgramsToCompiledPipeline(
+    TF_RETURN_IF_ERROR(createOutlinedAtomProgramsToCompiledPipeline(
         pm, std::move(atom_program_compiler), compile_pipeline_options,
         compile_options, atom_executable_future_map,
         std::move(bound_executable_map)));
@@ -399,16 +392,15 @@ CompiledIfrtIrProgram::Create(
 
   // Extract input and output specs from the modified `mlir_module`, which has
   // all array shardings specified.
-  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArraySpec> in_specs,
+  TF_ASSIGN_OR_RETURN(std::vector<ArraySpec> in_specs,
                       ExtractInSpecs(mlir_module, client, devices));
-  TF_ASSIGN_OR_RETURN(std::vector<xla::ifrt::ArraySpec> out_specs,
+  TF_ASSIGN_OR_RETURN(std::vector<ArraySpec> out_specs,
                       ExtractOutSpecs(mlir_module, client, devices));
 
-  mlir::func::FuncOp main_func = xla::ifrt::GetMainFunction(mlir_module);
+  mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
   std::vector<int> donatable_input_indices;
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
-    if (main_func.getArgAttr(idx, xla::ifrt::kIfrtDonatedArgAttrName) !=
-        nullptr) {
+    if (main_func.getArgAttr(idx, kIfrtDonatedArgAttrName) != nullptr) {
       donatable_input_indices.push_back(idx);
     }
   }
@@ -434,7 +426,7 @@ CompiledIfrtIrProgram::Create(
        device_assignments = std::move(device_assignments),
        compile_options = std::move(compile_options)]() mutable
       -> absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>> {
-    auto atom_executable_map = std::make_shared<xla::ifrt::AtomExecutableMap>();
+    auto atom_executable_map = std::make_shared<AtomExecutableMap>();
     for (const auto& [key, exec] : *atom_executable_future_map) {
       CHECK(exec.IsReady());
       TF_ASSIGN_OR_RETURN(LoadedExecutableRef executable, exec.Await());

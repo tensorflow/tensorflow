@@ -389,7 +389,7 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
-      /*device_list=*/CollectiveDeviceList(),
+      std::make_shared<CollectiveDeviceList>(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt,
       /*use_global_device_ids=*/false));
@@ -420,8 +420,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
   replica_groups[0].add_replica_ids(1);
   HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
       ShapeUtil::MakeTupleShape({bf16_shape, bf16_shape}), {a, a},
-      CollectiveDeviceList(replica_groups), /*constrain_layout=*/false,
-      std::nullopt));
+      std::make_shared<CollectiveDeviceList>(replica_groups),
+      /*constrain_layout=*/false, std::nullopt));
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(Normalize(module.get()));
@@ -450,8 +450,8 @@ TEST_F(FloatNormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
   replica_groups[0].add_replica_ids(1);
   HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
       ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}), {a, a},
-      CollectiveDeviceList(replica_groups), /*constrain_layout=*/false,
-      std::nullopt));
+      std::make_shared<CollectiveDeviceList>(replica_groups),
+      /*constrain_layout=*/false, std::nullopt));
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(Normalize(module.get()));
@@ -667,8 +667,7 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
 
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape({bf16_shape_a, bf16_shape_b}), {a, b},
-      reduction,
-      /*device_list=*/CollectiveDeviceList(),
+      reduction, std::make_shared<CollectiveDeviceList>(),
       /*constrain_layout=*/false,
       /*channel_id=*/std::nullopt,
       /*use_global_device_ids=*/false));
@@ -714,7 +713,7 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
 
   HloInstruction* all_reduce = builder.AddInstruction(
       HloInstruction::CreateAllReduce(bf16_shape_a, {a}, reduction,
-                                      /*device_list=*/CollectiveDeviceList(),
+                                      std::make_shared<CollectiveDeviceList>(),
                                       /*constrain_layout=*/false,
                                       /*channel_id=*/std::nullopt,
                                       /*use_global_device_ids=*/false));
@@ -765,12 +764,11 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   HloInstruction* a = builder.AddInstruction(
       HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
 
-  HloInstruction* crs = builder.AddInstruction(
-      HloInstruction::CreateAllReduce(bf16_shape_a, {a}, reduction,
-                                      /*device_list=*/CollectiveDeviceList(),
-                                      /*constrain_layout=*/false,
-                                      /*channel_id=*/std::nullopt,
-                                      /*use_global_device_ids=*/false));
+  HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
+      bf16_shape_a, {a}, reduction, std::make_shared<CollectiveDeviceList>(),
+      /*constrain_layout=*/false,
+      /*channel_id=*/std::nullopt,
+      /*use_global_device_ids=*/false));
 
   auto computation = module->AddEntryComputation(builder.Build());
   // Since we skip processing to_apply region, nothing should change in the
@@ -804,7 +802,7 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
   HloInstruction* crs =
       builder.AddInstruction(HloInstruction::CreateReduceScatter(
           bf16_shape_scattered, {a}, reduction,
-          /*device_list=*/CollectiveDeviceList(),
+          std::make_shared<CollectiveDeviceList>(),
           /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt,
           /*use_global_device_ids=*/false, /*scatter_dimension*/ 0));
