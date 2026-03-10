@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "re2/re2.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
@@ -71,6 +72,45 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla {
+namespace {
+
+thread_local bool vlog_filter_match = true;
+
+// RAII Guard: Use this to "activate" the filter in ScheduleComputation.
+struct ScopedVlogFilter {
+  ScopedVlogFilter(absl::string_view name, absl::string_view pattern) {
+    if (pattern.empty()) {
+      vlog_filter_match = true;
+    } else {
+      // Compile the regex and evaluate it EXACTLY ONCE per computation.
+      // The RE2 object is destroyed immediately after, saving memory.
+      vlog_filter_match = RE2::PartialMatch(name, pattern);
+    }
+  }
+
+  ~ScopedVlogFilter() {
+    // Reset when leaving the scheduler
+    vlog_filter_match = true;
+  }
+};
+
+inline bool ShouldTriggerVlog() { return vlog_filter_match; }
+
+}  // namespace
+
+#undef VLOG
+#define VLOG(level) \
+  LOG_IF(INFO,      \
+         ABSL_PREDICT_FALSE(VLOG_IS_ON(level) && xla::ShouldTriggerVlog()))
+
+#undef XLA_VLOG_LINES
+#define XLA_VLOG_LINES(level, string)                                        \
+  do {                                                                       \
+    if (ABSL_PREDICT_FALSE(VLOG_IS_ON(level) && xla::ShouldTriggerVlog())) { \
+      XLA_LOG_LINES(INFO, string);                                           \
+    }                                                                        \
+  } while (false)
+
 namespace {
 
 const int64_t kDefaultMemorySpace = 0;
@@ -3447,6 +3487,9 @@ DefaultSchedulerCore::MakeSchedulingState(const HloComputation* computation) {
 absl::StatusOr<std::vector<HloInstruction*>>
 DefaultSchedulerCore::ScheduleComputation(const HloComputation* computation) {
   TF_ASSIGN_OR_RETURN(auto sched_state, MakeSchedulingState(computation));
+  // Activate the log filter for this computation.
+  ScopedVlogFilter filter_guard(computation->name(),
+                                config_.log_computation_re);
   return ScheduleComputation(computation, sched_state);
 }
 

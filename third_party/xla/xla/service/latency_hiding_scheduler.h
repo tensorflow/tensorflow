@@ -173,6 +173,8 @@ struct SchedulerConfig {
   bool track_sync_op_resource_usage = false;
   // If true, use top down scheduling.
   bool top_down_scheduling = false;
+  // If set, only log computations that match the given regular expression.
+  std::string log_computation_re;
 };
 
 // Class used estimate latency between instructions and cost of HLOs.
@@ -1745,6 +1747,7 @@ class DefaultSchedulerCore : public SchedulerCore {
     this->config_.memory_limit = new_limit;
   }
   int64_t GetRerunTimes() override { return config_.rerun; }
+  const SchedulerConfig& GetConfig() const { return config_; }
 
   // Returns the amount of resources an annotation group needs. The amount of
   // resources needed is schedule-order dependent. This function returns the
