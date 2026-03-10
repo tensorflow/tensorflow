@@ -37,5 +37,5 @@ docker run ^
 docker exec tf ^
     bash tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh || exit /b 1
 
-gsutil cp %TF_DIR%\windows_cpu_libtensorflow_binaries.tar.gz ^
+gcloud storage cp %TF_DIR%\windows_cpu_libtensorflow_binaries.tar.gz ^
   gs://libtensorflow-nightly/prod/tensorflow/release/windows/latest/cpu

@@ -187,7 +187,7 @@ ENV CLOUDSDK_CORE_DISABLE_PROMPTS=""
 
 # MSYS attempts to use non-cmd versions, which aren't meant for Windows
 RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias gcloud=gcloud.cmd'
-RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias gsutil=gsutil.cmd'
+RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias gsutil="gcloud storage"'
 RUN Add-Content -Path C:\tools\msys64\.bashrc -Value 'alias bq=bq.cmd'
 
 # Symlink a directory, to have it pretend be the T:\ drive.

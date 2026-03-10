@@ -39,5 +39,5 @@ if [ -n "${IS_NIGHTLY}" ]; then
 
   tar -zcvf ubuntu_gpu_libtensorflow_binaries.tar.gz lib_package
 
-  gsutil cp ubuntu_gpu_libtensorflow_binaries.tar.gz gs://libtensorflow-nightly/prod/tensorflow/release/ubuntu_16/latest/gpu
+  gcloud storage cp ubuntu_gpu_libtensorflow_binaries.tar.gz gs://libtensorflow-nightly/prod/tensorflow/release/ubuntu_16/latest/gpu
 fi
