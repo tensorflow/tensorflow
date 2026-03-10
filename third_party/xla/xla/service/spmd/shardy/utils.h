@@ -184,6 +184,24 @@ mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::TypeRange types,
     mlir::MLIRContext* context);
 
+// TODO(enver): Add a parameter on how to handle 'inlineable' manual
+// computations func names, that is, either hard-fail, or accept as a manual
+// computation.
+// Returns whether the call is on a manual computation. Returns false for
+// an 'inlineable' manual computation.
+bool isManualComputation(mlir::func::CallOp callOp);
+// Returns whether the func is a manual computation. Returns false for
+// an 'inlineable' manual computation.
+bool isManualComputation(mlir::func::FuncOp funcOp);
+
+// Gets `kOriginalFuncName` attribute attached to `funcOp`. In
+// case there is no such attribute attached, create one on the name of `funcOp`.
+mlir::StringAttr getOriginalFuncName(mlir::func::FuncOp funcOp);
+
+// Clones given `funcOp` recursively and returns the (top) cloned funcOp.
+mlir::func::FuncOp cloneFuncRecursively(mlir::func::FuncOp funcOp,
+                                        mlir::SymbolTable& symbolTable);
+
 }  // namespace sdy
 }  // namespace xla
 

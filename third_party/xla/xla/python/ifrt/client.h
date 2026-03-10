@@ -266,7 +266,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // may impose additional constraints. For example, bitcasting to a smaller
   // dtype or changing `layout` may not be allowed on some platforms.
   //
-  // NOTE: `ArrayCopySemantics::kAlwaysCopy` is not allowed.
+  // NOTE: `ArrayCopySemantics::kAlwaysCopy` is not allowed. Typically, only
+  // `ArrayCopySemantics::kDonateInput` is supported on most runtimes that
+  // impose strict device buffer aliasing rules.
   virtual absl::StatusOr<std::vector<ArrayRef>> BitcastArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) = 0;
