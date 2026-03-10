@@ -24,101 +24,101 @@ namespace TF {
 namespace ResourceEffects {
 
 struct Variable : ::mlir::SideEffects::Resource::Base<Variable> {
-  StringRef getName() final { return "Variable"; }
+  StringRef getName() const final { return "Variable"; }
 };
 
 struct Stack : ::mlir::SideEffects::Resource::Base<Stack> {
-  StringRef getName() final { return "Stack"; }
+  StringRef getName() const final { return "Stack"; }
 };
 
 struct TensorArray : ::mlir::SideEffects::Resource::Base<TensorArray> {
-  StringRef getName() final { return "TensorArray"; }
+  StringRef getName() const final { return "TensorArray"; }
 };
 
 struct Summary : ::mlir::SideEffects::Resource::Base<Summary> {
-  StringRef getName() final { return "Summary"; }
+  StringRef getName() const final { return "Summary"; }
 };
 
 struct LookupTable : ::mlir::SideEffects::Resource::Base<LookupTable> {
-  StringRef getName() final { return "LookupTable"; }
+  StringRef getName() const final { return "LookupTable"; }
 };
 
 struct DatasetSeedGenerator
     : ::mlir::SideEffects::Resource::Base<DatasetSeedGenerator> {
-  StringRef getName() final { return "DatasetSeedGenerator"; }
+  StringRef getName() const final { return "DatasetSeedGenerator"; }
 };
 
 struct DatasetMemoryCache
     : ::mlir::SideEffects::Resource::Base<DatasetMemoryCache> {
-  StringRef getName() final { return "DatasetMemoryCache"; }
+  StringRef getName() const final { return "DatasetMemoryCache"; }
 };
 
 struct DatasetIterator : ::mlir::SideEffects::Resource::Base<DatasetIterator> {
-  StringRef getName() final { return "DatasetIterator"; }
+  StringRef getName() const final { return "DatasetIterator"; }
 };
 
 // Special resource type to track TPU Embedding specific ops, which must execute
 // but do not have side effects with one another or with resource variable ops.
 struct TPUEmbedding : ::mlir::SideEffects::Resource::Base<TPUEmbedding> {
-  StringRef getName() final { return "TPUEmbedding"; }
+  StringRef getName() const final { return "TPUEmbedding"; }
 };
 
 // Resource corresponding to GeneratorOp.
 struct GeneratorOp : public ::mlir::SideEffects::Resource::Base<GeneratorOp> {
-  StringRef getName() final { return "Generator"; }
+  StringRef getName() const final { return "Generator"; }
 };
 
 struct Send : public ::mlir::SideEffects::Resource::Base<Send> {
-  StringRef getName() final { return "Send"; }
+  StringRef getName() const final { return "Send"; }
 };
 
 struct Recv : public ::mlir::SideEffects::Resource::Base<Recv> {
-  StringRef getName() final { return "Recv"; }
+  StringRef getName() const final { return "Recv"; }
 };
 
 struct XlaHostCompute
     : public ::mlir::SideEffects::Resource::Base<XlaHostCompute> {
-  StringRef getName() final { return "XlaHostCompute"; }
+  StringRef getName() const final { return "XlaHostCompute"; }
 };
 
 struct RandomGenerator
     : public ::mlir::SideEffects::Resource::Base<RandomGenerator> {
-  StringRef getName() final { return "RandomGenerator"; }
+  StringRef getName() const final { return "RandomGenerator"; }
 };
 
 struct TPUExecute : public ::mlir::SideEffects::Resource::Base<TPUExecute> {
-  StringRef getName() final { return "TPUExecute"; }
+  StringRef getName() const final { return "TPUExecute"; }
 };
 
 struct MustExecute : public ::mlir::SideEffects::Resource::Base<MustExecute> {
-  StringRef getName() final { return "MustExecute"; }
+  StringRef getName() const final { return "MustExecute"; }
 };
 
 struct CollectiveReduceOrdering
     : public ::mlir::SideEffects::Resource::Base<CollectiveReduceOrdering> {
-  StringRef getName() final { return "CollectiveReduceOrdering"; }
+  StringRef getName() const final { return "CollectiveReduceOrdering"; }
 };
 
 struct NcclAllReduceOrdering
     : public ::mlir::SideEffects::Resource::Base<NcclAllReduceOrdering> {
-  StringRef getName() final { return "NcclAllReduceOrdering"; }
+  StringRef getName() const final { return "NcclAllReduceOrdering"; }
 };
 
 struct GlobalIterId : public ::mlir::SideEffects::Resource::Base<GlobalIterId> {
-  StringRef getName() final { return "GlobalIterId"; }
+  StringRef getName() const final { return "GlobalIterId"; }
 };
 
 struct XlaLaunch : public ::mlir::SideEffects::Resource::Base<XlaLaunch> {
-  StringRef getName() final { return "XlaLaunch"; }
+  StringRef getName() const final { return "XlaLaunch"; }
 };
 
 struct WriteTrainingPredictions
     : public ::mlir::SideEffects::Resource::Base<WriteTrainingPredictions> {
-  StringRef getName() final { return "WriteTrainingPredictions"; }
+  StringRef getName() const final { return "WriteTrainingPredictions"; }
 };
 
 struct _XlaRun : public ::mlir::SideEffects::Resource::Base<_XlaRun> {
-  StringRef getName() final { return "_XlaRun"; }
+  StringRef getName() const final { return "_XlaRun"; }
 };
 
 // Returns true iff resource type with given ID is only self-dependent, i.e.,

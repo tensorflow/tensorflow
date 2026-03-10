@@ -1,0 +1,47 @@
+--- a/include/triton/Dialect/Triton/IR/Dialect.h
++++ b/include/triton/Dialect/Triton/IR/Dialect.h
+@@ -25,7 +25,7 @@
+ namespace triton {
+ 
+ struct GlobalMemory : public SideEffects::Resource::Base<GlobalMemory> {
+-  StringRef getName() final { return "<GlobalMemory>"; }
++  StringRef getName() const final { return "<GlobalMemory>"; }
+ };
+ 
+ class DialectInferLayoutInterface
+
+--- a/include/triton/Dialect/TritonGPU/IR/Dialect.h
++++ b/include/triton/Dialect/TritonGPU/IR/Dialect.h
+@@ -101,7 +101,7 @@
+ 
+ namespace mlir::triton::gpu {
+ struct SharedMemory : public SideEffects::Resource::Base<SharedMemory> {
+-  StringRef getName() final { return "<SharedMemory>"; }
++  StringRef getName() const final { return "<SharedMemory>"; }
+ };
+ 
+ // Convert a distributed layout to a linear encoding
+
+--- a/include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h
++++ b/include/triton/Dialect/TritonNvidiaGPU/IR/Dialect.h
+@@ -69,7 +69,7 @@
+ }
+ 
+ struct TensorMemory : public SideEffects::Resource::Base<TensorMemory> {
+-  StringRef getName() final { return "<TensorMemory>"; }
++  StringRef getName() const final { return "<TensorMemory>"; }
+ };
+ 
+ struct TMemAllocation {
+
+--- a/third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h
++++ b/third_party/amd/include/Dialect/TritonAMDGPU/IR/Dialect.h
+@@ -35,7 +35,7 @@
+ 
+ namespace mlir::triton::amd {
+ struct L2Cache : public SideEffects::Resource::Base<L2Cache> {
+-  StringRef getName() final { return "<AMDGPU::L2Cache>"; }
++  StringRef getName() const final { return "<AMDGPU::L2Cache>"; }
+ };
+ } // namespace mlir::triton::amd
+ 
