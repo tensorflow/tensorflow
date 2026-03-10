@@ -459,17 +459,16 @@ LocalClient::Compile(const XlaComputation& computation,
   return std::move(local_executables);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 LocalClient::CompileAheadOfTime(
     const XlaComputation& computation,
     const absl::Span<const Shape* const> argument_layouts,
     const ExecutableBuildOptions& options) {
   TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
                       UpdateBuildOptions(options, default_device_ordinal()));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
-      local_service_->CompileAotResults(computation, argument_layouts,
-                                        updated_options));
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CompiledModule>> aot_results,
+                      local_service_->CompileAotResults(
+                          computation, argument_layouts, updated_options));
 
   return std::move(aot_results);
 }
@@ -480,19 +479,19 @@ absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       Compiler::GetForPlatform(platform()->id()));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::AotCompilationResult> aot_result,
+      std::unique_ptr<CompiledModule> aot_result,
       compiler->LoadAotCompilationResult(serialized_aot_result));
   return LoadInternal(std::move(aot_result), options);
 }
 
 absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Load(
-    std::unique_ptr<xla::AotCompilationResult> aot_result,
+    std::unique_ptr<CompiledModule> aot_result,
     const ExecutableBuildOptions& options) {
   return LoadInternal(std::move(aot_result), options);
 }
 
 absl::StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::LoadInternal(
-    std::unique_ptr<xla::AotCompilationResult> aot_result,
+    std::unique_ptr<CompiledModule> aot_result,
     const ExecutableBuildOptions& options) {
   TF_ASSIGN_OR_RETURN(ExecutableBuildOptions updated_options,
                       UpdateBuildOptions(options, default_device_ordinal()));

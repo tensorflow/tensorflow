@@ -338,6 +338,9 @@ int main(int argc, char** argv) {
       "ArrayImplTest.CopyArraysSubByteDType:"
       // NanoRT does not handle zero-sized buffers correctly.
       "ArrayImplTest.MakeAndCopyZeroSizedBuffers:"
+      // NanoRT does not handle CopyArrays with re-ordered devices correctly.
+      "ArrayImplTest.CopyArraysWithPartialReuse:"
+      "ArrayImplTest.CopyToDifferentDevice:"
       // Executable returns a wrong number of devices.
       "*LoadedExecutableImplTest.Properties*:"
       // Incorrect deleted state of donated inputs.

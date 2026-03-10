@@ -106,6 +106,11 @@ def OptimizeLoopsPass :
     "xla::XlaDialect",
   ];
 
+  let options = [
+    Option<"max_unroll_factor_", "max_unroll_factor", "int", /*default=*/"0",
+           "Maximum unroll factor.">
+  ];
+
   let constructor = "CreateOptimizeLoopsPass()";
 }
 
