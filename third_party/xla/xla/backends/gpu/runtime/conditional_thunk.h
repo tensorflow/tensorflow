@@ -22,22 +22,20 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/stream_executor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // ConditionalThunk implements the conditional instruction on GPU by reading the
 // predicate of the conditional and executing the true or the false computation
@@ -51,9 +49,9 @@ namespace gpu {
 // false computation share the same allocation.
 class ConditionalThunk : public Thunk {
  public:
-  ConditionalThunk(
-      ThunkInfo thunk_info, const ShapedSlice& branch_index_buffer_index,
-      std::vector<std::unique_ptr<SequentialThunk>>&& branch_thunks);
+  ConditionalThunk(ThunkInfo thunk_info,
+                   const ShapedSlice& branch_index_buffer_index,
+                   std::vector<ThunkSequence> branch_thunks);
 
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
@@ -62,8 +60,11 @@ class ConditionalThunk : public Thunk {
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() const {
-    return branch_thunks_;
+  absl::Span<const ThunkExecutor> branch_executors() const {
+    return branch_executors_;
+  }
+  absl::Span<ThunkExecutor> branch_executors() {
+    return absl::MakeSpan(branch_executors_);
   }
 
   const ShapedSlice& branch_index_buffer() const {
@@ -102,7 +103,7 @@ class ConditionalThunk : public Thunk {
 
  private:
   const ShapedSlice branch_index_buffer_index_;
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks_;
+  std::vector<ThunkExecutor> branch_executors_;
   bool branch_index_is_bool_;
 
   // Host memory pool for transferring predicate value from device to host.
@@ -111,7 +112,6 @@ class ConditionalThunk : public Thunk {
       host_memory_pools_ ABSL_GUARDED_BY(mutex_);
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_CONDITIONAL_THUNK_H_

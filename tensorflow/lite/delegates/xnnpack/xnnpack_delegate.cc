@@ -5375,6 +5375,16 @@ class Subgraph {
       }
     }
 
+    // This is a weird special case that apparently old models use, indicating
+    // scalar input and scalar output. Let's not handle it.
+    if (num_new_dimensions == 1 && new_shape[0] == 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "Not handling legacy scalar input and output RESHAPE operator #%d",
+          node_index);
+      return kTfLiteError;
+    }
+
     if (subgraph != nullptr) {
       const xnn_status status = xnn_define_static_reshape(
           subgraph, num_new_dimensions, new_shape.data(),
