@@ -27,9 +27,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -288,7 +288,7 @@ ENTRY computation {
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
-  const SequentialThunk& seq_thunk = gpu_executable->GetThunk();
+  const ThunkExecutor& seq_thunk = gpu_executable->thunk_executor();
   ASSERT_EQ(seq_thunk.thunks().size(), 1);
 
   const std::unique_ptr<Thunk>& thunk = seq_thunk.thunks().front();

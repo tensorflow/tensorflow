@@ -60,6 +60,7 @@ struct XlaCompileOptions {
   std::string output_file;
   std::string platform;
   std::string result_output_file;
+  bool use_shardy_partitioner = false;
 
   // Options for SymbolRepository lookup.
   struct SymbolRepoOptions {
