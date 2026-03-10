@@ -277,8 +277,7 @@ class ShardMapImportPass
     llvm::SmallDenseMap<StringRef, mlir::Region*> shardMapNameToMovedRegion;
     bool success = true;
     module->walk([&](CallOp op) {
-      if (!op.getCallee().contains("shmap_body") &&
-          !op.getCallee().contains(kInlineableManualComputationFuncName)) {
+      if (!op.getCallee().contains("shmap_body")) {
         return mlir::WalkResult::advance();
       }
 
