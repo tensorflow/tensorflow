@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
@@ -531,13 +530,9 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
       client->addressable_devices().subspan(0, 2);
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList(devices));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding,
-      ShardingParamSharding::Create(
-          ShardingParam(
-              /*dim_shards=*/{2, 1},
-              {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}),
-          std::move(device_list), MemoryKind()));
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), shape,
+                                   shard_shape, /*is_fully_replicated=*/false);
 
   std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
   // Create two arrays with the same sharding, but swapped host buffers (data0
@@ -824,13 +819,9 @@ TEST(ArrayImplTest,
       absl::MakeConstSpan(cpu_devices).subspan(0, 2);
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList(devices));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding,
-      ShardingParamSharding::Create(
-          ShardingParam(
-              /*dim_shards=*/{2, 1},
-              {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}),
-          std::move(device_list), MemoryKind()));
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), shape,
+                                   shard_shape, /*is_fully_replicated=*/false);
 
   std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
   // Create two arrays with the same sharding, but swapped host buffers (data0
@@ -1133,49 +1124,37 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
 
   std::vector<ArrayRef> arrays({array0, array1});
   Shape assembled_shape({4, 3});
-  ShardingParam sharding_param(
-      /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
   TF_ASSERT_OK_AND_ASSIGN(
-      DeviceListRef ifrt_device_list,
+      DeviceListRef device_list,
       client->MakeDeviceList(
           {array0->sharding().devices()->devices().front(),
            array1->sharding().devices()->devices().front()}));
+  ShardingRef assembled_sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), assembled_shape,
+                                   shape, /*is_fully_replicated=*/false);
   TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding_param_sharding,
-      ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
-                                    MemoryKind()));
-  ShardingRef assembled_shardings[] = {
-      ConcreteEvenSharding::Create(ifrt_device_list, MemoryKind(),
-                                   assembled_shape, shape),
-      sharding_param_sharding};
-  for (auto& assembled_sharding : assembled_shardings) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto assembled_array,
-        client->AssembleArrayFromSingleDeviceArrays(
-            dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
-            ArrayCopySemantics::kAlwaysCopy,
-            SingleDeviceShardSemantics::kAddressableShards));
+      auto assembled_array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+          ArrayCopySemantics::kAlwaysCopy,
+          SingleDeviceShardSemantics::kAddressableShards));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto single_device_arrays,
-        assembled_array->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kReuseInput,
-            SingleDeviceShardSemantics::kAddressableShards));
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          assembled_array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kReuseInput,
+                              SingleDeviceShardSemantics::kAddressableShards));
 
-    ASSERT_THAT(single_device_arrays, SizeIs(2));
-    EXPECT_EQ(single_device_arrays[0]->dtype(), array0->dtype());
-    EXPECT_EQ(single_device_arrays[0]->shape(), array0->shape());
-    EXPECT_THAT(single_device_arrays[0]->sharding().devices()->devices(),
-                ElementsAreArray(array0->sharding().devices()->devices()));
-    EXPECT_EQ(single_device_arrays[0]->user_context()->Id(),
-              UserContextId(100));
-    EXPECT_EQ(single_device_arrays[1]->dtype(), array1->dtype());
-    EXPECT_EQ(single_device_arrays[1]->shape(), array1->shape());
-    EXPECT_THAT(single_device_arrays[1]->sharding().devices()->devices(),
-                ElementsAreArray(array1->sharding().devices()->devices()));
-    EXPECT_EQ(single_device_arrays[1]->user_context()->Id(),
-              UserContextId(100));
-  }
+  ASSERT_THAT(single_device_arrays, SizeIs(2));
+  EXPECT_EQ(single_device_arrays[0]->dtype(), array0->dtype());
+  EXPECT_EQ(single_device_arrays[0]->shape(), array0->shape());
+  EXPECT_THAT(single_device_arrays[0]->sharding().devices()->devices(),
+              ElementsAreArray(array0->sharding().devices()->devices()));
+  EXPECT_EQ(single_device_arrays[0]->user_context()->Id(), UserContextId(100));
+  EXPECT_EQ(single_device_arrays[1]->dtype(), array1->dtype());
+  EXPECT_EQ(single_device_arrays[1]->shape(), array1->shape());
+  EXPECT_THAT(single_device_arrays[1]->sharding().devices()->devices(),
+              ElementsAreArray(array1->sharding().devices()->devices()));
+  EXPECT_EQ(single_device_arrays[1]->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
@@ -1303,10 +1282,21 @@ TEST(ArrayImplTest, BitcastArrays) {
     GTEST_SKIP() << "Skipping test; bitcast is unimplemented.";
   }
   TF_ASSERT_OK(new_arrays.status());
-
-  // If the bitcast was successful, the output array should have the new spec.
   ASSERT_THAT(*new_arrays, SizeIs(1));
 
+  // The input array should have been donated and marked as deleted.
+  EXPECT_TRUE(array->IsDeleted());
+
+  // Some IFRT implementations that do not support bitcasting may not
+  // immediately return `UnimplementedError` from `BitcastArrays`, but use an
+  // error array because of asynchronous dispatch.
+  absl::Status new_array_status = new_arrays->front()->GetReadyFuture().Await();
+  if (absl::IsUnimplemented(new_array_status)) {
+    GTEST_SKIP() << "Skipping test; bitcast is unimplemented.";
+  }
+  TF_ASSERT_OK(new_array_status);
+
+  // If the bitcast was successful, the output array should have the new spec.
   ASSERT_EQ(new_arrays->front()->dtype(), new_array_spec.dtype);
   ASSERT_EQ(new_arrays->front()->shape(), new_array_spec.shape);
   ASSERT_EQ(new_arrays->front()->shared_ptr_sharding(),
@@ -1356,42 +1346,33 @@ TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
 
   std::vector<ArrayRef> arrays;
   Shape assembled_shape({4, 3});
-  ShardingParam sharding_param(
-      /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
 
   absl::flat_hash_set<DeviceId> addressable_device_ids;
   for (auto* device : client->addressable_devices()) {
     addressable_device_ids.insert(device->Id());
   }
   TF_ASSERT_OK_AND_ASSIGN(
-      DeviceListRef ifrt_device_list,
+      DeviceListRef device_list,
       client->MakeDeviceList(
           absl::MakeConstSpan(non_addressable_devices).subspan(0, 2)));
+  ShardingRef assembled_sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), assembled_shape,
+                                   shape, /*is_fully_replicated=*/false);
+
   TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding_param_sharding,
-      ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
-                                    MemoryKind()));
-  ShardingRef assembled_shardings[] = {
-      ConcreteEvenSharding::Create(ifrt_device_list, MemoryKind(),
-                                   assembled_shape, shape),
-      sharding_param_sharding};
-  for (auto& assembled_sharding : assembled_shardings) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto assembled_array,
-        client->AssembleArrayFromSingleDeviceArrays(
-            dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
-            ArrayCopySemantics::kAlwaysCopy,
-            SingleDeviceShardSemantics::kAddressableShards));
-    EXPECT_EQ(assembled_array->user_context()->Id(), UserContextId(100));
+      auto assembled_array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+          ArrayCopySemantics::kAlwaysCopy,
+          SingleDeviceShardSemantics::kAddressableShards));
+  EXPECT_EQ(assembled_array->user_context()->Id(), UserContextId(100));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto single_device_arrays,
-        assembled_array->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kReuseInput,
-            SingleDeviceShardSemantics::kAddressableShards));
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          assembled_array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kReuseInput,
+                              SingleDeviceShardSemantics::kAddressableShards));
 
-    ASSERT_THAT(single_device_arrays, SizeIs(0));
-  }
+  ASSERT_THAT(single_device_arrays, SizeIs(0));
 }
 
 TEST(ArrayImplTest, CopyToDifferentDevice) {
@@ -1430,8 +1411,9 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
             SingleDeviceShardSemantics::kAddressableShards));
   }
   {
-    ShardingRef sharding =
-        ConcreteEvenSharding::Create(devices, MemoryKind(), shape, shape);
+    ShardingRef sharding = ConcreteEvenSharding::Create(
+        devices, MemoryKind(), shape, /*shard_shape=*/shape,
+        /*is_fully_replicated=*/true);
     TF_ASSERT_OK_AND_ASSIGN(
         arrays.emplace_back(),
         client->AssembleArrayFromSingleDeviceArrays(
@@ -1849,13 +1831,9 @@ TEST(ArrayImplTest, CopyArraysWithPartialReuse) {
   DType dtype(DType::kS32);
   Shape shape({4, 3});
   Shape shard_shape({1, 3});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding,
-      ShardingParamSharding::Create(
-          ShardingParam(
-              /*dim_shards=*/{4, 1},
-              {/*permutation=*/{0, 1}, /*axis_sizes=*/{4, 1}}),
-          src_devices, MemoryKind()));
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(src_devices, MemoryKind(), shape,
+                                   shard_shape, /*is_fully_replicated=*/false);
 
   std::vector<ArrayRef> src_arrays;
   {
