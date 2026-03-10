@@ -28,7 +28,7 @@ namespace tsl {
 namespace {
 // This array must have signed type.
 // clang-format off
-constexpr int8 kBase64Bytes[128] = {
+constexpr int8_t kBase64Bytes[128] = {
      -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
      -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
      -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,   -1,
@@ -50,7 +50,7 @@ constexpr char kPadChar = '=';
 // Converts a char (8 bits) into a 6-bit value for decoding. If the input char
 // is invalid for base64 encoding, the return value has at least its upper 25
 // bits set.
-inline uint32 Convert(char x) {
+inline uint32_t Convert(char x) {
   // If x < 128, then we look up x in the table. If x is valid, then the table
   // will have a value <= 0x3F, otherwise the table will have -1. If x >= 128,
   // we still do some table lookup, but the value is ignored since we explicitly
@@ -59,13 +59,14 @@ inline uint32 Convert(char x) {
   const int8_t y = kBase64Bytes[x & 0x7F] | (x & 0x80);
   // Casting from int8 to int32 preserves sign by sign extension. If y was
   // negative, at least its 25 high bits of the return value are set.
-  const int32_t z = static_cast<int32>(y);
-  return static_cast<uint32>(z);
+  const int32_t z = static_cast<int32_t>(y);
+  return static_cast<uint32_t>(z);
 }
 
 absl::Status DecodeThreeChars(const char* codes, char* result) {
-  const uint32 packed = (Convert(codes[0]) << 18) | (Convert(codes[1]) << 12) |
-                        (Convert(codes[2]) << 6) | (Convert(codes[3]));
+  const uint32_t packed = (Convert(codes[0]) << 18) |
+                          (Convert(codes[1]) << 12) | (Convert(codes[2]) << 6) |
+                          (Convert(codes[3]));
   // Convert() return value has upper 25 bits set if input is invalid.
   // Therefore `packed` has high bits set iff at least one of code is invalid.
   if (TF_PREDICT_FALSE((packed & 0xFF000000) != 0)) {

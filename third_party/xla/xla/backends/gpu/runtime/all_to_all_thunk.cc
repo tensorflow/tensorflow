@@ -221,9 +221,10 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
-    const ExecuteParams& params, const GpuCliqueKey& clique_key,
-    se::Stream& stream, Communicator& comm) {
+absl::Status AllToAllStartThunk::RunCollective(const ExecuteParams& params,
+                                               const GpuCliqueKey& clique_key,
+                                               se::Stream& stream,
+                                               Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
@@ -250,15 +251,13 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
       absl::c_transform(events_, std::back_inserter(events),
                         [](const auto& pair) { return pair.second.get(); });
     }
-    TF_RETURN_IF_ERROR(xla::gpu::RunMemCpyAllToAll(
+    return xla::gpu::RunMemCpyAllToAll(
         config_.has_split_dimension, device_buffers, stream, comm,
-        receive_pointer_map, clique_key, *rank, event, events));
-    return false;
+        receive_pointer_map, clique_key, *rank, event, events);
   }
-  TF_RETURN_IF_ERROR(
-      xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers, stream,
-                            comm, config_.config.use_symmetric_buffer));
-  return true;
+  return xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers,
+                               stream, comm,
+                               config_.config.use_symmetric_buffer);
 }
 
 bool AllToAllStartThunk::is_local(int device_count) const {

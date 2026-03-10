@@ -672,7 +672,6 @@ XLA_CPU_BENCHMARK(BM_Conv1DStrided)
     ->Args({3, 129});
 XLA_CPU_BENCHMARK(BM_Conv1DTransposedStrided)
     ->MeasureProcessCPUTime()
-    ->MeasureProcessCPUTime()
     ->Args({129, 1})
     ->Args({129, 3});
 XLA_CPU_BENCHMARK(BM_Conv1DTransposedStridedNonDefaultLayout)
