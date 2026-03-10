@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -72,7 +73,7 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
 
-  const xla::gpu::SequentialThunk& seq_thunk = gpu_exec->GetThunk();
+  const xla::gpu::ThunkExecutor& seq_thunk = gpu_exec->thunk_executor();
   EXPECT_EQ(seq_thunk.thunks().size(), 1);
 
   const xla::gpu::Thunk* thunk = seq_thunk.thunks().at(0).get();

@@ -103,25 +103,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  switch (input->type) {
-    case kTfLiteFloat32:
-    case kTfLiteInt32: {
-      UnpackImpl<int32_t>(context, node, input, data->num, data->axis);
+  switch (TfLiteTypeGetSizeBits(input->type)) {
+    case 8: {
+      UnpackImpl<uint8_t>(context, node, input, data->num, data->axis);
       break;
     }
-    case kTfLiteFloat16:
-    case kTfLiteBFloat16:
-    case kTfLiteInt16: {
-      UnpackImpl<int16_t>(context, node, input, data->num, data->axis);
+    case 16: {
+      UnpackImpl<uint16_t>(context, node, input, data->num, data->axis);
       break;
     }
-    case kTfLiteUInt8:
-    case kTfLiteInt8: {
-      UnpackImpl<int8_t>(context, node, input, data->num, data->axis);
+    case 32: {
+      UnpackImpl<uint32_t>(context, node, input, data->num, data->axis);
       break;
     }
-    case kTfLiteBool: {
-      UnpackImpl<bool>(context, node, input, data->num, data->axis);
+    case 64: {
+      UnpackImpl<uint64_t>(context, node, input, data->num, data->axis);
       break;
     }
     default: {

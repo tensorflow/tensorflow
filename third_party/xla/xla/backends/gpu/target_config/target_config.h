@@ -33,11 +33,13 @@ enum class GpuModel {
   A6000,
   B200,
   B300,
+  BMG_G21,
   H100_PCIE,
   H100_SXM,
   MI200,
   P100,
   V100,
+  GB200,
 };
 
 // Description of a target device for compilation.
