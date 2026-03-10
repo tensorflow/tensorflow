@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_COMPILE_UTIL_H_
 #define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_COMPILE_UTIL_H_
 
-#include <cstdint>
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/status/status.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -32,19 +32,87 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
+// TODO(b/489788600): Remove this file once the users are migrated.
+
 namespace xla {
 namespace gpu {
+
+struct DeviceConfig {
+  se::StreamExecutor* stream_exec;  // never null
+
+  // If the `allocator` parameter is not null, we will use it to allocate temp
+  // memory while timing the various convolution algorithms.  If it's null,
+  // we'll use the default allocator on the StreamExecutor.
+  se::DeviceAddressAllocator* allocator = nullptr;  // may be null
+};
+
+struct DevicelessConfig {
+  // The device description of the target device.
+  se::DeviceDescription device_description;
+};
+
+class DeviceOrDevicelessConfig {
+ public:
+  DeviceOrDevicelessConfig(const DeviceOrDevicelessConfig& right)
+      : config_(right.config_) {}
+  explicit DeviceOrDevicelessConfig(
+      const std::variant<DeviceConfig, DevicelessConfig>& config)
+      : config_(config) {}
+
+  se::StreamExecutor* GetExecutor() const {
+    CHECK(std::holds_alternative<DeviceConfig>(config_));
+    return std::get<DeviceConfig>(config_).stream_exec;
+  }
+
+  se::DeviceAddressAllocator* GetAllocator() const {
+    CHECK(std::holds_alternative<DeviceConfig>(config_));
+    auto& cf = std::get<DeviceConfig>(config_);
+    if (cf.allocator != nullptr) {
+      return cf.allocator;
+    }
+    if (allocator_ == nullptr) {
+      allocator_ =
+          std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+              GetExecutor());
+    }
+    return allocator_.get();
+  }
+
+  absl::StatusOr<se::Stream*> GetStream() const {
+    CHECK(std::holds_alternative<DeviceConfig>(config_));
+    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
+  }
+
+  const se::GpuComputeCapability& GetGpuComputeCapability() const {
+    return GetDeviceDescription().gpu_compute_capability();
+  }
+
+  const se::DeviceDescription& GetDeviceDescription() const {
+    if (auto* device_config = std::get_if<DeviceConfig>(&config_)) {
+      return device_config->stream_exec->GetDeviceDescription();
+    }
+    return std::get<DevicelessConfig>(config_).device_description;
+  }
+
+  bool IsDeviceless() const {
+    return std::holds_alternative<DevicelessConfig>(config_);
+  }
+
+ private:
+  std::variant<DeviceConfig, DevicelessConfig> config_;
+  mutable std::unique_ptr<se::DeviceAddressAllocator> allocator_;
+};
 
 // Autotuning utils which require compiling fusions separately. Requires a
 // separate target, as runtime autotuning cannot perform compilation.

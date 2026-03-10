@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/device.h"
@@ -59,6 +60,8 @@ limitations under the License.
 #include "xla/python/ifrt/remap_plan.pb.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/support/sharding_conversions.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -105,16 +108,16 @@ absl::StatusOr<xla::ifrt::ShardingRef> GetSharding(
   auto sharding_param_attr =
       mlir::dyn_cast_or_null<xla::ifrt::IfrtShardingParamAttr>(
           array_type.getShardingAttr());
-  TF_RET_CHECK(sharding_param_attr != nullptr)
+  TF_RET_CHECK(sharding_param_attr)
       << "Array type: " << mlir::debugString(array_type)
       << " if not of type `IfrtShardingParamAttr`";
   TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
                       client->MakeDeviceList(std::move(out_devices)));
-  TF_ASSIGN_OR_RETURN(auto sharding,
-                      xla::ifrt::ShardingParamSharding::Create(
-                          sharding_param_attr.getSharding(),
-                          std::move(device_list), array_type.MemoryKind()));
-  return sharding;
+  TF_ASSIGN_OR_RETURN(
+      xla::HloSharding hlo_sharding,
+      xla::ifrt::support::ToHloSharding(sharding_param_attr.getSharding()));
+  return xla::ifrt::HloSharding::Create(
+      std::move(device_list), array_type.MemoryKind(), std::move(hlo_sharding));
 }
 
 std::string PrettyPrintGeneric(mlir::Operation* op) {
