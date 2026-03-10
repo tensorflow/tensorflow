@@ -73,10 +73,11 @@ class RecvThunk : public CollectiveThunk {
   }
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     const GpuCliqueKey& clique_key,
-                                     se::Stream& stream,
-                                     Communicator& comm) override;
+  bool RequiresRendezvous() const override { return false; }
+
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
 
  private:
   const P2PConfig config_;

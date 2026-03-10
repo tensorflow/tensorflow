@@ -84,6 +84,7 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace pjrt {
 
@@ -1073,12 +1074,16 @@ PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args) {
       "PJRT_Client_Compile", tsl::profiler::ContextType::kPjrtLibraryCall,
       traceme_context_id);
 
-  PJRT_ASSIGN_OR_RETURN(
-      xla::CompileOptions options,
-      ParseCompileOptions(absl::string_view(args->compile_options,
-                                            args->compile_options_size)));
+  xla::CompileOptions options;
+  ProgramVariant module_or_hlo;
+  {
+    tsl::profiler::TraceMe traceme("PJRT_Client_Compile::Deserialize");
+    PJRT_ASSIGN_OR_RETURN(
+        options, ParseCompileOptions(absl::string_view(
+                     args->compile_options, args->compile_options_size)));
 
-  PJRT_ASSIGN_OR_RETURN(auto module_or_hlo, ParsePjrtProgram(args->program));
+    PJRT_ASSIGN_OR_RETURN(module_or_hlo, ParsePjrtProgram(args->program));
+  }
   PJRT_ASSIGN_OR_RETURN(
       std::unique_ptr<xla::PjRtLoadedExecutable> executable,
       std::visit(absl::Overload{

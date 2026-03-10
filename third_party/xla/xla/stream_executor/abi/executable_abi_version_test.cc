@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
@@ -57,6 +58,19 @@ TEST(ExecutableAbiVersionTest, FromDeviceDescription) {
                   cub_version: "2.0.0"
                 }
               )pb"));
+}
+
+TEST(ExecutableAbiVersionTest, FromDeviceDescriptionRocm) {
+  DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      GpuComputeCapability(RocmComputeCapability("gfx942")));
+
+  ASSERT_OK_AND_ASSIGN(
+      ExecutableAbiVersion executable_abi_version,
+      ExecutableAbiVersion::FromDeviceDescription(device_description));
+  EXPECT_THAT(executable_abi_version.platform_name(), "ROCm");
+  EXPECT_THAT(executable_abi_version.proto(),
+              EqualsProto(R"pb(platform_name: "ROCm")pb"));
 }
 
 }  // namespace

@@ -557,7 +557,6 @@ xla_test(
 
 xla_test(
     name = "conv_depthwise_test",
-    timeout = "long",
     srcs = [
         "conv_depthwise_test.cc",
     ],
@@ -3271,7 +3270,6 @@ xla_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Core",
         "@tsl//tsl/platform:casts",
-        "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:test",
     ],
 )
@@ -3470,16 +3468,18 @@ xla_cc_test(
 xla_test(
     name = "round_trip_transfer_test",
     srcs = ["round_trip_transfer_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
-        ":client_library_test_base",
         ":literal_test_util",
+        ":local_client_test_base",
         ":xla_internal_test_main",
+        "//xla:array2d",
         "//xla:array4d",
         "//xla:literal",
-        "//xla/client:local_client",
+        "//xla:literal_util",
+        "//xla/service",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:test",
     ],
 )
@@ -3618,10 +3618,14 @@ xla_test(
         ":local_client_test_base",
         ":test_utils",
         ":xla_internal_test_main",
+        "//xla:literal",
         "//xla:shape_util",
         "//xla/hlo/builder:xla_builder",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
