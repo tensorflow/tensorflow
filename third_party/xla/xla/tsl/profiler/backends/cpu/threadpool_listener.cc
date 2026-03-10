@@ -101,5 +101,14 @@ absl::Status ThreadpoolProfilerInterface::CollectData(
   return absl::OkStatus();
 }
 
+absl::Status ThreadpoolProfilerInterface::Consume(std::string* output) {
+  return absl::OkStatus();
+}
+
+absl::Status ThreadpoolProfilerInterface::Serialize(const std::string& input,
+                                                    std::string* output) {
+  return absl::OkStatus();
+}
+
 }  // namespace profiler
 }  // namespace tsl

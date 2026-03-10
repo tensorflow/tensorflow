@@ -15,6 +15,7 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_collection.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -52,6 +53,23 @@ absl::Status ProfilerCollection::CollectData(
     status.Update(profiler->CollectData(space));
   }
   profilers_.clear();  // data has been collected
+  return status;
+}
+
+absl::Status ProfilerCollection::Consume(std::string* output) {
+  absl::Status status;
+  for (auto& profiler : profilers_) {
+    status.Update(profiler->Consume(output));
+  }
+  return status;
+}
+
+absl::Status ProfilerCollection::Serialize(const std::string& input,
+                                           std::string* output) {
+  absl::Status status;
+  for (auto& profiler : profilers_) {
+    status.Update(profiler->Serialize(input, output));
+  }
   return status;
 }
 

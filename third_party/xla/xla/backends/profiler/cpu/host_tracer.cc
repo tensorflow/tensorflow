@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -53,6 +54,11 @@ class HostTracer : public tsl::profiler::ProfilerInterface {
 
   absl::Status CollectData(  // TENSORFLOW_STATUS_OK
       tensorflow::profiler::XSpace* space) override;
+
+  absl::Status Consume(std::string* output) override;
+
+  absl::Status Serialize(const std::string& input,
+                         std::string* output) override;
 
  private:
   // Level of host tracing.
@@ -101,8 +107,37 @@ absl::Status HostTracer::Stop() {  // TENSORFLOW_STATUS_OK
   if (!recording_) {
     return absl::InternalError("TraceMeRecorder not started");
   }
-  events_ = tsl::profiler::TraceMeRecorder::Stop();
+  auto stopped_events = tsl::profiler::TraceMeRecorder::Stop();
+  for (auto& thread_events : stopped_events) {
+    events_.push_back(std::move(thread_events));
+  }
   recording_ = false;
+  return absl::OkStatus();
+}
+
+absl::Status HostTracer::Consume(std::string* output) {
+  VLOG(2) << "Consuming data from HostTracer.";
+  if (!recording_) {
+    return absl::InternalError("TraceMeRecorder not started");
+  }
+  // Extract events from the recorder without stopping it.
+  auto consumed_events = tsl::profiler::TraceMeRecorder::Consume();
+
+  for (auto& thread_events : consumed_events) {
+    events_.push_back(std::move(thread_events));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status HostTracer::Serialize(const std::string& input,
+                                   std::string* output) {
+  tensorflow::profiler::XSpace space;
+  tensorflow::profiler::XPlane* plane =
+      tsl::profiler::FindOrAddMutablePlaneWithName(
+          &space, tsl::profiler::kHostThreadsPlaneName);
+  ConvertCompleteEventsToXPlane(start_timestamp_ns_, std::exchange(events_, {}),
+                                plane);
+  space.SerializeToString(output);
   return absl::OkStatus();
 }
 

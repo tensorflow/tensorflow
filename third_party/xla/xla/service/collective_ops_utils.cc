@@ -238,16 +238,6 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
   return Internal("Unexpected instruction type.");
 }
 
-const CollectiveDeviceListBase& GetCollectiveDeviceList(
-    const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->device_list();
-}
-
-const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
-    const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->replica_groups();
-}
-
 absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
@@ -372,8 +362,8 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
       collective->GetModule()->config().static_device_assignment();
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(collective));
-  return GetParticipatingDevicesGroups(
-      device_assignment, GetCollectiveReplicaGroups(collective), mode);
+  return GetParticipatingDevicesGroups(device_assignment,
+                                       collective->replica_groups(), mode);
 }
 
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
@@ -469,8 +459,8 @@ GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
-      GetParticipatingFlattenedIdGroups(device_assignment,
-                                        GetCollectiveDeviceList(hlo), mode));
+      GetParticipatingFlattenedIdGroups(device_assignment, *hlo->device_list(),
+                                        mode));
   return collective_device_list;
 }
 
@@ -656,19 +646,19 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
 absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
 GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
-  const CollectiveDeviceListBase& device_list = GetCollectiveDeviceList(hlo);
+  std::shared_ptr<CollectiveDeviceListBase> device_list = hlo->device_list();
   auto config = hlo->GetModule()->config();
 
-  if (device_list.version() == CollectiveDeviceListVersion::kIota) {
-    return std::make_pair(device_list.num_replica_groups(),
-                          device_list.num_devices_per_group());
+  if (device_list->version() == CollectiveDeviceListVersion::kIota) {
+    return std::make_pair(device_list->num_replica_groups(),
+                          device_list->num_devices_per_group());
   }
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
                       GetPariticipantCountsForReplicaGroups(
                           config.replica_count(), config.num_partitions(),
-                          device_list.replica_groups(), group_mode));
+                          device_list->replica_groups(), group_mode));
   int64_t replica_group_size = participant_counts[0];
   for (int64_t participant_count : participant_counts) {
     if (participant_count != replica_group_size) {

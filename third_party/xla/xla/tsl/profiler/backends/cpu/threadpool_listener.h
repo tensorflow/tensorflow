@@ -47,6 +47,9 @@ class ThreadpoolProfilerInterface : public ProfilerInterface {
   absl::Status Stop() override;
 
   absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
+  absl::Status Consume(std::string* output) override;
+  absl::Status Serialize(const std::string& input,
+                         std::string* output) override;
 
  private:
   absl::Status status_;
