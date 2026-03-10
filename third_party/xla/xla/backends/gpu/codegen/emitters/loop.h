@@ -40,6 +40,7 @@ class LoopFusion final : public EmitterBase {
   LoopFusion(const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context)
       : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
   LaunchDimensions launch_dimensions() const override;
+  int unroll_factor() const override { return config_.unroll_factor; }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* mlir_context) const override;

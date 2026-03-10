@@ -38,6 +38,9 @@ limitations under the License.
 #include "xla/util.h"
 
 namespace xla {
+
+namespace m = match;
+
 namespace {
 
 // Table lookup is a specific HLO pattern used to retrieve a value from
@@ -494,6 +497,86 @@ std::optional<ReduceScatterSpec> SpecFromReduceScatterInstr(
   return spec;
 }
 
+int64_t GetGroupSize(bool is_cross_module, bool use_global_device_ids,
+                     int64_t num_partitions, int64_t num_replicas,
+                     const HloChannelInstruction* instruction) {
+  if (!is_cross_module) {
+    return instruction->replica_groups().empty()
+               ? num_replicas
+               : instruction->replica_groups()[0].replica_ids_size();
+  }
+  if (use_global_device_ids) {
+    return instruction->replica_groups()[0].replica_ids_size();
+  }
+  return num_partitions;
+}
+
+MapIdToTableOffset CreateMapIdFn(bool is_cross_module,
+                                 bool use_global_device_ids,
+                                 int64_t num_partitions, int64_t num_replicas,
+                                 const HloChannelInstruction* instruction,
+                                 HloPredicate match_partition_id,
+                                 HloPredicate match_replica_id) {
+  if (!is_cross_module) {
+    return [=](const HloInstruction* hlo, int64_t id) {
+      return match_replica_id(hlo) ? id : -1;
+    };
+  }
+  if (use_global_device_ids) {
+    bool orthogonal_replicas = true;
+    std::vector<int64_t> partition_id_to_index(num_partitions, -1);
+    for (int64_t g = 0; g < instruction->replica_groups().size(); ++g) {
+      const auto& group = instruction->replica_groups()[g];
+      for (int64_t i = 0; i < group.replica_ids_size(); ++i) {
+        int64_t global_id = group.replica_ids(i);
+        int64_t partition_id = global_id % num_partitions;
+        if (partition_id_to_index[partition_id] == -1) {
+          partition_id_to_index[partition_id] = i;
+          continue;
+        }
+        if (partition_id_to_index[partition_id] != i ||
+            global_id / num_partitions !=
+                group.replica_ids(0) / num_partitions) {
+          orthogonal_replicas = false;
+          break;
+        }
+      }
+    }
+    return [=](const HloInstruction* hlo, int64_t id) -> int64_t {
+      if (match_replica_id(hlo)) {
+        return num_partitions == 1 ? id : -1;
+      }
+      if (match_partition_id(hlo)) {
+        if (num_replicas == 1) {
+          return id;
+        }
+        return orthogonal_replicas ? id % num_partitions : -1;
+      }
+      auto is_replica_mul_num_partitions = [&](const HloInstruction* operand) {
+        return operand->opcode() == HloOpcode::kMultiply &&
+               ((operand->operand(0)->opcode() == HloOpcode::kReplicaId &&
+                 operand->operand(1)->IsConstant() &&
+                 GetScalarInt64Value(operand->operand(1)) == num_partitions) ||
+                (operand->operand(1)->opcode() == HloOpcode::kReplicaId &&
+                 operand->operand(0)->IsConstant() &&
+                 GetScalarInt64Value(operand->operand(0)) == num_partitions));
+      };
+      if (hlo->opcode() == HloOpcode::kAdd &&
+          ((match_partition_id(hlo->operand(0)) &&
+            is_replica_mul_num_partitions(hlo->operand(1))) ||
+           (match_partition_id(hlo->operand(1)) &&
+            is_replica_mul_num_partitions(hlo->operand(0))))) {
+        return id;
+      }
+      return -1;
+    };
+  }
+  // is_cross_module && !use_global_device_ids
+  return [=](const HloInstruction* hlo, int64_t id) {
+    return match_partition_id(hlo) ? id : -1;
+  };
+}
+
 }  // namespace
 
 std::optional<ReduceScatterSpec> MatchReduceScatter(
@@ -542,6 +625,77 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     return std::nullopt;
   }
   return spec;
+}
+
+bool IsDynamicSlicingLocalDeviceFromAllGather(
+    HloInstruction* ds, HloAllGatherInstruction* all_gather,
+    int64_t num_partitions, int64_t num_replicas, bool is_cross_module,
+    bool use_global_device_ids) {
+  // Check if the user is a DynamicSlice.
+  if (ds->opcode() != HloOpcode::kDynamicSlice) {
+    return false;
+  }
+
+  const HloInstruction* ag_operand = all_gather->operand(0);
+  int64_t all_gather_dimension = all_gather->all_gather_dimension();
+
+  int64_t shard_size = ag_operand->shape().dimensions(all_gather_dimension);
+
+  // The offset operand index in DynamicSlice is 1 + dimension index.
+  int64_t operand_index = all_gather_dimension + 1;
+  if (operand_index >= ds->operand_count()) {
+    VLOG(2) << "DynamicSlice operand index is out of bounds.";
+    return false;
+  }
+  const HloInstruction* offset_hlo = ds->operand(operand_index);
+
+  MapIdToTableOffset map_id = CreateMapIdFn(
+      is_cross_module, use_global_device_ids, num_partitions, num_replicas,
+      all_gather, HloPredicateIsOp<HloOpcode::kPartitionId>,
+      HloPredicateIsOp<HloOpcode::kReplicaId>);
+  int64_t group_size = GetGroupSize(is_cross_module, use_global_device_ids,
+                                    num_partitions, num_replicas, all_gather);
+
+  // IsPerIdOffset checks if the offset for the j-th device (partition_id)
+  // is equal to shard_size * j.
+  if (IsPerIdOffset(offset_hlo, shard_size, map_id, group_size, all_gather,
+                    is_cross_module, use_global_device_ids)) {
+    return true;
+  }
+  HloInstruction* shard_size_constant;
+  HloInstruction* offset_constant;
+  int64_t dynamic_slice_size_in_ag_dim =
+      ds->dynamic_slice_sizes()[all_gather_dimension];
+  if (Match(ds, m::DynamicSlice().WithOperand(
+                    operand_index,
+                    m::Add(m::MultiplyAnyOrder(
+                               m::Convert((m::AnyOf<HloInstruction>(
+                                   m::PartitionId(), m::ReplicaId()))),
+                               m::Constant(&shard_size_constant)),
+                           m::Constant(&offset_constant))))) {
+    std::optional<int64_t> shard_size_constant_value =
+        GetScalarInt64Value(shard_size_constant);
+    if (!shard_size_constant_value.has_value() ||
+        shard_size_constant_value != shard_size) {
+      VLOG(2) << "Constant does not match the shard size: "
+              << shard_size_constant->ToString();
+      return false;
+    }
+    std::optional<int64_t> offset_constant_value =
+        GetScalarInt64Value(offset_constant);
+    if (!offset_constant_value.has_value()) {
+      VLOG(2) << "Offset is not a constant: " << offset_constant->ToString();
+      return false;
+    }
+    if (*offset_constant_value + dynamic_slice_size_in_ag_dim <= shard_size) {
+      return true;
+    }
+    VLOG(2) << "Offset is invalid for shard size: " << shard_size << " "
+            << "offset_value: " << *offset_constant_value << " "
+            << "dynamic_slice_size_in_ag_dim: " << dynamic_slice_size_in_ag_dim;
+  }
+  VLOG(2) << "The match pattern is not recognized: " << offset_hlo->ToString();
+  return false;
 }
 
 std::optional<SplitDimSpec> ExtractSplitDimSpec(
@@ -899,70 +1053,24 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   HloInstruction* user = ds_user->dynamic_slice;
   HloInstruction* reshape = ds_user->reshape;
 
+  MapIdToTableOffset map_id = CreateMapIdFn(
+      is_cross_module, use_global_device_ids, num_partitions, num_replicas,
+      instruction, match_partition_id, match_replica_id);
+  std::optional<int64_t> optional_group_size =
+      GetGroupSize(is_cross_module, use_global_device_ids, num_partitions,
+                   num_replicas, instruction);
+  if (!optional_group_size) {
+    return std::nullopt;
+  }
+  int64_t group_size = *optional_group_size;
+
   ReduceScatterSpec spec;
-  int64_t group_size;
-  MapIdToTableOffset map_id;
   spec.dynamic_slice = user;
   if (!is_cross_module) {
     spec.sharded_replicas = num_replicas;
-    group_size = instruction->replica_groups().empty()
-                     ? num_replicas
-                     : instruction->replica_groups()[0].replica_ids_size();
-    map_id = [&](const HloInstruction* hlo, int64_t id) {
-      return match_replica_id(hlo) ? id : -1;
-    };
   } else if (use_global_device_ids) {
     spec.sharded_replicas = num_replicas;
     spec.sharded_partitions = num_partitions;
-    group_size = instruction->replica_groups()[0].replica_ids_size();
-    bool orthogonal_replicas = true;
-    std::vector<int64_t> partition_id_to_index(num_partitions, -1);
-    for (int64_t g = 0; g < instruction->replica_groups().size(); ++g) {
-      const auto& group = instruction->replica_groups()[g];
-      for (int64_t i = 0; i < group.replica_ids_size(); ++i) {
-        int64_t global_id = group.replica_ids(i);
-        int64_t partition_id = global_id % num_partitions;
-        if (partition_id_to_index[partition_id] == -1) {
-          partition_id_to_index[partition_id] = i;
-          continue;
-        }
-        if (partition_id_to_index[partition_id] != i ||
-            global_id / num_partitions !=
-                group.replica_ids(0) / num_partitions) {
-          orthogonal_replicas = false;
-          break;
-        }
-      }
-    }
-    map_id = [&, orthogonal_replicas](const HloInstruction* hlo,
-                                      int64_t id) -> int64_t {
-      if (match_replica_id(hlo)) {
-        return num_partitions == 1 ? id : -1;
-      }
-      if (match_partition_id(hlo)) {
-        if (num_replicas == 1) {
-          return id;
-        }
-        return orthogonal_replicas ? id % num_partitions : -1;
-      }
-      auto is_replica_mul_num_partitions = [&](const HloInstruction* operand) {
-        return operand->opcode() == HloOpcode::kMultiply &&
-               ((operand->operand(0)->opcode() == HloOpcode::kReplicaId &&
-                 operand->operand(1)->IsConstant() &&
-                 GetScalarInt64Value(operand->operand(1)) == num_partitions) ||
-                (operand->operand(1)->opcode() == HloOpcode::kReplicaId &&
-                 operand->operand(0)->IsConstant() &&
-                 GetScalarInt64Value(operand->operand(0)) == num_partitions));
-      };
-      if (hlo->opcode() == HloOpcode::kAdd &&
-          ((match_partition_id(hlo->operand(0)) &&
-            is_replica_mul_num_partitions(hlo->operand(1))) ||
-           (match_partition_id(hlo->operand(1)) &&
-            is_replica_mul_num_partitions(hlo->operand(0))))) {
-        return id;
-      }
-      return -1;
-    };
   } else {
     // Right now all cross-partition all-reduces' subgroups refer to replicas
     // unless they use use_global_device_ids.
@@ -974,10 +1082,6 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
       return std::nullopt;
     }
     spec.sharded_partitions = num_partitions;
-    group_size = num_partitions;
-    map_id = [&](const HloInstruction* hlo, int64_t id) {
-      return match_partition_id(hlo) ? id : -1;
-    };
   }
   if (group_size < 2) {
     VLOG(2) << "Group_size < 2, nothing to do " << instruction->ToString();

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TESTS_TEST_UTILS_H_
 #define XLA_TESTS_TEST_UTILS_H_
 
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <optional>
@@ -57,6 +58,11 @@ class PseudorandomGenerator {
   std::mt19937 generator_;
 };
 
+// Lambda function type to extract known zeroes bitmask for the given dimension
+// of a DynamicSlice or DynamicUpdateSlice instruction.
+using GetIndexKnownZeroesFn =
+    std::function<std::optional<uint64_t>(const HloInstruction*, int64_t)>;
+
 // Generates a vector of arguments containing fake data. The number, shape and
 // layout of the arguments is appropriate for given HLO module.
 //
@@ -91,12 +97,18 @@ class PseudorandomGenerator {
 // TODO(b/79942829): Make interesting argument generation fast enough that using
 // pseudo_random does not save any noticeable amount of time so that the
 // parameter can be removed.
+//
+// If `generate_aligned_ds_indices` is true, the generated indices will be
+// aligned to the given alignment. If `get_index_known_zeroes` is set, the
+// generated indices will have the given number of zeroes in the given
+// dimension.
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random = true,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
     std::optional<int64_t> max_bits_of_precision = std::nullopt,
     std::minstd_rand0* engine = nullptr,
-    bool generate_aligned_ds_indices = false);
+    bool generate_aligned_ds_indices = false,
+    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
 
 // Overload which accepts a random number generator. This enables generation of
 // different random values with sequential calls to MakeFakeArguments by reusing
@@ -105,7 +117,8 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine,
     bool use_large_range = false, bool treat_gte_as_data_formatting = false,
     std::optional<int64_t> max_bits_of_precision = std::nullopt,
-    bool generate_aligned_ds_indices = false);
+    bool generate_aligned_ds_indices = false,
+    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
 
 // Check that a given module satisfies various constraints before trying to
 // execute it.
