@@ -143,7 +143,6 @@ class SharedBatchScheduler
     int num_batch_threads = port::MaxParallelism();
 
     // Total number of warmup threads, which will only process warmup requests.
-    // If positive, queues should be created with `enable_warmup_queue` = true.
     // Unlike real requests, warmup requests are CPU bound. Hence, when
     // `use_global_scheduler` is enabled, a separate thread pool for warmup
     // requests is useful to decrease model warmup time and derisk starving the
@@ -277,11 +276,6 @@ class SharedBatchScheduler
     // If true, queue implementation would split high priority and low priority
     // inputs into two sub queues.
     bool enable_priority_queue = false;
-
-    // If true, queue implementation splits warmup inputs from regular inputs,
-    // which will be processed by a separate pool of warmup threads.
-    // Requires: `num_warmup_threads` > 0 in the scheduler's options.
-    bool enable_warmup_queue = false;
 
     // A separate set of queue options for different priority inputs.
     // Use iff `enable_priority_queue` is true.
@@ -697,7 +691,8 @@ class Queue {
   using BatchPriorityKey = std::pair<int, int64_t>;
 
   Queue(const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
-        Env* env, ProcessBatchCallback process_batch_callback,
+        Env* env, bool enable_warmup_queue,
+        ProcessBatchCallback process_batch_callback,
         SchedulableBatchCallback schedulable_batch_callback,
         SchedulableBatchCallback schedulable_warmup_batch_callback);
 
@@ -862,6 +857,11 @@ class Queue {
 
   // The environment to use.
   Env* env_;
+
+  // If true, queue implementation splits warmup inputs from regular inputs,
+  // which will be processed by a separate pool of warmup threads.
+  // Requires: `num_warmup_threads` > 0 in the scheduler's options.
+  bool enable_warmup_queue_ = false;
 
   // The maximum batch size to be executed by `Queue::ProcessBatch`.
   // See the comment of QueueOptions and helper function
@@ -1094,15 +1094,6 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
     }
   }
 
-  if (options.enable_warmup_queue && options_.num_warmup_threads <= 0) {
-    return absl::InvalidArgumentError(
-        "If enable_warmup_queue is true, num_warmup_threads must be positive.");
-  }
-  if (!options.enable_warmup_queue && options_.num_warmup_threads > 0) {
-    return absl::InvalidArgumentError(
-        "If num_warmup_threads > 0, enable_warmup_queue must be true.");
-  }
-
   auto schedulable_batch_callback = [this] {
     mutex_lock l(mu_);
     schedulable_batch_cv_.notify_one();
@@ -1113,8 +1104,9 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
   };
   auto internal_queue =
       std::unique_ptr<internal::Queue<TaskType>>(new internal::Queue<TaskType>(
-          options, options_.env, process_batch_callback,
-          schedulable_batch_callback, schedulable_warmup_batch_callback));
+          options, options_.env, options_.num_warmup_threads > 0,
+          process_batch_callback, schedulable_batch_callback,
+          schedulable_warmup_batch_callback));
   auto handle = std::unique_ptr<BatchScheduler<TaskType>>(
       new internal::QueueHandle<TaskType>(this->shared_from_this(),
                                           internal_queue.get()));
@@ -1283,7 +1275,8 @@ namespace internal {
 template <typename TaskType>
 Queue<TaskType>::Queue(
     const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
-    Env* env, ProcessBatchCallback process_batch_callback,
+    Env* env, bool enable_warmup_queue,
+    ProcessBatchCallback process_batch_callback,
     SchedulableBatchCallback schedulable_batch_callback,
     SchedulableBatchCallback schedulable_warmup_batch_callback)
     : tasks_priority_queue_(
@@ -1292,6 +1285,7 @@ Queue<TaskType>::Queue(
           GetMaxExecutionBatchSize(options), options.batch_timeout_micros, env),
       options_(options),
       env_(env),
+      enable_warmup_queue_(enable_warmup_queue),
       max_execution_batch_size_(GetMaxExecutionBatchSize(options_)),
       process_batch_callback_(process_batch_callback),
       schedulable_batch_callback_(schedulable_batch_callback),
@@ -1313,7 +1307,7 @@ Queue<TaskType>::~Queue() {
 
 template <typename TaskType>
 bool Queue<TaskType>::IsWarmupTask(std::unique_ptr<TaskType>* task) {
-  if (!options_.enable_warmup_queue) {
+  if (!enable_warmup_queue_) {
     return false;
   }
   if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
