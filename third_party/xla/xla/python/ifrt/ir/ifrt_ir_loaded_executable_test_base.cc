@@ -13,17 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/python/ifrt/ir/tests/executable_impl_test_base.h"
+#include "xla/python/ifrt/ir/ifrt_ir_loaded_executable_test_base.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -48,24 +52,23 @@ limitations under the License.
 #include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 namespace test_util {
 
-IfrtIrExecutableImplTestBase::IfrtIrExecutableImplTestBase() {
+IfrtIrLoadedExecutableTestBase::IfrtIrLoadedExecutableTestBase() {
   mlir::registerMLIRContextCLOptions();
   xla::ifrt::support::RegisterMlirDialects(mlir_context_);
 }
 
-void IfrtIrExecutableImplTestBase::SetUp() {
+void IfrtIrLoadedExecutableTestBase::SetUp() {
   TF_ASSERT_OK_AND_ASSIGN(client_, GetClient());
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-IfrtIrExecutableImplTestBase::LoadFromSource(absl::string_view source) {
+IfrtIrLoadedExecutableTestBase::LoadFromSource(absl::string_view source) {
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(&mlir_context_);
   auto op_ref = mlir::parseSourceString<mlir::ModuleOp>(source, &mlir_context_);
   if (!op_ref) {
@@ -77,7 +80,7 @@ IfrtIrExecutableImplTestBase::LoadFromSource(absl::string_view source) {
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
-IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
+IfrtIrLoadedExecutableTestBase::LoadFromFile(absl::string_view file_path) {
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(&mlir_context_);
   auto op_ref =
       mlir::parseSourceFile<mlir::ModuleOp>(file_path, &mlir_context_);
@@ -90,13 +93,13 @@ IfrtIrExecutableImplTestBase::LoadFromFile(absl::string_view file_path) {
 }
 
 absl::StatusOr<std::unique_ptr<IfrtIRProgram>>
-IfrtIrExecutableImplTestBase::SerDeRoundTrip(
+IfrtIrLoadedExecutableTestBase::SerDeRoundTrip(
     std::unique_ptr<IfrtIRProgram> program,
     Version::CompatibilityRequirement compatibility_requirement) {
   // Ensure the atom programs are outlined to modules. If the atom programs are
   // already outlined, this pipeline will do nothing.
   mlir::PassManager pm(program->mlir_module.getContext());
-  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
+  createIfrtToOutlinedAtomProgramsPipeline(pm);
   mlir::BaseScopedDiagnosticHandler diag_handler(
       program->mlir_module.getContext());
   if (mlir::failed(pm.run(program->mlir_module))) {
@@ -122,7 +125,7 @@ IfrtIrExecutableImplTestBase::SerDeRoundTrip(
   return program;
 }
 
-absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
+absl::StatusOr<ArrayRef> IfrtIrLoadedExecutableTestBase::CreateArray(
     absl::Span<void* const> per_shard_data, Shape shape, DType dtype,
     ShardingParam sharding_param, DeviceListRef device_list) {
   TF_RET_CHECK(per_shard_data.size() == device_list->devices().size())
@@ -133,8 +136,7 @@ absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
       ShardingParamSharding::Create(sharding_param, device_list, MemoryKind()));
   TF_ASSIGN_OR_RETURN(
       auto per_shard,
-      sharding->Disassemble(shape,
-                            xla::ifrt::SingleDeviceShardSemantics::kAllShards));
+      sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
   // All shards have the same shape. Just pick 0.
   Shape per_shard_shape = per_shard[0].first;
   std::vector<ArrayRef> per_shard_arrays;
@@ -154,15 +156,46 @@ absl::StatusOr<ArrayRef> IfrtIrExecutableImplTestBase::CreateArray(
   return client_->AssembleArrayFromSingleDeviceArrays(
       dtype, shape, sharding, absl::MakeSpan(per_shard_arrays),
       ArrayCopySemantics::kAlwaysCopy,
-      xla::ifrt::SingleDeviceShardSemantics::kAddressableShards);
+      SingleDeviceShardSemantics::kAddressableShards);
 }
 
-absl::StatusOr<DeviceListRef> IfrtIrExecutableImplTestBase::PickDevices(
-    int count) {
-  absl::Span<Device* const> devices = client_->devices();
-  TF_RET_CHECK(count <= devices.size())
-      << "Requested " << count << " devices. Only have " << devices.size();
-  return client_->MakeDeviceList(devices.first(count));
+int32_t IfrtIrLoadedExecutableTestBase::GetNumDevices() {
+  return client_->devices().size();
+}
+
+absl::StatusOr<DeviceListRef> IfrtIrLoadedExecutableTestBase::PickDevices(
+    int count, std::optional<absl::string_view> platform_name) {
+  if (!platform_name.has_value()) {
+    absl::Span<Device* const> devices = client_->devices();
+    TF_RET_CHECK(count <= devices.size())
+        << "Requested " << count << " devices. Only have " << devices.size();
+    return client_->MakeDeviceList(devices.first(count));
+  }
+
+  if (*platform_name == "cpu") {
+    absl::InlinedVector<Device*, 1> cpu_devices;
+    cpu_devices.reserve(count);
+    for (Device* const device : client_->GetAllDevices()) {
+      auto platform_name =
+          device->Attributes().Get<std::string>("platform_name");
+      if (!platform_name.ok()) {
+        continue;
+      }
+      if (*platform_name == "cpu") {
+        cpu_devices.push_back(device);
+        if (cpu_devices.size() == count) {
+          break;
+        }
+      }
+    }
+    TF_RET_CHECK(count <= cpu_devices.size())
+        << "Requested " << count << " devices. Only have "
+        << cpu_devices.size();
+    return client_->MakeDeviceList(cpu_devices);
+  }
+
+  return absl::InvalidArgumentError(
+      absl::Substitute("Unsupported device type $0.", *platform_name));
 }
 
 }  // namespace test_util

@@ -88,8 +88,11 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/ir_printing.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
@@ -101,6 +104,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -190,11 +194,76 @@ absl::Status CreateInternalError(absl::string_view message,
   return absl::InternalError(err);
 }
 
+absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
+    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    const se::DeviceDescription& device_info,
+    const BlockLevelParameters& block_level_parameters,
+    absl::Span<mlir::Type> opaque_args_types, mlir::MLIRContext& mlir_context,
+    bool use_experimental_tiling) {
+  const HloComputation* computation = fusion->fused_instructions_computation();
+
+  if (use_experimental_tiling) {
+    using experimental::TileAnalysisOrError;
+    using experimental::TiledHloComputation;
+    using experimental::TilingSpace;
+
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+    std::unique_ptr<TilingSpace> tiling_space =
+        TilingSpace::Create(*fusion_adaptor, &mlir_context);
+
+    // TODO(pifon): Support contraction tile sizes here.
+    if (block_level_parameters.output_tile_sizes.size() != 1) {
+      return Internal(
+          "Only single-result fusions are supported for now. Received %d "
+          "roots.",
+          block_level_parameters.output_tile_sizes.size());
+    }
+    tiling_space->AssignTileSizes(
+        block_level_parameters.output_tile_sizes.front());
+
+    TileAnalysisOrError tiled_computation_or =
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
+    if (std::holds_alternative<FusionDecision>(tiled_computation_or)) {
+      return Internal("Unsupported fusion in CreateTritonModule: %s",
+                      std::get<FusionDecision>(tiled_computation_or).Explain());
+    }
+    const auto& tiled_computation =
+        std::get<TiledHloComputation>(tiled_computation_or);
+    return xtile::EmitXTileModule(
+        fn_name, fusion, tiled_computation, mlir_context,
+        absl::MakeSpan(opaque_args_types),
+        std::make_optional(device_info.gpu_compute_capability()));
+  }
+  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
+      SymbolicTileAnalysis::AnalyzeComputation(
+          *computation, &mlir_context,
+          TritonEmitterConstraints::GetBuilder(device_info));
+
+  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
+    return Internal(
+        "Unsupported fusion in CreateTritonModule: %s",
+        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
+  }
+
+  const auto& symbolic_tile_analysis =
+      std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
+
+  TF_ASSIGN_OR_RETURN(
+      Tiling tiling,
+      ir_emitter_triton_internal::TilingFromAnnotatedFusion(
+          fusion, symbolic_tile_analysis, block_level_parameters));
+
+  return xtile::EmitXTileModule(
+      fn_name, fusion, symbolic_tile_analysis, tiling, mlir_context,
+      absl::MakeSpan(opaque_args_types),
+      std::make_optional(device_info.gpu_compute_capability()));
+}
+
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    MLIRContext& mlir_context) {
+    MLIRContext& mlir_context, bool use_experimental_tiling) {
   LoadMlirDialectsForTriton(mlir_context);
   RegisterSymbolicExprStorage(&mlir_context);
 
@@ -242,34 +311,13 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
         AddCollectiveMetadataArguments(opaque_args_types, b, hlo_computation));
   }
 
-  const HloComputation* computation = fusion->fused_instructions_computation();
-  SymbolicTileAnalysisOrError symbolic_tile_analysis_or =
-      SymbolicTileAnalysis::AnalyzeComputation(
-          *computation, &mlir_context,
-          TritonEmitterConstraints::GetBuilder(device_info));
+  TF_ASSIGN_OR_RETURN(auto triton_module,
+                      TileAndEmitXTileModule(
+                          fn_name, fusion, device_info, block_level_parameters,
+                          absl::MakeSpan(opaque_args_types), mlir_context,
+                          use_experimental_tiling));
 
-  if (std::holds_alternative<FusionDecision>(symbolic_tile_analysis_or)) {
-    return Internal(
-        "Unsupported fusion in EmitGeneric: %s",
-        std::get<FusionDecision>(symbolic_tile_analysis_or).Explain());
-  }
-
-  const auto& symbolic_tile_analysis =
-      std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
-
-  TF_ASSIGN_OR_RETURN(
-      Tiling tiling,
-      ir_emitter_triton_internal::TilingFromAnnotatedFusion(
-          fusion, symbolic_tile_analysis, block_level_parameters));
-
-  TF_ASSIGN_OR_RETURN(
-      auto triton_module,
-      xtile::EmitXTileModule(
-          fn_name, fusion, symbolic_tile_analysis, tiling, mlir_context,
-          absl::MakeSpan(opaque_args_types),
-          std::make_optional(device_info.gpu_compute_capability())));
   const auto debug_options = fusion->GetModule()->config().debug_options();
-
   if (DumpingEnabledForHloModule(*hlo_computation->parent()) &&
       DumpingEnabledForEmitter("triton-fusion", debug_options)) {
     auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir.txt");
@@ -332,9 +380,15 @@ absl::StatusOr<TritonWrapperResult> TritonWrapper(
     llvm::LLVMContext& llvm_context, MLIRContext& mlir_context) {
   TF_RETURN_IF_ERROR(CheckAtLeastAmpere(gpu_cc));
 
-  TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> triton_module,
-                      CreateTritonModule(fn_name, fusion, device_info,
-                                         block_level_parameters, mlir_context));
+  bool use_experimental_tiling =
+      fusion->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation();
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> triton_module,
+      CreateTritonModule(fn_name, fusion, device_info, block_level_parameters,
+                         mlir_context, use_experimental_tiling));
 
   VLOG(3) << fusion->ToString(HloPrintOptions::ShortParsable());
   VLOG(3) << fusion->fused_instructions_computation()->ToString(

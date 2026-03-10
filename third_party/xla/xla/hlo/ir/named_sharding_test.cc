@@ -34,14 +34,29 @@ using ::testing::ElementsAre;
 
 TEST(NamedShardingTest, CanonicalizedDimShardings) {
   Mesh mesh_abcd({2, 4}, {"a", "b"});
-
-  DimensionSharding empty_ds;
-  NamedSharding sharding1(mesh_abcd, {empty_ds, empty_ds});
-  EXPECT_TRUE(sharding1.dim_shardings().empty());
-
   DimensionSharding ds_a({AxisRef(0)}, /*is_closed=*/true);
-  NamedSharding sharding2(mesh_abcd, {ds_a, empty_ds});
+
+  NamedSharding sharding2(mesh_abcd, {ds_a, DimensionSharding()});
+
   EXPECT_FALSE(sharding2.dim_shardings().empty());
+}
+TEST(NamedShardingTest, CanonicalizedDimShardingsEmptyDims) {
+  Mesh mesh_abcd({2, 4}, {"a", "b"});
+  DimensionSharding empty_ds;
+
+  NamedSharding sharding1(mesh_abcd, {empty_ds, empty_ds});
+
+  EXPECT_TRUE(sharding1.dim_shardings().empty());
+}
+TEST(NamedShardingTest, CanonicalizedDimShardingsOpenShardings) {
+  // Dimension sharding should not be canonicalized to empty if any of the
+  // shardings are open.
+  Mesh mesh_abcd({2, 4}, {"a", "b"});
+  DimensionSharding empty_open_ds({}, /*is_closed=*/false);
+
+  NamedSharding sharding3(mesh_abcd, {DimensionSharding(), empty_open_ds});
+
+  EXPECT_FALSE(sharding3.dim_shardings().empty());
 }
 
 TEST(NamedShardingTest, AxisNameCtor) {
@@ -188,8 +203,8 @@ TEST(NamedShardingTest, ToString) {
             "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [], replicated={'c'}}");
 
   Mesh maximal_mesh(5);
-  NamedSharding maximal_sharding(maximal_mesh);
-  EXPECT_EQ(maximal_sharding.ToString(), "{maximal_mesh[device_id=5]}");
+  NamedSharding single_device_sharding(maximal_mesh);
+  EXPECT_EQ(single_device_sharding.ToString(), "{maximal_mesh[device_id=5]}");
 
   NamedSharding sharding_fully_unreduced = NamedSharding::Unreduced(mesh);
   EXPECT_EQ(sharding_fully_unreduced.ToString(),
@@ -464,20 +479,6 @@ TEST(NamedShardingTest, GetShardedSize) {
   EXPECT_EQ(ds_empty.getShardedSize(mesh), 1);
 }
 
-TEST(NamedShardingTest, AxisNames) {
-  Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
-
-  AxisRef axis_a(0);
-  AxisRef axis_b(1);
-  AxisRef axis_c(2);
-
-  DimensionSharding ds_abc({axis_a, axis_b, axis_c}, /*is_closed=*/true);
-  EXPECT_THAT(ds_abc.axis_names(mesh), ElementsAre("a", "b", "c"));
-
-  DimensionSharding ds_empty({}, /*is_closed=*/true);
-  EXPECT_TRUE(ds_empty.axis_names(mesh).empty());
-}
-
 TEST(NamedShardingTest, Dimension) {
   Mesh mesh({2, 4, 3, 8}, {"a", "b", "c", "d"});
 
@@ -523,8 +524,8 @@ TEST(NamedShardingTest, NumDevices) {
   EXPECT_EQ(sharding.num_devices(), 2 * 4 * 3 * 8);
 
   Mesh maximal_mesh(5);
-  NamedSharding maximal_sharding(maximal_mesh);
-  EXPECT_EQ(maximal_sharding.num_devices(), 1);
+  NamedSharding single_device_sharding(maximal_mesh);
+  EXPECT_EQ(single_device_sharding.num_devices(), 1);
 
   Mesh empty_mesh;
   NamedSharding empty_sharding(empty_mesh);
@@ -639,7 +640,7 @@ TEST(NamedShardingPredicatesTest, IsReplicated) {
   Mesh mesh({2, 2}, {"a", "b"});
   NamedSharding sharding(mesh);
   EXPECT_TRUE(sharding.IsReplicated());
-  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsUnreduced());
 }
@@ -647,7 +648,7 @@ TEST(NamedShardingPredicatesTest, IsReplicated) {
 TEST(NamedShardingPredicatesTest, IsMaximal) {
   Mesh mesh(1);
   NamedSharding sharding(mesh);
-  EXPECT_TRUE(sharding.IsMaximal());
+  EXPECT_TRUE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsReplicated());
   EXPECT_FALSE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsUnreduced());
@@ -658,7 +659,7 @@ TEST(NamedShardingPredicatesTest, IsUnreduced) {
   NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {"a", "b"});
   EXPECT_TRUE(sharding1.IsUnreduced());
   EXPECT_FALSE(sharding1.IsReplicated());
-  EXPECT_FALSE(sharding1.IsMaximal());
+  EXPECT_FALSE(sharding1.IsSingleDevice());
   EXPECT_FALSE(sharding1.IsManual());
 }
 TEST(NamedShardingPredicatesTest, IsUnreducedDoesntContainAllAxes) {
@@ -666,7 +667,7 @@ TEST(NamedShardingPredicatesTest, IsUnreducedDoesntContainAllAxes) {
   NamedSharding sharding1 = test_utils::FromAxisNames(mesh, {}, {}, {"a"});
   EXPECT_FALSE(sharding1.IsUnreduced());
   EXPECT_FALSE(sharding1.IsReplicated());
-  EXPECT_FALSE(sharding1.IsMaximal());
+  EXPECT_FALSE(sharding1.IsSingleDevice());
   EXPECT_FALSE(sharding1.IsManual());
 }
 
@@ -676,7 +677,7 @@ TEST(NamedShardingPredicatesTest, IsManual) {
       test_utils::FromAxisNames(mesh, {}, {}, {}, {"a", "b"});
   EXPECT_TRUE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsReplicated());
-  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsUnreduced());
 }
 TEST(NamedShardingPredicatesTest, IsManualDoesntContainAllAxes) {
@@ -684,7 +685,7 @@ TEST(NamedShardingPredicatesTest, IsManualDoesntContainAllAxes) {
   NamedSharding sharding = test_utils::FromAxisNames(mesh, {}, {}, {}, {"a"});
   EXPECT_FALSE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsReplicated());
-  EXPECT_FALSE(sharding.IsMaximal());
+  EXPECT_FALSE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsUnreduced());
 }
 
@@ -805,6 +806,17 @@ TEST(NamedShardingPredicatesTest, HasPartialReplication_UnreducedWithSubAxes) {
                                          /*replicated_axes=*/{},
                                          /*unreduced_axes=*/{"a:(1)2"})
                    .HasPartialReplication());
+}
+
+TEST(NamedShardingTest, JaxPartitions) {
+  Mesh mesh({2, 4, 3, 5}, {"a", "b", "c", "d"});
+  NamedSharding sharding =
+      test_utils::FromAxisNames(mesh, {{"a", "b"}, {}, {"c"}});
+  EXPECT_THAT(
+      sharding.JaxPartitions(),
+      ElementsAre(ElementsAre("a", "b"), ElementsAre(), ElementsAre("c")));
+
+  EXPECT_TRUE(NamedSharding::Replicate().JaxPartitions().empty());
 }
 
 }  // namespace

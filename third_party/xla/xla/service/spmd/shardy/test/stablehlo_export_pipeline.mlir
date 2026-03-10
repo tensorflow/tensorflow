@@ -14,6 +14,22 @@ sdy.mesh @empty_mesh_1 = <[]>
 
 // CHECK-NOT: sdy.mesh
 
+// CHECK-LABEL: func @open_dim_shardings(
+// CHECK-V2-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
+// CHECK-V2-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
+// CHECK-V2-SAME:      %arg2: tensor<8x16xf32> {mhlo.sharding = "{devices=[1,16]<=[16]}"})
+// CHECK-V3-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh['axis_0'=16], [{?}, {}]}"},
+// CHECK-V3-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{mesh['axis_0'=16], replicated}"},
+// CHECK-V3-SAME:      %arg2: tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=16], [{?}, {'axis_0', ?}]}"})
+// CHECK-SAME:  -> tensor<8x16xf32> {
+func.func @open_dim_shardings(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{?}, {}]>},
+                              %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>},
+                              %arg2: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{?}, {"axis_0", ?}]>}) -> tensor<8x16xf32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %1 = stablehlo.dot %0, %arg2 : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %1 : tensor<8x16xf32>
+}
+
 // CHECK-LABEL: func @non_trivial_common_mesh(
 // CHECK-V2-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,8]<=[8,4]T(1,0)}"},
 // CHECK-V2-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{devices=[1,2,16]<=[32] last_tile_dim_replicate}"},
@@ -640,7 +656,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
   return %1 : tensor<4x16xf32>
 }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"},
 // CHECK-V2-SAME{LITERAL}:     %arg1: tensor<8x32xf32> {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<4x32xf32> {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"}) {
@@ -658,7 +674,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[SINE]] : tensor<4x32xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_0
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_0
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"}) {
 // CHECK-V2-NEXT:            %[[CALL:.*]] = call @foo(%arg0) {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"} : (tensor<4x2xi32>) -> tensor<4x2xi32>
@@ -668,7 +684,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[CALL]] : tensor<4x2xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_1
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_1
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<1xi32> {mhlo.sharding = "{manual}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<1xi32> {mhlo.sharding = "{manual}"}) {
 // CHECK-V2-NEXT:            %[[CALL:.*]] = call @foo_0(%arg0) {mhlo.sharding = "{manual}"} : (tensor<1xi32>) -> tensor<1xi32>
@@ -678,7 +694,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[CALL]] : tensor<1xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_2
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_2
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<4x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"}) {
 // CHECK-V2-NEXT:            %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"} : tensor<4x8xf32>
@@ -690,7 +706,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[COPY]] : tensor<4x8xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_3
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_3
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<1x2xi32> {mhlo.sharding = "{manual}"})
 // CHECK-V2-SAME{LITERAL}:      -> (tensor<1x2xi32> {mhlo.sharding = "{manual}"}) {
 // CHECK-V2-NEXT:            %[[C0:.*]] = stablehlo.constant {mhlo.sharding = "{manual}"} dense<0> : tensor<i32>
@@ -712,7 +728,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[WHILE]]#0 : tensor<1x2xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_4
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_4
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{manual}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<4x8xf32> {mhlo.sharding = "{manual}"}) {
 // CHECK-V3-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{mesh['i'=2,'j'=2], manual}"})
@@ -728,7 +744,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[ALL_REDUCE]] : tensor<4x8xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_5
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_5
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<2x16xf32> {mhlo.sharding = "{manual}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<2x16xf32> {mhlo.sharding = "{manual}"}) {
 // CHECK-V3-SAME{LITERAL}:     %arg0: tensor<2x16xf32> {mhlo.sharding = "{mesh['i'=2,'j'=2], manual}"})
