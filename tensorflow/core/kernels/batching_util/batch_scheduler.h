@@ -100,6 +100,9 @@ class BatchTask {
     return tsl::criticality::Criticality::kCritical;
   }
 
+  // If true, the task is a warmup task.
+  virtual bool is_warmup() const { return false; }
+
   // Called when the task is finished, either successfully or with an error.
   //
   // BatchScheduler guarantees that this method is invoked exactly once for each

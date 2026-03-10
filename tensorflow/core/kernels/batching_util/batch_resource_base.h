@@ -144,6 +144,11 @@ class BatchResourceBase : public ResourceBase {
     // batch is processed, but is not propagated to the kernel outputs.
     int forced_warmup_batch_size = 0;
 
+    // If true, the task is a warmup task.
+    bool is_warmup_task = false;
+
+    bool is_warmup() const override { return is_warmup_task; }
+
     // 'status' records error (could be from any split) if at least one split
     // returns error, OK otherwise.
     // Ownership is shared by individual splits and callback.

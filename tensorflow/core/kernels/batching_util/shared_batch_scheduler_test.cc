@@ -77,6 +77,9 @@ class FakeTask : public BatchTask {
     return criticality_;
   }
 
+  bool is_warmup() const override { return is_warmup_; }
+  void set_is_warmup(bool is_warmup) { is_warmup_ = is_warmup; }
+
   void FinishTaskImpl(const absl::Status& status) override {
     if (status_storage_ != nullptr) {
       *status_storage_ = status;
@@ -91,6 +94,7 @@ class FakeTask : public BatchTask {
   const tsl::criticality::Criticality criticality_;
   std::shared_ptr<absl::Notification> done_notification_;
   std::shared_ptr<absl::Status> status_storage_;
+  bool is_warmup_ = false;
 
   FakeTask(const FakeTask&) = delete;
   void operator=(const FakeTask&) = delete;
@@ -4000,8 +4004,174 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
       batch_processed.WaitForNotificationWithTimeout(absl::Seconds(10)));
 }
 
+TEST_P(SharedBatchSchedulerPriorityAwareTest,
+       WarmupQueueIsCompatibleWithPriorityAwareScheduler) {
+  std::shared_ptr<Scheduler> shared_batch_scheduler;
+  Scheduler::Options scheduler_options;
+  scheduler_options.num_batch_threads = 1;
+  scheduler_options.num_warmup_threads = 1;
+  TF_ASSERT_OK(Scheduler::Create(scheduler_options, &shared_batch_scheduler));
+
+  absl::Notification batch_processing_started, batch_processing_continue;
+  absl::Notification warmup_processing_started, warmup_processing_continue;
+  QueueOptions queue_options = CreatePriorityAwareQueueOptions(
+      /*max_execution_batch_size=*/10,
+      /*batch_timeout_micros=*/1000, /*max_queue_depth=*/10);
+  queue_options.enable_warmup_queue = true;
+
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->task(0).is_warmup()) {
+      warmup_processing_started.Notify();
+      warmup_processing_continue.WaitForNotification();
+    } else {
+      batch_processing_started.Notify();
+      batch_processing_continue.WaitForNotification();
+    }
+  };
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Queue> warmup_queue,
+      CreateQueue(shared_batch_scheduler, queue_options, callback));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Queue> real_queue,
+      CreateQueue(shared_batch_scheduler, queue_options, callback));
+
+  // Schedule a regular task.
+  auto regular_task = std::make_unique<FakeTask>(1);
+  TF_EXPECT_OK(real_queue->Schedule(&regular_task));
+
+  // Wait for regular task to start processing.
+  EXPECT_TRUE(batch_processing_started.WaitForNotificationWithTimeout(
+      absl::Seconds(10)));
+
+  // Schedule a warmup task.
+  auto warmup_task = std::make_unique<FakeTask>(1);
+  warmup_task->set_is_warmup(true);
+  TF_EXPECT_OK(warmup_queue->Schedule(&warmup_task));
+
+  // Wait for warmup task to start processing.
+  // If they share the same thread pool (of size 1), this would block forever
+  // because regular task is holding the thread. Since they have separate pools,
+  // this should succeed.
+  EXPECT_TRUE(warmup_processing_started.WaitForNotificationWithTimeout(
+      absl::Seconds(10)));
+
+  // Unblock both.
+  batch_processing_continue.Notify();
+  warmup_processing_continue.Notify();
+}
+
 INSTANTIATE_TEST_SUITE_P(Parameter, SharedBatchSchedulerPriorityAwareTest,
                          ::testing::Bool());
+
+TEST(SharedBatchSchedulerPriorityPolicyTest,
+     WarmupTasksProcessedBySeparateThreadPool) {
+  // Create scheduler with 1 batch thread and 1 warmup thread.
+  Scheduler::Options options;
+  options.num_batch_threads = 1;
+  options.num_warmup_threads = 1;
+  std::shared_ptr<Scheduler> scheduler;
+  TF_ASSERT_OK(Scheduler::Create(options, &scheduler));
+
+  // Create queue with warmup enabled.
+  Scheduler::QueueOptions queue_options;
+  queue_options.input_batch_size_limit = 10;
+  queue_options.max_enqueued_batches = 10;
+  queue_options.enable_warmup_queue = true;
+
+  absl::Notification batch_processing_started, batch_processing_continue;
+  absl::Notification warmup_processing_started, warmup_processing_continue;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->task(0).is_warmup()) {
+      warmup_processing_started.Notify();
+      warmup_processing_continue.WaitForNotification();
+    } else {
+      batch_processing_started.Notify();
+      batch_processing_continue.WaitForNotification();
+    }
+  };
+
+  std::unique_ptr<BatchScheduler<FakeTask>> warmup_queue;
+  std::unique_ptr<BatchScheduler<FakeTask>> real_queue;
+  TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &warmup_queue));
+  TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &real_queue));
+
+  // Schedule a regular task.
+  auto regular_task = std::make_unique<FakeTask>(1);
+  TF_EXPECT_OK(real_queue->Schedule(&regular_task));
+
+  // Wait for regular task to start processing.
+  EXPECT_TRUE(batch_processing_started.WaitForNotificationWithTimeout(
+      absl::Seconds(10)));
+
+  // Schedule a warmup task.
+  auto warmup_task = std::make_unique<FakeTask>(1);
+  warmup_task->set_is_warmup(true);
+  TF_EXPECT_OK(warmup_queue->Schedule(&warmup_task));
+
+  // Wait for warmup task to start processing.
+  // If they share the same thread pool (of size 1), this would block forever
+  // because regular task is holding the thread. Since they have separate pools,
+  // this should succeed.
+  EXPECT_TRUE(warmup_processing_started.WaitForNotificationWithTimeout(
+      absl::Seconds(10)));
+
+  // Unblock both.
+  batch_processing_continue.Notify();
+  warmup_processing_continue.Notify();
+}
+
+TEST(SharedBatchSchedulerPriorityPolicyTest, WarmupQueueCapacityTest) {
+  // Create scheduler with 1 batch thread and 1 warmup thread.
+  Scheduler::Options options;
+  options.num_batch_threads = 1;
+  options.num_warmup_threads = 1;
+  std::shared_ptr<Scheduler> scheduler;
+  TF_ASSERT_OK(Scheduler::Create(options, &scheduler));
+
+  // Create queue with warmup enabled.
+  Scheduler::QueueOptions queue_options;
+  queue_options.input_batch_size_limit = 10;
+  queue_options.max_enqueued_batches = 10;
+  queue_options.enable_warmup_queue = true;
+
+  absl::Notification t1_running, t1_continue;
+  auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+    if (batch->task(0).size() == 1) {
+      t1_running.Notify();
+      t1_continue.WaitForNotification();
+    }
+  };
+
+  std::unique_ptr<BatchScheduler<FakeTask>> warmup_queue;
+  TF_ASSERT_OK(scheduler->AddQueue(queue_options, callback, &warmup_queue));
+
+  // Schedule a warmup task (size 1).
+  auto task1 = std::make_unique<FakeTask>(1);
+  task1->set_is_warmup(true);
+  TF_EXPECT_OK(warmup_queue->Schedule(&task1));
+
+  // Wait for the first task to start processing.
+  EXPECT_TRUE(t1_running.WaitForNotificationWithTimeout(absl::Seconds(10)));
+
+  // Schedule another warmup task (size 2).
+  // This should succeed because the first task is being processed (so it's not
+  // in the queue), and the queue limit is 1.
+  auto task2 = std::make_unique<FakeTask>(2);
+  task2->set_is_warmup(true);
+  TF_EXPECT_OK(warmup_queue->Schedule(&task2));
+
+  // Schedule a third warmup task (size 3).
+  // This should fail because the second task is still in the queue.
+  auto task3 = std::make_unique<FakeTask>(3);
+  task3->set_is_warmup(true);
+  EXPECT_THAT(
+      warmup_queue->Schedule(&task3),
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Warmup queue only supports one task")));
+
+  // Allow the first task to complete.
+  t1_continue.Notify();
+}
 
 }  // namespace
 }  // namespace serving
