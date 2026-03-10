@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/kernel_stats.h"
 #include "xla/util.h"
@@ -330,7 +331,6 @@ class Executable {
       const ServiceExecutableRunOptions* run_options,
       std::vector<ExecutionInput> arguments);
 
-
   HloModule& module() const {
     CHECK(hlo_module_ != nullptr);
     return *hlo_module_;
@@ -432,6 +432,12 @@ class Executable {
       const ExecutableBuildOptions& options,
       const DebugOptions& debug_options) const {
     return absl::OkStatus();
+  }
+
+  virtual absl::StatusOr<stream_executor::ExecutableAbiVersion>
+  GetExecutableAbiVersion() const {
+    return absl::UnimplementedError(
+        "ExecutableAbiVersion is not supported by this executable.");
   }
 
  private:

@@ -125,13 +125,23 @@ absl::Status CommandBufferThunk::Prepare(const PrepareParams& params) {
     return absl::OkStatus();
   }
 
-  TF_RETURN_IF_ERROR(commands_.Prepare(params));
-
   // Always prepare thunks if they are present so we are ready to fall back
   // on them if we detect profiling activity.
   if (thunks_) {
     TF_RETURN_IF_ERROR(thunks_->Prepare(params));
   }
+
+  // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
+  // memory corruption.
+  if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_ &&
+      !enable_command_buffers_during_profiling_) {
+    VLOG(1) << "Prepare command buffer thunk as a regular thunk sequence "
+               "because we detected active profiling session";
+    TraceMe trace("WARNING: CommandBuffer disabled when profiling");
+    return absl::OkStatus();
+  }
+
+  TF_RETURN_IF_ERROR(commands_.Prepare(params));
 
   return absl::OkStatus();
 }
@@ -154,6 +164,16 @@ absl::Status CommandBufferThunk::Initialize(const InitializeParams& params) {
   // on them if we detect profiling activity.
   if (thunks_) {
     TF_RETURN_IF_ERROR(thunks_->Initialize(params));
+  }
+
+  // TODO(b/290773547): Disabled CUDA graphs when profiling is active because of
+  // memory corruption.
+  if (tsl::profiler::ProfilerLock::HasActiveSession() && thunks_ &&
+      !enable_command_buffers_during_profiling_) {
+    VLOG(1) << "Initialize command buffer thunk as a regular thunk sequence "
+               "because we detected active profiling session";
+    TraceMe trace("WARNING: CommandBuffer disabled when profiling");
+    return absl::OkStatus();
   }
 
   // If there are no thunks, or command buffer does not require initialization,

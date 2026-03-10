@@ -492,9 +492,7 @@ cc_library(
         ":rocm_tracer_utils",
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
-        "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:str_format",
@@ -503,10 +501,6 @@ cc_library(
         "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocprofiler-sdk",  # buildcleaner: keep
         "@tsl//tsl/platform:abi",
-        "@tsl//tsl/platform:errors",
-        "@tsl//tsl/platform:macros",
-        "@tsl//tsl/platform:status",
-        "@tsl//tsl/platform:types",
     ],
 )
 

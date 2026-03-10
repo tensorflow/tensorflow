@@ -138,42 +138,28 @@ TfLiteStatus EvalGatherNd(TfLiteContext* context, const TfLiteTensor* params,
   TF_LITE_ENSURE(context, indices_has_only_positive_elements);
 
   TfLiteStatus status = kTfLiteError;
-  switch (params->type) {
-    case kTfLiteBFloat16:
-      status = GatherNd<Eigen::bfloat16, IndicesT>(params, indices, output);
-      break;
-    case kTfLiteFloat16:
-      status = GatherNd<Eigen::half, IndicesT>(params, indices, output);
-      break;
-    case kTfLiteFloat32:
-      status = GatherNd<float, IndicesT>(params, indices, output);
-      break;
-    case kTfLiteUInt8:
-      status = GatherNd<uint8_t, IndicesT>(params, indices, output);
-      break;
-    case kTfLiteInt8:
-      status = GatherNd<int8_t, IndicesT>(params, indices, output);
-      break;
-    case kTfLiteInt16:
-      status = GatherNd<int16_t, IndicesT>(params, indices, output);
-      break;
-    case kTfLiteInt32:
-      status = GatherNd<int32_t, IndicesT>(params, indices, output);
-      break;
-    case kTfLiteInt64:
-      status = GatherNd<int64_t, IndicesT>(params, indices, output);
-      break;
-    case kTfLiteString:
-      status = GatherNdString<IndicesT>(params, indices, output);
-      break;
-    case kTfLiteBool:
-      status = GatherNd<bool, IndicesT>(params, indices, output);
-      break;
-    default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Params type '%s' are not supported by gather_nd.",
-                         TfLiteTypeGetName(params->type));
-      return kTfLiteError;
+  if (params->type == kTfLiteString) {
+    status = GatherNdString<IndicesT>(params, indices, output);
+  } else {
+    switch (TfLiteTypeGetSizeBits(params->type)) {
+      case 8:
+        status = GatherNd<uint8_t, IndicesT>(params, indices, output);
+        break;
+      case 16:
+        status = GatherNd<int16_t, IndicesT>(params, indices, output);
+        break;
+      case 32:
+        status = GatherNd<int32_t, IndicesT>(params, indices, output);
+        break;
+      case 64:
+        status = GatherNd<int64_t, IndicesT>(params, indices, output);
+        break;
+      default:
+        TF_LITE_KERNEL_LOG(context,
+                           "Params type '%s' are not supported by gather_nd.",
+                           TfLiteTypeGetName(params->type));
+        return kTfLiteError;
+    }
   }
   if (status != kTfLiteOk) {
     TF_LITE_KERNEL_LOG(context, "gather_nd index out of bounds");
