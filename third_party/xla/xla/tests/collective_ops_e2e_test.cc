@@ -2421,6 +2421,42 @@ TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim1OutputIsCorrect) {
   }
 }
 
+TEST_F(CollectiveOpsTestE2E, AllGatherOnChangedDimensionIsCorrect) {
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "The test requires at least " << kNumReplicas << " devices";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule m, replica_count=2
+  e {
+    a = u32[2,2,3] constant({{{0,1,2},{3,4,5}},{{6,7,8},{9,10,11}}})
+    g = u32[2,4,3] all-gather(a), dimensions={1}
+  })",
+                                                       kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(unoptimized_module),
+                                           /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AllGatherDone(
+                        m::AllGatherStart(m::Bitcast(m::Constant()))))));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Transpose(m::Bitcast(m::Parameter()))));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), {{}, {}}));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  Literal expected = LiteralUtil::CreateR3<uint32_t>(
+      {{{0, 1, 2}, {3, 4, 5}, {0, 1, 2}, {3, 4, 5}},
+       {{6, 7, 8}, {9, 10, 11}, {6, 7, 8}, {9, 10, 11}}});
+  for (const Literal& result : results) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  }
+}
+
 TEST_F(CollectiveOpsTestE2E, MultipleModuleDifferentDeviceGroupsShouldRun) {
   const absl::string_view kModuleStr_1 = R"(
   HloModule test

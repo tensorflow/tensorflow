@@ -368,11 +368,14 @@ absl::Status RewriteOneHotDotToGather(HloComputation* computation,
 absl::StatusOr<bool> OneHotGatherRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  // We gate this rewrite behind --xla_enable_fast_math because it propagates 0
-  // instead of NaNs in some cases. See
-  // b/477516620#comment12 for details.
-  if (!module->config().debug_options().xla_enable_fast_math()) {
-    VLOG(2) << "Skipping OneHot rewrite due to --xla_enable_fast_math=false.";
+  // This rewrite propagates 0 instead of NaNs in some cases (see
+  // b/477516620#comment12 for details), so it is only enabled with
+  // --xla_gpu_experimental_enable_onehot_rewriter.
+  if (!module->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_onehot_rewriter()) {
+    VLOG(2) << "Skipping OneHot rewrite due to "
+               "--xla_gpu_experimental_enable_onehot_rewriter=false.";
     return false;
   }
 

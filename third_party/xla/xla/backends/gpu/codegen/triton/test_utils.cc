@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -106,11 +105,16 @@ absl::Status CreateTritonIrAndFileCheck(
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
 
   mlir::MLIRContext mlir_context;
+  bool use_experimental_tiling =
+      fusion->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation();
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> triton_module,
-      CreateTritonModule("triton_fn", fusion,
-                         TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         block_level_parameters, mlir_context));
+      CreateTritonModule(
+          "triton_fn", fusion, TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+          block_level_parameters, mlir_context, use_experimental_tiling));
 
   std::string out;
   llvm::raw_string_ostream os(out);

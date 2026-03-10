@@ -15,20 +15,15 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "absl/algorithm/container.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -42,33 +37,7 @@ SequentialThunk::SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks)
     : Thunk(Kind::kSequential, thunk_info), executor_(std::move(thunks)) {}
 
 std::string SequentialThunk::ToString(int indent) const {
-  const std::string indent_str(indent * 2, ' ');
-  if (executor_.thunks().empty()) {
-    return indent_str + "No thunks.";
-  }
-
-  auto thunk_with_longest_kind = absl::c_max_element(
-      executor_.thunks(),
-      [](const std::unique_ptr<Thunk>& a, const std::unique_ptr<Thunk>& b) {
-        return Thunk::KindToString(a->kind()).length() <
-               Thunk::KindToString(b->kind()).length();
-      });
-  int64_t max_thunk_kind_len =
-      Thunk::KindToString(thunk_with_longest_kind->get()->kind()).length();
-  std::string result;
-  for (const std::unique_ptr<Thunk>& thunk : executor_.thunks()) {
-    absl::StrAppend(&result, indent_str);
-    absl::StrAppendFormat(&result,
-                          "%03d: ", thunk->thunk_info().thunk_id.value());
-    // Write out the thunk kind, padded out to max_thunk_kind_len.
-    absl::string_view kind_str = Thunk::KindToString(thunk->kind());
-    absl::StrAppend(&result, kind_str,
-                    std::string(max_thunk_kind_len - kind_str.length(), ' '),
-                    "\t");
-    absl::StrAppend(&result, thunk->ToString(indent + 1));
-    absl::StrAppend(&result, "\n");
-  }
-  return result;
+  return executor_.thunks().ToString(indent);
 }
 
 absl::Status SequentialThunk::Prepare(const PrepareParams& params) {
@@ -86,18 +55,11 @@ absl::Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 absl::Status SequentialThunk::WalkNested(Walker callback) {
-  for (const std::unique_ptr<Thunk>& thunk : executor_.thunks()) {
-    TF_RETURN_IF_ERROR(thunk->Walk(callback));
-  }
-  return absl::OkStatus();
+  return executor_.thunks().WalkNested(callback);
 }
 
 absl::Status SequentialThunk::TransformNested(Transformer callback) {
-  for (std::unique_ptr<Thunk>& thunk : executor_.thunks()) {
-    TF_RETURN_IF_ERROR(thunk->TransformNested(callback));
-    TF_ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
-  }
-  return absl::OkStatus();
+  return executor_.thunks().TransformNested(callback);
 }
 
 absl::StatusOr<ThunkProto> SequentialThunk::ToProto() const {
