@@ -3738,10 +3738,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   TF_Status* status = GetStatus();
   const char* op_name = TFE_GetPythonString(op_exec_info.op_name);
   if (op_name == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a string for op_name, got %s instead",
-                           op_exec_info.op_name->ob_type->tp_name)
-                        .c_str());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrFormat("expected a string for op_name, got %s instead",
+                        op_exec_info.op_name->ob_type->tp_name)
+            .c_str());
     return nullptr;
   }
 
