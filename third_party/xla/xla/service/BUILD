@@ -6180,6 +6180,7 @@ xla_cc_test(
         "//xla/client:executable_build_options",
         "//xla/client:local_client",
         "//xla/hlo/ir:hlo",
+        "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/service/cpu:cpu_compiler",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/lib/core:status_test_util",
