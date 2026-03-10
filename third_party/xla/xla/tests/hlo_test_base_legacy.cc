@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 
 #include <functional>
 #include <memory>
@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/nullability.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -33,12 +34,13 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/compiler.h"
 #include "xla/service/hlo_module_util.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_legacy.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
 #include "xla/tests/hlo_runner_agnostic_test_base.h"
 #include "xla/tests/pjrt_client_registry.h"
@@ -55,9 +57,12 @@ constexpr absl::string_view kInterpreter = "interpreter";
 std::tuple<std::unique_ptr<HloRunnerInterface>,
            HloRunnerAgnosticTestBase::DeviceShapeRepresentationFn,
            HloRunnerAgnosticTestBase::DeviceShapeSizeFn>
-GetHloRunnerAndFunctionsForTest(se::Platform* test_platform) {
+GetHloRunnerAndFunctionsForTest(
+    absl::FunctionRef<std::unique_ptr<HloRunnerLegacy>(se::Platform*)>
+        runner_factory,
+    se::Platform* test_platform) {
   CHECK(!ShouldUsePjRt());
-  auto runner = std::make_unique<HloRunner>(test_platform);
+  std::unique_ptr<HloRunnerLegacy> runner = runner_factory(test_platform);
   Compiler* const absl_nonnull compiler = runner->backend().compiler();
   return std::make_tuple(
       std::move(runner),
@@ -68,32 +73,37 @@ GetHloRunnerAndFunctionsForTest(se::Platform* test_platform) {
 }
 
 std::unique_ptr<HloRunnerInterface> GetHloRunnerForReference(
+    absl::FunctionRef<std::unique_ptr<HloRunnerLegacy>(se::Platform*)>
+        runner_factory,
     se::Platform* reference_platform) {
-  return std::make_unique<HloRunner>(reference_platform);
+  return runner_factory(reference_platform);
 }
 
 }  // namespace
 
-HloTestBase::HloTestBase(bool verifier_layout_sensitive,
-                         bool allow_mixed_precision_in_hlo_verifier,
-                         HloPredicate instruction_can_change_layout_func)
-    : HloTestBase(GetTestPlatform(), GetReferencePlatform(),
-                  verifier_layout_sensitive,
-                  allow_mixed_precision_in_hlo_verifier,
-                  instruction_can_change_layout_func) {}
+HloTestBaseLegacy::HloTestBaseLegacy(
+    bool verifier_layout_sensitive, bool allow_mixed_precision_in_hlo_verifier,
+    HloPredicate instruction_can_change_layout_func,
+    absl::FunctionRef<std::unique_ptr<HloRunnerLegacy>(se::Platform*)>
+        runner_factory)
+    : HloTestBaseLegacy(
+          GetTestPlatform(), GetReferencePlatform(), verifier_layout_sensitive,
+          allow_mixed_precision_in_hlo_verifier,
+          instruction_can_change_layout_func, std::move(runner_factory)) {}
 
-HloTestBase::HloTestBase(se::Platform* test_platform,
-                         se::Platform* reference_platform,
-                         bool verifier_layout_sensitive,
-                         bool allow_mixed_precision_in_hlo_verifier,
-                         HloPredicate instruction_can_change_layout_func)
-    : HloTestBase(GetHloRunnerAndFunctionsForTest(test_platform),
-                  GetHloRunnerForReference(reference_platform),
-                  verifier_layout_sensitive,
-                  allow_mixed_precision_in_hlo_verifier,
-                  instruction_can_change_layout_func) {}
+HloTestBaseLegacy::HloTestBaseLegacy(
+    se::Platform* test_platform, se::Platform* reference_platform,
+    bool verifier_layout_sensitive, bool allow_mixed_precision_in_hlo_verifier,
+    HloPredicate instruction_can_change_layout_func,
+    absl::FunctionRef<std::unique_ptr<HloRunnerLegacy>(se::Platform*)>
+        runner_factory)
+    : HloTestBaseLegacy(
+          GetHloRunnerAndFunctionsForTest(runner_factory, test_platform),
+          GetHloRunnerForReference(runner_factory, reference_platform),
+          verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
+          instruction_can_change_layout_func) {}
 
-HloTestBase::HloTestBase(
+HloTestBaseLegacy::HloTestBaseLegacy(
     std::tuple<std::unique_ptr<HloRunnerInterface>,
                HloRunnerAgnosticTestBase::DeviceShapeRepresentationFn,
                HloRunnerAgnosticTestBase::DeviceShapeSizeFn>
@@ -115,19 +125,19 @@ HloTestBase::HloTestBase(
               test_runner_and_functions)),
           verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier) {}
 
-/*static*/ se::Platform* HloTestBase::GetReferencePlatform() {
+/*static*/ se::Platform* HloTestBaseLegacy::GetReferencePlatform() {
   auto result = PlatformUtil::GetPlatform(kInterpreter);
   CHECK_OK(result.status()) << "could not get interpreter platform";
   return result.value();
 }
 
-/*static*/ se::Platform* HloTestBase::GetTestPlatform() {
+/*static*/ se::Platform* HloTestBaseLegacy::GetTestPlatform() {
   auto result = PlatformUtil::GetDefaultPlatform();
   CHECK_OK(result.status()) << "could not get test platform";
   return result.value();
 }
 
-::testing::AssertionResult HloTestBase::RunAndCompareFromFile(
+::testing::AssertionResult HloTestBaseLegacy::RunAndCompareFromFile(
     const std::string& filename, const std::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
@@ -140,7 +150,7 @@ HloTestBase::HloTestBase(
                        reference_preprocessor);
 }
 
-::testing::AssertionResult HloTestBase::RunAndCompareNoHloPassesFromFile(
+::testing::AssertionResult HloTestBaseLegacy::RunAndCompareNoHloPassesFromFile(
     const std::string& filename, const std::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
@@ -153,7 +163,7 @@ HloTestBase::HloTestBase(
                                   reference_preprocessor);
 }
 
-se::DeviceAddressAllocator* HloTestBase::GetAllocator() {
+se::DeviceAddressAllocator* HloTestBaseLegacy::GetAllocator() {
   if (allocator_ == nullptr) {
     allocator_ =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
@@ -162,9 +172,9 @@ se::DeviceAddressAllocator* HloTestBase::GetAllocator() {
   return allocator_.get();
 }
 
-void HloTestBase::MatchOptimizedHlo(absl::string_view hlo,
-                                    absl::string_view pattern,
-                                    bool print_operand_shape) {
+void HloTestBaseLegacy::MatchOptimizedHlo(absl::string_view hlo,
+                                          absl::string_view pattern,
+                                          bool print_operand_shape) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
                           GetOptimizedModule(hlo));
   HloPrintOptions print_opts;
@@ -175,8 +185,8 @@ void HloTestBase::MatchOptimizedHlo(absl::string_view hlo,
   EXPECT_TRUE(filecheck_result.value());
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
-    absl::string_view hlo) {
+absl::StatusOr<std::unique_ptr<HloModule>>
+HloTestBaseLegacy::GetOptimizedModule(absl::string_view hlo) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
       ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
@@ -186,8 +196,8 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
       std::move(module), backend().default_stream_executor(), GetAllocator());
 }
 
-absl::StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
-    std::unique_ptr<HloModule> hlo_module) {
+absl::StatusOr<std::unique_ptr<HloModule>>
+HloTestBaseLegacy::GetOptimizedModule(std::unique_ptr<HloModule> hlo_module) {
   // TODO - b/391868033: Remove calls to UpdateEntryComputationLayout.
   UpdateEntryComputationLayout(hlo_module.get());
   return backend().compiler()->RunHloPasses(std::move(hlo_module),

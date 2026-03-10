@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_legacy.h"
 
 #include <cstdint>
 #include <memory>
@@ -64,10 +64,10 @@ limitations under the License.
 namespace xla {
 
 namespace {
-class HloRunnerExecutable : public OpaqueExecutable {
+class HloRunnerLegacyExecutable : public OpaqueExecutable {
  public:
-  HloRunnerExecutable(const HloRunner* absl_nonnull creator,
-                      std::unique_ptr<Executable> executable)
+  HloRunnerLegacyExecutable(const HloRunnerLegacy* absl_nonnull creator,
+                            std::unique_ptr<Executable> executable)
       : OpaqueExecutable(creator), executable_(std::move(executable)) {}
 
   Executable* executable() const { return executable_.get(); }
@@ -75,14 +75,17 @@ class HloRunnerExecutable : public OpaqueExecutable {
     return std::move(executable_);
   }
 
-  static absl::StatusOr<HloRunnerExecutable*> TryUnwrap(
-      const HloRunner& runner, OpaqueExecutable* absl_nonnull const wrapped) {
-    return OpaqueExecutable::TryUnwrap<HloRunnerExecutable>(runner, wrapped);
+  static absl::StatusOr<HloRunnerLegacyExecutable*> TryUnwrap(
+      const HloRunnerLegacy& runner,
+      OpaqueExecutable* absl_nonnull const wrapped) {
+    return OpaqueExecutable::TryUnwrap<HloRunnerLegacyExecutable>(runner,
+                                                                  wrapped);
   }
-  static absl::StatusOr<const HloRunnerExecutable*> TryUnwrap(
-      const HloRunner& runner,
+  static absl::StatusOr<const HloRunnerLegacyExecutable*> TryUnwrap(
+      const HloRunnerLegacy& runner,
       const OpaqueExecutable* absl_nonnull const wrapped) {
-    return OpaqueExecutable::TryUnwrap<HloRunnerExecutable>(runner, wrapped);
+    return OpaqueExecutable::TryUnwrap<HloRunnerLegacyExecutable>(runner,
+                                                                  wrapped);
   }
 
  private:
@@ -90,8 +93,9 @@ class HloRunnerExecutable : public OpaqueExecutable {
 };
 }  // namespace
 
-HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads,
-                     std::unique_ptr<se::DeviceAddressAllocator> allocator) {
+HloRunnerLegacy::HloRunnerLegacy(
+    se::Platform* platform, int intra_op_parallelism_threads,
+    std::unique_ptr<se::DeviceAddressAllocator> allocator) {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
   backend_options.set_intra_op_parallelism_threads(
@@ -104,16 +108,14 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads,
   VLOG(1) << "Created HloRunner for platform: " << platform->Name();
 }
 
-HloRunner::~HloRunner() {}
-
-se::DeviceAddressAllocator* HloRunner::GetAllocator() {
+se::DeviceAddressAllocator* HloRunnerLegacy::GetAllocator() {
   if (allocator_ == nullptr) {
     return backend_->memory_allocator();
   }
   return allocator_.get();
 }
 
-absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
+absl::StatusOr<ScopedShapedBuffer> HloRunnerLegacy::TransferLiteralToDevice(
     const Literal& literal,
     const ComputationLayout* absl_nullable entry_computation_layout,
     int64_t param_no) {
@@ -160,7 +162,7 @@ absl::StatusOr<ScopedShapedBuffer> HloRunner::TransferLiteralToDevice(
 }
 
 absl::StatusOr<std::vector<ScopedShapedBuffer>>
-HloRunner::TransferLiteralsToDevice(
+HloRunnerLegacy::TransferLiteralsToDevice(
     absl::Span<const Literal* const> literals,
     const ComputationLayout* absl_nullable entry_computation_layout) {
   std::vector<ScopedShapedBuffer> buffers;
@@ -177,11 +179,11 @@ HloRunner::TransferLiteralsToDevice(
 }
 
 absl::StatusOr<std::vector<ScopedShapedBuffer>>
-HloRunner::TransferLiteralsToDevice(absl::Span<const Literal> literals) {
+HloRunnerLegacy::TransferLiteralsToDevice(absl::Span<const Literal> literals) {
   return TransferLiteralsToDevice(LiteralUtil::MakePointers(literals), nullptr);
 }
 
-absl::StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
+absl::StatusOr<Literal> HloRunnerLegacy::TransferLiteralFromDevice(
     const ShapedBuffer& buffer) {
   TF_ASSIGN_OR_RETURN(
       auto stream, backend().BorrowStream(backend().default_stream_executor()));
@@ -206,7 +208,7 @@ absl::StatusOr<Literal> HloRunner::TransferLiteralFromDevice(
                                                                  shaped_buffer);
 }
 
-absl::StatusOr<Literal> HloRunner::Execute(
+absl::StatusOr<Literal> HloRunnerLegacy::Execute(
     std::unique_ptr<HloModule> module,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
   MaybeUpdateEntryComputationLayout(module.get());
@@ -223,7 +225,7 @@ absl::StatusOr<Literal> HloRunner::Execute(
   return TransferLiteralFromDevice(result.Result());
 }
 
-absl::StatusOr<Literal> HloRunner::ExecuteWithBufferAssignment(
+absl::StatusOr<Literal> HloRunnerLegacy::ExecuteWithBufferAssignment(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes) {
@@ -241,11 +243,11 @@ absl::StatusOr<Literal> HloRunner::ExecuteWithBufferAssignment(
 }
 
 absl::StatusOr<std::vector<absl::StatusOr<Literal>>>
-HloRunner::ExecuteWithExecutable(OpaqueExecutable* executable,
-                                 absl::Span<const Literal* const> arguments,
-                                 int64_t num_repeats) {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, executable));
+HloRunnerLegacy::ExecuteWithExecutable(
+    OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
+    int64_t num_repeats) {
+  TF_ASSIGN_OR_RETURN(HloRunnerLegacyExecutable* const hlo_runner_executable,
+                      HloRunnerLegacyExecutable::TryUnwrap(*this, executable));
   const ComputationLayout computation_layout =
       hlo_runner_executable->executable()->compute_computation_layout();
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
@@ -266,11 +268,11 @@ HloRunner::ExecuteWithExecutable(OpaqueExecutable* executable,
   return results;
 }
 
-absl::StatusOr<Literal> HloRunner::ExecuteWithExecutableAndProfile(
+absl::StatusOr<Literal> HloRunnerLegacy::ExecuteWithExecutableAndProfile(
     OpaqueExecutable* executable, absl::Span<const Literal* const> arguments,
     ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, executable));
+  TF_ASSIGN_OR_RETURN(HloRunnerLegacyExecutable* const hlo_runner_executable,
+                      HloRunnerLegacyExecutable::TryUnwrap(*this, executable));
   const ComputationLayout computation_layout =
       hlo_runner_executable->executable()->compute_computation_layout();
   TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> argument_buffers,
@@ -366,22 +368,23 @@ static void ExecutionInputsFromMovedScopedShapedBuffers(
   }
 }
 
-absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
+absl::StatusOr<ExecutionOutput> HloRunnerLegacy::ExecuteWithDeviceBuffers(
     std::unique_ptr<HloModule> module,
     absl::Span<ScopedShapedBuffer const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
                       CreateExecutable(std::move(module), run_hlo_passes));
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, executable.get()));
+  TF_ASSIGN_OR_RETURN(
+      HloRunnerLegacyExecutable* const hlo_runner_executable,
+      HloRunnerLegacyExecutable::TryUnwrap(*this, executable.get()));
   return ExecuteWithDeviceBuffers(hlo_runner_executable, arguments, profile);
 }
 
-absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
+absl::StatusOr<ExecutionOutput> HloRunnerLegacy::ExecuteWithDeviceBuffers(
     OpaqueExecutable* executable,
     absl::Span<ScopedShapedBuffer const> arguments, ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, executable));
+  TF_ASSIGN_OR_RETURN(HloRunnerLegacyExecutable* const hlo_runner_executable,
+                      HloRunnerLegacyExecutable::TryUnwrap(*this, executable));
   std::vector<ExecutionInput> execution_arguments =
       ExecutionInputsFromScopedShapedBuffers(
           arguments,
@@ -394,7 +397,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithDeviceBuffers(
                                     std::move(execution_arguments), profile);
 }
 
-absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
+absl::StatusOr<ExecutionOutput> HloRunnerLegacy::ExecuteWithMovedDeviceBuffers(
     std::unique_ptr<HloModule> module,
     std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
@@ -404,7 +407,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
 }
 
 absl::StatusOr<ExecutionOutput>
-HloRunner::ExecuteWithMovedDeviceBuffersAndBufferAssignment(
+HloRunnerLegacy::ExecuteWithMovedDeviceBuffersAndBufferAssignment(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto,
     std::vector<ScopedShapedBuffer> arguments, bool run_hlo_passes,
@@ -413,13 +416,14 @@ HloRunner::ExecuteWithMovedDeviceBuffersAndBufferAssignment(
       std::unique_ptr<OpaqueExecutable> executable,
       CreateExecutableWithBufferAssignment(
           std::move(module), buffer_assignment_proto, run_hlo_passes));
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, executable.get()));
+  TF_ASSIGN_OR_RETURN(
+      HloRunnerLegacyExecutable* const hlo_runner_executable,
+      HloRunnerLegacyExecutable::TryUnwrap(*this, executable.get()));
   return ExecuteWithMovedDeviceBuffers(hlo_runner_executable->executable(),
                                        std::move(arguments), profile);
 }
 
-absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
+absl::StatusOr<ExecutionOutput> HloRunnerLegacy::ExecuteWithMovedDeviceBuffers(
     Executable* executable, std::vector<ScopedShapedBuffer> arguments,
     ExecutionProfile* profile) {
   std::vector<ExecutionInput> execution_arguments;
@@ -442,7 +446,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithMovedDeviceBuffers(
   return retval;
 }
 
-absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
+absl::StatusOr<ExecutionOutput> HloRunnerLegacy::ExecuteWithExecutionInputs(
     Executable* executable, std::vector<ExecutionInput> arguments,
     ExecutionProfile* profile) {
   MaybeUpdateEntryComputationLayout(&executable->module());
@@ -472,7 +476,7 @@ absl::StatusOr<ExecutionOutput> HloRunner::ExecuteWithExecutionInputs(
   return std::move(retval);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
+absl::StatusOr<std::vector<Literal>> HloRunnerLegacy::ExecuteReplicated(
     std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
   TF_ASSIGN_OR_RETURN(
@@ -482,7 +486,8 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
                                          device_assignment);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedWithExecutable(
+absl::StatusOr<std::vector<Literal>>
+HloRunnerLegacy::ExecuteReplicatedWithExecutable(
     OpaqueExecutable* const absl_nonnull executable,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
@@ -490,7 +495,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedWithExecutable(
                            /*profile=*/nullptr);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
+absl::StatusOr<std::vector<Literal>> HloRunnerLegacy::ExecuteReplicatedImpl(
     absl::AnyInvocable<absl::StatusOr<std::vector<ScopedShapedBuffer>>(
         const std::vector<ServiceExecutableRunOptions>&,
         const std::vector<absl::Span<const ShapedBuffer* const>>&)>
@@ -632,7 +637,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
   return std::move(exec_results);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
+absl::StatusOr<std::vector<Literal>> HloRunnerLegacy::ExecuteReplicated(
     OpaqueExecutable* executable, const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment, ExecutionProfile* profile) {
   DeviceAssignment computation_device_assignment;
@@ -643,8 +648,8 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
     device_assignment = &computation_device_assignment;
   }
   CHECK_NE(device_assignment, nullptr);
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const wrapped_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, executable));
+  TF_ASSIGN_OR_RETURN(HloRunnerLegacyExecutable* const wrapped_executable,
+                      HloRunnerLegacyExecutable::TryUnwrap(*this, executable));
   return ExecuteReplicatedImpl(
       [&, executable = wrapped_executable->executable()](
           const std::vector<ServiceExecutableRunOptions>& service_run_options,
@@ -686,7 +691,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
       options, device_assignment);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
+absl::StatusOr<std::vector<Literal>> HloRunnerLegacy::ExecuteReplicated(
     absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
     absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
     absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
@@ -718,9 +723,9 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             for (const auto& arg : argument_buffer_slices[i]) {
               TF_RET_CHECK(arg != nullptr);
             }
-            TF_ASSIGN_OR_RETURN(
-                HloRunnerExecutable* const executable,
-                HloRunnerExecutable::TryUnwrap(*this, executable_provider(i)));
+            TF_ASSIGN_OR_RETURN(HloRunnerLegacyExecutable* const executable,
+                                HloRunnerLegacyExecutable::TryUnwrap(
+                                    *this, executable_provider(i)));
             pool.Schedule([&, i, executable] {
               auto result = executable->executable()->ExecuteOnStream(
                   &service_run_options[i], argument_buffer_slices[i]);
@@ -744,7 +749,7 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
       device_assignment);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
+absl::StatusOr<std::vector<Literal>> HloRunnerLegacy::ExecuteReplicated(
     std::unique_ptr<HloModule> module,
     const ReplicatedExecuteOptions& options) {
   TF_ASSIGN_OR_RETURN(
@@ -753,7 +758,8 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   return ExecuteReplicated(std::move(module), options, &device_assignment);
 }
 
-absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedWithExecutable(
+absl::StatusOr<std::vector<Literal>>
+HloRunnerLegacy::ExecuteReplicatedWithExecutable(
     OpaqueExecutable* const absl_nonnull executable,
     const ReplicatedExecuteOptions& options) {
   ASSIGN_OR_RETURN(
@@ -763,15 +769,16 @@ absl::StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedWithExecutable(
                                          &device_assignment);
 }
 
-absl::StatusOr<std::unique_ptr<OpaqueExecutable>> HloRunner::CreateExecutable(
-    std::unique_ptr<HloModule> module, bool run_hlo_passes) {
+absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
+HloRunnerLegacy::CreateExecutable(std::unique_ptr<HloModule> module,
+                                  bool run_hlo_passes) {
   return CreateExecutableWithBufferAssignment(
       std::move(module),
       /*buffer_assignment_proto=*/nullptr, run_hlo_passes);
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
-HloRunner::CreateExecutableWithBufferAssignment(
+HloRunnerLegacy::CreateExecutableWithBufferAssignment(
     std::unique_ptr<HloModule> module,
     const BufferAssignmentProto* buffer_assignment_proto, bool run_hlo_passes) {
   MaybeUpdateEntryComputationLayout(module.get());
@@ -790,8 +797,8 @@ HloRunner::CreateExecutableWithBufferAssignment(
         backend().compiler()->Compile(std::move(module),
                                       {backend().default_stream_executor()},
                                       backend().memory_allocator()));
-    return std::make_unique<HloRunnerExecutable>(this,
-                                                 std::move(executables[0]));
+    return std::make_unique<HloRunnerLegacyExecutable>(
+        this, std::move(executables[0]));
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -799,17 +806,20 @@ HloRunner::CreateExecutableWithBufferAssignment(
       backend().compiler()->RunBackendWithBufferAssignment(
           std::move(module), buffer_assignment_proto,
           backend().default_stream_executor(), backend().memory_allocator()));
-  return std::make_unique<HloRunnerExecutable>(this, std::move(executable));
+  return std::make_unique<HloRunnerLegacyExecutable>(this,
+                                                     std::move(executable));
 }
 
 absl::StatusOr<std::unique_ptr<OpaqueExecutable>>
-HloRunner::DeserializeExecutable(const absl::string_view serialized) const {
+HloRunnerLegacy::DeserializeExecutable(
+    const absl::string_view serialized) const {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                       backend().compiler()->DeserializeExecutable(serialized));
-  return std::make_unique<HloRunnerExecutable>(this, std::move(executable));
+  return std::make_unique<HloRunnerLegacyExecutable>(this,
+                                                     std::move(executable));
 }
 
-ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
+ServiceExecutableRunOptions HloRunnerLegacy::GetServiceRunOptionsForDevice(
     int64_t device, se::Stream* stream, DeviceAssignment* device_assignment,
     RunId run_id, int local_device_count) {
   ExecutableRunOptions run_options;
@@ -828,17 +838,17 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
                                      backend().StreamBorrowerWithPriority());
 }
 
-Backend& HloRunner::backend() { return *backend_; }
+Backend& HloRunnerLegacy::backend() { return *backend_; }
 
-const Backend& HloRunner::backend() const {
-  return const_cast<HloRunner*>(this)->backend();
+const Backend& HloRunnerLegacy::backend() const {
+  return const_cast<HloRunnerLegacy*>(this)->backend();
 }
 
-absl::string_view HloRunner::Name() const {
+absl::string_view HloRunnerLegacy::Name() const {
   return backend_->platform()->Name();
 }
 
-bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
+bool HloRunnerLegacy::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   if (tag == HloRunnerPropertyTag::kUsingGpuRocm) {
     const stream_executor::DeviceDescription& device_description =
         backend().default_stream_executor()->GetDeviceDescription();
@@ -855,49 +865,55 @@ bool HloRunner::HasProperty(const HloRunnerPropertyTag::Type tag) const {
   return false;
 }
 
-absl::StatusOr<Executable*> HloRunner::ExecutableFromWrapped(
+absl::StatusOr<Executable*> HloRunnerLegacy::ExecutableFromWrapped(
     const OpaqueExecutable* wrapped) const {
-  TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, wrapped));
+  TF_ASSIGN_OR_RETURN(
+      const HloRunnerLegacyExecutable* const hlo_runner_executable,
+      HloRunnerLegacyExecutable::TryUnwrap(*this, wrapped));
   return hlo_runner_executable->executable();
 }
 
-absl::StatusOr<std::unique_ptr<Executable>> HloRunner::ExecutableFromWrapped(
+absl::StatusOr<std::unique_ptr<Executable>>
+HloRunnerLegacy::ExecutableFromWrapped(
     std::unique_ptr<OpaqueExecutable> wrapped) const {
-  TF_ASSIGN_OR_RETURN(HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, wrapped.get()));
+  TF_ASSIGN_OR_RETURN(
+      HloRunnerLegacyExecutable* const hlo_runner_executable,
+      HloRunnerLegacyExecutable::TryUnwrap(*this, wrapped.get()));
   return hlo_runner_executable->MoveExecutable();
 }
 
-std::unique_ptr<OpaqueExecutable> HloRunner::WrapExecutable(
+std::unique_ptr<OpaqueExecutable> HloRunnerLegacy::WrapExecutable(
     std::unique_ptr<Executable> executable) const {
-  return std::make_unique<HloRunnerExecutable>(this, std::move(executable));
+  return std::make_unique<HloRunnerLegacyExecutable>(this,
+                                                     std::move(executable));
 }
 
-absl::StatusOr<const HloModule* absl_nonnull> HloRunner::HloModuleFromWrapped(
-    const OpaqueExecutable* wrapped) const {
-  TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, wrapped));
+absl::StatusOr<const HloModule* absl_nonnull>
+HloRunnerLegacy::HloModuleFromWrapped(const OpaqueExecutable* wrapped) const {
+  TF_ASSIGN_OR_RETURN(
+      const HloRunnerLegacyExecutable* const hlo_runner_executable,
+      HloRunnerLegacyExecutable::TryUnwrap(*this, wrapped));
   if (!hlo_runner_executable->executable()->has_module()) {
     return absl::NotFoundError("Executable has no module.");
   }
   return &hlo_runner_executable->executable()->module();
 }
 
-absl::StatusOr<const HloProto* absl_nonnull> HloRunner::HloProtoFromWrapped(
-    const OpaqueExecutable* wrapped) const {
-  TF_ASSIGN_OR_RETURN(const HloRunnerExecutable* const hlo_runner_executable,
-                      HloRunnerExecutable::TryUnwrap(*this, wrapped));
+absl::StatusOr<const HloProto* absl_nonnull>
+HloRunnerLegacy::HloProtoFromWrapped(const OpaqueExecutable* wrapped) const {
+  TF_ASSIGN_OR_RETURN(
+      const HloRunnerLegacyExecutable* const hlo_runner_executable,
+      HloRunnerLegacyExecutable::TryUnwrap(*this, wrapped));
   return hlo_runner_executable->executable()->hlo_proto();
 }
 
-absl::StatusOr<DeviceAssignment> HloRunner::GetDefaultDeviceAssignment(
+absl::StatusOr<DeviceAssignment> HloRunnerLegacy::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
   return backend().computation_placer()->AssignDevices(num_replicas,
                                                        num_partitions);
 }
 
-void HloRunner::MaybeUpdateEntryComputationLayout(HloModule* module) {
+void HloRunnerLegacy::MaybeUpdateEntryComputationLayout(HloModule* module) {
   absl::MutexLock lock(mu_);
   if (module_ids_with_updated_layouts_.insert(module->unique_id()).second) {
     xla::UpdateEntryComputationLayout(module, device_shape_representation_fn_);
