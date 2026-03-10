@@ -121,7 +121,8 @@ class EmitterBase : public KernelFusionInterface {
 // Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
 // vectorize.
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
-                                 const se::DeviceDescription& device);
+                                 const se::DeviceDescription& device,
+                                 int max_unroll_factor = 0);
 
 // Adds passes that lower transformed loops to LLVM.
 void AddLoweringPasses(mlir::OpPassManager& pm,

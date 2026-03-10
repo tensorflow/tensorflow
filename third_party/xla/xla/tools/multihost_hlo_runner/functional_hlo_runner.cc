@@ -959,7 +959,8 @@ CreateArgumentsOnDevice(PjRtClient& client,
                   /*is_sorted=*/false,
                   /*no_duplicates=*/false, /*use_large_range=*/false,
                   /*max_bits_of_precision=*/std::nullopt,
-                  /*index_alignment=*/std::nullopt, float_generator));
+                  /*index_alignment=*/std::nullopt,
+                  /*index_known_zeroes=*/std::nullopt, float_generator));
         } else {
           TF_ASSIGN_OR_RETURN(
               argument_literal_j,

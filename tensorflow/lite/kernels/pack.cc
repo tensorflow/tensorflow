@@ -115,22 +115,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  switch (output->type) {
-    case kTfLiteInt8:
-    case kTfLiteUInt8:
-      return PackImpl<int8_t>(context, node, output, data->values_count,
-                              data->axis);
-    case kTfLiteInt16:
-      return PackImpl<int16_t>(context, node, output, data->values_count,
+  switch (TfLiteTypeGetSizeBits(output->type)) {
+    case 8:
+      return PackImpl<uint8_t>(context, node, output, data->values_count,
                                data->axis);
-    case kTfLiteFloat32:
-    case kTfLiteInt32:
-    case kTfLiteUInt32:
-      return PackImpl<int32_t>(context, node, output, data->values_count,
-                               data->axis);
-    case kTfLiteInt64:
-      return PackImpl<int64_t>(context, node, output, data->values_count,
-                               data->axis);
+    case 16:
+      return PackImpl<uint16_t>(context, node, output, data->values_count,
+                                data->axis);
+    case 32:
+      return PackImpl<uint32_t>(context, node, output, data->values_count,
+                                data->axis);
+    case 64:
+      return PackImpl<uint64_t>(context, node, output, data->values_count,
+                                data->axis);
     default: {
       TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by pack.",
                          TfLiteTypeGetName(output->type));
