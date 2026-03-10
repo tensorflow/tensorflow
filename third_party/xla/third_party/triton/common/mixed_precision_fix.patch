@@ -1,6 +1,6 @@
 --- a/lib/Dialect/TritonGPU/Transforms/Prefetch.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Prefetch.cpp
-@@ -194,6 +194,15 @@ LogicalResult Prefetcher::initialize() {
+@@ -192,6 +192,15 @@ LogicalResult Prefetcher::initialize() {
          break;
        if (!op->getResult(0).hasOneUse())
          break;

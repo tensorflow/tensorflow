@@ -60,6 +60,7 @@ cc_library(
         "@xla//xla/stream_executor:generic_memory_allocator",
         "@xla//xla/stream_executor:memory_allocation",
         "@xla//xla/stream_executor:memory_allocator",
+        "@xla//xla/stream_executor:memory_space",
         "@xla//xla/stream_executor:platform",
         "@xla//xla/stream_executor:platform_manager",
         "@xla//xla/stream_executor:stream",
