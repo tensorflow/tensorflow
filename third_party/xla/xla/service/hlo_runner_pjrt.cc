@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/hlo_runner_pjrt.h"
 
 #include <array>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "google/protobuf/message.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -48,9 +50,9 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -58,13 +60,19 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/lib/io/random_inputstream.h"
+#include "xla/tsl/lib/io/zlib_compression_options.h"
+#include "xla/tsl/lib/io/zlib_inputstream.h"
+#include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/tstring.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
@@ -1026,13 +1034,24 @@ std::string MakeFilename(const HloModule& module, const bool run_hlo_passes) {
       fingerprint, tsl::Fingerprint128(SerializeDeterministically(
                        module.comp_envs().ToProto())));
 
-  // Convert the fingerprint into a hex string and concatenate it with the .bin
-  // extension.
+  if (module.config().has_static_device_assignment()) {
+    // Test cases may compile the same module with different device assignments
+    // (for example, to test different topologies). We include the device
+    // assignment in the fingerprint to tell them apart.
+    DeviceAssignmentProto da_proto;
+    module.config().static_device_assignment().Serialize(&da_proto);
+    fingerprint = tsl::FingerprintCat128(
+        fingerprint, tsl::Fingerprint128(SerializeDeterministically(da_proto)));
+  }
+
+  // Convert the fingerprint into a hex string and concatenate it with the
+  // .bin.gz extension.
   const std::array<char, 16> fingerprint_bytes =
       tsl::Fprint128ToBytes(fingerprint);
   const absl::string_view fingerprint_bytes_view(fingerprint_bytes.data(),
                                                  fingerprint_bytes.size());
-  return absl::StrCat(absl::BytesToHexString(fingerprint_bytes_view), ".bin");
+  return absl::StrCat(absl::BytesToHexString(fingerprint_bytes_view),
+                      ".bin.gz");
 }
 
 inline absl::StatusOr<DeviceAssignment> AotDefaultDeviceAssignment(
@@ -1058,9 +1077,25 @@ CompilePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
 
   TF_ASSIGN_OR_RETURN(const std::string serialized_executable,
                       executable->executable()->SerializeExecutable());
-  TF_RETURN_IF_ERROR(
-      tsl::WriteStringToFile(tsl::Env::Default(), path, serialized_executable));
+  TF_RETURN_IF_ERROR(WriteCompressedExecutable(path, serialized_executable));
   return wrapped_executable;
+}
+
+/* static */
+absl::Status CompilePhaseHloRunnerPjRt::WriteCompressedExecutable(
+    absl::string_view path, absl::string_view serialized_executable) {
+  std::unique_ptr<tsl::WritableFile> file;
+  TF_RETURN_IF_ERROR(
+      tsl::Env::Default()->NewWritableFile(std::string(path), &file));
+
+  tsl::io::ZlibCompressionOptions gz_opts =
+      tsl::io::ZlibCompressionOptions::GZIP();
+  tsl::io::ZlibOutputBuffer gz_file(file.get(), gz_opts.input_buffer_size,
+                                    gz_opts.output_buffer_size, gz_opts);
+  TF_RETURN_IF_ERROR(gz_file.Init());
+  TF_RETURN_IF_ERROR(gz_file.Append(serialized_executable));
+  TF_RETURN_IF_ERROR(gz_file.Close());
+  return file->Close();
 }
 
 absl::StatusOr<DeviceAssignment>
@@ -1074,9 +1109,10 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
                                             const bool run_hlo_passes) {
   const std::string filename = MakeFilename(*module, run_hlo_passes);
   const std::string path = tsl::io::JoinPath(artifact_dir_, filename);
-  std::string serialized_executable;
-  if (const absl::Status status = tsl::ReadFileToString(
-          tsl::Env::Default(), path, &serialized_executable);
+  tsl::tstring serialized_executable;
+
+  if (const absl::Status status =
+          ReadCompressedExecutable(path, &serialized_executable);
       !status.ok()) {
     if (!compile_if_not_found_) {
       return absl::NotFoundError(absl::StrCat(
@@ -1111,6 +1147,25 @@ ExecutePhaseHloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   }
 
   return DeserializeExecutable(serialized_executable);
+}
+
+/* static */
+absl::Status ExecutePhaseHloRunnerPjRt::ReadCompressedExecutable(
+    absl::string_view path, tsl::tstring* serialized_executable) {
+  std::unique_ptr<tsl::RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(
+      tsl::Env::Default()->NewRandomAccessFile(std::string(path), &file));
+
+  tsl::io::RandomAccessInputStream stream(file.get());
+  tsl::io::ZlibCompressionOptions gz_opts =
+      tsl::io::ZlibCompressionOptions::GZIP();
+  tsl::io::ZlibInputStream gz_stream(&stream, gz_opts.input_buffer_size,
+                                     gz_opts.output_buffer_size, gz_opts);
+  absl::Status status = gz_stream.ReadNBytes(INT_MAX, serialized_executable);
+  if (absl::IsOutOfRange(status)) {
+    return absl::OkStatus();
+  }
+  return status;
 }
 
 absl::StatusOr<DeviceAssignment>

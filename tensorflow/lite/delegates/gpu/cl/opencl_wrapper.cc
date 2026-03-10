@@ -84,8 +84,6 @@ void* AndroidDlopenSphalLibrary(const char* filename, int dlopen_flags) {
 #define LoadFunction(function) \
   function =                   \
       reinterpret_cast<PFN_##function>(GetProcAddress(libopencl, #function));
-#elif defined(__LINUX_GOOGLE__) && !defined(__aarch64__)
-#define LoadFunction(function) function = ::function;
 #else
 #define LoadFunction(function) \
   function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));

@@ -62,8 +62,14 @@ cc_library(
 
 cc_library(
     name = "fusion_emitter",
-    srcs = ["fusion_emitter.cc"],
-    hdrs = ["fusion_emitter.h"],
+    srcs = [
+        "experimental_fusion_emitter.cc",
+        "fusion_emitter.cc",
+    ],
+    hdrs = [
+        "experimental_fusion_emitter.h",
+        "fusion_emitter.h",
+    ],
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":dot_algorithms",
@@ -83,6 +89,7 @@ cc_library(
         "//xla/codegen/tiling:tiled_hlo_instruction",
         "//xla/codegen/tiling:tiled_hlo_schedule",
         "//xla/codegen/tiling:tiling_specification",
+        "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/hlo/analysis:indexing_analysis",
