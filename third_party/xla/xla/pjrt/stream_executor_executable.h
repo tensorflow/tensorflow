@@ -77,15 +77,16 @@ class StreamExecutorExecutable : public PjRtExecutable {
   GetOutputMemoryKinds() const override;
 
   absl::StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>
-  GetCostAnalysis() const override {
-    return absl::UnimplementedError("GetCostAnalysis is not supported.");
-  }
+  GetCostAnalysis() const override;
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   const CompileOptions& compile_options() const { return compile_options_; }
 
   absl::StatusOr<std::unique_ptr<LocalExecutable>> ConsumeExecutable(
+      LocalClient* client, const CompileOptions& compile_options);
+
+  absl::StatusOr<LocalExecutable*> GetOrLoadExecutable(
       LocalClient* client, const CompileOptions& compile_options);
 
   absl::StatusOr<std::string> FingerprintExecutable() const override {

@@ -1140,8 +1140,9 @@ bool IsAllZeros(const DeviceAssignment& assignment) {
 }  // namespace
 
 PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
-    std::unique_ptr<LocalExecutable> executable,
-    std::optional<std::string> fingerprint, bool parameter_is_tupled_arguments,
+    std::shared_ptr<LocalExecutable> executable,
+    std::shared_ptr<PjRtExecutable> pjrt_executable,
+    bool parameter_is_tupled_arguments,
     std::shared_ptr<DeviceAssignment> device_assignment,
     CompileOptions compile_options,
     std::vector<LogicalDeviceIds> addressable_device_logical_ids,
@@ -1167,16 +1168,12 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
           std::move(addressable_device_logical_ids)),
       client_(client),
       executable_(std::move(executable)),
+      pjrt_executable_(std::move(pjrt_executable)),
       device_assignment_(std::move(device_assignment)),
       compile_options_(std::move(compile_options)),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments) {
   on_device_executable_parameter_shapes_ =
       std::make_shared<std::vector<Shape>>(std::move(parameter_shapes));
-  if (fingerprint.has_value()) {
-    fingerprint_ = *std::move(fingerprint);
-  } else {
-    fingerprint_ = executable_->executable()->module().GetFingerprint128();
-  }
 
   int num_partitions;
   if (device_assignment_ == nullptr) {
@@ -1222,10 +1219,6 @@ absl::Status PjRtStreamExecutorLoadedExecutable::SetUpDonation(
                       ComputeParametersThatMustBeDonated(
                           executable_->executable()->module(), tuple_inputs));
   return absl::OkStatus();
-}
-
-absl::string_view PjRtStreamExecutorLoadedExecutable::name() const {
-  return executable_->executable()->name();
 }
 
 template <typename T>
@@ -2110,17 +2103,6 @@ PjRtStreamExecutorLoadedExecutable::ExecutePortable(
       argument_handles, device, options, returned_future, fill_future);
 }
 
-absl::StatusOr<std::vector<std::shared_ptr<HloModule>>>
-PjRtStreamExecutorLoadedExecutable::GetHloModules() const {
-  std::vector<std::shared_ptr<HloModule>> modules;
-  const auto& local_exec = executable();
-  if (!local_exec->executable()->has_module()) {
-    return InvalidArgument("Executable does not have HLO modules.");
-  }
-  modules.push_back(local_exec->executable()->shared_module());
-  return std::move(modules);
-}
-
 namespace {
 
 absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
@@ -2159,27 +2141,6 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
 }
 
 }  // namespace
-
-absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-PjRtStreamExecutorLoadedExecutable::GetOutputMemoryKinds() const {
-  TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
-  if (addressable_devices().empty()) {
-    return Unimplemented(
-        "GetOutputMemoryKinds is not supported when there are no addressable "
-        "devices in PjRtStreamExecutorLoadedExecutable.");
-  }
-  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
-                      addressable_devices()[0]->default_memory_space());
-  std::vector<std::vector<absl::string_view>> out;
-  out.reserve(shapes.size());
-  for (const auto& shape : shapes) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<absl::string_view> memory_kind,
-        MemoryKindsFromShape(shape, default_memory_space->kind()));
-    out.push_back(memory_kind);
-  }
-  return out;
-}
 
 absl::Status PjRtStreamExecutorClient::UpdateCompileOptions(
     CompileOptions* options, bool lookup_addressable_devices) {
@@ -2552,19 +2513,6 @@ PjRtStreamExecutorClient::BuildPjRtExecutable(
       fingerprint, memory_spaces()[0]->kind());
 }
 
-absl::StatusOr<std::unique_ptr<PjRtExecutable>>
-PjRtStreamExecutorClient::DeserializeExecutable(
-    absl::string_view serialized,
-    std::optional<CompileOptions> compile_options) {
-  TF_ASSIGN_OR_RETURN(
-      auto local_executables_and_options,
-      DeserializeToLocalExecutable(serialized, compile_options));
-
-  return BuildPjRtExecutable(std::nullopt,
-                             std::move(local_executables_and_options.first),
-                             local_executables_and_options.second);
-}
-
 namespace {
 absl::StatusOr<ExecutableAndOptionsProto> DeserializeExecutableAndOptionsProto(
     absl::string_view serialized) {
@@ -2590,8 +2538,8 @@ absl::StatusOr<ExecutableAndOptionsProto> DeserializeExecutableAndOptionsProto(
 }
 }  // namespace
 
-absl::StatusOr<std::pair<std::unique_ptr<LocalExecutable>, CompileOptions>>
-PjRtStreamExecutorClient::DeserializeToLocalExecutable(
+absl::StatusOr<std::unique_ptr<PjRtExecutable>>
+PjRtStreamExecutorClient::DeserializeExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options) {
   ASSIGN_OR_RETURN(ExecutableAndOptionsProto proto,
                    DeserializeExecutableAndOptionsProto(serialized));
@@ -2612,34 +2560,56 @@ PjRtStreamExecutorClient::DeserializeToLocalExecutable(
   }
 
   tsl::profiler::TraceMe traceme(
-      "PjRtStreamExecutorClient::DeserializeToLocalExecutable");
-  VLOG(1) << "PjRtStreamExecutorClient::DeserializeToLocalExecutable";
+      "PjRtStreamExecutorClient::DeserializeExecutable");
+  VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
 
   std::string str = std::move(*proto.mutable_serialized_executable());
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<LocalExecutable> loaded,
       client()->Load(str, compile_options.executable_build_options));
 
-  return std::make_pair(std::move(loaded), compile_options);
+  return BuildPjRtExecutable(std::nullopt, std::move(loaded), compile_options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::LoadSerializedExecutable(
     absl::string_view serialized, std::optional<CompileOptions> options,
     const LoadOptions& load_options) {
-  TF_ASSIGN_OR_RETURN(auto local_executables_and_options,
-                      DeserializeToLocalExecutable(serialized, options));
-  return LoadInternal(/*unoptimized_hlo_module_proto=*/std::nullopt,
-                      std::move(local_executables_and_options.first),
-                      local_executables_and_options.second, /*dump=*/true);
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      DeserializeExecutable(serialized, options));
+  return LoadInternal(std::move(executable), /*dump=*/true);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::LoadInternal(
-    std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-    std::unique_ptr<LocalExecutable> local_executable,
-    CompileOptions compile_options, bool dump,
-    std::optional<std::string> fingerprint) {
+    std::shared_ptr<PjRtExecutable> executable, bool dump) {
+  std::optional<HloModuleProto> unoptimized_hlo_module_proto;
+  std::optional<std::string> fingerprint = std::nullopt;
+  std::shared_ptr<LocalExecutable> local_executable;
+  CompileOptions compile_options;
+  {
+    auto se_executable =
+        std::static_pointer_cast<StreamExecutorExecutable>(executable);
+    compile_options = se_executable->compile_options();
+
+    tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Load");
+    VLOG(1) << "PjRtStreamExecutorClient::Load";
+
+    TF_ASSIGN_OR_RETURN(
+        LocalExecutable * local_executable_ptr,
+        se_executable->GetOrLoadExecutable(client(), compile_options));
+    absl::StatusOr<std::string> maybe_fingerprint =
+        se_executable->FingerprintExecutable();
+    if (maybe_fingerprint.ok() && !maybe_fingerprint->empty()) {
+      fingerprint = *std::move(maybe_fingerprint);
+    }
+
+    unoptimized_hlo_module_proto =
+        se_executable->unoptimized_hlo_module_proto();
+    local_executable =
+        std::shared_ptr<LocalExecutable>(executable, local_executable_ptr);
+  }
+
   auto input_options = compile_options;
 
   TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
@@ -2726,45 +2696,28 @@ PjRtStreamExecutorClient::LoadInternal(
     parameter_shapes.push_back(transfer_manager->HostShapeToDeviceShape(
         computation_layout.parameter_shape(i)));
   }
-  auto executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
-      std::move(local_executable), std::move(fingerprint),
+  auto loaded_executable = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
+      std::move(local_executable), std::move(executable),
       compile_options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(input_options),
       std::move(addressable_device_logical_ids), std::move(addressable_devices),
       this, std::move(parameter_shapes), std::move(result_shape),
       std::move(output_memory_space_kind_ids));
-  TF_RETURN_IF_ERROR(
-      executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
+  TF_RETURN_IF_ERROR(loaded_executable->SetUpDonation(
+      compile_options.parameter_is_tupled_arguments));
   if (xla_dump_hlo_unoptimized_snapshots &&
       unoptimized_hlo_module_proto.has_value()) {
-    executable->SetInputHloSnapshotBits(
+    loaded_executable->SetInputHloSnapshotBits(
         std::move(*unoptimized_hlo_module_proto),
         compile_options.executable_build_options.debug_options());
   }
-  return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(loaded_executable));
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::Load(std::shared_ptr<PjRtExecutable> executable,
                                const LoadOptions& load_options) {
-  auto se_executable =
-      std::static_pointer_cast<StreamExecutorExecutable>(executable);
-  CompileOptions compile_options = se_executable->compile_options();
-
-  tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Load");
-  VLOG(1) << "PjRtStreamExecutorClient::Load";
-
-  TF_ASSIGN_OR_RETURN(auto local_executable, se_executable->ConsumeExecutable(
-                                                 client(), compile_options));
-  std::optional<std::string> fingerprint = std::nullopt;
-  absl::StatusOr<std::string> maybe_fingerprint =
-      se_executable->FingerprintExecutable();
-  if (maybe_fingerprint.ok() && !maybe_fingerprint->empty()) {
-    fingerprint = *std::move(maybe_fingerprint);
-  }
-  return LoadInternal(se_executable->unoptimized_hlo_module_proto(),
-                      std::move(local_executable), compile_options,
-                      /*dump=*/false, fingerprint);
+  return LoadInternal(std::move(executable), /*dump=*/false);
 }
 
 bool PjRtStreamExecutorClient::IsDmaMapped(const void* data_start,

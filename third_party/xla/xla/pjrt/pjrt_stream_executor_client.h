@@ -495,15 +495,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::unique_ptr<LocalExecutable> local_executables,
       CompileOptions compile_options);
 
-  absl::StatusOr<std::pair<std::unique_ptr<LocalExecutable>, CompileOptions>>
-  DeserializeToLocalExecutable(absl::string_view serialized,
-                               std::optional<CompileOptions> options);
-
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
-      std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-      std::unique_ptr<LocalExecutable> local_executables,
-      CompileOptions compile_options, bool dump,
-      std::optional<std::string> fingerprint = std::nullopt);
+      std::shared_ptr<PjRtExecutable> executable, bool dump);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -606,8 +599,8 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
 class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
  public:
   PjRtStreamExecutorLoadedExecutable(
-      std::unique_ptr<LocalExecutable> executables,
-      std::optional<std::string> fingerprint,
+      std::shared_ptr<LocalExecutable> executables,
+      std::shared_ptr<PjRtExecutable> pjrt_executable,
       bool parameter_is_tupled_arguments,
       std::shared_ptr<DeviceAssignment> device_assignment,
       CompileOptions compile_options,
@@ -620,33 +613,8 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
 
   PjRtStreamExecutorClient* client() const override { return client_; }
 
-  absl::string_view name() const override;
-
-  int num_replicas() const override {
-    return executable_->build_options().num_replicas();
-  }
-
-  int num_partitions() const override {
-    return executable_->build_options().num_partitions();
-  }
-
-  int64_t SizeOfGeneratedCodeInBytes() const override {
-    return executable_->executable()->SizeOfGeneratedCodeInBytes();
-  }
-
-  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
-    CompiledMemoryStats memory_stats = CompiledMemoryStats();
-    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
-    const BufferAssignmentProto* proto =
-        executable_->executable()->buffer_assignment_proto();
-    if (proto != nullptr) {
-      memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-      TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
-                          ComputePeakMemory(*proto));
-    }
-    memory_stats.PopulateBufferStatsFromAllocations(
-        executable_->executable()->GetAllocations());
-    return memory_stats;
+  PjRtExecutable* GetExecutable() const override {
+    return pjrt_executable_.get();
   }
 
   const HloInputOutputAliasConfig& input_output_alias_config() const override {
@@ -669,13 +637,6 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return addressable_devices_;
   }
-
-  // Return an HloModule per partition.
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override;
-
-  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const override;
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -711,10 +672,6 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
     return compile_options_;
   }
 
-  absl::StatusOr<std::string> FingerprintExecutable() const override {
-    return fingerprint_;
-  };
-
   void SetInputHloSnapshotBits(HloModuleProto hlo_module,
                                DebugOptions debug_options) {
     input_hlo_snapshot_bits_ =
@@ -742,6 +699,7 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   PjRtStreamExecutorClient* const client_;
   // One executable per partition.
   std::shared_ptr<LocalExecutable> executable_;
+  std::shared_ptr<PjRtExecutable> pjrt_executable_;
   // On device shapes of the executable parameters.
   std::shared_ptr<std::vector<Shape>> on_device_executable_parameter_shapes_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
@@ -750,7 +708,6 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   // True if the executables were compiled expecting arguments in a single
   // tuple.
   const bool parameter_is_tupled_arguments_;
-  std::string fingerprint_;
 
   struct InputHloSnapshotBits {
     HloModuleProto hlo_module;

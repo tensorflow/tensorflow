@@ -700,6 +700,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
