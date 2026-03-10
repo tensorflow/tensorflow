@@ -1,4 +1,5 @@
 // RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops | FileCheck %s
+// RUN: emitters_opt %s -split-input-file -xla-gpu-optimize-loops="max_unroll_factor=16" | FileCheck %s --check-prefix=CHECK-MAX16
 
 #map = #xla.indexing_map<"(d0) -> (d0 floordiv 8), domain: d0 in [0, 31]">
 #map1 = #xla.indexing_map<"(d0) -> (d0 mod 8), domain: d0 in [0, 31]">
@@ -105,3 +106,26 @@ module {
 // CHECK-LABEL: @do_not_unroll
 // CHECK: %[[C1:.*]] = arith.constant 1 : index
 // CHECK: scf.for {{.*}} step %[[C1]]
+
+// -----
+
+module {
+  func.func @unroll_up_to_max(%arg0: f32) -> f32 {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c16 = arith.constant 16 : index
+    %ret = scf.for %i = %c0 to %c16 step %c1 iter_args (%v = %arg0) -> (f32) {
+      %exp = math.exp %v : f32
+      %add = arith.addf %v, %exp : f32
+      %log = math.log %add : f32
+      scf.yield %log : f32
+    }
+    return %ret : f32
+  }
+}
+
+// CHECK-LABEL: @unroll_up_to_max
+// CHECK: %[[C8:.*]] = arith.constant 8 : index
+// CHECK: scf.for {{.*}} step %[[C8]]
+// CHECK-MAX16-LABEL: @unroll_up_to_max
+// CHECK-MAX16-NOT: scf.for

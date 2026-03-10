@@ -77,6 +77,7 @@ class IfrtServingExecutableTestHelper {
   std::unique_ptr<IfrtPersistentCompilationCache>
       ifrt_persistent_compilation_cache_;
   TfToHloCompiler tf_to_hlo_compiler_;
+  std::unique_ptr<H2DTransferExecutorFactory> h2d_transfer_executor_factory_;
 };
 
 // Returns the path to the MLIR module for the given module name.

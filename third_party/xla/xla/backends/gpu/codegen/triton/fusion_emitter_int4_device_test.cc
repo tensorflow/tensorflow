@@ -136,7 +136,9 @@ TEST_F(TritonTest, FuseSubchannelDequantizationWithTranspose) {
       R"(
     CHECK:    %[[transpose:.*]] = bf16[2,64,8]{2,1,0} transpose(
     CHECK:    %[[broadcast:.*]] = {{.*}} broadcast(%[[transpose]])
-    CHECK:    multiply({{.*}}, %[[broadcast]])
+    CHECK-PTX: multiply({{.*}}, %[[broadcast]])
+    CHECK-GCN: %[[convert:.*]] = f32[2,64,8,256]{3,2,1,0} convert(%[[broadcast]])
+    CHECK-GCN: multiply({{.*}}, %[[convert]])
     CHECK:    ENTRY
     CHECK:    __triton_nested_gemm_fusion
   )";
