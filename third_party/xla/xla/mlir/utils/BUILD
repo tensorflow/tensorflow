@@ -45,6 +45,18 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "math_util",
+    srcs = ["math_util.cc"],
+    hdrs = ["math_util.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "type_util",
     srcs = ["type_util.cc"],
     hdrs = ["type_util.h"],
