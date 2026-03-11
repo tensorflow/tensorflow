@@ -23,6 +23,7 @@ limitations under the License.
 #include <deque>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <set>
@@ -172,6 +173,25 @@ BuildIdToLogicalBufferMap(
     id_to_logical_buffer[logical_buffer_proto.id()] = &logical_buffer;
   }
   return id_to_logical_buffer;
+}
+
+std::string GetMemorySpaceName(int color) {
+  switch (color) {
+    case 0:
+      return "default";
+    case 1:
+      return "vmem";
+    case 2:
+      return "smem";
+    case 3:
+      return "hbm";
+    case 4:
+      return "host";
+    case 5:
+      return "cmem";
+    default:
+      return absl::StrCat("color_", color);
+  }
 }
 
 }  // namespace
@@ -991,66 +1011,24 @@ std::string BufferAssignment::ToString() const {
 
 std::string BufferAssignment::MemoryUsageReport(float percentile,
                                                 int64_t more_than_k) const {
-  std::string output;
-  int64_t total_size = 0;
-  for (auto& allocation : allocations_) {
-    total_size += allocation.size();
-  }
-  absl::StrAppend(&output, "Total bytes used: ", total_size, " (",
-                  HumanReadableNumBytes(total_size), ")\n");
-
-  absl::StrAppend(&output, "\nAllocations sorted by size:\n\n");
-  auto allocations = allocations_;
-  std::sort(allocations.begin(), allocations.end(),
-            [](const BufferAllocation& a, const BufferAllocation& b) {
-              if (a.size() > b.size()) return true;
-              if (a.size() < b.size()) return false;
-              return a.index() < b.index();
-            });
-
-  int64_t cumulative_size = 0;
-  absl::StrAppend(
-      &output, "cumulative_size; total_size - cumulative_size; allocation\n");
-  absl::StrAppend(&output,
-                  "------------------------------------------------------------"
-                  "------------------\n");
-  int64_t index = 0;
-  for (auto& allocation : allocations) {
-    cumulative_size += allocation.size();
-    absl::StrAppend(
-        &output,
-        absl::StrFormat("%10s(%3.0f%%); %10s; %s",
-                        HumanReadableNumBytes(cumulative_size),
-                        100. * cumulative_size / total_size,
-                        HumanReadableNumBytes(total_size - cumulative_size),
-                        allocation.ToShortString(true)));
-
-    // Skip the rest of the allocations if they are less than percentile of the
-    // total size and not more than k.
-    if (++index > more_than_k &&
-        total_size - cumulative_size < total_size * percentile) {
-      absl::StrAppend(
-          &output,
-          absl::StrFormat(
-              "The rest %d allocations are less than %d%% of the total "
-              "size and not shown.\n",
-              allocations.size() - index, static_cast<int>(percentile * 100)));
-      break;
+  MemoryUsageReportProto proto =
+      GetMemoryUsageReportProto(percentile, more_than_k);
+  std::string report;
+  for (const auto& memory_space_entry :
+       proto.memory_space_allocation_entries()) {
+    int32_t color = memory_space_entry.has_memory_space_color()
+                        ? memory_space_entry.memory_space_color()
+                        : 0;
+    StrAppend(&report, "Memory Space: ", GetMemorySpaceName(color),
+              " (color=", color, ")\n");
+    StrAppend(&report, "Total bytes: ", memory_space_entry.total_bytes(), " (",
+              HumanReadableNumBytes(memory_space_entry.total_bytes()), ")\n");
+    for (const auto& entry : memory_space_entry.allocation_entries()) {
+      StrAppend(&report, entry.hlo_text(), "\n");
     }
+    StrAppend(&report, "\n");
   }
-
-  absl::StrAppend(&output,
-                  "\n\nAllocations sorted by size with their values:\n");
-  for (auto& allocation : allocations) {
-    if (allocation.assigned_buffers().size() == 1) {
-      absl::StrAppend(&output, allocation.ToShortString(true));
-    } else {
-      StrAppendFormat(
-          &output, "%s\n%s\n", allocation.ToShortString(true),
-          allocation.MemoryUsageReport("\t", percentile, more_than_k));
-    }
-  }
-  return output;
+  return report;
 }
 
 std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
@@ -1332,6 +1310,82 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
       *proto->add_heap_simulator_traces() = heap_trace;
     }
   }
+}
+
+MemoryUsageReportProto BufferAssignment::GetMemoryUsageReportProto(
+    float percentile, int64_t more_than_k) const {
+  xla::MemoryUsageReportProto proto;
+
+  absl::flat_hash_map<int64_t, std::vector<const BufferAllocation*>>
+      allocations_by_color;
+  for (const BufferAllocation& allocation : allocations_) {
+    allocations_by_color[allocation.color()].push_back(&allocation);
+  }
+
+  std::vector<int64_t> sorted_colors;
+  sorted_colors.reserve(allocations_by_color.size());
+  for (const std::pair<const int64_t, std::vector<const BufferAllocation*>>&
+           entry : allocations_by_color) {
+    sorted_colors.push_back(entry.first);
+  }
+  std::sort(sorted_colors.begin(), sorted_colors.end());
+
+  for (int64_t color : sorted_colors) {
+    std::vector<const BufferAllocation*>& color_allocations =
+        allocations_by_color[color];
+    std::sort(color_allocations.begin(), color_allocations.end(),
+              [](const BufferAllocation* a, const BufferAllocation* b) {
+                if (a->size() > b->size()) {
+                  return true;
+                }
+                if (a->size() < b->size()) {
+                  return false;
+                }
+                return a->index() < b->index();
+              });
+
+    int64_t total_size = std::accumulate(
+        color_allocations.begin(), color_allocations.end(), int64_t{0},
+        [](int64_t sum, const BufferAllocation* a) { return sum + a->size(); });
+
+    MemoryUsageReportProto::AllocationEntryInMemorySpace* memory_space_entry =
+        proto.add_memory_space_allocation_entries();
+    memory_space_entry->set_total_bytes(total_size);
+    memory_space_entry->set_memory_space_color(color);
+
+    int64_t cumulative_size = 0;
+    int64_t index = 0;
+    for (const BufferAllocation* allocation : color_allocations) {
+      cumulative_size += allocation->size();
+      MemoryUsageReportProto::AllocationEntry* entry =
+          memory_space_entry->add_allocation_entries();
+      entry->set_index(allocation->index());
+      entry->set_size(allocation->size());
+      entry->set_cumulative_size(cumulative_size);
+      if (total_size > 0) {
+        entry->set_cumulative_percentage(static_cast<double>(cumulative_size) /
+                                         total_size);
+      } else {
+        entry->set_cumulative_percentage(0.0);
+      }
+
+      entry->set_hlo_text(
+          allocation->MemoryUsageReport("  ", percentile, more_than_k));
+
+      for (const std::pair<const HloValue* const, BufferAllocation::OffsetSize>&
+               buffer_entry : allocation->assigned_buffers()) {
+        entry->add_defining_positions(
+            buffer_entry.first->defining_position().ToString());
+      }
+
+      if (++index > more_than_k &&
+          static_cast<double>(total_size - cumulative_size) <
+              total_size * percentile) {
+        break;
+      }
+    }
+  }
+  return proto;
 }
 
 /* static */

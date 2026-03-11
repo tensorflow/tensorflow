@@ -2284,6 +2284,39 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   }
 }
 
+TEST_F(BufferAssignmentTest, MemoryUsageReportGroupedByMemorySpace) {
+  // Test that MemoryUsageReport and MemoryUsageReportProto correctly group
+  // allocations by memory space (color).
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p"));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  // Test text report: should contain memory space header and total bytes.
+  std::string text_report = buffers->MemoryUsageReport();
+  EXPECT_THAT(text_report, ::testing::HasSubstr("Memory Space:"));
+  EXPECT_THAT(text_report, ::testing::HasSubstr("Total bytes:"));
+
+  // Test proto report: should have at least one memory space entry.
+  MemoryUsageReportProto proto_report = buffers->GetMemoryUsageReportProto();
+  ASSERT_GE(proto_report.memory_space_allocation_entries_size(), 1);
+
+  // Verify the memory space entry has expected fields.
+  const auto& memory_space = proto_report.memory_space_allocation_entries(0);
+  EXPECT_GE(memory_space.total_bytes(), 0);
+  EXPECT_GE(memory_space.allocation_entries_size(), 1);
+
+  for (const auto& entry : memory_space.allocation_entries()) {
+    EXPECT_GE(entry.defining_positions_size(), 1);
+  }
+}
+
 TEST_F(BufferAssignmentTest, AliasedBuffersShouldntCoexistInPeakBuffers) {
   std::string hlo_text = R"(
 HloModule test_module, is_scheduled=true

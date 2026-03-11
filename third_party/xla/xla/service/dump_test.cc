@@ -166,7 +166,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
   EXPECT_TRUE(absl::StrContains(data, "BufferAssignment:"));
   // Third file is the memory usage report.
   EXPECT_TRUE(ReadFileToString(env, paths[2], &data).ok());
-  EXPECT_TRUE(absl::StrContains(data, "Total bytes used:"));
+  EXPECT_TRUE(absl::StrContains(data, "Total bytes:"));
   // Fourth file is the debug options.
   EXPECT_TRUE(ReadFileToString(env, paths[3], &data).ok());
 }
