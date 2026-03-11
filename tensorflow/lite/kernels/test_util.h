@@ -800,8 +800,18 @@ class SingleOpModel {
   // Return a vector with the flattened contents of a tensor.
   template <typename T>
   std::vector<T> ExtractVector(int index) const {
-    const T* v = interpreter_->typed_tensor<T>(index);
     const auto* tensor = interpreter_->tensor(index);
+    ABSL_CHECK(tensor) << "Tensor at index " << index << " is null.";
+
+    // Get the total number of elements in the tensor.
+    int64_t num_elements = NumElements(tensor);
+
+    // If the tensor has no elements, return an empty vector immediately.
+    if (num_elements == 0) {
+      return std::vector<T>();
+    }
+
+    const T* v = interpreter_->typed_tensor<T>(index);
     if (!v && tensor->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
       v = reinterpret_cast<const T*>(tensor->data.raw);
     }
