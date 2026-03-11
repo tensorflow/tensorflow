@@ -3511,6 +3511,7 @@ xla_cc_test(
     srcs = ["ptx_compile_options_from_debug_options_test.cc"],
     deps = [
         ":ptx_compile_options_from_debug_options",
+        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/stream_executor/cuda:compilation_options",
         "@com_google_googletest//:gtest_main",

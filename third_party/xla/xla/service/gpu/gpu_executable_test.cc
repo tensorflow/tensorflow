@@ -485,10 +485,11 @@ TEST(GpuExecutableTest, ProtoConversion) {
   TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto,
                           reference_executable->ToProto());
 
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> reconstructed_executable,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
-                               DebugOptions()));
+                               debug_options));
   EXPECT_THAT(reconstructed_executable->text(), "test_asm_text");
   EXPECT_THAT(reconstructed_executable->binary(), ElementsAre(1, 2, 3));
   EXPECT_THAT(
@@ -504,7 +505,7 @@ TEST(GpuExecutableTest, ProtoConversion) {
 TEST(GpuExecutableTest, GpuExecutableDump) {
   tsl::Env* env = tsl::Env::Default();
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_dump_gpu_executable(true);
   TF_ASSERT_OK_AND_ASSIGN(TemporaryDirectory temp_dir,
                           TemporaryDirectory::CreateForCurrentTestcase());
@@ -634,10 +635,11 @@ TEST(GpuExecutableTest, FromProtoWithSymbolResolver) {
     return kCudaSymbol;
   };
 
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<GpuExecutable> executable,
       GpuExecutable::FromProto(proto, device_description, "TEST_PLATFORM",
-                               DebugOptions(), symbol_resolver));
+                               debug_options, symbol_resolver));
 
   const CustomKernelThunk* custom_kernel_thunk =
       dynamic_cast<const CustomKernelThunk*>(
@@ -650,7 +652,7 @@ TEST(GpuExecutableTest, FromProtoWithSymbolResolver) {
 }
 
 TEST(GpuExecutableTest, ToProtoReturnsUnchangedThunkGraph) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
 
@@ -760,7 +762,7 @@ TEST(GpuExecutableTest, FromProtoRegistersHloModuleWithDebugInfoManager) {
   device_description.set_gpu_compute_capability(
       se::GpuComputeCapability{se::CudaComputeCapability::Hopper()});
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_executable_embed_debug_info(true);
 
   TF_ASSERT_OK_AND_ASSIGN(
