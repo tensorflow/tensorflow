@@ -2,7 +2,7 @@ Auto generated patch. Do not edit or delete it, even if empty.
 diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp b/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
 --- a/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
 +++ b/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
-@@ -91,6 +91,8 @@
+@@ -88,6 +88,8 @@
      // result #0 must have type v2i64, but has type v16i8/v8i16
    case X86ISD::CMPCCXADD:
      // operand #4 must have type i8, but has type i32
