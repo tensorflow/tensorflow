@@ -3065,7 +3065,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
   )";
 
   HloModuleConfig config;
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsForTest();
   options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
@@ -3136,7 +3136,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDynamicSlice) {
   })";
 
   HloModuleConfig config;
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsForTest();
   options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);

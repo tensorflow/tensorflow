@@ -210,7 +210,7 @@ xla_test(
             "no_oss",
         ],
         "b200": [
-            "broken",
+            "multi_gpu",
             "no_oss",
         ],
     },
