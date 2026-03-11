@@ -378,6 +378,7 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
+  MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
   static char ID;  // NOLINT
 };
@@ -444,6 +445,7 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
+  MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
   static char ID;  // NOLINT
 };

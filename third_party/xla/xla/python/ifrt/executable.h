@@ -312,6 +312,11 @@ class LoadedExecutable
 
   virtual absl::Span<Device* const> addressable_devices() const = 0;
 
+  struct DeleteOptions {};
+
+  // Sets options that will be used when the executable is deleted/destroyed.
+  virtual void SetDeleteOptions(const DeleteOptions& options) = 0;
+
   static char ID;  // NOLINT
 };
 

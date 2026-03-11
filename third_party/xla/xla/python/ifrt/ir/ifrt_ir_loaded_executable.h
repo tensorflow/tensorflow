@@ -134,6 +134,8 @@ class IfrtIrLoadedExecutable
   absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>
   GetMpmdCostAnalysis() const override;
 
+  void SetDeleteOptions(const DeleteOptions& options) override {}
+
   // IFRT IR specific methods.
 
   // Returns a URL to a generated xprof of predicted memory profile.
