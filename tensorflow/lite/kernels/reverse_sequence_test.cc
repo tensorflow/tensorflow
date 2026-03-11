@@ -40,6 +40,7 @@ class ReverseSequenceOpModel : public SingleOpModel {
         BuiltinOperator_REVERSE_SEQUENCE, BuiltinOptions_ReverseSequenceOptions,
         CreateReverseSequenceOptions(builder_, seq_dim, batch_dim).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

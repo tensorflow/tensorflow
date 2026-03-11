@@ -740,6 +740,7 @@ class BidirectionalRNNOpModel : public SingleOpModel {
         aux_fw_weights_shape,      // aux_fw_weights
         aux_bw_weights_shape,      // aux_bw_weights
     });
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetFwBias(std::initializer_list<float> f) {

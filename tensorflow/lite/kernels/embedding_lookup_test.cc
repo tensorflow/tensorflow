@@ -72,6 +72,7 @@ class BaseEmbeddingLookupOpModel : public SingleOpModel {
     output_ = AddOutput(output_type);
     SetBuiltinOp(BuiltinOperator_EMBEDDING_LOOKUP, BuiltinOptions_NONE, 0);
     BuildInterpreter({index_shape, weight_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<int> data) {

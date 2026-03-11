@@ -49,6 +49,7 @@ class ListPushBackModel : public ListOpModel {
     SetCustomOp("ListPushBack", {}, Register_LIST_PUSH_BACK);
 
     BuildInterpreter({{}, item_data.shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     interpreter_->input_tensor(0)->allocation_type = kTfLiteVariantObject;
   }

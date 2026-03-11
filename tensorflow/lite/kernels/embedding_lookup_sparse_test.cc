@@ -51,6 +51,7 @@ class EmbeddingLookupSparseOpModel : public SingleOpModel {
                  CreateEmbeddingLookupSparseOptions(builder_, type).Union());
     BuildInterpreter({lookup_shape, indices_shape, dense_shape_shape,
                       lookup_shape, value_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<int> lookup_data,

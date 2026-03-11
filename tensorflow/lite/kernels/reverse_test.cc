@@ -40,6 +40,7 @@ class ReverseOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_REVERSE_V2, BuiltinOptions_ReverseV2Options,
                  CreateReverseV2Options(builder_).Union());
     BuildInterpreter({GetShape(input_), GetShape(axis_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

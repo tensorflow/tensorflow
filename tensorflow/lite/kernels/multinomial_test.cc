@@ -61,6 +61,7 @@ class MultinomialOpModel : public tflite::SingleOpModel {
     output_ = AddOutput(output);
     SetCustomOp("Multinomial", {}, ops::custom::Register_MULTINOMIAL);
     BuildInterpreter({GetShape(logits_), GetShape(num_samples_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int logits_;

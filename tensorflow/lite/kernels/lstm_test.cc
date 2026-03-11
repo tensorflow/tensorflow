@@ -2236,6 +2236,7 @@ class HybridSparseLSTMOpModel : public ::tflite::SingleOpModel {
                           proj_clip, LSTMKernelType_FULL, false)
             .Union());
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetCellToInputWeights(std::vector<float> f) {

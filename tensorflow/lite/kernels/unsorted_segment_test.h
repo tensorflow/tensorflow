@@ -42,6 +42,7 @@ class UnsortedSegmentModel : public SingleOpModel {
     SetBuiltinOp(op, options, 0);
     BuildInterpreter({GetShape(data_id_), GetShape(segment_ids_id_),
                       GetShape(num_segments_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   explicit UnsortedSegmentModel(
@@ -59,6 +60,7 @@ class UnsortedSegmentModel : public SingleOpModel {
     SetBuiltinOp(op, options, 0);
     BuildInterpreter({GetShape(data_id_), GetShape(segment_ids_id_),
                       GetShape(num_segments_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int data() const { return data_id_; }

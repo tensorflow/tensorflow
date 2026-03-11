@@ -44,6 +44,7 @@ class Irfft2dOpModel : public SingleOpModel {
     const std::vector<uint8_t> custom_option;
     SetCustomOp("Irfft2d", custom_option, Register_IRFFT2D);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

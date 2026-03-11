@@ -39,6 +39,7 @@ class ScatterNdOpModel : public SingleOpModel {
                  CreateScatterNdOptions(builder_).Union());
     BuildInterpreter(
         {GetShape(indices_), GetShape(updates_), GetShape(shape_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

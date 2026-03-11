@@ -49,6 +49,7 @@ class GatherOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_GATHER, BuiltinOptions_GatherOptions,
                  CreateGatherOptions(builder_, axis, batch_dims).Union());
     BuildInterpreter({GetShape(input_), GetShape(positions_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (!constant_tensor) {
       if (input.type == TensorType_INT4) {
         SetInputInt4(input_, input_data,

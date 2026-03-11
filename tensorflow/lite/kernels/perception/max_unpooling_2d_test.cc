@@ -50,6 +50,7 @@ class MaxUnpoolingOpModel : public SingleOpModel {
 
     SetCustomOp("MaxUnpooling2D", custom_option, RegisterMaxUnpooling2D);
     BuildInterpreter({GetShape(input_), GetShape(indices_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(const std::vector<float>& data) {

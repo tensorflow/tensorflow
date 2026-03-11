@@ -106,6 +106,7 @@ class LSTMOpModel : public SingleOpModel {
                                    cell_clip, proj_clip)
                      .Union());
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInputToInputWeights(std::initializer_list<float> f) {

@@ -38,6 +38,7 @@ class DepthToSpaceOpModel : public SingleOpModel {
                  BuiltinOptions_DepthToSpaceOptions,
                  CreateDepthToSpaceOptions(builder_, block_size).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

@@ -57,8 +57,10 @@ class ResizeBilinearOpModel : public SingleOpModel {
             .Union());
     if (const_size) {
       BuildInterpreter({GetShape(input_)});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     } else {
       BuildInterpreter({GetShape(input_), GetShape(size_)});
+      AllocateAndDelegate(/*apply_delegate=*/true);
       PopulateTensor(size_, size_data);
     }
   }

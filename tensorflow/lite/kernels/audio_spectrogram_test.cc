@@ -50,6 +50,7 @@ class BaseAudioSpectrogramOpModel : public SingleOpModel {
     SetCustomOp("AudioSpectrogram", fbb.GetBuffer(),
                 Register_AUDIO_SPECTROGRAM);
     BuildInterpreter({GetShape(input1_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

@@ -234,6 +234,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input_), GetShape(weights_),
                       (bias_ == kTfLiteOptionalTensor) ? std::vector<int>()
                                                        : GetShape(bias_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input_size() { return input_size_; }

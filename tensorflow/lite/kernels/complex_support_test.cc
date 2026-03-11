@@ -38,6 +38,7 @@ class RealOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_REAL, BuiltinOptions_NONE, 0);
 
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }
@@ -99,6 +100,7 @@ class ImagOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_IMAG, BuiltinOptions_NONE, 0);
 
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }
@@ -160,6 +162,7 @@ class ComplexAbsOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_COMPLEX_ABS, BuiltinOptions_NONE, 0);
 
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

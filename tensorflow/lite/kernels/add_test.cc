@@ -44,6 +44,7 @@ class BaseAddOpModel : public SingleOpModel {
                  CreateAddOptions(builder_, activation_type).Union());
     SetBypassDefaultDelegates();
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   BaseAddOpModel(TensorType type, const std::vector<int>& input1_shape,
@@ -56,6 +57,7 @@ class BaseAddOpModel : public SingleOpModel {
                  CreateAddOptions(builder_, activation_type).Union());
     SetBypassDefaultDelegates();
     BuildInterpreter({input1_shape, input2_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

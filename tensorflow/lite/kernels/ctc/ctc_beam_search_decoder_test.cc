@@ -63,6 +63,7 @@ class CTCBeamSearchDecoderOpModel : public SingleOpModel {
     SetCustomOp("CTCBeamSearchDecoder", fbb.GetBuffer(),
                 Register_CTC_BEAM_SEARCH_DECODER);
     BuildInterpreter({input_shape, sequence_length_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int inputs() { return inputs_; }

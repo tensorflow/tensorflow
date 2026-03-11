@@ -45,8 +45,10 @@ class LSHProjectionOpModel : public SingleOpModel {
                  CreateLSHProjectionOptions(builder_, type).Union());
     if (weight_shape.size() > 0) {
       BuildInterpreter({hash_shape, input_shape, weight_shape});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     } else {
       BuildInterpreter({hash_shape, input_shape});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     }
 
     output_size_ = 1;

@@ -37,6 +37,7 @@ class ListElementShapeModel : public ListOpModel {
     shape_output_ = AddOutput({TensorType_INT32, {}});
     SetCustomOp("ListElementShape", {}, Register_LIST_ELEMENT_SHAPE);
     BuildInterpreter({{}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
   const TfLiteTensor* GetOutputTensor(int index) {
     return interpreter_->tensor(index);

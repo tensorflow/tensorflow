@@ -207,6 +207,7 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
             merge_outputs, time_major, asymmetric_quantize_inputs)
             .Union());
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void PopulateWeightTensor(int tensor_id, const std::vector<float>& f) {

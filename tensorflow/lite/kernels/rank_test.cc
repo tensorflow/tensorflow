@@ -39,6 +39,7 @@ class RankOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_RANK, BuiltinOptions_RankOptions,
                  CreateRankOptions(builder_).Union());
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   TfLiteStatus InvokeWithResult() { return interpreter_->Invoke(); }

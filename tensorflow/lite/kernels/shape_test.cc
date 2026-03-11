@@ -39,6 +39,7 @@ class ShapeOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_SHAPE, BuiltinOptions_ShapeOptions,
                  CreateShapeOptions(builder_, output_type).Union());
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   TfLiteStatus InvokeWithResult() { return interpreter_->Invoke(); }

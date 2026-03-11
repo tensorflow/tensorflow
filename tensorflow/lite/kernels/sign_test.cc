@@ -48,6 +48,7 @@ class SignModel : public tflite::SingleOpModel {
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_SIGN, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(x_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int x_;

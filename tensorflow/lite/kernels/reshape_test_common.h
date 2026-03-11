@@ -98,6 +98,7 @@ class ReshapeOpModel : public BASE {
             this->builder_.template CreateVector<int>(shape_data))
             .Union());
     this->BuildInterpreter({this->GetShape(input_)});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void BuildWithTensorShape(std::initializer_list<int> input_shape,
@@ -121,6 +122,7 @@ class ReshapeOpModel : public BASE {
             .Union());
     this->BuildInterpreter(
         {this->GetShape(input_), this->GetShape(shape_input_tensor)});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
     if (shape_data.size() != 0) {
       this->template PopulateTensor<int32_t>(shape_input_tensor, shape_data);
     }
@@ -147,6 +149,7 @@ class ReshapeOpModel : public BASE {
             this->builder_.template CreateVector<int>(shape_data))
             .Union());
     this->BuildInterpreter({this->GetShape(input_)});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input_;

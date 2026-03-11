@@ -114,10 +114,12 @@ class QuantizedLSTMOpModel : public MultiOpModel {
       BuildInterpreter({GetShape(input_), GetShape(zero_input_),
                         GetShape(prev_output_), GetShape(weights_),
                         GetShape(biases_), GetShape(prev_cell_state_)});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     } else {
       BuildInterpreter({GetShape(input_), GetShape(prev_output_),
                         GetShape(weights_), GetShape(biases_),
                         GetShape(prev_cell_state_)});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     }
     // init feedback inputs to zero
     std::vector<int16_t> initial_state(GetTensorSize(cell_state_out_), 0);

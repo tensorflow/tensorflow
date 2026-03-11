@@ -90,6 +90,7 @@ class PadV2OpConstModel : public PadOpModel<T1, T2> {
     this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
                        CreatePadV2Options(this->builder_).Union());
     this->BuildInterpreter({input.shape});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   PadV2OpConstModel(const TensorData& input,
@@ -107,6 +108,7 @@ class PadV2OpConstModel : public PadOpModel<T1, T2> {
     this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
                        CreatePadV2Options(this->builder_).Union());
     this->BuildInterpreter({input.shape});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -131,6 +133,7 @@ class PadOpConstModel : public PadOpModel<float, T> {
     this->SetBuiltinOp(BuiltinOperator_PAD, BuiltinOptions_PadOptions,
                        CreatePadOptions(this->builder_).Union());
     this->BuildInterpreter({input.shape});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -152,6 +155,7 @@ class PadV2OpDynamicModel
     this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
                        CreatePadV2Options(this->builder_).Union());
     this->BuildInterpreter({input.shape, paddings_shape});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
   }
   PadV2OpDynamicModel(const TensorData& input,
                       std::initializer_list<int> paddings_shape,
@@ -165,6 +169,7 @@ class PadV2OpDynamicModel
     this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
                        CreatePadV2Options(this->builder_).Union());
     this->BuildInterpreter({input.shape, paddings_shape});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -189,6 +194,7 @@ class PadOpDynamicModel : public PadOpModel<float, T> {
     this->SetBuiltinOp(BuiltinOperator_PAD, BuiltinOptions_PadOptions,
                        CreatePadOptions(this->builder_).Union());
     this->BuildInterpreter({input.shape, paddings_shape});
+    this->AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

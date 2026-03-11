@@ -42,6 +42,7 @@ class MatrixSetDiagOpModel : public SingleOpModel {
                  BuiltinOptions_MatrixSetDiagOptions,
                  CreateMatrixSetDiagOptions(builder_).Union());
     BuildInterpreter({GetShape(input_), GetShape(diag_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

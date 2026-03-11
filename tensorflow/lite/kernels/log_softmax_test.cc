@@ -38,6 +38,7 @@ class LogSoftmaxOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_LOG_SOFTMAX, BuiltinOptions_LogSoftmaxOptions,
                  CreateLogSoftmaxOptions(builder_).Union());
     BuildInterpreter({{batches_, input_size_}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<float> data) {

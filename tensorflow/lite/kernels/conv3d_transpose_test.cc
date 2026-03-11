@@ -60,6 +60,7 @@ class Conv3dTransposeOpModel : public SingleOpModel {
             .Union());
     BuildInterpreter({GetShape(output_shape_), GetShape(filter_),
                       GetShape(input_), GetShape(bias_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     if (test_type == TestType::kDynamic) {
       PopulateTensor(output_shape_, output_shape_data);
@@ -90,6 +91,7 @@ class Conv3dTransposeOpModel : public SingleOpModel {
             .Union());
     BuildInterpreter(
         {GetShape(output_shape_), GetShape(filter_), GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (test_type == TestType::kDynamic) {
       PopulateTensor(output_shape_, output_shape_data);
     }

@@ -44,6 +44,7 @@ class OneHotOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_ONE_HOT, BuiltinOptions_OneHotOptions,
                  CreateOneHotOptions(builder_, axis).Union());
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     PopulateTensor<int>(depth, {depth_value});
     PopulateTensor<T>(on, {on_value});

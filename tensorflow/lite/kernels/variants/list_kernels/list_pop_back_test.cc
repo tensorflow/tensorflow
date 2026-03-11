@@ -52,6 +52,7 @@ class ListPopBackModel : public ListOpModel {
     SetCustomOp("ListPopBack", /*custom_option=*/{}, Register_LIST_POP_BACK);
 
     BuildInterpreter({{}, tensor_element_shape_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     PopulateListTensor(list_input_, list_element_shape, num_elements,
                        kTfLiteInt32);

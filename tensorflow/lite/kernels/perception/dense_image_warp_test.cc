@@ -42,6 +42,7 @@ class DenseImageWarpOpModel : public SingleOpModel {
     std::vector<uint8_t> custom_option;
     SetCustomOp("DenseImageWarp", custom_option, RegisterDenseImageWarp);
     BuildInterpreter({GetShape(input_), GetShape(flow_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(const std::vector<float>& data) {

@@ -190,6 +190,7 @@ class RNNOpModel : public SingleOpModel {
                       {units_, units_},         // recurrent weights tensor
                       {units_},                 // bias tensor
                       {batches_, units_}});     // hidden state tensor
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }

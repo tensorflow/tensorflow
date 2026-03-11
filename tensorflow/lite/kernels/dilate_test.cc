@@ -168,6 +168,7 @@ class DilateOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_DILATE, BuiltinOptions2_DilateOptions,
                  CreateDilateOptions(builder_).Union());
     BuildInterpreter({input_shape_});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     PopulateTensor(input_, input_data_);
     if (!IsDilationTensorConst) {
       PopulateTensor(dilations_, dilations_data_);

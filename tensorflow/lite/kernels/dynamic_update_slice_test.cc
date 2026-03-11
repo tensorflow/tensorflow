@@ -49,6 +49,7 @@ class DynamicUpdateSliceOpModel : public SingleOpModel {
                  CreateDynamicUpdateSliceOptions(builder_).Union());
     BuildInterpreter(
         {GetShape(input_), GetShape(update_), GetShape(start_indices_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

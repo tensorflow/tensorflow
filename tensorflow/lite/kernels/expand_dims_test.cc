@@ -53,7 +53,7 @@ class ExpandDimsOpModel : public SingleOpModel {
                  0);
 
     BuildInterpreter({input_shape, {1}});
-
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<InputType>(input_, input_data);
       PopulateTensor<int32_t>(axis_, {axis});

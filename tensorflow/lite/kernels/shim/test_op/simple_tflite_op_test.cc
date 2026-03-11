@@ -51,6 +51,7 @@ class SimpleOpModel : public SingleOpModel {
     // Build the interpreter.
     SetCustomOp(OpName_SIMPLE_OP(), op_options, Register_SIMPLE_OP);
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
     // Populate inputs.
     PopulateStringTensor(input_idx[0], {input0});
     for (int i = 0; i < input1.size(); ++i) {

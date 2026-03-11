@@ -42,6 +42,7 @@ class CumsumOpModel : public SingleOpModel {
                  CreateCumsumOptions(builder_, exclusive, reverse).Union());
 
     BuildInterpreter({GetShape(input_), GetShape(axis_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

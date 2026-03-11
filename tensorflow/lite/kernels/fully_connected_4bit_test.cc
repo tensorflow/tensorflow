@@ -65,6 +65,7 @@ class FullyConnected4BitOpModel : public SingleOpModel {
     resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED, registration);
     BuildInterpreter({GetShape(input_), GetShape(weights_), GetShape(bias_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     SetUnitScale();
   }
 

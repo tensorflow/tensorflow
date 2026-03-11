@@ -49,7 +49,7 @@ class TopKV2OpModel : public SingleOpModel {
     output_indexes_ = AddOutput(TensorType_INT32);
     SetBuiltinOp(BuiltinOperator_TOPK_V2, BuiltinOptions_TopKV2Options, 0);
     BuildInterpreter({input_shape, {1}});
-
+    AllocateAndDelegate(/*apply_delegate=*/true);
     PopulateTensor<InputType>(input_, input_data);
     if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<int32_t>(top_k_, {top_k});

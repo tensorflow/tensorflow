@@ -39,6 +39,7 @@ class SoftmaxOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
                  CreateSoftmaxOptions(builder_, beta_).Union());
     BuildInterpreter({{batches_, input_size_}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<float> data) {

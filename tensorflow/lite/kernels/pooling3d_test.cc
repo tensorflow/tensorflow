@@ -58,6 +58,7 @@ class BasePoolingOpModel : public SingleOpModel {
                   ops::custom::Register_MAX_POOL_3D);
     }
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(const std::vector<float>& data) {

@@ -66,6 +66,7 @@ class RandomUniformOpModel : public tflite::SingleOpModel {
     output_ = AddOutput(output);
     SetCustomOp("RandomUniform", {}, ops::custom::Register_RANDOM_UNIFORM);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (dynamic_input) {
       PopulateTensor<INPUT_TYPE>(input_, std::vector<INPUT_TYPE>(input));
     }
@@ -96,6 +97,7 @@ class RandomUniformIntOpModel : public tflite::SingleOpModel {
     SetCustomOp("RandomUniformInt", {},
                 ops::custom::Register_RANDOM_UNIFORM_INT);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input_;

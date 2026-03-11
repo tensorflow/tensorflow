@@ -45,6 +45,7 @@ class BroadcastArgsOpModel : public SingleOpModel {
     output_ = AddOutput(GetTensorType<ShapeType>());
     SetBuiltinOp(BuiltinOperator_BROADCAST_ARGS, BuiltinOptions_NONE, 0);
     BuildInterpreter({{input1_length}, {input2_length}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (!constant_tensor) {
       if (input1.size() > 0) SetInput1(input1);
       if (input2.size() > 0) SetInput2(input2);

@@ -37,6 +37,7 @@ class NegOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_NEG, BuiltinOptions_NegOptions,
                  CreateNegOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <class T>

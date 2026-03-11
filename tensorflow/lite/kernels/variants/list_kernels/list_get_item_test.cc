@@ -47,6 +47,7 @@ class ListGetItemModel : public ListOpModel {
                 Register_LIST_GET_ITEM);
 
     BuildInterpreter({{}, index.shape, element_shape.shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   // Simplified constructor for creating valid models.
@@ -62,6 +63,7 @@ class ListGetItemModel : public ListOpModel {
                 Register_LIST_GET_ITEM);
 
     BuildInterpreter({{}, {1}, {static_cast<int>(element_shape.size())}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     PopulateListTensor(list_input_, {}, 2, kTfLiteInt32);
     PopulateTensor(index_input_, {index});

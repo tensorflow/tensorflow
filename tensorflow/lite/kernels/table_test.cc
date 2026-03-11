@@ -38,6 +38,7 @@ class TableOpModel : public SingleOpModel {
     output_ = AddOutput(output);
     SetCustomOp("Table", {}, Register_TABLE);
     BuildInterpreter({GetShape(input_), GetShape(table_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

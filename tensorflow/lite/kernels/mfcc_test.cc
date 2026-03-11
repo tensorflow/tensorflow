@@ -52,6 +52,7 @@ class BaseMfccOpModel : public SingleOpModel {
     SetCustomOp("Mfcc", fbb.GetBuffer(), Register_MFCC);
 
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

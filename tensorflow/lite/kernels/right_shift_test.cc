@@ -38,6 +38,7 @@ class RightShiftOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_RIGHT_SHIFT, BuiltinOptions_RightShiftOptions,
                  CreateRightShiftOptions(builder_).Union());
     BuildInterpreter({input1_shape, input2_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() const { return input1_; }

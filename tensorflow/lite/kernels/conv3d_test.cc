@@ -47,6 +47,7 @@ class Conv3dOpModel : public SingleOpModel {
                             dilation_width, dilation_height)
             .Union());
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   Conv3dOpModel(const TensorData& input, const TensorData& filter,
@@ -66,6 +67,7 @@ class Conv3dOpModel : public SingleOpModel {
                             dilation_width, dilation_height)
             .Union());
     BuildInterpreter({GetShape(input_), GetShape(filter_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetFilter(std::vector<float> f) { PopulateTensor(filter_, f); }

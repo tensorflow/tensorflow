@@ -38,6 +38,7 @@ class BaseExpOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_EXP, BuiltinOptions_ExpOptions,
                  CreateExpOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }

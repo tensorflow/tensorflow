@@ -35,6 +35,7 @@ class SegmentSumOpModel : public SingleOpModel {
     output_id_ = AddOutput(data.type);
     SetBuiltinOp(BuiltinOperator_SEGMENT_SUM, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(data_id_), GetShape(segment_ids_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int data() const { return data_id_; }

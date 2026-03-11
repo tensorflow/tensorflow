@@ -46,6 +46,7 @@ class ListReserveModel : public SingleOpModel {
     SetCustomOp("ListReserve", CustomOptionsToRaw({element_type}),
                 Register_LIST_RESERVE);
     BuildInterpreter({{1}, {}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
   const TfLiteTensor* GetOutputTensor(int index) {
     return interpreter_->tensor(index);

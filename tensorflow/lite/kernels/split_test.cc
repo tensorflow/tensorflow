@@ -53,8 +53,10 @@ class SplitOpModel : public SingleOpModel {
                  CreateSplitOptions(builder_, num_splits).Union());
     if (axis == kAxisIsATensor) {
       BuildInterpreter({GetShape(axis_), GetShape(input_)});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     } else {
       BuildInterpreter({{}, GetShape(input_)});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     }
   }
 

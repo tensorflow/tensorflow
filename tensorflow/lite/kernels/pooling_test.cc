@@ -44,6 +44,7 @@ class BasePoolingOpModel : public SingleOpModel {
                      .Union());
 
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
  protected:

@@ -41,6 +41,7 @@ class BaseSqueezeOpModel : public SingleOpModel {
         CreateSqueezeOptions(builder_, builder_.CreateVector<int>(axis))
             .Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

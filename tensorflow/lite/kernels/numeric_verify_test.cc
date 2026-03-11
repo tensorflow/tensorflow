@@ -65,6 +65,7 @@ class NumericVerifyOpModel : public SingleOpModel {
                 ops::custom::Register_NUMERIC_VERIFY);
 
     BuildInterpreter({GetShape(input_), GetShape(ref_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

@@ -51,6 +51,7 @@ class TmplOpModel : public SingleOpModel {
     SetCustomOp(ops::custom::OpName_TMPL_OP(), op_options,
                 ops::custom::Register_TMPL_OP);
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
     // Populate inputs.
     PopulateTensor(input_idx[0], input0);
     PopulateTensor(input_idx[1], input1);

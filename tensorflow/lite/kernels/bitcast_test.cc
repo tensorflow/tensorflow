@@ -52,6 +52,7 @@ class BitcastOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_BITCAST, BuiltinOptions_BitcastOptions,
                  CreateBitcastOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() const { return input_; }

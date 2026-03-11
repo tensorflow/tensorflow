@@ -68,6 +68,7 @@ class TileOpConstModel : public TileOpBaseModel {
     output_ = AddOutput(input_type);
     SetBuiltinOp(BuiltinOperator_TILE, BuiltinOptions_TileOptions, 0);
     BuildInterpreter({input_shape, {static_cast<int>(input_shape.size())}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     PopulateInput(input_data, std::is_same<std::string, InputType>());
   }
 
@@ -101,6 +102,7 @@ class TileOpDynamicModel : public TileOpBaseModel {
     output_ = AddOutput(input_type);
     SetBuiltinOp(BuiltinOperator_TILE, BuiltinOptions_TileOptions, 0);
     BuildInterpreter({input_shape, {static_cast<int>(input_shape.size())}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

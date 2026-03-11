@@ -43,6 +43,7 @@ class PackOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_PACK, BuiltinOptions_PackOptions,
                  CreatePackOptions(builder_, values_count, axis).Union());
     BuildInterpreter(all_input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(int index, std::initializer_list<T> data) {

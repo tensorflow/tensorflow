@@ -636,6 +636,7 @@ class HashtableOpModel : public SingleOpModel {
         CreateHashtableOptions(builder_, table_id, key_dtype, value_dtype)
             .Union());
     BuildInterpreter({});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int GetOutput() {
@@ -800,6 +801,7 @@ class HashtableFindOpModel : public BaseHashtableOpModel {
                  CreateHashtableFindOptions(builder_).Union());
     BuildInterpreter(
         {GetShape(resource_id_), GetShape(lookup_), GetShape(default_value_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetLookup(const std::vector<KeyType>& data) {
@@ -877,6 +879,7 @@ class HashtableImportOpModel : public BaseHashtableOpModel {
                  CreateHashtableImportOptions(builder_).Union());
     BuildInterpreter(
         {GetShape(resource_id_), GetShape(keys_), GetShape(values_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetKeys(const std::vector<KeyType>& data) {
@@ -954,6 +957,7 @@ class HashtableSizeOpModel : public BaseHashtableOpModel {
                  BuiltinOptions_HashtableSizeOptions,
                  CreateHashtableSizeOptions(builder_).Union());
     BuildInterpreter({GetShape(resource_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
