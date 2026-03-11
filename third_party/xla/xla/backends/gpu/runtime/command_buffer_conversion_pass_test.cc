@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -214,7 +215,8 @@ TEST(CommandBufferConversionPassTest, ConvertsToCommandBufferThunk) {
   BufferAllocation alloc0(0, 1024, 0);
   thunks.push_back(CreateCopyThunk(alloc0));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
 
@@ -254,9 +256,10 @@ TEST(CommandBufferConversionPassTest, PartiallyConvertsToCommandBufferThunk) {
   thunks.push_back(CreateGemmThunk(alloc1));
   thunks.push_back(CreateCopyThunk(alloc0));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
 
   // Enable only FUSION, which means GemmThunk should not be converted.
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   se::DeviceDescription device_info;
@@ -298,7 +301,8 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
 
@@ -338,7 +342,8 @@ TEST(CommandBufferConversionPassTest,
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks[0].get()));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
 
@@ -369,7 +374,8 @@ TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   CommandBufferConversionPass pass{"test"};
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
 
@@ -408,7 +414,8 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   CommandBufferConversionPass pass{"test"};
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
@@ -454,7 +461,8 @@ TEST(CommandBufferConversionPassTest, DontConvertAsyncsIfUnpairedStart) {
 
   se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
   CommandBufferConversionPass pass{"test"};
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
@@ -505,7 +513,8 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
@@ -539,7 +548,8 @@ TEST(CommandBufferConversionPassTest, DontConvertIfNotMinGraphSize) {
   BufferAllocation alloc0(0, 1024, 0);
   thunks.push_back(CreateCopyThunk(alloc0));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   debug_options.set_xla_gpu_graph_min_graph_size(2);
@@ -581,8 +591,9 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunk) {
   thunks.push_back(CreateWhileThunk(std::move(condition_thunks),
                                     std::move(body_thunks), alloc2));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
 
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
@@ -644,8 +655,9 @@ TEST(CommandBufferConversionPassTest,
 
   thunks.push_back(CreateConditionalThunk(std::move(branch_thunks)));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
 
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CONDITIONAL);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
@@ -696,8 +708,9 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
   thunks.push_back(CreateWhileThunk(std::move(condition_thunks),
                                     std::move(body_thunks), alloc3));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
 
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
@@ -740,7 +753,8 @@ TEST(CommandBufferConversionPassTest, ConvertsCuDnnThunkToCommandBufferThunk) {
   BufferAllocation alloc0(0, 1024, 0);
   thunks.push_back(CreateCuDnnThunk(alloc0));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
 
@@ -788,8 +802,9 @@ TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
   thunks.push_back(CreateWhileThunk(std::move(condition_thunks),
                                     std::move(body_thunks), alloc4));
 
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
 
+  debug_options.set_xla_gpu_graph_min_graph_size(1);
   debug_options.clear_xla_gpu_enable_command_buffer();
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);

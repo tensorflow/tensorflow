@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -166,7 +167,7 @@ class ThunkBufferDebugPassTest : public ::testing::Test {
 };
 
 TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   se::DeviceDescription device_info;
@@ -193,7 +194,7 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
 
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
   static constexpr ThunkId kTestThunkId = ThunkId(123);
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   se::DeviceDescription device_info;
@@ -263,7 +264,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   static constexpr ThunkId kWhileBodyId = ThunkId(101);
   static constexpr ThunkId kBranch0ThunkId = ThunkId(102);
   static constexpr ThunkId kBranch1ThunkId = ThunkId(103);
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   se::DeviceDescription device_info;
@@ -464,7 +465,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
 
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   static constexpr ThunkId kTestThunkId = ThunkId(123);
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_WARNING);
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
@@ -575,11 +576,9 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
           BufferUse::Read(slice_io, arg_shape),
       }));
 
-  DebugOptions debug_options =
-      tsl::proto_testing::ParseTextProtoOrDie<DebugOptions>(R"pb(
-        xla_dump_to: "/tmp/123"
-        xla_gpu_experimental_enable_buffer_saver_on_thunks: true
-      )pb");
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_dump_to("/tmp/123");
+  debug_options.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(true);
 
   TF_EXPECT_OK(RunDebugSaverInserter(&thunks, debug_options, hlo_module));
 
@@ -595,7 +594,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
 }
 
 TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   IntRangeInclusive* range =
@@ -656,7 +655,7 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
 }
 
 TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   debug_options.mutable_xla_gpu_experimental_thunk_buffer_debug_filter()
@@ -740,7 +739,7 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
 
 TEST_F(ThunkBufferDebugPassTest,
        FiltersThunksByIdRangesAndProfileAnnotationRegexes) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   IntRangeInclusive* range =
