@@ -122,8 +122,8 @@ class CuDnnFusionFileCheckTest : public CuDnnFusionTest {
     const std::string root_name(
         module->entry_computation()->root_instruction()->name());
     BinaryMap dnn_compiled_graphs;
-    CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
-                                       dnn_compiled_graphs);
+    CuDnnFusionCompiler cudnn_compiler(
+        *backend().default_stream_executor()->AsDnn(), dnn_compiled_graphs);
     // Run filecheck even if CuDnnFusionCompiler failed.
     cudnn_compiler.Run(module.get()).IgnoreError();
     std::string dump;
@@ -224,8 +224,8 @@ ENTRY e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
-                                     dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(
+      *backend().default_stream_executor()->AsDnn(), dnn_compiled_graphs);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -263,8 +263,8 @@ e {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloText));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
-                                     dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(
+      *backend().default_stream_executor()->AsDnn(), dnn_compiled_graphs);
   EXPECT_THAT(cudnn_compiler.Run(module.get()),
               absl_testing::IsOkAndHolds(false));
   // Single dot is not supported by cuDNN, so Triton should be used.
@@ -312,8 +312,8 @@ ENTRY e {
   ROOT r = tuple(f0, f1)
 })"));
   BinaryMap dnn_compiled_graphs;
-  CuDnnFusionCompiler cudnn_compiler(*backend().default_stream_executor(),
-                                     dnn_compiled_graphs);
+  CuDnnFusionCompiler cudnn_compiler(
+      *backend().default_stream_executor()->AsDnn(), dnn_compiled_graphs);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, cudnn_compiler.Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(module->entry_computation()->root_instruction(),

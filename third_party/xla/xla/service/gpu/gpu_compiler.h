@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
@@ -203,7 +204,7 @@ class GpuCompiler : public LLVMCompiler {
 
   // Runs cuDNN fusion and custom call compiler passes.
   virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
-                                              se::StreamExecutor* stream_exec,
+                                              se::dnn::DnnSupport& dnn_support,
                                               BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }

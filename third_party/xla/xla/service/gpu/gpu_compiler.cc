@@ -252,6 +252,7 @@ limitations under the License.
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
@@ -1545,7 +1546,7 @@ absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
     CompilationStats* compilation_stats) {
   HloPassPipeline pipeline("collective-schedule-linearizer", compilation_stats);
   pipeline.AddPass<CollectivesScheduleLinearizer>(
-      [this, stream_exec](const HloModule* module) {
+      [stream_exec](const HloModule* module) {
         return RequiresCollectiveScheduleLinearizer(module, stream_exec);
       });
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
@@ -2313,16 +2314,6 @@ GpuCompiler::CompileSingleModule(
 }
 
 namespace {
-int CountFunctions(const llvm::Module& module) {
-  int num_functions = 0;
-  for (const llvm::Function& func : module.functions()) {
-    if (!func.isDeclaration() &&
-        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
-      ++num_functions;
-    }
-  }
-  return num_functions;
-}
 
 // Returns the name of the single function in the module or empty string if it's
 // not a single-function module.
@@ -2668,7 +2659,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
-    RETURN_IF_ERROR(RunCudnnCompilerPasses(module.get(), stream_exec,
+    se::dnn::DnnSupport* dnn_support = stream_exec->AsDnn();
+    TF_RET_CHECK(dnn_support != nullptr);
+    RETURN_IF_ERROR(RunCudnnCompilerPasses(module.get(), *dnn_support,
                                            &dnn_compiled_graphs));
   }
 
