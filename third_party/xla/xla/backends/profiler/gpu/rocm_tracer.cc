@@ -138,7 +138,7 @@ void RocmTracer::Enable(const RocmTracerOptions& options,
   api_tracing_enabled_ = true;
   activity_tracing_enabled_ = true;
   rocprofiler_start_context(context_);
-  LOG(INFO) << "GpuTracer started with number of GPUs = " << NumGpus();
+  VLOG(1) << "GpuTracer started with number of GPUs = " << NumGpus();
 }
 
 void RocmTracer::HipApiEvent(const rocprofiler_record_header_t* hdr,
@@ -402,9 +402,8 @@ int RocmTracer::toolInit(rocprofiler_client_finalize_t fini_func,
   // Gather agent info
   num_gpus_ = 0;
   for (const auto& agent : GetGpuDeviceAgents()) {
-    LOG(INFO) << "agent id = " << agent.id.handle
-              << ", dev = " << agent.device_id
-              << ", name = " << (agent.name ? agent.name : "null");
+    VLOG(1) << "agent id = " << agent.id.handle << ", dev = " << agent.device_id
+            << ", name = " << (agent.name ? agent.name : "null");
     agents_[agent.id.handle] = agent;
     if (agent.type == ROCPROFILER_AGENT_TYPE_GPU) {
       num_gpus_++;
@@ -424,7 +423,7 @@ int RocmTracer::toolInit(rocprofiler_client_finalize_t fini_func,
       nullptr);
 
   rocprofiler_start_context(utility_context_);
-  LOG(INFO) << "rocprofiler start utilityContext";
+  VLOG(1) << "rocprofiler start utilityContext";
 
   // a multiple of the page size, and the gap allows the buffer to absorb bursts
   // of GPU events
@@ -505,7 +504,7 @@ void RocmTracer::Disable() {
   collector_ = nullptr;
   api_tracing_enabled_ = false;
   activity_tracing_enabled_ = false;
-  LOG(INFO) << "GpuTracer stopped";
+  VLOG(1) << "GpuTracer stopped";
 }
 
 // ----------------------------------------------------------------------------
@@ -555,13 +554,13 @@ extern "C" rocprofiler_tool_configure_result_t* rocprofiler_configure(
   id->name = "XLA-with-rocprofiler-sdk";
   obj.client_id_ = id;
 
-  LOG(INFO) << "Configure rocprofiler-sdk...";
+  VLOG(1) << "Configure rocprofiler-sdk...";
 
   const uint32_t major = version / 10000;
   const uint32_t minor = (version % 10000) / 100;
   const uint32_t patch = version % 100;
 
-  LOG(INFO) << absl::StrFormat(
+  VLOG(1) << absl::StrFormat(
       "%s Configure XLA with rocprofv3... (priority=%u) is using "
       "rocprofiler-sdk v%u.%u.%u (%s)",
       id->name, static_cast<unsigned>(priority), static_cast<unsigned>(major),
