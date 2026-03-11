@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_set.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
