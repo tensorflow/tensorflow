@@ -1110,6 +1110,55 @@ xla_cc_binary(
 )
 
 xla_test(
+    name = "autotuner_main_tap_test",
+    srcs = ["autotuner_main.cc"],
+    args = ["--hlo_file=$(location autotuner_main.hlo)"],
+    backends = ["gpu"],
+    data = ["autotuner_main.hlo"],
+    fail_if_no_test_linked = False,  # NOLINT=not based on gtest and thus doesn't support --gunit_fail_if_no_test_linked.
+    fail_if_no_test_selected = False,  # NOLINT=not based on gtest and thus doesn't support --gunit_fail_if_no_test_selected.
+    shuffle_tests = False,  # CANNOT_SHUFFLE_TESTS=not based on gtest and thus doesn't support shuffling.
+    # This test is for Google internal use only and should not be run on TAP.
+    tags = ["notap"],
+    deps = [
+        ":gpu_profiler",
+        ":legacy_cache",
+        "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
+        "//xla/backends/autotuner",
+        "//xla/backends/autotuner:autotuner_cache_interface",
+        "//xla/backends/autotuner:codegen_backend",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:compiler",
+        "//xla/service:platform_util",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:gpu_compiler",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu/autotuning:autotuner_pass",
+        "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_address_allocator",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//mlir:IR",
+        "@tsl//tsl/platform:casts",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_test(
     name = "miopen_test",
     srcs = ["miopen_test.cc"],
     backends = ["gpu"],
