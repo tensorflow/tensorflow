@@ -995,6 +995,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
         return true;
       };
 
+  auto setter_for_unroll_factor =
+      [debug_options](void (DebugOptions::*member_setter)(int32_t)) {
+        return [debug_options, member_setter](int32_t value) {
+          if (value < 1) {
+            return false;
+          }
+          (debug_options->*member_setter)(value);
+          return true;
+        };
+      };
+
   // Don't use an initializer list for initializing the vector; this would
   // create a temporary copy, and exceeds the stack space when compiling with
   // certain configurations.
@@ -2772,10 +2783,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable Triton's auto warp specialization feature where applicable."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_experimental_max_unroll_factor",
-                int32_setter_for(
+                setter_for_unroll_factor(
                     &DebugOptions::set_xla_gpu_experimental_max_unroll_factor),
                 debug_options->xla_gpu_experimental_max_unroll_factor(),
-                "Controls max unroll factor on Blackwell architectures."));
+                "Controls max unroll factor on Blackwell architectures. Should "
+                "be at least 1."));
   flag_list->push_back(
       tsl::Flag("xla_detect_unstable_reductions",
                 setter_for_xla_detect_unstable_reductions,

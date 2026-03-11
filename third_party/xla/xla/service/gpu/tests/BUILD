@@ -429,20 +429,17 @@ xla_test(
 xla_test(
     name = "gpu_copy_test",
     srcs = ["gpu_copy_test.cc"],
-    backend_tags = {
-        # TODO(b/445172709): Re-enable once fixed.
-        "b200": ["broken"],
-    },
     backends = ["gpu"],
-    use_legacy_runtime = True,
     deps = [
-        ":gpu_codegen_test",
+        ":gpu_pjrt_codegen_test",
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:test",

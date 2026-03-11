@@ -179,14 +179,20 @@ int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis) {
                               root.instruction().shape().element_type())));
     }
 
-    int64_t unroll_factor = std::min(
+    int64_t max_unroll_factor =
         static_cast<int64_t>(analysis->fusion_root(0)
                                  .instruction()
                                  .GetModule()
                                  ->config()
                                  .debug_options()
-                                 .xla_gpu_experimental_max_unroll_factor()),
-        max_vector_bit_width / max_dtype_bits);
+                                 .xla_gpu_experimental_max_unroll_factor());
+    // Guard against bad flag values, e.g. due to DebugOptions not constructed
+    // via flag parsing.
+    if (max_unroll_factor < 1) {
+      max_unroll_factor = 1;
+    }
+    int64_t unroll_factor =
+        std::min(max_unroll_factor, max_vector_bit_width / max_dtype_bits);
     unroll_factor =
         1LL << (absl::bit_width(static_cast<uint64_t>(unroll_factor)) - 1);
     while (unroll_factor > kDefaultUnrollFactor &&
