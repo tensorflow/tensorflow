@@ -855,10 +855,9 @@ xla_test(
     name = "mock_custom_call_test",
     srcs = ["mock_custom_call_test.cc"],
     backends = ["gpu"],
-    use_legacy_runtime = True,
     deps = [
-        ":gpu_codegen_test",
         "//xla:xla_proto_cc",
+        "//xla/tests:hlo_pjrt_test_base",
         "@com_google_googletest//:gtest_main",
     ],
 )
