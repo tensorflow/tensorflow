@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/copy_done_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/cub_scan_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_host_copy_thunk.h"
@@ -1223,4 +1224,35 @@ TEST(ThunkProtoDeserializationTest, HostToDeviceCopyThunksRoundTrip) {
 }
 
 }  // namespace
+
+TEST(ThunkProtoDeserializationTest, CubScanThunk) {
+  ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
+      R"pb(
+        thunk_info {}
+        cub_scan_thunk {
+          type: S32
+          platform_name: "CUDA"
+          input_slice { offset: 0 size: 256 buffer_allocation_index: 0 }
+          output_slice { offset: 0 size: 256 buffer_allocation_index: 1 }
+          scratch_slice { offset: 0 size: 128 buffer_allocation_index: 2 }
+          num_elements: 64
+        }
+      )pb");
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/1, /*size=*/1024, /*color=*/0),
+      BufferAllocation(/*index=*/2, /*size=*/1024, /*color=*/0)};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      DeserializeThunkProto(proto, buffer_allocations, /*hlo_module=*/nullptr,
+                            kTestPlatformName, se::GpuComputeCapability()));
+  auto* cub_scan_thunk = dynamic_cast<CubScanThunk*>(thunk.get());
+  ASSERT_NE(cub_scan_thunk, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto,
+                          cub_scan_thunk->ToProto());
+  EXPECT_THAT(round_trip_proto, EqualsProto(proto));
+}
+
 }  // namespace xla::gpu

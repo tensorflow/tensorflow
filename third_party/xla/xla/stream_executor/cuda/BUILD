@@ -5,7 +5,11 @@ load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
 )
-load("//xla/service/gpu:build_defs.bzl", "get_cub_sort_kernel_types")
+load(
+    "//xla/service/gpu:build_defs.bzl",
+    "get_cub_prefix_sum_kernel_types",
+    "get_cub_sort_kernel_types",
+)
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -1574,7 +1578,13 @@ cc_library(
         ":topk_kernel_cuda",
         "//xla/tsl/cuda:cusparse",
         "//xla/tsl/cuda:tensorrt_rpath",
-    ] + [":cub_sort_kernel_cuda_" + suffix for suffix in get_cub_sort_kernel_types()],
+    ] + [
+        ":cub_sort_kernel_cuda_" + suffix
+        for suffix in get_cub_sort_kernel_types()
+    ] + [
+        ":cub_prefix_sum_kernel_cuda_" + suffix
+        for suffix in get_cub_prefix_sum_kernel_types()
+    ],
     alwayslink = 1,
 )
 
@@ -2700,8 +2710,11 @@ cuda_library(
 ) for typename in get_cub_sort_kernel_types()]
 
 [cuda_library(
-    name = "cub_prefix_sum_kernel_cuda_{}".format(typename),
-    srcs = ["cub_prefix_sum_kernel_cuda.cu.cc"],
+    name = "cub_prefix_sum_kernel_cuda_impl_{}".format(typename),
+    srcs = [
+        "cub_prefix_sum_kernel_cuda_impl.cu.cc",
+    ],
+    hdrs = ["cub_prefix_sum_kernel_cuda.h"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     local_defines = ["CUB_TYPE_" + typename.upper()],
     tags = [
@@ -2709,17 +2722,38 @@ cuda_library(
         "gpu",
     ],
     deps = [
-        ":cuda_platform_id",
-        "//xla/stream_executor:device_address",
-        "//xla/stream_executor:kernel",
-        "//xla/stream_executor:kernel_spec",
-        "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/stream_executor/gpu:prefix_sum_kernel",
+        "//xla:types",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cuda_headers",
     ],
+) for typename in get_cub_prefix_sum_kernel_types()]
+
+[cc_library(
+    name = "cub_prefix_sum_kernel_cuda_{}".format(typename),
+    srcs = [
+        "cub_prefix_sum_kernel_cuda.cc",
+    ],
+    hdrs = ["cub_prefix_sum_kernel_cuda.h"],
+    # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
+    local_defines = ["CUB_TYPE_" + typename.upper()],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cub_prefix_sum_kernel_cuda_impl_{}".format(typename),
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/stream_executor/cuda:cuda_status",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
     alwayslink = 1,
-) for typename in get_cub_sort_kernel_types()]
+) for typename in get_cub_prefix_sum_kernel_types()]
 
 xla_test(
     name = "cub_prefix_sum_kernel_cuda_test",
@@ -2727,6 +2761,7 @@ xla_test(
     backends = ["gpu"],
     tags = ["cuda-only"],
     deps = [
+        ":cuda_status",
         "//xla:shape_util",
         "//xla:types",
         "//xla:xla_data_proto_cc",
@@ -2736,11 +2771,9 @@ xla_test(
         "//xla/stream_executor:platform",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor:stream_executor_memory_allocator",
-        "//xla/stream_executor:typed_kernel_factory",
-        "//xla/stream_executor/gpu:gpu_kernel_registry",
-        "//xla/stream_executor/gpu:prefix_sum_kernel",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/lib/math:math_util",
         "//xla/tsl/platform:errors",
@@ -2754,7 +2787,7 @@ xla_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@local_config_cuda//cuda:cuda_headers",
-    ] + [":cub_prefix_sum_kernel_cuda_" + suffix for suffix in get_cub_sort_kernel_types()],
+    ] + [":cub_prefix_sum_kernel_cuda_" + suffix for suffix in get_cub_prefix_sum_kernel_types()],
 )
 
 cuda_library(

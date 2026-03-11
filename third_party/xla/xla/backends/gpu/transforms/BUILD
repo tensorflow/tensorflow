@@ -2731,6 +2731,38 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "scan_rewriter",
+    srcs = ["scan_rewriter.cc"],
+    hdrs = ["scan_rewriter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:cublas_cudnn",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "scan_rewriter_test",
+    srcs = ["scan_rewriter_test.cc"],
+    tags = ["test_migrated_to_hlo_runner_pjrt"],
+    deps = [
+        ":scan_rewriter",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/service:pattern_matcher",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "sort_rewriter",
     srcs = ["sort_rewriter.cc"],
     hdrs = ["sort_rewriter.h"],
@@ -2791,6 +2823,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/runtime:cub_scan_thunk",
         "//xla/backends/gpu/runtime:cub_sort_thunk",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -2799,6 +2832,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

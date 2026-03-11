@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "xla/stream_executor/cuda/cub_prefix_sum_kernel_cuda.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -25,26 +27,24 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
-#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_bf16.h"
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
 #include "xla/primitive_util.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/gpu_kernel_registry.h"
-#include "xla/stream_executor/gpu/prefix_sum_kernel.h"
-#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/stream_executor/typed_kernel_factory.h"  // IWYU pragma: keep, required for KernelType::FactoryType::Create
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/types.h"
 #include "xla/xla_data.pb.h"
 
 namespace se = stream_executor;
@@ -76,15 +76,10 @@ class CubPrefixSumKernelCudaTest
     return device_memory;
   }
 
-  template <typename Kernel, typename T>
+  template <typename T>
   absl::Status ComputePrefixSumOnDevice(const std::vector<T>& input,
                                         std::vector<T>& output, size_t num_rows,
                                         size_t num_items, bool in_place) {
-    // Load kernel
-    gpu::GpuKernelRegistry registry =
-        gpu::GpuKernelRegistry::GetGlobalRegistry();
-    TF_ASSIGN_OR_RETURN(auto kernel, registry.LoadKernel<Kernel>(executor_));
-
     // Setup device buffers
     TF_ASSIGN_OR_RETURN(
         se::DeviceAddress<T> device_input,
@@ -108,20 +103,33 @@ class CubPrefixSumKernelCudaTest
                                        input.size() * sizeof(input[0])));
     // For large number of items, limit the number of threads per block to 512
     // to avoid running out of shared memory.
-    size_t num_threads_per_block =
-        std::min(size_t{512}, absl::bit_ceil(num_items));
-    // Call kernel
-    TF_RETURN_IF_ERROR(
-        kernel.Launch(stream_executor::ThreadDim(num_threads_per_block, 1, 1),
-                      stream_executor::BlockDim(num_rows, 1, 1), stream_.get(),
-                      device_input, device_output, num_items));
+    size_t temp_bytes = 0;
+    TF_RETURN_IF_ERROR(ToStatus(CubPrefixSum<T>(nullptr, temp_bytes, nullptr,
+                                                nullptr, num_items, nullptr)));
+
+    TF_ASSIGN_OR_RETURN(
+        se::DeviceAddress<uint8_t> device_temp,
+        CheckNotNull(executor_->AllocateArray<uint8_t>(temp_bytes), "temp"));
+    auto temp_cleanup =
+        absl::MakeCleanup([&]() { executor_->Deallocate(&device_temp); });
+
+    for (int i = 0; i < num_rows; ++i) {
+      auto* d_in =
+          reinterpret_cast<const T*>(device_input.opaque()) + i * num_items;
+      auto* d_out =
+          reinterpret_cast<T*>(device_output.opaque()) + i * num_items;
+      TF_RETURN_IF_ERROR(ToStatus(CubPrefixSum<T>(
+          device_temp.opaque(), temp_bytes, d_in, d_out, num_items,
+          static_cast<CUstream>(stream_->platform_specific_handle().stream))));
+    }
+
     TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
     TF_RETURN_IF_ERROR(stream_->Memcpy(output.data(), device_output,
                                        output.size() * sizeof(output[0])));
     return absl::OkStatus();
   }
 
-  template <typename Kernel, typename T>
+  template <typename T>
   absl::Status CheckComputePrefixSumOnDevice(size_t num_rows, size_t num_items,
                                              bool in_place) {
     std::vector<T> input(num_rows * num_items);
@@ -139,8 +147,8 @@ class CubPrefixSumKernelCudaTest
         }
       }
     }
-    TF_RETURN_IF_ERROR(ComputePrefixSumOnDevice<Kernel>(input, output, num_rows,
-                                                        num_items, in_place));
+    TF_RETURN_IF_ERROR(ComputePrefixSumOnDevice<T>(input, output, num_rows,
+                                                   num_items, in_place));
     EXPECT_EQ(output, expected);
     return absl::OkStatus();
   }
@@ -159,54 +167,52 @@ TEST_P(CubPrefixSumKernelCudaTest, TestPrefixSum) {
       if (num_items > 128) {
         GTEST_SKIP() << "Rounding errors";
       }
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumBF16Kernel,
-                                             xla::bfloat16>(num_rows, num_items,
+      status = CheckComputePrefixSumOnDevice<__nv_bfloat16>(num_rows, num_items,
                                                             in_place);
       break;
     case xla::F16:
       status =
-          CheckComputePrefixSumOnDevice<gpu::PrefixSumF16Kernel, xla::half>(
-              num_rows, num_items, in_place);
+          CheckComputePrefixSumOnDevice<__half>(num_rows, num_items, in_place);
       break;
     case xla::F32:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumF32Kernel, float>(
-          num_rows, num_items, in_place);
+      status =
+          CheckComputePrefixSumOnDevice<float>(num_rows, num_items, in_place);
       break;
     case xla::F64:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumF64Kernel, double>(
-          num_rows, num_items, in_place);
+      status =
+          CheckComputePrefixSumOnDevice<double>(num_rows, num_items, in_place);
       break;
     case xla::S8:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumS8Kernel, int8_t>(
-          num_rows, num_items, in_place);
+      status =
+          CheckComputePrefixSumOnDevice<int8_t>(num_rows, num_items, in_place);
       break;
     case xla::S16:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumS16Kernel, int16_t>(
-          num_rows, num_items, in_place);
+      status =
+          CheckComputePrefixSumOnDevice<int16_t>(num_rows, num_items, in_place);
       break;
     case xla::S32:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumS32Kernel, int32_t>(
-          num_rows, num_items, in_place);
+      status =
+          CheckComputePrefixSumOnDevice<int32_t>(num_rows, num_items, in_place);
       break;
     case xla::S64:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumS64Kernel, int64_t>(
-          num_rows, num_items, in_place);
+      status =
+          CheckComputePrefixSumOnDevice<int64_t>(num_rows, num_items, in_place);
       break;
     case xla::U8:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumU8Kernel, uint8_t>(
-          num_rows, num_items, in_place);
+      status =
+          CheckComputePrefixSumOnDevice<uint8_t>(num_rows, num_items, in_place);
       break;
     case xla::U16:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumU16Kernel, uint16_t>(
-          num_rows, num_items, in_place);
+      status = CheckComputePrefixSumOnDevice<uint16_t>(num_rows, num_items,
+                                                       in_place);
       break;
     case xla::U32:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumU32Kernel, uint32_t>(
-          num_rows, num_items, in_place);
+      status = CheckComputePrefixSumOnDevice<uint32_t>(num_rows, num_items,
+                                                       in_place);
       break;
     case xla::U64:
-      status = CheckComputePrefixSumOnDevice<gpu::PrefixSumU64Kernel, uint64_t>(
-          num_rows, num_items, in_place);
+      status = CheckComputePrefixSumOnDevice<uint64_t>(num_rows, num_items,
+                                                       in_place);
       break;
     default:
       status = absl::OkStatus();

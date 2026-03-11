@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCRATCH_SIZE_H_
-#define XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCRATCH_SIZE_H_
-
-#include <string>
+#ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_H_
+#define XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_H_
 
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -29,31 +26,19 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Updates the scratch size of CUB sort custom calls to match the actual
-// scratch size. Also changes the custom call target from
-// kCubDeviceRadixSortUnassignedScratchSizeTarget to kCubDeviceRadixSortTarget.
-class EstimateCubScratchSize : public HloModulePass {
+// Rewrites Scan operations into CUB PrefixSum custom calls.
+class ScanRewriter : public HloModulePass {
  public:
-  explicit EstimateCubScratchSize(std::string platform_name)
-      : platform_name_(platform_name) {}
-
-  absl::string_view name() const override {
-    return "estimate-cub-scratch-size";
-  }
+  absl::string_view name() const override { return "scan-rewriter"; }
 
  protected:
-  absl::Status RunOnSortInstruction(HloCustomCallInstruction* custom_call);
-  absl::Status RunOnScanInstruction(HloCustomCallInstruction* custom_call);
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
- private:
-  std::string platform_name_;
 };
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCRATCH_SIZE_H_
+#endif  // XLA_BACKENDS_GPU_TRANSFORMS_SCAN_REWRITER_H_

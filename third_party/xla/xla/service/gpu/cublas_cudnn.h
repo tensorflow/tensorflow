@@ -251,6 +251,14 @@ inline constexpr absl::string_view
 bool IsCubDeviceRadixSort(const HloInstruction& hlo);
 bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo);
 
+inline constexpr absl::string_view kCubDeviceScanTarget = "__cub$DeviceScan";
+
+inline constexpr absl::string_view kCubDeviceScanUnassignedScratchSizeTarget =
+    "__cub$DeviceScanUnassignedScratchSize";
+
+bool IsCubDeviceScan(const HloInstruction& hlo);
+bool IsCubDeviceScanNoScratchSize(const HloInstruction& hlo);
+
 }  // namespace gpu
 }  // namespace xla
 

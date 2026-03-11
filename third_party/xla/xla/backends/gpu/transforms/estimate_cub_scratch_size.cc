@@ -23,9 +23,11 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/cub_scan_thunk.h"
 #include "xla/backends/gpu/runtime/cub_sort_thunk.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -41,7 +43,7 @@ limitations under the License.
 namespace xla::gpu {
 
 // Rewrites a single sort instruction with a custom call.
-absl::StatusOr<bool> EstimateCubScratchSize::RunOnInstruction(
+absl::Status EstimateCubScratchSize::RunOnSortInstruction(
     HloCustomCallInstruction* custom_call) {
   CHECK_EQ(custom_call->custom_call_target(),
            kCubDeviceRadixSortUnassignedScratchSizeTarget);
@@ -80,25 +82,62 @@ absl::StatusOr<bool> EstimateCubScratchSize::RunOnInstruction(
   new_custom_call->SetupDerivedInstruction(custom_call);
   RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
       custom_call, new_custom_call));
-  return true;
+  return absl::OkStatus();
 }
 
-// Rewrites the sorts in the given computation into calls to CUB.
+// Rewrites a single scan instruction with a custom call.
+absl::Status EstimateCubScratchSize::RunOnScanInstruction(
+    HloCustomCallInstruction* custom_call) {
+  CHECK_EQ(custom_call->custom_call_target(),
+           kCubDeviceScanUnassignedScratchSizeTarget);
+  const Shape& key_shape = custom_call->operand(0)->shape();
+  PrimitiveType key_type = key_shape.element_type();
+
+  ASSIGN_OR_RETURN(std::unique_ptr<CubScanRunnerInterface> runner,
+                   CubScanRunnerInterface::Create(key_type, platform_name_));
+
+  int64_t num_elements = Product(key_shape.dimensions());
+  ASSIGN_OR_RETURN(int64_t scratch_size, runner->GetScratchSize(num_elements));
+
+  // Update the custom call.
+  Shape new_shape = custom_call->shape();
+  new_shape.mutable_tuple_shapes()->back() =
+      ShapeUtil::MakeShape(U8, {scratch_size});
+  HloInstruction* new_custom_call =
+      custom_call->AddInstruction(HloInstruction::CreateCustomCall(
+          new_shape, absl::MakeSpan(custom_call->operands()),
+          kCubDeviceScanTarget));
+  new_custom_call->SetupDerivedInstruction(custom_call);
+  RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
+      custom_call, new_custom_call));
+  return absl::OkStatus();
+}
+
+// Rewrites the sorts and scans in the given computation into calls to CUB.
 absl::StatusOr<bool> EstimateCubScratchSize::RunOnComputation(
     HloComputation* computation) {
   std::vector<HloCustomCallInstruction*> custom_calls;
   for (auto* inst : computation->instructions()) {
     if (auto custom_call = DynCast<HloCustomCallInstruction>(inst)) {
       if (custom_call->custom_call_target() ==
-          kCubDeviceRadixSortUnassignedScratchSizeTarget) {
+              kCubDeviceRadixSortUnassignedScratchSizeTarget ||
+          custom_call->custom_call_target() ==
+              kCubDeviceScanUnassignedScratchSizeTarget) {
         custom_calls.push_back(custom_call);
       }
     }
   }
   bool changed = false;
   for (auto* call : custom_calls) {
-    ASSIGN_OR_RETURN(bool result, RunOnInstruction(call));
-    changed |= result;
+    if (call->custom_call_target() ==
+        kCubDeviceRadixSortUnassignedScratchSizeTarget) {
+      RETURN_IF_ERROR(RunOnSortInstruction(call));
+      changed = true;
+    } else if (call->custom_call_target() ==
+               kCubDeviceScanUnassignedScratchSizeTarget) {
+      RETURN_IF_ERROR(RunOnScanInstruction(call));
+      changed = true;
+    }
   }
   return changed;
 }

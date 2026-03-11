@@ -149,6 +149,16 @@ bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo) {
              kCubDeviceRadixSortUnassignedScratchSizeTarget;
 }
 
+bool IsCubDeviceScan(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kCubDeviceScanTarget;
+}
+
+bool IsCubDeviceScanNoScratchSize(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kCubDeviceScanUnassignedScratchSizeTarget;
+}
+
 absl::StatusOr<CudnnConvKind> GetCudnnConvKind(
     const HloCustomCallInstruction* instr) {
   absl::string_view target = instr->custom_call_target();

@@ -1023,6 +1023,34 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cub_scan_thunk",
+    srcs = ["cub_scan_thunk.cc"],
+    hdrs = ["cub_scan_thunk.h"],
+    deps = [
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla:shape_util",
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/ffi:call_frame",
+        "//xla/ffi:ffi_registry",
+        "//xla/ffi:invoke",
+        "//xla/ffi/api:c_api",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "cub_sort_thunk",
     srcs = ["cub_sort_thunk.cc"],
     hdrs = ["cub_sort_thunk.h"],
@@ -1066,6 +1094,32 @@ xla_cc_test(
     tags = ["gpu"],
     deps = [
         ":cub_sort_thunk",
+        ":thunk",
+        ":thunk_proto_cc",
+        "//xla/ffi",
+        "//xla/service:buffer_assignment",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util/proto:parse_text_proto",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ] + if_cuda_is_configured([
+        "//xla/stream_executor/cuda:all_runtime",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor/rocm:all_runtime",
+    ]),
+)
+
+xla_cc_test(
+    name = "cub_scan_thunk_test",
+    srcs = ["cub_scan_thunk_test.cc"],
+    tags = ["gpu"],
+    deps = [
+        ":cub_scan_thunk",
         ":thunk",
         ":thunk_proto_cc",
         "//xla/ffi",
@@ -3620,6 +3674,7 @@ cc_library(
         ":convolution_thunk",
         ":copy_done_thunk",
         ":copy_thunk",
+        ":cub_scan_thunk",
         ":cub_sort_thunk",
         ":cudnn_thunk",
         ":custom_call_thunk",
@@ -3678,6 +3733,7 @@ xla_cc_test(
         ":conditional_thunk",
         ":copy_done_thunk",
         ":copy_thunk",
+        ":cub_scan_thunk",
         ":custom_kernel_thunk",
         ":device_to_device_copy_thunk",
         ":device_to_host_copy_thunk",
