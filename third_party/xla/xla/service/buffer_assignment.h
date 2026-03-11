@@ -903,8 +903,22 @@ class BufferAssigner {
   BufferAssigner& operator=(const BufferAssigner&) = delete;
 };
 
+struct PeakMemorySizes {
+  int64_t padded;
+  int64_t unpadded;
+};
+
 // Computes the peak memory usage through the proto's heap simulator traces.
+absl::StatusOr<PeakMemorySizes> ComputePeakMemorySizes(
+    const BufferAssignmentProto& proto, const HloModuleProto& hlo_module_proto);
+
+// Computes the peak memory usage assuming buffers are padded.
 absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto);
+
+// Computes memory in bytes used by allocations with indefinite lifetime for a
+// given color.
+int64_t ComputeIndefiniteAllocationsInBytes(const BufferAssignmentProto& proto,
+                                            int64_t memory_color);
 
 // Computes the total memory allocated by the buffer assignment for a given
 // color.

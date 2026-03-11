@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_assignment.pb.h"
 #include "xla/service/buffer_value.h"
@@ -2542,17 +2543,23 @@ namespace {
 
 struct Buffer {
   int64_t size;
+  int64_t unpadded_size;
   int ref_count;
   struct Buffer* underlying;  // canonical buffer in case of SHARE_WITH
-  explicit Buffer(int64_t size)
-      : size(size), ref_count(0), underlying(nullptr) {}
+  explicit Buffer(int64_t size, int64_t unpadded_size)
+      : size(size),
+        unpadded_size(unpadded_size),
+        ref_count(0),
+        underlying(nullptr) {}
 };
 
 struct BufferMap {
-  explicit BufferMap(const BufferAssignmentProto& proto) {
+  explicit BufferMap(
+      const BufferAssignmentProto& proto,
+      const absl::flat_hash_map<int64_t, int64_t>& unpadded_sizes) {
     buffers.reserve(proto.logical_buffers_size());
     for (const LogicalBufferProto& b : proto.logical_buffers()) {
-      buffers.push_back(Buffer(b.size()));
+      buffers.push_back(Buffer(b.size(), unpadded_sizes.at(b.id())));
       id_to_buffer[b.id()] = &buffers.back();
     }
   }
@@ -2560,9 +2567,10 @@ struct BufferMap {
   std::vector<Buffer> buffers;
 };
 
-int64_t AllocateStaticBuffers(BufferMap& buffers,
-                              const BufferAssignmentProto& proto) {
-  int64_t memory = 0;
+PeakMemorySizes AllocateStaticBuffers(BufferMap& buffers,
+                                      const BufferAssignmentProto& proto) {
+  int64_t padded_memory = 0;
+  int64_t unpadded_memory = 0;
   for (const auto& alloc : proto.buffer_allocations()) {
     if (alloc.is_thread_local() ||
         (!alloc.is_entry_computation_parameter() && !alloc.is_constant() &&
@@ -2583,10 +2591,50 @@ int64_t AllocateStaticBuffers(BufferMap& buffers,
     }
     if (largest_buffer) {
       largest_buffer->ref_count++;
-      memory += largest_buffer->size;
+      padded_memory += largest_buffer->size;
+      unpadded_memory += largest_buffer->unpadded_size;
     }
   }
-  return memory;
+  return {padded_memory, unpadded_memory};
+}
+
+absl::StatusOr<absl::flat_hash_map<int64_t, int64_t>>
+ComputeLogicalBufferUnpaddedSizes(
+    const HloModuleProto& hlo_module_proto,
+    const BufferAssignmentProto& buffer_assignment_proto) {
+  absl::flat_hash_map<int64_t, const HloInstructionProto*> id_to_instruction;
+  for (const HloComputationProto& computation :
+       hlo_module_proto.computations()) {
+    for (const HloInstructionProto& instruction : computation.instructions()) {
+      id_to_instruction[instruction.id()] = &instruction;
+    }
+  }
+
+  absl::flat_hash_map<int64_t, int64_t> logical_buffer_unpadded_sizes;
+  for (const LogicalBufferProto& buffer_proto :
+       buffer_assignment_proto.logical_buffers()) {
+    const HloInstructionProto* instruction_proto =
+        id_to_instruction.at(buffer_proto.defined_at().instruction_id());
+    const xla::ShapeProto* subshape_proto = &instruction_proto->shape();
+
+    // If this buffer is returned as a part of a tuple, dig into said
+    // tuple to find the shape information.
+    if (!buffer_proto.defined_at().shape_index().empty()) {
+      int64_t i = buffer_proto.defined_at().shape_index(
+          buffer_proto.defined_at().shape_index_size() - 1);
+      if (i < subshape_proto->tuple_shapes_size()) {
+        subshape_proto = &subshape_proto->tuple_shapes(i);
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape subshape, Shape::FromProto(*subshape_proto));
+
+    // Same logic as tensorflow::profiler::ShapeUnpaddedSize.
+    LayoutUtil::SetToDefaultLayout(&subshape);
+    logical_buffer_unpadded_sizes[buffer_proto.id()] =
+        ShapeUtil::ByteSizeOf(subshape, sizeof(void*));
+  }
+  return logical_buffer_unpadded_sizes;
 }
 
 }  // namespace
@@ -2602,11 +2650,32 @@ int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
   return total_allocation_bytes;
 }
 
-absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
-  BufferMap buffers(proto);
+int64_t ComputeIndefiniteAllocationsInBytes(const BufferAssignmentProto& proto,
+                                            int64_t memory_color) {
+  int64_t indefinite_allocations_bytes = 0;
+  for (const auto& alloc : proto.buffer_allocations()) {
+    if (alloc.color() != memory_color) {
+      continue;
+    }
+    if (alloc.is_thread_local() || alloc.is_entry_computation_parameter() ||
+        alloc.is_constant() || alloc.maybe_live_out()) {
+      indefinite_allocations_bytes += alloc.size();
+    }
+  }
+  return indefinite_allocations_bytes;
+}
 
-  int64_t memory = AllocateStaticBuffers(buffers, proto);
+absl::StatusOr<PeakMemorySizes> ComputePeakMemoryImpl(
+    const BufferAssignmentProto& proto,
+    const absl::flat_hash_map<int64_t, int64_t>&
+        logical_buffer_unpadded_sizes) {
+  BufferMap buffers(proto, logical_buffer_unpadded_sizes);
+
+  PeakMemorySizes initial_sizes = AllocateStaticBuffers(buffers, proto);
+  int64_t memory = initial_sizes.padded;
+  int64_t unpadded_memory = initial_sizes.unpadded;
   int64_t peak_memory = memory;
+  int64_t peak_unpadded_memory = unpadded_memory;
 
   for (const HeapSimulatorTrace& trace : proto.heap_simulator_traces()) {
     for (const HeapSimulatorTrace::Event& event : trace.events()) {
@@ -2616,6 +2685,7 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
           buffer->ref_count++;
           if (buffer->ref_count == 1) {
             memory += buffer->size;
+            unpadded_memory += buffer->unpadded_size;
           }
           break;
         case HeapSimulatorTrace::Event::FREE: {
@@ -2626,6 +2696,7 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
           buffer->underlying = nullptr;  // we no longer share the buffer.
           if (--root->ref_count == 0) {
             memory -= root->size;
+            unpadded_memory -= root->unpadded_size;
           }
           break;
         }
@@ -2637,6 +2708,7 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
           buffer->underlying = root;
           if (++root->ref_count == 1) {
             memory += root->size;
+            unpadded_memory += root->unpadded_size;
           }
           break;
         }
@@ -2644,9 +2716,31 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
           break;
       }
       peak_memory = std::max(peak_memory, memory);
+      peak_unpadded_memory = std::max(peak_unpadded_memory, unpadded_memory);
     }
   }
-  return peak_memory;
+  return PeakMemorySizes{peak_memory, peak_unpadded_memory};
+}
+
+absl::StatusOr<PeakMemorySizes> ComputePeakMemorySizes(
+    const BufferAssignmentProto& proto, const HloModuleProto& hlo) {
+  TF_ASSIGN_OR_RETURN(auto logical_buffer_unpadded_sizes,
+                      ComputeLogicalBufferUnpaddedSizes(hlo, proto));
+  return ComputePeakMemoryImpl(proto, logical_buffer_unpadded_sizes);
+}
+
+absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
+  absl::flat_hash_map<int64_t, int64_t> dummy_unpadded_sizes;
+  // Set these to zero. We don't have an HLO to derive them, and we don't need
+  // them for the (padded) peak memory.
+  for (const LogicalBufferProto& b : proto.logical_buffers()) {
+    dummy_unpadded_sizes[b.id()] = 0;
+  }
+  auto result = ComputePeakMemoryImpl(proto, dummy_unpadded_sizes);
+  if (result.ok()) {
+    return result->padded;
+  }
+  return result.status();
 }
 
 }  // namespace xla
