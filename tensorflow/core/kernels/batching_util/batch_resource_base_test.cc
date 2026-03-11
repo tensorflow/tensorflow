@@ -271,7 +271,8 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
           /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
           /*mixed_priority_batching_policy=*/
           GetParam().mixed_priority_batching_policy,
-          /*enable_priority_aware_batch_scheduler=*/false);
+          /*enable_priority_aware_batch_scheduler=*/false,
+          /*enable_priority_aware_batch_scheduler_resplit=*/false);
   tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
       new TestBatchResourceBase(true, batcher, queue_options,
                                 allowed_batch_sizes));
@@ -431,7 +432,7 @@ INSTANTIATE_TEST_SUITE_P(
 // from the priority queue (FinishTask called with UnavailableError before
 // outputs are populated), the IncrementalBarrier callback must not crash trying
 // to Concat uninitialized tensor data.
-class SplitInputTaskEvictionTest : public ::testing::Test {
+class SplitInputTaskTest : public ::testing::Test {
  protected:
   void SetUp() override {
     device_ = DeviceFactory::NewDevice("CPU", SessionOptions{},
@@ -480,7 +481,7 @@ class SplitInputTaskEvictionTest : public ::testing::Test {
   std::unique_ptr<OpKernelContext> context_;
 };
 
-TEST_F(SplitInputTaskEvictionTest, EvictedSubtasksDoNotCrash) {
+TEST_F(SplitInputTaskTest, EvictedSubtasksDoNotCrash) {
   // Set up a BatchTask with a real OpKernelContext, shared output and status.
   auto task = std::make_unique<BatchResourceBase::BatchTask>();
   task->inputs.push_back(
@@ -526,6 +527,82 @@ TEST_F(SplitInputTaskEvictionTest, EvictedSubtasksDoNotCrash) {
   // set_output, so no output is set on the context. Without the fix, Concat
   // runs on empty tensors and set_output IS called.
   EXPECT_EQ(context_->mutable_output(0), nullptr);
+}
+
+TEST_F(SplitInputTaskTest, ResplitAlreadySplitTask) {
+  auto task = std::make_unique<BatchResourceBase::BatchTask>();
+  task->inputs.push_back(Tensor(DataType::DT_INT64, TensorShape({6, 4})));
+  task->context = context_.get();
+  task->output = std::make_shared<BatchResourceBase::TensorMatrix>();
+  task->status = std::make_shared<ThreadSafeStatus>();
+  task->guid = 0;
+  task->start_time = 0;
+
+  std::shared_ptr<BatchResourceBase::TensorMatrix> parent_output = task->output;
+  std::shared_ptr<ThreadSafeStatus> shared_status = task->status;
+
+  absl::Notification done;
+  task->set_done_callback([&done]() { done.Notify(); });
+
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>> first_split;
+  TF_ASSERT_OK(
+      BatchResourceBase::SplitInputTask(&task, /*open_batch_remaining_slot=*/2,
+                                        /*max_batch_size=*/4, &first_split));
+  ASSERT_EQ(first_split.size(), 2);
+  EXPECT_EQ(first_split[0]->size(), 2);
+  EXPECT_EQ(first_split[1]->size(), 4);
+  EXPECT_TRUE(first_split[0]->is_partial);
+  EXPECT_TRUE(first_split[1]->is_partial);
+
+  std::vector<std::unique_ptr<BatchResourceBase::BatchTask>> second_split;
+  auto subtask1 = std::move(first_split[1]);
+  TF_ASSERT_OK(BatchResourceBase::SplitInputTask(
+      &subtask1, /*open_batch_remaining_slot=*/1,
+      /*max_batch_size=*/4, &second_split));
+  ASSERT_EQ(second_split.size(), 2);
+  EXPECT_EQ(second_split[0]->size(), 1);
+  EXPECT_EQ(second_split[1]->size(), 3);
+  EXPECT_TRUE(second_split[0]->is_partial);
+  EXPECT_TRUE(second_split[1]->is_partial);
+
+  EXPECT_EQ(parent_output->size(), 2);
+
+  Tensor out0(DataType::DT_INT64, TensorShape({2, 4}));
+  out0.flat<int64_t>().setConstant(10);
+  (*parent_output)[0][0] = out0;
+
+  Tensor out_resplit0(DataType::DT_INT64, TensorShape({1, 4}));
+  out_resplit0.flat<int64_t>().setConstant(20);
+  (*second_split[0]->output)[second_split[0]->split_index][0] = out_resplit0;
+
+  Tensor out_resplit1(DataType::DT_INT64, TensorShape({3, 4}));
+  out_resplit1.flat<int64_t>().setConstant(30);
+  (*second_split[1]->output)[second_split[1]->split_index][0] = out_resplit1;
+
+  first_split[0]->FinishTask(absl::OkStatus());
+
+  for (auto& sub : second_split) {
+    sub->FinishTask(absl::OkStatus());
+  }
+
+  ASSERT_TRUE(done.WaitForNotificationWithTimeout(absl::Seconds(5)));
+
+  EXPECT_TRUE(shared_status->status().ok());
+
+  const Tensor* final_output = context_->mutable_output(0);
+  ASSERT_NE(final_output, nullptr);
+  EXPECT_EQ(final_output->shape(), TensorShape({6, 4}));
+
+  auto flat = final_output->flat<int64_t>();
+  for (int i = 0; i < 2 * 4; ++i) {
+    EXPECT_EQ(flat(i), 10);
+  }
+  for (int i = 2 * 4; i < 3 * 4; ++i) {
+    EXPECT_EQ(flat(i), 20);
+  }
+  for (int i = 3 * 4; i < 6 * 4; ++i) {
+    EXPECT_EQ(flat(i), 30);
+  }
 }
 
 class TestTpuCostMeasurement : public CostMeasurement {
