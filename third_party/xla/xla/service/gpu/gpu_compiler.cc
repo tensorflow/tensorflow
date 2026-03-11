@@ -390,17 +390,6 @@ MaybeOwningThreadPool CreateMaybeOwningThreadPool(
   }
 }
 
-DeviceOrDevicelessConfig GetDeviceConfig(
-    se::StreamExecutor* stream_exec, const GpuCompiler::CompileOptions& options,
-    const GpuTargetConfig& gpu_target_config) {
-  if (stream_exec) {
-    return DeviceOrDevicelessConfig{
-        DeviceConfig{stream_exec, options.device_allocator}};
-  }
-  return DeviceOrDevicelessConfig{
-      DevicelessConfig{gpu_target_config.device_description}};
-}
-
 bool IsDevicelessCompilation(const Compiler::CompileOptions& options,
                              const se::StreamExecutor* stream_exec) {
   return options.early_exit_with_layouts || stream_exec == nullptr;
@@ -1363,11 +1352,10 @@ absl::Status RunPostFusionVerificationPasses(
   if (hlo_module->config()
           .debug_options()
           .xla_gpu_verify_triton_fusion_numerics()) {
-    DeviceOrDevicelessConfig device_config =
-        GetDeviceConfig(stream_exec, options, gpu_target_config);
-    if (!device_config.IsDeviceless()) {
-      pipeline.AddPass<TritonFusionNumericsVerifier>(device_config, alias_info,
-                                                     mlir_context);
+    if (stream_exec != nullptr) {
+      pipeline.AddPass<TritonFusionNumericsVerifier>(
+          DeviceOrDevicelessConfig{stream_exec, options, gpu_target_config},
+          alias_info, mlir_context);
     }
   }
 
