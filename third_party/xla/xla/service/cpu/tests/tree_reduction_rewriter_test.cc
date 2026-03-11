@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/tree_reduction_rewriter.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 
