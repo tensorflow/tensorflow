@@ -1165,11 +1165,11 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
           }(),
           std::move(result_shape), std::move(output_memory_space_kind_ids),
           std::move(addressable_devices),
-          std::move(addressable_device_logical_ids)),
+          std::move(addressable_device_logical_ids),
+          std::move(device_assignment)),
       client_(client),
       executable_(std::move(executable)),
       pjrt_executable_(std::move(pjrt_executable)),
-      device_assignment_(std::move(device_assignment)),
       compile_options_(std::move(compile_options)),
       parameter_is_tupled_arguments_(parameter_is_tupled_arguments) {
   on_device_executable_parameter_shapes_ =
@@ -2010,25 +2010,10 @@ PjRtStreamExecutorClient::CreateDeviceEventSet(size_t preallocated_size) const {
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
-PjRtStreamExecutorLoadedExecutable::StartRawExecutable(
-    const ExecuteOptions& options, xla::RunId run_id, int replica,
-    int partition, PjRtDevice* device) const {
-  std::shared_ptr<DeviceAssignment> device_assignment;
-  if (device == nullptr) {
-    CHECK(device_assignment_ != nullptr);
-    const int64_t device_id = (*device_assignment_)(replica, partition);
-    GlobalDeviceId global_device_id(device_id);
-    TF_ASSIGN_OR_RETURN(device, client_->LookupDevice(global_device_id));
-    device_assignment = device_assignment_;
-  } else {
-    CHECK(device_assignment_ == nullptr);
-    CHECK_EQ(replica, 0);
-    CHECK_EQ(partition, 0);
-    CHECK(addressable_devices_.empty());
-    device_assignment = std::make_shared<DeviceAssignment>(1, 1);
-    (*device_assignment)(0, 0) = device->id();
-  }
-  CHECK_EQ(device->process_index(), client_->process_index());
+PjRtStreamExecutorLoadedExecutable::LoadRawExecutable(
+    const ExecuteOptions& options, size_t host_callback_idx, xla::RunId run_id,
+    DeviceAndAssignment device_and_assign) const {
+  PjRtDevice* device = device_and_assign.device;
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->local_device_id()
@@ -2036,12 +2021,14 @@ PjRtStreamExecutorLoadedExecutable::StartRawExecutable(
   if (!addressable_devices_.empty()) {
     TF_RETURN_IF_ERROR(executable_->VerifyRunDeviceCompatible(device_ordinal));
   }
+  int replica = device_and_assign.replica;
+  int partition = device_and_assign.partition;
   VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
   return std::make_unique<PjRtStreamExecutorRawLoadedExecutable>(
-      replica, partition, run_id, device, std::move(device_assignment),
-      executable_, client_, parameter_is_tupled_arguments_,
-      on_device_executable_parameter_shapes_);
+      replica, partition, run_id, device,
+      std::move(device_and_assign.device_assignment), executable_, client_,
+      parameter_is_tupled_arguments_, on_device_executable_parameter_shapes_);
 }
 
 void PjRtStreamExecutorClient::LaunchOnDevice(

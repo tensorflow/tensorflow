@@ -557,11 +557,6 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
         on_device_executable_parameter_shapes_(
             std::move(on_device_executable_parameter_shapes)) {}
 
-  absl::Status Load(const ExecuteOptions& options,
-                    size_t host_callback_idx) override {
-    return absl::OkStatus();
-  }
-
   PjRtDevice* device() override { return device_; }
 
   PjRtRawLoadedExecutable::RawExecuteResult Execute(
@@ -611,22 +606,9 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
     return executable_->executable()->module().input_output_alias_config();
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> StartRawExecutable(
-      const ExecuteOptions& options, xla::RunId run_id, int replica,
-      int partition, PjRtDevice* device) const override;
-
-  const DeviceAssignment& device_assignment() const override {
-    return *device_assignment_;
-  }
-
-  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const override {
-    return addressable_device_logical_ids_;
-  }
-
-  absl::Span<PjRtDevice* const> addressable_devices() const override {
-    return addressable_devices_;
-  }
+  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
+      const ExecuteOptions& options, size_t host_callback_idx,
+      xla::RunId run_id, DeviceAndAssignment device_and_assign) const override;
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -692,7 +674,6 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   std::shared_ptr<PjRtExecutable> pjrt_executable_;
   // On device shapes of the executable parameters.
   std::shared_ptr<std::vector<Shape>> on_device_executable_parameter_shapes_;
-  std::shared_ptr<DeviceAssignment> device_assignment_;
   CompileOptions compile_options_;
 
   // True if the executables were compiled expecting arguments in a single
