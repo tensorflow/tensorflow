@@ -993,6 +993,7 @@ py_strict_library(
 py_strict_library(
     name = "module_wrapper",
     srcs = ["module_wrapper.py"],
+    lazy_imports = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
