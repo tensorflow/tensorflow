@@ -350,7 +350,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:errors",
     ],
 )
@@ -1100,7 +1099,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:casts",
     ],
 )
@@ -1433,6 +1431,7 @@ cc_library(
     hdrs = ["pjrt_phase_compile_sample_plugin.h"],
     visibility = ["//visibility:private"],
     deps = [
+        ":maybe_owning_mlir_module",
         ":pjrt_client",
         ":pjrt_compiler",
         ":pjrt_executable",
@@ -1477,6 +1476,7 @@ xla_cc_test(
     name = "pjrt_phase_compiler_test",
     srcs = ["pjrt_phase_compiler_test.cc"],
     deps = [
+        ":maybe_owning_mlir_module",
         ":pjrt_compiler",
         ":pjrt_executable",
         ":pjrt_phase_compile_sample_plugin",

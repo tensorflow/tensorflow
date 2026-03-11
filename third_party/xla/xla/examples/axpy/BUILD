@@ -10,6 +10,7 @@ xla_cc_test(
         "//xla:error_spec",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_api",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",

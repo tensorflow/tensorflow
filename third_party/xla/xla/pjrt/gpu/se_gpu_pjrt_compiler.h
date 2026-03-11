@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -52,12 +51,6 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
       CompileOptions options, const XlaComputation& computation,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override {
-    return Compile(options, MaybeOwningMlirModule(std::move(module)), topology,
-                   client);
-  }
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
