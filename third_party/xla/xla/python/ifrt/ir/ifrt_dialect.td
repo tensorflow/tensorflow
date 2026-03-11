@@ -215,9 +215,9 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
     ::llvm::ArrayRef<int> getDevices() const;
     // Get the memory kind from `memory_kind_attr`.
     ::xla::ifrt::MemoryKind MemoryKind() const;
-    // Get the layout mode from `layout_attr`. Returns std::nullopt if the
-    // layout attribute is not set.
-    std::optional<::xla::LayoutMode> LayoutMode() const;
+    // Get the layout mode from `layout_attr`. Returns default layout mode if
+    // the layout attribute is not set.
+    ::xla::LayoutMode LayoutMode() const;
   }];
 }
 

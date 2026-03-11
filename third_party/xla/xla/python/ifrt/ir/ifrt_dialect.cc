@@ -222,13 +222,14 @@ xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {
              : xla::ifrt::MemoryKind(getMemoryKindAttr().str());
 };
 
-std::optional<xla::LayoutMode> IfrtArrayType::LayoutMode() const {
+// TODO(icgog): Migrate to xla::ifrt::Layout.
+xla::LayoutMode IfrtArrayType::LayoutMode() const {
   if (auto layout_attr = getLayoutAttr()) {
     auto layout_mode = xla::LayoutMode::FromString(layout_attr.str());
     CHECK_OK(layout_mode) << "Invalid layout mode: " << layout_attr.str();
     return *layout_mode;
   }
-  return std::nullopt;
+  return xla::LayoutMode(xla::LayoutMode::Mode::kDefault);
 }
 
 void IfrtArrayType::print(mlir::AsmPrinter& odsPrinter) const {

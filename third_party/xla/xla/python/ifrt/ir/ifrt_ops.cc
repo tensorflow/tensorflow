@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -35,14 +36,17 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Interfaces/CallInterfaces.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/pjrt/layout_mode.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
@@ -59,11 +63,11 @@ namespace {
 mlir::FailureOr<mlir::RankedTensorType> GetGlobalShape(mlir::Type type) {
   if (auto ranked_tensor = mlir::dyn_cast<mlir::RankedTensorType>(type)) {
     return ranked_tensor;
-  } else if (auto array = mlir::dyn_cast<IfrtArrayType>(type)) {
-    return array.getShape();
-  } else {
-    return mlir::failure();
   }
+  if (auto array = mlir::dyn_cast<IfrtArrayType>(type)) {
+    return array.getShape();
+  }
+  return mlir::failure();
 }
 
 mlir::FailureOr<mlir::RankedTensorType> GetGlobalShape(mlir::Value value) {
@@ -78,13 +82,11 @@ mlir::FailureOr<mlir::RankedTensorType> GetGlobalShapeFromLocal(
     if (global_shape.ok()) {
       return mlir::RankedTensorType::get(global_shape.value(),
                                          local_ranked_tensor.getElementType());
-    } else {
-      return mlir::failure();
     }
-  } else {
-    // IFRT arrays cannot be in the local view.
     return mlir::failure();
   }
+  // IFRT arrays cannot be in the local view.
+  return mlir::failure();
 }
 
 template <typename T, typename U>
@@ -182,41 +184,30 @@ struct IoAlias {
   int output_index;
 };
 
-mlir::LogicalResult VerifyElementTypeAndPerShardShapeAreEqual(
-    mlir::Operation* op, IfrtArrayType in, int in_index, IfrtArrayType out,
-    int out_index) {
-  if (in.getShape().getElementType() != out.getShape().getElementType()) {
-    return op->emitOpError()
-           << "can't alias input #" << in_index << " to output #" << out_index
-           << " with different element types: " << in << " vs " << out;
+mlir::LogicalResult VerifyPerShardShapesAreEqual(mlir::Operation* op,
+                                                 IfrtArrayType t1,
+                                                 IfrtArrayType t2) {
+  absl::StatusOr<llvm::SmallVector<int64_t>> shard_shape1 =
+      t1.getShardingAttr().LocalShapeFromGlobalShape(t1.getShape().getShape());
+  if (!shard_shape1.ok()) {
+    return op->emitOpError() << "unable to get per-shard shape of array " << t1
+                             << ": " << shard_shape1.status().message();
   }
-
-  absl::StatusOr<llvm::SmallVector<int64_t>> in_per_shard_shape =
-      in.getShardingAttr().LocalShapeFromGlobalShape(in.getShape().getShape());
-  if (!in_per_shard_shape.ok()) {
-    return op->emitOpError()
-           << "unable to get per-shard shape of aliased input #" << in_index
-           << ": " << in_per_shard_shape.status().message();
+  absl::StatusOr<llvm::SmallVector<int64_t>> shard_shape2 =
+      t2.getShardingAttr().LocalShapeFromGlobalShape(t2.getShape().getShape());
+  if (!shard_shape2.ok()) {
+    return op->emitOpError() << "unable to get per-shard shape of array " << t2
+                             << ": " << shard_shape2.status().message();
   }
-  absl::StatusOr<llvm::SmallVector<int64_t>> out_per_shard_shape =
-      out.getShardingAttr().LocalShapeFromGlobalShape(
-          out.getShape().getShape());
-  if (!out_per_shard_shape.ok()) {
+  if (shard_shape1->size() != shard_shape2->size()) {
     return op->emitOpError()
-           << "unable to get per-shard shape of aliased output #" << out_index
-           << ": " << out_per_shard_shape.status().message();
+           << "Arrays have different per-shard shapes: " << t1 << " vs. " << t2;
   }
-  if (in_per_shard_shape->size() != out_per_shard_shape->size()) {
-    return op->emitOpError()
-           << "can't alias input #" << in_index << " to output #" << out_index
-           << " with different per-shard shapes: " << in << " vs " << out;
-  }
-  for (const auto& [in_dim, out_dim] :
-       llvm::zip(*in_per_shard_shape, *out_per_shard_shape)) {
-    if (in_dim != out_dim) {
+  for (const auto& [dim1, dim2] : llvm::zip(*shard_shape1, *shard_shape2)) {
+    if (dim1 != dim2) {
       return op->emitOpError()
-             << "can't alias input #" << in_index << " to output #" << out_index
-             << " with different per-shard shapes: " << in << " vs " << out;
+             << "Arrays have different per-shard shapes: " << t1 << " vs. "
+             << t2;
     }
   }
   return mlir::success();
@@ -241,9 +232,20 @@ mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
     // TODO(icgog): Relax this aliasing check to allow for different per-shard
     // shapes as long as the byte size is the same. We cannot do this now
     // because we do not have layout information.
-    return VerifyElementTypeAndPerShardShapeAreEqual(
-        op, inputs[io_alias.input_index], io_alias.input_index,
-        outputs[io_alias.output_index], io_alias.output_index);
+    if (inputs[io_alias.input_index].getShape().getElementType() !=
+        outputs[io_alias.output_index].getShape().getElementType()) {
+      return op->emitOpError()
+             << "can't alias input #" << io_alias.input_index << " to output #"
+             << io_alias.output_index
+             << " with different dtypes: " << inputs[io_alias.input_index]
+             << " vs. " << outputs[io_alias.output_index];
+    }
+    if (mlir::failed(
+            VerifyPerShardShapesAreEqual(op, inputs[io_alias.input_index],
+                                         outputs[io_alias.output_index]))) {
+      return op->emitOpError() << "can't alias input #" << io_alias.input_index
+                               << " to output #" << io_alias.output_index;
+    }
   }
   return mlir::success();
 }
@@ -293,6 +295,45 @@ bool IsAutoLayout(mlir::Type type) {
     return array.getLayoutAttr().str() == "auto";
   }
   return false;
+}
+
+bool SameLayout(IfrtArrayType t1, IfrtArrayType t2) {
+  xla::LayoutMode layout_mode1 = t1.LayoutMode();
+  xla::LayoutMode layout_mode2 = t2.LayoutMode();
+  if (layout_mode1.mode != layout_mode2.mode) {
+    return false;
+  }
+  if (layout_mode1.mode == xla::LayoutMode::Mode::kUserSpecified) {
+    return layout_mode1.user_layout == layout_mode2.user_layout;
+  }
+  return true;
+}
+
+int GetNumberOfSteps(IfrtIntervalAttr interval) {
+  return (interval.getEnd() - interval.getStart() + interval.getStep() - 1) /
+         interval.getStep();
+}
+
+mlir::LogicalResult CheckIntervalRange(int64_t num_shards,
+                                       IfrtIntervalAttr interval,
+                                       mlir::Location loc) {
+  if (interval.getStart() < 0 || interval.getStart() > num_shards - 1) {
+    return mlir::emitError(
+        loc, absl::StrCat("start must be in [0, ", num_shards - 1, "], but is ",
+                          interval.getStart()));
+  }
+  if (interval.getStep() <= 0) {
+    return mlir::emitError(loc, absl::StrCat("step must be positive, but is ",
+                                             interval.getStep()));
+  }
+  if (interval.getEnd() < 0 ||
+      interval.getEnd() > num_shards + interval.getStep() - 1) {
+    return mlir::emitError(
+        loc, absl::StrCat("end must be in [0, ",
+                          num_shards + interval.getStep() - 1, "] if step is ",
+                          interval.getStep(), ", but is ", interval.getEnd()));
+  }
+  return mlir::success();
 }
 
 }  // namespace
@@ -447,105 +488,133 @@ mlir::LogicalResult RemapArraysOp::verify() {
   if (num_in_arrays == 0) {
     return emitOpError() << "requires at least one input array";
   }
-  IfrtArrayType first_array =
-      llvm::cast<IfrtArrayType>(getInputs()[0].getType());
-  mlir::Type dtype = first_array.getShape().getElementType();
-  absl::StatusOr<llvm::SmallVector<int64_t>> in_per_shard_shape =
-      first_array.getShardingAttr().LocalShapeFromGlobalShape(
-          first_array.getShape().getShape());
-  if (!in_per_shard_shape.ok()) {
-    return emitOpError() << "unable to get per-shard shape of input #0. "
-                         << in_per_shard_shape.status().message();
-  }
+
   std::vector<std::vector<bool>> in_used_shards_list(num_in_arrays);
-  // Verify that all input/output arrays have the same DType and per-shard
-  // shape.
-  for (const auto [idx, input] : llvm::enumerate(getInputs())) {
-    const auto array = llvm::cast<IfrtArrayType>(input.getType());
-    if (array.getShape().getElementType() != dtype) {
-      return emitOpError()
-             << "requires every input and output array to have the same dtype.";
-    }
-    if (IsAutoLayout(array)) {
-      return emitOpError() << "does not allow input arrays with `auto` layout";
-    }
-    auto input_per_shard_shape =
-        array.getShardingAttr().LocalShapeFromGlobalShape(
-            array.getShape().getShape());
-    if (!input_per_shard_shape.ok()) {
-      return emitOpError() << "unable to get per-shard shape of input #" << idx
-                           << ". " << input_per_shard_shape.status().message();
-    }
-    if (*input_per_shard_shape != *in_per_shard_shape) {
-      return emitOpError() << "requires every input array to have the same "
-                              "per-shard shape, but input #"
-                           << idx << " has a different shape.";
-    }
-    in_used_shards_list[idx].resize(/*count=*/array.getDevices().size(),
+  for (const auto& [idx, input] : llvm::enumerate(getInputs())) {
+    const auto in_array_type = llvm::cast<IfrtArrayType>(input.getType());
+    in_used_shards_list[idx].resize(/*count=*/in_array_type.getDevices().size(),
                                     /*value=*/false);
   }
   std::vector<std::vector<bool>> out_mapped_shards_list(num_out_arrays);
-  if (num_out_arrays > 0) {
-    IfrtArrayType first_out_array =
-        llvm::cast<IfrtArrayType>(getOutputs()[0].getType());
-    absl::StatusOr<llvm::SmallVector<int64_t>> out_per_shard_shape =
-        first_out_array.getShardingAttr().LocalShapeFromGlobalShape(
-            first_out_array.getShape().getShape());
-    if (!out_per_shard_shape.ok()) {
-      return emitOpError() << "unable to get per-shard shape of output #0. "
-                           << out_per_shard_shape.status().message();
-    }
-    for (const auto [idx, output] : llvm::enumerate(getOutputs())) {
-      const auto array = llvm::cast<IfrtArrayType>(output.getType());
-      if (array.getShape().getElementType() != dtype) {
-        return emitOpError() << "requires every input and output array to have "
-                                "the same dtype.";
-      }
-      if (IsAutoLayout(array)) {
-        return emitOpError() << "does not allow outputs with `auto` layout";
-      }
-      auto output_per_shard_shape =
-          array.getShardingAttr().LocalShapeFromGlobalShape(
-              array.getShape().getShape());
-      if (!output_per_shard_shape.ok()) {
-        return emitOpError()
-               << "unable to get per-shard shape of output #" << idx << ". "
-               << output_per_shard_shape.status().message();
-      }
-      if (*output_per_shard_shape != *out_per_shard_shape) {
-        return emitOpError() << "requires every output array to have the same "
-                                "per-shard shape, but output #"
-                             << idx << " has a different shape.";
-      }
-      out_mapped_shards_list[idx].resize(/*count=*/array.getDevices().size(),
-                                         /*value=*/false);
-    }
+  for (const auto& [idx, output] : llvm::enumerate(getOutputs())) {
+    const auto out_array_type = llvm::cast<IfrtArrayType>(output.getType());
+    out_mapped_shards_list[idx].resize(
+        /*count=*/out_array_type.getDevices().size(),
+        /*value=*/false);
   }
 
-  // Verify that an input shard is used at most once, and that every output
-  // shard has exactly one input shard mapped.
-  for (const auto& array_mapping : getMappings()) {
-    const auto array_mapping_attr =
+  auto mappings = getMappings();
+  if (mappings.empty()) {
+    return emitOpError() << "requires at least one mapping";
+  }
+
+  absl::flat_hash_map<int, int> out_array_index_to_in_array_index;
+  bool donated = getDonated();
+  for (const auto& [idx, array_mapping] : llvm::enumerate(mappings)) {
+    const IfrtArrayMappingAttr array_mapping_attr =
         llvm::cast<IfrtArrayMappingAttr>(array_mapping);
     int in_index = array_mapping_attr.getInArrayIndex();
     int out_index = array_mapping_attr.getOutArrayIndex();
-    if (in_index < 0 || in_index >= in_used_shards_list.size()) {
-      return emitOpError() << "mapping array index " << in_index
-                           << " is out of range of input arrays.";
+    if (in_index < 0 || in_index >= num_in_arrays) {
+      return emitOpError() << "mappings in array index " << idx
+                           << " must be in [0, " << num_in_arrays
+                           << "], but is " << in_index;
     }
-    if (out_index < 0 || out_index >= out_mapped_shards_list.size()) {
-      return emitOpError() << "mapping array index " << out_index
-                           << " is out of range of output arrays.";
+    if (out_index < 0 || out_index >= num_out_arrays) {
+      return emitOpError() << "mapping out array index " << idx
+                           << " must be in [0, " << num_out_arrays
+                           << "], but is " << out_index;
     }
+
+    if (!donated) {
+      const auto [it, inserted] =
+          out_array_index_to_in_array_index.insert({out_index, in_index});
+      if (!inserted && it->second != in_index) {
+        return emitOpError()
+               << "all arguments must be donated because multiple input arrays "
+                  "are mapped to output array #"
+               << out_index;
+      }
+    }
+
+    IfrtArrayType in_array_type =
+        llvm::cast<IfrtArrayType>(getInputs()[in_index].getType());
+    IfrtArrayType out_array_type =
+        llvm::cast<IfrtArrayType>(getOutputs()[out_index].getType());
+    if (in_array_type.getShape().getElementType() !=
+        out_array_type.getShape().getElementType()) {
+      return emitOpError() << "requires input array #" << in_index
+                           << " and output array #" << out_index
+                           << " to have the same dtype: "
+                           << in_array_type.getShape().getElementType()
+                           << " vs. "
+                           << out_array_type.getShape().getElementType();
+    }
+
+    if (in_array_type.MemoryKind() != out_array_type.MemoryKind()) {
+      return emitOpError() << "requires input array #" << in_index
+                           << " and output array #" << out_index
+                           << " to have the same memory kind: "
+                           << in_array_type.getMemoryKindAttr() << " vs. "
+                           << out_array_type.getMemoryKindAttr();
+    }
+
+    if (IsAutoLayout(in_array_type) || IsAutoLayout(out_array_type)) {
+      return emitOpError()
+             << "does not allow input or output arrays with `auto` layout.";
+    }
+
+    if (!SameLayout(in_array_type, out_array_type)) {
+      return emitOpError() << "requires input array #" << in_index
+                           << " and output array #" << out_index
+                           << " to have the same layout: "
+                           << in_array_type.getLayoutAttr() << " vs. "
+                           << out_array_type.getLayoutAttr();
+    }
+
+    if (mlir::failed(VerifyPerShardShapesAreEqual(getOperation(), in_array_type,
+                                                  out_array_type))) {
+      return emitOpError() << "requires input array #" << in_index
+                           << " and output array #" << out_index
+                           << " to have the same per-shard shape";
+    }
+
     std::vector<bool>& in_used_shards = in_used_shards_list[in_index];
     std::vector<bool>& out_mapped_shards = out_mapped_shards_list[out_index];
-    for (const auto& mapping : array_mapping_attr.getMappings()) {
+    const int64_t in_shards_count = in_used_shards.size();
+    const int64_t out_shards_count = out_mapped_shards.size();
+
+    for (const auto& [sidx, mapping] :
+         llvm::enumerate(array_mapping_attr.getMappings())) {
       const auto mapping_attr = llvm::cast<IfrtMappingAttr>(mapping);
-      auto from_shards = mapping_attr.getFromShards();
-      auto to_shards = mapping_attr.getToShards();
-      int in_shard = from_shards.getStart();
-      int out_shard = to_shards.getStart();
-      while (in_shard < from_shards.getEnd()) {
+      IfrtIntervalAttr in_interval = mapping_attr.getFromShards();
+      IfrtIntervalAttr out_interval = mapping_attr.getToShards();
+
+      if (mlir::failed(
+              CheckIntervalRange(in_shards_count, in_interval, getLoc()))) {
+        return emitOpError()
+               << "mapping #" << idx << " from #" << sidx << " has invalid "
+               << "in_interval: " << mlir::debugString(in_interval);
+      }
+      if (mlir::failed(
+              CheckIntervalRange(out_shards_count, out_interval, getLoc()))) {
+        return emitOpError()
+               << "mapping #" << idx << " from #" << sidx << " has invalid "
+               << "out_interval: " << mlir::debugString(out_interval);
+      }
+
+      if (GetNumberOfSteps(in_interval) != GetNumberOfSteps(out_interval)) {
+        return emitOpError()
+               << "mapping #" << idx << " from #" << sidx << " and mapping #"
+               << idx << " to #" << sidx << " must have the same number of "
+               << "steps, but were " << GetNumberOfSteps(in_interval) << " and "
+               << GetNumberOfSteps(out_interval) << " ("
+               << mlir::debugString(in_interval) << " vs. "
+               << mlir::debugString(out_interval) << ")";
+      }
+      int in_shard = in_interval.getStart();
+      int out_shard = out_interval.getStart();
+      while (in_shard < in_interval.getEnd()) {
         if (in_shard >= in_used_shards.size()) {
           return emitOpError()
                  << "input array #" << in_index << " shard #" << in_shard
@@ -566,11 +635,13 @@ mlir::LogicalResult RemapArraysOp::verify() {
                                << out_shard << " is already assigned.";
         }
         out_mapped_shards[out_shard] = true;
-        in_shard += from_shards.getStep();
-        out_shard += to_shards.getStep();
+
+        in_shard += in_interval.getStep();
+        out_shard += out_interval.getStep();
       }
     }
   }
+
   for (int idx = 0; idx < num_out_arrays; ++idx) {
     for (int out_shard = 0; out_shard < out_mapped_shards_list[idx].size();
          ++out_shard) {

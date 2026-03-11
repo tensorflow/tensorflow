@@ -54,17 +54,19 @@ func.func @attr_unspecified_sharding(%arg0: !array_us0) attributes {ifrt.functio
                             #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
 // CHECK-LABEL: "remap_attributes"
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}):
-func.func @remap_attributes(%arg0: !array_rattr_in0, %arg1: !array_rattr_in1)
+func.func @remap_attributes(
+    %arg0: !array_rattr_in0 {ifrt.donated}, %arg1: !array_rattr_in1 {ifrt.donated})
     attributes {ifrt.function} {
   // CHECK: "vifrt.RemapArraysV1"(%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: <{
-  // CHECK-DAG: donated = false
+  // CHECK-DAG: donated = true
   // CHECK-DAG: mappings = [#vifrt.array_mapping_v1<0, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [0 : 1 : 1]>]>, #vifrt.array_mapping_v1<1, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [1 : 2 : 1]>]>]
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
   %0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true}
       : (!array_rattr_in0, !array_rattr_in1) -> (!array_rattr_out)
   return
 }
@@ -219,17 +221,19 @@ ifrt.LoadedExecutable @test_loaded_executable2 on devices [0,1]
                             #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
 // CHECK-LABEL: "op_remap_arrays"
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}):
-func.func @op_remap_arrays(%arg0: !array_ra_in0, %arg1: !array_ra_in1)
+func.func @op_remap_arrays(
+    %arg0: !array_ra_in0 {ifrt.donated}, %arg1: !array_ra_in1 {ifrt.donated})
     attributes {ifrt.function} {
   // CHECK: "vifrt.RemapArraysV1"(%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: <{
-  // CHECK-DAG: donated = false
+  // CHECK-DAG: donated = true
   // CHECK-DAG: mappings = [#vifrt.array_mapping_v1<0, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [0 : 1 : 1]>]>, #vifrt.array_mapping_v1<1, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [1 : 2 : 1]>]>]
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
   %0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true}
       : (!array_ra_in0, !array_ra_in1) -> (!array_ra_out)
   return
 }
