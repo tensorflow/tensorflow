@@ -375,7 +375,7 @@ absl::Status RocmStream::BlockHostUntilDone() {
 absl::Status RocmStream::LaunchKernel(
     const ThreadDim& thread_dims, const BlockDim& block_dims,
     const std::optional<ClusterDim>& cluster_dims, void* function,
-    absl::string_view name, void** args, int64_t shmem_bytes) {
+    absl::string_view name, void** args, int64_t shmem_bytes, bool use_pdl) {
   if (cluster_dims.has_value()) {
     return LaunchRocmKernel(
         executor_, name, static_cast<hipFunction_t>(function), cluster_dims->x,

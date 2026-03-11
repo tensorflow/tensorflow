@@ -282,7 +282,7 @@ class Stream {
   virtual absl::Status LaunchKernel(
       const ThreadDim& thread_dims, const BlockDim& block_dims,
       const std::optional<ClusterDim>& cluster_dims, void* function,
-      absl::string_view name, void** args, int64_t shmem_bytes) {
+      absl::string_view name, void** args, int64_t shmem_bytes, bool use_pdl) {
     return absl::UnimplementedError("Not implemented");
   }
 

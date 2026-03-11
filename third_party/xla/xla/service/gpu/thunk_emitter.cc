@@ -1243,7 +1243,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
 
     kernel_modules_.push_back(std::move(result.llvm_module));
     return {{kernel_name, launch_dimensions, /*cluster_dim=*/std::nullopt,
-             result.shmem_bytes}};
+             result.shmem_bytes, /*binary=*/"", /*tma_metadata=*/{},
+             result.use_pdl}};
   };
 
   auto [status_or_entry, was_cached] =
@@ -1265,7 +1266,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
           instr, ir_emitter_context_->GetNextThunkId()),
       entry->kernel_name, kernel_arguments, entry->launch_dimensions,
       /*cluster_dim=*/std::nullopt, entry->shmem_bytes, entry->tma_metadata,
-      /*zeroed_output_buffer_indices=*/call.zeroed_outputs));
+      /*zeroed_output_buffer_indices=*/call.zeroed_outputs, entry->use_pdl));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncComputation(

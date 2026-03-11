@@ -500,6 +500,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_rocm_max_trace_events(4 * 1024 * 1024);
 
   opts.set_xla_gpu_print_compilation_stats(false);
+
+  opts.set_xla_gpu_enable_pdl(false);
   return opts;
 }
 
@@ -2959,6 +2961,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_print_compilation_stats(),
       "Prints statistics about the HLO passes: how many times each pass was "
       "run, and how long it took."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_pdl",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_pdl),
+                debug_options->xla_gpu_enable_pdl(),
+                "Enable PDL (Programmatic Dependent Launch)."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

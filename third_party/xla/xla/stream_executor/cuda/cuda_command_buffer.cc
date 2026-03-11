@@ -499,7 +499,14 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
           << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes
           << "; deps: " << dependencies.size();
 
+#if CUDA_VERSION >= 12030
+  CUgraphNodeParams cu_params;
+  std::memset(&cu_params, 0, sizeof(cu_params));
+  cu_params.type = CU_GRAPH_NODE_TYPE_KERNEL;
+  CUDA_KERNEL_NODE_PARAMS_v3& params = cu_params.kernel;
+#else
   CUDA_KERNEL_NODE_PARAMS params{};
+#endif
 
   CUfunction function = static_cast<const CudaKernel&>(kernel).gpu_function();
   params.func = function;
@@ -527,10 +534,34 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
   std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
 
   CUgraphNode node_handle = nullptr;
+
+#if CUDA_VERSION >= 12030
+  std::vector<CUgraphEdgeData> edge_data;
+  edge_data.reserve(deps.size());
+  for (size_t i = 0; i < deps.size(); ++i) {
+    CUgraphEdgeData edge_data_item;
+    std::memset(&edge_data_item, 0, sizeof(edge_data_item));
+    CUgraphNodeType type;
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuGraphNodeGetType(deps[i], &type),
+        absl::StrCat("Failed to get CUDA graph node type for dependency ", i)));
+    if (kernel.use_pdl() && type == CU_GRAPH_NODE_TYPE_KERNEL) {
+      edge_data_item.from_port = CU_GRAPH_KERNEL_NODE_PORT_PROGRAMMATIC;
+      edge_data_item.type = CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC;
+    }
+    edge_data.push_back(edge_data_item);
+  }
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuGraphAddNode_v2(&node_handle, graph_, deps.data(), edge_data.data(),
+                        deps.size(), &cu_params),
+      "Failed to add kernel node to a CUDA graph"));
+#else
+  TF_RET_CHECK(!kernel.use_pdl()) << "PDL is not supported for CUDA < 12.3";
   TF_RETURN_IF_ERROR(
       cuda::ToStatus(cuGraphAddKernelNode(&node_handle, graph_, deps.data(),
                                           deps.size(), &params),
                      "Failed to add kernel node to a CUDA graph"));
+#endif
 
   if (priority != StreamPriority::Default) {
     CUlaunchAttributeValue value;

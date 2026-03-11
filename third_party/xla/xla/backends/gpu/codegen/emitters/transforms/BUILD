@@ -32,6 +32,7 @@ cc_library(
         "convert_float_amd.cc",
         "convert_float_nvidia.cc",
         "convert_index_type.cc",
+        "insert_pdl_ops.cc",
         "lower_xla_shared.cc",
         "optimize_loops.cc",
         "peel_loops.cc",
@@ -41,6 +42,7 @@ cc_library(
     deps = [
         ":passes_inc_gen",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/service/gpu:gpu_fusible",
@@ -68,5 +70,6 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:VectorDialect",
+        "@triton//:TritonDialects",
     ],
 )

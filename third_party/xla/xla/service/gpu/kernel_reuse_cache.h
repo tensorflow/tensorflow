@@ -48,6 +48,7 @@ class KernelReuseCache {
     int64_t shmem_bytes = 0;
     std::string binary;
     stream_executor::gpu::TmaMetadata tma_metadata;
+    bool use_pdl = false;
   };
   struct NamedBinary {
     std::string name;
