@@ -63,6 +63,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu:alignment",
         "//xla/backends/cpu/lite_aot:xla_aot_function",
+        "//xla/backends/cpu/runtime/thunk_serdes:dot_thunk_serdes",  # buildcleaner: keep
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

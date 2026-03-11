@@ -485,6 +485,7 @@ cc_library(
         "@xla//xla/backends/cpu/codegen:aot_compiled_function_library",
         "@xla//xla/backends/cpu/nanort:nanort_executable",
         "@xla//xla/backends/cpu/runtime:function_library",
+        "@xla//xla/backends/cpu/runtime/thunk_serdes:all_thunk_serdes",  # buildcleaner: keep
         "@xla//xla/service:executable",  # buildcleaner: keep (b/404179184)
         "@xla//xla/service/cpu:cpu_aot_compilation_result",
         "@xla//xla/service/cpu:executable_proto_cc",
@@ -542,6 +543,7 @@ cc_library(
         "@xla//xla/backends/cpu:buffer_allocation_info",
         "@xla//xla/backends/cpu:buffer_allocation_info_util",
         "@xla//xla/backends/cpu/codegen:compiled_function_library",
+        "@xla//xla/backends/cpu/runtime/thunk_serdes:all_thunk_serdes",  # buildcleaner: keep
         "@xla//xla/client:client_library",
         "@xla//xla/client:executable_build_options",
         "@xla//xla/client:local_client",
