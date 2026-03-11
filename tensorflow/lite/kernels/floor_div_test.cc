@@ -30,13 +30,16 @@ template <typename T>
 class FloorDivModel : public SingleOpModel {
  public:
   FloorDivModel(const TensorData& input1, const TensorData& input2,
-                const TensorData& output) {
+                const TensorData& output, bool allocate = true) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_FLOOR_DIV, BuiltinOptions_FloorDivOptions,
                  CreateFloorDivOptions(builder_).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/allocate);
   }
 
   int input1() { return input1_; }
@@ -83,37 +86,55 @@ TEST(FloorDivModel, BroadcastFloorDiv) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4, 3, 3, -3));
 }
 
-TEST(FloorDivModel, SimpleFloat) {
-  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10.05, 9.09, 11.9, 3.01});
-  model.PopulateTensor<float>(model.input2(), {2.05, 2.03, 3.03, 4.03});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+template <typename T>
+class FloatFloorDivTest : public ::testing::Test {};
+
+using FloatFloorDivTestTypes = ::testing::Types<float, half, Eigen::bfloat16>;
+TYPED_TEST_SUITE(FloatFloorDivTest, FloatFloorDivTestTypes);
+
+TYPED_TEST(FloatFloorDivTest, Simple) {
+  using T = TypeParam;
+  FloorDivModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {}}, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {10.05, 9.09, 11.9, 3.01});
+  model.template PopulateTensor<T>(model.input2(), {2.05, 2.03, 3.03, 4.03});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(4.0, 4.0, 3.0, 0.0));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({4.0, 4.0, 3.0, 0.0},
+                                              NumericLimits<T>::epsilon())));
 }
 
-TEST(FloorDivModel, NegativeValueFloat) {
-  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10.03, -9.9, -11.0, 7.0});
-  model.PopulateTensor<float>(model.input2(), {2.0, 2.3, -3.0, -4.1});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatFloorDivTest, NegativeValue) {
+  using T = TypeParam;
+  FloorDivModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {}}, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {10.03, -9.9, -11.0, 7.0});
+  model.template PopulateTensor<T>(model.input2(), {2.0, 2.3, -3.0, -4.1});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(5.0, -5.0, 3.0, -2.0));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({5.0, -5.0, 3.0, -2.0},
+                                              NumericLimits<T>::epsilon())));
 }
 
-TEST(FloorDivModel, BroadcastFloorDivFloat) {
-  FloorDivModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10.03, -9.9, -11.0, 7.0});
-  model.PopulateTensor<float>(model.input2(), {-3.3});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatFloorDivTest, BroadcastFloorDiv) {
+  using T = TypeParam;
+  FloorDivModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {1}}, {GetTensorType<T>(), {}},
+                         /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {10.03, -9.9, -11.0, 7.0});
+  model.template PopulateTensor<T>(model.input2(), {-3.3});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-4.0, 2.0, 3.0, -3.0},
+                                              NumericLimits<T>::epsilon())));
 }
 
 TEST(FloorDivModel, SimpleInt16) {

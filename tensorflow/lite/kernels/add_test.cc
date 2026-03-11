@@ -67,12 +67,19 @@ class BaseAddOpModel : public SingleOpModel {
   int output_;
 };
 
-class FloatAddOpModel : public BaseAddOpModel {
+template <typename T>
+class AddOpModel : public BaseAddOpModel {
  public:
   using BaseAddOpModel::BaseAddOpModel;
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
 };
+
+template <typename T>
+class FloatAddTest : public ::testing::Test {};
+
+using FloatAddTestTypes = ::testing::Types<float, half, Eigen::bfloat16>;
+TYPED_TEST_SUITE(FloatAddTest, FloatAddTestTypes);
 
 class IntegerAddOpModel : public BaseAddOpModel {
  public:
@@ -132,110 +139,131 @@ float GetTolerance(float min, float max) {
   return kQuantizedStep;
 }
 
-TEST(FloatAddOpModel, NoActivationInplaceInput0) {
-  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+TYPED_TEST(FloatAddTest, NoActivationInplaceInput0) {
+  using T = TypeParam;
+  AddOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   const int kInplaceInputTensorIdx = 0;
   const int kInplaceOutputTensorIdx = 0;
   const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.9, 0.4, 1.0, 1.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
-TEST(FloatAddOpModel, NoActivationInplaceInput1) {
-  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+TYPED_TEST(FloatAddTest, NoActivationInplaceInput1) {
+  using T = TypeParam;
+  AddOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   const int kInplaceInputTensorIdx = 1;
   const int kInplaceOutputTensorIdx = 0;
   const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.9, 0.4, 1.0, 1.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
-TEST(FloatAddOpModel, NoActivation) {
-  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatAddTest, NoActivation) {
+  using T = TypeParam;
+  AddOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3}));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.9, 0.4, 1.0, 1.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
-TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
-  FloatAddOpModel m(
-      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
-      {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU_N1_TO_1);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatAddTest, ActivationRELU_N1_TO_1) {
+  using T = TypeParam;
+  AddOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_RELU_N1_TO_1);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              Pointwise(FloatingPointEq(), {-1.0, 0.4, 1.0, 1.0}));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.0, 0.4, 1.0, 1.0},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
-TEST(FloatAddOpModel, VariousInputShapes) {
+TYPED_TEST(FloatAddTest, VariousInputShapes) {
+  using T = TypeParam;
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatAddOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
-    m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    AddOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+    m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.5, 1.1, 0.1});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
     EXPECT_THAT(m.GetOutput(),
-                Pointwise(FloatingPointEq(), {-1.9, 0.4, 1.0, 1.3, 2.2, 2.1}))
+                ElementsAreArray(ArrayFloatNear(
+                    {-1.9, 0.4, 1.0, 1.3, 2.2, 2.1},
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
+
         << "With shape number " << i;
   }
 }
 
-TEST(FloatAddOpModel, WithBroadcast) {
+TYPED_TEST(FloatAddTest, WithBroadcast) {
+  using T = TypeParam;
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatAddOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}},  // always a scalar
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
-    m.PopulateTensor<float>(m.input2(), {0.1});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(
-        m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1})))
+    AddOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), {}},  // always a scalar
+                    {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+    m.template PopulateTensor<T>(m.input2(), {0.1});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1},
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
 }
 
-TEST(FloatAddOpModel, WithBroadcastGeneric) {
+TYPED_TEST(FloatAddTest, WithBroadcastGeneric) {
+  using T = TypeParam;
   std::vector<int> test_shape1 = {1, 3, 1};
   std::vector<int> test_shape2 = {2, 1, 2};
-  FloatAddOpModel m({TensorType_FLOAT32, test_shape1},
-                    {TensorType_FLOAT32, test_shape2}, {TensorType_FLOAT32, {}},
-                    ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {0.1, 0.2, 0.3});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.4});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  AddOpModel<T> m({GetTensorType<T>(), test_shape1},
+                  {GetTensorType<T>(), test_shape2}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {0.1, 0.2, 0.3});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.4});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({0.2, 0.3, 0.3, 0.4, 0.4, 0.5,
-                                               0.4, 0.5, 0.5, 0.6, 0.6, 0.7})));
+              ElementsAreArray(ArrayFloatNear(
+                  {0.2, 0.3, 0.3, 0.4, 0.4, 0.5, 0.4, 0.5, 0.5, 0.6, 0.6, 0.7},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
-TEST(FloatAddOpModel, MixedBroadcast) {
+TYPED_TEST(FloatAddTest, MixedBroadcast) {
+  using T = TypeParam;
   const std::vector<int> base_shape = {2, 3, 1, 2};
   std::vector<std::vector<int>> test_shapes = {
       {1, 1, 3, 2}, {1, 3, 1, 2}, {2, 1, 3, 1}, {2, 3, 1, 1}};
@@ -253,32 +281,36 @@ TEST(FloatAddOpModel, MixedBroadcast) {
       {-0.1f, 2.5f, 1.2f, 0.8f, 0.4f, -1.5f, 1.7f, 3.3f, -0.6f, 1.0f, 1.6f,
        -1.3f}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatAddOpModel model_fixture(
-        {TensorType_FLOAT32, base_shape}, {TensorType_FLOAT32, test_shapes[i]},
-        {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    model_fixture.PopulateTensor<float>(
+    AddOpModel<T> model_fixture(
+        {GetTensorType<T>(), base_shape}, {GetTensorType<T>(), test_shapes[i]},
+        {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    model_fixture.template PopulateTensor<T>(
         model_fixture.input1(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
-    model_fixture.PopulateTensor<float>(model_fixture.input2(),
-                                        {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
-    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
+    model_fixture.template PopulateTensor<T>(
+        model_fixture.input2(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
+    TFLITE_INVOKE_AND_CHECK(T, &model_fixture);
     EXPECT_THAT(model_fixture.GetOutput(),
-                ElementsAreArray(ArrayFloatNear(test_outputs[i], 0.0001f)))
+                ElementsAreArray(ArrayFloatNear(
+                    test_outputs[i],
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
   // Re-run with exchanged inputs.
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    FloatAddOpModel model_fixture(
-        {TensorType_FLOAT32, test_shapes[i]}, {TensorType_FLOAT32, base_shape},
-        {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    model_fixture.PopulateTensor<float>(model_fixture.input1(),
-                                        {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
-    model_fixture.PopulateTensor<float>(
+    AddOpModel<T> model_fixture(
+        {GetTensorType<T>(), test_shapes[i]}, {GetTensorType<T>(), base_shape},
+        {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    model_fixture.template PopulateTensor<T>(
+        model_fixture.input1(), {0.2f, 0.3f, -0.4f, 0.5f, 1.0f, 0.9f});
+    model_fixture.template PopulateTensor<T>(
         model_fixture.input2(), {-0.3f, 2.3f, 0.9f, 0.5f, 0.8f, -1.1f, 1.2f,
                                  2.8f, -1.6f, 0.0f, 0.7f, -2.2f});
-    ASSERT_EQ(model_fixture.Invoke(), kTfLiteOk);
+    TFLITE_INVOKE_AND_CHECK(T, &model_fixture);
     EXPECT_THAT(model_fixture.GetOutput(),
-                ElementsAreArray(ArrayFloatNear(test_outputs[i], 0.0001f)))
+                ElementsAreArray(ArrayFloatNear(
+                    test_outputs[i],
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
 }
@@ -290,6 +322,7 @@ constexpr int kDim4 = 5;
 constexpr int kDim5 = 6;
 constexpr int kDim6 = 7;
 
+template <typename T>
 void TestFloatBroadcast(std::vector<int> input1_shape,
                         std::vector<int> input2_shape) {
   std::array<int, 6> input1_dims;
@@ -328,16 +361,18 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
       input2_dims.begin(), input2_dims.end(), 1, std::multiplies<int>());
   const int num_output_elements = std::accumulate(
       output_dims.begin(), output_dims.end(), 1, std::multiplies<int>());
-  std::vector<float> input1(num_input1_elements);
-  std::vector<float> input2(num_input2_elements);
-  std::vector<float> output_ref(num_output_elements);
+  std::vector<T> input1(num_input1_elements);
+  std::vector<T> input2(num_input2_elements);
+  std::vector<T> output_ref(num_output_elements);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   std::uniform_real_distribution<float> f32dist(0.01f, 1.0f);
 
-  std::generate(input1.begin(), input1.end(), [&]() { return f32dist(rng); });
-  std::generate(input2.begin(), input2.end(), [&]() { return f32dist(rng); });
+  std::generate(input1.begin(), input1.end(),
+                [&]() { return static_cast<T>(f32dist(rng)); });
+  std::generate(input2.begin(), input2.end(),
+                [&]() { return static_cast<T>(f32dist(rng)); });
 
   // Compute reference results.
   for (size_t i = 0; i < output_dims[0]; i++) {
@@ -349,12 +384,17 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
               output_ref[i * output_strides[0] + j * output_strides[1] +
                          k * output_strides[2] + l * output_strides[3] +
                          m * output_strides[4] + n * output_strides[5]] =
-                  input1[i * input1_strides[0] + j * input1_strides[1] +
-                         k * input1_strides[2] + l * input1_strides[3] +
-                         m * input1_strides[4] + n * input1_strides[5]] +
-                  input2[i * input2_strides[0] + j * input2_strides[1] +
-                         k * input2_strides[2] + l * input2_strides[3] +
-                         m * input2_strides[4] + n * input2_strides[5]];
+                  static_cast<T>(
+                      static_cast<float>(
+                          input1[i * input1_strides[0] + j * input1_strides[1] +
+                                 k * input1_strides[2] + l * input1_strides[3] +
+                                 m * input1_strides[4] +
+                                 n * input1_strides[5]]) +
+                      static_cast<float>(
+                          input2[i * input2_strides[0] + j * input2_strides[1] +
+                                 k * input2_strides[2] + l * input2_strides[3] +
+                                 m * input2_strides[4] +
+                                 n * input2_strides[5]]));
             }
           }
         }
@@ -362,13 +402,16 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
     }
   }
 
-  FloatAddOpModel m({TensorType_FLOAT32, input1_shape},
-                    {TensorType_FLOAT32, input2_shape},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), input1);
-  m.PopulateTensor<float>(m.input2(), input2);
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), Pointwise(FloatingPointEq(), output_ref));
+  AddOpModel<T> m({GetTensorType<T>(), input1_shape},
+                  {GetTensorType<T>(), input2_shape}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), input1);
+  m.template PopulateTensor<T>(m.input2(), input2);
+  TFLITE_INVOKE_AND_CHECK(T, &m);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          output_ref, static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
 template <typename IntegerType>
@@ -462,7 +505,8 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
 // single shard.  So we split it into a few "subshards" and have a separate
 // TYPED_TEST macro invocation for each subshard.
 
-void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
+template <typename T>
+void TestFloatMultiDimBroadcast(int selected_subshard, int subshard_count) {
   int iteration = 0;
   for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << 6); bm1++) {
     for (uint32_t bm2 = 0; bm2 < (static_cast<uint32_t>(1) << 6); bm2++) {
@@ -504,7 +548,7 @@ void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
                     input1_full_shape.end(), input1_shape.data());
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
-          TestFloatBroadcast(input1_shape, input2_shape);
+          TestFloatBroadcast<T>(input1_shape, input2_shape);
         }
       }
     }
@@ -518,35 +562,35 @@ void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
 // Uint8QuantizedMultiDimBroadcastSubshard* below.
 constexpr int kMultiDimBroadcastSubshardCount = 10;
 
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard0) {
-  TestFloat32MultiDimBroadcast(0, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard0) {
+  TestFloatMultiDimBroadcast<TypeParam>(0, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard1) {
-  TestFloat32MultiDimBroadcast(1, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard1) {
+  TestFloatMultiDimBroadcast<TypeParam>(1, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard2) {
-  TestFloat32MultiDimBroadcast(2, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard2) {
+  TestFloatMultiDimBroadcast<TypeParam>(2, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard3) {
-  TestFloat32MultiDimBroadcast(3, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard3) {
+  TestFloatMultiDimBroadcast<TypeParam>(3, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard4) {
-  TestFloat32MultiDimBroadcast(4, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard4) {
+  TestFloatMultiDimBroadcast<TypeParam>(4, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard5) {
-  TestFloat32MultiDimBroadcast(5, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard5) {
+  TestFloatMultiDimBroadcast<TypeParam>(5, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard6) {
-  TestFloat32MultiDimBroadcast(6, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard6) {
+  TestFloatMultiDimBroadcast<TypeParam>(6, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard7) {
-  TestFloat32MultiDimBroadcast(7, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard7) {
+  TestFloatMultiDimBroadcast<TypeParam>(7, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard8) {
-  TestFloat32MultiDimBroadcast(8, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard8) {
+  TestFloatMultiDimBroadcast<TypeParam>(8, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatAddOpModel, Float32MultiDimBroadcastSubshard9) {
-  TestFloat32MultiDimBroadcast(9, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatAddTest, MultiDimBroadcastSubshard9) {
+  TestFloatMultiDimBroadcast<TypeParam>(9, kMultiDimBroadcastSubshardCount);
 }
 
 template <typename T>
