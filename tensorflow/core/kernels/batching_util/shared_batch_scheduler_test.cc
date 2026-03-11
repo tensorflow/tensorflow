@@ -77,6 +77,9 @@ class FakeTask : public BatchTask {
     return criticality_;
   }
 
+  bool is_subtask() const override { return is_subtask_; }
+  void set_is_subtask(bool is_subtask) { is_subtask_ = is_subtask; }
+
   bool is_warmup() const override { return is_warmup_; }
   void set_is_warmup(bool is_warmup) { is_warmup_ = is_warmup; }
 
@@ -94,6 +97,7 @@ class FakeTask : public BatchTask {
   const tsl::criticality::Criticality criticality_;
   std::shared_ptr<absl::Notification> done_notification_;
   std::shared_ptr<absl::Status> status_storage_;
+  bool is_subtask_ = false;
   bool is_warmup_ = false;
 
   FakeTask(const FakeTask&) = delete;
@@ -262,6 +266,7 @@ class SharedBatchSchedulerTestBase {
         for (int i = 0; i < num_batches; i++) {
           (*output_tasks)[i] = std::make_unique<FakeTask>(
               task_sizes[i], owned_input_task->criticality());
+          (*output_tasks)[i]->set_is_subtask(true);
         }
 
         return absl::OkStatus();
@@ -4002,6 +4007,82 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   // Only the high-priority batch should be processed (the low-pri was evicted).
   EXPECT_TRUE(
       batch_processed.WaitForNotificationWithTimeout(absl::Seconds(10)));
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, PreventDoubleSplitting) {
+  if (!enable_input_batch_split()) {
+    return;
+  }
+
+  test_util::FakeClockEnv env(Env::Default());
+  absl::Notification start_teardown, stop_teardown;
+  std::unique_ptr<Thread> teardown_thread =
+      CreateFakeClockAdvancerThread(&env, &start_teardown, &stop_teardown);
+
+  {
+    absl::Notification first_batch_processed, second_batch_processed,
+        third_batch_processed;
+    int batch_count = 0;
+    auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
+      batch_count++;
+      if (batch_count == 1) {
+        EXPECT_EQ(10, batch->size());
+        EXPECT_EQ(2, batch->num_tasks());
+        // Expect all of first scheduled task are processed.
+        EXPECT_EQ(8, batch->task(0).size());
+        // Expect 2 of second scheduled task are processed, with 2 being split.
+        EXPECT_EQ(2, batch->task(1).size());
+        first_batch_processed.Notify();
+      } else if (batch_count == 2) {
+        // Expect only batch size of 9 from a single, critical, task is
+        // processed because resplitting of sheddable task of remaining size 2
+        // is not allowed.
+        EXPECT_EQ(9, batch->size());
+        EXPECT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(9, batch->task(0).size());
+        second_batch_processed.Notify();
+      } else if (batch_count == 3) {
+        // Expect remaining size 2 of second scheduled task is processed.
+        EXPECT_EQ(2, batch->size());
+        EXPECT_EQ(1, batch->num_tasks());
+        EXPECT_EQ(2, batch->task(0).size());
+        third_batch_processed.Notify();
+      }
+    };
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::shared_ptr<Scheduler> scheduler,
+        CreateSharedBatchScheduler(/*num_batch_threads=*/1, &env));
+
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10,
+        /*batch_timeout_micros=*/1000, /*max_queue_depth=*/20);
+
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Queue> queue,
+                            CreateQueue(scheduler, options, callback));
+
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/8, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/4, queue.get(),
+                              tsl::criticality::Criticality::kSheddable));
+
+    EXPECT_TRUE(first_batch_processed.WaitForNotificationWithTimeout(
+        absl::Seconds(10)));
+
+    TF_EXPECT_OK(ScheduleTask(/*task_size=*/9, queue.get(),
+                              tsl::criticality::Criticality::kCritical));
+
+    env.AdvanceByMicroseconds(1001);
+    EXPECT_TRUE(second_batch_processed.WaitForNotificationWithTimeout(
+        absl::Seconds(10)));
+
+    env.AdvanceByMicroseconds(1001);
+    EXPECT_TRUE(third_batch_processed.WaitForNotificationWithTimeout(
+        absl::Seconds(10)));
+
+    start_teardown.Notify();
+  }
+  stop_teardown.Notify();
 }
 
 TEST_P(SharedBatchSchedulerPriorityAwareTest,

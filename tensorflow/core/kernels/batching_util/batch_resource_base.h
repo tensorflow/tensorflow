@@ -119,6 +119,8 @@ class BatchResourceBase : public ResourceBase {
 
     size_t size() const override { return inputs[0].shape().dim_size(0); }
 
+    bool is_subtask() const override { return is_partial; }
+
     // Create a split task from this one. The caller needs to setup the inputs
     // of the new task
     std::unique_ptr<BatchTask> CreateSplitTask(
