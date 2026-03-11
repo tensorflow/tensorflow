@@ -1,60 +1,64 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index a9149da..af2355c 100644
+index af2355c..67801b9 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -2,7 +2,7 @@ Auto generated patch. Do not edit or delete it, even if empty.
- diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp b/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
- --- a/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
- +++ b/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
--@@ -91,6 +91,8 @@
-+@@ -88,6 +88,8 @@
-      // result #0 must have type v2i64, but has type v16i8/v8i16
-    case X86ISD::CMPCCXADD:
-      // operand #4 must have type i8, but has type i32
+@@ -1,13 +1,34 @@
+ Auto generated patch. Do not edit or delete it, even if empty.
+-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp b/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
+---- a/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
+-+++ b/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
+-@@ -88,6 +88,8 @@
+-     // result #0 must have type v2i64, but has type v16i8/v8i16
+-   case X86ISD::CMPCCXADD:
+-     // operand #4 must have type i8, but has type i32
+-+  case X86ISD::CVTPS2PH:
+-+    // invalid node: operand #1 must have type i32, but has type i64
+-     return;
++diff -ruN --strip-trailing-cr a/lld/ELF/Symbols.cpp b/lld/ELF/Symbols.cpp
++--- a/lld/ELF/Symbols.cpp
+++++ b/lld/ELF/Symbols.cpp
++@@ -501,6 +501,12 @@
++     // reference is weak.
++     if (other.binding != STB_WEAK || !referenced)
++       binding = other.binding;
+++    // -u creates a placeholder Undefined (internalFile, STT_NOTYPE).
+++    // Adopt the real file and type from the object file's undefined.
+++    if (file == ctx.internalFile) {
+++      file = other.file;
+++      type = other.type;
+++    }
+    }
++ }
+  
++diff -ruN --strip-trailing-cr a/lld/test/ELF/tls-mismatch.s b/lld/test/ELF/tls-mismatch.s
++--- a/lld/test/ELF/tls-mismatch.s
+++++ b/lld/test/ELF/tls-mismatch.s
++@@ -31,6 +31,13 @@
++ # RUN: ld.lld %t.o %t.bc -o /dev/null
++ # RUN: ld.lld %t.bc %t.o -o /dev/null
++ 
+++## -u creates an Undefined with STT_NOTYPE. The object file's STT_TLS undefined
+++## should update the type so that the TLS IE GOT entry is correctly created.
+++# RUN: ld.lld -shared -u tls1 %t1.o %t1.o -o %t1.so
+++# RUN: llvm-readelf -rs %t1.so | FileCheck %s --check-prefix=UNDEF
+++# UNDEF: R_X86_64_TPOFF64 {{.*}} tls1 + 0
+++# UNDEF: 0000000000000000     0 TLS     GLOBAL DEFAULT  UND tls1
+++
++ # CHECK: error: TLS attribute mismatch: tls1
++ # CHECK-NEXT: >>> in {{.*}}.tmp.o
++ # CHECK-NEXT: >>> in {{.*}}
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 64fa44a..2f45995 100644
+index 2f45995..8165939 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "9a1c63230b8ad3f19cb624f0d283f7df10957ab7"
--    LLVM_SHA256 = "345eb7c1e14edd34c5ce5e3b65e1025c9d2d02098954aa386d8bd57b860d7c4b"
-+    LLVM_COMMIT = "d4c7630e2c6eb0c991a37226b3f872256d5e47f0"
-+    LLVM_SHA256 = "fff6bfc2197bdbcdbcac36cfe5ef515e3f73b8875ae4ea246236297683aec6e1"
+-    LLVM_COMMIT = "d4c7630e2c6eb0c991a37226b3f872256d5e47f0"
+-    LLVM_SHA256 = "fff6bfc2197bdbcdbcac36cfe5ef515e3f73b8875ae4ea246236297683aec6e1"
++    LLVM_COMMIT = "acd52a2419592d7d3da0c4bacf736e8b84bcacbf"
++    LLVM_SHA256 = "2e19523c1b21129593aee41b7a532a6e5bccdfdc2ce80a517f4e998aed68c317"
  
      tf_http_archive(
          name = name,
-diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
-index cbcfa9a..05cce50 100755
---- a/third_party/stablehlo/temporary.patch
-+++ b/third_party/stablehlo/temporary.patch
-@@ -1,3 +1,27 @@
-+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
-+--- stablehlo/stablehlo/dialect/StablehloOps.h
-++++ stablehlo/stablehlo/dialect/StablehloOps.h
-+@@ -141,16 +141,16 @@
-+ namespace side_effects {
-+ 
-+ struct SendResource : ::mlir::SideEffects::Resource::Base<SendResource> {
-+-  StringRef getName() final { return "SendResource"; }
-++  StringRef getName() const final { return "SendResource"; }
-+ };
-+ struct RecvResource : ::mlir::SideEffects::Resource::Base<RecvResource> {
-+-  StringRef getName() final { return "RecvResource"; }
-++  StringRef getName() const final { return "RecvResource"; }
-+ };
-+ struct InfeedResource : ::mlir::SideEffects::Resource::Base<InfeedResource> {
-+-  StringRef getName() final { return "InfeedResource"; }
-++  StringRef getName() const final { return "InfeedResource"; }
-+ };
-+ struct OutfeedResource : ::mlir::SideEffects::Resource::Base<OutfeedResource> {
-+-  StringRef getName() final { return "OutfeedResource"; }
-++  StringRef getName() const final { return "OutfeedResource"; }
-+ };
-+ 
-+ }  // end namespace side_effects
- diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
- --- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
- +++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp

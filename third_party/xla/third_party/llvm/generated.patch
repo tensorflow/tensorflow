@@ -1,13 +1,34 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp b/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
---- a/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
-+++ b/llvm/lib/Target/X86/X86SelectionDAGInfo.cpp
-@@ -88,6 +88,8 @@
-     // result #0 must have type v2i64, but has type v16i8/v8i16
-   case X86ISD::CMPCCXADD:
-     // operand #4 must have type i8, but has type i32
-+  case X86ISD::CVTPS2PH:
-+    // invalid node: operand #1 must have type i32, but has type i64
-     return;
+diff -ruN --strip-trailing-cr a/lld/ELF/Symbols.cpp b/lld/ELF/Symbols.cpp
+--- a/lld/ELF/Symbols.cpp
++++ b/lld/ELF/Symbols.cpp
+@@ -501,6 +501,12 @@
+     // reference is weak.
+     if (other.binding != STB_WEAK || !referenced)
+       binding = other.binding;
++    // -u creates a placeholder Undefined (internalFile, STT_NOTYPE).
++    // Adopt the real file and type from the object file's undefined.
++    if (file == ctx.internalFile) {
++      file = other.file;
++      type = other.type;
++    }
    }
+ }
  
+diff -ruN --strip-trailing-cr a/lld/test/ELF/tls-mismatch.s b/lld/test/ELF/tls-mismatch.s
+--- a/lld/test/ELF/tls-mismatch.s
++++ b/lld/test/ELF/tls-mismatch.s
+@@ -31,6 +31,13 @@
+ # RUN: ld.lld %t.o %t.bc -o /dev/null
+ # RUN: ld.lld %t.bc %t.o -o /dev/null
+ 
++## -u creates an Undefined with STT_NOTYPE. The object file's STT_TLS undefined
++## should update the type so that the TLS IE GOT entry is correctly created.
++# RUN: ld.lld -shared -u tls1 %t1.o %t1.o -o %t1.so
++# RUN: llvm-readelf -rs %t1.so | FileCheck %s --check-prefix=UNDEF
++# UNDEF: R_X86_64_TPOFF64 {{.*}} tls1 + 0
++# UNDEF: 0000000000000000     0 TLS     GLOBAL DEFAULT  UND tls1
++
+ # CHECK: error: TLS attribute mismatch: tls1
+ # CHECK-NEXT: >>> in {{.*}}.tmp.o
+ # CHECK-NEXT: >>> in {{.*}}
