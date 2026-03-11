@@ -1159,7 +1159,7 @@ TEST_F(V3ToV2ShardingSplitAxesTest, AllSubgroupTypesWithSplitAxes) {
   EXPECT_EQ(
       HloSharding::V3ToV2Sharding(ns),
       HloSharding::Subgroup(
-          TileAssignment({8, 2, 4}, {2, 4, 2, 4}, {2, 3, 0, 1}),
+          TileAssignment({1, 1, 8, 2, 4}, {2, 4, 2, 4}, {2, 3, 0, 1}),
           {OpSharding::MANUAL, OpSharding::UNREDUCED, OpSharding::REPLICATED}));
 }
 

@@ -246,15 +246,6 @@ class NamedSharding {
     });
   }
 
-  std::vector<DimensionSharding> CanonicalizedDimShardings(
-      absl::Span<const DimensionSharding> dim_shardings) const {
-    if (AllDimShardingsEmpty(dim_shardings)) {
-      return {};
-    }
-    return std::vector<DimensionSharding>(dim_shardings.begin(),
-                                          dim_shardings.end());
-  }
-
   static std::vector<AxisRef> GetAllMeshAxes(const Mesh& mesh) {
     std::vector<AxisRef> all_axes;
     all_axes.reserve(mesh.num_axes());

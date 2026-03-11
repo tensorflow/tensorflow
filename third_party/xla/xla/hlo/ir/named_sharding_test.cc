@@ -32,18 +32,6 @@ namespace {
 using DimensionSharding = NamedSharding::DimensionSharding;
 using ::testing::ElementsAre;
 
-TEST(NamedShardingTest, CanonicalizedDimShardings) {
-  Mesh mesh_abcd({2, 4}, {"a", "b"});
-
-  DimensionSharding empty_ds;
-  NamedSharding sharding1(mesh_abcd, {empty_ds, empty_ds});
-  EXPECT_TRUE(sharding1.dim_shardings().empty());
-
-  DimensionSharding ds_a({AxisRef(0)}, /*is_closed=*/true);
-  NamedSharding sharding2(mesh_abcd, {ds_a, empty_ds});
-  EXPECT_FALSE(sharding2.dim_shardings().empty());
-}
-
 TEST(NamedShardingTest, AxisNameCtor) {
   Mesh mesh_abcde({2, 4, 3, 8, 2}, {"a", "b", "c", "d", "e"});
   AxisRef axis_a(0);
@@ -195,17 +183,17 @@ TEST(NamedShardingTest, ToString) {
   EXPECT_EQ(sharding_fully_unreduced.ToString(),
             "{mesh['a'=2,'b'=4,'c'=3,'d'=8], unreduced}");
   NamedSharding sharding_unreduced =
-      test_utils::FromAxisNames(mesh, {}, {}, {"d:(4)2"});
+      test_utils::FromAxisNames(mesh, {{}, {}}, {}, {"d:(4)2"});
   EXPECT_EQ(sharding_unreduced.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [], unreduced={'d':(4)2}}");
+            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{}, {}], unreduced={'d':(4)2}}");
 
   NamedSharding sharding_fully_manual = NamedSharding::Manual(mesh);
   EXPECT_EQ(sharding_fully_manual.ToString(),
             "{mesh['a'=2,'b'=4,'c'=3,'d'=8], manual}");
   NamedSharding sharding_manual =
-      test_utils::FromAxisNames(mesh, {}, {}, {}, {"d:(4)2"});
+      test_utils::FromAxisNames(mesh, {{}}, {}, {}, {"d:(4)2"});
   EXPECT_EQ(sharding_manual.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [], manual={'d':(4)2}}");
+            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{}], manual={'d':(4)2}}");
 
   Mesh non_iota_mesh(
       TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},

@@ -49,7 +49,7 @@ NamedSharding::NamedSharding(Mesh mesh,
                              absl::Span<const AxisRef> manual_axes,
                              absl::Span<const OpMetadata> metadata)
     : mesh_(std::move(mesh)),
-      dim_shardings_(CanonicalizedDimShardings(dim_shardings)),
+      dim_shardings_(dim_shardings.begin(), dim_shardings.end()),
       replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
       unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
       manual_axes_(manual_axes.begin(), manual_axes.end()),
