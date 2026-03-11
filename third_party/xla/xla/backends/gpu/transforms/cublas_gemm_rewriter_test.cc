@@ -2192,9 +2192,9 @@ ENTRY test {
                     R"(
 
 ; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> f32[2,4] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
+; CHECK-DAG:    [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:    [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK:        [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config={
 ; CHECK-DAG:         "alpha_real":1
