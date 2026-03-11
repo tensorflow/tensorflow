@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/local_master.h"
 
+#include <cstdint>
+#include <memory>
+#include <string>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
 
