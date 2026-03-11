@@ -1408,6 +1408,9 @@ int64_t HloSharding::NumTiles() const {
     return 1;
   }
   CHECK(!IsManualLeaf() && !IsUnknownLeaf());
+  if (UseNamedShardingLeaf()) {
+    return Product(dimensions());
+  }
   return Product(dimensions().subspan(0, TiledDataRank()));
 }
 
@@ -1419,7 +1422,7 @@ int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
   CHECK(!ReplicateOnLastTileDim() ||
         !absl::c_linear_search(dims, num_dimensions() - 1));
   int64_t num_tiles = 1;
-  for (auto d : dims) {
+  for (int64_t d : dims) {
     CHECK(d < num_dimensions());
     num_tiles *= dimension(d);
   }

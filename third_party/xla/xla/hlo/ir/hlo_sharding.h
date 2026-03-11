@@ -677,6 +677,9 @@ class HloSharding {
   // This method is not defined for tuple shardings.
   int64_t TiledDataRank() const {
     CHECK(IsTiledLeaf());
+    if (UseNamedShardingLeaf()) {
+      return num_dimensions();
+    }
     int64_t rank = num_dimensions();
     if (ReplicateOnLastTileDim()) {
       rank--;
