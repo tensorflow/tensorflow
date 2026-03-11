@@ -625,6 +625,73 @@ module {
               IsOk());
 }
 
+TEST_F(IfrtIrLoadedExecutableTest,
+       RemapArraysOpMultipleInputsDonationOverrideIntroducesCopyArrayOp) {
+  // RemapArrays with multiple inputs requires arguments to be donated.
+  // If inputs to the program are not donated at runtime, then a CopyArrays op
+  // will be inserted for non-donated inputs.
+  std::string source = R"(
+!array = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
+      -> !array attributes {ifrt.function} {
+    %0 = ifrt.RemapArrays(%arg0, %arg1)
+      mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
+                #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true}
+      : (!array0, !array1) -> (!array)
+    return %0 : !array
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef loaded_exec,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  DType dtype(DType::kS32);
+  Shape shard_shape({1, 2});
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                          client_->MakeDeviceList({devices->devices()[0]}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input0,
+      CreateArray({data0.data()},
+                  /*shape=*/shard_shape, shard_shape, dtype, device_list0));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                          client_->MakeDeviceList({devices->devices()[1]}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input1,
+      CreateArray({data1.data()},
+                  /*shape=*/shard_shape, shard_shape, dtype, device_list1));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(1);
+  std::vector<ArrayRef> inputs = {input0, input1};
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutable::ExecuteResult result,
+      loaded_exec->Execute(absl::MakeSpan(inputs), options, devices));
+  TF_ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{0, 1}, {2, 3}}, devices));
+  ASSERT_TRUE(input0->IsDeleted());
+  ASSERT_FALSE(input1->IsDeleted());
+}
+
 TEST_F(IfrtIrLoadedExecutableTest, DonateOutputOfCall) {
   std::string source = R"(
 !array = !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>,

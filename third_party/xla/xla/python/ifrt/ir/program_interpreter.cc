@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -481,7 +482,6 @@ struct RemapArraysOpState {
     std::vector<ArrayRef> inputs;
     inputs.reserve(remap_plan.input_specs.size());
 
-    std::optional<bool> is_donated;
     std::vector<ArrayHandle> arrays_to_remove;
 
     for (int idx = 0; idx < input_handles.size(); ++idx) {
@@ -497,41 +497,45 @@ struct RemapArraysOpState {
             "Input array #", idx, "` has already been deleted or donated. ",
             pretty_print));
       }
-      inputs.push_back(array_it->second.array);
 
       // The default buffer donation semantic is finalized at compilation time.
       // Users can override the donation semantic at runtime. In the meantime,
       // the IFRT client RemapArrays API requires all input arrays have the same
-      // donation semantic.
-      if (!is_donated.has_value()) {
-        is_donated = remap_is_donated && array_it->second.can_be_donated;
+      // donation semantic. Insert a CopyArrays op if RemapArrays requires all
+      // input arrays to be donated, but some of the input arrays have been
+      // marked as non-donatable.
+      if (remap_is_donated && !array_it->second.can_be_donated) {
+        ArrayRef array = array_it->second.array;
+        LOG_FIRST_N(WARNING, 5)
+            << "Array is cloned because remapping with more than one "
+               "input array requires input donation. array="
+            << array->DebugString()
+            << " (this warning is logged only at most 5 times). This clone "
+               "happens only if the array has been marked as non-donatable at "
+               "runtime."
+            << pretty_print;
+        TF_ASSIGN_OR_RETURN(
+            std::vector<ArrayRef> copied_arrays,
+            env.client->CopyArrays(
+                absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
+                /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+        inputs.push_back(std::move(copied_arrays[0]));
+      } else {
+        inputs.push_back(array_it->second.array);
       }
-      if (*is_donated && !array_it->second.can_be_donated) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Donation semantic must be consistent across all input arrays of "
-            "RemapArraysOp. Input array #",
-            idx,
-            " cannot be donated, but previous input arrays can be donated. "
-            "It's likely due to a MPMD program argument is marked as "
-            "non-donatable. ",
-            pretty_print));
-      }
-      if (*is_donated || dead_inputs.contains(handle)) {
+      if ((remap_is_donated && array_it->second.can_be_donated) ||
+          dead_inputs.contains(handle)) {
         arrays_to_remove.push_back(handle);
       }
     }
-    TF_RET_CHECK(is_donated.has_value())
-        << "Unable to determine the donation semantic of the remap op. The "
-           "remap op has no inputs. "
-        << pretty_print;
 
     // Apply the remap arrays operation.
-    ArrayCopySemantics copy_semantics = *is_donated
-                                            ? ArrayCopySemantics::kDonateInput
-                                            : ArrayCopySemantics::kReuseInput;
-    TF_ASSIGN_OR_RETURN(auto out_arrays, env.client->RemapArrays(
-                                             remap_plan, absl::MakeSpan(inputs),
-                                             copy_semantics));
+    TF_ASSIGN_OR_RETURN(
+        auto out_arrays,
+        env.client->RemapArrays(remap_plan, absl::MakeSpan(inputs),
+                                remap_is_donated
+                                    ? ArrayCopySemantics::kDonateInput
+                                    : ArrayCopySemantics::kReuseInput));
 
     for (const auto handle : arrays_to_remove) {
       // Donated remapped arrays are pro-actively deleted, and aliased arrays
@@ -651,8 +655,10 @@ struct CopyArraysOpState {
 
     std::vector<ArrayRef> inputs;
     inputs.reserve(input_handles.size());
-
-    std::optional<bool> is_donated;
+    // Indices of donated arrays that must be copied because they've been marked
+    // as non-donatable at runtime.
+    std::vector<int> array_idxs_to_copy;
+    std::vector<ArrayRef> arrays_to_copy;
     std::vector<ArrayHandle> arrays_to_remove;
 
     for (int idx = 0; idx < input_handles.size(); ++idx) {
@@ -670,40 +676,50 @@ struct CopyArraysOpState {
       }
       inputs.push_back(array_it->second.array);
 
-      // The default buffer donation semantic is finalized at compilation time.
-      // Users can override the donation semantic at runtime. In the meantime,
-      // the IFRT client CopyArrays API requires all input arrays have the same
-      // donation semantic.
-      if (!is_donated.has_value()) {
-        is_donated = copy_is_donated && array_it->second.can_be_donated;
+      if (copy_is_donated && !array_it->second.can_be_donated) {
+        array_idxs_to_copy.push_back(idx);
+        arrays_to_copy.push_back(array_it->second.array);
       }
-      if (*is_donated && !array_it->second.can_be_donated) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Donation semantic must be consistent across all input arrays of "
-            "CopyArraysOp. Input array #",
-            idx,
-            " cannot be donated, but previous input arrays can be donated. "
-            "It's likely due to a MPMD program argument is marked as "
-            "non-donatable. ",
-            pretty_print));
-      }
-      if (*is_donated || dead_inputs.contains(handle)) {
+      if ((copy_is_donated && array_it->second.can_be_donated) ||
+          dead_inputs.contains(handle)) {
         arrays_to_remove.push_back(handle);
       }
     }
-    TF_RET_CHECK(is_donated.has_value())
-        << "Unable to determine the donation semantic of the copy arrays op. "
-           "The copy arrays op has no inputs. "
-        << pretty_print;
 
-    auto array_copy_semantics = *is_donated ? ArrayCopySemantics::kDonateInput
-                                            : ArrayCopySemantics::kAlwaysCopy;
+    if (!array_idxs_to_copy.empty()) {
+      // The default buffer donation semantic is finalized at compilation time.
+      // Users can override the donation semantic at runtime. In the meantime,
+      // the IFRT client CopyArrays API requires all input arrays have the same
+      // donation semantic. Insert another CopyArrays op if CopyArrays requires
+      // all input arrays to be donated, but some of the input arrays have been
+      // marked as non-donatable.
+      LOG_FIRST_N(WARNING, 5)
+          << "Arrays are cloned because they have been marked as non-donatable "
+             "at runtime, but CopyArrays requires all arrays to be donated. "
+             "arrays="
+          << absl::StrJoin(arrays_to_copy, ",",
+                           [](std::string* out, const ArrayRef& array) {
+                             absl::StrAppend(out, array->DebugString());
+                           })
+          << " (this warning is logged only at most 5 times)." << pretty_print;
+      TF_ASSIGN_OR_RETURN(
+          std::vector<ArrayRef> copied_arrays,
+          env.client->CopyArrays(
+              absl::MakeSpan(arrays_to_copy), /*devices=*/std::nullopt,
+              /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+      for (int i = 0; i < array_idxs_to_copy.size(); ++i) {
+        inputs[array_idxs_to_copy[i]] = std::move(copied_arrays[i]);
+      }
+    }
+
     // It is safe to get the devices and memory kind from the first output
     // because all outputs use the same devices and have the same memory kind.
     TF_ASSIGN_OR_RETURN(auto copied_arrays,
                         env.client->CopyArrays(
                             absl::MakeSpan(inputs), new_sharding->devices(),
-                            new_sharding->memory_kind(), array_copy_semantics));
+                            new_sharding->memory_kind(),
+                            copy_is_donated ? ArrayCopySemantics::kDonateInput
+                                            : ArrayCopySemantics::kAlwaysCopy));
 
     for (const auto handle : arrays_to_remove) {
       if (env.deletable_program_arguments.erase(handle)) {
