@@ -38,6 +38,7 @@ py_library(
         "utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":learning_rate_schedule",
         "//tensorflow/python/distribute:central_storage_strategy",
@@ -72,6 +73,7 @@ py_library(
         "learning_rate_schedule.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
@@ -89,6 +91,7 @@ py_library(
     name = "legacy_learning_rate_decay",
     srcs = ["legacy_learning_rate_decay.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":learning_rate_schedule",
         "//tensorflow/python/eager:context",

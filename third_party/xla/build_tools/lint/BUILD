@@ -13,7 +13,7 @@
 # limitations under the License.
 # ============================================================================
 
-load("@rules_python//python:py_test.bzl", "py_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
 
 package(

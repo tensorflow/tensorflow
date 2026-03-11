@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
@@ -207,10 +207,11 @@ xla_cc_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "kernel_runner_test_py",
     srcs = ["kernel_runner_test.py"],
     main = "kernel_runner_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -222,10 +223,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "elemental_kernel_emitter_test",
     srcs = ["elemental_kernel_emitter_test.py"],
     main = "elemental_kernel_emitter_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
     ],

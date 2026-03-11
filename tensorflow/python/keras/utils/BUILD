@@ -27,6 +27,7 @@ py_library(
         "__init__.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":all_utils",
     ],
@@ -38,6 +39,7 @@ py_library(
         "all_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":control_flow_util",
         ":engine_utils",
@@ -52,6 +54,7 @@ py_library(
     name = "control_flow_util",
     srcs = ["control_flow_util.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [],
 )
 
@@ -59,6 +62,7 @@ py_library(
     name = "data_utils",
     srcs = ["data_utils.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":generic_utils",
         ":io_utils",
@@ -74,6 +78,7 @@ py_library(
         "losses_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":data_utils",
         ":io_utils",
@@ -86,12 +91,14 @@ py_library(
     name = "io_utils",
     srcs = ["io_utils.py"],
     srcs_version = "PY3",
+    strict_deps = False,
 )
 
 py_library(
     name = "tf_utils",
     srcs = ["tf_utils.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":object_identity",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
@@ -113,6 +120,7 @@ py_library(
         "generic_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":tf_contextlib",
         ":tf_inspect",
@@ -128,6 +136,7 @@ py_library(
         "mode_keys.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/saved_model/model_utils:mode_keys",
     ],
@@ -140,6 +149,7 @@ py_library(
         "layer_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":engine_utils",
         "//tensorflow/python/keras:backend",
@@ -154,6 +164,7 @@ py_library(
         "metrics_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":engine_utils",
         ":generic_utils",
@@ -183,6 +194,7 @@ py_library(
         "version_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:ops",
     ],
@@ -194,6 +206,7 @@ py_library(
         "np_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//third_party/py/numpy",
     ],
@@ -203,6 +216,7 @@ py_library(
     name = "object_identity",
     srcs = ["object_identity.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [],
 )
 
@@ -210,6 +224,7 @@ py_library(
     name = "tf_contextlib",
     srcs = ["tf_contextlib.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/util:tf_decorator_py",
     ],
@@ -219,6 +234,7 @@ py_library(
     name = "tf_inspect",
     srcs = ["tf_inspect.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/util:tf_decorator_py",
     ],
@@ -230,6 +246,7 @@ py_library(
         "vis_utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/util:nest",
     ],
@@ -241,6 +258,7 @@ py_library(
         "dataset_creator.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/types:data",
         "//tensorflow/python/util:tf_export",

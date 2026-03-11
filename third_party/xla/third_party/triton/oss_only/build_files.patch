@@ -1721,8 +1721,8 @@ new file mode 100644
 --- /dev/null
 +++ b/python/tutorials/BUILD
 @@ -0,0 +1,192 @@
-+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
-+load("//third_party/bazel_rules/rules_python/python:py_test.bzl", "py_test")
++load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
++load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 +
 +package(
 +    default_applicable_licenses = ["@triton//:license"],

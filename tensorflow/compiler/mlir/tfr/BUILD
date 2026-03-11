@@ -3,7 +3,7 @@ load(
     "gentbl_cc_library",
     "td_library",
 )
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -280,14 +280,16 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "composite",
     srcs = ["python/composite.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "tfr_gen",
     srcs = ["python/tfr_gen.py"],
+    strict_deps = True,
     deps = [
         ":tfr_wrapper",
         "//tensorflow:tensorflow_py",  # buildcleaner: keep
@@ -331,9 +333,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "op_reg_gen",
     srcs = ["python/op_reg_gen.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/autograph/pyct:transformer",
@@ -356,9 +359,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_utils",
     srcs = ["python/test_utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/eager:backprop",

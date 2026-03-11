@@ -1,4 +1,6 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -10,23 +12,26 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "ipynb",
     srcs = ["ipynb.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "ast_edits",
     srcs = ["ast_edits.py"],
+    strict_deps = True,
     deps = [
         "@pypi//google_pasta",
         "@six_archive//:six",  # buildcleaner: keep
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ast_edits_test",
     srcs = ["ast_edits_test.py"],
+    strict_deps = True,
     deps = [
         ":ast_edits",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -35,24 +40,27 @@ py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
+    strict_deps = True,
     deps = [
         ":tf_upgrade_lib",
         "@six_archive//:six",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_upgrade_lib",
     srcs = ["tf_upgrade.py"],
+    strict_deps = True,
     deps = [":ast_edits"],
 )
 
-py_strict_test(
+py_test(
     name = "tf_upgrade_test",
     srcs = ["tf_upgrade_test.py"],
+    strict_deps = True,
     tags = [
         "no_pip",
     ],
@@ -65,29 +73,33 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "renames_v2",
     srcs = ["renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
 )
 
-py_strict_library(
+py_library(
     name = "reorders_v2",
     srcs = ["reorders_v2.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "all_renames_v2",
     srcs = ["all_renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [":renames_v2"],
 )
 
-py_strict_test(
+py_test(
     name = "all_renames_v2_test",
     srcs = ["all_renames_v2_test.py"],
+    strict_deps = True,
     deps = [
         ":all_renames_v2",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -96,15 +108,17 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "module_deprecations_v2",
     srcs = ["module_deprecations_v2.py"],
+    strict_deps = True,
     deps = [":ast_edits"],
 )
 
-py_strict_library(
+py_library(
     name = "tf_upgrade_v2_lib",
     srcs = ["tf_upgrade_v2.py"],
+    strict_deps = True,
     deps = [
         ":all_renames_v2",
         ":ast_edits",
@@ -114,9 +128,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_upgrade_v2_safety_lib",
     srcs = ["tf_upgrade_v2_safety.py"],
+    strict_deps = True,
     deps = [
         ":all_renames_v2",
         ":ast_edits",
@@ -124,10 +139,11 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "tf_upgrade_v2",
     srcs = ["tf_upgrade_v2_main.py"],
     main = "tf_upgrade_v2_main.py",
+    strict_deps = True,
     deps = [
         ":ast_edits",
         ":ipynb",
@@ -136,10 +152,11 @@ py_strict_binary(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tf_upgrade_v2_test",
     srcs = ["tf_upgrade_v2_test.py"],
     shard_count = 5,
+    strict_deps = True,
     tags = [
         "no_windows",
         "v1only",
@@ -163,9 +180,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tf_upgrade_v2_safety_test",
     srcs = ["tf_upgrade_v2_safety_test.py"],
+    strict_deps = True,
     deps = [
         ":ast_edits",
         ":tf_upgrade_v2_safety_lib",
@@ -201,10 +219,11 @@ genrule(
     tools = [":tf_upgrade"],
 )
 
-py_strict_test(
+py_test(
     name = "test_file_v1_0",
     size = "medium",
     srcs = ["test_file_v1_0.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",
@@ -229,10 +248,11 @@ genrule(
     tools = [":tf_upgrade_v2"],
 )
 
-py_strict_test(
+py_test(
     name = "test_file_v1_12",
     size = "medium",
     srcs = ["testdata/test_file_v1_12.py"],
+    strict_deps = True,
     tags = [
         "no_windows",
         "v1only",
@@ -244,10 +264,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "test_file_v2_0",
     size = "medium",
     srcs = ["test_file_v2_0.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",

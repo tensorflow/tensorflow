@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
@@ -41,20 +41,22 @@ filegroup(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "saved_model_error",
     srcs = ["saved_model_error.py"],
     main = "saved_model_error.py",
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "concrete_function_error",
     srcs = ["concrete_function_error.py"],
     main = "concrete_function_error.py",
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "@absl_py//absl:app",

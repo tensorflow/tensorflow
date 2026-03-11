@@ -22,6 +22,7 @@ py_library(
     name = "rnn_cell_impl",
     srcs = ["rnn_cell_impl.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":rnn_cell_wrapper_impl",
         "//tensorflow/python/eager:context",
@@ -58,6 +59,7 @@ py_library(
     name = "rnn_cell_wrapper_impl",
     srcs = ["rnn_cell_wrapper_impl.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",

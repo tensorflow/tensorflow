@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(default_applicable_licenses = ["//tensorflow:LICENSE"])
@@ -18,9 +18,10 @@ pybind_extension(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "end_to_end_test",
     srcs = ["end_to_end_test.py"],
+    strict_deps = True,
     tags = ["nochromiumos_arm"],
     deps = [
         ":register_list_ops_py",

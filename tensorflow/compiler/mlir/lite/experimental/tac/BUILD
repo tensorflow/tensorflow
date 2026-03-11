@@ -3,7 +3,7 @@ load(
     "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",
 )
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
@@ -378,11 +378,12 @@ exports_files([
     "run_lit.sh",
 ])
 
-py_strict_library(
+py_library(
     name = "tac",
     srcs = [
         "tac.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/mlir/lite/experimental/tac/py_wrapper:_pywrap_tac_wrapper",

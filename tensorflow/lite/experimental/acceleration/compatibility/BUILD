@@ -17,7 +17,7 @@ load("@flatbuffers//:build_defs.bzl", "flatbuffer_android_library", "flatbuffer_
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "gpu_compatibility_without_gl_deps_internal_visibility_allowlist", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
@@ -109,9 +109,10 @@ genrule(
     tools = [":json_to_fb"],
 )
 
-py_strict_binary(
+py_binary(
     name = "convert_binary_to_cc_source",
     srcs = ["convert_binary_to_cc_source.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
 )
 

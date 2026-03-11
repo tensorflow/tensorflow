@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
@@ -65,11 +66,12 @@ pybind_extension(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "calibrator",
     srcs = [
         "calibrator.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
@@ -81,13 +83,14 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "calibrator_test",
     srcs = ["calibrator_test.py"],
     data = [
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
+    strict_deps = True,
     tags = ["no_oss"],
     deps = [
         ":calibrator",

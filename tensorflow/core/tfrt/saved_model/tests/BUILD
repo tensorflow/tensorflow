@@ -1,7 +1,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 load(":gen_saved_model.bzl", "gen_saved_model")
@@ -22,7 +22,10 @@ package_group(
     ],
 )
 
-py_strict_library(name = "empty")
+py_library(
+    name = "empty",
+    strict_deps = True,
+)
 
 alias(
     name = "disable_tf2",
