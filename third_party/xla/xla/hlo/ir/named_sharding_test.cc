@@ -628,15 +628,19 @@ TEST(NamedShardingPredicatesTest, IsReplicated) {
   EXPECT_FALSE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsUnreduced());
+
+  EXPECT_TRUE(NamedSharding(Mesh()).IsReplicated());
 }
 
-TEST(NamedShardingPredicatesTest, IsMaximal) {
+TEST(NamedShardingPredicatesTest, IsSingleDevice) {
   Mesh mesh(1);
   NamedSharding sharding(mesh);
   EXPECT_TRUE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsReplicated());
   EXPECT_FALSE(sharding.IsManual());
   EXPECT_FALSE(sharding.IsUnreduced());
+
+  EXPECT_FALSE(NamedSharding(Mesh()).IsSingleDevice());
 }
 
 TEST(NamedShardingPredicatesTest, IsUnreduced) {
@@ -646,6 +650,8 @@ TEST(NamedShardingPredicatesTest, IsUnreduced) {
   EXPECT_FALSE(sharding1.IsReplicated());
   EXPECT_FALSE(sharding1.IsSingleDevice());
   EXPECT_FALSE(sharding1.IsManual());
+
+  EXPECT_FALSE(NamedSharding(Mesh()).IsUnreduced());
 }
 TEST(NamedShardingPredicatesTest, IsUnreducedDoesntContainAllAxes) {
   Mesh mesh({2, 2}, {"a", "b"});
@@ -664,6 +670,8 @@ TEST(NamedShardingPredicatesTest, IsManual) {
   EXPECT_FALSE(sharding.IsReplicated());
   EXPECT_FALSE(sharding.IsSingleDevice());
   EXPECT_FALSE(sharding.IsUnreduced());
+
+  EXPECT_FALSE(NamedSharding(Mesh()).IsManual());
 }
 TEST(NamedShardingPredicatesTest, IsManualDoesntContainAllAxes) {
   Mesh mesh({2, 2}, {"a", "b"});
