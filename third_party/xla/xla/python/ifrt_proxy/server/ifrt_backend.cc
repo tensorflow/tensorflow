@@ -2085,6 +2085,12 @@ IfrtBackend::HandleLoadedExecutableDestructRequest(
     executable = std::move(it->second);
     executables_.erase(it);
   }
+  if (destruct.has_delete_options()) {
+    xla::ifrt::LoadedExecutable::DeleteOptions delete_options;
+    delete_options.deletion_stream_id =
+        destruct.delete_options().deletion_stream_id();
+    executable->executable->SetDeleteOptions(delete_options);
+  }
   executable.reset();
 
   // `RemoteLoadedHostCallback`'s request queue is closed when the host callback

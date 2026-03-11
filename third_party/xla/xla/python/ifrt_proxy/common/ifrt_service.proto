@@ -660,10 +660,16 @@ message LoadedExecutableIsDeletedResponse {
   bool is_deleted = 1;
 }
 
+// Mirrors `LoadedExecutable::DeleteOptions`.
+message LoadedExecutableDeleteOptionsProto {
+  int64 deletion_stream_id = 1;
+}
+
 // Mirrors `LoadedExecutable::~LoadedExecutable`. The LoadedExecutable handle
 // becomes unusable after this request.
 message LoadedExecutableDestructRequest {
   fixed64 loaded_executable_handle = 1;
+  LoadedExecutableDeleteOptionsProto delete_options = 2;
 }
 message LoadedExecutableDestructResponse {}
 

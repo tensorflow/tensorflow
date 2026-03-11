@@ -150,3 +150,9 @@
 *   Added date: 2026-03-05
 *   Changes:
     *   Added support for `Client::BitcastArrays`.
+
+## Version kLoadedExecutableDeleteOptions
+
+*   Added date: 2026-03-10
+*   Changes:
+    *   Added support for `LoadedExecutable::SetDeleteOptions`.
