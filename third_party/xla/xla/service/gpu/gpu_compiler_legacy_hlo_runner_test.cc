@@ -42,8 +42,8 @@ limitations under the License.
 #include "xla/service/gpu/tests/hlo_legacy_gpu_test_base.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_legacy.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -129,7 +129,7 @@ TEST_P(AotCompilationTest, CompileAndLoadAotResult) {
       std::unique_ptr<Executable> executable,
       std::move(*aot_result)
           .LoadExecutable(compiler()->PlatformId(), device_description()));
-  auto hlo_runner = std::make_unique<HloRunner>(GpuPlatform());
+  auto hlo_runner = std::make_unique<HloRunnerLegacy>(GpuPlatform());
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       hlo_runner->WrapExecutable(std::move(executable));
 
@@ -171,7 +171,7 @@ TEST_P(AotCompilationTest, ExportAndImportAotResult) {
       std::unique_ptr<Executable> new_executable,
       std::move(*aot_result)
           .LoadExecutable(compiler()->PlatformId(), device_description()));
-  auto hlo_runner = std::make_unique<HloRunner>(GpuPlatform());
+  auto hlo_runner = std::make_unique<HloRunnerLegacy>(GpuPlatform());
   std::unique_ptr<OpaqueExecutable> wrapped_executable =
       hlo_runner->WrapExecutable(std::move(new_executable));
 
@@ -357,7 +357,7 @@ ENTRY e {
         std::unique_ptr<Executable> executable,
         std::move(*aot_result)
             .LoadExecutable(compiler()->PlatformId(), device_description()));
-    auto hlo_runner = std::make_unique<HloRunner>(GpuPlatform());
+    auto hlo_runner = std::make_unique<HloRunnerLegacy>(GpuPlatform());
     std::unique_ptr<OpaqueExecutable> wrapped_executable =
         hlo_runner->WrapExecutable(std::move(executable));
 
