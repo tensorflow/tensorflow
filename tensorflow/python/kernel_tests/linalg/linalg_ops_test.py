@@ -94,6 +94,36 @@ class LogdetTest(test.TestCase):
           logdet_tf = linalg.logdet(matrix)
           self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
 
+  def test_works_with_non_spd_matrices(self):
+    """Test that logdet works on non-symmetric matrices with positive det."""
+    for np_dtype, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
+      with self.subTest(np_dtype=np_dtype, atol=atol):
+        # A non-symmetric matrix with a positive determinant.
+        matrix = np.array(
+            [[-0.443, -0.145, 0.147],
+             [0.084, -0.695, 0.241],
+             [0.340, 0.616, 0.520]], dtype=np_dtype)
+        det_val = np.linalg.det(matrix)
+        self.assertGreater(det_val, 0)  # Sanity check
+        _, logdet_np = np.linalg.slogdet(matrix)
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          self.assertAllClose(logdet_np, self.evaluate(logdet_tf), atol=atol)
+
+  def test_returns_nan_for_negative_determinant(self):
+    """Test that logdet returns NaN for matrices with negative determinants."""
+    for np_dtype in [np.float32, np.float64]:
+      with self.subTest(np_dtype=np_dtype):
+        # A matrix with a negative determinant.
+        matrix = np.array(
+            [[1.0, 2.0],
+             [3.0, 4.0]], dtype=np_dtype)  # det = -2
+        det_val = np.linalg.det(matrix)
+        self.assertLess(det_val, 0)  # Sanity check
+        with self.session():
+          logdet_tf = linalg.logdet(matrix)
+          self.assertTrue(np.isnan(self.evaluate(logdet_tf)))
+
 
 class SlogdetTest(test.TestCase):
 

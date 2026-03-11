@@ -68,7 +68,12 @@ triangular_solve = linalg_ops.matrix_triangular_solve
 @tf_export('linalg.logdet')
 @dispatch.add_dispatch_support
 def logdet(matrix, name=None):
-  """Computes log of the determinant of a hermitian positive definite matrix.
+  """Computes log of the determinant of a square matrix.
+
+  For matrices with positive determinants, this returns the natural log of
+  the determinant. For matrices with non-positive determinants, this returns
+  NaN. This uses LU decomposition internally, so it works for general
+  square matrices (not just hermitian positive definite ones).
 
   ```python
   # Compute the determinant of a matrix while reducing the chance of over- or
@@ -87,16 +92,21 @@ def logdet(matrix, name=None):
 
   @compatibility(numpy)
   Equivalent to numpy.linalg.slogdet, although no sign is returned since only
-  hermitian positive definite matrices are supported.
+  matrices with positive determinants yield a real-valued log determinant.
+  For matrices with non-positive determinants, NaN is returned.
   @end_compatibility
   """
-  # This uses the property that the log det(A) = 2*sum(log(real(diag(C))))
-  # where C is the cholesky decomposition of A.
+  # Use LU decomposition via slogdet to support general square matrices,
+  # not just hermitian positive definite ones. For matrices with non-positive
+  # determinants (sign <= 0), return NaN.
   with ops.name_scope(name, 'logdet', [matrix]):
-    chol = gen_linalg_ops.cholesky(matrix)
-    return 2.0 * math_ops.reduce_sum(
-        math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        axis=[-1])
+    sign, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
+    # For real matrices, sign is a scalar (-1, 0, or 1).
+    # Return log_abs_det when sign > 0, NaN otherwise.
+    return math_ops.where(
+        math_ops.real(sign) > 0,
+        log_abs_det,
+        math_ops.cast(float('nan'), log_abs_det.dtype))
 
 
 @tf_export('linalg.adjoint')
