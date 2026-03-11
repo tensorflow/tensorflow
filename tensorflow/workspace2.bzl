@@ -67,6 +67,7 @@ load("//third_party/skcms:workspace.bzl", skcms = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
+load("//third_party/xprof:workspace.bzl", xprof = "repo")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -911,15 +912,8 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.5.7.zip"),  # 2025-05-20
     )
 
-    tf_http_archive(
-        name = "org_xprof",
-        sha256 = "d27bcd502a0843e463fc4eb7d3532d0d720ddd6af6e39942846f1aa769352625",
-        strip_prefix = "xprof-c695e43eba127a74a67263775ab611bded7fba34",
-        patch_file = ["//third_party/xprof:xprof.patch"],
-        urls = tf_mirror_urls("https://github.com/openxla/xprof/archive/c695e43eba127a74a67263775ab611bded7fba34.zip"),
+    xprof(
         repo_mapping = {
-            "@xla": "@xla",
-            "@tsl": "@tsl",
             "@com_github_nlohmann_json": "@nlohmann_json_lib",
         },
     )
