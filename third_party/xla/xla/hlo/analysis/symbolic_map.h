@@ -135,13 +135,16 @@ class SymbolicMap {
   // Creates a new SymbolicMap with a subset of the results of this map.
   SymbolicMap GetSubMap(absl::Span<const size_t> result_indices) const;
 
+  // Creates a new SymbolicMap with the given number of dimensions. Symbols are
+  // preserved and shifted accordingly.
+  SymbolicMap SetNumDimensions(int num_new_dims) const;
+
   SymbolicMap Replace(SymbolicExpr expr, SymbolicExpr replacement) const;
 
   /// Replaces multiple sub-expressions at once by applying
-  /// `SymbolicExpr::Replace(map)` to each expression. Returns a new SymbolicMap
-  /// with the new results and with the specified number of dims and symbols.
-  SymbolicMap Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map,
-                      int64_t numResultDims, int64_t numResultSyms) const;
+  /// `SymbolicExpr::Replace(map)` to each expression.
+  SymbolicMap Replace(
+      const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) const;
 
   bool operator==(const SymbolicMap& other) const;
   bool operator!=(const SymbolicMap& other) const { return !(*this == other); }

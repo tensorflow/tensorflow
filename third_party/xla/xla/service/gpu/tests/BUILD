@@ -249,6 +249,7 @@ xla_test(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
+        "//xla/service:hlo_runner_pjrt",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
