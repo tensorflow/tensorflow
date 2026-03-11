@@ -400,10 +400,6 @@ DeviceOrDevicelessConfig GetDeviceConfig(
       DevicelessConfig{gpu_target_config.device_description}};
 }
 
-se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
-  return stream_exec->GetDeviceDescription().gpu_compute_capability();
-}
-
 bool IsDevicelessCompilation(const Compiler::CompileOptions& options,
                              const se::StreamExecutor* stream_exec) {
   return options.early_exit_with_layouts || stream_exec == nullptr;
@@ -1634,14 +1630,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   // Run target-specific HLO optimization passes for convolution
   // canonicalization.
-  se::dnn::VersionInfo dnn_version = gpu_target_config.dnn_version_info;
-  if (stream_exec != nullptr) {
-    gpu_version = GetGpuVersion(stream_exec);
-    ASSIGN_OR_RETURN(dnn_version, GetDnnVersionInfo(stream_exec));
-  }
-
   RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
-      hlo_module, gpu_version, dnn_version,
+      hlo_module, gpu_version, gpu_target_config.dnn_version_info,
       device_description.runtime_version(), compilation_stats));
 
   RETURN_IF_ERROR(RunLayoutAssignmentPasses(
