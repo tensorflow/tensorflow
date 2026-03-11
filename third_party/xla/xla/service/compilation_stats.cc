@@ -100,6 +100,9 @@ void Stats::EndPass(absl::string_view pass_name) {
   pass_running_ = false;
   uint64_t end_micros = tsl::Env::Default()->NowMicros();
   double duration_ms = (end_micros - start_micros_) / 1000.0;
+  if (duration_ms > 5000) {
+    LOG(ERROR) << "Pass took quite long: " << duration_ms << " " << pass_name;
+  }
   passes_.push_back(PassInfo(current_pass_, duration_ms));
 }
 
@@ -132,9 +135,17 @@ void Stats::CompilationReport() {
   });
   LOG(INFO) << "Total runtime (ms) of HLO passes: " << total_duration;
   LOG(INFO) << "Pass name, num runs, time (ms)";
+  int64_t print_counter = 0;
   for (auto& pass_info : sorted_summary) {
     LOG(INFO) << pass_info.name << ", " << pass_info.num_runs << ", "
               << pass_info.duration_ms;
+    ++print_counter;
+    if (print_counter > 5) {
+      break;
+    }
+  }
+  if (total_duration > 2500) {
+    LOG(FATAL) << "Time is far too high!!!";
   }
 }
 

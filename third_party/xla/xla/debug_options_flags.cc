@@ -499,7 +499,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // maximum number of events to be traced, default to 4M
   opts.set_xla_gpu_rocm_max_trace_events(4 * 1024 * 1024);
 
-  opts.set_xla_gpu_print_compilation_stats(false);
+  opts.set_xla_gpu_print_compilation_stats(true);
   return opts;
 }
 
