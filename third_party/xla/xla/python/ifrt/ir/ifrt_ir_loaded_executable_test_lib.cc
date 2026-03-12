@@ -134,8 +134,8 @@ module {
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
   }
 }
@@ -184,8 +184,8 @@ module {
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
   }
 }
@@ -327,7 +327,7 @@ module {
   }
 
   func.func private @one() -> tensor<2x2xi32> {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
     return %0 : tensor<2x2xi32>
   }
 }
@@ -366,8 +366,8 @@ module {
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return
   }
 }
@@ -412,8 +412,8 @@ module {
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
   }
 }
@@ -467,8 +467,8 @@ module {
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
   }
 }
@@ -706,8 +706,8 @@ module {
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
   }
 }
@@ -804,8 +804,8 @@ module {
   func.func @main(
       %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
       -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
   }
 }
@@ -1644,6 +1644,214 @@ module {
   EXPECT_TRUE(input1->IsDeleted());
 }
 
+TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysAddDimension) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> !array1
+      attributes {ifrt.function} {
+    %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array0) -> !array1
+    return %0 : !array1
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {1};
+  std::vector<int> data1 = {2};
+  DType dtype(DType::kS32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input,
+      CreateArray({data0.data(), data1.data()}, /*shape=*/Shape({2}),
+                  /*shard_shape=*/Shape({1}), dtype, devices));
+
+  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                          executable->Execute(absl::MakeSpan(&input, 1),
+                                              ExecuteOptionsWithFillStatus(),
+                                              /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, Shape({1, 1}), {{1}, {2}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysRemoveDimension) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> !array1
+      attributes {ifrt.function} {
+    %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array0) -> !array1
+    return %0 : !array1
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {1};
+  std::vector<int> data1 = {2};
+  DType dtype(DType::kS32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input,
+      CreateArray({data0.data(), data1.data()}, /*shape=*/Shape({1, 2}),
+                  /*shard_shape=*/Shape({1, 1}), dtype, devices));
+
+  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                          executable->Execute(absl::MakeSpan(&input, 1),
+                                              ExecuteOptionsWithFillStatus(),
+                                              /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, Shape({1}), {{1}, {2}}, devices));
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, NonDonatableBitcastArrays) {
+  // The test passes two arrays on different device to BitcastArrays on purpose.
+  // This is required to test that multiple CopyArrays (one per device list) are
+  // inserted to make sure the donation semantics are correct.
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x2xi32>,
+                      #ifrt.sharding_param<1x1 to [0] on 1>, [1]>
+!array2 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<1 to [0] on 1>, [0]>
+!array3 = !ifrt.array<tensor<2xi32>,
+                      #ifrt.sharding_param<1 to [0] on 1>, [1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
+      -> (!array2, !array3) attributes {ifrt.function} {
+    %0, %1 = ifrt.BitcastArrays(%arg0, %arg1)
+      {donated=true} : (!array0, !array1) -> (!array2, !array3)
+    return %0, %1 : !array2, !array3
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data = {1, 2};
+  DType dtype(DType::kS32);
+  Shape in_shape({1, 2});
+  Shape out_shape({2});
+
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list0,
+                          client_->MakeDeviceList({devices->devices()[0]}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input0,
+      CreateArray({data.data()}, /*shape=*/in_shape,
+                  /*shard_shape=*/in_shape, dtype, device_list0));
+
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list1,
+                          client_->MakeDeviceList({devices->devices()[1]}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input1,
+      CreateArray({data.data()}, /*shape=*/in_shape,
+                  /*shard_shape=*/in_shape, dtype, device_list1));
+
+  ExecuteOptions options;
+  options.fill_status = true;
+  options.non_donatable_input_indices.insert(0);
+  options.non_donatable_input_indices.insert(1);
+  std::vector<ArrayRef> inputs = {input0, input1};
+  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                          executable->Execute(absl::MakeSpan(inputs), options,
+                                              /*devices=*/std::nullopt));
+  ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 2);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, out_shape, {{1, 2}}, device_list0));
+  ASSERT_FALSE(input0->IsDeleted());
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[1], dtype, out_shape, {{1, 2}}, device_list1));
+  ASSERT_FALSE(input1->IsDeleted());
+}
+
+TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysCanBeUsedByCallOp) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x2x1 to [0] on 2>, [0,1]>
+module {
+  func.func @main(%arg0: !array0 {ifrt.donated}) -> !array0
+      attributes {ifrt.function} {
+    %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array0) -> !array1
+    %1, %ctrl_1 = ifrt.Call @add_one(%0) on devices [0,1] : (!array1) -> !array1
+    %2 = ifrt.BitcastArrays(%1) {donated=true} : (!array1) -> !array0
+    return %2 : !array0
+  }
+
+  func.func private @add_one(%arg0: tensor<1x2x2xi32>) -> tensor<1x2x2xi32> {
+    %0 = stablehlo.constant dense<1> : tensor<1x2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<1x2x2xi32>
+    return %1 : tensor<1x2x2xi32>
+  }
+}
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                          LoadFromSource(source));
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
+  TF_ASSERT_OK_AND_ASSIGN(
+      LoadedExecutableRef executable,
+      client_->GetDefaultCompiler()
+          ->CompileAndLoad(
+              std::make_unique<IfrtIRProgram>(*mlir_module),
+              std::make_unique<IfrtIRCompileOptions>(GetDeviceIds(devices)))
+          .Await());
+
+  std::vector<int> data0 = {0, 1};
+  std::vector<int> data1 = {2, 3};
+  Shape shard_shape({1, 2});
+  DType dtype(DType::kS32);
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef input, CreateArray({data0.data(), data1.data()}, Shape({2, 2}),
+                                  shard_shape, dtype, devices));
+
+  TF_ASSERT_OK_AND_ASSIGN(LoadedExecutable::ExecuteResult result,
+                          executable->Execute(absl::MakeSpan(&input, 1),
+                                              ExecuteOptionsWithFillStatus(),
+                                              /*devices=*/std::nullopt));
+
+  TF_ASSERT_OK(result.status.Await());
+  ASSERT_EQ(result.outputs.size(), 1);
+  ASSERT_NO_FATAL_FAILURE(AssertPerShardData<int>(
+      result.outputs[0], dtype, shard_shape, {{1, 2}, {3, 4}}, devices));
+}
+
 TEST_F(IfrtIrLoadedExecutableTest, GetParameterAndOutputLayouts) {
   if (GetNumDevices() < 4) {
     GTEST_SKIP() << "Insufficient devices to run this test.";
@@ -1747,8 +1955,8 @@ module {
   }
 
   func.func private @add_one(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
-    %0 = mhlo.constant dense<1> : tensor<2x2xi32>
-    %1 = mhlo.add %arg0, %0 : tensor<2x2xi32>
+    %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
+    %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
   }
 }

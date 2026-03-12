@@ -14,6 +14,20 @@ func.func @error_on_op_attr_from_another_dialect(%arg0: !array_t0)
 
 // -----
 
+!array0 = !ifrt.array<tensor<1x2x2xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+!array1 = !ifrt.array<tensor<2x2xf32>,
+                      #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+func.func @bitcast_drop_one_dimension_different_dtype(%arg0: !array0)
+    attributes {ifrt.function} {
+  // expected-error@+1 {{failed to legalize operation 'ifrt.BitcastArrays' that was explicitly marked illegal}}
+  %0 = ifrt.BitcastArrays(%arg0) {invalid_attr = #vifrt<devices_v1[0,1]>}
+      : (!array0) -> (!array1)
+  return
+}
+
+// -----
+
 !array_t0 = !ifrt.array<tensor<2x4xi32>,
                         #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
 // expected-error@+1 {{'func.func' op arguments may only have dialect attributes}}

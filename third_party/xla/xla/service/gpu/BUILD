@@ -51,8 +51,6 @@ filegroup(
     ]),
 )
 
-exports_files(srcs = ["gpu_compiler_test_autotune_db.textproto"])
-
 tf_proto_library(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
@@ -1963,7 +1961,6 @@ xla_test(
         ],
     },
     backends = ["gpu"],
-    data = ["gpu_compiler_test_autotune_db.textproto"],
     shard_count = 2,
     deps = [
         ":alias_info",

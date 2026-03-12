@@ -229,9 +229,9 @@ mlir::LogicalResult VerifyIoAlias(mlir::Operation* op, IoAlias io_alias,
            << " outputs";
   }
   if (inputs[io_alias.input_index] != outputs[io_alias.output_index]) {
-    // TODO(icgog): Relax this aliasing check to allow for different per-shard
-    // shapes as long as the byte size is the same. We cannot do this now
-    // because we do not have layout information.
+    // TODO(b/382761415): Relax this aliasing check to allow for different
+    // per-shard shapes as long as the byte size is the same. We cannot do this
+    // now because we do not have layout information.
     if (inputs[io_alias.input_index].getShape().getElementType() !=
         outputs[io_alias.output_index].getShape().getElementType()) {
       return op->emitOpError()
@@ -650,6 +650,43 @@ mlir::LogicalResult RemapArraysOp::verify() {
                              << out_shard << " is unassigned.";
       }
     }
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult BitcastArraysOp::verify() {
+  auto inputs = getInputs();
+  auto outputs = getOutputs();
+  if (inputs.size() != outputs.size()) {
+    return emitOpError()
+           << "requires the same number of input and output arrays. "
+           << inputs.size() << " inputs vs. " << outputs.size() << " outputs";
+  }
+  for (const auto& [idx, input] : llvm::enumerate(inputs)) {
+    const auto in_array_type = llvm::cast<IfrtArrayType>(input.getType());
+    const auto out_array_type =
+        llvm::cast<IfrtArrayType>(outputs[idx].getType());
+    // Ideally, the code here would check that the devices are the same.
+    // However, since this can be expensive, we only check that the number of
+    // devices are the same, and instead rely that an error will be raised
+    // at runtime.
+    if (in_array_type.getDevices().size() !=
+        out_array_type.getDevices().size()) {
+      return emitOpError() << "requires input array #" << idx
+                           << " and output array #" << idx
+                           << " to have the same number of devices: "
+                           << in_array_type.getDevices().size() << " vs. "
+                           << out_array_type.getDevices().size();
+    }
+    if (in_array_type.MemoryKind() != out_array_type.MemoryKind()) {
+      return emitOpError() << "requires input array #" << idx
+                           << " and output array #" << idx
+                           << " to have the same memory kind: "
+                           << in_array_type.getMemoryKindAttr() << " vs. "
+                           << out_array_type.getMemoryKindAttr();
+    }
+    // TODO(b/382761415): Verify on-device size is the same once we have layout
+    // info.
   }
   return mlir::success();
 }

@@ -238,8 +238,8 @@ ProgramInterpreter::BuildExecuteFn() {
   for (mlir::Operation& op : main_func.getOps()) {
     auto op_fn =
         llvm::TypeSwitch<const mlir::Operation&, absl::StatusOr<OpFn>>(op)
-            .Case<CallLoadedExecutableOp, RemapArraysOp, CopyArraysOp,
-                  mlir::func::ReturnOp>(
+            .Case<CallLoadedExecutableOp, BitcastArraysOp, RemapArraysOp,
+                  CopyArraysOp, mlir::func::ReturnOp>(
                 [this](const auto& op) { return HandleOp(op); })
             .Default([](const mlir::Operation& op) {
               return absl::InvalidArgumentError(absl::StrCat(
@@ -632,6 +632,132 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   }
 
   return absl::bind_front(&RemapArraysOpState::Run, std::move(state));
+}
+
+namespace {
+struct BitcastArraysOpState {
+  std::string pretty_print;
+
+  std::vector<ArrayHandle> input_handles;
+  absl::flat_hash_set<ArrayHandle> dead_inputs;
+  bool bitcast_is_donated;
+
+  std::vector<ArrayHandle> output_handles;
+  std::vector<ArraySpec> output_specs;
+
+  absl::Status Run(Environment& env) const {
+    TraceMe traceme([&]() {
+      return TraceMeEncode("DispatchBitcastArraysOp",
+                           {{"ifrt_ir_program", env.program_name}});
+    });
+    VLOG(3) << pretty_print;
+
+    std::vector<ArrayRef> inputs;
+    inputs.reserve(input_handles.size());
+
+    std::vector<ArrayHandle> arrays_to_remove;
+
+    for (int idx = 0; idx < input_handles.size(); ++idx) {
+      const ArrayHandle handle = input_handles[idx];
+
+      auto array_it = env.handle_to_array.find(handle);
+      TF_RET_CHECK(array_it != env.handle_to_array.end())
+          << "Input array #" << idx << " not found. " << pretty_print;
+      if (array_it->second.array->IsDeleted()) {
+        // We explicitly check here for deletion in order to provide a more
+        // informative error message.
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Input array #", idx, " has already been deleted or donated. ",
+            pretty_print));
+      }
+
+      // The default buffer donation semantic is finalized at compilation time.
+      // Users can override the donation semantic at runtime. In the meantime,
+      // the IFRT client BitcastArrays API requires all input arrays have the
+      // same donation semantic. Insert a CopyArrays op if BitcastArrays
+      // requires all input arrays to be donated, but some of the input arrays
+      // have been marked as non-donatable.
+      if (bitcast_is_donated && !array_it->second.can_be_donated) {
+        ArrayRef array = array_it->second.array;
+        LOG_FIRST_N(WARNING, 5)
+            << "Array is cloned because is have been marked as non-donatable "
+               "at runtime, but BitcastArrays requires all arrays to be "
+               "donated. array="
+            << array->DebugString()
+            << " (this warning is logged only at most 5 times)."
+            << pretty_print;
+        TF_ASSIGN_OR_RETURN(
+            std::vector<ArrayRef> copied_arrays,
+            env.client->CopyArrays(
+                absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
+                /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+        inputs.push_back(std::move(copied_arrays[0]));
+      } else {
+        inputs.push_back(array_it->second.array);
+      }
+      if ((bitcast_is_donated && array_it->second.can_be_donated) ||
+          dead_inputs.contains(handle)) {
+        arrays_to_remove.push_back(handle);
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        std::vector<ArrayRef> bitcast_arrays,
+        env.client->BitcastArrays(
+            absl::MakeSpan(inputs), absl::MakeSpan(output_specs),
+            bitcast_is_donated ? ArrayCopySemantics::kDonateInput
+                               : ArrayCopySemantics::kReuseInput));
+
+    for (const auto handle : arrays_to_remove) {
+      // Donated bitcast arrays are proactively deleted, and aliased arrays
+      // cannot be deleted later. Thus, remove the arrays from the deletable
+      // program arguments set.
+      env.deletable_program_arguments.erase(handle);
+      env.handle_to_array.erase(handle);
+    }
+
+    TF_RET_CHECK(bitcast_arrays.size() == inputs.size())
+        << "Got " << bitcast_arrays.size() << " results, but op has "
+        << inputs.size() << ". " << pretty_print;
+    for (int i = 0; i < output_handles.size(); ++i) {
+      const ArrayHandle handle = output_handles[i];
+      if (handle != 0) {
+        env.AssociateArray(handle, ArrayState{
+                                       /*array=*/std::move(bitcast_arrays[i]),
+                                       /*can_be_donated=*/true,
+                                   });
+      }
+    }
+
+    return absl::OkStatus();
+  }
+};
+
+}  // namespace
+
+absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
+    BitcastArraysOp bitcast_op) {
+  BitcastArraysOpState state;
+  state.pretty_print = PrettyPrint(bitcast_op);
+
+  for (const auto [idx, input] : llvm::enumerate(bitcast_op.getInputs())) {
+    state.input_handles.push_back(ToArrayHandle(input));
+    if (liveness_.isDeadAfter(input, bitcast_op)) {
+      state.dead_inputs.insert(ToArrayHandle(input));
+    }
+  }
+  state.bitcast_is_donated = bitcast_op.getDonated();
+
+  for (const auto output : bitcast_op.getOutputs()) {
+    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    state.output_handles.push_back(handle);
+    TF_ASSIGN_OR_RETURN(
+        ArraySpec spec,
+        ArraySpecFromMlirType(output.getType(), client_, devices_));
+    state.output_specs.push_back(std::move(spec));
+  }
+
+  return absl::bind_front(&BitcastArraysOpState::Run, std::move(state));
 }
 
 namespace {

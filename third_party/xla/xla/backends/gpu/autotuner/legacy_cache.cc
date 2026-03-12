@@ -111,9 +111,6 @@ std::optional<LegacyCache::Config> LegacyCache::GetConfig(
     config.backend_config.PackFrom(result.triton());
   } else if (result.has_gemm()) {
     config.codegen_backend = Backend::CUBLASLT;
-    if (is_fusion_instruction) {
-      config.codegen_backend = Backend::CUBLASLT_FISSION;
-    }
     config.backend_config.PackFrom(result.gemm());
   } else if (result.has_algorithm()) {
     config.codegen_backend = Backend::CUDNN;
@@ -140,8 +137,7 @@ AutotuneResult LegacyCache::GetAutotuneResult(
   AutotuneResult result;
   if (config.codegen_backend == Backend::TRITON) {
     config.backend_config.UnpackTo(result.mutable_triton());
-  } else if (config.codegen_backend == Backend::CUBLASLT ||
-             config.codegen_backend == Backend::CUBLASLT_FISSION) {
+  } else if (config.codegen_backend == Backend::CUBLASLT) {
     config.backend_config.UnpackTo(result.mutable_gemm());
   } else if (config.codegen_backend == Backend::CUDNN) {
     config.backend_config.UnpackTo(result.mutable_algorithm());

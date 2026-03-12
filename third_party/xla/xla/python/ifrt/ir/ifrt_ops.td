@@ -156,6 +156,30 @@ def Ifrt_RemapArraysOp
   let hasVerifier = 1;
 }
 
+def Ifrt_BitcastArraysOp
+    : Ifrt_Op<"BitcastArrays", [NestedInIfrtFunc]> {
+  let summary = "Bitcasts `Array`s to new `Array`s with a different type.";
+  let description = [{
+    A metadata-only op that can change the per-shard interpretation without
+    changing the per-sharding location. The new arrays must use the same
+    devices, have the same on-device size, and have the same memory kind.
+
+    The `dtype`, `shape`, `sharding`, and `layout` of the new arrays might be
+    different from the input arrays.
+  }];
+
+  let arguments = (ins
+    Variadic<Ifrt_ArrayType>:$inputs,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$donated);
+  let results = (outs Variadic<Ifrt_ArrayType>:$outputs);
+
+  let assemblyFormat = [{
+    `(` $inputs `)` attr-dict `:` functional-type($inputs, $outputs)
+  }];
+
+  let hasVerifier = 1;
+}
+
 def Ifrt_CallOp : Ifrt_Op<"Call",
     [AttrSizedOperandSegments,
      NestedInIfrtFunc,
