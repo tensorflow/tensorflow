@@ -645,6 +645,8 @@ ENTRY main {
   triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::CUBLAS_FISSION);
   triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLASLT_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::NATIVE_EMITTER);
   config.set_debug_options(triton_enabled_debug_options);
   ASSERT_OK_AND_ASSIGN(auto triton_enabled_module_and_executable,
@@ -656,7 +658,8 @@ ENTRY main {
   AutotuneResults results;
   ASSERT_OK(AutotunerCache::SerializeAutotuneResults(&results));
   EXPECT_FALSE(results.results().empty());
-  EXPECT_TRUE(absl::StrContains(results.DebugString(), "CUBLAS_FISSION"));
+  EXPECT_TRUE(absl::StrContains(results.DebugString(), "CUBLAS_FISSION") ||
+              absl::StrContains(results.DebugString(), "CUBLASLT_FISSION"));
 
   // Triton disabled - this will skip the GemmFusion pass and use cuBLAS.
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
@@ -705,6 +708,8 @@ ENTRY main {
   triton_enabled_debug_options.clear_xla_gpu_experimental_autotune_backends();
   triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::CUBLAS_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLASLT_FISSION);
   triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
       autotuner::Backend::NATIVE_EMITTER);
   config.set_debug_options(triton_enabled_debug_options);
