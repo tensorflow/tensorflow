@@ -1685,6 +1685,7 @@ xla_test(
     backends = ["gpu"],
     use_legacy_runtime = True,
     deps = [
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/service/gpu:gpu_executable",
@@ -3595,6 +3596,7 @@ xla_test(
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:test",
