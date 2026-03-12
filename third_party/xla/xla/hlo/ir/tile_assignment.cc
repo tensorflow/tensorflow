@@ -30,6 +30,10 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -731,41 +735,56 @@ std::vector<int64_t> ExtractCommonFactorSequence(
 
 std::optional<std::vector<SubDimInfo>> GetOrderedSubDimsFromIotaTileAssignment(
     const IotaTileAssignment& iota) {
+  auto result = GetOrderedSubDims(iota.dims(), iota.reshape_dims(),
+                                  iota.transpose_perm());
+  if (!result.ok()) {
+    return std::nullopt;
+  }
+  return *std::move(result);
+}
+
+absl::StatusOr<std::vector<SubDimInfo>> GetOrderedSubDims(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm) {
   std::vector<int64_t> device_shape;
-  device_shape.reserve(iota.transpose_perm().size());
-  for (const int perm_index : iota.transpose_perm()) {
-    device_shape.emplace_back(iota.reshape_dims()[perm_index]);
+  device_shape.reserve(transpose_perm.size());
+  for (const int perm_index : transpose_perm) {
+    device_shape.push_back(reshape_dims[perm_index]);
   }
 
   const std::vector<int64_t> axis_sizes =
-      ExtractCommonFactorSequence(iota.dims(), device_shape);
+      ExtractCommonFactorSequence(dims, device_shape);
   if (axis_sizes.empty()) {
-    return std::nullopt;
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to extract common factor sequence: dims: [",
+                     absl::StrJoin(dims, ","), "] reshape_dims: [",
+                     absl::StrJoin(reshape_dims, ","), "] transpose_perm: T(",
+                     absl::StrJoin(transpose_perm, ","), ")"));
   }
 
   std::vector<SubDimInfo> sub_dims;
   sub_dims.reserve(axis_sizes.size());
 
-  int64_t tile_dim_index = iota.ndims() - 1;
-  int64_t trans_perm_index = iota.transpose_perm().size() - 1;
+  int64_t tile_dim_index = dims.size() - 1;
+  int64_t trans_perm_index = transpose_perm.size() - 1;
   int64_t acc_tile_size = 1;
   int64_t acc_device_size = 1;
   int64_t sub_dim = 0;
 
   for (auto it = axis_sizes.rbegin(); it != axis_sizes.rend(); ++it) {
     int64_t axis_size = *it;
-    while (iota.dim(tile_dim_index) == 1) {
+    while (dims[tile_dim_index] == 1) {
       tile_dim_index--;
     }
     sub_dims.push_back(SubDimInfo{
         /* .tile_dim_index = */ tile_dim_index,
         /* .tile_sub_dim_index = */ sub_dim++,
-        /* .reshape_dim_index = */ iota.transpose_perm()[trans_perm_index],
+        /* .reshape_dim_index = */ transpose_perm[trans_perm_index],
         /* .size = */ axis_size,
     });
     acc_tile_size *= axis_size;
     acc_device_size *= axis_size;
-    if (iota.dim(tile_dim_index) == acc_tile_size) {
+    if (dims[tile_dim_index] == acc_tile_size) {
       tile_dim_index--;
       acc_tile_size = 1;
       sub_dim = 0;
