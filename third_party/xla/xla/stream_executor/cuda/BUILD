@@ -1566,6 +1566,7 @@ cc_library(
         ":buffer_debug_float_check_kernel_cuda",
         ":buffer_debug_xor_checksum_kernel_cuda",
         ":collective_signal_cuda",
+        ":cub_sort_kernel_cuda",
         ":cublas_plugin",
         ":cuda_platform",
         ":cudnn_plugin",
@@ -1578,9 +1579,6 @@ cc_library(
         ":topk_kernel_cuda",
         "//xla/tsl/cuda:cusparse",
         "//xla/tsl/cuda:tensorrt_rpath",
-    ] + [
-        ":cub_sort_kernel_cuda_" + suffix
-        for suffix in get_cub_sort_kernel_types()
     ] + [
         ":cub_prefix_sum_kernel_cuda_" + suffix
         for suffix in get_cub_prefix_sum_kernel_types()
@@ -2675,7 +2673,7 @@ cuda_library(
 # This can be merged into a single compilation unit when we don't care about
 # compiling with NVCC below version 12.4.1 anymore.
 [cuda_library(
-    name = "cub_sort_kernel_cuda_impl_{}".format(typename),
+    name = "cub_sort_kernel_cuda_type_{}".format(typename),
     srcs = [
         "cub_sort_kernel_cuda.h",
         "cub_sort_kernel_cuda_impl.cu.cc",
@@ -2692,30 +2690,35 @@ cuda_library(
     ],
 ) for typename in get_cub_sort_kernel_types()]
 
-[cc_library(
-    name = "cub_sort_kernel_cuda_{}".format(typename),
+cc_library(
+    name = "cub_sort_kernel_cuda",
     srcs = [
         "cub_sort_kernel_cuda.cc",
         "cub_sort_kernel_cuda.h",
     ],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
-    local_defines = ["CUB_TYPE_" + typename.upper()],
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
-        ":cub_sort_kernel_cuda_impl_{}".format(typename),
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
         "//xla/stream_executor/cuda:cuda_status",
-        "@com_google_absl//absl/base",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
+    ] + [
+        ":cub_sort_kernel_cuda_type_{}".format(typename)
+        for typename in get_cub_sort_kernel_types()
     ],
     alwayslink = 1,
-) for typename in get_cub_sort_kernel_types()]
+)
 
 [cuda_library(
     name = "cub_prefix_sum_kernel_cuda_impl_{}".format(typename),

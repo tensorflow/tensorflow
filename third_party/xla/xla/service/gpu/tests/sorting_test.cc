@@ -296,8 +296,9 @@ HloModule TestModule
 ENTRY %main {
   %input = $0[$1] parameter(0)
   %sort = ($0[$1], u8[$2]) custom-call(%input),
-      custom_call_target="__cub$$DeviceRadixSort",
-      backend_config="{\"descending\": $3}"
+      custom_call_target="xla.gpu.ext.cub_sort_keys",
+      api_version=API_VERSION_TYPED_FFI,
+      backend_config={descending = $3, batch_size = 1 : i64}
   ROOT %gte = get-tuple-element(%sort), index=0
 }
 )";
@@ -335,8 +336,9 @@ ENTRY %main {
   %keys = $0[$2] parameter(0)
   %values = $1[$2] convert(%keys)
   ROOT %sort = ($0[$2], $1[$2], u8[$3]) custom-call(%keys, %values),
-      custom_call_target="__cub$$DeviceRadixSort",
-      backend_config="{\"descending\": $4}"
+      custom_call_target="xla.gpu.ext.cub_sort_pairs",
+      api_version=API_VERSION_TYPED_FFI,
+      backend_config={descending = $4, batch_size = 1 : i64}
 }
 )";
 

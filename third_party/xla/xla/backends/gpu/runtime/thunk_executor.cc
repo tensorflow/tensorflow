@@ -87,14 +87,14 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 
     if (params.mock_collectives && thunk->IsCollective()) {
       XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
-          "[thunk=%d/%d] Skip ThunkExecutor::ExecuteOnStream: %s", i,
-          thunks_.size(), thunk->profile_annotation());
+          "[thunk=%d/%d] Skip ThunkExecutor::ExecuteOnStream: %s (%v)", i,
+          thunks_.size(), thunk->profile_annotation(), thunk->kind());
       continue;
     }
 
     XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
-        "[thunk=%d/%d] Start ThunkExecutor::ExecuteOnStream: %s", i,
-        thunks_.size(), thunk->profile_annotation());
+        "[thunk=%d/%d] Start ThunkExecutor::ExecuteOnStream: %s (%v)", i,
+        thunks_.size(), thunk->profile_annotation(), thunk->kind());
 
     // Execute thunk and launch "work" on the GPU stream.
     RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
@@ -120,8 +120,8 @@ absl::Status ThunkExecutor::ExecuteOnStream(
     }
 
     XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
-        "[thunk=%d/%d] End ThunkExecutor::ExecuteOnStream: %s", i,
-        thunks_.size(), thunk->profile_annotation());
+        "[thunk=%d/%d] End ThunkExecutor::ExecuteOnStream: %s (%v)", i,
+        thunks_.size(), thunk->profile_annotation(), thunk->kind());
   }
   return absl::OkStatus();
 }

@@ -161,7 +161,6 @@ class Thunk {
     kCopy,
     kCopyDone,
     kCuDnn,
-    kCubSort,
     kCublasLtMatmul,
     kCustomCall,
     kCustomKernel,

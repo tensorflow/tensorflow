@@ -65,9 +65,9 @@ TEST_F(EstimateCubScratchSizeTest, U32_F32) {
       ROOT %t = u32[1000]{0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u32[1000]{0}, f32[1000]{0}, u8[1]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: api_version=API_VERSION_TYPED_FFI
   )");
 }
 
@@ -83,9 +83,9 @@ TEST_F(EstimateCubScratchSizeTest, F32) {
       ROOT %t = f32[1000]{0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (f32[1000]{0}, u8[1]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_keys"
+    // CHECK-SAME: api_version=API_VERSION_TYPED_FFI
   )");
 }
 
@@ -102,9 +102,9 @@ TEST_F(EstimateCubScratchSizeTest, S32_S32) {
       ROOT %t = s32[1000]{0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (s32[1000]{0}, s32[1000]{0}, u8[1]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: api_version=API_VERSION_TYPED_FFI
   )");
 }
 
@@ -120,9 +120,9 @@ TEST_F(EstimateCubScratchSizeTest, F32_Descending) {
       ROOT %t = f32[1000]{0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (f32[1000]{0}, u8[1]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":true}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_keys"
+    // CHECK-SAME: backend_config={descending = true, batch_size = 1 : i64}
   )");
 }
 
@@ -138,9 +138,9 @@ TEST_F(EstimateCubScratchSizeTest, F32_Rank3) {
       ROOT %t = f32[10,10,10]{2,1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (f32[10,10,10]{2,1,0}, u8[4756]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_keys"
+    // CHECK-SAME: backend_config={descending = false, batch_size = 100 : i64}
   )");
 }
 
@@ -156,9 +156,9 @@ TEST_F(EstimateCubScratchSizeTest, F32_Rank2) {
       ROOT %t = f32[10,100]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (f32[10,100]{1,0}, u8[4396]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_keys"
+    // CHECK-SAME: backend_config={descending = false, batch_size = 10 : i64}
   )");
 }
 
@@ -175,9 +175,9 @@ TEST_F(EstimateCubScratchSizeTest, U16_F16_Descending) {
       ROOT %t = u16[16,128]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u16[16,128]{1,0}, f16[16,128]{1,0}, u8[8516]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":true}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: backend_config={descending = true, batch_size = 16 : i64}
   )");
 }
 
@@ -194,9 +194,9 @@ TEST_F(EstimateCubScratchSizeTest, U32_F32_Rank2) {
       ROOT %t = u32[16,128]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u32[16,128]{1,0}, f32[16,128]{1,0}, u8[16708]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: backend_config={descending = false, batch_size = 16 : i64}
   )");
 }
 
@@ -213,9 +213,9 @@ TEST_F(EstimateCubScratchSizeTest, U64_F64_Descending) {
       ROOT %t = u64[16,128]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u64[16,128]{1,0}, f64[16,128]{1,0}, u8[33092]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":true}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: backend_config={descending = true, batch_size = 16 : i64}
   )");
 }
 
@@ -232,9 +232,9 @@ TEST_F(EstimateCubScratchSizeTest, U16_BF16) {
       ROOT %t = u16[16,128]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u16[16,128]{1,0}, bf16[16,128]{1,0}, u8[8516]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: backend_config={descending = false, batch_size = 16 : i64}
   )");
 }
 
@@ -251,9 +251,9 @@ TEST_F(EstimateCubScratchSizeTest, U16_BF16_Descending) {
       ROOT %t = u16[16,128]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u16[16,128]{1,0}, bf16[16,128]{1,0}, u8[8516]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":true}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: backend_config={descending = true, batch_size = 16 : i64}
   )");
 }
 
@@ -270,9 +270,9 @@ TEST_F(EstimateCubScratchSizeTest, U16_F16) {
       ROOT %t = u16[16,128]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u16[16,128]{1,0}, f16[16,128]{1,0}, u8[8516]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: backend_config={descending = false, batch_size = 16 : i64}
   )");
 }
 
@@ -289,9 +289,9 @@ TEST_F(EstimateCubScratchSizeTest, U32_F32_Rank2_Descending) {
       ROOT %t = u32[16,128]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u32[16,128]{1,0}, f32[16,128]{1,0}, u8[16708]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":true}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: backend_config={descending = true, batch_size = 16 : i64}
   )");
 }
 
@@ -308,9 +308,9 @@ TEST_F(EstimateCubScratchSizeTest, U64_F64) {
       ROOT %t = u64[16,128]{1,0} get-tuple-element(%custom-call), index=0
   })";
   RunAndCheck(hlo, R"(
-    // CHECK: (u64[16,128]{1,0}, f64[16,128]{1,0}, u8[33092]{0}) custom-call
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSort",
-    // CHECK-SAME: backend_config={"descending":false}
+    // CHECK: custom-call
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_pairs"
+    // CHECK-SAME: backend_config={descending = false, batch_size = 16 : i64}
   )");
 }
 
