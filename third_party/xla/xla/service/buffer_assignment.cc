@@ -390,6 +390,9 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   }
   proto.set_is_constant(is_constant_);
   proto.set_maybe_live_out(maybe_live_out_);
+  for (const auto* peak_buffer : peak_buffers_) {
+    proto.add_peak_buffers(peak_buffer->id());
+  }
   for (const auto& buffer_offset_size : assigned_buffers_) {
     BufferAllocationProto::Assigned* proto_assigned = proto.add_assigned();
     proto_assigned->set_logical_buffer_id(buffer_offset_size.first->id());
@@ -421,7 +424,8 @@ BufferAllocation BufferAllocation::FromProto(
         proto.is_parameter_aliased_with_output());
   }
   allocation.set_maybe_live_out(proto.maybe_live_out());
-
+  // peak_buffers_ are restored later in BufferAssignment::FromProto because we
+  // need the dataflow analysis to look up the HloValue by id.
   return allocation;
 }
 
@@ -1389,6 +1393,11 @@ MemoryUsageReportProto BufferAssignment::GetMemoryUsageReportProto(
   return proto;
 }
 
+namespace {
+std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
+    const BufferAllocation& allocation, const HeapSimulatorTrace& heap_trace);
+}  // namespace
+
 /* static */
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
@@ -1457,6 +1466,30 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     // buffer assignment when we call `AddAssignment` above.
     CHECK_EQ(allocation->maybe_live_out(), alloc_proto.maybe_live_out())
         << "Dataflow analysis differs from proto.";
+
+    for (int64_t peak_buffer_id : alloc_proto.peak_buffers()) {
+      allocation->peak_buffers_.push_back(id_to_logical_buffer[peak_buffer_id]);
+    }
+  }
+
+  for (const auto& trace : proto.heap_simulator_traces()) {
+    int64_t alloc_index = trace.buffer_allocation_index();
+    if (alloc_index >= 0 &&
+        alloc_index < buffer_assignment->allocations_.size()) {
+      BufferAllocation* allocation =
+          buffer_assignment->GetMutableAllocation(alloc_index);
+      allocation->AddHeapTrace(trace);
+
+      // If the proto was generated before `peak_buffers` was added, reconstruct
+      // it.
+      if (allocation->peak_buffers_.empty()) {
+        auto extra_peak_buffers =
+            ComputePeakMemoryLogicalBuffers(*allocation, trace);
+        allocation->peak_buffers_.insert(allocation->peak_buffers_.end(),
+                                         extra_peak_buffers.begin(),
+                                         extra_peak_buffers.end());
+      }
+    }
   }
 
   // Ensure each buffer in the proto has an allocation assigned.
@@ -2014,6 +2047,19 @@ absl::Status BufferAssigner::AssignPresetBuffers(
     }
 
     assigned_buffers->insert(&buffer);
+  }
+
+  for (auto& color_and_info :
+       opts_.preset_assignments->assignment_informations()) {
+    LogicalBuffer::Color color(color_and_info.first);
+    auto preset_allocations_iter = preset_allocations.find(color);
+    if (preset_allocations_iter != preset_allocations.end()) {
+      BufferAllocation* allocation = preset_allocations_iter->second;
+      if (!allocation->HeapTraces().empty()) {
+        allocation->peak_buffers_ = ComputePeakMemoryLogicalBuffers(
+            *allocation, allocation->HeapTraces().front());
+      }
+    }
   }
 
   // Upon consumption of the preset assignments, delete it so that if this
