@@ -238,6 +238,20 @@ func.func @op_remap_arrays(
   return
 }
 
+!array_bc0 = !ifrt.array<tensor<2x4xi32>,
+                         #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array_bc1 = !ifrt.array<tensor<2x1x4xi32>,
+                         #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+// CHECK-LABEL: "op_bitcast_arrays"
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
+func.func @op_bitcast_arrays(%arg0: !array_bc0 {ifrt.donated}) -> !array_bc1
+    attributes {ifrt.function} {
+  // CHECK: "vifrt.BitcastArraysV1"(%[[ARG0]])
+  // CHECK-SAME: <{donated = true}>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x1x4xi32>, #vifrt.sharding_param_v1<1x1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
+  %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array_bc0) -> !array_bc1
+  return %0: !array_bc1
+}
 
 !array_r0 = !ifrt.array<tensor<2xi32>,
                         #ifrt.sharding_param<2 to [0] on 2>, [0,1]>

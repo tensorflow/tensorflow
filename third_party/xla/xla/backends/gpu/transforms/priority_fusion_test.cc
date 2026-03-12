@@ -80,10 +80,12 @@ class PriorityFusionTest : public HloHardwareIndependentTestBase {
   se::DeviceDescription device_info_ = TestGpuDeviceInfo::RTXA6000DeviceInfo();
   mlir::MLIRContext mlir_context_;
   AliasInfo alias_info_;
-  PriorityFusion priority_fusion_{
-      /*thread_pool=*/nullptr, device_info_, &alias_info_,
-      GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
-      &mlir_context_};
+  PriorityFusion priority_fusion_ = [this] {
+    GpuHloCostAnalysis::Options options;
+    options.count_multiple_input_accesses = true;
+    return PriorityFusion(/*thread_pool=*/nullptr, device_info_, &alias_info_,
+                          options, &mlir_context_);
+  }();
 };
 
 TEST_F(PriorityFusionTest, FuseWithSharedArgument) {
@@ -1510,6 +1512,62 @@ TEST_F(PriorityFusionWithTritonEnabledTest,
                                         m::GetTupleElement(m::Fusion()))));
   EXPECT_THAT(fusion, GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
   EXPECT_TRUE(IsGenericTritonFusion(*fusion));
+}
+
+TEST_F(PriorityFusionTest, FusesQwixQuantization) {
+  absl::string_view kHlo = R"(
+HloModule hlo_qwix_quantize_bf16_s8_2x256x512_tile128
+
+region_0.1 {
+  reduce_max.3 = bf16[] parameter(0)
+  reduce_max.4 = bf16[] parameter(1)
+  ROOT reduce_max.5 = bf16[] maximum(reduce_max.3, reduce_max.4)
+}
+
+ENTRY main.4 {
+  val.1 = bf16[2,256,512]{2,1,0} parameter(0)
+  reshape.5 = bf16[2,256,4,128]{3,2,1,0} reshape(val.1)
+  reshape.4 = bf16[2,256,4,128]{3,2,1,0} reshape(val.1)
+  abs.1 = bf16[2,256,4,128]{3,2,1,0} abs(reshape.4)
+  constant_neg_inf = bf16[] constant(-inf)
+  reduce_max.7 = bf16[2,256,4]{2,1,0} reduce(abs.1, constant_neg_inf), dimensions={3}, to_apply=region_0.1
+  constant_qmax = bf16[] constant(127.5)
+  div_qmax = bf16[2,256,4]{2,1,0} broadcast(constant_qmax), dimensions={}
+  scale_raw = bf16[2,256,4]{2,1,0} divide(reduce_max.7, div_qmax)
+  constant_zero = bf16[] constant(0)
+  broadcast_zero = bf16[2,256,4]{2,1,0} broadcast(constant_zero), dimensions={}
+  is_zero = pred[2,256,4]{2,1,0} compare(scale_raw, broadcast_zero), direction=EQ
+  constant_one = bf16[] constant(1)
+  broadcast_one = bf16[2,256,4]{2,1,0} broadcast(constant_one), dimensions={}
+  scale = bf16[2,256,4]{2,1,0} select(is_zero, broadcast_one, scale_raw)
+  reshape.6 = bf16[2,256,4,1]{3,2,1,0} reshape(scale)
+  div.8 = bf16[2,256,4,1]{3,2,1,0} broadcast(reshape.6), dimensions={0,1,2,3}
+  div.9 = bf16[2,256,4]{2,1,0} reshape(div.8)
+  div.10 = bf16[2,256,4,128]{3,2,1,0} broadcast(div.9), dimensions={0,1,2}
+  div.11 = bf16[2,256,4,128]{3,2,1,0} divide(reshape.5, div.10)
+  reshape.7 = bf16[2,256,512]{2,1,0} reshape(div.11)
+  jit_round = bf16[2,256,512]{2,1,0} round-nearest-even(reshape.7)
+  convert_element_type = s8[2,256,512]{2,1,0} convert(jit_round)
+  ROOT tuple.1 = (s8[2,256,512]{2,1,0}, bf16[2,256,4]{2,1,0}) tuple(convert_element_type, scale)
+}
+  )";
+
+  // We expect 3 fusions for now (reduction, scale computation, and
+  // quantization).
+  // TODO: b/482345867 - The goal is to eventually reduce this to 1.
+  GpuHloCostAnalysis::Options options;
+  options.count_multiple_input_accesses = true;
+  auto priority_fusion = PriorityFusion(nullptr, device_info_, &alias_info_,
+                                        options, &mlir_context_);
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion),
+                            R"(
+CHECK: ENTRY
+CHECK: %[[VAL:.*]] = bf16[2,256,512]{2,1,0} parameter(0)
+CHECK: %[[RED_FUSION:.*]] = bf16[2,256,4]{2,1,0} fusion(%[[VAL]]), kind=kInput
+CHECK: %[[SCALE_FUSION:.*]] = bf16[2,256,4]{2,1,0} fusion(%[[RED_FUSION]]), kind=kLoop
+CHECK: %[[QUANT_FUSION:.*]] = s8[2,256,512]{2,1,0} fusion(%[[VAL]], %[[SCALE_FUSION]]), kind=kLoop
+CHECK: ROOT %{{.*}} = (s8[2,256,512]{2,1,0}, bf16[2,256,4]{2,1,0}) tuple(%[[QUANT_FUSION]], %[[SCALE_FUSION]])
+      )");
 }
 
 }  // namespace gpu

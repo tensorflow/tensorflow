@@ -28,7 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
@@ -46,7 +46,7 @@ namespace {
 
 typedef absl::flat_hash_map<std::string, xla::CompiledMemoryStats>
     MpmdCompiledMemoryStats;
-typedef absl::flat_hash_map<std::string, absl::Span<xla::ifrt::Device* const>>
+typedef absl::flat_hash_map<std::string, absl::Span<Device* const>>
     MpmdAddressableDevices;
 
 constexpr int64_t kGiB = 1024 * 1024 * 1024;
@@ -54,32 +54,32 @@ constexpr int64_t kGiB = 1024 * 1024 * 1024;
 class ProgramMemoryTracerTest
     : public xla::ifrt::test_util::IfrtIrLoadedExecutableTestBase {
  protected:
-  std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> CreateCompileOptions(
-      const xla::ifrt::DeviceListRef& devices) {
-    std::vector<xla::ifrt::DeviceId> device_assignments;
+  std::unique_ptr<IfrtIRCompileOptions> CreateCompileOptions(
+      const DeviceListRef& devices) {
+    std::vector<DeviceId> device_assignments;
     device_assignments.reserve(devices->size());
     for (const auto& device : devices->devices()) {
       device_assignments.push_back(device->Id());
     }
-    return std::make_unique<xla::ifrt::IfrtIRCompileOptions>(
-        std::move(device_assignments), xla::ifrt::AtomExecutableMap(),
+    return std::make_unique<IfrtIRCompileOptions>(
+        std::move(device_assignments), AtomExecutableMap(),
         std::make_shared<absl::flat_hash_map<
-            std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>());
+            std::string, std::unique_ptr<CompileOptions>>>());
   }
 
-  absl::StatusOr<xla::ifrt::DeviceListRef> PickDevices(int count) {
-    absl::Span<xla::ifrt::Device* const> devices = client_->devices();
+  absl::StatusOr<DeviceListRef> PickDevices(int count) {
+    absl::Span<Device* const> devices = client_->devices();
     TF_RET_CHECK(count <= devices.size())
         << "Requested " << count << " devices. Only have " << devices.size();
     return client_->MakeDeviceList(devices.first(count));
   }
 
   absl::StatusOr<std::shared_ptr<IfrtIrLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp mlir_module, xla::ifrt::DeviceListRef devices) {
-    auto program = std::make_unique<xla::ifrt::IfrtIRProgram>(mlir_module);
+      mlir::ModuleOp mlir_module, DeviceListRef devices) {
+    auto program = std::make_unique<IfrtIRProgram>(mlir_module);
     auto options = CreateCompileOptions(devices);
     TF_ASSIGN_OR_RETURN(
-        xla::ifrt::LoadedExecutableRef executable,
+        LoadedExecutableRef executable,
         client_->GetDefaultCompiler()
             ->CompileAndLoad(std::move(program), std::move(options))
             .Await());
@@ -116,10 +116,10 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
                        CompileAndLoad(mlir_module.get(), devices));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::IfrtIrProgramMemoryStats memory_stats,
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 6 * kGiB);
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 3 * kGiB);
@@ -131,6 +131,38 @@ module {
   EXPECT_EQ(memory_stats
                 .device_to_peak_bytes_used[devices->devices()[1]->Id().value()],
             3 * kGiB);
+}
+
+TEST_F(ProgramMemoryTracerTest, BitcastArraysDoesntChangeMemoryStats) {
+  std::string source = R"(
+!array0 = !ifrt.array<tensor<1024x1024x768xi32>,
+                      #ifrt.sharding_param<1x1x1 to [0] on 1>, [0]>
+!array1 = !ifrt.array<tensor<1x1024x1024x768xi32>,
+                      #ifrt.sharding_param<1x1x1x1 to [0] on 1>, [0]>
+module {
+  func.func @main(
+      %arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated}) -> (!array1)
+      attributes {ifrt.function} {
+    %0, %1 = ifrt.BitcastArrays(%arg0, %arg1)
+      {donated=true} : (!array0, !array1) -> (!array1, !array0)
+    return %0 : !array1
+  }
+}
+  )";
+  ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+                       LoadFromSource(source));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(1));
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
+                       CompileAndLoad(mlir_module.get(), devices));
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
+                       executable->GetIfrtIrProgramMemoryStats());
+  EXPECT_EQ(memory_stats.argument_size_in_bytes, 6 * kGiB);
+  EXPECT_EQ(memory_stats.output_size_in_bytes, 3 * kGiB);
+  EXPECT_EQ(memory_stats.host_argument_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats.host_output_size_in_bytes, 0);
+  EXPECT_EQ(memory_stats
+                .device_to_peak_bytes_used[devices->devices()[0]->Id().value()],
+            6 * kGiB);
 }
 
 TEST_F(ProgramMemoryTracerTest, IfrtIrProgramMemoryStatsWithCallOps) {
@@ -176,10 +208,10 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
                        CompileAndLoad(mlir_module.get(), devices));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::IfrtIrProgramMemoryStats memory_stats,
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 5 * kGiB);
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 1024);
@@ -193,8 +225,7 @@ module {
                        executable->GetMpmdAddressableDevices());
   for (const auto& [name, stats] : executable_memory_stats) {
     ASSERT_TRUE(mpmd_addressable_devices.contains(name));
-    absl::Span<xla::ifrt::Device* const> devices =
-        mpmd_addressable_devices[name];
+    absl::Span<Device* const> devices = mpmd_addressable_devices[name];
     for (const auto& device : devices) {
       expected_memory[device->Id().value()] = std::max(
           expected_memory[device->Id().value()],
@@ -247,10 +278,10 @@ module {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
                        CompileAndLoad(mlir_module.get(), devices));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::IfrtIrProgramMemoryStats memory_stats,
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.output_size_in_bytes, 3 * kGiB);
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 1024);
@@ -264,8 +295,7 @@ module {
                        executable->GetMpmdAddressableDevices());
   for (const auto& [name, stats] : executable_memory_stats) {
     ASSERT_TRUE(mpmd_addressable_devices.contains(name));
-    absl::Span<xla::ifrt::Device* const> devices =
-        mpmd_addressable_devices[name];
+    absl::Span<Device* const> devices = mpmd_addressable_devices[name];
     expected_memory[devices[0]->Id().value()] =
         std::max(expected_memory[devices[0]->Id().value()],
                  stats.temp_size_in_bytes + stats.generated_code_size_in_bytes);
@@ -307,10 +337,10 @@ module @sin_from_offloaded_arg {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
                        CompileAndLoad(mlir_module.get(), devices));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::IfrtIrProgramMemoryStats memory_stats,
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   // Arrays allocated on host memory should not be counted in the memory stats.
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 0);
@@ -336,10 +366,10 @@ module @padded_arrays_with_layouts {
   )";
   ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
                        LoadFromSource(source));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::DeviceListRef devices, PickDevices(2));
+  ASSERT_OK_AND_ASSIGN(DeviceListRef devices, PickDevices(2));
   ASSERT_OK_AND_ASSIGN(std::shared_ptr<IfrtIrLoadedExecutable> executable,
                        CompileAndLoad(mlir_module.get(), devices));
-  ASSERT_OK_AND_ASSIGN(xla::ifrt::IfrtIrProgramMemoryStats memory_stats,
+  ASSERT_OK_AND_ASSIGN(IfrtIrProgramMemoryStats memory_stats,
                        executable->GetIfrtIrProgramMemoryStats());
   EXPECT_EQ(memory_stats.argument_size_in_bytes, 11264);
   // The second dimension is padded to 128.

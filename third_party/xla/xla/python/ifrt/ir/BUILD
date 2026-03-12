@@ -809,6 +809,7 @@ cc_library(
         ":ifrt_ir_program",
         ":program_memory_tracer",
         "//xla:status_macros",
+        "//xla/pjrt:compiled_memory_stats",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt:test_util",
