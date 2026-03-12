@@ -903,7 +903,7 @@ class SingleOpModel {
 
   // Return a vector with the flattened contents of a tensor.
   template <typename T>
-  std::vector<T> ExtractVector(int index) const {
+  absl::Span<T> ExtractVector(int index) const {
     const auto* tensor = interpreter_->tensor(index);
     ABSL_CHECK(tensor) << "Tensor at index " << index << " is null.";
 
@@ -912,7 +912,7 @@ class SingleOpModel {
 
     // If the tensor has no elements, return an empty vector immediately.
     if (num_elements == 0) {
-      return std::vector<T>();
+      return absl::Span<T>();
     }
 
     const T* v = interpreter_->typed_tensor<T>(index);
@@ -936,7 +936,7 @@ class SingleOpModel {
       tensor_size = (tensor_size + 1) / 2;
     }
 
-    return std::vector<T>(v, v + tensor_size);
+    return absl::Span<T>(v, v + tensor_size);
   }
 
   // Return the TFLite model buffer, only available after BuildInterpreter.
