@@ -20,7 +20,8 @@ def _tf_bind():
     # If that ends up being the case, please leave a comment explaining
     # why we can't depend on the canonical build target.
 
-def workspace():
+def models_repositories():
+    """Load TensorFlow models repositories."""
     http_archive(
         name = "inception_v1",
         build_file = "//:models.BUILD",
@@ -74,6 +75,9 @@ def workspace():
         ],
     )
 
+def workspace():
+    """TensorFlow workspace initialization."""
+    models_repositories()
     bazel_toolchains_repositories()
 
     # Apple rules for Bazel. https://github.com/bazelbuild/rules_apple.

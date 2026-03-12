@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace stream_executor {
@@ -71,6 +72,19 @@ TEST(ExecutableAbiVersionTest, FromDeviceDescriptionRocm) {
   EXPECT_THAT(executable_abi_version.platform_name(), "ROCm");
   EXPECT_THAT(executable_abi_version.proto(),
               EqualsProto(R"pb(platform_name: "ROCm")pb"));
+}
+
+TEST(ExecutableAbiVersionTest, FromDeviceDescriptionOneAPI) {
+  DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      GpuComputeCapability(OneAPIComputeCapability::BMG()));
+
+  ASSERT_OK_AND_ASSIGN(
+      ExecutableAbiVersion executable_abi_version,
+      ExecutableAbiVersion::FromDeviceDescription(device_description));
+  EXPECT_THAT(executable_abi_version.platform_name(), "SYCL");
+  EXPECT_THAT(executable_abi_version.proto(),
+              EqualsProto(R"pb(platform_name: "SYCL")pb"));
 }
 
 }  // namespace

@@ -165,35 +165,9 @@ TEST(NamedShardingTest, ToString) {
   EXPECT_EQ(sharding_dim.ToString(),
             "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'c'}, {'a', 'b':(2)2, ?}]}");
 
-  NamedSharding sharding_fully_replicated = NamedSharding::Replicate();
-  EXPECT_EQ(sharding_fully_replicated.ToString(), "{mesh[], replicated}");
-  NamedSharding sharding_fully_replicated_with_mesh(mesh);
-  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], replicated}");
-  NamedSharding sharding_replicated =
-      test_utils::FromAxisNames(mesh, {}, {"c"});
-  EXPECT_EQ(sharding_replicated.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [], replicated={'c'}}");
-
   Mesh maximal_mesh(5);
   NamedSharding single_device_sharding(maximal_mesh);
   EXPECT_EQ(single_device_sharding.ToString(), "{maximal_mesh[device_id=5]}");
-
-  NamedSharding sharding_fully_unreduced = NamedSharding::Unreduced(mesh);
-  EXPECT_EQ(sharding_fully_unreduced.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], unreduced}");
-  NamedSharding sharding_unreduced =
-      test_utils::FromAxisNames(mesh, {{}, {}}, {}, {"d:(4)2"});
-  EXPECT_EQ(sharding_unreduced.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{}, {}], unreduced={'d':(4)2}}");
-
-  NamedSharding sharding_fully_manual = NamedSharding::Manual(mesh);
-  EXPECT_EQ(sharding_fully_manual.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], manual}");
-  NamedSharding sharding_manual =
-      test_utils::FromAxisNames(mesh, {{}}, {}, {}, {"d:(4)2"});
-  EXPECT_EQ(sharding_manual.ToString(),
-            "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{}], manual={'d':(4)2}}");
 
   Mesh non_iota_mesh(
       TileAssignment(/*dims=*/{2, 4, 4, 2}, /*reshape_dims=*/{1, 4, 1, 16},
@@ -219,6 +193,62 @@ TEST(NamedShardingTest, ToString) {
       "{mesh['a'=2,'b'=4,'c'=3,'d'=8], [{'a'}], replicated={'c'}, "
       "unreduced={'d':(4)2}, manual={'b':(2)2}, metadata={{op_name=\"foo\"}, "
       "{op_name=\"bar\"}}}");
+}
+
+TEST(NamedShardingTest, ToStringReplicated) {
+  Mesh mesh({2, 8}, {"a", "b"});
+
+  NamedSharding sharding_fully_replicated = NamedSharding::Replicate();
+  EXPECT_EQ(sharding_fully_replicated.ToString(), "{mesh[], replicated}");
+
+  NamedSharding sharding_fully_replicated_with_dims =
+      test_utils::FromAxisNames(mesh, {{}, {}});
+  EXPECT_EQ(sharding_fully_replicated_with_dims.ToString(),
+            "{mesh['a'=2,'b'=8], [{}, {}]}");
+
+  NamedSharding sharding_fully_replicated_with_mesh(mesh);
+  EXPECT_EQ(sharding_fully_replicated_with_mesh.ToString(),
+            "{mesh['a'=2,'b'=8], replicated}");
+
+  NamedSharding sharding_replicated =
+      test_utils::FromAxisNames(mesh, {}, {"b"});
+  EXPECT_EQ(sharding_replicated.ToString(),
+            "{mesh['a'=2,'b'=8], [], replicated={'b'}}");
+}
+
+TEST(NamedShardingTest, ToStringUnreduced) {
+  Mesh mesh({2, 8}, {"a", "b"});
+
+  NamedSharding sharding_fully_unreduced = NamedSharding::Unreduced(mesh);
+  EXPECT_EQ(sharding_fully_unreduced.ToString(),
+            "{mesh['a'=2,'b'=8], unreduced}");
+
+  NamedSharding sharding_fully_unreduced_with_dims = test_utils::FromAxisNames(
+      mesh, {{}, {}}, {}, /*unreduced_axes=*/{"a", "b"});
+  EXPECT_EQ(sharding_fully_unreduced_with_dims.ToString(),
+            "{mesh['a'=2,'b'=8], [{}, {}], unreduced={'a', 'b'}}");
+
+  NamedSharding sharding_unreduced =
+      test_utils::FromAxisNames(mesh, {{}, {}}, {}, {"b:(4)2"});
+  EXPECT_EQ(sharding_unreduced.ToString(),
+            "{mesh['a'=2,'b'=8], [{}, {}], unreduced={'b':(4)2}}");
+}
+
+TEST(NamedShardingTest, ToStringManual) {
+  Mesh mesh({2, 8}, {"a", "b"});
+
+  NamedSharding sharding_fully_manual = NamedSharding::Manual(mesh);
+  EXPECT_EQ(sharding_fully_manual.ToString(), "{mesh['a'=2,'b'=8], manual}");
+
+  NamedSharding sharding_fully_manual_with_dims = test_utils::FromAxisNames(
+      mesh, {{}, {}}, {}, {}, /*manual_axes=*/{"a", "b"});
+  EXPECT_EQ(sharding_fully_manual_with_dims.ToString(),
+            "{mesh['a'=2,'b'=8], [{}, {}], manual={'a', 'b'}}");
+
+  NamedSharding sharding_manual =
+      test_utils::FromAxisNames(mesh, {{}}, {}, {}, {"b:(4)2"});
+  EXPECT_EQ(sharding_manual.ToString(),
+            "{mesh['a'=2,'b'=8], [{}], manual={'b':(4)2}}");
 }
 
 TEST(NamedShardingTest, DimensionShardingAppend) {
