@@ -138,6 +138,9 @@ class TiledHloComputation {
     return tiling_space_->mlir_context();
   };
 
+  // Returns the tiling space.
+  const TilingSpace& tiling_space() const { return *tiling_space_; }
+
   // Returns a string representation of the analysis.
   std::string ToString() const;
 

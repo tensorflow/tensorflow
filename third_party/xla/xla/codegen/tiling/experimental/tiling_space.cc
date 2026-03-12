@@ -50,6 +50,18 @@ std::string HloPtrToString(const HloInstruction* hlo) {
 
 }  // namespace
 
+std::string TilingSpace::DimensionInfo::ToString() const {
+  std::stringstream ss;
+  ss << id << " type: "
+     << (type == DimensionSemantics::kParallel ? "parallel" : "sequential")
+     << " size: " << dimension_size;
+  if (IsTileSizeSet()) {
+    ss << " tile size: " << tile_size;
+  }
+  ss << " dim ID:" << dim_position << " hlo: " << HloPtrToString(hlo);
+  return ss.str();
+}
+
 void TilingSpace::AppendDimension(const HloInstruction* hlo,
                                   int64_t dim_position, int64_t dim_size,
                                   DimensionSemantics dim_type) {
@@ -136,11 +148,7 @@ std::string TilingSpace::ToString() const {
   std::stringstream ss;
   ss << "Dimensions:\n";
   for (const auto& dim : dimensions_) {
-    ss << dim.id << " type: "
-       << (dim.type == DimensionSemantics::kParallel ? "parallel"
-                                                     : "sequential")
-       << " size: " << dim.dimension_size << " dim ID:" << dim.dim_position
-       << " hlo: " << HloPtrToString(dim.hlo) << "\n";
+    ss << dim.ToString() << "\n";
   }
   if (!rt_vars_.empty()) {
     ss << "Runtime variables:\n";

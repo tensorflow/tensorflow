@@ -117,6 +117,47 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "scheduling",
+    srcs = ["scheduling.cc"],
+    hdrs = ["scheduling.h"],
+    deps = [
+        ":tile",
+        ":tiled_hlo",
+        "//xla:util",
+        "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_map_converter",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "scheduling_test",
+    srcs = ["scheduling_test.cc"],
+    deps = [
+        ":scheduling",
+        ":tile",
+        ":tiled_hlo",
+        "//xla/hlo/analysis:indexing_test_utils",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_traversal",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "tiled_hlo",
     srcs = ["tiled_hlo.cc"],
     hdrs = ["tiled_hlo.h"],
