@@ -428,11 +428,19 @@ int TritonDotFusionSearchSpace::GetMaxContractingSplit(
   VLOG(5) << "Computing split_k: Want split_k of up to " << split_for_occupancy
           << " for sufficient occupancy.";
 
+  // Calculate the maximum split_k that is valid with the smallest block_k.
+  // The validation in MakeSplitKOperand requires:
+  //   split_k <= ceil(contracting_size / block_k)
+  // Using min_contracting_tile_size_ (smallest block_k) gives largest valid
+  // split.
+  const int64_t max_valid_split = CeilOfRatio(
+      contracting_size_, static_cast<int64_t>(min_contracting_tile_size_));
   const int64_t split_for_contracting_size =
-      NextPowerOfTwo(contracting_size_ / min_contracting_tile_size_);
+      PreviousPowerOfTwo(max_valid_split);
   VLOG(5) << "Computing split_k: Can't have split_k more than "
           << split_for_contracting_size
-          << " to have sufficiently large contracting dimension.";
+          << " to have sufficiently large contracting dimension (max_valid="
+          << max_valid_split << ").";
 
   const int64_t split =
       std::min(split_for_occupancy, split_for_contracting_size);
@@ -602,6 +610,20 @@ void TritonDotFusionSearchSpace::AddContractingTiling(
                min_contracting_tile_size_);
   ConfigWithNotes new_config = config;
   for (int k = min_contracting_tile_size_; k <= max_tile_size; k *= 2) {
+    // Safety check: skip block_k values that are incompatible with split_k.
+    // The validation in MakeSplitKOperand checks:
+    //   split_k > ceil(contracting_size / block_k) → error
+    // So we need: split_k <= ceil(contracting_size / block_k)
+    // Skip this check if keep_large_split is true (user forced a large split).
+    if (!config.keep_large_split) {
+      const int64_t max_split_for_this_k =
+          CeilOfRatio(contracting_size_, static_cast<int64_t>(k));
+      if (split > max_split_for_this_k) {
+        VLOG(10) << "Skipping block_k=" << k << " for split_k=" << split
+                 << " (max_split=" << max_split_for_this_k << ")";
+        continue;
+      }
+    }
     new_config.config.block_k = k;
     VLOG(10) << "Adding contracting tiling: config = " << new_config.ToString();
     updated_configs.push_back(new_config);

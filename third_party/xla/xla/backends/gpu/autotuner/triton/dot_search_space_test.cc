@@ -634,5 +634,31 @@ TEST_F(DotSearchSpaceTest, RestrictsSplitKPerNMTile) {
               ElementsAreArray(expected));
 }
 
+// Regression test: Ensures that split_k and block_k combinations are compatible
+// with the validation in MakeSplitKOperand. For a config to be valid:
+//   split_k <= ceil(contracting_size / block_k)
+// This test uses contracting_dim=290 which previously could generate invalid
+// configs like split_k=8, block_k=64 (since 8 > ceil(290/64) = 5).
+TEST_F(DotSearchSpaceTest, EnsuresSplitKAndBlockKAreCompatible) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<VerifiedHloModule> module,
+      GetDefaultDotModule(/*lhs_parallel_dim=*/130, /*rhs_parallel_dim=*/1,
+                          /*contracting_dim=*/290));
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs();
+
+  // Verify that for each config, split_k <= ceil(contracting_dim / block_k).
+  // This is the constraint enforced by MakeSplitKOperand.
+  for (const auto& config : configs) {
+    int64_t max_valid_split =
+        (290 + config.block_k - 1) / config.block_k;  // ceil division
+    EXPECT_LE(config.split_k, max_valid_split)
+        << "Invalid config: split_k=" << config.split_k
+        << ", block_k=" << config.block_k
+        << ", max_valid_split=" << max_valid_split;
+  }
+}
+
 }  // namespace
 }  // namespace xla::gpu
