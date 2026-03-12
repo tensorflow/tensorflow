@@ -1811,8 +1811,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
       pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description,
                                        /*normalize_dots=*/true);
       pipeline.AddPass<GemmFusion>(gpu_version);
-      pipeline.AddPass<GemmFusionSwapOperands>();
       pipeline.AddPass<HoistFusedBitcasts>();
+      pipeline.AddPass<GemmFusionSwapOperands>();
     } else if (cuda_cc != nullptr &&
                cuda_cc->major == se::CudaComputeCapability::kVolta) {
       // Greedy pattern matching for custom kernel fusions.
