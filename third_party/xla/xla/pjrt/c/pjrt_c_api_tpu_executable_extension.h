@@ -183,6 +183,18 @@ PJRT_DEFINE_STRUCT_TRAITS(
 typedef PJRT_Error* PJRT_TpuExecutable_GetTpuCompilationEnvFieldAsString(
     PJRT_TpuExecutable_GetTpuCompilationEnvFieldAsString_Args* args);
 
+struct PJRT_TpuExecutable_IsTpuPredeterminedError_Args {
+  size_t struct_size;
+  const char* serialized_status;
+  size_t serialized_status_size;
+  bool is_predetermined;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_IsTpuPredeterminedError_Args,
+                          is_predetermined);
+
+typedef PJRT_Error* PJRT_TpuExecutable_IsTpuPredeterminedError(
+    PJRT_TpuExecutable_IsTpuPredeterminedError_Args* args);
+
 typedef struct PJRT_TpuExecutable_Extension {
   PJRT_Extension_Base base;
   PJRT_TpuExecutable_GetTargetArguments* get_target_arguments;
@@ -193,9 +205,10 @@ typedef struct PJRT_TpuExecutable_Extension {
   PJRT_TpuExecutable_SetTpuCompilationEnv* set_tpu_compilation_env;
   PJRT_TpuExecutable_GetTpuCompilationEnvFieldAsString*
       get_tpu_compilation_env_field_as_string;
+  PJRT_TpuExecutable_IsTpuPredeterminedError* is_tpu_predetermined_error;
 } PJRT_TpuExecutable_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_Extension,
-                          get_tpu_compilation_env_field_as_string);
+                          is_tpu_predetermined_error);
 
 #ifdef __cplusplus
 }

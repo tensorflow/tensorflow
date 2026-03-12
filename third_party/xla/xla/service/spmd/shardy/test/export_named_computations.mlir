@@ -129,14 +129,14 @@ func.func @xla.sdy.inlinable_manual_computation_body(
   return %arg0 : tensor<8x2xi32>
 }
 
-// CHECK-NOT:   func @xla.sdy.inlinable_manual_computation_body_0(
+// CHECK:   func @xla.sdy.inlinable_manual_computation_body_0(
 func.func @xla.sdy.inlinable_manual_computation_body_0(
   %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
  -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) {
   return %arg0 : tensor<8x2xi32>
 }
 
-// CHECK-NOT:   func @xla.sdy.inlinable_manual_computation_body_1(
+// CHECK:   func @xla.sdy.inlinable_manual_computation_body_1(
 func.func @xla.sdy.inlinable_manual_computation_body_1(
   %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
  -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) {

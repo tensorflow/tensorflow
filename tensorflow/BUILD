@@ -1180,7 +1180,6 @@ tf_cc_shared_library(
     linkstatic = 1,
     per_os_targets = True,
     roots = [
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
         "//tensorflow/c:env",
         "//tensorflow/c:kernels",

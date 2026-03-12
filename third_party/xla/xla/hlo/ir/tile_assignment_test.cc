@@ -23,12 +23,16 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/array2d.h"
 
 namespace xla {
 namespace {
+
+using ::absl_testing::IsOk;
+using ::absl_testing::StatusIs;
 
 TEST(IotaTileAssignmentTest, Create) {
   // Test with dims only
@@ -292,6 +296,81 @@ TEST(TileAssignmentTest, EachStatus) {
         return absl::OkStatus();
       });
   EXPECT_FALSE(status.ok());
+}
+
+TEST(TileAssignmentTest, GetOrderedSubDims) {
+  std::vector<int64_t> dims = {6, 35};
+  std::vector<int64_t> reshape_dims = {7, 10, 3};
+  std::vector<int> transpose_perm = {2, 1, 0};
+
+  auto result = GetOrderedSubDims(dims, reshape_dims, transpose_perm);
+  ASSERT_THAT(result, IsOk());
+  ASSERT_EQ(result->size(), 4);
+
+  EXPECT_EQ((*result)[0].tile_dim_index, 1);
+  EXPECT_EQ((*result)[0].tile_sub_dim_index, 0);
+  EXPECT_EQ((*result)[0].reshape_dim_index, 0);
+  EXPECT_EQ((*result)[0].size, 7);
+
+  EXPECT_EQ((*result)[1].tile_dim_index, 0);
+  EXPECT_EQ((*result)[1].tile_sub_dim_index, 0);
+  EXPECT_EQ((*result)[1].reshape_dim_index, 1);
+  EXPECT_EQ((*result)[1].size, 2);
+
+  EXPECT_EQ((*result)[2].tile_dim_index, 1);
+  EXPECT_EQ((*result)[2].tile_sub_dim_index, 1);
+  EXPECT_EQ((*result)[2].reshape_dim_index, 1);
+  EXPECT_EQ((*result)[2].size, 5);
+
+  EXPECT_EQ((*result)[3].tile_dim_index, 0);
+  EXPECT_EQ((*result)[3].tile_sub_dim_index, 1);
+  EXPECT_EQ((*result)[3].reshape_dim_index, 2);
+  EXPECT_EQ((*result)[3].size, 3);
+
+  std::vector<int64_t> dims_invalid = {2, 3};
+  std::vector<int64_t> reshape_dims_invalid = {2, 3};
+  std::vector<int> transpose_perm_invalid = {1, 0};
+  auto error_result = GetOrderedSubDims(dims_invalid, reshape_dims_invalid,
+                                        transpose_perm_invalid);
+  EXPECT_THAT(error_result, StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
+TEST(TileAssignmentTest, GetOrderedSubDimsFromIotaTileAssignment) {
+  IotaTileAssignment iota = IotaTileAssignment::Create({8, 1}, {4, 2}, {1, 0});
+  auto result = GetOrderedSubDimsFromIotaTileAssignment(iota);
+  ASSERT_TRUE(result.has_value());
+  ASSERT_EQ(result->size(), 2);
+
+  EXPECT_EQ((*result)[0].tile_dim_index, 0);
+  EXPECT_EQ((*result)[0].tile_sub_dim_index, 0);
+  EXPECT_EQ((*result)[0].reshape_dim_index, 0);
+  EXPECT_EQ((*result)[0].size, 4);
+
+  EXPECT_EQ((*result)[1].tile_dim_index, 0);
+  EXPECT_EQ((*result)[1].tile_sub_dim_index, 1);
+  EXPECT_EQ((*result)[1].reshape_dim_index, 1);
+  EXPECT_EQ((*result)[1].size, 2);
+
+  IotaTileAssignment iota_invalid =
+      IotaTileAssignment::Create({2, 5}, {2, 5}, {1, 0});
+  auto result_invalid = GetOrderedSubDimsFromIotaTileAssignment(iota_invalid);
+  EXPECT_FALSE(result_invalid.has_value());
+}
+
+TEST(TileAssignmentTest, AnalyzeTileAssignment) {
+  IotaTileAssignment iota =
+      IotaTileAssignment::Create({6, 35}, {7, 10, 3}, {2, 1, 0});
+  TileAssignment ta(iota);
+  auto result = AnalyzeTileAssignment(ta);
+  ASSERT_TRUE(result.has_value());
+
+  ASSERT_EQ(result->sub_dims.size(), 4);
+  EXPECT_THAT(result->local_mesh, ::testing::ElementsAre(7, 2, 5, 3));
+
+  Array2D<int64_t> array({{0, 1}, {2, 3}});
+  TileAssignment ta_v1(std::make_shared<Array<int64_t>>(array));
+  auto result_v1 = AnalyzeTileAssignment(ta_v1);
+  EXPECT_FALSE(result_v1.has_value());
 }
 
 }  // namespace

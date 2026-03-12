@@ -125,10 +125,6 @@ tf_module {
     argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "register_filesystem_plugin"
-    argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "unregister_dispatch_for"
     argspec: "args=[\'dispatch_target\'], varargs=None, keywords=None, defaults=None"
   }

@@ -253,23 +253,6 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
   });
 }
 
-void eraseUncalledInlineableManualComputations(
-    ModuleOp moduleOp, SymbolTable& symbolTable,
-    const SymbolUserMap& symbolUserMap) {
-  llvm::SmallVector<FuncOp> uncalledInlineableManualComputationFuncs;
-  for (FuncOp funcOp : moduleOp.getOps<FuncOp>()) {
-    if (StringRef funcSymName = funcOp.getName();
-        funcSymName.contains(kInlineableManualComputationFuncName) &&
-        symbolUserMap.useEmpty(funcOp)) {
-      uncalledInlineableManualComputationFuncs.push_back(funcOp);
-    }
-  }
-  // TODO(enver): Erase directly without collecting on a vector.
-  for (FuncOp funcOp : uncalledInlineableManualComputationFuncs) {
-    symbolTable.erase(funcOp);
-  }
-}
-
 // Converts a `NamedComputationOp` into a `CallOp`.
 class ExportNamedComputationsPass
     : public mlir::PassWrapper<ExportNamedComputationsPass,
@@ -294,12 +277,6 @@ class ExportNamedComputationsPass
 
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(moduleOp);
     exportNamedComputations(moduleOp, symbolTable, dedupFunctionsFully);
-
-    // Drop uncalled inlineable manual computation funcs.
-    // TODO(enver): Drop generically, not just inlined manual computation funcs.
-    SymbolUserMap symbolUserMap(symbolTableCollection, moduleOp);
-    eraseUncalledInlineableManualComputations(moduleOp, symbolTable,
-                                              symbolUserMap);
   }
 
   StringRef getArgument() const override {
