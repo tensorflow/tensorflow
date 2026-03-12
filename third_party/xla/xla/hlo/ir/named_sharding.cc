@@ -230,7 +230,7 @@ std::string NamedSharding::ToString(bool include_metadata) const {
   absl::StrAppend(&result, mesh_.ToString());
 
   // Special cases.
-  if (IsReplicated() && replicated_axes_.empty()) {
+  if (IsReplicated() && num_dimensions() == 0 && replicated_axes_.empty()) {
     absl::StrAppend(&result, ", replicated");
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
@@ -243,14 +243,14 @@ std::string NamedSharding::ToString(bool include_metadata) const {
     return result;
   }
 
-  if (IsUnreduced()) {
+  if (IsUnreduced() && num_dimensions() == 0) {
     absl::StrAppend(&result, ", unreduced");
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
   }
 
-  if (IsManual()) {
+  if (IsManual() && num_dimensions() == 0) {
     absl::StrAppend(&result, ", manual");
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
