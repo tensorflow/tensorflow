@@ -171,8 +171,7 @@ will be replaced by:
 ```
 
 Currently this handles the case where the source is the Func BlockArgs or
-the outputs of a ifrt.Call, ifrt.CallLoadedExecutable, ifrt.Reshard,
-ifrt.CopyArrays, and ifrt.RemapArrays.
+the outputs of another ifrt op.
   }];
 }
 
