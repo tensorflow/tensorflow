@@ -1,5 +1,5 @@
-// RUN: sdy_opt %s -xla-sdy-stablehlo-export-pipeline 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
-// RUN: sdy_opt %s -xla-sdy-stablehlo-export-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
+// RUN: sdy_opt %s -split-input-file -xla-sdy-stablehlo-export-pipeline 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
+// RUN: sdy_opt %s -split-input-file -xla-sdy-stablehlo-export-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
 
 sdy.mesh @mesh_0 = <["axis_0"=2, "axis_1"=4, "axis_2"=4]>
 sdy.mesh @mesh_1 = <["axis_0"=16]>
@@ -409,7 +409,7 @@ func.func @callback_transform_to_tuple(%arg0: tensor<2xf64> {sdy.sharding = #sdy
 }
 
 // CHECK-LABEL: @callback_no_result
-func.func private @callback_no_result(%arg0: tensor<f64>) {
+func.func public @callback_no_result(%arg0: tensor<f64>) {
   // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
   // CHECK-NEXT: stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {
   // CHECK-SAME:   api_version = 2 : i32, backend_config = "56238273106176",
@@ -777,3 +777,36 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-V3-SAME:    -> (tensor<1xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"}) {
 // CHECK-V3-NEXT:    %[[NEGATE:.*]] = stablehlo.negate %arg0 {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"} : tensor<1xi32>
 // CHECK-NEXT:    return %[[NEGATE]] : tensor<1xi32>
+
+// -----
+
+sdy.mesh @mesh = <["a"=2, "b"=2]>
+
+// CHECK-LABEL: func @deduplicated_named_computations_with_manual_computations
+// CHECK-NEXT:    call @foo(%arg0)
+// CHECK-NEXT:    call @foo(%arg0)
+// CHECK-NEXT:    return
+// CHECK-LABEL: func private @xla.sdy.inlinable_manual_computation_body(
+// CHECK:         return
+// CHECK-NOT:   @xla.sdy.inlinable_manual_computation_body_0(
+// CHECK-LABEL: func private @foo(
+// CHECK:         call @xla.sdy.inlinable_manual_computation_body(
+// CHECK:         return
+func.func @deduplicated_named_computations_with_manual_computations(%arg0: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+  %0 = sdy.named_computation<"foo">(%arg0) (%arg1: tensor<8xf32>) {
+    %1 = sdy.manual_computation(%arg1) in_shardings=[<@mesh, [{"a", "b"}]>] out_shardings=[<@mesh, [{"a", "b"}]>] manual_axes={"a"} (%arg2: tensor<4xf32>) {
+      %2 = stablehlo.multiply %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"b"}]>]>} : tensor<4xf32>
+      sdy.return %2 : tensor<4xf32>
+    } : (tensor<8xf32>) -> tensor<8xf32>
+    sdy.return %1 : tensor<8xf32>
+  } : (tensor<8xf32>) -> tensor<8xf32>
+  %1 = sdy.named_computation<"foo">(%arg0) (%arg1: tensor<8xf32>) {
+    %1 = sdy.manual_computation(%arg1) in_shardings=[<@mesh, [{"a", "b"}]>] out_shardings=[<@mesh, [{"a", "b"}]>] manual_axes={"a"} (%arg2: tensor<4xf32>) {
+      %2 = stablehlo.multiply %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"b"}]>]>} : tensor<4xf32>
+      sdy.return %2 : tensor<4xf32>
+    } : (tensor<8xf32>) -> tensor<8xf32>
+    sdy.return %1 : tensor<8xf32>
+  } : (tensor<8xf32>) -> tensor<8xf32>
+  return %0, %1 : tensor<8xf32>, tensor<8xf32>
+}
+
