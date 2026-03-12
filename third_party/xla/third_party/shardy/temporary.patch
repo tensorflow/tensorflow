@@ -1,54 +1,104 @@
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 67801b9..509398d 100644
+index 509398d..e761e68 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,34 +1 @@
+@@ -1 +1,84 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lld/ELF/Symbols.cpp b/lld/ELF/Symbols.cpp
----- a/lld/ELF/Symbols.cpp
--+++ b/lld/ELF/Symbols.cpp
--@@ -501,6 +501,12 @@
--     // reference is weak.
--     if (other.binding != STB_WEAK || !referenced)
--       binding = other.binding;
--+    // -u creates a placeholder Undefined (internalFile, STT_NOTYPE).
--+    // Adopt the real file and type from the object file's undefined.
--+    if (file == ctx.internalFile) {
--+      file = other.file;
--+      type = other.type;
--+    }
--   }
-- }
-- 
--diff -ruN --strip-trailing-cr a/lld/test/ELF/tls-mismatch.s b/lld/test/ELF/tls-mismatch.s
----- a/lld/test/ELF/tls-mismatch.s
--+++ b/lld/test/ELF/tls-mismatch.s
--@@ -31,6 +31,13 @@
-- # RUN: ld.lld %t.o %t.bc -o /dev/null
-- # RUN: ld.lld %t.bc %t.o -o /dev/null
-- 
--+## -u creates an Undefined with STT_NOTYPE. The object file's STT_TLS undefined
--+## should update the type so that the TLS IE GOT entry is correctly created.
--+# RUN: ld.lld -shared -u tls1 %t1.o %t1.o -o %t1.so
--+# RUN: llvm-readelf -rs %t1.so | FileCheck %s --check-prefix=UNDEF
--+# UNDEF: R_X86_64_TPOFF64 {{.*}} tls1 + 0
--+# UNDEF: 0000000000000000     0 TLS     GLOBAL DEFAULT  UND tls1
--+
-- # CHECK: error: TLS attribute mismatch: tls1
-- # CHECK-NEXT: >>> in {{.*}}.tmp.o
-- # CHECK-NEXT: >>> in {{.*}}
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-fuzzer/lldb-commandinterpreter-fuzzer/lldb-commandinterpreter-fuzzer.cpp b/lldb/tools/lldb-fuzzer/lldb-commandinterpreter-fuzzer/lldb-commandinterpreter-fuzzer.cpp
++--- a/lldb/tools/lldb-fuzzer/lldb-commandinterpreter-fuzzer/lldb-commandinterpreter-fuzzer.cpp
+++++ b/lldb/tools/lldb-fuzzer/lldb-commandinterpreter-fuzzer/lldb-commandinterpreter-fuzzer.cpp
++@@ -8,6 +8,8 @@
++ 
++ #include <string>
++ 
+++#include "utils/SBDebuggerContextManager.h"
+++
++ #include "lldb/API/SBCommandInterpreter.h"
++ #include "lldb/API/SBCommandInterpreterRunOptions.h"
++ #include "lldb/API/SBCommandReturnObject.h"
++@@ -15,6 +17,7 @@
++ #include "lldb/API/SBTarget.h"
++ 
++ using namespace lldb;
+++using namespace lldb_fuzzer;
++ 
++ extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv) {
++   SBDebugger::Initialize();
++@@ -22,6 +25,9 @@
++ }
++ 
++ extern "C" int LLVMFuzzerTestOneInput(uint8_t *data, size_t size) {
+++  static thread_local SBDebuggerContextManager ctx_manager =
+++      SBDebuggerContextManager();
+++
++   // Convert the data into a null-terminated string
++   std::string str((char *)data, size);
++ 
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-fuzzer/lldb-target-fuzzer/lldb-target-fuzzer.cpp b/lldb/tools/lldb-fuzzer/lldb-target-fuzzer/lldb-target-fuzzer.cpp
++--- a/lldb/tools/lldb-fuzzer/lldb-target-fuzzer/lldb-target-fuzzer.cpp
+++++ b/lldb/tools/lldb-fuzzer/lldb-target-fuzzer/lldb-target-fuzzer.cpp
++@@ -6,6 +6,7 @@
++ //
++ //===----------------------------------------------------------------------===//
++ 
+++#include "utils/SBDebuggerContextManager.h"
++ #include "utils/TempFile.h"
++ 
++ #include "lldb/API/SBDebugger.h"
++@@ -21,6 +22,9 @@
++ }
++ 
++ extern "C" int LLVMFuzzerTestOneInput(uint8_t *data, size_t size) {
+++  static thread_local SBDebuggerContextManager ctx_manager =
+++      SBDebuggerContextManager();
+++
++   std::unique_ptr<TempFile> file = TempFile::Create(data, size);
++   if (!file)
++     return 1;
++diff -ruN --strip-trailing-cr a/lldb/tools/lldb-fuzzer/utils/SBDebuggerContextManager.h b/lldb/tools/lldb-fuzzer/utils/SBDebuggerContextManager.h
++--- a/lldb/tools/lldb-fuzzer/utils/SBDebuggerContextManager.h
+++++ b/lldb/tools/lldb-fuzzer/utils/SBDebuggerContextManager.h
++@@ -0,0 +1,28 @@
+++//===------------------------------------------------------------*- C++ -*-===//
+++//
+++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+++// See https://llvm.org/LICENSE.txt for license information.
+++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+++//
+++//===----------------------------------------------------------------------===//
+++
+++#include "lldb/API/SBDebugger.h"
+++
+++using namespace lldb;
+++
+++namespace lldb_fuzzer {
+++
+++class SBDebuggerContextManager {
+++  inline static int instance_count;
+++
+++public:
+++  SBDebuggerContextManager() { ++instance_count; }
+++
+++  ~SBDebuggerContextManager() {
+++    --instance_count;
+++    if (instance_count == 0)
+++      SBDebugger::Terminate();
+++  }
+++};
+++
+++} // namespace lldb_fuzzer
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 8165939..1752f8e 100644
+index 1752f8e..84dcab8 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "acd52a2419592d7d3da0c4bacf736e8b84bcacbf"
--    LLVM_SHA256 = "2e19523c1b21129593aee41b7a532a6e5bccdfdc2ce80a517f4e998aed68c317"
-+    LLVM_COMMIT = "fdd62de9a5f3c92436f91fadedc7578e295c38da"
-+    LLVM_SHA256 = "7968f0e8f420c7061aa6080320a33609d4e19af5b31ba9bd33eee1c48de9286c"
+-    LLVM_COMMIT = "fdd62de9a5f3c92436f91fadedc7578e295c38da"
+-    LLVM_SHA256 = "7968f0e8f420c7061aa6080320a33609d4e19af5b31ba9bd33eee1c48de9286c"
++    LLVM_COMMIT = "bf2e4585d248af8f9998bff8d252a2cc0bc77a37"
++    LLVM_SHA256 = "7273783d0393a1e24c06ae19cba29eb326eaf24c019d7546dc1c8ee9f6c8619a"
  
      tf_http_archive(
          name = name,
