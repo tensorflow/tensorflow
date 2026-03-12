@@ -480,27 +480,8 @@ mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
                                      axisNames[axisRef.mesh_axis_index()]);
 }
 
-namespace {
-
-SmallVector<mlir::Type> getLeafTypes(mlir::TypeRange types) {
-  SmallVector<mlir::Type> leafTypes;
-  for (mlir::Type type : types) {
-    if (auto tupleType = mlir::dyn_cast<mlir::TupleType>(type)) {
-      SmallVector<mlir::Type> nestedLeafTypes =
-          getLeafTypes(tupleType.getTypes());
-      leafTypes.append(nestedLeafTypes.begin(), nestedLeafTypes.end());
-    } else {
-      leafTypes.push_back(type);
-    }
-  }
-  return leafTypes;
-}
-
-}  // namespace
-
 mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
-    const HloSharding& hloSharding, mlir::Type type,
-    mlir::MLIRContext* context) {
+    const HloSharding& hloSharding, mlir::MLIRContext* context) {
   CHECK(!hloSharding.IsTuple());
 
   // Replicated HloShardingV1/V2 are treated as placeholder shardings, allowing
@@ -510,9 +491,7 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
   if (!hloSharding.UseNamedShardingLeaf()) {
     CHECK(hloSharding.IsReplicated())
         << "Only V2 replicated sharding is supported for non-named sharding.";
-    return mlir::sdy::TensorShardingAttr::getFullyOpen(
-        context, mlir::sdy::getTensorRank(type),
-        mlir::sdy::MeshAttr::get(context, {}, {}));
+    return nullptr;
   }
 
   const NamedSharding& namedSharding = hloSharding.named_sharding();
@@ -555,40 +534,18 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
 }
 
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
-    const HloSharding& hloSharding, mlir::TypeRange types,
-    mlir::MLIRContext* context) {
+    const HloSharding& hloSharding, mlir::MLIRContext* context) {
   if (hloSharding.IsTuple()) {
     SmallVector<TensorShardingAttr> sdyShardings;
-    for (auto [elementType, elementSharding] :
-         llvm::zip_equal(getLeafTypes(types), hloSharding.tuple_elements())) {
+    for (const HloSharding& elementSharding : hloSharding.tuple_elements()) {
       sdyShardings.push_back(
-          convertToSdyShardingAttr(elementSharding, elementType, context));
+          convertToSdyShardingAttr(elementSharding, context));
     }
     return TensorShardingPerValueAttr::get(context, sdyShardings);
   }
 
-  if (types.empty()) {
-    // This case is for ops with 0 results, which corresponds to tuple<> in
-    // which case it can have replicated or maximal sharding.
-    CHECK(hloSharding.IsReplicatedOrSingleDevice());
-    if (hloSharding.IsReplicated()) {
-      return TensorShardingPerValueAttr::get(
-          context,
-          TensorShardingAttr::getFullyReplicated(
-              context, /*rank=*/0, mlir::sdy::MeshAttr::get(context, {}, {}),
-              /*isClosed=*/true));
-    }
-    // Maximal sharding
-    return TensorShardingPerValueAttr::get(
-        context, TensorShardingAttr::getFullyClosed(
-                     context, /*rank=*/0,
-                     mlir::sdy::MeshAttr::getMaximal(
-                         context, hloSharding.GetUniqueDevice())));
-  }
-
-  CHECK_EQ(types.size(), 1);
   return TensorShardingPerValueAttr::get(
-      context, convertToSdyShardingAttr(hloSharding, types[0], context));
+      context, convertToSdyShardingAttr(hloSharding, context));
 }
 
 bool isManualComputation(CallOp callOp) {

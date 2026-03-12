@@ -227,10 +227,9 @@ absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {
     // Allocate scratch buffers.
     const AllReduceStrategy strategy =
         GetAllReduceStrategy(GetInputSizeBytes(), is_multimem_enabled_);
-    const LaunchDimensions launch_dimensions =
-        launch_dimensions_.value_or(AllReduceLaunchDimensions(
-            buffers_[0].element_count, clique_key.num_local_participants(),
-            strategy));
+    const LaunchDimensions launch_dimensions = AllReduceLaunchDimensions(
+        buffers_[0].element_count, clique_key.num_local_participants(),
+        strategy);
     const int64_t kNumSignalFlags =
         clique_key.num_local_participants() * launch_dimensions.num_blocks();
     const int64_t kSignalBufferSize = xla::RoundUpTo<uint64_t>(
