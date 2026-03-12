@@ -13,8 +13,8 @@ xtile.entry_func @simple_wrap(%input: memref<1024xf32> {xla.some_attr = 1},
 // CHECK-DAG: %[[TILES_PER_WORKGROUP:.*]] = arith.constant 64 : index
 // CHECK-DAG: %[[TILE_COUNT:.*]] = arith.constant 1012 : index
 
-// CHECK: %[[INPUT:.*]] = xla_cpu.load %[[CALL_FRAME]], 0 : memref<1024xf32>
-// CHECK: %[[OUTPUT:.*]] = xla_cpu.load %[[CALL_FRAME]], 1 : memref<32xf64>
+// CHECK: %[[INPUT:.*]] = xla_cpu.load %[[CALL_FRAME]], 0  {llvm.align = {{[0-9]+}} : index, llvm.dereferenceable = {{[0-9]+}} : index} : memref<1024xf32>
+// CHECK: %[[OUTPUT:.*]] = xla_cpu.load %[[CALL_FRAME]], 1 {llvm.align = {{[0-9]+}} : index, llvm.dereferenceable = {{[0-9]+}} : index} : memref<32xf64>
 // CHECK: %[[WORKGROUP_ID:.*]] = xla_cpu.extract_workgroup_id %[[CALL_FRAME]], x
 
 // CHECK: %[[BOUNDED_WORKGROUP_ID:.*]] = arith.maxsi %[[WORKGROUP_ID]], %[[C0]] : index
@@ -30,8 +30,8 @@ xtile.entry_func @simple_wrap(%input: memref<1024xf32> {xla.some_attr = 1},
 // CHECK: return %[[SUCCESS]] : !xla_cpu.error
 
 // CHECK: func.func @[[IMPL_FUNC]](
-// CHECK-SAME: %{{.*}}: memref<1024xf32> {xla.some_attr = 1 : i64},
-// CHECK-SAME: %{{.*}}: memref<32xf64>,
+// CHECK-SAME: %{{.*}}: memref<1024xf32> {llvm.align = {{[0-9]+}} : index, llvm.dereferenceable = {{[0-9]+}} : index, xla.some_attr = 1 : i64},
+// CHECK-SAME: %{{.*}}: memref<32xf64> {llvm.align = {{[0-9]+}} : index, llvm.dereferenceable = {{[0-9]+}} : index},
 // CHECK-SAME: %{{.*}}: index)
 // CHECK-SAME: attributes {always_inline, llvm.linkage = #llvm.linkage<internal>
 // CHECK: return
