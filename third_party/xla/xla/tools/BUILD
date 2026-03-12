@@ -1187,14 +1187,15 @@ xla_test(
     data = [
         ":data/add.hlo",
         "//xla/backends/gpu/target_config:all_gpu_specs",
-        "//xla/service/gpu:gpu_compiler_test_autotune_db.textproto",
     ],
     deps = [
         ":xla_compile_lib",
+        "//xla:autotune_results_proto_cc",
         "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
+        "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/service:symbol_repository",
         "//xla/service:xla_compile_result_proto_cc_impl",
@@ -1203,14 +1204,14 @@ xla_test(
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "//xla/tsl/protobuf:status_proto_cc",
         "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
+        "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:path",
     ],
 )
