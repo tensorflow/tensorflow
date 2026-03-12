@@ -1280,6 +1280,7 @@ cc_library(
     visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/codegen/triton:compilation_pipeline",
         "//xla/service/gpu:target_constants",
         "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
@@ -1627,7 +1628,9 @@ cc_library(
     deps = [
         ":pjrt_abi_version",
         ":pjrt_common",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/stream_executor/abi:executable_abi_version",
+        "//xla/stream_executor/abi:executable_abi_version_proto_cc",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
