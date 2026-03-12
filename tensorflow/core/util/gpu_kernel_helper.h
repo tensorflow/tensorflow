@@ -33,11 +33,32 @@ limitations under the License.
 #define TF_RED_WARPSIZE 64
 #endif
 
-// Deprecated, use 'for(int i : GpuGridRangeX(n))' instead.
-#define GPU_1D_KERNEL_LOOP(i, n) \
+#define GPU_1D_KERNEL_LOOP_2(i, n) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
-#define CUDA_1D_KERNEL_LOOP(i, n) \
+
+#define GPU_1D_KERNEL_LOOP_3(i, n, T) \
+  for (T i : ::tensorflow::GpuGridRangeX<T>(n))
+
+#define GPU_1D_KERNEL_LOOP_SELECT(_1, _2, _3, NAME, ...) NAME
+// if 2 arguments are passed, the legacy implementation is used with i as int
+// if 3 arguments are passed, the implementation is used with i as the type T
+#define GPU_1D_KERNEL_LOOP(...)                                \
+  GPU_1D_KERNEL_LOOP_SELECT(__VA_ARGS__, GPU_1D_KERNEL_LOOP_3, \
+                            GPU_1D_KERNEL_LOOP_2)              \
+  (__VA_ARGS__)
+#define CUDA_1D_KERNEL_LOOP_2(i, n) \
   for (int i : ::tensorflow::GpuGridRangeX<int>(n))
+
+#define CUDA_1D_KERNEL_LOOP_3(i, n, T) \
+  for (T i : ::tensorflow::GpuGridRangeX<T>(n))
+
+#define CUDA_1D_KERNEL_LOOP_SELECT(_1, _2, _3, NAME, ...) NAME
+
+#define CUDA_1D_KERNEL_LOOP(...)                                 \
+  CUDA_1D_KERNEL_LOOP_SELECT(__VA_ARGS__, CUDA_1D_KERNEL_LOOP_3, \
+                             CUDA_1D_KERNEL_LOOP_2)              \
+  (__VA_ARGS__)
+
 
 // Deprecated, use 'for(int i : GpuGridRange?(n))' instead.
 #define GPU_AXIS_KERNEL_LOOP(i, n, axis) \

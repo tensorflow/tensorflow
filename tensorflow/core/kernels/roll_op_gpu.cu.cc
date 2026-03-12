@@ -35,7 +35,7 @@ __global__ void RollKernel(const int32_t nthreads, const int32_t num_dims,
                            const int32_t* __restrict__ dim_size,
                            const int32_t* __restrict__ threshold,
                            const int64_t* __restrict__ dim_range) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+  CUDA_1D_KERNEL_LOOP(out_idx, nthreads, int64_t) {
     int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
       const int64_t stride = dim_range[i] / dim_size[i];
