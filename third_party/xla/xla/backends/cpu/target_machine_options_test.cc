@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/TargetParser/Host.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -30,7 +31,7 @@ namespace cpu {
 namespace {
 
 TEST(TargetMachineOptionsTest, ToProto) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   TargetMachineOptions options(debug_options);
   TargetMachineOptionsProto proto = options.ToProto();
 
@@ -59,7 +60,7 @@ TEST(TargetMachineOptionsTest, FromProto) {
 }
 
 TEST(TargetMachineOptionsTest, ProtoRoundTrip) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   TargetMachineOptions options(debug_options);
   TargetMachineOptionsProto proto = options.ToProto();
   TF_ASSERT_OK_AND_ASSIGN(TargetMachineOptions new_options,

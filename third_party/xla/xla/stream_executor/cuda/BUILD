@@ -2368,6 +2368,7 @@ xla_cc_test(
     srcs = ["compilation_provider_options_test.cc"],
     deps = [
         ":compilation_provider_options",
+        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "@com_google_absl//absl/hash:hash_testing",
         "@com_google_absl//absl/strings",

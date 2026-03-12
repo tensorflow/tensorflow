@@ -42,6 +42,7 @@ xla_cc_test(
     srcs = ["gpu_codegen_backend_test.cc"],
     deps = [
         ":gpu_codegen_backend",
+        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "@com_google_googletest//:gtest_main",
     ],

@@ -209,6 +209,7 @@ xla_cc_test(
     srcs = ["target_machine_options_test.cc"],
     deps = [
         ":target_machine_options",
+        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/service/cpu:executable_proto_cc",
         "//xla/tsl/lib/core:status_test_util",
