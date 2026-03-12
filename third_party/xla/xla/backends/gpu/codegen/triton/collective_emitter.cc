@@ -18,25 +18,21 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
-#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
-#include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -64,10 +60,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout_util.h"
-#include "xla/mlir/utils/type_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/shape.h"
@@ -117,8 +111,8 @@ struct AllReduceInfo {
 // Common context for all reduce emitters.
 struct AllReduceEmitterContext {
   mlir::stablehlo::AllReduceOp op;
-  int32_t num_input_output_args{0};
-  int32_t num_scratch_buffers{0};
+  int32_t num_input_output_args;
+  int32_t num_scratch_buffers;
   // The entry function of the all reduce op.
   xtile::EntryFuncOp xtile_entry_fn;
   // The input tile to all reduce.
@@ -127,12 +121,9 @@ struct AllReduceEmitterContext {
   xtile::ExtractTileOp input_extract;
   // The entire shape of the input to all reduce.
   llvm::SmallVector<int64_t, 4> non_tiled_input_shape;
-  PrimitiveType element_type;
-  // The total number of devices in the all reduce.
-  int64_t world_size{0};
   AllReduceStrategy strategy;
   // Total number of elements in the input to all reduce.
-  int64_t num_elements{0};
+  int64_t num_elements;
 };
 
 absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
@@ -142,19 +133,6 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
     return absl::InvalidArgumentError(
         "AllReduce op must have exactly one operand in order to be lowered "
         "to triton.");
-  }
-  // operand(0) is xtile.extract op.
-  mlir::Type element_type =
-      mlir::cast<mlir::ShapedType>(op.getOperand(0).getType()).getElementType();
-  ctx.element_type = xla::ConvertMlirTypeToPrimitiveType(element_type);
-  if (ctx.element_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) {
-    std::string type_string;
-    llvm::raw_string_ostream stream(type_string);
-    op.getOperand(0).print(stream);
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "Could not convert operand type to a valid PrimitiveType."
-        "Operand Type: %s",
-        type_string));
   }
   ctx.xtile_entry_fn = op->getParentOfType<xtile::EntryFuncOp>();
   if (!ctx.xtile_entry_fn) {
@@ -207,9 +185,7 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
                        8);
   ctx.strategy = GetAllReduceStrategy(input_byte_size,
                                       /*is_multimem_enabled=*/false);
-  ctx.world_size = op.getReplicaGroups().getShapedType().getDimSize(1);
   ctx.op = op;
-
   return ctx;
 }
 
@@ -230,11 +206,6 @@ std::optional<AllReduceInfo> MaybeBuildAllReduceInfo(
   }
   const int64_t num_devices =
       all_reduce->device_list()->num_devices_per_group();
-  if (!llvm::has_single_bit(static_cast<uint64_t>(num_devices))) {
-    VLOG(1) << "Number of devices is not a power of 2 for "
-            << all_reduce->name() << ". Codegen will not be supported.";
-    return std::nullopt;
-  }
   const std::optional<ReductionKind> reduction_kind =
       MatchReductionComputation(all_reduce->called_computations().front());
   if (!reduction_kind.has_value()) {
@@ -302,19 +273,29 @@ GetBlockLevelFusionConfigForAllReduce(
   block_level_config.set_num_ctas(1);    // No block-level clustering.
   block_level_config.set_num_stages(1);  // No pipelining of loops.
   Tile* output_tile = block_level_config.add_output_tiles();
-  const llvm::SmallVector<int64_t> tile_sizes =
-      GreedyPowerOfTwoTiles(output_shape, launch_dims.num_blocks());
-  output_tile->mutable_sizes()->Assign(tile_sizes.begin(), tile_sizes.end());
-  const int64_t linear_tile_size = Product(tile_sizes);
-  if (all_reduce_info->all_reduce_strategy == AllReduceStrategy::kTwoShot &&
-      linear_tile_size % all_reduce_info->num_devices != 0) {
-    VLOG(3) << "Two-shot all-reduce linear_tile_size(" << linear_tile_size
-            << ") % num_devices(" << all_reduce_info->num_devices
-            << ") != 0. Codegen will not be supported.";
-    return std::nullopt;
+  const int64_t rank = output_shape.dimensions().size();
+
+  // Tile sizes are rolled up to power of 2 because this is what triton expects
+  // and consequently the tiling infra.
+  for (int i = 0; i < rank - 1; ++i) {
+    output_tile->add_sizes(llvm::PowerOf2Ceil(output_shape.dimensions(i)));
   }
-  VLOG(3) << "Block level fusion config for " << all_reduce->name() << ": "
-          << block_level_config;
+  // The last dimension is divided amongst blocks.
+  if (rank > 0) {
+    const int64_t tile_size =
+        CeilOfRatio(output_shape.dimensions(rank - 1),
+                    absl::implicit_cast<int64_t>(launch_dims.num_blocks()));
+    const int64_t last_dimension = llvm::PowerOf2Ceil(tile_size);
+    output_tile->add_sizes(last_dimension);
+    if (all_reduce_info->all_reduce_strategy == AllReduceStrategy::kTwoShot &&
+        last_dimension % all_reduce_info->num_devices != 0) {
+      VLOG(3) << "Last dimension of output tile '" << last_dimension
+              << "' is not divisible by number of devices '"
+              << all_reduce_info->num_devices << "' for " << all_reduce->name()
+              << ". Codegen will not be supported.";
+      return std::nullopt;
+    }
+  }
   return block_level_config;
 }
 
@@ -410,9 +391,7 @@ class AllReduceEmitter {
   static mlir::LogicalResult Emit(AllReduceEmitterContext ctx,
                                   mlir::PatternRewriter& rewriter) {
     AllReduceEmitter emitter(std::move(ctx), rewriter);
-    if (auto result = emitter.Initialize(); !result.ok()) {
-      LOG(ERROR) << "Failed to initialize AllReduceEmitter: "
-                 << result.message();
+    if (mlir::failed(emitter.Initialize())) {
       return mlir::failure();
     }
     switch (emitter.ctx_.strategy) {
@@ -433,7 +412,7 @@ class AllReduceEmitter {
         rewriter_(rewriter),
         builder_(ctx_.op->getLoc(), rewriter) {}
 
-  absl::Status Initialize() {
+  mlir::LogicalResult Initialize() {
     CHECK(!initialized_);
     // NB: This must be done before any other IR is emitted so that we can bail
     // out in case it fails.
@@ -441,7 +420,7 @@ class AllReduceEmitter {
     // loop.
     if (mlir::failed(PopulateReductionComputation(
             rewriter_, ctx_.op, reduce_computation_emitter_))) {
-      return absl::InternalError("Failed to populate reduction computation.");
+      return mlir::failure();
     }
     // 1. Opaque arguments. They start after the input/output arguments.
     const int32_t start_idx = ctx_.num_input_output_args;
@@ -455,38 +434,22 @@ class AllReduceEmitter {
     remote_input_buffers_ = ctx_.xtile_entry_fn.getArgument(start_idx + 3);
 
     // 2. Constants and types.
+    world_size_ = ctx_.op.getReplicaGroups().getShapedType().getDimSize(1);
+
     elem_type_ = mlir::getElementTypeOrSelf(ctx_.input_tile.getType());
     elem_storage_type_ = xtile::StorageType(elem_type_);
     ptr_to_i64_type_ =
         ttir::PointerType::get(builder_.getI64Type(), kGlobalAddressSpace);
     ptr_to_elem_type_ =
         ttir::PointerType::get(elem_storage_type_, kGlobalAddressSpace);
-    TF_ASSIGN_OR_RETURN(layout_, xtile::GetPermutationMinorToMajor(
-                                     ctx_.input_extract.getSource().getType()));
-    // Make a shape with layout minor to major.
-    const llvm::ArrayRef<int64_t>& input_tile_shape_dims =
-        ctx_.input_tile.getType().getShape();
-    Shape input_tile_shape = ShapeUtil::MakeShapeWithDenseLayout(
-        ctx_.element_type, input_tile_shape_dims, layout_);
-    // Subtile shape for one-shot is the same as the input tile shape.
-    subtile_shape_ = {input_tile_shape_dims.begin(),
-                      input_tile_shape_dims.end()};
-    // For two-shot, divide the tile into num_devices tiles.
-    if (ctx_.strategy == AllReduceStrategy::kTwoShot) {
-      subtile_shape_ = GreedyPowerOfTwoTiles(input_tile_shape, ctx_.world_size);
-      // Make sure subtile shape perfectly divides the input tile shape.
-      // Crash Ok. This is an internal precondition which is always expected to
-      // be true. Internal tile shape is 2^n / 2^m should be perfectly divisible
-      // for n >= m.
-      CHECK_EQ(Product(input_tile_shape.dimensions()) % Product(subtile_shape_),
-               0)
-          << "Input tile shape is not perfectly divisible by subtile shape."
-          << "Input tile shape: " << input_tile_shape
-          << "Subtile shape: " << absl::StrJoin(subtile_shape_, ",");
-    }
+    remote_memref_type_ = mlir::MemRefType::get(
+        ctx_.input_extract.getSource().getType().getShape(),
+        elem_storage_type_);
+
     // 3. Emit setup IR.
     remote_input_buffers_i64_ = ttir::BitcastOp::create(
         builder_, ptr_to_i64_type_, remote_input_buffers_);
+
     const mlir::Type i64_type = builder_.getI64Type();
     // Check if last bit of signal_value is 0 or 1.
     mlir::Value signal_value = signal_value_;
@@ -503,24 +466,13 @@ class AllReduceEmitter {
         arith::ExtSIOp::create(builder_, i64_type, signal_value),  // i32->i64
         arith::ConstantOp::create(builder_, i64_type,
                                   builder_.getI64IntegerAttr(1)));
-    // The allocated double buffer size in bytes is aligned to
-    // kXlaAllocatedBufferAlignBytes. To get the offset to the second buffer, we
-    // divide the buffer size by 2 and then divide by the element size to get
-    // the number of elements in the buffer. Its important to do this to make
-    // sure that start of the buffers are always aligned to 16 bytes.
-    const int64_t buffer_size = xla::RoundUpTo<uint64_t>(
-        ctx_.num_elements *
-            ShapeUtil::ByteSizeOfPrimitiveType(ctx_.element_type),
-        kXlaAllocatedBufferAlignBytes);
-    const int64_t elements_per_buffer =
-        buffer_size / ShapeUtil::ByteSizeOfPrimitiveType(ctx_.element_type);
     buffer_offset_ = arith::MulIOp::create(
         builder_, i64_type, buffer_index,
         arith::ConstantOp::create(
-            builder_, i64_type,
-            builder_.getI64IntegerAttr(elements_per_buffer)));
+            builder_, i64_type, builder_.getI64IntegerAttr(ctx_.num_elements)));
+
     initialized_ = true;
-    return absl::OkStatus();
+    return mlir::success();
   }
 
   // Emits instructions to get the pointer to the remote buffer of the given
@@ -529,8 +481,8 @@ class AllReduceEmitter {
   // buffers. We add the rank index to the base pointer and load to get to the
   // base pointer of the remote buffer of the given rank. Then we add the buffer
   // offset to get the pointer to the correct buffer inside (double buffering).
-  // Note that the returned pointer is of the storage type not the logical type.
-  mlir::Value GetRemoteBufferPtr(mlir::Value rank_idx) {
+  // Finally, we convert the pointer to a memref for xtile.ExtractTileOp.
+  mlir::Value GetRemoteBufferMemref(mlir::Value rank_idx) {
     CHECK(initialized_);
     mlir::Value remote_buf_ptr_addr = ttir::AddPtrOp::create(
         builder_, ptr_to_i64_type_, remote_input_buffers_i64_, rank_idx);
@@ -546,43 +498,20 @@ class AllReduceEmitter {
                                      xtile::GetDivisibilityAttr(builder_)});
     mlir::Value remote_buf_ptr = ttir::AddPtrOp::create(
         builder_, ptr_to_elem_type_, remote_buf_ptr_base, buffer_offset_);
-    return remote_buf_ptr;
+    return mtx::PtrToMemrefOp::create(builder_, remote_memref_type_,
+                                      remote_buf_ptr);
   }
 
   // Loads a tile from the remote buffer of the given rank.
   // Offsets must be global offsets ie, from the beginning of the remote buffer.
-  // Shape must be exact shape of the tile to be loaded.
-  // For 1-shot this is the entire tile shape. For two-shot this is the subtile
-  // shape.
   xtile::TensorValue LoadTileForRank(mlir::Value rank_idx,
                                      mlir::ValueRange offsets,
                                      llvm::ArrayRef<int64_t> shape) {
-    CHECK(initialized_);
-    mlir::Value remote_buf_ptr = GetRemoteBufferPtr(rank_idx);
-    auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
-        builder_,        //
-        remote_buf_ptr,  // The tensor of rank-specific base pointers
-        ctx_.non_tiled_input_shape,  // The full global shape
-        layout_,                     // The layout of the input tensor
-        offsets,                     // The global base offsets of the tile
-        // The full tile shape. This is the same as the input shape plus 1 for
-        // every dimension that is reduced. Since we are not reducing any
-        // dimensions, this is the same as the input shape.
-        shape,                            //
-        ctx_.input_extract.getStrides(),  //
-        /*reduced_dims=*/{},              // Not reducing for gather
-        shape                             //
-    );
-    // tensor<tile_shape, elem_storage_type>
-    auto next_tile = mlir::cast<xtile::TensorValue>(
-        ttir::LoadOp::create(builder_,                      //
-                             ptrs,                          //
-                             mask,                          //
-                             /*other=*/mlir::Value(),       //
-                             ttir::CacheModifier::NONE,     //
-                             ttir::EvictionPolicy::NORMAL,  //
-                             /*isVolatile=*/false)
-            .getResult());
+    mlir::Value remote_buf_memref = GetRemoteBufferMemref(rank_idx);
+    auto tensor_type = mlir::RankedTensorType::get(shape, elem_storage_type_);
+    xtile::TensorValue next_tile = xtile::ExtractTileOp::create(
+        builder_, tensor_type, remote_buf_memref, offsets, shape,
+        ctx_.input_extract.getStrides());
     // Workaround(i1_to_i8_workaround) as in fusion_emitter.
     // See fusion emitter for more details.
     if (elem_storage_type_ != elem_type_) {
@@ -600,38 +529,24 @@ class AllReduceEmitter {
     return LoadTileForRank(rank_idx, offsets, sub_tile_shape);
   }
 
-  // Stores an entire tile to the symmetric buffer of device_rank_.
-  mlir::LogicalResult EmitCopyToSymmetric(mlir::Value tile_to_store,
-                                          mlir::ValueRange offsets,
-                                          llvm::ArrayRef<int64_t> shape) {
+  mlir::LogicalResult EmitCopyToSymmetric() {
     CHECK(initialized_);
-    mlir::Value remote_buf_ptr = GetRemoteBufferPtr(device_rank_);
+    mlir::Value remote_buf_memref = GetRemoteBufferMemref(device_rank_);
 
     // Workaround(i1_to_i8_workaround) as in fusion_emitter.
     // The parameter extraction casts the storage type to the logical type.
     // But for copying to the remote buffer we need to cast it back to the
     // storage type. Downstream passes should be able to optimize this away.
-    mlir::Value storage_tile = tile_to_store;
+    mlir::Value storage_tile = ctx_.input_tile;
     if (elem_storage_type_ != elem_type_) {
       storage_tile = mlir::cast<xtile::TensorValue>(
-          xtile::Cast(builder_, tile_to_store, elem_storage_type_));
+          xtile::Cast(builder_, ctx_.input_tile, elem_storage_type_));
     }
-    auto [ptrs, mask] = triton::CreateTensorOfPointersAndMask(
-        builder_,        //
-        remote_buf_ptr,  // The tensor of rank-specific base pointers
-        ctx_.non_tiled_input_shape,       // The full global shape
-        layout_,                          // The layout of the input tensor
-        offsets,                          // The global base offsets of the tile
-        shape,                            // The full tile shape. Same as
-                                          // input shape since no
-                                          // dimensions are reduced.
-        ctx_.input_extract.getStrides(),  //
-        /*reduced_dims=*/{},              // Not reducing scatter.
-        shape                             // The tile shape.
-    );
-    ttir::StoreOp::create(builder_, ptrs, storage_tile,
-                          /*mask=*/mask, ttir::CacheModifier::NONE,
-                          ttir::EvictionPolicy::NORMAL);
+    xtile::InsertTileOp::create(
+        builder_, storage_tile, remote_buf_memref,
+        ctx_.input_extract.getOffsets(),
+        ctx_.input_extract.getTile().getType().getShape(),
+        ctx_.input_extract.getStrides());
     return mlir::success();
   }
 
@@ -644,145 +559,48 @@ class AllReduceEmitter {
                                          mlir::triton::gpu::AddrSpace::Local);
     mtx::BlockBarrierOp::create(builder_, signal_buffers_, device_rank_,
                                 signal_value,
-                                builder_.getI32IntegerAttr(ctx_.world_size));
+                                builder_.getI32IntegerAttr(world_size_));
     return mlir::success();
-  }
-
-  // Returns the offsets of the sub-tile that the given rank is responsible for.
-  // These are local offsets with respect to the tile.
-  // For loading from the remote buffer, we need to add the global offsets.
-  llvm::SmallVector<mlir::Value> RankToLocalOffsets(
-      mlir::Value rank_idx, llvm::ArrayRef<int64_t> tile_dims,
-      llvm::ArrayRef<int64_t> subtile_dims) {
-    int32_t num_dims = tile_dims.size();
-    // Calculate the number of subtiles along each dimension
-    // e.g., Tile(1, 4, 32) / Subtile(1, 2, 16) -> D = [1, 2, 2]
-    // We know that tile_dims[i] is divisible by subtile_dims[i].
-    // See precondition during Initialize.
-    llvm::SmallVector<int64_t> dimensions(num_dims, 0);
-    for (int64_t i = 0; i < num_dims; ++i) {
-      dimensions[i] = tile_dims[i] / subtile_dims[i];
-    }
-    if (!rank_idx.getType().isInteger(64)) {
-      rank_idx =
-          arith::ExtUIOp::create(builder_, builder_.getI64Type(), rank_idx);
-    }
-    // Decompose rank_idx based on layout minor-to-major.
-    llvm::SmallVector<mlir::Value, 4> offsets(num_dims);
-    for (int32_t i = 0; i < num_dims; ++i) {
-      int layout_dim = layout_[i];
-      mlir::Value dimension = arith::ConstantOp::create(
-          builder_, builder_.getI64Type(),
-          builder_.getI64IntegerAttr(dimensions[layout_dim]));
-      mlir::Value stride = arith::ConstantOp::create(
-          builder_, builder_.getI64Type(),
-          builder_.getI64IntegerAttr(subtile_dims[layout_dim]));
-      offsets[layout_dim] = arith::MulIOp::create(
-          builder_, stride,
-          arith::RemSIOp::create(builder_, rank_idx, dimension));
-      rank_idx = arith::DivSIOp::create(builder_, rank_idx, dimension);
-    }
-    return offsets;
   }
 
   // Calculates the offsets and shape of the sub-tile that the given rank is
   // responsible for. Only valid for two-shot.
-  // Offsets are calculated as input extract + local offsets for supplied rank.
+  // - The last dimension of the shape is divided amongst ranks.
+  //   So each rank has a shape of [x, y, z / world_size].
+  // - The offsets are the same as input tile except the last dimension which
+  //   is offset by the last_tile_size_per_rank * rank_idx.
+  //   So this becomes [x, y, z / world_size * rank_idx] for rank_idx.
   // Note: The offsets are global offsets ie, from the beginning of the input
   // buffer. So for example if the num_elements is 1024 and the tiles are of
   // size 512 with 2 ranks. For two-shot, each ranks responsibility is 512/2 =
   // 256 per tile. Output shape is always [256]. Offsets are:
   //  - Rank0Tile0: [0]; Rank0Tile1: [512]
   //  - Rank1Tile0: [256]; Rank1Tile1: [768]
-  llvm::SmallVector<mlir::Value> CalculateSubtileOffsets(mlir::Value rank_idx) {
-    auto local_offsets = RankToLocalOffsets(
-        rank_idx, ctx_.input_tile.getType().getShape(), subtile_shape_);
-    // Global offsets
-    llvm::SmallVector<mlir::Value> offsets = ctx_.input_extract.getOffsets();
-    for (int i = 0; i < local_offsets.size(); ++i) {
-      offsets[i] = arith::IndexCastOp::create(builder_, builder_.getI64Type(),
-                                              offsets[i]);
-      offsets[i] =
-          arith::AddIOp::create(builder_, local_offsets[i], offsets[i]);
-    }
-    return offsets;
-  }
-
-  // Create a tensor of world_size rank_ids and loads it.
-  // It then reshapes it to the number of sub-tiles in each dimension.
-  //
-  // Eg: tensor<0..7> with a tile size of 128,128 and subtile_shape of <32, 64>
-  // implies the tensor is reshaped to 4, 2.
-  // Then each dimension is broadcast to the subtile shape.
-  // so tensor<4, 2> becomes tensor<4, 32, 2, 64>.
-  // This is finally reshaped to the tile shape tensor<128, 128>.
-  // The finally result is then a tensor of pointers to the remote buffers of
-  // each rank. If a load is performed with this tensor, it will gather the
-  // first element from the remote buffers of each rank based on the
-  // responsibility of each rank.
-  //
-  // Returns: tensor<tile_shape x !ptr<element_type>>
-  xtile::TensorValue CreateTensorOfRemoteBufferPtrs(
-      mlir::RankedTensorType tile_type, llvm::ArrayRef<int64_t> subtile_shape,
-      int64_t world_size) {
-    const llvm::ArrayRef<int64_t> tile_shape = tile_type.getShape();
-    const mlir::RankedTensorType tensor_of_world_size_ptr_of_ptrs =
-        mlir::RankedTensorType::get({world_size}, ptr_to_i64_type_);
-    mlir::Value remote_buffers = ttir::SplatOp::create(
-        builder_, tensor_of_world_size_ptr_of_ptrs, remote_input_buffers_i64_);
-    const mlir::Value rank_ids = ttir::MakeRangeOp::create(
-        builder_,
-        mlir::RankedTensorType::get({world_size}, builder_.getI32Type()), 0,
-        world_size);
-    const mlir::Value rank_ids_i64 = arith::ExtUIOp::create(
-        builder_,
-        mlir::RankedTensorType::get({world_size}, builder_.getI64Type()),
-        rank_ids);
-    // tensor<world_size x !ptr<i64>> where each pointer is the base address of
-    // the remote buffer of rank i.
-    remote_buffers =
-        ttir::AddPtrOp::create(builder_, tensor_of_world_size_ptr_of_ptrs,
-                               remote_buffers, rank_ids_i64);
-    // Load the 64-bit addresses from the table
-    // tensor<world_size x i64>
-    remote_buffers = ttir::LoadOp::create(builder_,                      //
-                                          remote_buffers,                //
-                                          /*mask=*/mlir::Value(),        //
-                                          /*other=*/mlir::Value(),       //
-                                          ttir::CacheModifier::NONE,     //
-                                          ttir::EvictionPolicy::NORMAL,  //
-                                          /*isVolatile=*/false)
-                         .getResult();
-    // tensor<world_size x !ptr<elem_type>>
-    const mlir::RankedTensorType tensor_of_world_size_ptrs =
-        mlir::RankedTensorType::get({world_size}, ptr_to_elem_type_);
-    remote_buffers = ttir::IntToPtrOp::create(
-        builder_, tensor_of_world_size_ptrs, remote_buffers,
-        {xtile::GetDivisibilityAttr(builder_)});
-    mlir::Value buffer_offsets = ttir::SplatOp::create(
-        builder_,
-        mlir::RankedTensorType::get({world_size}, builder_.getI64Type()),
-        buffer_offset_);
-    // Add the buffer_offset to the base of each loaded pointer.
-    remote_buffers = ttir::AddPtrOp::create(builder_, tensor_of_world_size_ptrs,
-                                            remote_buffers, buffer_offsets);
-    // Add a new dimension of size 1 to the tensor of pointers.
-    // tensor<world_size x 1 x !ptr<elem_type>>
-    remote_buffers =
-        ttir::ExpandDimsOp::create(builder_, remote_buffers, /*axis=*/1);
-    // Broadcast to RxNumElemenetsPerRank
-    mlir::Type broadcasted_type =
-        mlir::RankedTensorType::get({world_size, Product(subtile_shape)},
-                                    ptr_to_elem_type_, tile_type.getEncoding());
-    remote_buffers =
-        ttir::BroadcastOp::create(builder_, broadcasted_type, remote_buffers);
-    // Reshape to tile shape.
-    remote_buffers = ttir::ReshapeOp::create(
-        builder_,
-        mlir::RankedTensorType::get(tile_shape, ptr_to_elem_type_,
-                                    tile_type.getEncoding()),
-        remote_buffers);
-    return mlir::cast<xtile::TensorValue>(remote_buffers);
+  std::pair<llvm::SmallVector<mlir::Value>, llvm::SmallVector<int64_t>>
+  CalculateSubtileOffsetsAndShape(mlir::Value rank_idx) {
+    llvm::SmallVector<int64_t> sub_tile_shape =
+        llvm::to_vector(ctx_.input_tile.getType().getShape());
+    const int32_t last_dim = sub_tile_shape.size() - 1;
+    // We assume the tiled dimension is the last one.
+    // Crash OK.
+    // Precondition checked during GetBlockLevelFusionConfigForAllReduce.
+    CHECK_EQ(sub_tile_shape[last_dim] % world_size_, 0)
+        << "Tiled dimension not divisible by world size.";
+    sub_tile_shape[last_dim] /= world_size_;
+    const mlir::Type i64_type = builder_.getI64Type();
+    const mlir::Value sub_tile_offset_i64 = arith::MulIOp::create(
+        builder_, i64_type,
+        arith::ExtSIOp::create(builder_, i64_type, rank_idx),
+        arith::ConstantOp::create(
+            builder_, i64_type,
+            builder_.getI64IntegerAttr(sub_tile_shape[last_dim])));
+    const mlir::Value sub_tile_offset = arith::IndexCastOp::create(
+        builder_, builder_.getIndexType(), sub_tile_offset_i64);
+    llvm::SmallVector<mlir::Value> sub_tile_offsets =
+        llvm::to_vector(ctx_.input_extract.getOffsets());
+    sub_tile_offsets[last_dim] = arith::AddIOp::create(
+        builder_, sub_tile_offsets[last_dim], sub_tile_offset);
+    return std::make_pair(sub_tile_offsets, sub_tile_shape);
   }
 
   // Emits instructions to load a tile from the remote buffers of all ranks
@@ -791,23 +609,78 @@ class AllReduceEmitter {
   // T / R elements.
   // This method will arrange the pointers to size T such that
   // first T/R elements point to rank 0, next T/R elements point to rank 1, etc.
-  // For each dimension.
   // And then perform a tensor<Tx!ptr<elem_type>> gathered load.
   absl::StatusOr<xtile::TensorValue> EmitGatherLoad() {
     mlir::RankedTensorType tile_type = ctx_.input_tile.getType();
     const mlir::ArrayRef<int64_t> tile_shape = tile_type.getShape();
+    llvm::SmallVector<int64_t> subtile_shape(tile_shape.begin(),
+                                             tile_shape.end());
+    subtile_shape.back() /= world_size_;
     // tensor<tile_shape x !ptr<elem_type>>
-    // Each pointer within subtile i points to data in the remote buffer of
-    // rank i.
-    xtile::TensorValue remote_buffer_tensor = CreateTensorOfRemoteBufferPtrs(
-        tile_type, subtile_shape_, ctx_.world_size);
+    mlir::RankedTensorType tensor_of_ptrs_type =
+        mlir::RankedTensorType::get(tile_shape, ptr_to_elem_type_);
+    // tensor<tile_shape x !ptr<i64>>
+    mlir::RankedTensorType tensor_of_i64_ptrs_type =
+        mlir::RankedTensorType::get(tile_shape, ptr_to_i64_type_);
+    const mlir::Type i32_type = builder_.getI32Type();
+    TF_ASSIGN_OR_RETURN(const llvm::SmallVector<int64_t> layout,
+                        xtile::GetPermutationMinorToMajor(
+                            ctx_.input_extract.getSource().getType()));
+    // Create 1D range [0, full_shape.back)
+    mlir::Value range = ttir::MakeRangeOp::create(
+        builder_, mlir::RankedTensorType::get({tile_shape.back()}, i32_type), 0,
+        tile_shape.back());
+    // Broadcast range to full_shape (to match rank_id for all elements)
+    // Eg for world_size = 2, and tile_shape = [2, 4], we will have
+    // iota_list_dim = [0, 1, 2, 3], [0, 1, 2, 3]
+    mlir::Value iota_last_dim = triton::ExpandAndBroadcastValue(
+        builder_, range, tile_shape.size() - 1,
+        mlir::RankedTensorType::get(tile_shape, i32_type));
+    mlir::Value sub_tile_size_const = arith::ConstantOp::create(
+        builder_, i32_type, builder_.getI32IntegerAttr(subtile_shape.back()));
+    mlir::Value sub_tile_size_splat = ttir::SplatOp::create(
+        builder_, iota_last_dim.getType(), sub_tile_size_const);
+    // rank_ids = [0, 0, 1, 1] (Following from above example)
+    // This determines which elements are to be loaded from which rank.
+    // Eg: [0, 0, 1, 1] means first two elements from rank 0, next two elements
+    // from rank 1.
+    mlir::Value rank_ids =
+        arith::DivSIOp::create(builder_, iota_last_dim, sub_tile_size_splat);
+    // Gather from all ranks.
+    // peer_ptr_addrs = remote_input_buffers_i64_ + rank_ids
+    mlir::Value base_table_splat = ttir::SplatOp::create(
+        builder_, tensor_of_i64_ptrs_type, remote_input_buffers_i64_);
+    mlir::Value peer_ptr_addrs = ttir::AddPtrOp::create(
+        builder_, tensor_of_i64_ptrs_type, base_table_splat, rank_ids);
+
+    // Load the 64-bit addresses from the table
+    mlir::Value peer_base_i64 =
+        ttir::LoadOp::create(builder_,                      //
+                             peer_ptr_addrs,                //
+                             /*mask=*/mlir::Value(),        //
+                             /*other=*/mlir::Value(),       //
+                             ttir::CacheModifier::NONE,     //
+                             ttir::EvictionPolicy::NORMAL,  //
+                             /*isVolatile=*/false);
+    // Create tensor of pointers: tensor<tile_shape x !ptr<elem_type>>
+    mlir::Value peer_ptrs =
+        ttir::IntToPtrOp::create(builder_, tensor_of_ptrs_type, peer_base_i64);
+    // Add the shared buffer offset (e.g. for double buffering)
+    // FinalAddress = PeerBase + SharedBufferOffset + LocalOffset
+    mlir::Value buffer_offsets = ttir::SplatOp::create(
+        builder_,
+        mlir::RankedTensorType::get(tile_shape, builder_.getI64Type()),
+        buffer_offset_);
+    // tensor<tile_shape x !ptr<elem_type>>
+    mlir::Value peer_ptrs_with_buf_offset = ttir::AddPtrOp::create(
+        builder_, tensor_of_ptrs_type, peer_ptrs, buffer_offsets);
     auto [final_ptrs, mask] = triton::CreateTensorOfPointersAndMask(
-        builder_,              //
-        remote_buffer_tensor,  // The tensor of rank-specific base pointers
+        builder_,                   //
+        peer_ptrs_with_buf_offset,  // The tensor of rank-specific base pointers
         ctx_.non_tiled_input_shape,       // The full global shape
-        layout_,                          //
+        layout,                           //
         ctx_.input_extract.getOffsets(),  // The global base offsets of the tile
-        ctx_.input_extract.getFullTileShape(),  //
+        ctx_.input_extract.getFullTileShape(),  // The full tile shape
         ctx_.input_extract.getStrides(),
         /*reduced_dims=*/{},  // Not reducing for gather
         tile_shape);
@@ -826,77 +699,72 @@ class AllReduceEmitter {
   mlir::LogicalResult EmitOneShot() {
     CHECK(initialized_);
     // 1. CopyPhase: Local tile to the symmetric buffer for the current device.
-    if (mlir::failed(EmitCopyToSymmetric(
-            ctx_.input_tile, ctx_.input_extract.getOffsets(),
-            ctx_.input_tile.getType().getShape()))) {
-      return rewriter_.notifyMatchFailure(ctx_.op,
-                                          "Failed to emit copy to symmetric");
+    if (mlir::failed(EmitCopyToSymmetric())) {
+      return mlir::failure();
     }
     // 2. Synchronization phase: Wait for all ranks to complete the copy.
     if (mlir::failed(EmitSync(signal_value_))) {
-      return rewriter_.notifyMatchFailure(ctx_.op,
-                                          "Failed to emit sync for one-shot");
+      return mlir::failure();
     }
     // 3. Reduce phase: Load tiles from all ranks and reduce them.
     mlir::ValueRange offsets = ctx_.input_extract.getOffsets();
-    llvm::ArrayRef<int64_t> shape = ctx_.input_tile.getType().getShape();
+    llvm::ArrayRef<int64_t> shape =
+        mlir::cast<mlir::ShapedType>(ctx_.input_tile.getType()).getShape();
     xtile::TensorValue accumulator = LoadTileForRank(0, offsets, shape);
-    for (int32_t rank = 1; rank < ctx_.world_size; ++rank) {
+    for (int rank = 1; rank < world_size_; ++rank) {
       xtile::TensorValue next_tile = LoadTileForRank(rank, offsets, shape);
       accumulator =
           reduce_computation_emitter_(builder_, accumulator, next_tile);
     }
-    rewriter_.replaceOp(ctx_.op, accumulator);
+    rewriter_.replaceOp(ctx_.op, accumulator.getDefiningOp());
     return mlir::success();
   }
 
   mlir::LogicalResult EmitTwoShot() {
     CHECK(initialized_);
     // 1. CopyPhase: Local tile to the symmetric buffer for the current device.
-    if (mlir::failed(EmitCopyToSymmetric(
-            ctx_.input_tile, ctx_.input_extract.getOffsets(),
-            ctx_.input_tile.getType().getShape()))) {
-      return rewriter_.notifyMatchFailure(ctx_.op,
-                                          "Failed to emit copy to symmetric");
+    if (mlir::failed(EmitCopyToSymmetric())) {
+      return mlir::failure();
     }
     // 2. Shot1: Wait for all ranks to complete the copy.
     if (mlir::failed(EmitSync(signal_value_))) {
-      return rewriter_.notifyMatchFailure(ctx_.op,
-                                          "Failed to emit sync for shot1");
+      return mlir::failure();
     }
     // 3. Reduce phase:
     // 3.1 Accumulate what each rank is responsible for.
-    llvm::SmallVector<mlir::Value> self_offsets =
-        CalculateSubtileOffsets(device_rank_);
+    auto [self_offsets, self_shape] =
+        CalculateSubtileOffsetsAndShape(device_rank_);
     xtile::TensorValue accumulator =
-        LoadTileForRank(0, self_offsets, subtile_shape_);
-    for (int rank = 1; rank < ctx_.world_size; ++rank) {
+        LoadTileForRank(0, self_offsets, self_shape);
+    for (int rank = 1; rank < world_size_; ++rank) {
       xtile::TensorValue next_tile =
-          LoadTileForRank(rank, self_offsets, subtile_shape_);
+          LoadTileForRank(rank, self_offsets, self_shape);
       accumulator =
           reduce_computation_emitter_(builder_, accumulator, next_tile);
     }
     // 3.2 Copy reduced sub-tile back to local rank's remote buffer.
-    if (mlir::failed(
-            EmitCopyToSymmetric(accumulator, self_offsets, subtile_shape_))) {
-      return rewriter_.notifyMatchFailure(
-          ctx_.op, "Failed to emit copy result to symmetric for two-shot");
+    mlir::Value remote_buf_memref = GetRemoteBufferMemref(device_rank_);
+    mlir::Value storage_tile = accumulator;
+    if (elem_storage_type_ != elem_type_) {
+      storage_tile = mlir::cast<xtile::TensorValue>(
+          xtile::Cast(builder_, accumulator, elem_storage_type_));
     }
+    xtile::InsertTileOp::create(builder_, storage_tile, remote_buf_memref,
+                                self_offsets, self_shape,
+                                ctx_.input_extract.getStrides());
     // 4. Shot2: Wait for all ranks to complete the reduce.
     mlir::Value next_signal_value = arith::AddIOp::create(
         builder_, signal_value_,
         arith::ConstantOp::create(builder_, builder_.getI32Type(),
                                   builder_.getI32IntegerAttr(1)));
     if (mlir::failed(EmitSync(next_signal_value))) {
-      return rewriter_.notifyMatchFailure(ctx_.op,
-                                          "Failed to emit sync for shot2");
+      return mlir::failure();
     }
     // 5. Gather from all ranks to output tile.
     absl::StatusOr<xtile::TensorValue> gathered_tensor = EmitGatherLoad();
     if (!gathered_tensor.ok()) {
-      return rewriter_.notifyMatchFailure(
-          ctx_.op, absl::StrCat("Failed to emit gathered load: ",
-                                gathered_tensor.status().message()));
+      VLOG(3) << "Failed to emit gathered load: " << gathered_tensor.status();
+      return mlir::failure();
     }
     rewriter_.replaceOp(ctx_.op, gathered_tensor.value());
     return mlir::success();
@@ -916,21 +784,13 @@ class AllReduceEmitter {
   mlir::Value remote_input_buffers_i64_;
   mlir::Value buffer_offset_;
 
-  // Layout of the input tensor in minor-to-major order.
-  llvm::SmallVector<int64_t> layout_;
-  // Calculated sub-tile shape for the all reduce.
-  // For 1-shot this is the same as the tile shape. Since each rank operates on
-  // the entire tile.
-  // For 2-shot: The sub-tile is the tile shape divided by the
-  // number of devices. Since tile shape is a power of 2 and the number of
-  // devices is a power of 2, the sub-tile shape will also be a power of 2  and
-  // consequently work with the tiling infra.
-  llvm::SmallVector<int64_t> subtile_shape_;
+  int64_t world_size_;
 
   mlir::Type elem_type_;
   mlir::Type elem_storage_type_;
   ttir::PointerType ptr_to_i64_type_;
   ttir::PointerType ptr_to_elem_type_;
+  mlir::MemRefType remote_memref_type_;
 
   bool initialized_ = false;
 };
@@ -1052,8 +912,6 @@ mlir::LogicalResult RewriteAllReduce(mlir::stablehlo::AllReduceOp op,
   absl::StatusOr<AllReduceEmitterContext> maybe_context =
       CreateAllReduceEmitterContext(op);
   if (!maybe_context.ok()) {
-    VLOG(3) << "Failed to create AllReduceEmitterContext: "
-            << maybe_context.status().message();
     return rewriter.notifyMatchFailure(
         loc, absl::StrCat("Failed to create AllReduceEmitterContext: ",
                           maybe_context.status().message()));
