@@ -525,13 +525,6 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
 
   mlir::sdy::MeshAttr meshAttr = toSdyMeshAttr(namedSharding.mesh(), context);
 
-  int64_t rank = mlir::sdy::getTensorRank(type);
-  if (namedSharding.IsReplicated()) {
-    return mlir::sdy::TensorShardingAttr::getFullyReplicated(context, rank,
-                                                             meshAttr,
-                                                             /*isClosed=*/true);
-  }
-
   SmallVector<mlir::sdy::DimensionShardingAttr> dimShardings;
   for (const auto& dimSharding : namedSharding.dim_shardings()) {
     SmallVector<mlir::sdy::AxisRefAttr> axes;
