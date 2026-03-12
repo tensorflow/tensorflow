@@ -84,7 +84,9 @@ class SymbolicExpr {
   // we have a better way to integrate SymbolicExpr with IndexingMap. It is
   // assuming that dimensions are the first (0...num_dims-1) variables and
   // symbols are the rest.
-  SymbolicExpr ReplaceDims(absl::Span<const SymbolicExpr> replacements) const;
+  SymbolicExpr ReplaceDims(absl::Span<const SymbolicExpr> replacements,
+                           int64_t current_num_dims, int64_t new_num_dims,
+                           int64_t num_symbols) const;
   SymbolicExpr ReplaceSymbols(absl::Span<const SymbolicExpr> replacements,
                               int64_t num_dims) const;
   SymbolicExpr ReplaceDimsAndSymbols(
