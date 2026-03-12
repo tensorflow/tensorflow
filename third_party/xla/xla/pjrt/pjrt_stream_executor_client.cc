@@ -1895,6 +1895,13 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
             auto elapsed =
                 absl::FromUnixNanos(tsl::Env::Default()->NowNanos()) -
                 absl::FromUnixNanos(*start_time_ns);
+            if (*start_time_ns == 0) {
+              LOG(WARNING) << "Start time is 0(uninitialized), elapsed time is "
+                           << elapsed;
+            }
+            if (elapsed >= absl::Hours(1)) {
+              LOG(ERROR) << "Elapsed time is very large: " << elapsed;
+            }
             xla::RecordDeviceTimeMeasurement(*key, elapsed, device_type);
           });
       if (!status.ok()) {
@@ -1903,6 +1910,14 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
         auto device_type = GetDeviceType(client->platform_id());
         auto elapsed = absl::FromUnixNanos(tsl::Env::Default()->NowNanos()) -
                        absl::FromUnixNanos(*start_time_ns);
+        if (*start_time_ns == 0) {
+          LOG(WARNING) << "Start time is 0(uninitialized), elapsed time is "
+                       << elapsed;
+        }
+        if (elapsed >= absl::Hours(1)) {
+          LOG(ERROR) << "Elapsed time is very large: " << elapsed;
+        }
+
         xla::RecordDeviceTimeMeasurement(*key, elapsed, device_type);
       }
     }
