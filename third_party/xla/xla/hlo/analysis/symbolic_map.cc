@@ -154,7 +154,7 @@ SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
   } else {
     for (int i = 0; i < num_symbols_; ++i) {
       all_replacements.push_back(
-          CreateSymbolicVariable(num_dimensions_ + i, ctx_));
+          CreateSymbolicVariable(num_result_dims + i, ctx_));
     }
   }
 
