@@ -60,6 +60,24 @@ int GetPrecedence(SymbolicExprType type) {
   }
 }
 
+// Helper to determine if an expression conceptually starts with a negative
+// term. Used to elegantly format `a + (-b)` as `a - b`.
+bool IsNegativeTerm(SymbolicExpr expr) {
+  while (expr.GetType() == SymbolicExprType::kAdd) {
+    expr = expr.GetLHS();
+  }
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return expr.GetValue() < 0;
+  }
+  if (expr.GetType() == SymbolicExprType::kMul) {
+    return (expr.GetLHS().GetType() == SymbolicExprType::kConstant &&
+            expr.GetLHS().GetValue() < 0) ||
+           (expr.GetRHS().GetType() == SymbolicExprType::kConstant &&
+            expr.GetRHS().GetValue() < 0);
+  }
+  return false;
+}
+
 void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
                std::optional<int64_t> num_dims,
                absl::Span<const std::string> var_names, int parent_prec = 0) {
@@ -102,9 +120,14 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
         os << "(";
       }
       PrintImpl(expr.GetLHS(), os, num_dims, var_names, prec);
-      os << " " << bin_op_str << " ";
-      int rhs_prec = prec + 1;
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names, rhs_prec);
+      if (expr.GetType() == SymbolicExprType::kAdd &&
+          IsNegativeTerm(expr.GetRHS())) {
+        os << " - ";
+        PrintImpl(-expr.GetRHS(), os, num_dims, var_names, prec + 1);
+      } else {
+        os << " " << bin_op_str << " ";
+        PrintImpl(expr.GetRHS(), os, num_dims, var_names, prec + 1);
+      }
       if (needs_parens) {
         os << ")";
       }
