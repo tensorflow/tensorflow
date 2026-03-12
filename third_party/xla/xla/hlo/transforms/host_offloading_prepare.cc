@@ -30,8 +30,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/memory_annotations.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -107,10 +106,20 @@ absl::StatusOr<bool> ConvertToCustomCall(HloModule* module) {
         auto* call_start = Cast<HloAsyncInstruction>(instruction);
         auto* call = call_start->async_wrapped_instruction();
 
+        HloComputation* inner_comp = call->called_computations().at(0);
         // Create a custom call from the original call instruction.
         auto custom_call = HloInstruction::CreateCustomCall(
-            call->shape(), call->operands(), call->called_computations().at(0),
-            "HostExecute");
+            call->shape(), call->operands(), inner_comp, "HostExecute");
+        // Propagate frontend attributes (e.g., latency_metadata) from inner
+        // custom calls to the new custom call.
+        for (const auto* inner_instr : inner_comp->instructions()) {
+          if (inner_instr->opcode() == HloOpcode::kCustomCall &&
+              inner_instr->has_frontend_attributes()) {
+            custom_call->set_frontend_attributes(
+                inner_instr->frontend_attributes());
+            break;
+          }
+        }
         custom_call->set_output_to_operand_aliasing(
             call->output_operand_aliasing());
 
