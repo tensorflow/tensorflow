@@ -100,7 +100,8 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const KernelThunk& thunk) {
   return std::make_unique<LaunchCmd>(
       thunk.kernel_name(), thunk.arguments(), ArgsAccess(thunk.written()),
-      thunk.launch_dimensions(), thunk.shmem_bytes(), thunk.tma_metadata());
+      thunk.launch_dimensions(), thunk.shmem_bytes(), thunk.tma_metadata(),
+      thunk.use_pdl());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
