@@ -1068,7 +1068,8 @@ StreamExecutorGpuClient::CrossHostReceiveBuffers(
                                   se::Stream* stream) -> absl::Status {
     for (PreparedReceive& prepared_receive : prepared_receives) {
       // Wait until the receive buffer is allocated.
-      WaitForAllocation(stream, *prepared_receive.raw_buffer_);
+      TF_RETURN_IF_ERROR(
+          WaitForAllocation(stream, *prepared_receive.raw_buffer_));
 
       // Launch the receive.
       auto mem = tensorflow::down_cast<PjRtStreamExecutorRawBuffer*>(
@@ -1274,8 +1275,9 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
                raw_buffer = std::move(receive_prep_result.raw_buffer),
                shape = shapes[0],
                dtype = receive_prep_result.buffer->element_type()]() mutable {
-    WaitForAllocation(stream, *raw_buffer);
     auto f = [&]() -> absl::Status {
+      TF_RETURN_IF_ERROR(WaitForAllocation(stream, *raw_buffer));
+
       // Create a CliqueId.
       TF_ASSIGN_OR_RETURN(CliqueId clique_id,
                           gpu_collectives->CreateUniqueCliqueId());

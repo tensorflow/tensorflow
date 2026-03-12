@@ -142,9 +142,9 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
-    client->WaitForAllocation(stream, *buf);
     std::shared_ptr<void> staging_buffer;
     auto status = [&]() -> absl::Status {
+      TF_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
       if (transfer_size > 0) {
         if (client->ShouldStageHostToDeviceTransfers(src, transfer_size)) {
           if (client->GetHostMemoryAllocator() == nullptr) {
@@ -200,8 +200,8 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
     }
-    client->WaitForAllocation(stream, *buf);
     auto status = [&]() -> absl::Status {
+      TF_RETURN_IF_ERROR(client->WaitForAllocation(stream, *buf));
       if (transfer_size > 0) {
         if (client->ShouldStageHostToDeviceTransfers(dst, transfer_size)) {
           if (client->GetHostMemoryAllocator() == nullptr) {
@@ -623,10 +623,14 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
                 dst_raw_buffer.get())
                 ->device_buffer();
         auto dst_buffer_mem = dst_buffer->mem();
-        client->WaitForAllocation(stream, *src_raw_buffer);
-        client->WaitForAllocation(stream, *dst_raw_buffer);
-        auto status = stream->MemcpyD2D(&dst_buffer_mem, src_buffer->mem(),
-                                        dst_buffer_mem.size());
+        absl::Status status = [&]() -> absl::Status {
+          TF_RETURN_IF_ERROR(
+              client->WaitForAllocation(stream, *src_raw_buffer));
+          TF_RETURN_IF_ERROR(
+              client->WaitForAllocation(stream, *dst_raw_buffer));
+          return stream->MemcpyD2D(&dst_buffer_mem, src_buffer->mem(),
+                                   dst_buffer_mem.size());
+        }();
         if (!status.ok()) {
           client->SetEventAsError(usage_event, status);
           return;
