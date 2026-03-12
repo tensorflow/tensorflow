@@ -64,6 +64,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+
 namespace {
 
 constexpr char kAllowSmallFunctionOptimizations[] =
@@ -687,8 +688,7 @@ absl::Status CapturedFunction::Instantiate(
   DataTypeVector ret_types;
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));
 
-  bool is_multi_device;
-  TF_RETURN_IF_ERROR(IsMultiDevice(lib, &is_multi_device));
+  bool is_multi_device = IsMultiDevice(lib);
   *instantiated_captured_function = absl::WrapUnique(
       new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
                                        *params.runner, this, is_multi_device));
@@ -709,79 +709,42 @@ CapturedFunction::CapturedFunction(
     : metadata_(std::move(metadata)),
       captured_inputs_(std::move(captured_inputs)) {}
 
-absl::Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
-                                             bool* is_multi_device) const {
+bool CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr) const {
   if (!metadata_->use_multi_device_function()) {
-    *is_multi_device = false;
-    return absl::OkStatus();
+    return false;
   }
 
-  const FunctionDef* fdef;
-  TF_RETURN_IF_ERROR(
-      LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
-
-  Device* current_device = flr->device();
-  DeviceType current_device_type(current_device->device_type());
-  DeviceNameUtils::ParsedName current_device_name;
-  if (!DeviceNameUtils::ParseFullName(current_device->name(),
-                                      &current_device_name)) {
-    return errors::InvalidArgument("Failed to parse device name: ",
-                                   current_device->name());
-  }
-
-  // Check if any of the captured inputs are placed on a device not compatible
-  // with the current device. For non-captured inputs, we assume they are placed
-  // on the current device.
-  for (const auto& input : captured_inputs_) {
-    DataType dtype = input.dtype();
-    if (dtype == DT_RESOURCE) {
-      if (input.NumElements() == 0) {
-        return errors::InvalidArgument("Empty resouce handle");
-      }
-      const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
-      DeviceNameUtils::ParsedName resource_device_name;
-      if (!DeviceNameUtils::ParseFullName(handle.device(),
-                                          &resource_device_name)) {
-        return errors::InvalidArgument("Failed to parse device name: ",
-                                       handle.device());
-      }
-      if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
-                                                  resource_device_name)) {
-        *is_multi_device = true;
-        return absl::OkStatus();
-      }
+  int type_index = flr->device()->device_type_index();
+  if (type_index >= 0 && type_index < 32) {
+    int8_t cached = metadata_->compatibility_cache_[type_index].load(
+        std::memory_order_relaxed);
+    if (cached != -1) {
+      return cached == 1;
     }
   }
 
-  // Check if all ops could be placed on the current device.
-  for (const auto& name : metadata_->lib_def()->ListFunctionNames()) {
-    const FunctionDef* fdef;
-    TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
-    for (const auto& node : fdef->node_def()) {
-      // Check if the op has a kernel available for the current device.
-      if (!KernelDefAvailable(current_device_type, node)) {
-        *is_multi_device = true;
-        return absl::OkStatus();
-      }
-      // If the op has a requested device, check if the requested device is
-      // compatible with the current device.
-      if (!node.device().empty()) {
-        DeviceNameUtils::ParsedName node_device_name;
-        if (!DeviceNameUtils::ParseFullName(node.device(), &node_device_name)) {
-          return errors::InvalidArgument("Failed to parse device name: ",
-                                         node.device());
-        }
-        if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
-                                                    node_device_name)) {
-          *is_multi_device = true;
-          return absl::OkStatus();
+  auto check_compatibility = [&]() -> bool {
+    const DeviceType device_type(flr->device()->device_type());
+    for (const auto& func_name : metadata_->lib_def()->ListFunctionNames()) {
+      const FunctionDef* fdef = metadata_->lib_def()->Find(func_name);
+      if (fdef == nullptr) continue;
+      for (const auto& node_def : fdef->node_def()) {
+        if (!KernelDefAvailable(device_type, node_def)) {
+          return true;
         }
       }
     }
+    return false;
+  };
+
+  bool is_multi = check_compatibility();
+
+  if (type_index >= 0 && type_index < 32) {
+    metadata_->compatibility_cache_[type_index].store(
+        is_multi ? 1 : 0, std::memory_order_relaxed);
   }
 
-  *is_multi_device = false;
-  return absl::OkStatus();
+  return is_multi;
 }
 
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(

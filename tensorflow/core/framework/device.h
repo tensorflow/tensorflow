@@ -29,6 +29,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_DEVICE_H_
 #define TENSORFLOW_CORE_FRAMEWORK_DEVICE_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -58,6 +59,9 @@ class Device : public DeviceBase {
 
   Device(Env* env, DeviceAttributes device_attributes);
   ~Device() override;
+
+  // Unique index for the type of this device.
+  int device_type_index() const { return device_type_index_; }
 
   // A compare function that orders devices by their parsed name.
   static bool LessByParsedName(const Device& a, const Device& b) {
@@ -214,6 +218,7 @@ class Device : public DeviceBase {
  private:
   DeviceAttributes device_attributes_;
   DeviceNameUtils::ParsedName parsed_name_;
+  const int device_type_index_;
 
   // op_seg_ maps session handle and op name to OpKernel objects.
   OpSegment op_seg_;
