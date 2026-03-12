@@ -2493,6 +2493,34 @@ xla_cc_test(
     ],
 )
 
+xla_test(
+    name = "gb200_cross_compilation_test",
+    srcs = [
+        "gb200_cross_compilation_test.cc",
+    ],
+    backends = ["gb200"],
+    deps = [
+        ":gpu_executable_proto_cc",
+        "//xla/backends/gpu/target_config",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:compiled_module",
+        "//xla/service:compiler",
+        "//xla/service:gpu_topology",
+        "//xla/service:platform_util",
+        "//xla/service/gpu/autotuning:autotuner_cache",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "amdgpu_compiler",
     srcs = [
