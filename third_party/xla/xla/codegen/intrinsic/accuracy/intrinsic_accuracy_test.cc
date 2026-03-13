@@ -308,6 +308,10 @@ class HloIntrinsicAccuracyParamTest
     return test_runner().HasProperty(HloRunnerPropertyTag::kCpu);
   }
 
+  bool is_rocm() const {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
+  }
+
  private:
   template <typename T>
   void DoRunAccuracyTest(const IntrinsicAccuracyTestParam& param) {
@@ -346,7 +350,10 @@ class HloIntrinsicAccuracyParamTest
                                            result_data.size());
     LogAccuracyReport(report, ToPascalCase(param.hlo_op_name));
 
-    const UlpBudget& budget = is_cpu() ? param.budget.cpu : param.budget.gpu;
+    const UlpBudget& budget = is_cpu() ? param.budget.cpu
+                              : (is_rocm() && param.budget.rocm_gpu.has_value())
+                                  ? *param.budget.rocm_gpu
+                                  : param.budget.gpu;
 
     EXPECT_LE(report.regular.max_ulp_error, budget.regular)
         << "Regular max ULP error " << report.regular.max_ulp_error

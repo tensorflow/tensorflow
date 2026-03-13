@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CODEGEN_INTRINSIC_ACCURACY_ACCURACY_BUDGET_H_
 
 #include <cstdint>
+#include <optional>
 
 namespace xla::codegen::intrinsic::accuracy {
 
@@ -33,6 +34,7 @@ struct UlpBudget {
 struct AccuracyBudget {
   UlpBudget cpu;
   UlpBudget gpu;
+  std::optional<UlpBudget> rocm_gpu = {};
 };
 
 // Exp
@@ -65,6 +67,9 @@ constexpr AccuracyBudget kLog1pF64Budget = {
     /*gpu=*/
     {/*regular=*/1,
      /*subnormal=*/0},
+    /*rocm_gpu=*/
+    UlpBudget{/*regular=*/2,
+              /*subnormal=*/1},
 };
 
 // Log
@@ -74,6 +79,9 @@ constexpr AccuracyBudget kLogF32Budget = {
     /*gpu=*/
     {/*regular=*/1,
      /*subnormal=*/0},
+    /*rocm_gpu=*/
+    UlpBudget{/*regular=*/3,
+              /*subnormal=*/0},
 };
 
 constexpr AccuracyBudget kLogF64Budget = {
@@ -104,6 +112,10 @@ constexpr AccuracyBudget kRsqrtF64Budget = {
     {/*regular=*/0,
      /*subnormal=*/0,
      /*special_values=*/2},
+    /*rocm_gpu=*/
+    UlpBudget{/*regular=*/1,
+              /*subnormal=*/0,
+              /*special_values=*/2},
 };
 
 // Tanh
@@ -130,6 +142,9 @@ constexpr AccuracyBudget kErfF32Budget = {
     /*gpu=*/
     {/*regular=*/2,
      /*subnormal=*/0},
+    /*rocm_gpu=*/
+    UlpBudget{/*regular=*/3,
+              /*subnormal=*/0},
 };
 
 constexpr AccuracyBudget kErfF64Budget = {
