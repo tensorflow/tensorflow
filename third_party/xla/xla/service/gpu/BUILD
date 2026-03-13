@@ -2220,10 +2220,7 @@ xla_test(
     name = "auto_sharding_gpu_compiler_test",
     srcs = ["auto_sharding_gpu_compiler_test.cc"],
     backends = ["gpu"],
-    tags = [
-        "no_oss",
-        "pjrt_migration_candidate",
-    ],  # TODO(b/277355322): Make autosharding work in OSS
+    tags = ["no_oss"],  # TODO(b/277355322): Make autosharding work in OSS
     use_legacy_runtime = True,
     deps = [
         "//xla:xla_data_proto_cc",
@@ -2232,7 +2229,7 @@ xla_test(
         "//xla/hlo/testlib:pattern_matcher_gmock",
         "//xla/service:hlo_module_config",
         "//xla/service:pattern_matcher",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_test_base_legacy",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest",
@@ -2698,7 +2695,6 @@ xla_test(
         "gpu_hlo_schedule_test.cc",
     ],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":alias_info",
@@ -2713,7 +2709,7 @@ xla_test(
         "//xla/service:backend",
         "//xla/service:hlo_module_config",
         "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_test_base_legacy",
         "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/lib/core:status_test_util",

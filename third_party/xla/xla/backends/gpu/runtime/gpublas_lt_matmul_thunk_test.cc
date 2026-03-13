@@ -55,7 +55,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -70,10 +70,10 @@ namespace {
 using absl_testing::IsOkAndHolds;
 using tsl::proto_testing::EqualsProto;
 
-class GpuBlasLtMatmulThunkTest : public HloTestBase {
+class GpuBlasLtMatmulThunkTest : public HloTestBaseLegacy {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    auto debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     debug_options.set_xla_gpu_autotune_level(0);
