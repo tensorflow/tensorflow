@@ -4098,7 +4098,6 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   QueueOptions queue_options = CreatePriorityAwareQueueOptions(
       /*max_execution_batch_size=*/10,
       /*batch_timeout_micros=*/1000, /*max_queue_depth=*/10);
-  queue_options.enable_warmup_queue = true;
 
   auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
     if (batch->task(0).is_warmup()) {
@@ -4157,7 +4156,6 @@ TEST(SharedBatchSchedulerPriorityPolicyTest,
   Scheduler::QueueOptions queue_options;
   queue_options.input_batch_size_limit = 10;
   queue_options.max_enqueued_batches = 10;
-  queue_options.enable_warmup_queue = true;
 
   absl::Notification batch_processing_started, batch_processing_continue;
   absl::Notification warmup_processing_started, warmup_processing_continue;
@@ -4213,7 +4211,6 @@ TEST(SharedBatchSchedulerPriorityPolicyTest, WarmupQueueCapacityTest) {
   Scheduler::QueueOptions queue_options;
   queue_options.input_batch_size_limit = 10;
   queue_options.max_enqueued_batches = 10;
-  queue_options.enable_warmup_queue = true;
 
   absl::Notification t1_running, t1_continue;
   auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
