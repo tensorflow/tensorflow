@@ -414,17 +414,6 @@ class SdyRoundTripImportShardyAttrsPass
     for (auto funcOp : moduleOp.getOps<FuncOp>()) {
       convertShardyAttrs(funcOp, rewriter, enableHloShardingV3);
     }
-
-    if (enableHloShardingV3) {
-      // Lift inlined meshes, as meshes are inlined in HloShardingV3 and
-      // therefore in sdy shardings generated from conversion.
-      mlir::PassManager pm(moduleOp.getContext());
-      pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
-      pm.addPass(createSdyRoundTripDedupMeshesPass());
-      if (mlir::failed(pm.run(moduleOp))) {
-        signalPassFailure();
-      }
-    }
   }
 
   StringRef getArgument() const override {

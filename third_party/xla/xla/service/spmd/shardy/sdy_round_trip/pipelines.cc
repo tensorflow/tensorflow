@@ -75,9 +75,9 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<mlir::func::FuncOp>(createOpenWhileFreeVarsShardingPass());
   if (enableHloShardingV3 || liftAndDedupMeshes) {
-    // Lift and dedup inlined meshes in case of HloShardingV3, as meshes are
-    // inlined while storing shardings in frontend attributes during sdy shard
-    // map export.
+    // Lift and dedup inlined meshes in case of HloShardingV3 as meshes are:
+    // * Inlined in HloShardingV3 and the converted sdy shardings.
+    // * Inlined during sdy shard map export for storing shardy shardings.
     //
     // liftAndDedupMeshes is required here because of sdy shardings added
     // directly to hlo in tf2xla.
