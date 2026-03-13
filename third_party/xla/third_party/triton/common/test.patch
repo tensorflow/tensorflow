@@ -1,0 +1,133 @@
+--- a/lib/Analysis/Utility.cpp
++++ b/lib/Analysis/Utility.cpp
+@@ -20,10 +20,10 @@
+ #include "triton/Tools/Sys/GetEnv.hpp"
+ #include "llvm/ADT/SmallSet.h"
+ 
++using namespace mlir::triton;
++using namespace mlir::triton::gpu;
++
+ namespace mlir {
+-
+-using namespace triton;
+-using namespace triton::gpu;
+ 
+ // Cases where distributed shared memory is not required in ConvertLayout:
+ // (1) numCTAs == 1
+@@ -87,8 +87,7 @@
+ 
+ bool ReduceOpHelper::isAssociative() {
+   auto dtype = srcElementTypes[0];
+-  if (!type::isFloat(dtype))
+-    return true;
++  if (!type::isFloat(dtype)) return true;
+   size_t reduce_size = srcShape[axis];
+   if (reduce_size <= 2)
+     return true;
+@@ -108,7 +107,7 @@
+ unsigned ReduceOpHelper::getScratchSizeInBytes() {
+   auto kLane = StringAttr::get(op.getContext(), "lane");
+ 
+-  auto isReduced = [axis = axis](const LinearLayout &layout) {
++  auto isReduced = [axis = axis](const LinearLayout& layout) {
+     return layout.getOutDimSizes().begin()[axis] == 1;
+   };
+   auto regLl = reducedRegLaneLayout(srcTy, axis);
+@@ -262,13 +261,12 @@
+   return result;
+ }
+ 
+-ColumnAction ReduceOpHelper::moveAxisBasesToFront(const LinearLayout &layout,
++ColumnAction ReduceOpHelper::moveAxisBasesToFront(const LinearLayout& layout,
+                                                   int axis, bool isVectorized) {
+   auto *ctx = layout.getOutDimNames().begin()->getContext();
+   auto kReg = StringAttr::get(ctx, "register");
+   const auto &bases = layout.getBases().lookup(kReg);
+-  if (bases.empty())
+-    return ColumnAction::identity(kReg, bases.size());
++  if (bases.empty()) return ColumnAction::identity(kReg, bases.size());
+ 
+   // We keep the first basis where it is if it's vectorized to pack it without
+   // PRMT/MOV, and then we move the rest of the bases that don't move the axis
+@@ -287,9 +285,8 @@
+   return ColumnAction(perm, kReg, bases.size());
+ }
+ 
+-LinearLayout
+-ReduceOpHelper::zeroBasesAlongDimAndReorder(const LinearLayout &layout,
+-                                            unsigned axis, StringAttr dim) {
++LinearLayout ReduceOpHelper::zeroBasesAlongDimAndReorder(
++    const LinearLayout& layout, unsigned axis, StringAttr dim) {
+   // Zeros out the basis along the specified axis in the given hardware
+   // dimension, and reindexes the remaining bases along axis so that each
+   // element is in linearly increasing order from the hardware's perspective.
+@@ -318,7 +315,7 @@
+   return LinearLayout(std::move(newBases), to_vector(layout.getOutDimNames()));
+ }
+ 
+-LinearLayout ReduceOpHelper::getInterLayout(const LinearLayout &layout,
++LinearLayout ReduceOpHelper::getInterLayout(const LinearLayout& layout,
+                                             unsigned axis) {
+   auto *ctx = layout.getOutDimNames().begin()->getContext();
+   auto kLane = mlir::StringAttr::get(ctx, "lane");
+@@ -522,8 +519,7 @@
+ bool ScanLoweringHelper::isSupported() {
+   // TODO: Support the following cases:
+   // 1. Scan on non-blocking encodings
+-  if (!isa<BlockedEncodingAttr>(legacyEncoding))
+-    return false;
++  if (!isa<BlockedEncodingAttr>(legacyEncoding)) return false;
+   return true;
+ }
+ 
+@@ -627,7 +623,7 @@
+   auto T = dstLayout.sublayout(inDimNames, outDimNames);
+   // Conditionally pad.
+   if (nSrcRegBases != nDstRegBases || nSrcLaneBases != nDstLaneBases) {
+-    auto padWithZeros = [&](const LinearLayout &ll) {
++    auto padWithZeros = [&](const LinearLayout& ll) {
+       auto newBases = ll.getBases();
+       auto padDim = [&](StringAttr dim, int dimSize) {
+         auto &dimBases = newBases[dim];
+
+--- a/lib/Dialect/TritonGPU/Transforms/Utility.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Utility.cpp
+@@ -22,9 +22,9 @@
+ namespace tt = mlir::triton;
+ namespace ttg = mlir::triton::gpu;
+ namespace ttng = mlir::triton::nvidia_gpu;
++using namespace mlir::triton;
++
+ namespace mlir {
+-
+-using namespace triton;
+ 
+ SmallVector<unsigned, 3> mmaVersionToInstrShape(int version,
+                                                 const ArrayRef<int64_t> &shape,
+@@ -118,12 +118,12 @@
+   return typeForMem.getIntOrFloatBitWidth();
+ }
+ 
+-unsigned getNumElementsPerThread(Operation *op, SmallVector<unsigned> order,
+-                                 ModuleAxisInfoAnalysis &axisInfoAnalysis,
++unsigned getNumElementsPerThread(Operation* op, SmallVector<unsigned> order,
++                                 ModuleAxisInfoAnalysis& axisInfoAnalysis,
+                                  ArrayRef<int64_t> shapePerCTA) {
+   Value val = getMemAccessPtr(op);
+   auto ty = cast<RankedTensorType>(val.getType());
+-  AxisInfo &valInfo = *axisInfoAnalysis.getAxisInfo(val);
++  AxisInfo& valInfo = *axisInfoAnalysis.getAxisInfo(val);
+   unsigned elemNumBits = getElementBitWidth(ty);
+   unsigned elemNumBytes = std::max(elemNumBits / 8, 1u);
+   unsigned maxMultipleBytes = valInfo.getDivisibility(order[0]);
+@@ -144,8 +144,7 @@
+ }
+ 
+ bool isNoop(Operation *op) {
+-  if (isa<ReshapeOp, TransOp>(op))
+-    return true;
++  if (isa<ReshapeOp, TransOp>(op)) return true;
+   if (auto cvt = dyn_cast<ttg::ConvertLayoutOp>(op)) {
+     // The conversion op is a noop if the conversion layout is trivial
+     return minimalCvtLayout(cvt.getSrc().getType(),
+
