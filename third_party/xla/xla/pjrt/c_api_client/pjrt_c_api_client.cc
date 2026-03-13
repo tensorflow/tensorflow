@@ -2018,6 +2018,15 @@ absl::StatusOr<bool> PjRtCApiDevice::PoisonExecution(int32_t launch_id,
   args.error_message = error.message().data();
   args.error_message_size = error.message().size();
 
+  absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map;
+  error.ForEachPayload([&](absl::string_view name, const absl::Cord& payload) {
+    payload_map[name] = std::string(payload);
+  });
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_payload,
+                      pjrt::ConvertToPjRtNamedValueList(payload_map));
+  args.payload = c_payload.data();
+  args.num_payload = c_payload.size();
+
   RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Device_PoisonExecution(&args), c_api);
   return args.poisoned;
 }

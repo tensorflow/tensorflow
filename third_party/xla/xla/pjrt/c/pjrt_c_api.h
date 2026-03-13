@@ -110,7 +110,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 99
+#define PJRT_API_MINOR 100
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1499,8 +1499,12 @@ struct PJRT_Device_PoisonExecution_Args {
   size_t error_message_size;
 
   bool poisoned;  // out
+
+  // Status fields (continued).
+  const PJRT_NamedValue* payload;
+  size_t num_payload;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_PoisonExecution_Args, poisoned);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_PoisonExecution_Args, num_payload);
 
 // Poisons the earliest execution on this device with given launch_id if it's
 // not finished yet, i.e. makes its output buffers error.

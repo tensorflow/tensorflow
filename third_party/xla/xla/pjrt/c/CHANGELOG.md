@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.100
+
+* Added `payload` and `num_payload` to `PJRT_Device_PoisonExecution_Args` to support passing status payloads during execution poisoning.
+
 ## 0.99
 
 * Added `PJRT_Error_ForEachPayload`.

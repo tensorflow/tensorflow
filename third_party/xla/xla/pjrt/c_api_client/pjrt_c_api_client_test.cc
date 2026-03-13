@@ -929,15 +929,20 @@ ENTRY Identity() -> f32[2, 2] {
 
   // Poisoning the execution should succeed because the execution has not
   // started with the input buffer not defined yet.
+  absl::Status poison_status = absl::InternalError("foobar1");
+  poison_status.SetPayload("test_key", absl::Cord("test_payload_value"));
+
   auto poison_result = client->addressable_devices().front()->PoisonExecution(
-      kLaunchId, Internal("foobar1"));
+      kLaunchId, poison_status);
   ASSERT_THAT(poison_result, IsOkAndHolds(true));
 
   // The buffer is expected to be poisoned with the error.
   ASSERT_EQ(result->size(), 1);
   ASSERT_EQ(result->at(0).size(), 1);
-  EXPECT_THAT(result->at(0).at(0)->ToLiteral().Await(),
-              StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
+  absl::Status status = result->at(0).at(0)->ToLiteral().Await().status();
+  EXPECT_THAT(status,
+              StatusIs(absl::StatusCode::kInternal, HasSubstr("foobar1")));
+  EXPECT_EQ(status.GetPayload("test_key"), absl::Cord("test_payload_value"));
 
   // A later error (propagated from the input buffer) would not affect the
   // already poisoned output buffer.
