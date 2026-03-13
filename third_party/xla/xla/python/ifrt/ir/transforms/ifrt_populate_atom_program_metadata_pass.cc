@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -45,10 +47,33 @@ namespace ifrt {
 
 namespace {
 
+IfrtDevicesAttr GetDeviceAttrPermutation(
+    const llvm::DenseMap<int, int>& device_id_to_index,
+    IfrtDevicesAttr array_devices_attr, mlir::OpBuilder& builder) {
+  std::vector<int> device_permutation;
+  device_permutation.reserve(array_devices_attr.getIds().size());
+  for (int device_id : array_devices_attr.getIds()) {
+    device_permutation.push_back(device_id_to_index.at(device_id));
+  }
+  return IfrtDevicesAttr::get(builder.getContext(), device_permutation);
+}
+
+struct CallOpDeviceCache {
+  // Map from logical device ID to index within the device list. It is only
+  // populated if there's an IfrtArrayType arg/result with a different devices
+  // attribute than the CallOp.
+  llvm::DenseMap<int, int> device_id_to_index;
+  // Map from device attribute to device attribute representing the permutation
+  // to apply to the CallOp's device attribute to get device attribute key.
+  llvm::DenseMap<IfrtDevicesAttr, IfrtDevicesAttr> permutation_attrs;
+  bool device_id_to_index_populated = false;
+};
+
 // Populates the metadata on the atom program ModuleOp and `main` FuncOp.
 mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
                                      mlir::func::FuncOp callee_op,
-                                     mlir::OpBuilder& builder) {
+                                     mlir::OpBuilder& builder,
+                                     CallOpDeviceCache& device_cache) {
   module_op->setAttr(kIfrtNumDevicesAttrName,
                      builder.getI32IntegerAttr(call_op.getDevices().size()));
   // Copy ifrt.compile_options_key if it exists.
@@ -62,10 +87,30 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
                        call_op->getAttr(kIfrtLocalViewAttrName));
   }
 
+  IfrtDevicesAttr call_op_devices_attr = call_op.getDevicesAttr();
+  auto get_device_permutation = [&](IfrtDevicesAttr array_devices_attr) {
+    if (auto it = device_cache.permutation_attrs.find(array_devices_attr);
+        it != device_cache.permutation_attrs.end()) {
+      return it->second;
+    }
+    if (!device_cache.device_id_to_index_populated) {
+      for (const auto& [idx, device_id] :
+           llvm::enumerate(call_op_devices_attr.getIds())) {
+        device_cache.device_id_to_index[device_id] = idx;
+      }
+      device_cache.device_id_to_index_populated = true;
+    }
+    IfrtDevicesAttr permutation = GetDeviceAttrPermutation(
+        device_cache.device_id_to_index, array_devices_attr, builder);
+    device_cache.permutation_attrs[array_devices_attr] = permutation;
+    return permutation;
+  };
+
   // Attach sharding to inputs.
   for (const auto& [i, input] : llvm::enumerate(call_op.getInputs())) {
-    const auto array = mlir::dyn_cast_or_null<IfrtArrayType>(input.getType());
-    if (array == nullptr) {
+    const IfrtArrayType array_type =
+        mlir::dyn_cast_or_null<IfrtArrayType>(input.getType());
+    if (array_type == nullptr) {
       return call_op->emitOpError()
              << "requires all inputs to be IfrtArrayType. Input #" << i << ": "
              << input.getType();
@@ -75,37 +120,54 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
     // sets an attribute converts the attr dict to a NamedAttrList, and then
     // linearly searches for the attr.
     llvm::SmallVector<mlir::NamedAttribute, 16> arg_attrs;
-    auto arg_attr_dict = callee_op.getArgAttrDict(i);
-    if (arg_attr_dict != nullptr) {
+    if (mlir::DictionaryAttr arg_attr_dict = callee_op.getArgAttrDict(i);
+        arg_attr_dict != nullptr) {
       arg_attrs.append(arg_attr_dict.begin(), arg_attr_dict.end());
     }
-    arg_attrs.push_back(
-        builder.getNamedAttr(kIfrtShardingAttrName, array.getShardingAttr()));
-    if (array.getMemoryKindAttr()) {
+    arg_attrs.push_back(builder.getNamedAttr(kIfrtShardingAttrName,
+                                             array_type.getShardingAttr()));
+    // Only attach a devices attribute if the array's devices attribute is
+    // different from the devices attribute on the CallOp. Otherwise, the
+    // attribute is redundant.
+    if (IfrtDevicesAttr array_devices_attr = array_type.getDevicesAttr();
+        array_devices_attr != call_op_devices_attr) {
+      arg_attrs.push_back(builder.getNamedAttr(
+          kIfrtDevicesAttrName, get_device_permutation(array_devices_attr)));
+    }
+    if (array_type.getMemoryKindAttr()) {
       arg_attrs.push_back(builder.getNamedAttr(kIfrtMemoryKindAttrName,
-                                               array.getMemoryKindAttr()));
+                                               array_type.getMemoryKindAttr()));
     }
     callee_op.setArgAttrs(i, arg_attrs);
   }
 
   // Attach sharding to outputs.
   for (const auto& [i, output] : llvm::enumerate(call_op.getOutputs())) {
-    const auto array = mlir::dyn_cast_or_null<IfrtArrayType>(output.getType());
-    if (array == nullptr) {
+    const IfrtArrayType array_type =
+        mlir::dyn_cast_or_null<IfrtArrayType>(output.getType());
+    if (array_type == nullptr) {
       return call_op->emitOpError()
              << "requires all outputs to be IfrtArrayType. Input #" << i << ": "
              << output.getType();
     }
     llvm::SmallVector<mlir::NamedAttribute, 16> res_attrs;
-    auto res_attr_dict = callee_op.getResultAttrDict(i);
-    if (res_attr_dict != nullptr) {
+    if (mlir::DictionaryAttr res_attr_dict = callee_op.getResultAttrDict(i);
+        res_attr_dict != nullptr) {
       res_attrs.append(res_attr_dict.begin(), res_attr_dict.end());
     }
-    res_attrs.push_back(
-        builder.getNamedAttr(kIfrtShardingAttrName, array.getShardingAttr()));
-    if (array.getMemoryKindAttr()) {
+    res_attrs.push_back(builder.getNamedAttr(kIfrtShardingAttrName,
+                                             array_type.getShardingAttr()));
+    // Only attach a devices attribute if the array's devices attribute is
+    // different from the devices attribute on the CallOp. Otherwise, the
+    // attribute is redundant.
+    if (IfrtDevicesAttr array_devices_attr = array_type.getDevicesAttr();
+        array_devices_attr != call_op_devices_attr) {
+      res_attrs.push_back(builder.getNamedAttr(
+          kIfrtDevicesAttrName, get_device_permutation(array_devices_attr)));
+    }
+    if (array_type.getMemoryKindAttr()) {
       res_attrs.push_back(builder.getNamedAttr(kIfrtMemoryKindAttrName,
-                                               array.getMemoryKindAttr()));
+                                               array_type.getMemoryKindAttr()));
     }
     callee_op.setResultAttrs(i, res_attrs);
   }
@@ -117,7 +179,7 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
     callee_op.setArgAttr(io_alias_as_array[0], "tf.aliasing_output",
                          builder.getI32IntegerAttr(io_alias_as_array[1]));
   }
-  for (const auto idx : call_op.getDonatedInputIndices()) {
+  for (const int32_t idx : call_op.getDonatedInputIndices()) {
     callee_op.setArgAttr(idx, "jax.buffer_donor", builder.getBoolAttr(true));
   }
   return mlir::success();
@@ -136,44 +198,62 @@ void IfrtPopulateAtomProgramMetadataPass::runOnOperation() {
   mlir::OpBuilder builder(&context);
   mlir::func::FuncOp main_func = GetMainFunction(getOperation());
 
-  // Construct a map from callee `SymbolRefAttr` to the unique `CallOps`
-  // using it. This map is used to decide if an atom program module must be
-  // cloned before populating its metadata (i.e., used more than once).
+  // Construct a map from callee `SymbolRefAttr` to a set of `CallOps` calling
+  // it. This map is used to decide if an atom program module must be cloned
+  // before populating its metadata (i.e., used more than once).
   llvm::DenseMap<mlir::SymbolRefAttr, llvm::DenseSet<CallOp, IfrtCallOpInfo>>
-      callee_call_count;
+      callee_to_callops;
   for (CallOp call_op : main_func.getOps<CallOp>()) {
-    callee_call_count[call_op.getCallee()].insert(call_op);
+    callee_to_callops[call_op.getCallee()].insert(call_op);
   }
 
+  llvm::DenseMap<IfrtDevicesAttr, CallOpDeviceCache> device_permutation_caches;
   llvm::DenseMap<CallOp, mlir::SymbolRefAttr, IfrtCallOpInfo> visited_call_ops;
   // Walk the CallOps in reverse order to ensure that the first CallOp using a
   // callee uses the original callee. Otherwise, the walk would modify the name
   // of the default callee.
-  auto result = main_func.walk<mlir::WalkOrder::PreOrder,
-                               mlir::ReverseIterator>([&](CallOp call_op)
-                                                          -> mlir::WalkResult {
-    mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-    if (callee == nullptr) {
-      return call_op->emitOpError()
-             << "can't find callee `" << call_op.getCalleeAttr() << "`";
-    }
-    auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
-    if (callee.getSymName() != kCalleeMainFuncName ||
-        callee_module == nullptr) {
-      return call_op.emitOpError()
-             << "requires callee outlined as `" << kCalleeMainFuncName
-             << "` function in a ModuleOp. Actual callee name: "
-             << callee.getSymName()
-             << ". Actual callee parent: " << callee->getParentOp()->getName();
-    }
+  mlir::WalkResult result = main_func.walk<mlir::WalkOrder::PreOrder,
+                                           mlir::ReverseIterator>(
+      [&](CallOp call_op) -> mlir::WalkResult {
+        mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+        if (callee == nullptr) {
+          return call_op->emitOpError()
+                 << "can't find callee `" << call_op.getCalleeAttr() << "`";
+        }
+        mlir::ModuleOp callee_module =
+            llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
+        if (callee.getSymName() != kCalleeMainFuncName ||
+            callee_module == nullptr) {
+          return call_op.emitOpError()
+                 << "requires callee outlined as `" << kCalleeMainFuncName
+                 << "` function in a ModuleOp. Actual callee name: "
+                 << callee.getSymName() << ". Actual callee parent: "
+                 << callee->getParentOp()->getName();
+        }
 
-    if (auto call_op_it = visited_call_ops.find(call_op);
-        call_op_it != visited_call_ops.end()) {
-      call_op.setCalleeAttr(call_op_it->second);
-    } else {
-      callee_call_count[call_op.getCallee()].erase(call_op);
-      if (!callee_call_count[call_op.getCallee()].empty()) {
-        // Only clone the callee if it is used more than once.
+        if (auto call_op_it = visited_call_ops.find(call_op);
+            call_op_it != visited_call_ops.end()) {
+          // Set the callee attribute to the existing callee for this
+          // CallOp.
+          call_op.setCalleeAttr(call_op_it->second);
+          return mlir::WalkResult::advance();
+        }
+
+        callee_to_callops[call_op.getCallee()].erase(call_op);
+        if (callee_to_callops[call_op.getCallee()].empty()) {
+          // There's only one CallOp for this callee, so we can populate the
+          // metadata in place.
+          if (mlir::failed(PopulateMetadata(
+                  call_op, callee_module, callee, builder,
+                  device_permutation_caches[call_op.getDevicesAttr()]))) {
+            return mlir::WalkResult::interrupt();
+          }
+          visited_call_ops[call_op.clone()] = call_op.getCalleeAttr();
+          return mlir::WalkResult::advance();
+        }
+
+        // Clone the callee module because there are multiple CallOps
+        // calling it.
         mlir::ModuleOp cloned_module = callee_module.clone();
         mlir::func::FuncOp cloned_callee = GetMainFunction(cloned_module);
         // Insert new cloned atom program module in the SymbolTable.
@@ -181,28 +261,20 @@ void IfrtPopulateAtomProgramMetadataPass::runOnOperation() {
             .getSymbolTable(
                 callee_module->getParentWithTrait<mlir::OpTrait::SymbolTable>())
             .insert(cloned_module);
+        if (mlir::failed(PopulateMetadata(
+                call_op, cloned_module, cloned_callee, builder,
+                device_permutation_caches[call_op.getDevicesAttr()]))) {
+          return mlir::WalkResult::interrupt();
+        }
         mlir::SymbolRefAttr callee_attr = mlir::SymbolRefAttr::get(
             cloned_module.getSymNameAttr(),
             mlir::SymbolRefAttr::get(cloned_callee.getSymNameAttr()));
-        auto populate_result =
-            PopulateMetadata(call_op, cloned_module, cloned_callee, builder);
-        if (mlir::failed(populate_result)) {
-          return populate_result;
-        }
         // Clone the CallOp because it will be modified next.
         visited_call_ops[call_op.clone()] = callee_attr;
         call_op.setCalleeAttr(callee_attr);
-      } else {
-        auto populate_result = PopulateMetadata(
-            call_op, callee_module, GetMainFunction(callee_module), builder);
-        if (mlir::failed(populate_result)) {
-          return populate_result;
-        }
-        visited_call_ops[call_op.clone()] = call_op.getCalleeAttr();
-      }
-    }
-    return mlir::WalkResult::advance();
-  });
+
+        return mlir::WalkResult::advance();
+      });
 
   if (result.wasInterrupted()) {
     signalPassFailure();
