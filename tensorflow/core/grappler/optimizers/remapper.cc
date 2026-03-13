@@ -5016,7 +5016,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index,
 inline bool IsXlaCpuGlobalJitOn() {
   std::vector<std::string> tf_xla_flags;
   const std::string tf_xla_cpu_global_jit = "--tf_xla_cpu_global_jit";
-  TF_CHECK_OK(ReadStringsFromEnvVar("TF_XLA_FLAGS", "", &tf_xla_flags));
+  TF_CHECK_OK(ReadStringsFromEnvVar("TF_XLA_FLAGS", "", &tf_xla_flags, " ,\t"));
   return std::find(tf_xla_flags.begin(), tf_xla_flags.end(),
                    tf_xla_cpu_global_jit) != tf_xla_flags.end();
 }

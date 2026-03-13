@@ -1212,6 +1212,7 @@ xla_cc_test(
             "//xla/tsl/platform:subprocess",
             "//xla/tsl/platform:test",
             "//xla/tsl/util:command_line_flags",
+            "//xla/tsl/util:env_var",
             "@com_google_absl//absl/log:check",
             "@com_google_absl//absl/strings:str_format",
             "@com_google_googletest//:gtest",
