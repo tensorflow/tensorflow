@@ -127,7 +127,7 @@ class Thunk {
       absl::flat_hash_map<ExecutionStreamId, se::Stream*>;
 
   using BufferUses = absl::InlinedVector<BufferUse, 4>;
-  using ResourceUses = absl::InlinedVector<ResourceUse, 4>;
+  using ResourceUses = absl::InlinedVector<ResourceUse, 1>;
 
   // When default execution stream id is used, operations launched by a thunk
   // must be synchronized with a stream passed in ExecuteOptions.
@@ -459,12 +459,23 @@ class Thunk {
   // Precondition: Initialize(initialize_params) has been called.
   virtual absl::Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
-  // Returns all device buffers used by the thunk.
-  //
-  // Does not propagate buffers from nested thunks.
+  // Returns device buffers used by the thunk.
   //
   // The order of the buffers in returned vector is consistent across calls.
+  //
+  // Buffer uses do not include buffers that might be used by nested thunks,
+  // they must be collected separately by walking the nested thunks using `Walk`
+  // API.
   virtual BufferUses buffer_uses() const { return {}; }
+
+  // Returns resources used by this thunk.
+  //
+  // The order of the resources in returned vector is consistent across calls.
+  //
+  // Resource uses do not include resources that might be used by nested thunks,
+  // they must be collected separately by walking the nested thunks using `Walk`
+  // API.
+  virtual ResourceUses resource_uses() const { return {}; }
 
   static absl::string_view KindToString(Thunk::Kind kind);
 
