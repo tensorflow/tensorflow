@@ -79,7 +79,7 @@ def kaiser_window(window_length, beta=12., dtype=dtypes.float32, name=None):
                          dtype=dtypes.float32)
     # Convert everything into given dtype which can be float16.
     arg = math_ops.cast(arg, dtype=dtype)
-    beta = math_ops.cast(beta, dtype=dtype)
+    beta = math_ops.abs(math_ops.cast(beta, dtype=dtype))
     one = math_ops.cast(1.0, dtype=dtype)
     halflen_float = math_ops.cast(halflen_float, dtype=dtype)
     num = beta * math_ops.sqrt(nn_ops.relu(

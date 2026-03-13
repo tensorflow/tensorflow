@@ -105,6 +105,20 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(
       itertools.product(
           _WINDOW_LENGTHS,
+          (4., 8., 10., 12.),
+          _TF_DTYPE_TOLERANCE))
+  def test_kaiser_window_negative_beta(self, window_length, beta, tf_dtype_tol):
+    """Check that kaiser_window handles negative beta same as positive beta."""
+    pos_beta_win = window_ops.kaiser_window(window_length, beta,
+                                            tf_dtype_tol[0])
+    neg_beta_win = window_ops.kaiser_window(window_length, -beta,
+                                            tf_dtype_tol[0])
+    self.assertAllClose(pos_beta_win, neg_beta_win,
+                        tf_dtype_tol[1], tf_dtype_tol[1])
+
+  @parameterized.parameters(
+      itertools.product(
+          _WINDOW_LENGTHS,
           (False, True),
           _TF_DTYPE_TOLERANCE))
   def test_hann_window(self, window_length, periodic, tf_dtype_tol):
