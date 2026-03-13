@@ -197,8 +197,12 @@ bool isManualComputation(mlir::func::FuncOp funcOp);
 mlir::StringAttr getOriginalFuncName(mlir::func::FuncOp funcOp);
 
 // Clones given `funcOp` recursively and returns the (top) cloned funcOp.
-mlir::func::FuncOp cloneFuncRecursively(mlir::func::FuncOp funcOp,
-                                        mlir::SymbolTable& symbolTable);
+// Overrides the func result sharding as `callOpResultShardings` in case
+// `callOpResultShardings` is non-null.
+mlir::func::FuncOp cloneFuncRecursively(
+    mlir::func::FuncOp funcOp,
+    mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
+    mlir::SymbolTable& symbolTable);
 
 }  // namespace sdy
 }  // namespace xla

@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/TypeID.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
 
@@ -43,6 +44,7 @@ using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 using ::mlir::sdy::SdyDialect;
+using ::mlir::sdy::TensorShardingPerValueAttr;
 
 class SdyRoundTripFlattenCallGraphPass
     : public mlir::PassWrapper<SdyRoundTripFlattenCallGraphPass,
@@ -63,15 +65,19 @@ class SdyRoundTripFlattenCallGraphPass
       }
       // TODO(enver): Should we special handle loops and conditionals?
       node->getCallableRegion()->walk([&](CallOp callOp) {
-        if (auto [_, inserted] = funcNames.insert(callOp.getCallee());
-            inserted) {
-          return;
-        }
         FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
         CHECK(funcOp) << "Failed to lookup function: "
                       << callOp.getCallee().str();
-        callOp.setCallee(
-            symbolTable.insert(cloneFuncRecursively(funcOp, symbolTable)));
+        TensorShardingPerValueAttr callOpResultShardings =
+            mlir::sdy::getShardingPerValue(callOp);
+        if (auto [_, inserted] = funcNames.insert(funcOp.getName()); inserted) {
+          if (callOpResultShardings) {
+            mlir::sdy::setFuncResultShardings(funcOp, callOpResultShardings);
+          }
+          return;
+        }
+        callOp.setCallee(symbolTable.insert(
+            cloneFuncRecursively(funcOp, callOpResultShardings, symbolTable)));
       });
     }
   }

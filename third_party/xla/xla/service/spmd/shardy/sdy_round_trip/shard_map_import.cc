@@ -184,8 +184,8 @@ void cloneManualComputations(
       FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
       CHECK(funcOp) << "Failed to lookup function: "
                     << callOp.getCallee().str();
-      callOp.setCallee(
-          symbolTable.insert(cloneFuncRecursively(funcOp, symbolTable)));
+      callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
+          funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
     });
   }
   // TODO(enver): Clean up uncalled functions.
