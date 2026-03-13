@@ -285,7 +285,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
   opts.set_xla_gpu_enable_shared_constants(true);
   opts.set_xla_gpu_enable_nccl_user_buffers(false);
-  opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(false);
+  opts.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
   opts.set_xla_gpu_experimental_enable_nvshmem(false);
   opts.set_xla_gpu_enable_nccl_comm_splitting(true);
   opts.set_xla_gpu_nccl_init_max_rank_per_root_ratio(0);
