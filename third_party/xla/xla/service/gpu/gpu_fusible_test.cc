@@ -1800,6 +1800,32 @@ ENTRY main {
   EXPECT_EQ(config.unroll_factor, 4);
 }
 
+TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopPadFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  param_0 = s8[512,128,128,6]{3,2,1,0} parameter(0)
+  zero = s8[] constant(0)
+  ROOT pad = s8[512,129,129,6]{3,2,1,0} pad(param_0, zero), padding=0_0x0_1x0_1x0_0
+}
+)"));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  se::DeviceDescription device_info_h100{
+      TestGpuDeviceInfo::H100SXMDeviceInfo()};
+  auto analysis = HloFusionAnalysis::Create(*root, device_info_h100);
+  auto config = ComputeLoopFusionConfig(analysis, root->shape());
+  EXPECT_EQ(config.unroll_factor, 4);
+
+  se::DeviceDescription device_info_b200{
+      TestGpuDeviceInfo::B200SXMDeviceInfo()};
+  analysis = HloFusionAnalysis::Create(*root, device_info_b200);
+  config = ComputeLoopFusionConfig(analysis, root->shape());
+  // As we often cannot vectorize the loads, unrolling to more than factor 8
+  // usually doesn't help and in fact we may hit register pressure.
+  EXPECT_EQ(config.unroll_factor, 8);
+}
+
 TEST_F(GpuFusibleTest, ComputeLoopFusionConfigForLoopTransposeSmallMinorDim) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m

@@ -59,6 +59,12 @@ namespace xla {
 namespace gpu {
 namespace {
 
+bool ContainsPad(const HloFusionAdaptor& fusion) {
+  return HloAnyOf(fusion, [](const HloInstructionAdaptor& instr) {
+    return HloPredicateIsOp<HloOpcode::kPad>(&instr.instruction());
+  });
+}
+
 bool ContainsTransposeWithSmallMostMinorDim(const HloFusionAdaptor& fusion,
                                             int64_t unroll_factor) {
   return HloAnyOf(fusion, [unroll_factor](HloInstructionAdaptor instr) {
@@ -195,6 +201,11 @@ int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis) {
         std::min(max_unroll_factor, max_vector_bit_width / max_dtype_bits);
     unroll_factor =
         1LL << (absl::bit_width(static_cast<uint64_t>(unroll_factor)) - 1);
+    if (ContainsPad(analysis->fusion())) {
+      // As with pad we often cannot vectorize the loads, unrolling to more than
+      // factor 8 usually doesn't help and in fact we may hit register pressure.
+      unroll_factor = std::min(unroll_factor, int64_t{8});
+    }
     while (unroll_factor > kDefaultUnrollFactor &&
            ContainsTransposeWithSmallMostMinorDim(analysis->fusion(),
                                                   unroll_factor)) {
