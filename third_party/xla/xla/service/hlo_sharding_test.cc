@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -85,7 +86,7 @@ TEST_P(HloShardingRepresentationTest, Replicate) {
 
   EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
                                  /*num_devices=*/2));
-  EXPECT_FALSE(sharding.HasUniqueDevice());
+  EXPECT_FALSE(sharding.IsSingleDevice());
 }
 
 TEST_P(HloShardingRepresentationTest, DevicePlacement) {
@@ -282,7 +283,7 @@ TEST_F(TileTest, PassesValidationAndMatchesTileInfo) {
     EXPECT_EQ(sharding.TileLimitForDevice(shape, 1),
               (std::vector<int64_t>{4, 5}));
 
-    EXPECT_FALSE(sharding.HasUniqueDevice());
+    EXPECT_FALSE(sharding.IsSingleDevice());
 
     // {device_index, tile_offest, tile_limit}.
     std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>
@@ -314,18 +315,18 @@ struct HloShardingComparisonTestParam {
   // Shape to apply the shardings on.
   Shape shape;
   // If both shardings should compare equal.
-  bool is_equivalent;
+  bool is_equal;
 };
 
 class HloShardingComparisonTest
     : public HloShardingTest,
       public ::testing::WithParamInterface<HloShardingComparisonTestParam> {};
 
-TEST_P(HloShardingComparisonTest, TileEquivalence) {
+TEST_P(HloShardingComparisonTest, TileEquality) {
   const HloSharding& sharding1 = GetParam().sharding1;
   const HloSharding& sharding2 = GetParam().sharding2;
   const Shape& shape = GetParam().shape;
-  const bool is_equivalent = GetParam().is_equivalent;
+  const bool is_equal = GetParam().is_equal;
   const int num_devices = sharding1.num_devices();
 
   EXPECT_IS_OK(sharding1.Validate(shape, num_devices));
@@ -335,23 +336,43 @@ TEST_P(HloShardingComparisonTest, TileEquivalence) {
     return std::make_tuple(sharding.TileIndexForDevice(device),
                            sharding.TileOffsetForDevice(shape, device),
                            sharding.TileLimitForDevice(shape, device),
-                           sharding.TileShape(shape, device));
+                           sharding.TileShape(shape, device),
+                           sharding.TotalNumTiles(), sharding.NumTiles());
   };
 
-  bool tiles_equivalent = true;
+  bool tiles_equal = true;
   for (int i = 0; i < num_devices; ++i) {
     if (get_tile_info(sharding1, i) != get_tile_info(sharding2, i)) {
-      tiles_equivalent = false;
+      tiles_equal = false;
       break;
     }
   }
-  EXPECT_EQ(tiles_equivalent, is_equivalent)
-      << sharding1 << " vs " << sharding2;
+  EXPECT_EQ(tiles_equal, is_equal) << sharding1 << " vs " << sharding2;
+
+  if (is_equal) {
+    if (sharding1.IsTiledLeaf()) {
+      EXPECT_EQ(sharding1.TiledDataRank(), sharding2.TiledDataRank());
+      int64_t rank = sharding1.TiledDataRank();
+      for (int64_t i = 0; i < rank; ++i) {
+        EXPECT_EQ(sharding1.NumTiles(/*dims=*/{i}),
+                  sharding2.NumTiles(/*dims=*/{i}));
+      }
+      if (rank > 1) {
+        EXPECT_EQ(sharding1.NumTiles(/*dims=*/{0, 1}),
+                  sharding2.NumTiles(/*dims=*/{0, 1}));
+      }
+      std::vector<int64_t> all_dims(rank);
+      absl::c_iota(all_dims, 0);
+      EXPECT_EQ(sharding1.NumTiles(all_dims), sharding2.NumTiles(all_dims));
+    }
+  }
 }
 
-INSTANTIATE_TEST_SUITE_P(TileEquivalence, HloShardingComparisonTest, [] {
+INSTANTIATE_TEST_SUITE_P(TileEquality, HloShardingComparisonTest, [] {
   const Mesh mesh_a2b2({2, 2}, {"a", "b"});
   const Mesh mesh_a2b3({2, 3}, {"a", "b"});
+  const Mesh mesh_a2b2c3({2, 2, 3}, {"a", "b", "c"});
+  const Mesh mesh_a4b4c2d4({4, 4, 2, 4}, {"a", "b", "c", "d"});
   return ::testing::Values(
       HloShardingComparisonTestParam{
           HloSharding::IotaTile({2, 2}),
@@ -376,7 +397,33 @@ INSTANTIATE_TEST_SUITE_P(TileEquivalence, HloShardingComparisonTest, [] {
       HloShardingComparisonTestParam{
           HloSharding::IotaTile({6}, {2, 3}, {1, 0}),
           HloSharding(test_utils::FromAxisNames(mesh_a2b3, {{"b", "a"}})),
-          ShapeUtil::MakeShape(U32, {13}), true});
+          ShapeUtil::MakeShape(U32, {13}), true},
+      HloShardingComparisonTestParam{
+          HloSharding::IotaTile({2, 3}),
+          HloSharding(test_utils::FromAxisNames(mesh_a2b3, {{"a"}, {"b"}})),
+          ShapeUtil::MakeShape(U32, {2, 3}), true},
+      HloShardingComparisonTestParam{
+          HloSharding::Tile(Array<int64_t>({2, 2}, {0, 2, 1, 3})),
+          HloSharding(test_utils::FromAxisNames(mesh_a2b2, {{"b"}, {"a"}})),
+          ShapeUtil::MakeShape(U32, {2, 3}), true},
+      HloShardingComparisonTestParam{
+          HloSharding::Subgroup(TileAssignment({2, 2}),
+                                {OpSharding::MANUAL, OpSharding::REPLICATED}),
+          HloSharding(test_utils::FromAxisNames(
+              mesh_a2b2, {}, /*replicated_axes=*/{"b"}, /*unreduced_axes=*/{},
+              /*manual_axes=*/{"a"})),
+          ShapeUtil::MakeShape(U32, {}), true},
+      HloShardingComparisonTestParam{
+          HloSharding::PartialTile(TileAssignment({2, 2, 3})),
+          HloSharding(test_utils::FromAxisNames(mesh_a2b2c3, {{"a"}, {"b"}},
+                                                /*replicated_axes=*/{"c"})),
+          ShapeUtil::MakeShape(U32, {2, 3}), true},
+      HloShardingComparisonTestParam{
+          HloSharding::Tile(TileAssignment({1, 4, 2, 16}, {16, 8}, {1, 0})),
+          HloSharding(test_utils::FromAxisNames(
+              mesh_a4b4c2d4, {{"a"}, {"c", "d:(1)2"}, {"d:(2)2"}, {}},
+              /*replicated_axes=*/{"b"})),
+          ShapeUtil::MakeShape(U32, {2, 3, 5, 7}), false});
 }());
 
 TEST_F(HloShardingTest, EachTile) {
@@ -454,18 +501,22 @@ TEST_F(HloShardingTest, EachTile) {
   }
 }
 
-TEST_F(HloShardingTest, V1V2TileEquivalence) {
+TEST_F(HloShardingTest, V1V2TileEquality) {
   {
     HloSharding v1 = HloSharding::Tile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
     HloSharding v2 = HloSharding::IotaTile({2, 2});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
   {
     HloSharding v1 = HloSharding::Tile(Array<int64_t>({2, 2}, {0, 2, 1, 3}));
     HloSharding v2 = HloSharding::IotaTile({2, 2}, {2, 2}, {1, 0});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
   {
     HloSharding v1 =
@@ -473,16 +524,20 @@ TEST_F(HloShardingTest, V1V2TileEquivalence) {
     HloSharding v2 = HloSharding::IotaTile({2, 2, 2}, {2, 2, 2}, {2, 0, 1});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
 }
 
-TEST_F(HloShardingTest, V1V2PartialTileEquivalence) {
+TEST_F(HloShardingTest, V1V2PartialTileEquality) {
   {
     HloSharding v1 =
         HloSharding::PartialTile(Array<int64_t>({2, 2}, {0, 1, 2, 3}));
     HloSharding v2 = HloSharding::PartialTile(TileAssignment({2, 2}));
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
   {
     HloSharding v1 =
@@ -491,6 +546,8 @@ TEST_F(HloShardingTest, V1V2PartialTileEquivalence) {
         HloSharding::PartialTile(TileAssignment({2, 2}, {2, 2}, {1, 0}));
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
   {
     HloSharding v1 = HloSharding::PartialTile(
@@ -499,10 +556,12 @@ TEST_F(HloShardingTest, V1V2PartialTileEquivalence) {
         TileAssignment({2, 2, 2}, {2, 2, 2}, {2, 0, 1}));
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
 }
 
-TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
+TEST_F(HloShardingTest, V1V2SubgroupEquality) {
   {
     HloSharding v1 =
         HloSharding::Subgroup(Array<int64_t>({2, 2}, {0, 1, 2, 3}),
@@ -511,6 +570,8 @@ TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
         TileAssignment({2, 2}), {OpSharding::MANUAL, OpSharding::REPLICATED});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
   {
     HloSharding v1 =
@@ -521,6 +582,8 @@ TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
                               {OpSharding::MANUAL, OpSharding::REPLICATED});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
   {
     HloSharding v1 = HloSharding::Subgroup(
@@ -531,6 +594,8 @@ TEST_F(HloShardingTest, V1V2SubgroupEquivalence) {
                               {OpSharding::MANUAL, OpSharding::REPLICATED});
     EXPECT_EQ(v1, v2);
     EXPECT_EQ(absl::HashOf(v1), absl::HashOf(v2));
+    EXPECT_EQ(v1.TotalNumTiles(), v2.TotalNumTiles());
+    EXPECT_EQ(v1.NumTiles(), v2.NumTiles());
   }
 }
 
@@ -1159,7 +1224,7 @@ TEST_F(V3ToV2ShardingSplitAxesTest, AllSubgroupTypesWithSplitAxes) {
   EXPECT_EQ(
       HloSharding::V3ToV2Sharding(ns),
       HloSharding::Subgroup(
-          TileAssignment({8, 2, 4}, {2, 4, 2, 4}, {2, 3, 0, 1}),
+          TileAssignment({1, 1, 8, 2, 4}, {2, 4, 2, 4}, {2, 3, 0, 1}),
           {OpSharding::MANUAL, OpSharding::UNREDUCED, OpSharding::REPLICATED}));
 }
 
@@ -1192,7 +1257,7 @@ TEST_F(HloShardingTest, ToNamedShardingMaximal) {
   HloSharding hlo_sharding = HloSharding::AssignDevice(5);
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
-  EXPECT_TRUE(named_sharding.IsMaximal());
+  EXPECT_TRUE(named_sharding.IsSingleDevice());
   EXPECT_EQ(*named_sharding.mesh().device_assignment().array().begin(), 5);
 }
 
@@ -1312,7 +1377,7 @@ TEST_P(HloShardingV3ToV2ToV3RoundTripTest, RoundTrip) {
 INSTANTIATE_TEST_SUITE_P(
     V3ToV2ToV3RoundTrip, HloShardingV3ToV2ToV3RoundTripTest,
     ::testing::Values(
-        NamedSharding::Replicate(), NamedSharding::MaximalSharding(3),
+        NamedSharding::Replicate(), NamedSharding::SingleDevice(3),
         test_utils::FromAxisNames(Mesh({2, 3}, {"axis_0", "axis_1"}),
                                   {{"axis_0"}, {"axis_1"}}),
         test_utils::FromAxisNames(Mesh({2, 2}, {"axis_0", "axis_1"}),

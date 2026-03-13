@@ -60,12 +60,19 @@ class BaseSubOpModel : public SingleOpModel {
   int output_;
 };
 
-class FloatSubOpModel : public BaseSubOpModel {
+template <typename T>
+class SubOpModel : public BaseSubOpModel {
  public:
   using BaseSubOpModel::BaseSubOpModel;
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
 };
+
+template <typename T>
+class FloatSubTest : public ::testing::Test {};
+
+using FloatSubTestTypes = ::testing::Types<float, half, Eigen::bfloat16>;
+TYPED_TEST_SUITE(FloatSubTest, FloatSubTestTypes);
 
 class IntegerSubOpModel : public BaseSubOpModel {
  public:
@@ -119,130 +126,150 @@ float GetTolerance(float min, float max) {
   return 2.0 * kQuantizedStep;
 }
 
-TEST(FloatSubOpModel, FirstInputZero) {
+TYPED_TEST(FloatSubTest, FirstInputZero) {
+  using T = TypeParam;
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
   }
-  FloatSubOpModel m({TensorType_FLOAT32, {0}}, {TensorType_FLOAT32, {}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input2(), {0.1});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  SubOpModel<T> m({GetTensorType<T>(), {0}}, {GetTensorType<T>(), {}},
+                  {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input2(), {0.1});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray<int>({0}));
 }
 
-TEST(FloatSubOpModel, SecondInputZero) {
+TYPED_TEST(FloatSubTest, SecondInputZero) {
+  using T = TypeParam;
   if (SingleOpModel::GetForceUseNnapi()) {
     return;
   }
-  FloatSubOpModel m({TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {0}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {0.1});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  SubOpModel<T> m({GetTensorType<T>(), {}}, {GetTensorType<T>(), {0}},
+                  {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {0.1});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray<int>({0}));
 }
 
-TEST(FloatSubOpModel, NoActivationInplaceInput0) {
-  FloatSubOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+TYPED_TEST(FloatSubTest, NoActivationInplaceInput0) {
+  using T = TypeParam;
+  SubOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
   const int kInplaceInputTensorIdx = 0;
   const int kInplaceOutputTensorIdx = 0;
   const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.8});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3})));
+              ElementsAreArray(ArrayFloatNear(
+                  {-2.1, 0.0, 1.4, -0.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
-TEST(FloatSubOpModel, NoActivationInplaceInput1) {
-  FloatSubOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+TYPED_TEST(FloatSubTest, NoActivationInplaceInput1) {
+  using T = TypeParam;
+  SubOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
   const int kInplaceInputTensorIdx = 1;
   const int kInplaceOutputTensorIdx = 0;
   const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
   TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
   output_tensor->data.data = input_tensor->data.data;
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.8});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3})));
+              ElementsAreArray(ArrayFloatNear(
+                  {-2.1, 0.0, 1.4, -0.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
   EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
 }
 
-TEST(FloatSubOpModel, NoActivation) {
-  FloatSubOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatSubTest, NoActivation) {
+  using T = TypeParam;
+  SubOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.8});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3})));
+              ElementsAreArray(ArrayFloatNear(
+                  {-2.1, 0.0, 1.4, -0.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
-TEST(FloatSubOpModel, ActivationRELU_N1_TO_1) {
-  FloatSubOpModel m(
-      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
-      {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU_N1_TO_1);
-  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
-  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatSubTest, ActivationRELU_N1_TO_1) {
+  using T = TypeParam;
+  SubOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                  {GetTensorType<T>(), {1, 2, 2, 1}}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_RELU_N1_TO_1);
+  m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 1.7, 0.5});
+  m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.8});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({-1.0, 0.0, 1.0, -0.3})));
+              ElementsAreArray(ArrayFloatNear(
+                  {-1.0, 0.0, 1.0, -0.3},
+                  static_cast<float>(NumericLimits<T>::epsilon()) * 10)));
 }
 
-TEST(FloatSubOpModel, VariousInputShapes) {
-  std::vector<std::vector<int>> test_shapes = {
+TYPED_TEST(FloatSubTest, VariousInputShapes) {
+  using T = TypeParam;
+  const std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatSubOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5, -1.1, 2.0});
-    m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.8, -1.1, 0.1});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(
-        m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({-2.1, 0.0, 1.4, -0.3, 0.0, 1.9})))
+    SubOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 1.7, 0.5, -1.1, 2.0});
+    m.template PopulateTensor<T>(m.input2(), {0.1, 0.2, 0.3, 0.8, -1.1, 0.1});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-2.1, 0.0, 1.4, -0.3, 0.0, 1.9},
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
 }
 
-TEST(FloatSubOpModel, WithBroadcast) {
-  std::vector<std::vector<int>> test_shapes = {
+TYPED_TEST(FloatSubTest, WithBroadcast) {
+  using T = TypeParam;
+  const std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatSubOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}},  // always a scalar
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5, -1.1, 2.0});
-    m.PopulateTensor<float>(m.input2(), {0.5});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(
-        m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({-2.5, -0.3, 1.2, 0.0, -1.6, 1.5})))
+    SubOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), {}},  // always a scalar
+                    {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 1.7, 0.5, -1.1, 2.0});
+    m.template PopulateTensor<T>(m.input2(), {0.5});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-2.5, -0.3, 1.2, 0.0, -1.6, 1.5},
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
 }
 
-TEST(FloatSubOpModel, WithBroadcast5D) {
-  std::vector<std::vector<int>> test_shapes = {{1, 3, 1, 2, 1}};
+TYPED_TEST(FloatSubTest, WithBroadcast5D) {
+  using T = TypeParam;
+  const std::vector<std::vector<int>> test_shapes = {{1, 3, 1, 2, 1}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatSubOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                      {TensorType_FLOAT32, {}},  // always a scalar
-                      {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 1.7, 0.5, -1.1, 2.0});
-    m.PopulateTensor<float>(m.input2(), {0.5});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(
-        m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({-2.5, -0.3, 1.2, 0.0, -1.6, 1.5})))
+    SubOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                    {GetTensorType<T>(), {}},  // always a scalar
+                    {GetTensorType<T>(), {}}, ActivationFunctionType_NONE);
+    m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 1.7, 0.5, -1.1, 2.0});
+    m.template PopulateTensor<T>(m.input2(), {0.5});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear(
+                    {-2.5, -0.3, 1.2, 0.0, -1.6, 1.5},
+                    static_cast<float>(NumericLimits<T>::epsilon()) * 10)))
         << "With shape number " << i;
   }
 }
@@ -605,6 +632,7 @@ constexpr int kDim6 = 7;
 
 constexpr int kMaxBroadcastDim = 6;
 
+template <typename T>
 void TestFloatBroadcast(std::vector<int> input1_shape,
                         std::vector<int> input2_shape) {
   std::array<int, kMaxBroadcastDim> input1_dims;
@@ -643,16 +671,18 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
       input2_dims.begin(), input2_dims.end(), 1, std::multiplies<int>());
   const int num_output_elements = std::accumulate(
       output_dims.begin(), output_dims.end(), 1, std::multiplies<int>());
-  std::vector<float> input1(num_input1_elements);
-  std::vector<float> input2(num_input2_elements);
-  std::vector<float> output_ref(num_output_elements);
+  std::vector<T> input1(num_input1_elements);
+  std::vector<T> input2(num_input2_elements);
+  std::vector<T> output_ref(num_output_elements);
 
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   std::uniform_real_distribution<float> f32dist(0.01f, 1.0f);
 
-  std::generate(input1.begin(), input1.end(), [&]() { return f32dist(rng); });
-  std::generate(input2.begin(), input2.end(), [&]() { return f32dist(rng); });
+  std::generate(input1.begin(), input1.end(),
+                [&]() { return static_cast<T>(f32dist(rng)); });
+  std::generate(input2.begin(), input2.end(),
+                [&]() { return static_cast<T>(f32dist(rng)); });
 
   // Compute reference results.
   for (size_t i = 0; i < output_dims[0]; i++) {
@@ -664,12 +694,17 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
               output_ref[i * output_strides[0] + j * output_strides[1] +
                          k * output_strides[2] + l * output_strides[3] +
                          m * output_strides[4] + n * output_strides[5]] =
-                  input1[i * input1_strides[0] + j * input1_strides[1] +
-                         k * input1_strides[2] + l * input1_strides[3] +
-                         m * input1_strides[4] + n * input1_strides[5]] -
-                  input2[i * input2_strides[0] + j * input2_strides[1] +
-                         k * input2_strides[2] + l * input2_strides[3] +
-                         m * input2_strides[4] + n * input2_strides[5]];
+                  static_cast<T>(
+                      static_cast<float>(
+                          input1[i * input1_strides[0] + j * input1_strides[1] +
+                                 k * input1_strides[2] + l * input1_strides[3] +
+                                 m * input1_strides[4] +
+                                 n * input1_strides[5]]) -
+                      static_cast<float>(
+                          input2[i * input2_strides[0] + j * input2_strides[1] +
+                                 k * input2_strides[2] + l * input2_strides[3] +
+                                 m * input2_strides[4] +
+                                 n * input2_strides[5]]));
             }
           }
         }
@@ -677,16 +712,17 @@ void TestFloatBroadcast(std::vector<int> input1_shape,
     }
   }
 
-  FloatSubOpModel m({TensorType_FLOAT32, input1_shape},
-                    {TensorType_FLOAT32, input2_shape},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
-  m.PopulateTensor<float>(m.input1(), input1);
-  m.PopulateTensor<float>(m.input2(), input2);
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  // While there is no error in FP32 mode, 1e-3 error is expected in FP16 mode.
-  EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear(output_ref, /*max_abs_err=*/0,
-                                              /*fp16_max_abs_err=*/1e-3)));
+  SubOpModel<T> m({GetTensorType<T>(), input1_shape},
+                  {GetTensorType<T>(), input2_shape}, {GetTensorType<T>(), {}},
+                  ActivationFunctionType_NONE);
+  m.template PopulateTensor<T>(m.input1(), input1);
+  m.template PopulateTensor<T>(m.input2(), input2);
+  TFLITE_INVOKE_AND_CHECK(T, &m);
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          output_ref, static_cast<float>(NumericLimits<T>::epsilon()) * 10,
+          /*fp16_max_abs_err=*/1e-3)));
 }
 
 template <typename IntegerType>
@@ -777,10 +813,11 @@ void TestIntegerBroadcast(std::vector<int> input1_shape,
 // otherwise we end up being limited by the performance of the longest shard.
 // Since TestFloat32MultiDimBroadcast has 2^12 iterations, it takes a
 // long time (over 30 seconds) to execute all iterations -- too long for a
-// single shard.  So we split it into a few "subshards" and have a separate
+// single shard.  So we split it into a few \"subshards\" and have a separate
 // TYPED_TEST macro invocation for each subshard.
 
-void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
+template <typename T>
+void TestFloatMultiDimBroadcast(int selected_subshard, int subshard_count) {
   int iteration = 0;
   for (uint32_t bm1 = 0; bm1 < (static_cast<uint32_t>(1) << kMaxBroadcastDim);
        bm1++) {
@@ -826,7 +863,7 @@ void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
                     input1_full_shape.end(), input1_shape.data());
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
-          TestFloatBroadcast(input1_shape, input2_shape);
+          TestFloatBroadcast<T>(input1_shape, input2_shape);
         }
       }
     }
@@ -840,35 +877,35 @@ void TestFloat32MultiDimBroadcast(int selected_subshard, int subshard_count) {
 // Uint8QuantizedMultiDimBroadcastSubshard* below.
 constexpr int kMultiDimBroadcastSubshardCount = 10;
 
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard0) {
-  TestFloat32MultiDimBroadcast(0, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard0) {
+  TestFloatMultiDimBroadcast<TypeParam>(0, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard1) {
-  TestFloat32MultiDimBroadcast(1, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard1) {
+  TestFloatMultiDimBroadcast<TypeParam>(1, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard2) {
-  TestFloat32MultiDimBroadcast(2, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard2) {
+  TestFloatMultiDimBroadcast<TypeParam>(2, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard3) {
-  TestFloat32MultiDimBroadcast(3, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard3) {
+  TestFloatMultiDimBroadcast<TypeParam>(3, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard4) {
-  TestFloat32MultiDimBroadcast(4, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard4) {
+  TestFloatMultiDimBroadcast<TypeParam>(4, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard5) {
-  TestFloat32MultiDimBroadcast(5, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard5) {
+  TestFloatMultiDimBroadcast<TypeParam>(5, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard6) {
-  TestFloat32MultiDimBroadcast(6, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard6) {
+  TestFloatMultiDimBroadcast<TypeParam>(6, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard7) {
-  TestFloat32MultiDimBroadcast(7, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard7) {
+  TestFloatMultiDimBroadcast<TypeParam>(7, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard8) {
-  TestFloat32MultiDimBroadcast(8, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard8) {
+  TestFloatMultiDimBroadcast<TypeParam>(8, kMultiDimBroadcastSubshardCount);
 }
-TEST(FloatSubOpModel, Float32MultiDimBroadcastSubshard9) {
-  TestFloat32MultiDimBroadcast(9, kMultiDimBroadcastSubshardCount);
+TYPED_TEST(FloatSubTest, MultiDimBroadcastSubshard9) {
+  TestFloatMultiDimBroadcast<TypeParam>(9, kMultiDimBroadcastSubshardCount);
 }
 
 template <typename T>

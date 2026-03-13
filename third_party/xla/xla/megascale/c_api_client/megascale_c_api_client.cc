@@ -23,11 +23,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
@@ -37,7 +44,10 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
+#include "xla/megascale/addresses.pb.h"
+#include "xla/megascale/c_api_client/c_api_megascale_error_aggregator.h"
 #include "xla/megascale/c_api_client/megascale_types.h"
+#include "xla/megascale/dcn_topology.pb.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_collectives_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -54,6 +64,7 @@ limitations under the License.
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
 // Return error future if not success and frees the PJRT_Error returned by
@@ -521,6 +532,21 @@ absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
       args.multi_slice_config, c_api, multi_slice_extension);
 }
 
+absl::StatusOr<std::shared_ptr<CApiMegascaleErrorAggregator>>
+CreateMegascaleErrorAggregator(absl::string_view app_type) {
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                      GetMegascaleExtension(c_api));
+
+  PJRT_Megascale_ErrorAggregator_Create_Args args{};
+  args.struct_size = PJRT_Megascale_ErrorAggregator_Create_Args_STRUCT_SIZE;
+  args.app_type = app_type.data();
+  args.app_type_size = app_type.size();
+  RETURN_STATUS_IF_PJRT_ERROR(extension->error_aggregator_create(&args), c_api);
+  return std::make_shared<CApiMegascaleErrorAggregator>(args.aggregator,
+                                                        extension, c_api);
+}
+
 absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
 CreateMultiSliceMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices,
@@ -661,6 +687,67 @@ CreateMegascaleCollectives(
 
   return std::make_unique<MegascaleCApiCollectives>(args.collectives, c_api,
                                                     collectives_extension);
+}
+
+typedef absl::AnyInvocable<void(
+    const runtime::MegaScaleRuntimeErrorOverlay& error)>
+    MegaScaleErrorHandler;
+
+static absl::Mutex megascale_error_handlers_mutex(absl::kConstInit);
+static absl::NoDestructor<
+    absl::flat_hash_map<std::string, std::unique_ptr<MegaScaleErrorHandler>>>
+    megascale_error_handlers ABSL_GUARDED_BY(megascale_error_handlers_mutex);
+
+absl::Status RegisterMegascaleErrorHandler(absl::string_view handler_name,
+                                           MegaScaleErrorHandler handler) {
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                      GetMegascaleExtension(c_api));
+
+  auto heap_handler =
+      std::make_unique<MegaScaleErrorHandler>(std::move(handler));
+
+  PJRT_Megascale_RegisterErrorHandler_Args args{};
+  args.struct_size = PJRT_Megascale_RegisterErrorHandler_Args_STRUCT_SIZE;
+  args.handler_name = handler_name.data();
+  args.handler_name_size = handler_name.size();
+  args.handler = +[](const char* serialized_error, size_t serialized_error_size,
+                     void* user_data) {
+    runtime::MegaScaleRuntimeErrorOverlay error;
+    error.ParseFromString(
+        absl::string_view(serialized_error, serialized_error_size));
+    MegaScaleErrorHandler* handler =
+        reinterpret_cast<MegaScaleErrorHandler*>(user_data);
+    (*handler)(error);
+  };
+  args.user_data = heap_handler.get();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->register_megascale_error_handler(&args), c_api);
+  {
+    absl::MutexLock lock(megascale_error_handlers_mutex);
+    megascale_error_handlers->insert_or_assign(std::string(handler_name),
+                                               std::move(heap_handler));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status UnregisterMegascaleErrorHandler(absl::string_view handler_name) {
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                      GetMegascaleExtension(c_api));
+
+  PJRT_Megascale_UnregisterErrorHandler_Args args{};
+  args.struct_size = PJRT_Megascale_UnregisterErrorHandler_Args_STRUCT_SIZE;
+  args.handler_name = handler_name.data();
+  args.handler_name_size = handler_name.size();
+  RETURN_STATUS_IF_PJRT_ERROR(
+      extension->unregister_megascale_error_handler(&args), c_api);
+
+  {
+    absl::MutexLock lock(megascale_error_handlers_mutex);
+    megascale_error_handlers->erase(handler_name);
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace c_api_client

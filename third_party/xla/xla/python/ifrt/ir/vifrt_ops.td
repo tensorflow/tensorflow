@@ -91,6 +91,13 @@ def Vifrt_RemapArraysOpV1 : Vifrt_Op<"RemapArraysV1", "0.1.0", "current", []> {
   let results = (outs Variadic<Vifrt_AnyType>:$outputs);
 }
 
+def Vifrt_BitcastArraysOpV1 : Vifrt_Op<"BitcastArraysV1", "0.1.0", "current", []> {
+  let arguments = (ins
+    Variadic<Vifrt_AnyType>:$inputs,
+    Vifrt_AnyAttr:$donated);
+  let results = (outs Variadic<Vifrt_AnyType>:$outputs);
+}
+
 def Vifrt_CallOpV1 : Vifrt_Op<"CallV1", "0.1.0", "current",
     [AttrSizedOperandSegments]> {
   let arguments = (ins

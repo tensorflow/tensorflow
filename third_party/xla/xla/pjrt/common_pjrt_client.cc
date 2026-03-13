@@ -909,6 +909,38 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
   return res;
 }
 
+absl::StatusOr<CommonPjRtLoadedExecutable::DeviceAndAssignment>
+CommonPjRtLoadedExecutable::LookupDeviceAndAssignment(
+    const ExecuteOptions& options, int replica, int partition,
+    PjRtDevice* device) const {
+  DeviceAndAssignment result;
+  if (device == nullptr) {
+    if (device_assignment_ == nullptr) {
+      return InvalidArgument(
+          "device_assignment_ must be set if device is not provided.");
+    }
+    const int64_t device_id = (*device_assignment_)(replica, partition);
+    GlobalDeviceId global_device_id(device_id);
+    TF_ASSIGN_OR_RETURN(device, client()->LookupDevice(global_device_id));
+    result.device_assignment = device_assignment_;
+  } else {
+    if (device_assignment_ != nullptr) {
+      return InvalidArgument(
+          "device_assignment_ must not be set if device is provided.");
+    }
+    CHECK_EQ(replica, 0);
+    CHECK_EQ(partition, 0);
+    CHECK(addressable_devices_.empty());
+    result.device_assignment = std::make_shared<DeviceAssignment>(1, 1);
+    (*result.device_assignment)(0, 0) = device->id();
+  }
+  CHECK_EQ(device->process_index(), client()->process_index());
+  result.device = device;
+  result.replica = replica;
+  result.partition = partition;
+  return result;
+}
+
 absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
     ExecuteLaunchArgs& launch_args,
     absl::Span<PjRtBuffer* const> argument_handles, xla::RunId run_id,
@@ -916,11 +948,11 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
     size_t host_callback_idx, PjRtDevice* device) const {
   tsl::profiler::TraceMe traceme("CommonPjRtLoadedExecutable::ExecutePrepare");
   TF_ASSIGN_OR_RETURN(
-      auto executable,
-      StartRawExecutable(options, run_id, replica, partition, device));
+      auto device_and_assign,
+      LookupDeviceAndAssignment(options, replica, partition, device));
   // Fill in device to launch_args so it will be present even if ExecutePrepare
   // fails with OOM.
-  device = executable->device();
+  device = device_and_assign.device;
   launch_args.device = device;
 
   // Execute takes `extra_deps` and waits for those to be
@@ -960,9 +992,9 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
         options, launch_args.input_buffers, argument_handles));
   }
 
-  TF_RETURN_IF_ERROR(executable->Load(options, host_callback_idx));
-
-  launch_args.executable = std::move(executable);
+  TF_ASSIGN_OR_RETURN(launch_args.executable,
+                      LoadRawExecutable(options, host_callback_idx, run_id,
+                                        std::move(device_and_assign)));
   launch_args.options = &options;
   launch_args.is_predetermined_error = is_error;
   launch_args.output_leaf_buffers = std::move(output_leaf_buffers);
@@ -1971,7 +2003,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
             copy_literal_async(generated.Await());
           } else {
             generated.OnReady(
-                *common_client->async_work_runner(),
+                common_client->async_work_runner()->AsExecutor(),
                 [copy_literal_async = std::move(copy_literal_async)](
                     const absl::StatusOr<MutableLiteralBase*>& value) mutable {
                   copy_literal_async(value);

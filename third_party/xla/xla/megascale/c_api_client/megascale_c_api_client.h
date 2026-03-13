@@ -22,12 +22,16 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/megascale/addresses.pb.h"
+#include "xla/megascale/c_api_client/c_api_megascale_error_aggregator.h"
 #include "xla/megascale/c_api_client/megascale_types.h"
 #include "xla/megascale/dcn_topology.pb.h"
+#include "xla/megascale/megascale_runtime_error_overlay.pb.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/tsl/platform/logging.h"
@@ -52,6 +56,9 @@ struct ProcessesInfo {
 absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices);
 
+absl::StatusOr<std::shared_ptr<CApiMegascaleErrorAggregator>>
+CreateMegascaleErrorAggregator(absl::string_view app_type);
+
 absl::StatusOr<std::unique_ptr<const xla::MultiSliceConfig>>
 CreateMultiSliceMegascaleConfig(
     const xla::PjRtTopologyDescription& topology_description, int num_slices,
@@ -71,6 +78,13 @@ CreateMegascaleCollectives(
     const CApiPjRtClientContext& megascale_client_ctx,
     ProcessesInfo&& processes_info,
     std::optional<xla::megascale::runtime::DCNTopology>&& dcn_topology);
+
+absl::Status RegisterMegascaleErrorHandler(
+    absl::string_view handler_name,
+    absl::AnyInvocable<void(const runtime::MegaScaleRuntimeErrorOverlay& error)>
+        handler);
+
+absl::Status UnregisterMegascaleErrorHandler(absl::string_view handler_name);
 
 }  // namespace c_api_client
 }  // namespace megascale

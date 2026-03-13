@@ -503,12 +503,23 @@ LoadedExecutable::LoadedExecutable(
       .OnReady(std::move(on_done));
 }
 
+void LoadedExecutable::SetDeleteOptions(const DeleteOptions& options) {
+  absl::MutexLock l(delete_options_mu_);
+  delete_options_ = options;
+}
+
 LoadedExecutable::~LoadedExecutable() {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableDestruct");
 
   auto req = std::make_unique<LoadedExecutableDestructRequest>();
   req->set_loaded_executable_handle(handle_);
+
+  absl::MutexLock l(delete_options_mu_);
+  if (delete_options_.has_value()) {
+    req->mutable_delete_options()->set_deletion_stream_id(
+        delete_options_->deletion_stream_id);
+  }
 
   rpc_helper_->LoadedExecutableDestruct(std::move(req))
       .OnReady(

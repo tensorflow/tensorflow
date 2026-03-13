@@ -1,3 +1,4 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
@@ -67,13 +68,14 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_utils",
     testonly = 1,
     srcs = [
         "__init__.py",
         "test_utils.py",
     ],
+    strict_deps = True,
     deps = [
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -2912,10 +2914,11 @@ tf_cuda_cc_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lstm",
     testonly = 1,
     srcs = ["lstm.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

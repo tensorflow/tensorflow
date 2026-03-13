@@ -100,7 +100,8 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const KernelThunk& thunk) {
   return std::make_unique<LaunchCmd>(
       thunk.kernel_name(), thunk.arguments(), ArgsAccess(thunk.written()),
-      thunk.launch_dimensions(), thunk.shmem_bytes(), thunk.tma_metadata());
+      thunk.launch_dimensions(), thunk.shmem_bytes(), thunk.tma_metadata(),
+      thunk.use_pdl());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
@@ -135,10 +136,10 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const WhileThunk& thunk, const ConvertToCommandsOptions& options) {
   TF_ASSIGN_OR_RETURN(
       CommandExecutor cond_cmds,
-      ConvertToCommands(thunk.condition_thunk_sequence()->thunks(), options));
+      ConvertToCommands(thunk.condition_executor().thunks(), options));
   TF_ASSIGN_OR_RETURN(
       CommandExecutor body_cmds,
-      ConvertToCommands(thunk.body_thunk_sequence()->thunks(), options));
+      ConvertToCommands(thunk.body_executor().thunks(), options));
 
   return std::make_unique<WhileCmd>(
       thunk.condition_result_buffer(), std::move(cond_cmds),
@@ -164,21 +165,21 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const ConditionalThunk& thunk, const ConvertToCommandsOptions& options) {
   std::vector<CommandExecutor> branch_cmds;
-  branch_cmds.reserve(thunk.branch_thunks().size());
+  branch_cmds.reserve(thunk.branch_executors().size());
   if (thunk.branch_index_is_bool()) {
     // For boolean predicates, we need to convert the branches in reverse order
     // because the first branch is the "false" branch and the second is "true"
-    CHECK_EQ(thunk.branch_thunks().size(), 2);
+    CHECK_EQ(thunk.branch_executors().size(), 2);
     TF_ASSIGN_OR_RETURN(
         branch_cmds.emplace_back(),
-        ConvertToCommands(thunk.branch_thunks()[1]->thunks(), options));
+        ConvertToCommands(thunk.branch_executors()[1].thunks(), options));
     TF_ASSIGN_OR_RETURN(
         branch_cmds.emplace_back(),
-        ConvertToCommands(thunk.branch_thunks()[0]->thunks(), options));
+        ConvertToCommands(thunk.branch_executors()[0].thunks(), options));
   } else {
-    for (auto& branch_thunk : thunk.branch_thunks()) {
+    for (auto& branch_thunk : thunk.branch_executors()) {
       TF_ASSIGN_OR_RETURN(CommandExecutor cmds,
-                          ConvertToCommands(branch_thunk->thunks(), options));
+                          ConvertToCommands(branch_thunk.thunks(), options));
       branch_cmds.emplace_back(std::move(cmds));
     }
   }

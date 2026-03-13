@@ -44,6 +44,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
+#include "xla/backends/profiler/gpu/cupti_pm_sampler_utils.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
 #include "xla/tsl/profiler/utils/timespan.h"
@@ -676,8 +677,9 @@ void PmSamples::PopulateCounterLine(XPlaneBuilder* plane,
   XLineBuilder line = plane->GetOrCreateCounterLine();
   std::vector<std::pair<XEventMetadata*, XStatMetadata*>> counter_metadata;
   counter_metadata.reserve(metrics_.size());
-  for (auto& metric : metrics_) {
-    counter_metadata.emplace_back(plane->GetOrCreateEventMetadata(metric),
+  for (const auto& metric : metrics_) {
+    std::string display_name = GetGpuProfileMetricName(metric);
+    counter_metadata.emplace_back(plane->GetOrCreateEventMetadata(display_name),
                                   plane->GetOrCreateStatMetadata(metric));
   }
   for (auto& sampler_range : sampler_ranges_) {

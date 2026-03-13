@@ -319,9 +319,6 @@ class PjRtRawLoadedExecutable {
 
   virtual PjRtDevice* device() = 0;
 
-  virtual absl::Status Load(const ExecuteOptions& options,
-                            size_t host_callback_idx) = 0;
-
   struct RawExecuteResult {
     std::optional<tsl::Future<>> future;
     tsl::RCReference<PjRtDeviceEvent> primary_execute_event;
@@ -341,18 +338,29 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       std::vector<Shape> parameter_device_shapes, Shape output_device_shape,
       std::vector<int> output_memory_space_kind_ids,
       std::vector<PjRtDevice*> addressable_devices,
-      std::vector<LogicalDeviceIds> addressable_device_logical_ids)
+      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
+      std::shared_ptr<DeviceAssignment> device_assignment)
       : parameter_device_shapes_(std::move(parameter_device_shapes)),
         output_device_shape_(std::move(output_device_shape)),
         output_memory_space_kind_ids_(std::move(output_memory_space_kind_ids)),
         addressable_devices_(std::move(addressable_devices)),
         addressable_device_logical_ids_(
-            std::move(addressable_device_logical_ids)) {}
+            std::move(addressable_device_logical_ids)),
+        device_assignment_(std::move(device_assignment)) {}
 
   CommonPjRtClient* client() const override = 0;
 
   absl::Span<PjRtDevice* const> addressable_devices() const override {
     return addressable_devices_;
+  }
+
+  const DeviceAssignment& device_assignment() const override {
+    return *device_assignment_;
+  }
+
+  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
+      const override {
+    return addressable_device_logical_ids_;
   }
 
   using PjRtLoadedExecutable::Execute;
@@ -392,9 +400,22 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     const ExecuteOptions* options;
   };
 
+  struct DeviceAndAssignment {
+    PjRtDevice* device;
+    std::shared_ptr<DeviceAssignment> device_assignment;
+    std::optional<int32_t> slice_id;
+    int replica;
+    int partition;
+  };
+
+  virtual absl::StatusOr<DeviceAndAssignment> LookupDeviceAndAssignment(
+      const ExecuteOptions& options, int replica, int partition,
+      PjRtDevice* device) const;
+
   virtual absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
-  StartRawExecutable(const ExecuteOptions& options, xla::RunId run_id,
-                     int replica, int partition, PjRtDevice* device) const = 0;
+  LoadRawExecutable(const ExecuteOptions& options, size_t host_callback_idx,
+                    xla::RunId run_id,
+                    DeviceAndAssignment device_and_assign) const = 0;
 
   // Returns a sorted list of the parameters that must be donated as a
   // side-effect of the execution. Derived classes may use custom logic.
@@ -455,6 +476,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   // partitions on a single host platform, size of
   // addressable_device_logical_ids_ is 4*2 = 8.
   std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
+
+  std::shared_ptr<DeviceAssignment> device_assignment_;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.

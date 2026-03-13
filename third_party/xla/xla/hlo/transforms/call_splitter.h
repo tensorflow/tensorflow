@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-// This pass allows splitting a single function call into two calls to two
+// This pass allows splitting a single function call into multiple calls to two
 // functions, where the original called computation is split across a specified
 // boundary.
 //
@@ -37,13 +37,14 @@ namespace xla {
 //
 // (x) = call(a, b, c), to_apply={(mul(p0, (add(p1, p2)))}
 //
-// with the boundary predicate "opcode == kMultiply" we will get:
+// with the boundary predicate "opcode == kMultiply" and the kDown direction, we
+// will get:
 //
 // (t) = call(b, c), to_apply={(add(p0, p1))}
 // (y) = call(a, t), to_apply={(mul(p0, p1))}
 //
 // This also allow splitting functions "vertically" as opposed to "horizontally"
-// e.g. for the same predicated, given:
+// e.g. for the same predicate, given:
 //
 // (x, y) = call(a, b, c), to_apply={(add(p0, p1), mul(p1, p2))}
 //
@@ -51,25 +52,21 @@ namespace xla {
 //
 // (x) = call(a, b), to_apply={(add(p0, p1))}
 // (y) = call(b, c), to_apply={(mul(p0, p1))}
-//
-// More precisely:
-//
-// a) The instructions matching the boundary predicate go into the second call.
-// b) Anything that consumes the results of the boundary instructions goes
-//    into the second call.
-// c) Anything that feeds the instructions from (a) and (b) goes into the
-//    first call.
-// d) The remaining instructions go into the first call.
 // TODO(mkuper): This is not quite ready for production use yet.
 class CallSplitter : public HloModulePass {
  public:
+  // TODO(mkuper): Do we want a "both" direction that does a 3-way split?
+  enum class SplitDirection { kDown, kUp };
+
   // The `call_predicate` is used to select the calls that should be split. The
   // `boundary_predicate` is used to select the instructions that form the
   // boundary between the two calls.
   explicit CallSplitter(const HloPredicate& call_predicate,
-                        const HloPredicate& boundary_predicate)
+                        const HloPredicate& boundary_predicate,
+                        SplitDirection split_direction)
       : call_predicate_(call_predicate),
-        boundary_predicate_(boundary_predicate) {}
+        boundary_predicate_(boundary_predicate),
+        split_direction_(split_direction) {}
 
   ~CallSplitter() override = default;
 
@@ -94,6 +91,7 @@ class CallSplitter : public HloModulePass {
  protected:
   HloPredicate call_predicate_;
   HloPredicate boundary_predicate_;
+  SplitDirection split_direction_;
 };
 }  // namespace xla
 

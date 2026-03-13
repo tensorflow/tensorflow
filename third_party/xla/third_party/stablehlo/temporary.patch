@@ -1,3 +1,79 @@
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.h b/stablehlo/stablehlo/dialect/StablehloOps.h
+--- stablehlo/stablehlo/dialect/StablehloOps.h
++++ stablehlo/stablehlo/dialect/StablehloOps.h
+@@ -141,16 +141,16 @@
+ namespace side_effects {
+ 
+ struct SendResource : ::mlir::SideEffects::Resource::Base<SendResource> {
+-  StringRef getName() final { return "SendResource"; }
++  StringRef getName() const final { return "SendResource"; }
+ };
+ struct RecvResource : ::mlir::SideEffects::Resource::Base<RecvResource> {
+-  StringRef getName() final { return "RecvResource"; }
++  StringRef getName() const final { return "RecvResource"; }
+ };
+ struct InfeedResource : ::mlir::SideEffects::Resource::Base<InfeedResource> {
+-  StringRef getName() final { return "InfeedResource"; }
++  StringRef getName() const final { return "InfeedResource"; }
+ };
+ struct OutfeedResource : ::mlir::SideEffects::Resource::Base<OutfeedResource> {
+-  StringRef getName() final { return "OutfeedResource"; }
++  StringRef getName() const final { return "OutfeedResource"; }
+ };
+ 
+ }  // end namespace side_effects
+diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.cpp b/stablehlo/stablehlo/dialect/VhloBytecode.cpp
+--- stablehlo/stablehlo/dialect/VhloBytecode.cpp
++++ stablehlo/stablehlo/dialect/VhloBytecode.cpp
+@@ -962,6 +962,16 @@
+   // cheap.
+   size_t numElements = cast<RankedTensorV1Type>(type).getNumElements();
+   size_t packedSize = llvm::divideCeil(numElements, 8);
++
++  // Unpack splats to single element 0x01 to match unpacked splat format.
++  if (blob.size() == 1 && blob[0] == 0xFF) {
++    rawData.resize(1);
++    rawData[0] = 0x01;
++    return success();
++  }
++  // Unpack the blob if it's packed.
++  // splat and blob.size() == packedSize for all N<=8 elements are ambiguous,
++  // non 0xFF means not splat so must be unpacked.
+   if (blob.size() == packedSize && blob.size() != numElements) {
+     // Unpack the blob.
+     rawData.resize(numElements);
+@@ -987,6 +997,7 @@
+   auto numElements = cast<RankedTensorV1Type>(attr.getType()).getNumElements();
+ 
+   // If the attribute is a splat, we can just splat the value directly.
++  // Use 0xFF to avoid ambiguity with packed format of <=8 elements.
+   bool isSplat = rawData.size() == 1 && numElements > 1;
+   if (isSplat) {
+     data.resize(1);
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/MlirBuilderTest.cpp
+@@ -203,7 +203,7 @@
+     %c = stablehlo.constant dense<1> : tensor<i64>
+     %0 = stablehlo.while(%iterArg = %arg0) : tensor<i64>
+     cond {
+-      %1 = stablehlo.compare  LT, %iterArg, %c : (tensor<i64>, tensor<i64>) -> tensor<i1>
++      %1 = stablehlo.compare LT, %iterArg, %c : (tensor<i64>, tensor<i64>) -> tensor<i1>
+       stablehlo.return %1 : tensor<i1>
+     } do {
+       %1 = stablehlo.subtract %iterArg, %c : tensor<i64>
+diff --ruN a/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp b/stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+--- stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
++++ stablehlo/stablehlo/integrations/cpp/builder/StablehloBuilderTest.cpp
+@@ -347,7 +347,7 @@
+     %c = stablehlo.constant dense<1> : tensor<i64>
+     %0 = stablehlo.while(%iterArg = %arg0) : tensor<i64>
+     cond {
+-      %1 = stablehlo.compare  LT, %iterArg, %c : (tensor<i64>, tensor<i64>) -> tensor<i1>
++      %1 = stablehlo.compare LT, %iterArg, %c : (tensor<i64>, tensor<i64>) -> tensor<i1>
+       stablehlo.return %1 : tensor<i1>
+     } do {
+       %1 = stablehlo.subtract %iterArg, %c : tensor<i64>
 diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
 --- stablehlo/stablehlo/reference/Ops.cpp
 +++ stablehlo/stablehlo/reference/Ops.cpp
@@ -140,6 +216,84 @@ diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_folder.ml
  
  ////////
  // AddOp
+diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+--- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
++++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
+@@ -1688,6 +1688,74 @@
+ // -----
+ 
+ /////////
++// ReverseOp
++
++// CHECK-LABEL: @reverse_empty_dim
++// CHECK-SAME: [[ARG:%.+]]: tensor<1x2x3xi32>
++func.func @reverse_empty_dim(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
++  // CHECK-NOT: stablehlo.reverse
++  %0 = stablehlo.reverse %arg0, dims = [] : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
++  // CHECK: return [[ARG]] : tensor<1x2x3xi32>
++  return %0 : tensor<1x2x3xi32>
++}
++// -----
++
++// CHECK-LABEL: @reverse_dyn_shape_with_zero_dim
++// CHECK-SAME: [[ARG:%.+]]: tensor<0x?x1xi32>
++func.func @reverse_dyn_shape_with_zero_dim(%arg0: tensor<0x?x1xi32>) -> tensor<0x?x1xi32> {
++  // CHECK: %[[RES:.*]] = stablehlo.reverse
++  %0 = stablehlo.reverse %arg0, dims = [0, 1] : (tensor<0x?x1xi32>) -> tensor<0x?x1xi32>
++  // CHECK: return %[[RES]] : tensor<0x?x1xi32>
++  return %0 : tensor<0x?x1xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @reverse_zero_element_any_dim
++// CHECK-SAME: [[ARG:%.+]]: tensor<1x0x1xi32>
++func.func @reverse_zero_element_any_dim(%arg0: tensor<1x0x1xi32>) -> tensor<1x0x1xi32> {
++  // CHECK-NOT: stablehlo.reverse
++  %0 = stablehlo.reverse %arg0, dims = [0, 1] : (tensor<1x0x1xi32>) -> tensor<1x0x1xi32>
++  // CHECK: return [[ARG]] : tensor<1x0x1xi32>
++  return %0 : tensor<1x0x1xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @reverse_one_element_in_all_dim
++// CHECK-SAME: [[ARG:%.+]]: tensor<1x1x1xi32>
++func.func @reverse_one_element_in_all_dim(%arg0: tensor<1x1x1xi32>) -> tensor<1x1x1xi32> {
++  // CHECK-NOT: stablehlo.reverse
++  %0 = stablehlo.reverse %arg0, dims = [0, 1] : (tensor<1x1x1xi32>) -> tensor<1x1x1xi32>
++  // CHECK: return [[ARG]] : tensor<1x1x1xi32>
++  return %0 : tensor<1x1x1xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @reverse_all_dim_to_reverse_equals_one
++// CHECK-SAME: [[ARG:%.+]]: tensor<1x1x3xi32>
++func.func @reverse_all_dim_to_reverse_equals_one(%arg0: tensor<1x1x3xi32>) -> tensor<1x1x3xi32> {
++  // CHECK-NOT: stablehlo.reverse
++  %0 = stablehlo.reverse %arg0, dims = [0, 1] : (tensor<1x1x3xi32>) -> tensor<1x1x3xi32>
++  // CHECK: return [[ARG]] : tensor<1x1x3xi32>
++  return %0 : tensor<1x1x3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: @reverse_splat_cst
++func.func @reverse_splat_cst() -> tensor<3x2xi32> {
++  // CHECK: stablehlo.constant dense<1> : tensor<3x2xi32>
++  // CHECK-NOT: stablehlo.reverse
++  %operand = stablehlo.constant dense<1> : tensor<3x2xi32>
++  %result = stablehlo.reverse %operand, dims = [0] : tensor<3x2xi32>
++  return %result : tensor<3x2xi32>
++}
++
++// -----
++
++/////////
+ // SelectOp
+ 
+ // CHECK-LABEL: func.func @select
 diff --ruN a/stablehlo/stablehlo/tests/verify_reduce.mlir b/stablehlo/stablehlo/tests/verify_reduce.mlir
 --- stablehlo/stablehlo/tests/verify_reduce.mlir
 +++ stablehlo/stablehlo/tests/verify_reduce.mlir
@@ -165,6 +319,22 @@ diff --ruN a/stablehlo/stablehlo/tests/verify_reduce_window.mlir b/stablehlo/sta
    // expected-error@+1 {{requires at least 1 input value}}
    "stablehlo.reduce_window"() ({
      ^bb0():
+diff --ruN a/stablehlo/stablehlo/tests/vhlo/vhlo_bool_in_memory_repr.mlir b/stablehlo/stablehlo/tests/vhlo/vhlo_bool_in_memory_repr.mlir
+--- stablehlo/stablehlo/tests/vhlo/vhlo_bool_in_memory_repr.mlir
++++ stablehlo/stablehlo/tests/vhlo/vhlo_bool_in_memory_repr.mlir
+@@ -0,0 +1,12 @@
++// RUN: stablehlo-opt %s --stablehlo-aggressive-folder | FileCheck %s
++// RUN: stablehlo-translate %s --serialize --target=1.14.0 | stablehlo-translate --deserialize  | stablehlo-opt --stablehlo-aggressive-folder | FileCheck %s
++// RUN-DISABLED(llvm/llvm-project#186178): stablehlo-opt %s -emit-bytecode | stablehlo-opt --stablehlo-aggressive-folder | FileCheck %s
++
++// Bools are packed in bytecode, ensure that their unpacked memory repr matches
++// what MLIR infra expects (see llvm/llvm-project#186178, or jax-ml/jax#35762).
++func.func public @main() -> (tensor<32xi32>) {
++  // CHECK: dense<1> : tensor<32xi32>
++  %c = stablehlo.constant dense<true> : tensor<32xi1>
++  %0 = stablehlo.convert %c : (tensor<32xi1>) -> tensor<32xi32>
++  return %0 : tensor<32xi32>
++}
 diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 --- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
 +++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
@@ -309,4 +479,69 @@ diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFold
                  FoldRoundOpPattern,                   //
                  FoldRoundNearestEvenOpPattern,        //
                  FoldRsqrtOpPattern,                   //
+diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
+@@ -16,6 +16,11 @@
+ 
+ ///////////
+ //// Op & Type Constraints
++
++class AllDimSizeEquals<int dimSize> : Constraint<
++    CPred<"llvm::all_of($1.asArrayRef(), [&](int64_t dim) { "
++          "return llvm::cast<ShapedType>($0.getType()).getDimSize(dim) == " # dimSize # "; })">,
++    "all dimensions sizes in dim are " # dimSize>;
+ 
+ class DimSizeEquals<int dimSize> : Constraint<
+     CPred<"llvm::cast<ShapedType>($0.getType()).getDimSize($1.getInt()) == " # dimSize>,
+@@ -64,10 +69,15 @@
+ 
+ def TypesEqual : Constraint<CPred<"$0.getType() == $1.getType()">, "operands are equal">;
+ 
++def ZeroElement : Constraint<CPred<"llvm::cast<ShapedType>($0.getType()).getNumElements() == 0">, "operand has 0 elements">;
++
+ ///////////
+ //// Attribute Constraints
+ 
+-def AnySplat : AttrConstraint<CPred<"$_self.isSplat()">, "is any splat">;
++def ElementsAttrSplat : AttrConstraint<
++    CPred<"llvm::isa<mlir::ElementsAttr>($_self) && "
++          "llvm::cast<mlir::ElementsAttr>($_self).isSplat()">,
++    "is any splat elements attribute">;
+ 
+ def AnyZero : AttrConstraint<
+     CPred<"::mlir::matchPattern($_self, m_AnyAttrOf(m_Zero(), m_AnyZeroFloat()))">,
+@@ -189,6 +199,32 @@
+   : Pat<(StableHLO_AndOp:$op $lhs, (StableHLO_ConstantOp:$one IntAllOnes:$value)),
+         (replaceWithValue $lhs), [],
+         [(MergeDiscardableAttributes $op, $lhs)]>;
++
++////////
++// ReverseOp
++
++// Pattern: reverse(X, dims=[]) -> X
++def ReverseOp_EmptyDim
++  : Pat<(StableHLO_ReverseOp $operands, EmptyI64Array:$dims),
++        (replaceWithValue $operands)>;
++
++// Pattern: reverse(X, dims=[...]) -> X [if X has 0 element]
++def ReverseOp_ZeroElements
++  : Pat<(StableHLO_ReverseOp AnyStaticShapeTensor:$operands, $dims),
++        (replaceWithValue $operands),
++        [(ZeroElement $operands)]>;
++
++// Pattern: reverse(X, dims=[...]) -> X [size of dim in X equals 1]
++def ReverseOp_AllDimsEqualOne
++  : Pat<(StableHLO_ReverseOp AnyStaticShapeTensor:$operands, $dims),
++        (replaceWithValue $operands),
++        [(AllDimSizeEquals<1> $operands, $dims)]>;
++
++
++// Pattern: reverse(X, dims=[...]) -> X
++def ReverseOp_SplatToNoop
++  : Pat<(StableHLO_ReverseOp:$op (StableHLO_ConstantOp:$cst ElementsAttrSplat:$value), $dims),
++        (replaceWithValue $cst)>;
+ 
+ ////////
+ // BroadcastInDimOp
 

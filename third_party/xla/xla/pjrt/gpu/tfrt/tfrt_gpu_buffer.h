@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/future.h"
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 class TfrtGpuClient;

@@ -67,7 +67,7 @@ absl::Status EventsWriter::InitIfNeeded() {
   int64_t time_in_seconds = env_->NowMicros() / 1000000;
 
   filename_ =
-      strings::Printf("%s.out.tfevents.%010lld.%s%s", file_prefix_.c_str(),
+      absl::StrFormat("%s.out.tfevents.%010lld.%s%s", file_prefix_.c_str(),
                       static_cast<long long>(time_in_seconds),
                       port::Hostname().c_str(), file_suffix_.c_str());
 

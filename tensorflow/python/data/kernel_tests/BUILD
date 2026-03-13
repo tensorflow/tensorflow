@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
@@ -158,9 +159,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "checkpoint_test_base",
     srcs = ["checkpoint_test_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
@@ -1271,9 +1273,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_base",
     srcs = ["test_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/experimental/ops:lookup_ops",
         "//tensorflow/python/data/experimental/ops:random_access",
@@ -1337,11 +1340,12 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_record_test_base",
     srcs = [
         "tf_record_test_base.py",
     ],
+    strict_deps = True,
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -1397,9 +1401,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "io_test",
     srcs = ["io_test.py"],
+    strict_deps = True,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1413,9 +1418,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "rebatch_test",
     srcs = ["rebatch_test.py"],
+    strict_deps = True,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

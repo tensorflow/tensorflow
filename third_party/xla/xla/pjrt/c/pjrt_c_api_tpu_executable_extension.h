@@ -58,26 +58,6 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_GetTargetArguments_Args,
 typedef PJRT_Error* PJRT_TpuExecutable_GetTargetArguments(
     PJRT_TpuExecutable_GetTargetArguments_Args* args);
 
-typedef struct PJRT_TpuExecutable_CoreProgramAbiVersion
-    PJRT_TpuExecutable_CoreProgramAbiVersion;
-
-struct PJRT_TpuExecutable_GetCoreProgramAbiVersion_Args {
-  size_t struct_size;
-  const char* serialized_executable;
-  size_t serialized_executable_size;
-
-  const char* abi_version;                                    // out
-  size_t abi_version_size;                                    // out
-  PJRT_TpuExecutable_CoreProgramAbiVersion* abi_version_ptr;  // out
-  void (*abi_version_deleter)(
-      PJRT_TpuExecutable_CoreProgramAbiVersion* args);  // out
-};
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_GetCoreProgramAbiVersion_Args,
-                          abi_version_deleter);
-
-typedef PJRT_Error* PJRT_TpuExecutable_GetCoreProgramAbiVersion(
-    PJRT_TpuExecutable_GetCoreProgramAbiVersion_Args* args);
-
 typedef struct PJRT_TpuExecutable_HloModuleWithConfig
     PJRT_TpuExecutable_HloModuleWithConfig;
 
@@ -183,19 +163,32 @@ PJRT_DEFINE_STRUCT_TRAITS(
 typedef PJRT_Error* PJRT_TpuExecutable_GetTpuCompilationEnvFieldAsString(
     PJRT_TpuExecutable_GetTpuCompilationEnvFieldAsString_Args* args);
 
+struct PJRT_TpuExecutable_IsTpuPredeterminedError_Args {
+  size_t struct_size;
+  const char* serialized_status;
+  size_t serialized_status_size;
+  bool is_predetermined;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_IsTpuPredeterminedError_Args,
+                          is_predetermined);
+
+typedef PJRT_Error* PJRT_TpuExecutable_IsTpuPredeterminedError(
+    PJRT_TpuExecutable_IsTpuPredeterminedError_Args* args);
+
 typedef struct PJRT_TpuExecutable_Extension {
   PJRT_Extension_Base base;
   PJRT_TpuExecutable_GetTargetArguments* get_target_arguments;
   PJRT_TpuExecutable_GetHloModuleWithConfig* get_hlo_module_with_config;
-  PJRT_TpuExecutable_GetCoreProgramAbiVersion* get_core_program_abi_version;
+  void* get_core_program_abi_version;  // deprecated
   PJRT_TpuExecutable_GetCompiledMemoryStats* get_compiled_memory_stats;
   PJRT_TpuExecutable_RunHloCostAnalysis* run_hlo_cost_analysis;
   PJRT_TpuExecutable_SetTpuCompilationEnv* set_tpu_compilation_env;
   PJRT_TpuExecutable_GetTpuCompilationEnvFieldAsString*
       get_tpu_compilation_env_field_as_string;
+  PJRT_TpuExecutable_IsTpuPredeterminedError* is_tpu_predetermined_error;
 } PJRT_TpuExecutable_Extension;
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_TpuExecutable_Extension,
-                          get_tpu_compilation_env_field_as_string);
+                          is_tpu_predetermined_error);
 
 #ifdef __cplusplus
 }

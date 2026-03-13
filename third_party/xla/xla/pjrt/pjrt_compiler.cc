@@ -227,14 +227,6 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
                            client);
 }
 
-absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
-    CompileOptions options, mlir::ModuleOp module,
-    const PjRtTopologyDescription& topology, PjRtClient* client) {
-  return PjRtCompile(std::move(options),
-                     MaybeOwningMlirModule(std::move(module)), topology,
-                     client);
-}
-
 absl::Status PjRtPhaseCompiler::RegisterPhase(
     const std::string& phase_name, CompilationPhaseFunctions phase_functions) {
   if (phase_name.empty()) {

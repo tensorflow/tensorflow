@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
@@ -7,9 +7,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "batching",
     srcs = ["batching.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:structured_function",
@@ -26,9 +27,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cardinality",
     srcs = ["cardinality.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:dtypes",
@@ -39,18 +41,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "compression_ops",
     srcs = ["compression_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "counter",
     srcs = ["counter.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
@@ -61,11 +65,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "data_service_ops",
     srcs = [
         "data_service_ops.py",
     ],
+    strict_deps = True,
     deps = [
         ":compression_ops",
         "//tensorflow/core/protobuf:for_core_protos_py_proto",
@@ -101,11 +106,12 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "distributed_save_op",
     srcs = [
         "distributed_save_op.py",
     ],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -117,11 +123,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "distribute",
     srcs = [
         "distribute.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
@@ -138,27 +145,30 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "enumerate_ops",
     srcs = ["enumerate_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "error_ops",
     srcs = ["error_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "from_list",
     srcs = ["from_list.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -168,9 +178,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "get_single_element",
     srcs = ["get_single_element.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/types:data",
@@ -179,11 +190,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "global_shuffle_op",
     srcs = [
         "global_shuffle_op.py",
     ],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
@@ -195,9 +207,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "grouping",
     srcs = ["grouping.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:structured_function",
@@ -212,11 +225,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "index_flat_map_op",
     srcs = [
         "index_flat_map_op.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:structured_function",
@@ -228,9 +242,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "interleave_ops",
     srcs = ["interleave_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
@@ -241,11 +256,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "io",
     srcs = [
         "io.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/util:deprecation",
@@ -253,11 +269,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "iterator_ops",
     srcs = [
         "iterator_ops.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:options",
@@ -268,11 +285,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "iterator_model_ops",
     srcs = [
         "iterator_model_ops.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -284,11 +302,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lookup_ops",
     srcs = [
         "lookup_ops.py",
     ],
+    strict_deps = True,
     deps = [
         ":cardinality",
         "//tensorflow/python/framework:dtypes",
@@ -301,9 +320,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "map_defun",
     srcs = ["map_defun.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
@@ -311,9 +331,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "matching_files",
     srcs = ["matching_files.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:dtypes",
@@ -323,9 +344,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "pad_to_cardinality",
     srcs = ["pad_to_cardinality.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
@@ -335,9 +357,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "parsing_ops",
     srcs = ["parsing_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:structure",
@@ -352,9 +375,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "prefetching_ops",
     srcs = ["prefetching_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -375,9 +399,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "random_access",
     srcs = ["random_access.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/util:structure",
         "//tensorflow/python/ops:experimental_dataset_ops_gen",
@@ -385,11 +410,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "random_ops",
     srcs = [
         "random_ops.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
@@ -399,11 +425,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "readers",
     srcs = [
         "readers.py",
     ],
+    strict_deps = True,
     deps = [
         ":error_ops",
         ":parsing_ops",
@@ -428,29 +455,32 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "resampling",
     srcs = ["resampling.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "scan_ops",
     srcs = ["scan_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "shuffle_ops",
     srcs = [
         "shuffle_ops.py",
     ],
+    strict_deps = True,
     visibility = [
         # TODO(jsimsa): Remove non-default visibility exception when `index_shuffle` is made public.
         "//third_party/py/tensorflow_datasets:__subpackages__",
@@ -473,11 +503,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "snapshot",
     srcs = [
         "snapshot.py",
     ],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
@@ -490,18 +521,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "take_while_ops",
     srcs = ["take_while_ops.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "testing",
     srcs = ["testing.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -511,22 +544,24 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "unique",
     srcs = [
         "unique.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "weighted_flat_map_op",
     srcs = [
         "weighted_flat_map_op.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:convert",
@@ -540,11 +575,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "writers",
     srcs = [
         "writers.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:convert",
@@ -558,8 +594,9 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "dataset_ops",
+    strict_deps = True,
     deps = [
         ":batching",
         ":cardinality",

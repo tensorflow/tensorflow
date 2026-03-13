@@ -3,7 +3,7 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 # cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
@@ -20,18 +20,20 @@ exports_files(glob([
     "test/testdata/*",
 ]))
 
-py_strict_library(
+py_library(
     name = "init_py",
     srcs = ["__init__.py"],
+    strict_deps = True,
     deps = [
         ":tf_trt_integration_test_base",  # build_cleaner: keep
         ":trt_convert_py",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "trt_convert_py",
     srcs = ["trt_convert.py"],
+    strict_deps = True,
     deps = [
         ":utils",
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
@@ -69,9 +71,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "utils",
     srcs = ["utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/core:protos_all_py",
@@ -80,8 +83,9 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_trt_integration_test_base",
+    strict_deps = True,
     deps = [
         ":trt_convert_py",
         ":utils",

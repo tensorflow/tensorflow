@@ -877,6 +877,20 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
   }
 
   absl::Status HandleRaggedDot(HloInstruction* ragged_dot) override {
+    auto module = ragged_dot->GetModule();
+    const bool has_grouped_gemm =
+        module->config()
+            .debug_options()
+            .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
+        module->config().debug_options().xla_gpu_enable_cublaslt();
+    if (has_grouped_gemm) {
+      // At the moment, if Gpublaslt support is available, it is prefered
+      // over triton fused ragged-dot. Therefore, we skip this pass and
+      // does not fused the ragged-dot op if the Gpublaslt support
+      // is available for this operation.
+      return absl::OkStatus();
+    }
+
     HloComputation::Builder builder(
         absl::StrCat("ragged_fusion_", ragged_dot->name(), "_computation"));
 
@@ -891,9 +905,8 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
         ragged_dot->CloneWithNewOperands(ragged_dot->shape(), new_operands));
 
     HloComputation* computation =
-        ragged_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
-            builder.Build(),
-            /*is_entry=*/false);
+        module->AddComputationAndUnifyNamesAndIds(builder.Build(),
+                                                  /*is_entry=*/false);
     HloInstruction* dot_fusion = ragged_dot->parent()->AddInstruction(
         HloInstruction::CreateFusion(computation->root_instruction()->shape(),
                                      HloInstruction::FusionKind::kCustom,

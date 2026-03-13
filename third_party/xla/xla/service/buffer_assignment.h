@@ -577,6 +577,14 @@ class BufferAssignment {
       const BufferAssignmentProto& proto, const HloModule* module,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info);
 
+  // Generates a proto representation of the memory usage report.
+  // `percentile`: threshold (0.0-1.0) below which remaining allocations are
+  //   omitted from the report.
+  // `more_than_k`: minimum number of entries to include regardless of
+  //   percentile.
+  MemoryUsageReportProto GetMemoryUsageReportProto(
+      float percentile = 0.05, int64_t more_than_k = 50) const;
+
   // Returns string representation of buffer assignment statistics. Also
   // calculates and returns the total fragmentation.
   std::string StatsString(const AliasInfo* alias_info) const;
@@ -895,8 +903,22 @@ class BufferAssigner {
   BufferAssigner& operator=(const BufferAssigner&) = delete;
 };
 
+struct PeakMemorySizes {
+  int64_t padded;
+  int64_t unpadded;
+};
+
 // Computes the peak memory usage through the proto's heap simulator traces.
+absl::StatusOr<PeakMemorySizes> ComputePeakMemorySizes(
+    const BufferAssignmentProto& proto, const HloModuleProto& hlo_module_proto);
+
+// Computes the peak memory usage assuming buffers are padded.
 absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto);
+
+// Computes memory in bytes used by allocations with indefinite lifetime for a
+// given color.
+int64_t ComputeIndefiniteAllocationsInBytes(const BufferAssignmentProto& proto,
+                                            int64_t memory_color);
 
 // Computes the total memory allocated by the buffer assignment for a given
 // color.

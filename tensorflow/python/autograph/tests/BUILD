@@ -1,13 +1,14 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(":reference_test.bzl", "reference_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 licenses(["notice"])
 
-py_strict_library(
+py_library(
     name = "reference_tests",
     srcs = ["reference_test_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

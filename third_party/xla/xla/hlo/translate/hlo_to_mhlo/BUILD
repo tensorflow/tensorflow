@@ -138,6 +138,7 @@ cc_library(
     deps = [
         ":hlo_function_importer",
         ":module_attributes_importer",
+        "//xla:debug_options_flags",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",

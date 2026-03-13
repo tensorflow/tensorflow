@@ -16,15 +16,22 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 
 #include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/literal.h"
 #include "xla/shape_util.h"
 #include "xla/tests/local_client_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -373,6 +380,89 @@ ENTRY %main (p0: u32[], p1: u32[], data: f32[100,200]) -> f32[10,20] {
   // Dim 1: 200 - 20 = 180
   EXPECT_GE(args[1].Get<uint32_t>({}), 0);
   EXPECT_LE(args[1].Get<uint32_t>({}), 180);
+}
+
+TEST_F(TestUtilsTest, MakeFakeArgumentsForDynamicSliceKnownBits) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+
+ENTRY %main (param_1: s8[262144,2048], param_2: s32[]) -> s8[131072,2048] {
+  %param_1 = s8[262144,2048] parameter(0)
+  %param_2 = s32[] parameter(1)
+  %constant = s32[] constant(0)
+  ROOT %dynamic-slice = s8[131072,2048] dynamic-slice(%param_1, %param_2, %constant), dynamic_slice_sizes={131072,2048}
+}
+)"));
+
+  int32_t index_known_bits_zero = 131071;  // 0x1FFFF
+  GetIndexKnownZeroesFn index_known_zeroes_fn =
+      [&](const HloInstruction* use,
+          int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() != HloOpcode::kDynamicSlice) {
+      return std::nullopt;
+    }
+    if (sliced_dim == 0) {
+      return index_known_bits_zero;
+    }
+    return std::nullopt;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeFakeArguments(module.get(),
+                        /*pseudo_random=*/true,
+                        /*use_large_range=*/false,
+                        /*treat_gte_as_data_formatting=*/false,
+                        /*max_bits_of_precision=*/std::nullopt,
+                        /*engine=*/nullptr,
+                        /*generate_aligned_ds_indices=*/false,
+                        index_known_zeroes_fn));
+  ASSERT_EQ(args.size(), 2);
+
+  int32_t index = args[1].Get<int32_t>({});
+  EXPECT_EQ(index & index_known_bits_zero, 0);
+}
+
+TEST_F(TestUtilsTest, MakeFakeArgumentsForDynamicUpdateSliceKnownBits) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+
+ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[]) -> s8[262144,2048] {
+  %param_1 = s8[262144,2048] parameter(0)
+  %param_2 = s8[131072,2048] parameter(1)
+  %param_3 = s32[] parameter(2)
+  %constant = s32[] constant(0)
+  ROOT %dynamic-update-slice = s8[262144,2048] dynamic-update-slice(%param_1, %param_2, %param_3, %constant)
+}
+)"));
+
+  GetIndexKnownZeroesFn index_known_zeroes_fn =
+      [](const HloInstruction* use,
+         int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() != HloOpcode::kDynamicUpdateSlice) {
+      return std::nullopt;
+    }
+    if (sliced_dim == 0) {
+      return 131071;  // 0x1FFFF
+    }
+    return std::nullopt;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeFakeArguments(module.get(),
+                        /*pseudo_random=*/true,
+                        /*use_large_range=*/false,
+                        /*treat_gte_as_data_formatting=*/false,
+                        /*max_bits_of_precision=*/std::nullopt,
+                        /*engine=*/nullptr,
+                        /*generate_aligned_ds_indices=*/false,
+                        index_known_zeroes_fn));
+  ASSERT_EQ(args.size(), 3);
+
+  int32_t index = args[2].Get<int32_t>({});
+  int32_t index_known_bits_zero = 131071;
+  EXPECT_EQ(index & index_known_bits_zero, 0);
 }
 
 }  // namespace

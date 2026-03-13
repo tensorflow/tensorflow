@@ -2,7 +2,7 @@
 # Since we use OSSFuzz, gather all fuzzers into a single place.
 # This way, we can use tooling to determine the status of the fuzzing efforts.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_py_fuzz_target",
@@ -13,9 +13,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "python_fuzzing",
     srcs = ["python_fuzzing.py"],
+    strict_deps = True,
     deps = ["//tensorflow:tensorflow_py_no_contrib"],
 )
 

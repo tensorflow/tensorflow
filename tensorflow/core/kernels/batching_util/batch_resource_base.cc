@@ -564,6 +564,7 @@ absl::Status BatchResourceBase::RegisterInput(
                                      return *num_outstanding_batched_items == 0;
                                    },
                                    &num_outstanding_batched_items_});
+      batch_components->is_warmup_task = true;
     }
     num_outstanding_batched_items_ += batch_components->size();
   }

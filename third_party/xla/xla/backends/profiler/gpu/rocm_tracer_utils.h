@@ -165,6 +165,7 @@ class AnnotationMap {
   explicit AnnotationMap(uint64_t max_size) : max_size_(max_size) {}
   void Add(uint32_t correlation_id, const std::string& annotation);
   absl::string_view LookUp(uint32_t correlation_id);
+  void Clear();
 
  private:
   struct AnnotationMapImpl {

@@ -1544,6 +1544,9 @@ def tf_gen_op_wrapper_py(
     py_deps = [clean_dep("//tensorflow/python/framework:for_generated_wrappers_v2")]
     if extra_py_deps:
         py_deps += extra_py_deps
+    kwargs = {}
+    if py_lib_rule == _plain_py_library:
+        kwargs["strict_deps"] = False
     py_lib_rule(
         name = generated_target_name,
         srcs = [out],
@@ -1556,6 +1559,7 @@ def tf_gen_op_wrapper_py(
         tags = ["avoid_dep"],
         compatible_with = compatible_with,
         testonly = testonly,
+        **kwargs
     )
 
 # Define a bazel macro that creates cc_test for tensorflow.
@@ -2638,6 +2642,8 @@ def py_test(
         )
     else:
         _make_tags_mutable(kwargs)
+        if test_rule == _plain_py_test:
+            kwargs["strict_deps"] = False
         test_rule(
             deps = select({
                 "//conditions:default": deps,

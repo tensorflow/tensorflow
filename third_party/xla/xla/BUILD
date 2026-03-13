@@ -564,7 +564,6 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
@@ -1098,7 +1097,6 @@ cc_library(
         ":shape_util",
         ":util",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
     ],
@@ -1319,6 +1317,18 @@ cc_library(
     name = "lazy",
     hdrs = ["lazy.h"],
     deps = ["@com_google_absl//absl/functional:any_invocable"],
+)
+
+xla_cc_test(
+    name = "lazy_test",
+    srcs = ["lazy_test.cc"],
+    deps = [
+        ":lazy",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 tf_proto_library(

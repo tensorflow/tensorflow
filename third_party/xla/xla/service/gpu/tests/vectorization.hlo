@@ -1,0 +1,26 @@
+// RUN: hlo-opt %s --platform=gpu --stage=llvm-before-optimizations --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-LLVM-%{GPU} %s
+// RUN: hlo-opt %s --platform=gpu --stage=ptx --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/%{GPU}.txtpb | FileCheck --check-prefixes=CHECK-PTX-%{GPU} %s
+
+// CHECK-LLVM-b200: store <16 x i8>
+// CHECK-PTX-b200: st.global.v4.b32
+
+// Note, these aren't the optimal values for H100, this just reflects the
+// current behavior of XLA. H100 would also benefit from further vectorization.
+// CHECK-LLVM-h100_sxm: store <4 x i8>
+// CHECK-PTX-h100_sxm: st.global.b32
+// CHECK-LLVM-a100_pcie_80: store <4 x i8>
+// CHECK-PTX-a100_pcie_80: st.global.b32
+// CHECK-LLVM-a6000: store <4 x i8>
+// CHECK-PTX-a6000: st.global.b32
+
+HloModule m8, is_scheduled=true
+
+tr {
+  a = s8[8,14336,256] parameter(0)
+  b = s8[14336,8,256] transpose(a), dimensions={1,0,2}
+}
+
+e {
+  p = s8[8,14336,256] parameter(0)
+  t = s8[14336,8,256] fusion(p), kind=kInput, calls=tr
+}

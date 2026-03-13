@@ -6,7 +6,7 @@ This error occurs when the block shape of a kernel input or output does not
 align with the default tiling of the datatype on the specific TPU hardware
 being used.
 
-**Sample Error Messages:**
+**Sample error messages:**
 
 ```
 UNIMPLEMENTED: Mosaic failed to compile TPU kernel: Failed to set window params
@@ -15,7 +15,7 @@ block shape (..., 8, 8192) is not divisible by tiling evenly nor matches the
 full shape.
 ```
 
-**XLA Backends:** TPU
+**XLA backends:** TPU
 
 ## Overview
 
@@ -34,7 +34,7 @@ At compile time, XLA enforces the following constraints for the minor and
 
 1.  **Divisibility:** The block dimension must be a multiple of the tile
     dimension in the underlying tensor, or
-2.  **Full Shape Exception:** If the block dimension is not divisible, it must
+2.  **Full shape exception:** If the block dimension is not divisible, it must
     be equal to the **full size** of that dimension in the underlying tensor.
 
 This error is triggered when a block violates both conditions. For example,
@@ -49,6 +49,5 @@ To resolve this error, ensure your kernel's block shapes align with the
 current hardware tiling. Modify your kernel code to align the block size such
 that it is a multiple of the required tiling.
 
-* **Example:** If the error states the tiling is `(16, 128)` but your block
-shape is `(8, 128)`, change the block spec such that the shape matches
-`(16, 128)`.
+For example, if the error states the tiling is `(16, 128)` but your block shape
+is `(8, 128)`, change the block spec such that the shape matches `(16, 128)`.

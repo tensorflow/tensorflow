@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -41,7 +42,8 @@ class EstimateCubScratchSize : public HloModulePass {
   }
 
  protected:
-  absl::StatusOr<bool> RunOnInstruction(HloCustomCallInstruction* custom_call);
+  absl::Status RunOnSortInstruction(HloCustomCallInstruction* custom_call);
+  absl::Status RunOnScanInstruction(HloCustomCallInstruction* custom_call);
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
   absl::StatusOr<bool> RunImpl(

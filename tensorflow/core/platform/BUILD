@@ -17,13 +17,13 @@ load(
     "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_not_android",
     "if_not_fuchsia",
     "if_windows",
+    "py_test",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",  # @unused
@@ -491,9 +491,10 @@ cc_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ram_file_system_test",
     srcs = ["ram_file_system_test.py"],
+    strict_deps = True,
     deps = [
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/compat:v2_compat",

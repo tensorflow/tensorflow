@@ -109,8 +109,9 @@ mlir::LogicalResult verifyCallOpAliasesAndDonations(
   return mlir::success();
 }
 
+// Verifies inputs are donated for ops that require all inputs to be donated.
 template <typename T>
-mlir::LogicalResult verifyCopyRemapAndReshardOpsDonation(
+mlir::LogicalResult verifyOpRequiringAllDonated(
     T op, llvm::DenseMap<mlir::Value, mlir::Operation*>& donated_value_to_op) {
   // Verify that no inputs have already been donated.
   for (const auto [idx, input] : llvm::enumerate(op.getInputs())) {
@@ -159,10 +160,10 @@ void IfrtVerifyDonationPass::runOnOperation() {
             .Case<CallOp, CallLoadedExecutableOp>([&](auto& op) {
               return verifyCallOpAliasesAndDonations(op, donated_value_to_op);
             })
-            .Case<CopyArraysOp, RemapArraysOp, ReshardOp>([&](auto& op) {
-              return verifyCopyRemapAndReshardOpsDonation(op,
-                                                          donated_value_to_op);
-            })
+            .Case<BitcastArraysOp, CopyArraysOp, RemapArraysOp, ReshardOp>(
+                [&](auto& op) {
+                  return verifyOpRequiringAllDonated(op, donated_value_to_op);
+                })
             .Case<mlir::func::ReturnOp>([&](mlir::func::ReturnOp return_op) {
               for (const auto& [idx, result] :
                    llvm::enumerate(return_op.getOperands())) {

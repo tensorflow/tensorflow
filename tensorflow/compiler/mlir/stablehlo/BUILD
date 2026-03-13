@@ -1,9 +1,9 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("@xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("@xla//xla/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
@@ -61,9 +61,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "stablehlo_test",
     srcs = ["stablehlo_test.py"],
+    strict_deps = True,
     deps = [
         ":stablehlo",
         #internal proto upb dep

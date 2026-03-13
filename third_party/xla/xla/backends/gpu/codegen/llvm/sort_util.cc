@@ -485,6 +485,9 @@ absl::Status EmitSortInPlace(
           std::max(tile_size, static_cast<int64_t>(64)));
       param_shmem_buffers[i] = llvm_ir::AllocateSharedMemoryTile(
           module, tile_type, absl::StrCat(name, "_tile_param_", i));
+      param_shmem_buffers[i]->setAlignment(
+          llvm::Align(ShapeUtil::ByteSizeOfPrimitiveType(
+              values_arrays[i].GetShape().element_type())));
     }
   }
 

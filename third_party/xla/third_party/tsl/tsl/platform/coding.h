@@ -37,32 +37,34 @@ static const int kMaxVarint64Bytes = 10;
 
 // Lower-level versions of Put... that write directly into a character buffer
 // REQUIRES: dst has enough space for the value being written
-extern void EncodeFixed16(char* dst, uint16 value);
-extern void EncodeFixed32(char* dst, uint32 value);
-extern void EncodeFixed64(char* dst, uint64 value);
-extern void PutFixed16(string* dst, uint16 value);
-extern void PutFixed32(string* dst, uint32 value);
-extern void PutFixed64(string* dst, uint64 value);
+extern void EncodeFixed16(char* dst, uint16_t value);
+extern void EncodeFixed32(char* dst, uint32_t value);
+extern void EncodeFixed64(char* dst, uint64_t value);
+extern void PutFixed16(std::string* dst, uint16_t value);
+extern void PutFixed32(std::string* dst, uint32_t value);
+extern void PutFixed64(std::string* dst, uint64_t value);
 
-extern void PutVarint32(string* dst, uint32 value);
-extern void PutVarint64(string* dst, uint64 value);
+extern void PutVarint32(std::string* dst, uint32_t value);
+extern void PutVarint64(std::string* dst, uint64_t value);
 
-extern void PutVarint32(tstring* dst, uint32 value);
-extern void PutVarint64(tstring* dst, uint64 value);
+extern void PutVarint32(tstring* dst, uint32_t value);
+extern void PutVarint64(tstring* dst, uint64_t value);
 
-extern bool GetVarint32(absl::string_view* input, uint32* value);
-extern bool GetVarint64(absl::string_view* input, uint64* value);
+extern bool GetVarint32(absl::string_view* input, uint32_t* value);
+extern bool GetVarint64(absl::string_view* input, uint64_t* value);
 
-extern const char* GetVarint32Ptr(const char* p, const char* limit, uint32* v);
-extern const char* GetVarint64Ptr(const char* p, const char* limit, uint64* v);
+extern const char* GetVarint32Ptr(const char* p, const char* limit,
+                                  uint32_t* v);
+extern const char* GetVarint64Ptr(const char* p, const char* limit,
+                                  uint64_t* v);
 
 // Internal routine for use by fallback path of GetVarint32Ptr
 extern const char* GetVarint32PtrFallback(const char* p, const char* limit,
-                                          uint32* value);
+                                          uint32_t* value);
 extern const char* GetVarint32Ptr(const char* p, const char* limit,
-                                  uint32* value);
-extern char* EncodeVarint32(char* dst, uint32 v);
-extern char* EncodeVarint64(char* dst, uint64 v);
+                                  uint32_t* value);
+extern char* EncodeVarint32(char* dst, uint32_t v);
+extern char* EncodeVarint64(char* dst, uint64_t v);
 
 // Returns the length of the varint32 or varint64 encoding of "v"
 extern int VarintLength(uint64_t v);

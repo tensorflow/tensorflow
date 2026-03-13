@@ -4,7 +4,7 @@
 
 --- a/third_party/nvidia/backend/driver.py
 +++ b/third_party/nvidia/backend/driver.py
-@@ -63,13 +63,8 @@ class CudaUtils(object):
+@@ -98,13 +98,8 @@ class CudaUtils(object):
          return cls.instance
  
      def __init__(self):

@@ -2,7 +2,7 @@
 #Description:
 # TensorFlow SavedModel.
 
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -265,13 +265,14 @@ tf_cc_test(
 )
 
 # A subset of the TF2 saved models can be generated with this tool.
-py_strict_binary(
+py_binary(
     name = "testdata/generate_saved_models",
     srcs = ["testdata/generate_saved_models.py"],
     data = [
         ":saved_model_asset_data",
         ":saved_model_static_hashtable_asset_data",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat:v2_compat",
@@ -293,9 +294,10 @@ py_strict_binary(
 
 # copybara:uncomment_begin(google-only)
 #
-# py_strict_binary(
+# py_binary(
 #     name = "testdata/generate_chunked_models",
 #     srcs = ["testdata/generate_chunked_models.py"],
+#     strict_deps = True,
 #     deps = [
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",

@@ -68,6 +68,12 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
   // Returns true if the program exclusively owns the MLIR context.
   bool OwnsMlirContext() const { return mlir_context != nullptr; }
 
+  // Key for the `fill_all_statuses` attribute in the custom_options attribute
+  // map. If set to true, all executables will have their status filled if
+  // `options.fill_status` is set. Otherwise, only leaf executables will have
+  // their status filled.
+  static constexpr absl::string_view kFillAllStatuses = "fill_all_statuses";
+
   static char ID;  // NOLINT
 
  private:

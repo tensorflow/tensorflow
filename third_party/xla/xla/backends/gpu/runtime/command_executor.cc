@@ -54,7 +54,7 @@ limitations under the License.
 namespace xla::gpu {
 
 namespace {
-// An adaptor from CommandBufferCmd to ExecutionGraph::Operation for building an
+// An adaptor from Command to ExecutionGraph::Operation for building an
 // execution graph from a command sequence.
 class CommandOperation : public ExecutionGraph::Operation {
  public:

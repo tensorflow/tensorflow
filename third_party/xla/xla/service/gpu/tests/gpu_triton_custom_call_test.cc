@@ -133,6 +133,10 @@ class GpuIrEmitterUnnestedTest : public GpuPjRtCodegenTest {
   se::CudaComputeCapability GetCudaComputeCapability() {
     return device_description().cuda_compute_capability();
   }
+
+  se::GpuComputeCapability GetGpuComputeCapability() {
+    return device_description().gpu_compute_capability();
+  }
 };
 
 TEST_F(GpuIrEmitterUnnestedTest, EmitTritonCustomCallWithCorrectLowering) {
@@ -332,7 +336,8 @@ TEST_F(GpuIrEmitterUnnestedTest, RunTritonCustomCallWithDeviceSideTMA) {
 }
 
 TEST_F(GpuIrEmitterUnnestedTest, CanNotEmitTritonCustomCallOnPreAmpereGpu) {
-  if (GetCudaComputeCapability().IsAtLeastAmpere()) {
+  if (GetGpuComputeCapability().IsRocm() ||
+      GetCudaComputeCapability().IsAtLeastAmpere()) {
     GTEST_SKIP() << "Running on Ampere or more recent GPU, skipping.";
   }
 

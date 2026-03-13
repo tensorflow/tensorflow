@@ -1,5 +1,5 @@
-// RUN: sdy_opt %s -xla-sdy-stablehlo-export-pipeline 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
-// RUN: sdy_opt %s -xla-sdy-stablehlo-export-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
+// RUN: sdy_opt %s -split-input-file -xla-sdy-stablehlo-export-pipeline 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V2
+// RUN: sdy_opt %s -split-input-file -xla-sdy-stablehlo-export-pipeline='enable-hlo-sharding-v3=true' 2>&1 | FileCheck %s --check-prefixes=CHECK,CHECK-V3
 
 sdy.mesh @mesh_0 = <["axis_0"=2, "axis_1"=4, "axis_2"=4]>
 sdy.mesh @mesh_1 = <["axis_0"=16]>
@@ -13,6 +13,22 @@ sdy.mesh @empty_mesh_0 = <[]>
 sdy.mesh @empty_mesh_1 = <[]>
 
 // CHECK-NOT: sdy.mesh
+
+// CHECK-LABEL: func @open_dim_shardings(
+// CHECK-V2-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
+// CHECK-V2-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
+// CHECK-V2-SAME:      %arg2: tensor<8x16xf32> {mhlo.sharding = "{devices=[1,16]<=[16]}"})
+// CHECK-V3-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh['axis_0'=16], [{?}, {}]}"},
+// CHECK-V3-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{mesh['axis_0'=16], [{}, {}]}"},
+// CHECK-V3-SAME:      %arg2: tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=16], [{?}, {'axis_0', ?}]}"})
+// CHECK-SAME:  -> tensor<8x16xf32> {
+func.func @open_dim_shardings(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{?}, {}]>},
+                              %arg1: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>},
+                              %arg2: tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{?}, {"axis_0", ?}]>}) -> tensor<8x16xf32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
+  %1 = stablehlo.dot %0, %arg2 : (tensor<8x8xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
+  return %1 : tensor<8x16xf32>
+}
 
 // CHECK-LABEL: func @non_trivial_common_mesh(
 // CHECK-V2-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,8]<=[8,4]T(1,0)}"},
@@ -83,7 +99,7 @@ func.func @multi_result_op(%arg0: tensor<4x64x8xf32>, %arg1: tensor<4x64x8xf32>)
 // CHECK-V2-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dim_replicate}"},
 // CHECK-V2-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{replicated}"},
 // CHECK-V3-SAME:      %arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}]}"},
-// CHECK-V3-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{mesh['x'=8,'y'=4], replicated}"},
+// CHECK-V3-SAME:      %arg1: tensor<8x8xf32> {mhlo.sharding = "{mesh['x'=8,'y'=4], [{}, {}]}"},
 // CHECK-SAME:      %arg2: tensor<8x16xf32>)
 // CHECK-SAME:  -> tensor<8x16xf32> {
 func.func @fully_replicated(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"y"}, {}]>},
@@ -208,15 +224,15 @@ func.func @sharding_in_manual_computation_body(%arg0: tensor<8x16xf32> {sdy.shar
   // CHECK-V2-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{devices=[2,2,4]<=[2,2,4]T(1,0,2) last_tile_dim_replicate}"} : tensor<8x16xf32>
   // CHECK-V3-NEXT: %[[COPY_0:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{'b'}, {'a'}]}"} : tensor<8x16xf32>
   // CHECK-V2-NEXT: %[[FULL_TO_SHARD_0:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_0]]) {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"} : (tensor<8x16xf32>) -> tensor<4x8xf32>
-  // CHECK-V3-NEXT: %[[FULL_TO_SHARD_0:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_0]]) {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [], manual={'a', 'b'}}"} : (tensor<8x16xf32>) -> tensor<4x8xf32>
+  // CHECK-V3-NEXT: %[[FULL_TO_SHARD_0:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_0]]) {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {}], manual={'a', 'b'}}"} : (tensor<8x16xf32>) -> tensor<4x8xf32>
   // CHECK-V2-NEXT: %[[COPY_1:.*]] = mhlo.copy %arg1 {mhlo.sharding = "{devices=[2,1,8]<=[2,2,4]T(1,0,2) last_tile_dim_replicate}"} : tensor<16x32xf32>
   // CHECK-V3-NEXT: %[[COPY_1:.*]] = mhlo.copy %arg1 {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{'b'}, {}], replicated={'a'}}"} : tensor<16x32xf32>
   // CHECK-V2-NEXT: %[[FULL_TO_SHARD_1:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_1]]) {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"} : (tensor<16x32xf32>) -> tensor<8x32xf32>
-  // CHECK-V3-NEXT: %[[FULL_TO_SHARD_1:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_1]]) {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [], manual={'a', 'b'}}"} : (tensor<16x32xf32>) -> tensor<8x32xf32>
+  // CHECK-V3-NEXT: %[[FULL_TO_SHARD_1:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_1]]) {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {}], manual={'a', 'b'}}"} : (tensor<16x32xf32>) -> tensor<8x32xf32>
   // CHECK-V2-NEXT: %[[CALL:.*]] = call @xla.sdy.inlinable_manual_computation_body(%[[FULL_TO_SHARD_0]], %[[FULL_TO_SHARD_1]]) {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"} : (tensor<4x8xf32>, tensor<8x32xf32>) -> tensor<4x32xf32>
-  // CHECK-V3-NEXT: %[[CALL:.*]] = call @xla.sdy.inlinable_manual_computation_body(%[[FULL_TO_SHARD_0]], %[[FULL_TO_SHARD_1]]) {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [], manual={'a', 'b'}}"} : (tensor<4x8xf32>, tensor<8x32xf32>) -> tensor<4x32xf32>
+  // CHECK-V3-NEXT: %[[CALL:.*]] = call @xla.sdy.inlinable_manual_computation_body(%[[FULL_TO_SHARD_0]], %[[FULL_TO_SHARD_1]]) {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {}], manual={'a', 'b'}}"} : (tensor<4x8xf32>, tensor<8x32xf32>) -> tensor<4x32xf32>
   // CHECK-V2-NEXT: %[[COPY_2:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"} : tensor<4x32xf32>
-  // CHECK-V3-NEXT: %[[COPY_2:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [], manual={'a', 'b'}}"} : tensor<4x32xf32>
+  // CHECK-V3-NEXT: %[[COPY_2:.*]] = mhlo.copy %[[CALL]] {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {}], manual={'a', 'b'}}"} : tensor<4x32xf32>
   // CHECK-V2-NEXT: %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_2]]) {mhlo.sharding = "{devices=[2,1,8]<=[16] last_tile_dim_replicate}"} : (tensor<4x32xf32>) -> tensor<8x32xf32>
   // CHECK-V3-NEXT: %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_2]]) {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{'a'}, {}], replicated={'b'}}"} : (tensor<4x32xf32>) -> tensor<8x32xf32>
   // CHECK-NEXT: return %[[SHARD_TO_FULL]] : tensor<8x32xf32>
@@ -242,12 +258,12 @@ func.func @mesh_with_device_id_should_be_converted_to_maximal_sharding(%arg0: te
 }
 
 // CHECK-V2-LABEL: func @mesh_empty_should_be_converted_to_replicated_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{replicated}"}, %arg1: tensor<8x8xf32>)
-// CHECK-V3-LABEL: func @mesh_empty_should_be_converted_to_replicated_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh[], replicated}"}, %arg1: tensor<8x8xf32>)
+// CHECK-V3-LABEL: func @mesh_empty_should_be_converted_to_replicated_sharding(%arg0: tensor<8x8xf32> {mhlo.sharding = "{mesh[], [{}, {}]}"}, %arg1: tensor<8x8xf32>)
 func.func @mesh_empty_should_be_converted_to_replicated_sharding(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@empty_mesh_0, [{}, {}]>}, %arg1: tensor<8x8xf32>) -> tensor<8x8xf32> {
     // CHECK: %[[ADD:.*]] = stablehlo.add %arg0, %arg1
     %0 = stablehlo.add %arg0, %arg1 : tensor<8x8xf32>
     // CHECK-V2: %[[ADD_WITH_SHARDING:.*]] = stablehlo.add %[[ADD]], %[[ADD]] {mhlo.sharding = "{replicated}"}
-    // CHECK-V3: %[[ADD_WITH_SHARDING:.*]] = stablehlo.add %[[ADD]], %[[ADD]] {mhlo.sharding = "{mesh[], replicated}"}
+    // CHECK-V3: %[[ADD_WITH_SHARDING:.*]] = stablehlo.add %[[ADD]], %[[ADD]] {mhlo.sharding = "{mesh[], [{}, {}]}"}
     %1 = stablehlo.add %0, %0 {sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh_1, [{}, {}]>]>} : tensor<8x8xf32>
     return %1 : tensor<8x8xf32>
 }
@@ -385,7 +401,7 @@ func.func @callback_transform_to_tuple(%arg0: tensor<2xf64> {sdy.sharding = #sdy
   // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
   // CHECK-NEXT: %[[CALLBACK:.*]] = stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {{{.*}} : (tensor<i64>, tensor<2xf64>) -> tuple<tensor<2xf64>>
   // CHECK-V2-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] {mhlo.sharding = "{replicated}"} : (tuple<tensor<2xf64>>) -> tensor<2xf64>
-  // CHECK-V3-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] {mhlo.sharding = "{mesh[], replicated}"} : (tuple<tensor<2xf64>>) -> tensor<2xf64>
+  // CHECK-V3-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] {mhlo.sharding = "{mesh[], [{}]}"} : (tuple<tensor<2xf64>>) -> tensor<2xf64>
   // CHECK-NEXT: return %[[GET_TUPLE]] : tensor<2xf64>
   %1 = stablehlo.constant dense<56560393354880> : tensor<i64>
   %2 = stablehlo.custom_call @xla_python_cpu_callback(%1, %arg0) {api_version = 2 : i32, backend_config = "56560393354880", operand_layouts = [dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>], result_layouts = [dense<0> : tensor<1xindex>], sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh_0, [{}]>]>, xla_shape = "(f64[2]{0})"} : (tensor<i64>, tensor<2xf64>) -> tensor<2xf64>
@@ -393,7 +409,7 @@ func.func @callback_transform_to_tuple(%arg0: tensor<2xf64> {sdy.sharding = #sdy
 }
 
 // CHECK-LABEL: @callback_no_result
-func.func private @callback_no_result(%arg0: tensor<f64>) {
+func.func public @callback_no_result(%arg0: tensor<f64>) {
   // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
   // CHECK-NEXT: stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {
   // CHECK-SAME:   api_version = 2 : i32, backend_config = "56238273106176",
@@ -429,7 +445,7 @@ func.func @callback_no_tuple_result_used(%arg0: tensor<2xf64>) -> tensor<2xf64> 
   // CHECK-NEXT: %[[C:.*]] = stablehlo.constant
   // CHECK-NEXT: %[[CALLBACK:.*]] = stablehlo.custom_call @xla_python_cpu_callback(%[[C]], %arg0) {{{.*}} : (tensor<i64>, tensor<2xf64>) -> tuple<tensor<2xf64>>
   // CHECK-V2-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] {mhlo.sharding = "{replicated}"} : (tuple<tensor<2xf64>>) -> tensor<2xf64>
-  // CHECK-V3-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] {mhlo.sharding = "{mesh[], replicated}"} : (tuple<tensor<2xf64>>) -> tensor<2xf64>
+  // CHECK-V3-NEXT: %[[GET_TUPLE:.*]] = stablehlo.get_tuple_element %[[CALLBACK]][0] {mhlo.sharding = "{mesh[], [{?}]}"} : (tuple<tensor<2xf64>>) -> tensor<2xf64>
   // CHECK-NEXT: return %[[GET_TUPLE]] : tensor<2xf64>
   %c = stablehlo.constant dense<18990036333952> : tensor<i64>
   %0 = stablehlo.custom_call @xla_python_cpu_callback(%c, %arg0) {api_version = 2 : i32, backend_config = "18990036333952", operand_layouts = [dense<> : tensor<0xindex>, dense<0> : tensor<1xindex>], result_layouts = [dense<0> : tensor<1xindex>], sdy.sharding = #sdy.sharding_per_value<[<@empty_mesh_0, [{?}]>]>, xla_shape = "(f64[2]{0})"} : (tensor<i64>, tensor<2xf64>) -> tensor<2xf64>
@@ -603,12 +619,12 @@ func.func @both_results_unreduced(%arg0: tensor<4x64x16xf32> {sdy.sharding = #sd
   // CHECK:      %cst = stablehlo.constant
   // CHECK-NEXT: %[[REDUCE:.*]]:2 = stablehlo.reduce(%arg0 init: %cst), (%arg1 init: %cst) across dimensions = [1]
   // CHECK-V2-SAME{LITERAL}: {mhlo.sharding = "{{unreduced}, {unreduced}}"}
-  // CHECK-V3-SAME{LITERAL}: {mhlo.sharding = "{{mesh['i'=2,'j'=2], unreduced}, {mesh['i'=2,'j'=2], unreduced}}"}
+  // CHECK-V3-SAME{LITERAL}: {mhlo.sharding = "{{mesh['i'=2,'j'=2], [{}, {}], unreduced={'i', 'j'}}, {mesh['i'=2,'j'=2], [{}, {}], unreduced={'i', 'j'}}}"}
   // CHECK-SAME:  : (tensor<4x64x16xf32>, tensor<4x64x16xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x16xf32>, tensor<4x16xf32>)
   // CHECK-V2: %[[ADD0:.*]] = stablehlo.add %[[REDUCE]]#0, %[[REDUCE]]#0 {mhlo.sharding = "{unreduced}"}
   // CHECK-V2-NEXT: %[[ADD1:.*]] = stablehlo.add %[[REDUCE]]#1, %[[REDUCE]]#1 {mhlo.sharding = "{unreduced}"}
-  // CHECK-V3: %[[ADD0:.*]] = stablehlo.add %[[REDUCE]]#0, %[[REDUCE]]#0 {mhlo.sharding = "{mesh['i'=2,'j'=2], unreduced}"}
-  // CHECK-V3-NEXT: %[[ADD1:.*]] = stablehlo.add %[[REDUCE]]#1, %[[REDUCE]]#1 {mhlo.sharding = "{mesh['i'=2,'j'=2], unreduced}"}
+  // CHECK-V3: %[[ADD0:.*]] = stablehlo.add %[[REDUCE]]#0, %[[REDUCE]]#0 {mhlo.sharding = "{mesh['i'=2,'j'=2], [{}, {}], unreduced={'i', 'j'}}"}
+  // CHECK-V3-NEXT: %[[ADD1:.*]] = stablehlo.add %[[REDUCE]]#1, %[[REDUCE]]#1 {mhlo.sharding = "{mesh['i'=2,'j'=2], [{}, {}], unreduced={'i', 'j'}}"}
   // CHECK-NEXT: return %[[ADD0]], %[[ADD1]]
   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
   %1:2 = stablehlo.reduce(%arg0 init: %0), (%arg1 init: %0) across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_5, [{}, {}], unreduced={"i", "j"}>, <@mesh_5, [{}, {}], unreduced={"i", "j"}>]>} : (tensor<4x64x16xf32>, tensor<4x64x16xf32>, tensor<f32>, tensor<f32>) -> (tensor<4x16xf32>, tensor<4x16xf32>)
@@ -635,12 +651,12 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
   %0 = stablehlo.constant dense<0.000000e+00> : tensor<f32>
   // CHECK:      %[[REDUCE:.*]] = stablehlo.reduce(%arg0 init: %cst) applies stablehlo.add across dimensions = [1]
   // CHECK-V2-SAME{LITERAL}: {mhlo.sharding = "{devices=[1,1,8,4]<=[2,4,4]T(0,2,1) last_tile_dims={unreduced, replicated}}"}
-  // CHECK-V3-SAME{LITERAL}: {mhlo.sharding = "{mesh['x'=8,'y'=4], [], unreduced={'x':(1)2, 'y'}}"}
+  // CHECK-V3-SAME{LITERAL}: {mhlo.sharding = "{mesh['x'=8,'y'=4], [{}, {}], unreduced={'x':(1)2, 'y'}}"}
   %1 = stablehlo.reduce(%arg0 init: %0) applies stablehlo.add across dimensions = [1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{}, {}], unreduced={"x":(1)2, "y"}>]>} : (tensor<4x64x16xf32>, tensor<f32>) -> tensor<4x16xf32>
   return %1 : tensor<4x16xf32>
 }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"},
 // CHECK-V2-SAME{LITERAL}:     %arg1: tensor<8x32xf32> {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<4x32xf32> {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"}) {
@@ -648,17 +664,17 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-V2-NEXT:            %[[ADD:.*]] = stablehlo.add %[[RESHARD]], %[[RESHARD]] {mhlo.sharding = "{devices=[2,1,4,2]<=[4,2,2]T(1,0,2) last_tile_dims={manual, replicated}}"} : tensor<4x8xf32>
 // CHECK-V2-NEXT:            %[[DOT:.*]] = stablehlo.dot %[[ADD]], %arg1 {mhlo.sharding = "{devices=[2,2,4]<=[4,4]T(1,0) last_tile_dims={manual}}"} : (tensor<4x8xf32>, tensor<8x32xf32>) -> tensor<4x32xf32>
 // CHECK-V2-NEXT:            %[[SINE:.*]] = stablehlo.sine %[[DOT]] {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"} : tensor<4x32xf32>
-// CHECK-V3-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [], manual={'a', 'b'}}"},
-// CHECK-V3-SAME{LITERAL}:     %arg1: tensor<8x32xf32> {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [], manual={'a', 'b'}}"})
-// CHECK-V3-SAME{LITERAL}:     -> (tensor<4x32xf32> {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [], manual={'a', 'b'}}"}) {
+// CHECK-V3-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {}], manual={'a', 'b'}}"},
+// CHECK-V3-SAME{LITERAL}:     %arg1: tensor<8x32xf32> {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {}], manual={'a', 'b'}}"})
+// CHECK-V3-SAME{LITERAL}:     -> (tensor<4x32xf32> {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {}], manual={'a', 'b'}}"}) {
 // CHECK-V3-NEXT:            %[[RESHARD:.*]] = mhlo.copy %arg0 {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {'d'}], manual={'a', 'b'}}"} : tensor<4x8xf32>
 // CHECK-V3-NEXT:            %[[ADD:.*]] = stablehlo.add %[[RESHARD]], %[[RESHARD]] {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{'c'}, {}], manual={'a', 'b'}}"} : tensor<4x8xf32>
 // CHECK-V3-NEXT:            %[[DOT:.*]] = stablehlo.dot %[[ADD]], %arg1 {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{'c'}, {'d'}], manual={'a', 'b'}}"} : (tensor<4x8xf32>, tensor<8x32xf32>) -> tensor<4x32xf32>
-// CHECK-V3-NEXT:            %[[SINE:.*]] = stablehlo.sine %[[DOT]] {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [], manual={'a', 'b'}}"} : tensor<4x32xf32>
+// CHECK-V3-NEXT:            %[[SINE:.*]] = stablehlo.sine %[[DOT]] {mhlo.sharding = "{mesh['a'=2,'b'=2,'c'=2,'d'=2], [{}, {}], manual={'a', 'b'}}"} : tensor<4x32xf32>
 // CHECK-NEXT:            return %[[SINE]] : tensor<4x32xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_0
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_0
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"}) {
 // CHECK-V2-NEXT:            %[[CALL:.*]] = call @foo(%arg0) {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"} : (tensor<4x2xi32>) -> tensor<4x2xi32>
@@ -668,7 +684,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[CALL]] : tensor<4x2xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_1
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_1
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<1xi32> {mhlo.sharding = "{manual}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<1xi32> {mhlo.sharding = "{manual}"}) {
 // CHECK-V2-NEXT:            %[[CALL:.*]] = call @foo_0(%arg0) {mhlo.sharding = "{manual}"} : (tensor<1xi32>) -> tensor<1xi32>
@@ -678,7 +694,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[CALL]] : tensor<1xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_2
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_2
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<4x8xf32> {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"}) {
 // CHECK-V2-NEXT:            %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {mhlo.sharding = "{devices=[2,1,2]<=[4] last_tile_dims={manual}}"} : tensor<4x8xf32>
@@ -690,7 +706,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[COPY]] : tensor<4x8xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_3
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_3
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<1x2xi32> {mhlo.sharding = "{manual}"})
 // CHECK-V2-SAME{LITERAL}:      -> (tensor<1x2xi32> {mhlo.sharding = "{manual}"}) {
 // CHECK-V2-NEXT:            %[[C0:.*]] = stablehlo.constant {mhlo.sharding = "{manual}"} dense<0> : tensor<i32>
@@ -712,7 +728,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[WHILE]]#0 : tensor<1x2xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_4
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_4
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{manual}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<4x8xf32> {mhlo.sharding = "{manual}"}) {
 // CHECK-V3-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{mesh['i'=2,'j'=2], manual}"})
@@ -728,7 +744,7 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[ALL_REDUCE]] : tensor<4x8xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_5
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_5
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<2x16xf32> {mhlo.sharding = "{manual}"})
 // CHECK-V2-SAME{LITERAL}:     -> (tensor<2x16xf32> {mhlo.sharding = "{manual}"}) {
 // CHECK-V3-SAME{LITERAL}:     %arg0: tensor<2x16xf32> {mhlo.sharding = "{mesh['i'=2,'j'=2], manual}"})
@@ -761,3 +777,36 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-V3-SAME:    -> (tensor<1xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"}) {
 // CHECK-V3-NEXT:    %[[NEGATE:.*]] = stablehlo.negate %arg0 {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"} : tensor<1xi32>
 // CHECK-NEXT:    return %[[NEGATE]] : tensor<1xi32>
+
+// -----
+
+sdy.mesh @mesh = <["a"=2, "b"=2]>
+
+// CHECK-LABEL: func @deduplicated_named_computations_with_manual_computations
+// CHECK-NEXT:    call @foo(%arg0)
+// CHECK-NEXT:    call @foo(%arg0)
+// CHECK-NEXT:    return
+// CHECK-LABEL: func private @xla.sdy.inlinable_manual_computation_body(
+// CHECK:         return
+// CHECK-NOT:   @xla.sdy.inlinable_manual_computation_body_0(
+// CHECK-LABEL: func private @foo(
+// CHECK:         call @xla.sdy.inlinable_manual_computation_body(
+// CHECK:         return
+func.func @deduplicated_named_computations_with_manual_computations(%arg0: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+  %0 = sdy.named_computation<"foo">(%arg0) (%arg1: tensor<8xf32>) {
+    %1 = sdy.manual_computation(%arg1) in_shardings=[<@mesh, [{"a", "b"}]>] out_shardings=[<@mesh, [{"a", "b"}]>] manual_axes={"a"} (%arg2: tensor<4xf32>) {
+      %2 = stablehlo.multiply %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"b"}]>]>} : tensor<4xf32>
+      sdy.return %2 : tensor<4xf32>
+    } : (tensor<8xf32>) -> tensor<8xf32>
+    sdy.return %1 : tensor<8xf32>
+  } : (tensor<8xf32>) -> tensor<8xf32>
+  %1 = sdy.named_computation<"foo">(%arg0) (%arg1: tensor<8xf32>) {
+    %1 = sdy.manual_computation(%arg1) in_shardings=[<@mesh, [{"a", "b"}]>] out_shardings=[<@mesh, [{"a", "b"}]>] manual_axes={"a"} (%arg2: tensor<4xf32>) {
+      %2 = stablehlo.multiply %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"b"}]>]>} : tensor<4xf32>
+      sdy.return %2 : tensor<4xf32>
+    } : (tensor<8xf32>) -> tensor<8xf32>
+    sdy.return %1 : tensor<8xf32>
+  } : (tensor<8xf32>) -> tensor<8xf32>
+  return %0, %1 : tensor<8xf32>, tensor<8xf32>
+}
+

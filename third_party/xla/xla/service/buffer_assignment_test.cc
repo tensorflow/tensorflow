@@ -74,6 +74,7 @@ namespace xla {
 namespace {
 
 using memory_space_assignment::PresetAssignments;
+using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
@@ -2284,6 +2285,39 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
   }
 }
 
+TEST_F(BufferAssignmentTest, MemoryUsageReportGroupedByMemorySpace) {
+  // Test that MemoryUsageReport and MemoryUsageReportProto correctly group
+  // allocations by memory space (color).
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p"));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  // Test text report: should contain memory space header and total bytes.
+  std::string text_report = buffers->MemoryUsageReport();
+  EXPECT_THAT(text_report, ::testing::HasSubstr("Memory Space:"));
+  EXPECT_THAT(text_report, ::testing::HasSubstr("Total bytes:"));
+
+  // Test proto report: should have at least one memory space entry.
+  MemoryUsageReportProto proto_report = buffers->GetMemoryUsageReportProto();
+  ASSERT_GE(proto_report.memory_space_allocation_entries_size(), 1);
+
+  // Verify the memory space entry has expected fields.
+  const auto& memory_space = proto_report.memory_space_allocation_entries(0);
+  EXPECT_GE(memory_space.total_bytes(), 0);
+  EXPECT_GE(memory_space.allocation_entries_size(), 1);
+
+  for (const auto& entry : memory_space.allocation_entries()) {
+    EXPECT_GE(entry.defining_positions_size(), 1);
+  }
+}
+
 TEST_F(BufferAssignmentTest, AliasedBuffersShouldntCoexistInPeakBuffers) {
   std::string hlo_text = R"(
 HloModule test_module, is_scheduled=true
@@ -3814,11 +3848,28 @@ TEST(BufferAllocationTest, ToAndFromProto) {
   });
 }
 
+void SetUnpaddedSize(HloComputationProto* computation, int64_t id,
+                     int64_t size) {
+  HloInstructionProto* i = computation->add_instructions();
+  i->set_id(id);
+  *i->mutable_shape() = ShapeUtil::MakeShape(U8, {size}).ToProto();
+}
+
+template <typename T>
+inline T ValueOrDie(absl::StatusOr<T> status) {
+  CHECK(status.ok());
+  return *status;
+}
+
 TEST(ComputePeakMemoryTest, SimpleAllocation) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
   LogicalBufferProto* buffer = proto.add_logical_buffers();
   buffer->set_id(0);
+  buffer->mutable_defined_at()->set_instruction_id(10);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/10);
   buffer->set_size(10);
   HeapSimulatorTrace::Event* event1 = trace->add_events();
   event1->set_buffer_id(0);
@@ -3827,18 +3878,90 @@ TEST(ComputePeakMemoryTest, SimpleAllocation) {
   event2->set_buffer_id(0);
   event2->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemory(proto));
-  EXPECT_EQ(result, 10);
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
+  EXPECT_EQ(result.padded, 10);
+  EXPECT_EQ(result.unpadded, 10);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 10);
+}
+
+TEST(ComputePeakMemoryTest, PaddedAllocation) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+  absl::flat_hash_map<int64_t, int64_t> logical_buffer_unpadded_sizes;
+  LogicalBufferProto* buffer = proto.add_logical_buffers();
+  buffer->set_id(0);
+  buffer->mutable_defined_at()->set_instruction_id(10);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/36);
+  buffer->set_size(64);
+  HeapSimulatorTrace::Event* event1 = trace->add_events();
+  event1->set_buffer_id(0);
+  event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
+  HeapSimulatorTrace::Event* event2 = trace->add_events();
+  event2->set_buffer_id(0);
+  event2->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
+  EXPECT_THAT(result, FieldsAre(64, 36));
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 64);
+}
+
+TEST(ComputePeakMemoryTest, MultipleBuffersSomePadded) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
+  BufferAssignmentProto proto;
+  HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
+
+  // Buffer 0 - padded
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
+  buffer0->set_size(64);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/36);
+  HeapSimulatorTrace::Event* event1 = trace->add_events();
+  event1->set_buffer_id(buffer0->id());
+  event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Buffer 1 - not padded
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
+  buffer1->set_size(20);
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/20);
+  HeapSimulatorTrace::Event* event2 = trace->add_events();
+  event2->set_buffer_id(buffer1->id());
+  event2->set_kind(HeapSimulatorTrace::Event::ALLOC);
+
+  // Peak memory should be 64 + 20 = 84 padded, and 36 + 20 = 56 unpadded.
+
+  // Free buffer 0
+  HeapSimulatorTrace::Event* event3 = trace->add_events();
+  event3->set_buffer_id(buffer0->id());
+  event3->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  // Free buffer 1
+  HeapSimulatorTrace::Event* event4 = trace->add_events();
+  event4->set_buffer_id(buffer1->id());
+  event4->set_kind(HeapSimulatorTrace::Event::FREE);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result, ComputePeakMemorySizes(proto, hlo));
+  EXPECT_THAT(result, FieldsAre(84, 56));
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 84);
 }
 
 TEST(ComputePeakMemoryTest, MultipleBuffers) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
 
   // Buffer 0
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   HeapSimulatorTrace::Event* event1 = trace->add_events();
   event1->set_buffer_id(buffer0->id());
   event1->set_kind(HeapSimulatorTrace::Event::ALLOC);
@@ -3846,7 +3969,9 @@ TEST(ComputePeakMemoryTest, MultipleBuffers) {
   // Buffer 1
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(20);
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
   HeapSimulatorTrace::Event* event2 = trace->add_events();
   event2->set_buffer_id(buffer1->id());
   event2->set_kind(HeapSimulatorTrace::Event::ALLOC);
@@ -3854,7 +3979,9 @@ TEST(ComputePeakMemoryTest, MultipleBuffers) {
   // Buffer 2
   LogicalBufferProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
+  buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(30);
+  SetUnpaddedSize(computation, /*id=*/12, /*size=*/buffer2->size());
   HeapSimulatorTrace::Event* event3 = trace->add_events();
   event3->set_buffer_id(buffer2->id());
   event3->set_kind(HeapSimulatorTrace::Event::ALLOC);
@@ -3874,22 +4001,30 @@ TEST(ComputePeakMemoryTest, MultipleBuffers) {
   event6->set_buffer_id(buffer1->id());
   event6->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 60);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 60);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 60);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 60);
 }
 
 TEST(ComputePeakMemoryTest, SharedBuffers) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
 
   // Buffer 0
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
 
   // Buffer 1
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(10);  // same as buffer 0
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
 
   // Allocate buffer 0
   HeapSimulatorTrace::Event* event1 = trace->add_events();
@@ -3908,7 +4043,9 @@ TEST(ComputePeakMemoryTest, SharedBuffers) {
   event3->set_buffer_id(1);
   event3->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 10);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 10);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 10);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 10);
 
   // Now allocate and free buffer 1 without sharing.
   HeapSimulatorTrace::Event* event4 = trace->add_events();
@@ -3918,10 +4055,14 @@ TEST(ComputePeakMemoryTest, SharedBuffers) {
   event5->set_buffer_id(1);
   event5->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 20);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 20);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 20);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 20);
 }
 
 TEST(ComputePeakMemoryTest, SharedChain) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
   HeapSimulatorTrace::Event* e;
@@ -3929,23 +4070,33 @@ TEST(ComputePeakMemoryTest, SharedChain) {
   // Buffer 0
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   // Buffer 1
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(10);  // same as buffer 0
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
   // Buffer 2
   LogicalBufferProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
+  buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(10);  // same as buffer 0
+  SetUnpaddedSize(computation, /*id=*/12, /*size=*/buffer2->size());
   // Buffer 3
   LogicalBufferProto* buffer3 = proto.add_logical_buffers();
   buffer3->set_id(3);
+  buffer3->mutable_defined_at()->set_instruction_id(13);
   buffer3->set_size(300);
+  SetUnpaddedSize(computation, /*id=*/13, /*size=*/buffer3->size());
   // Buffer 4
   LogicalBufferProto* buffer4 = proto.add_logical_buffers();
   buffer4->set_id(4);
+  buffer4->mutable_defined_at()->set_instruction_id(14);
   buffer4->set_size(4000);
+  SetUnpaddedSize(computation, /*id=*/14, /*size=*/buffer4->size());
 
   // Make buffer 0 visible as buffer 1.
   e = trace->add_events();
@@ -3972,7 +4123,9 @@ TEST(ComputePeakMemoryTest, SharedChain) {
   e->set_buffer_id(3);
   e->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 310);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 310);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 310);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 310);
 
   // Free buffer 1, as well. Now all buffers (including 0) are deallocated.
   e = trace->add_events();
@@ -3986,10 +4139,14 @@ TEST(ComputePeakMemoryTest, SharedChain) {
   e->set_buffer_id(4);
   e->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 4000);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 4000);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 4000);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 4000);
 }
 
 TEST(ComputePeakMemoryTest, SharedChainReverseOrder) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
   HeapSimulatorTrace::Event* e;
@@ -3997,23 +4154,33 @@ TEST(ComputePeakMemoryTest, SharedChainReverseOrder) {
   // Buffer 0
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   // Buffer 1
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(10);  // same as buffer 0
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
   // Buffer 2
   LogicalBufferProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
+  buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(10);  // same as buffer 0
+  SetUnpaddedSize(computation, /*id=*/12, /*size=*/buffer2->size());
   // Buffer 3
   LogicalBufferProto* buffer3 = proto.add_logical_buffers();
   buffer3->set_id(3);
+  buffer3->mutable_defined_at()->set_instruction_id(13);
   buffer3->set_size(300);
+  SetUnpaddedSize(computation, /*id=*/13, /*size=*/buffer3->size());
   // Buffer 4
   LogicalBufferProto* buffer4 = proto.add_logical_buffers();
   buffer4->set_id(4);
+  buffer4->mutable_defined_at()->set_instruction_id(14);
   buffer4->set_size(4000);
+  SetUnpaddedSize(computation, /*id=*/14, /*size=*/buffer4->size());
 
   // Make buffer 0 visible as buffer 1.
   e = trace->add_events();
@@ -4036,7 +4203,9 @@ TEST(ComputePeakMemoryTest, SharedChainReverseOrder) {
   e->set_kind(HeapSimulatorTrace::Event::ALLOC);
 
   // We expect buffer 0 to still be alive here.
-  EXPECT_EQ(*ComputePeakMemory(proto), 310);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 310);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 310);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 310);
   e = trace->add_events();
   e->set_buffer_id(3);
   e->set_kind(HeapSimulatorTrace::Event::FREE);
@@ -4050,10 +4219,14 @@ TEST(ComputePeakMemoryTest, SharedChainReverseOrder) {
   e = trace->add_events();
   e->set_buffer_id(4);
   e->set_kind(HeapSimulatorTrace::Event::ALLOC);
-  EXPECT_EQ(*ComputePeakMemory(proto), 4000);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 4000);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 4000);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 4000);
 }
 
 TEST(ComputePeakMemoryTest, SharingAllocatesBuffers) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
   HeapSimulatorTrace::Event* e;
@@ -4061,17 +4234,24 @@ TEST(ComputePeakMemoryTest, SharingAllocatesBuffers) {
   // Buffer 0
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(10);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
+  // logical_buffer_unpadded_sizes[buffer0->id()] = buffer0->size();
 
   // Buffer 1
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(10);  // same as buffer 0
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
 
   // Buffer 2
   LogicalBufferProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
+  buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(200);
+  SetUnpaddedSize(computation, /*id=*/12, /*size=*/buffer2->size());
 
   // Make buffer 0 visible as buffer 1. This allocates buffer 0.
   e = trace->add_events();
@@ -4079,7 +4259,9 @@ TEST(ComputePeakMemoryTest, SharingAllocatesBuffers) {
   e->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
   e->set_share_with_canonical_id(0);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 10);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 10);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 10);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 10);
 
   // Free buffer 1. This also deallocates buffer 0 since it wasn't explicitly
   // allocated before.
@@ -4094,74 +4276,103 @@ TEST(ComputePeakMemoryTest, SharingAllocatesBuffers) {
   e->set_buffer_id(2);
   e->set_kind(HeapSimulatorTrace::Event::FREE);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 200);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 200);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 200);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 200);
 }
 
 TEST(ComputePeakMemoryTest, EmptyProto) {
+  HloModuleProto hlo;
   BufferAssignmentProto proto;
-  EXPECT_EQ(*ComputePeakMemory(proto), 0);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 0);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 0);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 0);
 }
 
 TEST(ComputePeakMemoryTest, ProtoWithNoEvents) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   proto.add_heap_simulator_traces();
 
   // Buffer 0
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(42);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   // Buffer 1
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(23);
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 0);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 0);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 0);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 0);
 }
 
 TEST(ComputePeakMemoryTest, BufferAllocations) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   LogicalBufferProto* buffer42 = proto.add_logical_buffers();
   buffer42->set_id(42);
+  buffer42->mutable_defined_at()->set_instruction_id(42);
   buffer42->set_size(1024);
+  SetUnpaddedSize(computation, /*id=*/42, /*size=*/buffer42->size());
   BufferAllocationProto* alloc = proto.add_buffer_allocations();
 
   auto TestAllocation = [&](bool is_entry_computation_parameter,
                             bool is_thread_local, bool is_constant,
-                            bool maybe_live_out) -> int64_t {
+                            bool maybe_live_out) -> PeakMemorySizes {
     alloc->set_is_entry_computation_parameter(is_entry_computation_parameter);
     alloc->set_is_thread_local(is_thread_local);
     alloc->set_is_constant(is_constant);
     alloc->set_maybe_live_out(maybe_live_out);
-    return *ComputePeakMemory(proto);
+    return *ComputePeakMemorySizes(proto, hlo);
   };
 
   BufferAllocationProto::Assigned* assigned = alloc->add_assigned();
   assigned->set_logical_buffer_id(42);
-  EXPECT_EQ(TestAllocation(false, false, false, false), 0);
-  EXPECT_EQ(TestAllocation(false, true, false, false), 0);
-  EXPECT_EQ(TestAllocation(false, false, true, false), 1024);
-  EXPECT_EQ(TestAllocation(true, false, false, false), 1024);
-  EXPECT_EQ(TestAllocation(false, false, false, true), 1024);
-  EXPECT_EQ(TestAllocation(true, true, false, true), 0);
+  EXPECT_THAT(TestAllocation(false, false, false, false), FieldsAre(0, 0));
+  EXPECT_THAT(TestAllocation(false, true, false, false), FieldsAre(0, 0));
+  EXPECT_THAT(TestAllocation(false, false, true, false), FieldsAre(1024, 1024));
+  EXPECT_THAT(TestAllocation(true, false, false, false), FieldsAre(1024, 1024));
+  EXPECT_THAT(TestAllocation(false, false, false, true), FieldsAre(1024, 1024));
+  EXPECT_THAT(TestAllocation(true, true, false, true), FieldsAre(0, 0));
 }
 
 TEST(ComputePeakMemoryTest, MultipleAssignments) {
   BufferAssignmentProto proto;
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(1);
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
   LogicalBufferProto* buffer2 = proto.add_logical_buffers();
   buffer2->set_id(2);
+  buffer2->mutable_defined_at()->set_instruction_id(12);
   buffer2->set_size(22);
+  SetUnpaddedSize(computation, /*id=*/12, /*size=*/buffer2->size());
   LogicalBufferProto* buffer3 = proto.add_logical_buffers();
   buffer3->set_id(3);
+  buffer3->mutable_defined_at()->set_instruction_id(13);
   buffer3->set_size(333);
+  SetUnpaddedSize(computation, /*id=*/13, /*size=*/buffer3->size());
   LogicalBufferProto* buffer4 = proto.add_logical_buffers();
   buffer4->set_id(4);
+  buffer4->mutable_defined_at()->set_instruction_id(14);
   buffer4->set_size(4444);
+  SetUnpaddedSize(computation, /*id=*/14, /*size=*/buffer4->size());
   LogicalBufferProto* buffer5 = proto.add_logical_buffers();
   buffer5->set_id(5);
+  buffer5->mutable_defined_at()->set_instruction_id(15);
   buffer5->set_size(55555);
+  SetUnpaddedSize(computation, /*id=*/15, /*size=*/buffer5->size());
 
   BufferAllocationProto* alloc = proto.add_buffer_allocations();
   alloc->add_assigned()->set_logical_buffer_id(1);
@@ -4172,18 +4383,26 @@ TEST(ComputePeakMemoryTest, MultipleAssignments) {
   alloc->set_is_thread_local(false);
   alloc->set_is_constant(false);
   alloc->set_maybe_live_out(false);
-  EXPECT_EQ(*ComputePeakMemory(proto), 333);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 333);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 333);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 333);
 }
 
 TEST(ComputePeakMemoryTest, ShareParameter) {
   BufferAssignmentProto proto;
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(1024);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(1024);
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
 
   // buffer 0 is a parameter
   BufferAllocationProto* alloc = proto.add_buffer_allocations();
@@ -4198,15 +4417,21 @@ TEST(ComputePeakMemoryTest, ShareParameter) {
   e->set_kind(HeapSimulatorTrace::Event::SHARE_WITH);
   e->set_share_with_canonical_id(0);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 1024);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 1024);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 1024);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 1024);
 }
 
 TEST(ComputePeakMemoryTest, StaticBufferAlsoGetsAllocated) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(1024);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
 
   // buffer 0 is a parameter
   BufferAllocationProto* alloc = proto.add_buffer_allocations();
@@ -4221,18 +4446,26 @@ TEST(ComputePeakMemoryTest, StaticBufferAlsoGetsAllocated) {
   e->set_buffer_id(0);
   e->set_kind(HeapSimulatorTrace::Event::ALLOC);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 1024);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 1024);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 1024);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 1024);
 }
 
 TEST(ComputePeakMemoryTest, ParamBufferAndAllocationBuffer) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   HeapSimulatorTrace* trace = proto.add_heap_simulator_traces();
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(123);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
   LogicalBufferProto* buffer1 = proto.add_logical_buffers();
   buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
   buffer1->set_size(321);
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/buffer1->size());
 
   // buffer 0 is a parameter.
   BufferAllocationProto* alloc = proto.add_buffer_allocations();
@@ -4246,25 +4479,180 @@ TEST(ComputePeakMemoryTest, ParamBufferAndAllocationBuffer) {
   e->set_buffer_id(1);
   e->set_kind(HeapSimulatorTrace::Event::ALLOC);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 123 + 321);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 123 + 321);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 123 + 321);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 123 + 321);
 }
 
 TEST(ComputePeakMemoryTest, LargeResult) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
   BufferAssignmentProto proto;
   LogicalBufferProto* buffer0 = proto.add_logical_buffers();
   buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
   buffer0->set_size(1LL << 33);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/buffer0->size());
 
   BufferAllocationProto* alloc = proto.add_buffer_allocations();
   alloc->add_assigned()->set_logical_buffer_id(0);
   alloc->set_is_entry_computation_parameter(true);
 
-  EXPECT_EQ(*ComputePeakMemory(proto), 1LL << 33);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).padded, 1LL << 33);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemorySizes(proto, hlo)).unpadded, 1LL << 33);
+  EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 1LL << 33);
 }
 
 TEST(ComputeTotalAllocationBytesTest, EmptyProto) {
   BufferAssignmentProto proto;
   EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 0);
+}
+
+TEST(ComputeTotalAllocationBytesTest, MixedColorAllocations) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_color(0);
+  BufferAllocationProto* alloc2 = proto.add_buffer_allocations();
+  alloc2->set_size(20);
+  alloc2->set_color(1);
+  BufferAllocationProto* alloc3 = proto.add_buffer_allocations();
+  alloc3->set_size(30);
+  alloc3->set_color(0);
+  EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 40);
+}
+
+TEST(ComputeTotalAllocationBytesTest, LargeAllocations) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(1LL << 33);
+  alloc1->set_color(0);
+  BufferAllocationProto* alloc3 = proto.add_buffer_allocations();
+  alloc3->set_size(1LL << 33);
+  alloc3->set_color(0);
+  EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 1LL << 34);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, Empty) {
+  BufferAssignmentProto proto;
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 0);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, AllConditionsFalse) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_is_thread_local(false);
+  alloc1->set_is_entry_computation_parameter(false);
+  alloc1->set_is_constant(false);
+  alloc1->set_maybe_live_out(false);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 0);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, IsThreadLocal) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_is_thread_local(true);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 10);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, IsEntryComputationParameter) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_is_entry_computation_parameter(true);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 10);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, IsConstant) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_is_constant(true);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 10);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, MaybeLiveOut) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_maybe_live_out(true);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 10);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, AllConditionsTrue) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_is_thread_local(true);
+  alloc1->set_is_entry_computation_parameter(true);
+  alloc1->set_is_constant(true);
+  alloc1->set_maybe_live_out(true);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 10);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, MultipleAllocations) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_is_thread_local(true);
+  BufferAllocationProto* alloc2 = proto.add_buffer_allocations();
+  alloc2->set_size(20);
+  alloc2->set_is_entry_computation_parameter(true);
+  BufferAllocationProto* alloc3 = proto.add_buffer_allocations();
+  alloc3->set_size(30);
+  alloc3->set_is_constant(true);
+  BufferAllocationProto* alloc4 = proto.add_buffer_allocations();
+  alloc4->set_size(40);
+  alloc4->set_maybe_live_out(true);
+  BufferAllocationProto* alloc5 = proto.add_buffer_allocations();
+  alloc5->set_size(500);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0),
+            100);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, NonMatchingColorAllocations) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_color(1);
+  alloc1->set_is_thread_local(true);
+  BufferAllocationProto* alloc2 = proto.add_buffer_allocations();
+  alloc2->set_size(20);
+  alloc2->set_color(2);
+  alloc2->set_is_constant(true);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 0);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, OnlyMatchingColorAllocations) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_color(0);
+  alloc1->set_is_thread_local(true);
+  BufferAllocationProto* alloc2 = proto.add_buffer_allocations();
+  alloc2->set_size(20);
+  alloc2->set_color(0);
+  alloc2->set_is_constant(true);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 30);
+}
+
+TEST(ComputeIndefiniteAllocationsTest, MixedColorAllocations) {
+  BufferAssignmentProto proto;
+  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
+  alloc1->set_size(10);
+  alloc1->set_color(0);
+  alloc1->set_is_thread_local(true);
+  BufferAllocationProto* alloc2 = proto.add_buffer_allocations();
+  alloc2->set_size(20);
+  alloc2->set_color(1);
+  alloc2->set_is_constant(true);
+  BufferAllocationProto* alloc3 = proto.add_buffer_allocations();
+  alloc3->set_size(30);
+  alloc3->set_color(0);
+  alloc3->set_maybe_live_out(true);
+  EXPECT_EQ(ComputeIndefiniteAllocationsInBytes(proto, /*memory_color=*/0), 40);
 }
 
 TEST_F(BufferAssignmentTest, TopologicalOrder) {
@@ -4356,31 +4744,6 @@ TEST(ComputeTotalAllocationBytesTest, OnlyMatchingColorAllocations) {
   alloc2->set_size(20);
   alloc2->set_color(0);
   EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 30);
-}
-
-TEST(ComputeTotalAllocationBytesTest, MixedColorAllocations) {
-  BufferAssignmentProto proto;
-  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
-  alloc1->set_size(10);
-  alloc1->set_color(0);
-  BufferAllocationProto* alloc2 = proto.add_buffer_allocations();
-  alloc2->set_size(20);
-  alloc2->set_color(1);
-  BufferAllocationProto* alloc3 = proto.add_buffer_allocations();
-  alloc3->set_size(30);
-  alloc3->set_color(0);
-  EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 40);
-}
-
-TEST(ComputeTotalAllocationBytesTest, LargeAllocations) {
-  BufferAssignmentProto proto;
-  BufferAllocationProto* alloc1 = proto.add_buffer_allocations();
-  alloc1->set_size(1LL << 33);
-  alloc1->set_color(0);
-  BufferAllocationProto* alloc3 = proto.add_buffer_allocations();
-  alloc3->set_size(1LL << 33);
-  alloc3->set_color(0);
-  EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 1LL << 34);
 }
 
 }  // namespace

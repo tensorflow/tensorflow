@@ -196,7 +196,7 @@ common:mkl_aarch64 --config=mkl_aarch64_threadpool
 common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.9.1"
 common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
-common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
+common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.28.9"
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
@@ -329,6 +329,7 @@ common:linux_arm64 --copt="-mtune=generic" --copt="-march=armv8-a" --copt="-O3"
 # See https://devblogs.microsoft.com/cppblog/msvc-now-correctly-reports-__cplusplus/
 common:windows --copt=/Zc:__cplusplus
 common:windows --host_copt=/Zc:__cplusplus
+common:windows --copt=/permissive-
 
 # Tensorflow uses M_* math constants that only get defined by MSVC headers if
 # _USE_MATH_DEFINES is defined.
@@ -541,7 +542,7 @@ common:rbe_linux_cuda --repo_env=TF_SYSROOT=
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 # Update UMD version when RBE CUDA driver is updated.
-common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.1"
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.2"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc

@@ -207,10 +207,10 @@ class NVPTXCompilationTests
     debug_options->set_xla_gpu_force_compilation_parallelism(12);
 
     if (linking_method == PtxLinkingMethod::kDriver) {
-      debug_options->set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(
-          true);
       debug_options->set_xla_gpu_cuda_data_dir("/does/not/exist");
     }
+    debug_options->set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(
+        linking_method == PtxLinkingMethod::kDriver);
 
     tsl::setenv("TF_USE_NVLINK_FOR_PARALLEL_COMPILATION",
                 linking_method == PtxLinkingMethod::kNvLink ? "true" : "false",

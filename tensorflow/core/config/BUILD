@@ -1,6 +1,5 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -91,11 +90,12 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "flags_py_test",
     size = "small",
     srcs = ["flags_test.py"],
     main = "flags_test.py",
+    strict_deps = True,
     deps = [
         ":flags_py",
         #internal proto upb dep

@@ -98,7 +98,7 @@ func.func @func_result_sharding_returning_op_value(%arg0: tensor<8x16xf32>)
   // CHECK-V3-SAME: -> (tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{'axis_0', 'axis_1', ?}, {'axis_2'}]}"},
   // CHECK-V3-SAME:     tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{?}, {'axis_2'}]}"},
   // CHECK-V3-SAME:     tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{'axis_0', 'axis_1'}, {'axis_2'}]}"},
-  // CHECK-V3-SAME:     tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], replicated}"}) {
+  // CHECK-V3-SAME:     tensor<8x16xf32> {mhlo.sharding = "{mesh['axis_0'=2,'axis_1'=4,'axis_2'=4], [{}, {}]}"}) {
   -> (tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{"x", ?}, {"y"}p4]>},
       tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{?}, {"y"}p4]>},
       tensor<8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{"x"}, {"y"}p1]>},

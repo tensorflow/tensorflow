@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
@@ -7,9 +8,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "feature_column_py",
     srcs = ["feature_column_lib.py"],
+    strict_deps = True,
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -18,9 +20,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "feature_column",
     srcs = ["feature_column.py"],
+    strict_deps = True,
     deps = [
         ":utils",
         "//tensorflow/python/eager:context",
@@ -57,11 +60,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "feature_column_v2",
     srcs = [
         "feature_column_v2.py",
     ],
+    strict_deps = True,
     deps = [
         ":feature_column",
         ":feature_column_v2_types",
@@ -105,11 +109,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "serialization",
     srcs = [
         "serialization.py",
     ],
+    strict_deps = True,
     deps = [
         ":feature_column_v2_types",
         "//tensorflow/python/ops:init_ops",
@@ -122,9 +127,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sequence_feature_column",
     srcs = ["sequence_feature_column.py"],
+    strict_deps = True,
     deps = [
         ":feature_column_v2",
         ":serialization",
@@ -172,10 +178,11 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "feature_column_test_main_lib",
     srcs = ["feature_column_test.py"],
     data = [":vocabulary_testdata"],
+    strict_deps = True,
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -215,10 +222,11 @@ tf_py_strict_test(
     deps = [":feature_column_v2_test_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "feature_column_v2_test_main_lib",
     srcs = ["feature_column_v2_test.py"],
     data = [":vocabulary_testdata"],
+    strict_deps = True,
     deps = [
         ":feature_column",
         ":feature_column_v2",
@@ -246,9 +254,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "utils",
     srcs = ["utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -283,9 +292,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
+    strict_deps = True,
     tags = ["no_pip"],
     deps = [
         ":feature_column_v2",
@@ -308,8 +318,9 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "feature_column_v2_types",
     srcs = ["feature_column_v2_types.py"],
+    strict_deps = True,
     deps = ["//tensorflow/python/util:tf_export"],
 )

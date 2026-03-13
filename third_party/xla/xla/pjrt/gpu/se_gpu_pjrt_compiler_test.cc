@@ -40,12 +40,14 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/platform_util.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -250,6 +252,34 @@ TEST(StreamExecutorGpuCompilerTest, PlatformId) {
   constexpr PjRtPlatformId kPlatformId = PjRtPlatformId(1234);
   StreamExecutorGpuCompiler compiler(kPlatformId);
   EXPECT_EQ(compiler.pjrt_platform_id(), kPlatformId);
+}
+
+TEST(StreamExecutorGpuCompilerTest, GetTargetRuntimeAbiVersion) {
+  absl::StatusOr<std::string> platform_name =
+      xla::PlatformUtil::CanonicalPlatformName("gpu");
+  if (!platform_name.ok() || *platform_name != "cuda") {
+    GTEST_SKIP() << "GetTargetRuntimeAbiVersion is only supported for CUDA.";
+  }
+
+  // We compile a minimal program and check whether the executable's ABI version
+  // is compatible with the runtime's ABI version.
+  ASSERT_OK_AND_ASSIGN(auto client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::PjRtLoadedExecutable> loaded_executable,
+      client->CompileAndLoad(computation, xla::CompileOptions()));
+
+  StreamExecutorGpuCompiler compiler(CudaId());
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtRuntimeAbiVersion> runtime_abi_version,
+      compiler.GetTargetRuntimeAbiVersion());
+  EXPECT_EQ(runtime_abi_version->platform_id(), CudaId());
+
+  ASSERT_OK_AND_ASSIGN(auto executable_abi_version,
+                       loaded_executable->GetExecutable()->GetAbiVersion());
+  EXPECT_OK(runtime_abi_version->IsCompatibleWith(*executable_abi_version));
 }
 
 }  // namespace

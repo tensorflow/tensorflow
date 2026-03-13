@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -6,10 +6,11 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_test(
+py_test(
     name = "tiled_kernel_test",
     srcs = ["tiled_kernel_test.py"],
     main = "tiled_kernel_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
     ],

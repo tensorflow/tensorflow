@@ -23,9 +23,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util/split_proto/split_proto_reader.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
@@ -72,6 +75,45 @@ TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutable) {
   ASSERT_OK(ReadSplitProto(std::move(reader), deserializedExecutable));
 
   EXPECT_THAT(deserializedExecutable, EqualsProto(initialExecutable));
+}
+
+TEST(SplitGpuExecutableWriterTest, JsonBackendConfigIsNormalized) {
+  GpuExecutableProto proto1;
+  *proto1.mutable_hlo_module_with_config()
+       ->mutable_hlo_module()
+       ->add_computations()
+       ->add_instructions()
+       ->mutable_backend_config() = R"json({"a": 1, "b": 2, "c": 3})json";
+
+  GpuExecutableProto proto2;
+  *proto2.mutable_hlo_module_with_config()
+       ->mutable_hlo_module()
+       ->add_computations()
+       ->add_instructions()
+       ->mutable_backend_config() = R"json({"c": 3, "b": 2, "a": 1})json";
+
+  std::string serialized1;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      proto1, std::make_unique<riegeli::StringWriter<>>(&serialized1)));
+
+  std::string serialized2;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      proto2, std::make_unique<riegeli::StringWriter<>>(&serialized2)));
+
+  EXPECT_EQ(serialized1, serialized2);
+}
+
+TEST(SplitGpuExecutableWriterTest, NonJsonBackendConfigIsAccepted) {
+  GpuExecutableProto proto1;
+  *proto1.mutable_hlo_module_with_config()
+       ->mutable_hlo_module()
+       ->add_computations()
+       ->add_instructions()
+       ->mutable_backend_config() = "not-json";
+
+  std::string serialized1;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      proto1, std::make_unique<riegeli::StringWriter<>>(&serialized1)));
 }
 
 }  // namespace

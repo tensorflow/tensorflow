@@ -127,7 +127,7 @@ bool IsCollectiveCommand(CommandType type);
 class Command {
  public:
   using BufferUses = Thunk::BufferUses;
-  using ResourceUses = absl::InlinedVector<ResourceUse, 1>;
+  using ResourceUses = Thunk::ResourceUses;
 
  public:
   explicit Command(CommandType cmd_type,

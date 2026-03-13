@@ -367,6 +367,12 @@ std::vector<int64_t> ExtractCommonFactorSequence(
 std::optional<std::vector<SubDimInfo>> GetOrderedSubDimsFromIotaTileAssignment(
     const IotaTileAssignment& iota);
 
+// Gets the ordered sub-dimensions without constructing an IotaTileAssignment,
+// which is useful when canonicalization of dimensions is not desired.
+absl::StatusOr<std::vector<SubDimInfo>> GetOrderedSubDims(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm);
+
 // Analyze the input tile assignment to obtain the information on the mesh and
 // sub dimensions.
 //

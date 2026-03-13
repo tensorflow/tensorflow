@@ -51,8 +51,8 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestDefaultColorAssignment) {
     }
   )";
 
-  HloModuleConfig config;
-  BufferAssigner::Colorer colorer = CreateColorer(DebugOptions());
+  HloModuleConfig config = GetModuleConfigForTest();
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -102,12 +102,13 @@ TEST_P(GpuCollectiveMemorySpaceAssignmentTest,
     }
   )";
 
-  HloModuleConfig config;
-  DebugOptions debug_options;
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
   debug_options.set_xla_gpu_enable_nccl_user_buffers(UseNcclUserBuffers());
   debug_options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(
       UseNcclSymmetricBuffers());
-  BufferAssigner::Colorer colorer = CreateColorer(debug_options);
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -196,10 +197,11 @@ TEST_P(GpuMosaicMemorySpaceAssignmentTest, TestMosaicMemorySpaceAssignment) {
   const absl::string_view kHloModule =
       MosaicContainsNvshmem() ? kMosaicNvshmemModule : kMosaicModule;
 
-  HloModuleConfig config;
-  DebugOptions debug_options;
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
   debug_options.set_xla_gpu_experimental_enable_nvshmem(UseNvshmem());
-  BufferAssigner::Colorer colorer = CreateColorer(debug_options);
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -260,10 +262,11 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestNvshmemMemorySpaceAssignment) {
     }
   )";
 
-  HloModuleConfig config;
-  auto debug_options = DebugOptions();
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto debug_options = config.debug_options();
   debug_options.set_xla_gpu_experimental_enable_nvshmem(true);
-  BufferAssigner::Colorer colorer = CreateColorer(debug_options);
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
@@ -302,8 +305,8 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestMultimemMosaicMemorySpaceAssignment) {
     }
   )";
 
-  HloModuleConfig config;
-  BufferAssigner::Colorer colorer = CreateColorer(DebugOptions());
+  HloModuleConfig config = GetModuleConfigForTest();
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));

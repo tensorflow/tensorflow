@@ -169,6 +169,7 @@ cc_library(
         "expand_float_ops.cc",
         "expand_integer_power.cc",
         "flatten_tensors.cc",
+        "lower_pdl_ops.cc",
         "lower_tensors.cc",
         "lower_xla_intrinsic_lib.cc",
         "lower_xla_to_scf.cc",

@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
@@ -9,20 +10,22 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "parallel_for",
     srcs = [
         "__init__.py",
     ],
+    strict_deps = True,
     deps = [
         ":control_flow_ops",
         ":gradients",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "pfor_lib",
     srcs = ["pfor.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/core:protos_all_py",
@@ -77,9 +80,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "control_flow_ops",
     srcs = ["control_flow_ops.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":pfor_lib",
@@ -109,9 +113,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_util",
     srcs = ["test_util.py"],
+    strict_deps = True,
     deps = [
         ":control_flow_ops",
         "//tensorflow/python/ops:variables",
@@ -269,9 +274,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gradients",
     srcs = ["gradients.py"],
+    strict_deps = True,
     deps = [
         ":control_flow_ops",
         "//tensorflow/python/framework:ops",
@@ -314,9 +320,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "pfor_test",
     srcs = ["pfor_test.py"],
+    strict_deps = True,
     deps = [
         ":pfor_lib",
         "//tensorflow/python/framework:constant_op",

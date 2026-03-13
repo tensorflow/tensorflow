@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/copy.h"
 
 #include <algorithm>
+#include <climits>
 #include <cstdint>
 #include <iterator>
 #include <memory>

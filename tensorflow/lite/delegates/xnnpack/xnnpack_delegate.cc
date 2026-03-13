@@ -3324,6 +3324,29 @@ class Subgraph {
     const bool dynamically_quantized =
         (input_a.type == kTfLiteFloat32 && input_b.type == kTfLiteInt8);
 
+    if (input_b.type == kTfLiteInt8 && !dynamically_quantized) {
+      // We don't support non-zero zero points for the RHS of statically
+      // quantized BMM.
+      TfLiteAffineQuantization* quant_params_b =
+          reinterpret_cast<TfLiteAffineQuantization*>(
+              input_b.quantization.params);
+      if (quant_params_b) {
+        const int num_quant_params = quant_params_b->scale->size;
+        const int zero_point_b = num_quant_params > 1
+                                     ? quant_params_b->zero_point->data[0]
+                                     : input_b.params.zero_point;
+        if (zero_point_b != 0) {
+          TF_LITE_MAYBE_KERNEL_LOG(
+              logging_context,
+              "failed to delegate %s node #%d. non-zero zero point %d of "
+              "input 1 (%d) is not supported.",
+              EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+              zero_point_b, node->inputs->data[1]);
+          return kTfLiteError;
+        }
+      }
+    }
+
     // Check the output tensor type.
     const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
     TF_LITE_ENSURE_STATUS(
@@ -5373,6 +5396,16 @@ class Subgraph {
           new_shape[i] = reshape_params->shape[i];
         }
       }
+    }
+
+    // This is a weird special case that apparently old models use, indicating
+    // scalar input and scalar output. Let's not handle it.
+    if (num_new_dimensions == 1 && new_shape[0] == 0) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "Not handling legacy scalar input and output RESHAPE operator #%d",
+          node_index);
+      return kTfLiteError;
     }
 
     if (subgraph != nullptr) {

@@ -32,12 +32,13 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_buffer_debug_saver_inserter.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -165,7 +167,7 @@ class ThunkBufferDebugPassTest : public ::testing::Test {
 };
 
 TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   se::DeviceDescription device_info;
@@ -192,7 +194,7 @@ TEST_F(ThunkBufferDebugPassTest, IsNoOpWhenHloModuleIsNull) {
 
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugChecksumThunks) {
   static constexpr ThunkId kTestThunkId = ThunkId(123);
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   se::DeviceDescription device_info;
@@ -262,7 +264,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   static constexpr ThunkId kWhileBodyId = ThunkId(101);
   static constexpr ThunkId kBranch0ThunkId = ThunkId(102);
   static constexpr ThunkId kBranch1ThunkId = ThunkId(103);
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   se::DeviceDescription device_info;
@@ -291,11 +293,11 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
       ThunkInfoWithId(kBranch1ThunkId),
       Thunk::BufferUses{BufferUse::Read(slice_branch1, arg_shape)});
   const Thunk* const branch1_thunk_ptr = conditional_branch1_thunk.get();
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
+  std::vector<ThunkSequence> branch_thunks;
   branch_thunks.push_back(
-      SequentialThunk::FromThunk(std::move(conditional_branch0_thunk)));
+      ThunkSequence::Of(std::move(conditional_branch0_thunk)));
   branch_thunks.push_back(
-      SequentialThunk::FromThunk(std::move(conditional_branch1_thunk)));
+      ThunkSequence::Of(std::move(conditional_branch1_thunk)));
 
   Shape condition_shape = ShapeUtil::MakeShape(PRED, {});
   BufferAllocation::Slice condition_slice = CreateSlice();
@@ -307,14 +309,13 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
   ThunkSequence while_body_thunks;
   while_body_thunks.push_back(std::move(while_body_fake_thunk));
   while_body_thunks.push_back(std::move(conditional_thunk));
+  ThunkSequence while_condition_thunks;
+  while_condition_thunks.push_back(std::move(while_condition_fake_thunk));
   auto while_thunk = std::make_unique<WhileThunk>(
-      Thunk::ThunkInfo(), /*loop=*/nullptr,
+      Thunk::ThunkInfo(),
       /*condition_result_buffer_index=*/BufferAllocation::Slice(),
-      /*condition_thunk_sequence=*/
-      SequentialThunk::FromThunk(std::move(while_condition_fake_thunk)),
-      /*body_thunk_sequence=*/
-      std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
-                                        std::move(while_body_thunks)));
+      /*condition_thunks=*/std::move(while_condition_thunks),
+      /*body_thunks=*/std::move(while_body_thunks));
 
   ThunkSequence thunks;
   thunks.push_back(std::move(while_thunk));
@@ -397,12 +398,12 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
     const WhileThunk& while_thunk =
         static_cast<const WhileThunk&>(*top_seq_thunk.thunks()[1]);
 
-    EXPECT_THAT(while_thunk.body_thunk_sequence()->thunks(),
+    EXPECT_THAT(while_thunk.body_executor().thunks(),
                 ElementsAre(ThunkKindIs(Thunk::Kind::kSequential),
                             ThunkKindIs(Thunk::Kind::kSequential)));
     const SequentialThunk& condition_fake_thunk_sequence =
         static_cast<const SequentialThunk&>(
-            *while_thunk.condition_thunk_sequence()->thunks()[0]);
+            *while_thunk.condition_executor().thunks()[0]);
     EXPECT_THAT(
         condition_fake_thunk_sequence.thunks(),
         ElementsAre(
@@ -412,18 +413,18 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
 
     const SequentialThunk& body_fake_thunk_sequence =
         static_cast<const SequentialThunk&>(
-            *while_thunk.body_thunk_sequence()->thunks()[0]);
+            *while_thunk.body_executor().thunks()[0]);
     EXPECT_THAT(
         body_fake_thunk_sequence.thunks(),
         ElementsAre(IsChecksumThunkChecking(SliceList{{0, slice_while_body}}),
                     Pointer(while_body_fake_thunk_ptr),
                     IsChecksumThunkChecking(SliceList{{0, slice_while_body}})));
 
-    ASSERT_EQ(while_thunk.body_thunk_sequence()->thunks()[1]->kind(),
+    ASSERT_EQ(while_thunk.body_executor().thunks()[1]->kind(),
               Thunk::Kind::kSequential);
     const SequentialThunk& condition_wrapper_thunk =
         static_cast<const SequentialThunk&>(
-            *while_thunk.body_thunk_sequence()->thunks()[1]);
+            *while_thunk.body_executor().thunks()[1]);
 
     ASSERT_EQ(condition_wrapper_thunk.thunks()[1]->kind(),
               Thunk::Kind::kConditional);
@@ -432,12 +433,8 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
             *condition_wrapper_thunk.thunks()[1]);
     EXPECT_EQ(&conditional_thunk, conditional_thunk_ptr);
 
-    EXPECT_THAT(conditional_thunk.branch_thunks(),
-                ElementsAre(ThunkKindIs(Thunk::Kind::kSequential),
-                            ThunkKindIs(Thunk::Kind::kSequential)));
-
-    const SequentialThunk& branch0_thunk = static_cast<const SequentialThunk&>(
-        *conditional_thunk.branch_thunks()[0]);
+    const ThunkExecutor& branch0_thunk =
+        conditional_thunk.branch_executors()[0];
     EXPECT_THAT(branch0_thunk.thunks(),
                 ElementsAre(ThunkKindIs(Thunk::Kind::kSequential)));
 
@@ -449,9 +446,9 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
                     Pointer(branch0_thunk_ptr),
                     IsChecksumThunkChecking(SliceList{{0, slice_branch0}})));
 
-    const SequentialThunk& branch1_thunk = static_cast<const SequentialThunk&>(
-        *conditional_thunk.branch_thunks()[1]);
-    EXPECT_THAT(branch1_thunk.thunks(),
+    const ThunkExecutor& branch1_thunk =
+        conditional_thunk.branch_executors()[1];
+    EXPECT_THAT(conditional_thunk.branch_executors()[1].thunks(),
                 ElementsAre(ThunkKindIs(Thunk::Kind::kSequential)));
 
     const SequentialThunk& branch1_fake_thunk_sequence =
@@ -468,7 +465,7 @@ TEST_F(ThunkBufferDebugPassTest, RecursivelyInsertsBuffersDebugChecksumThunks) {
 
 TEST_F(ThunkBufferDebugPassTest, InsertsBuffersDebugFloatCheckThunks) {
   static constexpr ThunkId kTestThunkId = ThunkId(123);
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_WARNING);
   se::DeviceDescription device_info;
   FakeThunkPassBufferAllocator allocator;
@@ -579,11 +576,9 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
           BufferUse::Read(slice_io, arg_shape),
       }));
 
-  DebugOptions debug_options =
-      tsl::proto_testing::ParseTextProtoOrDie<DebugOptions>(R"pb(
-        xla_dump_to: "/tmp/123"
-        xla_gpu_experimental_enable_buffer_saver_on_thunks: true
-      )pb");
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  debug_options.set_xla_dump_to("/tmp/123");
+  debug_options.set_xla_gpu_experimental_enable_buffer_saver_on_thunks(true);
 
   TF_EXPECT_OK(RunDebugSaverInserter(&thunks, debug_options, hlo_module));
 
@@ -599,7 +594,7 @@ TEST_F(ThunkBufferDebugPassTest, BufferSaverInserter) {
 }
 
 TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   IntRangeInclusive* range =
@@ -660,7 +655,7 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByIdRanges) {
 }
 
 TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   debug_options.mutable_xla_gpu_experimental_thunk_buffer_debug_filter()
@@ -744,7 +739,7 @@ TEST_F(ThunkBufferDebugPassTest, FiltersThunksByProfileAnnotationRegexes) {
 
 TEST_F(ThunkBufferDebugPassTest,
        FiltersThunksByIdRangesAndProfileAnnotationRegexes) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
       true);
   IntRangeInclusive* range =

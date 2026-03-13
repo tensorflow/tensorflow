@@ -43,7 +43,6 @@ cc_library(
     deps = [
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
-        "//xla/python/ifrt",
         "//xla/python/ifrt/ir:sharding_param",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -71,7 +70,6 @@ xla_cc_test(
         "//xla/python/ifrt/ir:sharding_param",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

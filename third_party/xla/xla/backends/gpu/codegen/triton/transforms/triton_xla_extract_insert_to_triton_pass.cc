@@ -558,8 +558,8 @@ class RewriteScalarInsert : public mlir::OpRewritePattern<tensor::InsertOp> {
                                            builder, ptr_type, op.getDest())
                                            .getResult(0);
     StoreOp::create(builder, cast_dst_to_tensor_ptr_type, op.getScalar(),
-                    /*boundary_checks=*/std::vector<int32_t>{},
-                    CacheModifier::NONE, EvictionPolicy::NORMAL);
+                    /*mask=*/Value(), CacheModifier::NONE,
+                    EvictionPolicy::NORMAL);
     rewriter.replaceOp(op, op.getDest());
     return mlir::success();
   }

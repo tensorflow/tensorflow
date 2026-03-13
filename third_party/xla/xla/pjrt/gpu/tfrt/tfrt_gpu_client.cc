@@ -142,12 +142,21 @@ class UnboundedAsyncWorkRunner : public AsyncWorkRunner {
   explicit UnboundedAsyncWorkRunner(const std::string& name)
       : queue_(tsl::Env::Default(), name, {/*stack_size=*/512 * 1024}) {}
 
-  void Execute(Task task) final {
-    // UnboundedWorkQueue expects std::function that must be copyable, so we are
+  void Schedule(absl::AnyInvocable<void() &&> work) override {
+    // TSL TheadPool expects std::function that must be copyable, so we are
     // forced to do a little bit of manual memory management here.
-    queue_.Schedule([ptr = new Task(std::move(task))] {
-      std::move (*ptr)();
-      delete ptr;
+    queue_.Schedule(
+        [ptr = new absl::AnyInvocable<void() &&>(std::move(work))]() {
+          std::move (*ptr)();
+          delete ptr;
+        });
+  }
+
+  void ScheduleWhenReady(
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> values,
+      absl::AnyInvocable<void() &&> work) override {
+    tsl::RunWhenReady(values, [this, work = std::move(work)]() mutable {
+      Schedule([work = std::move(work)]() mutable { std::move(work)(); });
     });
   }
 
@@ -636,9 +645,10 @@ TfrtGpuClient::BuildPjRtExecutable(
   }
 
   return std::make_unique<StreamExecutorExecutable>(
-      std::move(compile_options), std::move(unoptimized_hlo_module_proto),
-      std::move(local_executables), xla_client_, num_replicas, num_partitions,
-      name, fingerprint, memory_spaces()[0]->kind());
+      platform_id(), std::move(compile_options),
+      std::move(unoptimized_hlo_module_proto), std::move(local_executables),
+      xla_client_, num_replicas, num_partitions, name, fingerprint,
+      memory_spaces()[0]->kind());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>

@@ -14,4 +14,7 @@ common:clang_local --repo_env USE_HERMETIC_CC_TOOLCHAIN=0
 import %workspace%/tensorflow.bazelrc
 import %workspace%/warnings.bazelrc
 
+# Treat warnings as errors
+build --config=warnings 
+
 try-import %workspace%/xla_configure.bazelrc

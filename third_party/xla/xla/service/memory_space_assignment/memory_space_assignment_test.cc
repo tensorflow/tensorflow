@@ -15682,7 +15682,7 @@ ENTRY entry {
   memory_space_options.reserved_bytes_for_block_prefetches = 48;
   memory_space_options.max_outstanding_block_prefetches = 10;
 
-  absl::flat_hash_set<HloPosition> block_prefetched_positions;
+  std::vector<HloPosition> block_prefetched_positions;
   TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
                           HloAliasAnalysis::Run(module.get(), &alias_info_));
   const HloModule& hlo_module = alias_analysis->dataflow_analysis().module();
@@ -15705,7 +15705,7 @@ ENTRY entry {
                       << buffer->ToString();
               continue;
             }
-            block_prefetched_positions.insert(value->defining_position());
+            block_prefetched_positions.push_back(value->defining_position());
           }
         });
   }

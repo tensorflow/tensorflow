@@ -26,6 +26,7 @@ namespace tflite {
 namespace {
 
 using ::testing::ElementsAreArray;
+using ::testing::IsEmpty;
 
 enum class TestType {
   kConst = 0,
@@ -143,6 +144,28 @@ TEST_P(TopKV2OpTest, TypeInt64) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 0, 1}));
   EXPECT_THAT(m.GetValues(), ElementsAreArray({3, 2, -1, -2}));
+}
+
+// Test case for k = 0
+TEST_P(TopKV2OpTest, KIsZeroFloat) {
+  TopKV2OpModel<float> m(                 // top_k = 0
+      0, {2, 3},                          // input_shape
+      {-2.0, -3.0, 0.2, 0.8, 0.1, -0.1},  // input_data
+      GetParam());
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetIndexes(), IsEmpty());
+  EXPECT_THAT(m.GetValues(), IsEmpty());
+}
+
+// Test case for k < 0
+TEST_P(TopKV2OpTest, KIsNegativeFloat) {
+  TopKV2OpModel<float> m(                 // top_k = -1
+      -1, {2, 3},                         // input_shape
+      {-2.0, -3.0, 0.2, 0.8, 0.1, -0.1},  // input_data
+      GetParam());
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetIndexes(), IsEmpty());
+  EXPECT_THAT(m.GetValues(), IsEmpty());
 }
 
 }  // namespace

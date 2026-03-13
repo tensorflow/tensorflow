@@ -104,11 +104,6 @@ TEST(UtilTest, VectorString) {
   EXPECT_EQ(VectorString({1, 57, 2}), "(1, 57, 2)");
 }
 
-TEST(UtilTest, LogLines) {
-  // Just make sure this code runs (not verifying the output).
-  LogLines(absl::LogSeverity::kInfo, "hello\n\nworld", __FILE__, __LINE__);
-}
-
 TEST(UtilTest, CommonFactors) {
   struct {
     std::vector<int64_t> a, b;

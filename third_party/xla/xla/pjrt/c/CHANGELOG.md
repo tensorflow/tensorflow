@@ -1,5 +1,9 @@
 # PJRT C API changelog
 
+## 0.99
+
+* Added `PJRT_Error_ForEachPayload`.
+
 ## 0.98
 
 * Added `PJRT_Buffer_Bitcast`.

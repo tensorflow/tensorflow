@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s -xla-sdy-round-trip-dedup-meshes 2>&1 | FileCheck %s
+// RUN: sdy_opt %s -split-input-file -xla-sdy-round-trip-dedup-meshes 2>&1 | FileCheck %s
 
 // CHECK:     sdy.mesh @mesh1 = <["a"=2, "b"=4]>
 // CHECK-NOT: sdy.mesh @mesh2 = <["data"=2, "model"=4]>
@@ -293,4 +293,46 @@ func.func @manual_computation_inlined_meshes(%arg0: tensor<8x16xf32>, %arg1: ten
     sdy.return %2 : tensor<2x32xf32>
   } : (tensor<8x16xf32>, tensor<16x32xf32>) -> tensor<8x32xf32>
   return %0 : tensor<8x32xf32>
+}
+
+// -----
+
+// CHECK: sdy.mesh @mesh = <["x"=2, "y"=4]>
+// CHECK-NOT: sdy.mesh @mesh_0 = <["x"=2, "y"=4]>
+sdy.mesh @mesh = <["x"=2, "y"=4]>
+sdy.mesh @mesh_0 = <["x"=2, "y"=4]>
+
+// CHECK-LABEL: func @duplicated_mesh_on_call_result(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>})
+func.func @duplicated_mesh_on_call_result(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>}
+  %0 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"x"}, {}]>]>} : (tensor<8x8xf32>) -> (tensor<8x8xf32>)
+  return %0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func private @foo(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
+func.func private @foo(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>}
+  %0 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
+}
+
+// -----
+
+// CHECK: sdy.mesh @mesh = <["x"=2, "y"=4]>
+// CHECK-NOT: sdy.mesh @mesh_0 = <["x"=2, "y"=4]>
+sdy.mesh @mesh = <["x"=2, "y"=4]>
+sdy.mesh @mesh_0 = <["x"=2, "y"=4]>
+
+// CHECK-LABEL: func @duplicated_mesh_on_func_arguments(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>})
+func.func @duplicated_mesh_on_func_arguments(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>}
+  %0 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}, {}]>]>} : (tensor<8x8xf32>) -> (tensor<8x8xf32>)
+  return %0 : tensor<8x8xf32>
+}
+
+// CHECK-LABEL: func private @foo(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
+func.func private @foo(%arg0: tensor<8x8xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {"y"}]>}) -> tensor<8x8xf32> {
+  // CHECK-NEXT: stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>}
+  %0 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : tensor<8x8xf32>
+  return %0 : tensor<8x8xf32>
 }

@@ -188,6 +188,13 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
   return layout;
 }
 
+absl::StatusOr<PjRtDeviceDimensions>
+StreamExecutorGpuTopologyDescription::ChipBounds() const {
+  return PjRtDeviceDimensions{gpu_topology_->num_partitions(),
+                              gpu_topology_->num_hosts_per_partition(),
+                              gpu_topology_->num_devices_per_host()};
+}
+
 absl::StatusOr<xla::PjRtTopologyDescriptionProto>
 StreamExecutorGpuTopologyDescription::ToProto() const {
   PjRtTopologyDescriptionProto proto;

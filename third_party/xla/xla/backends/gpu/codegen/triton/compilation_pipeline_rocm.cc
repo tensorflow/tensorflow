@@ -41,7 +41,6 @@ namespace mt = ::mlir::triton;
 // @triton//:third_party/amd/backend/compiler.py
 static void MakeTTIR(mlir::OpPassManager* pm) {
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createTritonRewriteTensorPointer());
   // if not amd.supports_tdm(arch)
   // pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   pm->addPass(mlir::createCanonicalizerPass());
@@ -132,6 +131,8 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createTritonAMDGPUConvertToBufferOps(
       {rocm_cc.gfx_version(), /*allowBufferAtomics*/ true,
        /*analyzeSmallTensorOfst*/ false}));
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUOptimizeBufferOpPtr());
 
   pm->addPass(mlir::createTritonAMDFoldTrueCmpI());
   pm->addNestedPass<mlir::triton::FuncOp>(
@@ -154,6 +155,8 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
   pm->addPass(mt::gpu::createAllocateSharedMemory());
+  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
+  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(
       mt::createConvertTritonAMDGPUToLLVMPass(rocm_cc.gfx_version(), true));
   pm->addPass(mlir::createCanonicalizerPass());

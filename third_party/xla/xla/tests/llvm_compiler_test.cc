@@ -80,7 +80,7 @@ TEST_F(LLVMCompilerTest, HooksTest) {
 
   // Test that hooks were called.
   EXPECT_LE(1, pre_opt_hook_call_count);
-  EXPECT_EQ(1, post_opt_hook_call_count);
+  EXPECT_LE(1, post_opt_hook_call_count);
 }
 
 }  // namespace

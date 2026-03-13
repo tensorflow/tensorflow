@@ -1,6 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "if_portable", "pybind_extension")
 
 package(
@@ -62,9 +62,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "metrics_wrapper_test",
     srcs = ["wrapper/metrics_wrapper_test.py"],
+    strict_deps = True,
     deps = [
         ":metrics_wrapper",
         #internal proto upb dep
@@ -111,7 +112,7 @@ pytype_strict_library(
     ) + [":metrics_interface"],
 )
 
-py_strict_test(
+py_test(
     name = "metrics_test",
     srcs = if_portable(
         if_false = ["metrics_nonportable_test.py"],
@@ -124,6 +125,7 @@ py_strict_test(
         if_false = "metrics_nonportable_test.py",
         if_true = "metrics_portable_test.py",
     ),
+    strict_deps = True,
     tags = ["notap"],  # TODO(b/373657707): Remove once we debug the failure.
     deps = [
         ":metrics",

@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -186,10 +187,19 @@ absl::Status Autotuner::Autotune(HloModule* module,
     CHECK(!instructions.empty());
     configs[i] = GetConfig(instructions[0]);
   }
-
+  absl::Status combined_status = absl::OkStatus();
+  int num_failures = 0;
   for (int i = 0; i < all_instructions.size(); i++) {
     auto& instructions = all_instructions[i].second;
-    ASSIGN_OR_RETURN(Config config, std::move(configs[i]).Await());
+    auto config_or = std::move(configs[i]).Await();
+    combined_status.Update(config_or.status());
+    if (!config_or.ok()) {
+      LOG(ERROR) << "Failed to autotune HLO: " << instructions[0]->ToString()
+                 << " with status: " << config_or.status();
+      num_failures++;
+      continue;  // Continue awaiting others to prevent background crash
+    }
+    Config config = std::move(*config_or);
     CodegenBackend* codegen_backend = config.codegen_backend;
     if (autotune_config_.dump_hlos) {
       RETURN_IF_ERROR(DumpHlo(instructions[0], config));
@@ -199,7 +209,15 @@ absl::Status Autotuner::Autotune(HloModule* module,
           codegen_backend->ApplyConfig(*instr, *config.backend_config));
     }
   }
-  return DumpLogsToFile();
+  RETURN_IF_ERROR(DumpLogsToFile());
+  if (!combined_status.ok() && num_failures > 1) {
+    return tsl::errors::CreateWithUpdatedMessage(
+        combined_status, absl::StrCat("Failed to autotune: ", num_failures,
+                                      " out of ", all_instructions.size(),
+                                      " instructions. See logs for details.\n",
+                                      combined_status.message()));
+  }
+  return combined_status;
 }
 
 absl::Status Autotuner::Autotune(HloModule* module,
@@ -618,15 +636,23 @@ absl::StatusOr<Autotuner::ConfigResult> Autotuner::PickBestConfig(
     std::vector<ConfigResult>& results) {
   absl::Duration min_duration = absl::InfiniteDuration();
   ConfigResult* best_result = nullptr;
+  std::vector<std::string> failures;
   for (ConfigResult& result : results) {
-    if (!result.failure.has_value() && result.duration < min_duration) {
+    if (result.failure.has_value()) {
+      failures.push_back(result.failure->ToString());
+    } else if (result.duration < min_duration) {
       min_duration = result.duration;
       best_result = &result;
     }
   }
 
   if (best_result == nullptr) {
-    return absl::NotFoundError("No valid config found!");
+    std::string message = "No valid config found!";
+    if (!failures.empty()) {
+      absl::StrAppend(&message, " Failures: ", failures.size(), "\n",
+                      absl::StrJoin(failures, "\n"));
+    }
+    return absl::NotFoundError(message);
   }
 
   if (autotune_config_.optimize_scratch_bytes) {

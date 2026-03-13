@@ -51,6 +51,7 @@ struct TritonPipelineOptions
   Option<int> num_warps{*this, "num-warps", llvm::cl::init(4)};
   Option<int> num_ctas{*this, "num-ctas", llvm::cl::init(1)};
   Option<int> num_stages{*this, "num-stages", llvm::cl::init(3)};
+  Option<bool> enable_pdl{*this, "enable-pdl", llvm::cl::init(false)};
 };
 
 mlir::PassPipelineRegistration<TritonPipelineOptions>
@@ -73,7 +74,8 @@ mlir::PassPipelineRegistration<TritonPipelineOptions>
           bool warp_specialization_allowed = true;
           xla::gpu::CreateTritonXlaPipeline(
               &pm, gpu_cc, options.rewrite_int4, options.allow_tma,
-              options.num_stages, warp_specialization_allowed);
+              options.num_stages, warp_specialization_allowed,
+              options.enable_pdl);
 
           xla::gpu::CreateTritonPipeline(&pm, gpu_cc, options.num_warps,
                                          options.num_ctas, options.num_stages);

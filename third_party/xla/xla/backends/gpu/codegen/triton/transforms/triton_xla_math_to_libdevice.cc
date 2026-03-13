@@ -193,7 +193,8 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
     mlir::ImplicitLocOpBuilder builder(op->getLoc(), rewriter);
 
     llvm::SmallVector<Value, 2> casted_inputs;
-    if (output_type_is_16bit_float) {
+    if (output_type_is_16bit_float &&
+        !::xla::gpu::HasF16Implementation(OpInfo<OpTy>::kFunctionID, triple_)) {
       // Upcast the inputs to F32.
       for (auto operand : op->getOperands()) {
         Type f32_type = rewriter.getF32Type();
@@ -220,7 +221,8 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
       original_output_type = shaped_type.clone(output_type);
     }
 
-    if (res.getType() != original_output_type) {
+    if (res.getType() != original_output_type &&
+        !::xla::gpu::HasF16Implementation(OpInfo<OpTy>::kFunctionID, triple_)) {
       // Downcast back to the original output type.
       res = arith::TruncFOp::create(builder, op.getLoc(), original_output_type,
                                     res);

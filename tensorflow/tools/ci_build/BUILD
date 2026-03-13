@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow:tf_version.bzl", "TF_VERSION")
 
 package(
@@ -6,10 +6,11 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_binary(
+py_binary(
     name = "calculate_full_version",
     srcs = ["calculate_full_version.py"],
     args = ["--wheel-version={}".format(TF_VERSION)],
+    strict_deps = True,
 )
 
 exports_files(

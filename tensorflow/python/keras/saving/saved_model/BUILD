@@ -29,6 +29,7 @@ package(
 py_library(
     name = "load_context",
     srcs = ["load_context.py"],
+    strict_deps = False,
     visibility = ["//tensorflow/python/distribute:__pkg__"],
 )
 
@@ -50,6 +51,7 @@ py_library(
         "utils.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",

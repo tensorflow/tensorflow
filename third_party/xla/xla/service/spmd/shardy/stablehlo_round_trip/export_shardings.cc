@@ -295,9 +295,18 @@ NamedSharding convertToNamedSharding(
   // - maximal sharding if the mesh has a device id
   // - else replicated sharding
   if (sdyMesh.getAxes().empty()) {
-    return sdyMesh.getDeviceIds().empty()
-               ? NamedSharding::Replicate()
-               : NamedSharding::MaximalSharding(sdyMesh.getDeviceIds().front());
+    if (!sdyMesh.getDeviceIds().empty()) {
+      return NamedSharding::SingleDevice(sdyMesh.getDeviceIds().front());
+    }
+
+    SmallVector<NamedSharding::DimensionSharding> dimShardings;
+    dimShardings.reserve(sdySharding.getDimShardings().size());
+    for (mlir::sdy::DimensionShardingAttr dimSharding :
+         sdySharding.getDimShardings()) {
+      dimShardings.push_back(
+          NamedSharding::DimensionSharding({}, dimSharding.getIsClosed()));
+    }
+    return NamedSharding(Mesh(), dimShardings);
   }
 
   std::vector<int64_t> axisSizes;

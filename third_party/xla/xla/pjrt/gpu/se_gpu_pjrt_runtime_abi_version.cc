@@ -35,8 +35,16 @@ absl::Status StreamExecutorGpuPjRtRuntimeAbiVersion::IsCompatibleWith(
         "The executable ABI version platform ID does not match the runtime "
         "ABI version platform ID.");
   }
-  auto se_executable_abi_version =
-      dynamic_cast<const StreamExecutorPjRtExecutableAbiVersion*>(&abi_version);
+
+  // `abi_version` can be a PjRt wrapper instance, therefore we need to
+  // serialize to proto that we can parse to a
+  // `StreamExecutorPjRtExecutableAbiVersion`.
+  ASSIGN_OR_RETURN(PjRtExecutableAbiVersionProto abi_version_proto,
+                   abi_version.ToProto());
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<StreamExecutorPjRtExecutableAbiVersion>
+          se_executable_abi_version,
+      StreamExecutorPjRtExecutableAbiVersion::FromProto(abi_version_proto));
 
   if (se_executable_abi_version == nullptr) {
     return absl::InvalidArgumentError(

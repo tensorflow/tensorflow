@@ -120,6 +120,8 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
+  absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const override;
+
   absl::StatusOr<xla::PjRtTopologyDescriptionProto> ToProto() const override;
 
   static absl::StatusOr<std::unique_ptr<StreamExecutorGpuTopologyDescription>>

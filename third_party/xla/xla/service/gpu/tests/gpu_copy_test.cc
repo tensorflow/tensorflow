@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -24,15 +25,17 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/service/gpu/tests/gpu_pjrt_codegen_test.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
+namespace {
 
-class GpuCopyTest : public GpuCodegenTest {};
+class GpuCopyTest
+    : public HloPjRtInterpreterReferenceMixin<GpuPjRtCodegenTest> {};
 
 // The GPU backend should not emit a copy kernel for the kCopy instruction in
 // this test. Instead, it should generate a CopyThunk which invokes cuMemcpy at
@@ -52,8 +55,9 @@ TEST_F(GpuCopyTest, UseMemcpy) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   // There should not be any kernel prefixed "copy".
-  CompileAndVerifyIr(std::move(hlo_module), "; CHECK-NOT: define void @_copy",
-                     /*match_optimized_ir=*/false);
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               "; CHECK-NOT: define void @_copy",
+                               /*match_optimized_ir=*/false));
 }
 
 TEST_F(GpuCopyTest, CopyTranspose) {
@@ -186,9 +190,10 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicSlice) {
                           ParseAndReturnVerifiedModule(kSliceMemcpyModule));
 
   // There should not be a kernel for `dynamic_slice`.
-  CompileAndVerifyIr(std::move(hlo_module), "; CHECK-NOT: void @slice",
-                     /*match_optimized_ir=*/false,
-                     /*run_optimization_passes=*/false);
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               "; CHECK-NOT: void @slice",
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/false));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(kSliceMemcpyModule, ErrorSpec{1e-5, 1e-5}));
 }
@@ -273,9 +278,10 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSlice) {
       std::unique_ptr<VerifiedHloModule> hlo_module,
       ParseAndReturnVerifiedModule(kDynamicUpdateSliceModule));
 
-  CompileAndVerifyIr(std::move(hlo_module), "; CHECK-NOT: void @updated",
-                     /*match_optimized_ir=*/false,
-                     /*run_optimization_passes=*/false);
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module),
+                               "; CHECK-NOT: void @updated",
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/false));
   EXPECT_TRUE(
       RunAndCompareNoHloPasses(kDynamicUpdateSliceModule, ErrorSpec{0, 0}));
 }
@@ -353,7 +359,7 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
       std::unique_ptr<VerifiedHloModule> hlo_module,
       ParseAndReturnVerifiedModule(kDynamicUpdateSliceWithBitcastModule));
 
-  CompileAndVerifyIr(std::move(hlo_module), R"(
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
     CHECK-NOT: void @
     CHECK: void @input
     CHECK-NOT: void @
@@ -362,8 +368,8 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
     CHECK: void @next_ivar
     CHECK-NOT: void @
   )",
-                     /*match_optimized_ir=*/false,
-                     /*run_optimization_passes=*/false);
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/false));
   EXPECT_TRUE(RunAndCompareNoHloPasses(kDynamicUpdateSliceWithBitcastModule,
                                        ErrorSpec{0, 0}));
 }
@@ -407,10 +413,7 @@ constexpr char kSliceMemcpyModuleUnfused[] = R"(
     })";
 
 TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
-  auto compute_capability = backend()
-                                .default_stream_executor()
-                                ->GetDeviceDescription()
-                                .gpu_compute_capability();
+  auto compute_capability = device_description().gpu_compute_capability();
   if (auto cc = compute_capability.cuda_compute_capability();
       !cc || !cc->IsAtLeastAmpere()) {
     GTEST_SKIP() << "Test requires at least Ampere.";
@@ -428,7 +431,7 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
   // 2. An `add` fusion for the next ivar.
   // If the dynamic memcpy optimization does not trigger, there will be a third
   // fusion for the dynamic-slice.
-  CompileAndVerifyIr(std::move(hlo_module), R"(
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
                        CHECK-NOT: void @
 
                        CHECK: void @
@@ -449,27 +452,27 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
                        CHECK-NEXT: ret
 
                        CHECK-NOT: void @)",
-                     /*match_optimized_ir=*/false,
-                     /*run_optimization_passes=*/true);
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/true));
 }
 
 TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTestControl) {
   // Control for UseDynamicMemcpyIntegrationTest. Verify that without
   // fusion-dynamic-memcpy-rewriter, we have a third fusion.
   HloModuleConfig config;
-  DebugOptions options;
+  DebugOptions options = GpuPjRtCodegenTest::GetDebugOptionsForTest();
   options.add_xla_disable_hlo_passes("fusion-dynamic-memcpy-rewriter");
   config.set_debug_options(options);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<VerifiedHloModule> hlo_module,
       ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused, config));
-  CompileAndVerifyIr(std::move(hlo_module), R"(
+  ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
                        CHECK-COUNT-3: void @
                        CHECK-NOT: void @)",
-                     /*match_optimized_ir=*/false,
-                     /*run_optimization_passes=*/true);
+                               /*match_optimized_ir=*/false,
+                               /*run_optimization_passes=*/true));
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace
+}  // namespace xla::gpu

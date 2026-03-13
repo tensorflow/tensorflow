@@ -18,12 +18,12 @@ e {
 }
 
 // CHECK-NOT: convert
-// CHECK:      s4[4,2]{1,0:E(4)} parameter
-// CHECK:      s4[2,4]{1,0:E(4)} fusion(%{{.+}})
-// CHECK-NEXT: s8[2,2]{0,1} bitcast
-// CHECK:      s8[2,4]{0,1} all-gather-done
+// CHECK: s8[4,1]{1,0} bitcast
+// CHECK-NEXT: (s8[4,1]{1,0}, s8[8,1]{1,0}) all-gather-start
+// CHECK-NEXT: s8[8,1]{1,0} all-gather-done
+// CHECK-NEXT: s4[2,4,2]{2,1,0:E(4)} bitcast
+// CHECK-NEXT: s4[4,2,2]{2,1,0:E(4)} fusion
 // CHECK-NEXT: s4[4,4]{1,0:E(4)} bitcast
-// CHECK:      s4[4,4]{1,0:E(4)} fusion(%{{.+}})
 
 // -----
 

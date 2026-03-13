@@ -119,6 +119,8 @@ class BatchResourceBase : public ResourceBase {
 
     size_t size() const override { return inputs[0].shape().dim_size(0); }
 
+    bool is_subtask() const override { return is_partial; }
+
     // Create a split task from this one. The caller needs to setup the inputs
     // of the new task
     std::unique_ptr<BatchTask> CreateSplitTask(
@@ -143,6 +145,11 @@ class BatchResourceBase : public ResourceBase {
     // If nonzero, make a batch of this size entirely out of padding. This
     // batch is processed, but is not propagated to the kernel outputs.
     int forced_warmup_batch_size = 0;
+
+    // If true, the task is a warmup task.
+    bool is_warmup_task = false;
+
+    bool is_warmup() const override { return is_warmup_task; }
 
     // 'status' records error (could be from any split) if at least one split
     // returns error, OK otherwise.

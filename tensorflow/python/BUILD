@@ -4,12 +4,12 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "VERSION",
@@ -93,9 +93,10 @@ package(
 
 # Description:
 
-py_strict_library(
+py_library(
     name = "python",
     srcs = ["__init__.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/aot/tests:__pkg__",  # TODO(b/34059704): remove when fixed
@@ -118,8 +119,9 @@ py_strict_library(
 # keras_lib may be removed in the future, it should NOT be used as
 # a direct dependency.
 # TODO(b/199420795) investigate minimal set of dependencies ...
-py_strict_library(
+py_library(
     name = "keras_lib",
+    strict_deps = True,
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow:internal",
@@ -138,9 +140,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "no_contrib",
     srcs = ["__init__.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
@@ -340,8 +343,9 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "core",
+    strict_deps = True,
     visibility = [
         "//tensorflow:__pkg__",
     ],
@@ -352,9 +356,10 @@ py_strict_library(
 )
 
 # This target should only be used for API generation.
-py_strict_library(
+py_library(
     name = "modules_with_exports",
     srcs = ["modules_with_exports.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
@@ -604,8 +609,9 @@ cc_header_only_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "extra_py_tests_deps",
+    strict_deps = True,
     # extra_py_tests_deps is public to allow the use of tf_py_test or
     # cuda_py_test build rules for out-of-tree custom ops.
     # extra_py_tests_deps should NOT be used as dependency directly
@@ -623,17 +629,19 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "distributed_framework_test_lib",
+    strict_deps = True,
     deps = ["//tensorflow/python/framework:test_lib"],
 )
 
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
 # other purposes.
 
-py_strict_library(
+py_library(
     name = "global_test_configuration",
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     deps =
         tf_enable_mlir_bridge(),
 )
@@ -654,7 +662,7 @@ tf_proto_library(
     visibility = visibility,
 )
 
-py_strict_library(
+py_library(
     name = "pywrap_tensorflow",
     srcs = [
         "pywrap_tensorflow.py",
@@ -663,6 +671,7 @@ py_strict_library(
         # Import will fail, indicating no global dlopen flags
         otherwise = [],
     ),  # b/153585257
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_tensorflow_internal",
@@ -765,6 +774,10 @@ pywrap_tensorflow_macro(
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
         ":_pywrap_library_dependency_enforcer",
+    ] + select({
+        "//tools/cc_target_os:gce": [],
+        "//conditions:default": ["//learning/brain/google/data/service/data_transfer_protocols/void"],
+    }) + [
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
@@ -1088,9 +1101,10 @@ pywrap_aware_cc_import(
 
 # ** Targets for Windows build (end) **
 
-py_strict_library(
+py_library(
     name = "pywrap_mlir",
     srcs = ["pywrap_mlir.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_mlir",
@@ -1129,9 +1143,10 @@ tf_python_pybind_extension(
     ] + if_pywrap(["//tensorflow/compiler/mlir/python:mlir"]),
 )
 
-py_strict_library(
+py_library(
     name = "pywrap_sanitizers",
     srcs = ["pywrap_sanitizers.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_sanitizers",
@@ -1200,9 +1215,10 @@ cc_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "pywrap_tfe",
     srcs = ["pywrap_tfe.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tfe",
@@ -1289,10 +1305,11 @@ tf_python_pybind_extension(
     ),
 )
 
-py_strict_library(
+py_library(
     name = "pywrap_tfe_monitoring_reader",
     testonly = True,
     srcs = ["pywrap_tfe_monitoring_reader.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tfe_monitoring_reader",
@@ -1415,9 +1432,10 @@ tf_pybind_cc_library_wrapper(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf2",
     srcs = ["tf2.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/platform:_pywrap_tf2",
         "//tensorflow/python/util:tf_export",
@@ -1434,8 +1452,9 @@ py_strict_library(
 #
 # # Special build rule for jax2tf.
 # # TODO(b/239052279): remove once TF->TFLite dependency cycle is resolved
-# py_strict_library(
+# py_library(
 #     name = "jax2tf_support",
+#     strict_deps = True,
 #     visibility = ["//third_party/py/jax/experimental/jax2tf:__subpackages__"],
 #     deps = [
 #         "//tensorflow/python/dlpack",

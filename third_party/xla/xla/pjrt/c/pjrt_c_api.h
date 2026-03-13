@@ -110,7 +110,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 98
+#define PJRT_API_MINOR 99
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -186,6 +186,24 @@ struct PJRT_Error_GetCode_Args {
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, code);
 
 typedef PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
+
+typedef void (*PJRT_Error_PayloadVisitor)(const char* key, size_t key_size,
+                                          const char* value, size_t value_size,
+                                          void* user_arg);
+
+struct PJRT_Error_ForEachPayload_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_Error* error;
+  PJRT_Error_PayloadVisitor visitor;
+  void* user_arg;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_ForEachPayload_Args, user_arg);
+
+// Iterates over the stored payloads and calls the `visitor`
+// callable for each one.
+typedef PJRT_Error* PJRT_Error_ForEachPayload(
+    PJRT_Error_ForEachPayload_Args* args);
 
 // Function for PJRT implementation to pass to callback functions provided by
 // caller so the callback can create a PJRT_Error* on error (to return to the
@@ -3001,9 +3019,13 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Client_Load);
   _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_AddressableDeviceLogicalIds);
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Bitcast);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Error_ForEachPayload);
 } PJRT_Api;
 
-enum { PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_Bitcast) };
+enum {
+  PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Error_ForEachPayload)
+};
 
 #undef _PJRT_API_STRUCT_FIELD
 

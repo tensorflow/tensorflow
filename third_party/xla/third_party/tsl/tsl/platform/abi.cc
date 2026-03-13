@@ -39,7 +39,7 @@ extern "C" char* __unDName(char* output_string, const char* name,
 namespace tsl {
 namespace port {
 
-string MaybeAbiDemangle(const char* name) {
+std::string MaybeAbiDemangle(const char* name) {
 #if defined(_MSC_VER)
   std::unique_ptr<char> demangled{__unDName(nullptr, name, 0, std::malloc,
                                             std::free,

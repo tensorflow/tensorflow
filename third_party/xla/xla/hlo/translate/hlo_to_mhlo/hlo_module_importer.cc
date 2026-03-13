@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -127,7 +128,7 @@ absl::Status HloModuleImporter::Import(const HloModule& hlo_module) {
 }
 
 absl::Status HloModuleImporter::Import(const HloModuleProto& module_proto) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   TF_ASSIGN_OR_RETURN(
       auto module_config,
       HloModule::CreateModuleConfigFromProto(module_proto, debug_options));

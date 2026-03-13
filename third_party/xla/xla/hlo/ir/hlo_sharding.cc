@@ -198,7 +198,7 @@ HloSharding HloSharding::AssignDevice(int64_t device_id,
                                       absl::Span<const OpMetadata> metadata,
                                       bool use_named_sharding) {
   if (use_named_sharding) {
-    return HloSharding(NamedSharding::MaximalSharding(device_id, metadata));
+    return HloSharding(NamedSharding::SingleDevice(device_id, metadata));
   }
   return HloSharding(device_id, metadata);
 }
@@ -881,7 +881,7 @@ absl::Status HloSharding::ValidateNonTuple(
     return DeviceInRange(TileAgnosticDeviceAssignment().first(), num_devices);
   }
 
-  // The correct constructor has to be used to create tile maximal shardings.
+  // The correct constructor has to be used to create single-device shardings.
   if (TileAgnosticDeviceAssignment().num_elements() == 1) {
     return absl::InvalidArgumentError(
         "Tile assignment only contains a single device. If a replicated "
@@ -1171,8 +1171,8 @@ OpSharding HloSharding::ToProto() const {
     return NamedSharding::Replicate(sharding.metadata());
   }
   if (sharding.IsSingleDevice()) {
-    return NamedSharding::MaximalSharding(sharding.tile_assignment().first(),
-                                          sharding.metadata());
+    return NamedSharding::SingleDevice(sharding.tile_assignment().first(),
+                                       sharding.metadata());
   }
 
   // Tiled sharding.
@@ -1289,7 +1289,7 @@ OpSharding HloSharding::ToProto() const {
   if (sharding.IsReplicated()) {
     return HloSharding::Replicate(metadata);
   }
-  if (sharding.IsMaximal()) {
+  if (sharding.IsSingleDevice()) {
     return HloSharding::AssignDevice(mesh.device_assignment()(0), metadata);
   }
 
@@ -1392,12 +1392,15 @@ Shape HloSharding::TileShape(const Shape& shape, int64_t device) const {
 }
 
 int64_t HloSharding::TotalNumTiles() const {
-  if (IsReplicatedOrSingleDevice()) {
+  CHECK(!IsTuple());
+
+  if (IsReplicatedOrSingleDeviceLeaf()) {
     return 1;
   }
-  CHECK(!IsManual());
-  CHECK(!IsUnknown());
-  return Product(dimensions());
+  CHECK(!IsManualLeaf());
+  CHECK(!IsUnknownLeaf());
+
+  return num_devices();
 }
 
 int64_t HloSharding::NumTiles() const {
@@ -1405,6 +1408,9 @@ int64_t HloSharding::NumTiles() const {
     return 1;
   }
   CHECK(!IsManualLeaf() && !IsUnknownLeaf());
+  if (UseNamedShardingLeaf()) {
+    return Product(dimensions());
+  }
   return Product(dimensions().subspan(0, TiledDataRank()));
 }
 
@@ -1416,7 +1422,7 @@ int64_t HloSharding::NumTiles(absl::Span<const int64_t> dims) const {
   CHECK(!ReplicateOnLastTileDim() ||
         !absl::c_linear_search(dims, num_dimensions() - 1));
   int64_t num_tiles = 1;
-  for (auto d : dims) {
+  for (int64_t d : dims) {
     CHECK(d < num_dimensions());
     num_tiles *= dimension(d);
   }
