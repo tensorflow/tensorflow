@@ -65,7 +65,6 @@ class ModuleTest(test.TestCase):
 
   def testSummaryMerged(self):
     # pylint: disable=pointless-statement
-    tf.summary.image
     # If we use v2 API, check for create_file_writer,
     # otherwise check for FileWriter.
     if hasattr(tf, '_major_api_version') and tf._major_api_version == 2:
