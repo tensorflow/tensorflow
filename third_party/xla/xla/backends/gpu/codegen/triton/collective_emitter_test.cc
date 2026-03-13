@@ -208,26 +208,24 @@ INSTANTIATE_TEST_SUITE_P(
             num_warps: 16
             num_ctas: 1
             num_stages: 1
-            output_tiles { sizes: 4096 }
+            output_tiles { sizes: 2048 }
           )pb"},
-         AllReduceBlockLevelConfigTestCase{
-             /* .test_name= */ "F32_200_100",
-             /* .shape= */ ShapeUtil::MakeShape(F32, {200, 100}),
-             /* .expected_proto= */ R"pb(
-               num_warps: 16
-               num_ctas: 1
-               num_stages: 1
-               output_tiles { sizes: 256 sizes: 16 }
-             )pb"},
-         AllReduceBlockLevelConfigTestCase{
-             /* .test_name= */ "F32_1040",
-             /* .shape= */ ShapeUtil::MakeShape(F32, {1040}),
-             /* .expected_proto= */ R"pb(
-               num_warps: 16
-               num_ctas: 1
-               num_stages: 1
-               output_tiles { sizes: 2048 }
-             )pb"}}),
+         {/* .test_name= */ "F32_200_100",
+          /* .shape= */ ShapeUtil::MakeShape(F32, {200, 100}),
+          /* .expected_proto= */ R"pb(
+            num_warps: 16
+            num_ctas: 1
+            num_stages: 1
+            output_tiles { sizes: 32 sizes: 128 }
+          )pb"},
+         {/* .test_name= */ "F32_1040",
+          /* .shape= */ ShapeUtil::MakeShape(F32, {1040}),
+          /* .expected_proto= */ R"pb(
+            num_warps: 16
+            num_ctas: 1
+            num_stages: 1
+            output_tiles { sizes: 2048 }
+          )pb"}}),
     [](const ::testing::TestParamInfo<
         CollectiveBlockLevelConfigParameterizedTest::ParamType>& info) {
       return info.param.test_name;
@@ -273,7 +271,7 @@ TEST_F(CollectiveEmitterTest, AllReduceWithTritonGetLaunchConfig) {
   ASSERT_NE(triton_fusion, nullptr);
   auto const launch_config = triton_fusion->GetLaunchConfig();
   ASSERT_NE(launch_config, std::nullopt);
-  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 16);
+  EXPECT_EQ(launch_config->launch_dimensions.num_blocks(), 32);
   EXPECT_EQ(launch_config->launch_dimensions.num_threads_per_block(), 512);
 }
 

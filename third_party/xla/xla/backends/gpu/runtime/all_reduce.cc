@@ -70,7 +70,9 @@ static constexpr auto kAddBF16Tags =
     TagRegistry<bfloat16, ReductionKind::SUM>{};
 static constexpr auto kOrPredTags = TagRegistry<bool, ReductionKind::MAX>{};
 // Heuristic maxima after some benchmarking.
-static constexpr int64_t kMaxBlocksPerGrid = 24;
+// It's nicer to have this as a power of 2 because we consume blocks in powers
+// of 2 from a higher dimension to a lower dimension.
+static constexpr int64_t kMaxBlocksPerGrid = 32;
 static constexpr uint64_t kMaxThreadsPerBlock = 512;
 static constexpr int64_t kWarpSize = 32;
 

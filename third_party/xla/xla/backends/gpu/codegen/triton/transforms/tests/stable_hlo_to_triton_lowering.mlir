@@ -271,6 +271,34 @@ xtile.entry_func @all_reduce_two_shot(%input: memref<131072xf32>, %output: memre
   xtile.return
 }
 
+// CHECK-LABEL: xtile.entry_func @all_reduce_one_shot_2d
+xtile.entry_func @all_reduce_one_shot_2d(%input: memref<1024x2xf32>, %output: memref<1024x2xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<!tt.ptr<i32>>, %remote_input_buffer: !tt.ptr<!tt.ptr<f32>>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %cst_0 = arith.constant 0 : index
+  %tile = xtile.extract %input[%cst_0, %tile_id][1024, 2][1, 1] : memref<1024x2xf32> -> tensor<1024x2xf32>
+  // CHECK: triton_xla.block_barrier
+  %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<1024x2xf32>) -> tensor<1024x2xf32>
+  xtile.insert %all_reduce into %output[%cst_0, %tile_id][1024, 2][1, 1] : tensor<1024x2xf32> -> memref<1024x2xf32>
+  xtile.return
+}
+
+// CHECK-LABEL: xtile.entry_func @all_reduce_two_shot_3d
+xtile.entry_func @all_reduce_two_shot_3d(%input: memref<1024x512x2xf32>, %output: memref<1024x512x2xf32>, %device_rank: i32, %signal_value: i32, %signal_buffer: !tt.ptr<!tt.ptr<i32>>, %remote_input_buffer: !tt.ptr<!tt.ptr<f32>>, %tile_id: index) attributes {num_opaque_args = 4 : i32} {
+  %cst_0 = arith.constant 0 : index
+  %tile = xtile.extract %input[%cst_0, %cst_0, %tile_id][1024, 512, 2][1, 1, 1] : memref<1024x512x2xf32> -> tensor<1024x512x2xf32>
+  // CHECK: triton_xla.block_barrier
+  // CHECK: triton_xla.block_barrier
+  %all_reduce = "stablehlo.all_reduce"(%tile) <{replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>}> ({
+    ^bb0(%arg7: tensor<f32>, %arg8: tensor<f32>):
+      %4 = arith.addf %arg7, %arg8 : tensor<f32>
+      stablehlo.return %4 : tensor<f32>
+    }) : (tensor<1024x512x2xf32>) -> tensor<1024x512x2xf32>
+  xtile.insert %all_reduce into %output[%cst_0, %cst_0, %tile_id][1024, 512, 2][1, 1, 1] : tensor<1024x512x2xf32> -> memref<1024x512x2xf32>
+  xtile.return
+}
 
 // CHECK: func @lower_dot_with_warp_specialization_to_triton
 func.func @lower_dot_with_warp_specialization_to_triton(

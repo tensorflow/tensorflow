@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -97,6 +98,33 @@ class AllReduceTestNoParams : public CollectiveOpsWithFlagsBase {
                       "since it's using triton.";
     }
   }
+
+  // Receives a required device count and asserts or skips the test if the
+  // device count is less than the required device count.
+  //
+  // Tap presubmits have only 2 GPUs available. This is the minimum required
+  // device count below which we fail the test.
+  // If the required device count is more than 2 and not enough devices are
+  // available, the test is marked as skipped when running on TAP.
+  //
+  // Returns false if the test should be skipped or has failed. Otherwise,
+  // returns true.
+  bool CheckDeviceCount(int32_t required_device_count) {
+    [&]() -> void {
+      const int32_t current_device_count = device_count();
+      if (current_device_count < required_device_count) {
+        ASSERT_GE(current_device_count, 2)
+            << "Test requires at least 2 devices but only "
+            << current_device_count << " available";
+        if (current_device_count < required_device_count) {
+          GTEST_SKIP() << "Test requires at least " << required_device_count
+                       << " devices but only " << current_device_count
+                       << " available.";
+        }
+      }
+    }();
+    return !IsSkipped() && !HasFatalFailure();
+  }
 };
 
 struct AllReduceTestParams {
@@ -124,12 +152,25 @@ struct AllReduceTestParams {
     return {min_elements, max_elements};
   }
 
-  // Returns a number of elements in the range of supported element sizes
-  // for the given element type.
-  // The fact that this is in the midpoint is arbitrary.
-  int64_t NumElements(PrimitiveType element_type) const {
+  // Returns the shape for the given element type and rank.
+  // The size of each dimension is determined by the range of supported element
+  // sizes for the given element type and all-reduce strategy.
+  // The returned shape is of the given rank.
+  std::vector<int64_t> GetShape(PrimitiveType element_type,
+                                int32_t rank = 1) const {
     auto [min_elements, max_elements] = RangeElements(element_type);
-    return max_elements - (max_elements - min_elements) / 2;
+    // Arbitrary choice of midpoint elements.
+    int64_t total = max_elements - (max_elements - min_elements) / 2;
+    if (rank <= 1) {
+      return {total};
+    }
+    std::vector<int64_t> dims;
+    for (int32_t i = 0; i < rank - 1; ++i) {
+      dims.push_back(rank);
+      total /= rank;
+    }
+    dims.push_back(total);
+    return dims;
   }
 
   static std::vector<AllReduceTestParams> Generate() {
@@ -201,10 +242,10 @@ class AllReduceTest
     }
     const HloAllReduceInstruction* instr =
         Cast<HloAllReduceInstruction>(hlo_instr);
-    const int64_t num_elements = Product(
-        module.entry_computation()->root_instruction()->shape().dimensions());
+    const Shape& shape =
+        module.entry_computation()->root_instruction()->shape();
     for (int i = 0; i < num_replicas; ++i) {
-      auto& input = inputs.emplace_back(Array<ElementType>({num_elements}));
+      auto& input = inputs.emplace_back(Array<ElementType>(shape.dimensions()));
       if constexpr (std::is_same_v<ElementType, bool>) {
         input.FillRandomBool(/*seed=*/i);
       } else {
@@ -227,7 +268,7 @@ class AllReduceTest
       }
     }
     std::vector<Array<ElementType>> expected_outputs(
-        num_replicas, Array<ElementType>({num_elements}));
+        num_replicas, Array<ElementType>(shape.dimensions()));
     // Aggregate inputs from each replica group
     for (int i = 0; i < num_replicas; ++i) {
       expected_outputs[i].Each(
@@ -269,7 +310,7 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 TEST_P(AllReduceTest, Pred_2GPUs) {
-  const absl::string_view kModuleStr = R"(
+  constexpr absl::string_view kModuleStr = R"(
   HloModule test
 
   apply_op {
@@ -279,20 +320,20 @@ TEST_P(AllReduceTest, Pred_2GPUs) {
   }
 
   ENTRY test_computation {
-    param_0 = pred[%1$d] parameter(0)
-    ROOT all-reduce = pred[%1$d] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
+    param_0 = pred[%1$s] parameter(0)
+    ROOT all-reduce = pred[%1$s] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
   }
   )";
-  const int64_t num_elements = GetParam().NumElements(PrimitiveType::PRED);
-  const int64_t kNumReplicas = 2;
-  ASSERT_GE(device_count(), kNumReplicas)
-      << "Test requires at least " << kNumReplicas << " devices ("
-      << device_count() << " available)";
+  const std::vector<int64_t> shape = GetParam().GetShape(PrimitiveType::PRED);
+  constexpr int64_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      ParseAndReturnVerifiedModule(absl::StrFormat(kModuleStr, num_elements),
-                                   kNumReplicas));
+      auto module, ParseAndReturnVerifiedModule(
+                       absl::StrFormat(kModuleStr, absl::StrJoin(shape, ",")),
+                       kNumReplicas));
 
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
@@ -312,7 +353,7 @@ TEST_P(AllReduceTest, Pred_2GPUs) {
 }
 
 TEST_P(AllReduceTest, F32_8GPUs_AllReplicasOneGroup) {
-  const absl::string_view kModuleStr = R"(
+  constexpr absl::string_view kModuleStr = R"(
   HloModule test
 
   apply_op {
@@ -322,23 +363,22 @@ TEST_P(AllReduceTest, F32_8GPUs_AllReplicasOneGroup) {
   }
 
   ENTRY test_computation {
-    param_0 = f32[%1$d] parameter(0)
-    ROOT all-reduce = f32[%1$d] all-reduce(param_0), to_apply=apply_op,
+    param_0 = f32[%1$s] parameter(0)
+    ROOT all-reduce = f32[%1$s] all-reduce(param_0), to_apply=apply_op,
       replica_groups={{0,1,2,3,4,5,6,7}}
   }
   )";
 
-  const int64_t kNumReplicas = 8;
-  if (device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << device_count() << " available)";
+  constexpr int64_t kNumReplicas = 8;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
   }
 
-  const int64_t num_elements = GetParam().NumElements(PrimitiveType::F32);
+  const std::vector<int64_t> shape = GetParam().GetShape(PrimitiveType::F32);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module,
-      ParseAndReturnVerifiedModule(absl::StrFormat(kModuleStr, num_elements),
-                                   kNumReplicas));
+      auto module, ParseAndReturnVerifiedModule(
+                       absl::StrFormat(kModuleStr, absl::StrJoin(shape, ",")),
+                       kNumReplicas));
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
       (BuildTestInputsOutputs<PrimitiveType::F32, HloOpcode::kAdd>(
@@ -360,8 +400,8 @@ TEST_P(AllReduceTest, F32_8GPUs_AllReplicasOneGroup) {
 }
 
 TEST_P(AllReduceTest, F32_8GPUs_2ReplicasPerGroup) {
-  const int64_t num_elements = GetParam().NumElements(PrimitiveType::F32);
-  const int64_t kNumIterations = 3;
+  const std::vector<int64_t> shape = GetParam().GetShape(PrimitiveType::F32);
+  constexpr int64_t kNumIterations = 3;
   const auto kModuleStr = absl::StrFormat(
       R"(
   HloModule test
@@ -374,35 +414,34 @@ TEST_P(AllReduceTest, F32_8GPUs_2ReplicasPerGroup) {
 
   while_condition {
     limit = s32[] constant(%1$d)
-    params = (s32[], f32[%2$d]{0}) parameter(0)
+    params = (s32[], f32[%2$s]{0}) parameter(0)
     loop_counter = get-tuple-element(params), index=0
     ROOT result = pred[] compare(loop_counter, limit), direction=LT
   }
 
   while_body {
-    params = (s32[], f32[%2$d]{0}) parameter(0)
+    params = (s32[], f32[%2$s]{0}) parameter(0)
     loop_counter = get-tuple-element(params), index=0
     tensor = get-tuple-element(params), index=1
-    out0 = f32[%2$d] all-reduce(tensor), to_apply=apply_op,
+    out0 = f32[%2$s] all-reduce(tensor), to_apply=apply_op,
       replica_groups={{0,4},{1,5},{2,6},{3,7}}
     new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
-    ROOT result = (s32[], f32[%2$d]{0}) tuple(new_loop_counter, out0)
+    ROOT result = (s32[], f32[%2$s]{0}) tuple(new_loop_counter, out0)
   }
 
   ENTRY test_computation {
-    param_0 = f32[%2$d] parameter(0)
-    while_init = (s32[], f32[%2$d]{0}) tuple(s32[] constant(0), param_0)
-    while_result = (s32[], f32[%2$d]{0})
+    param_0 = f32[%2$s] parameter(0)
+    while_init = (s32[], f32[%2$s]{0}) tuple(s32[] constant(0), param_0)
+    while_result = (s32[], f32[%2$s]{0})
       while(while_init), condition=while_condition, body=while_body
     ROOT result = get-tuple-element(while_result), index=1
   }
   )",
-      kNumIterations, num_elements);
+      kNumIterations, absl::StrJoin(shape, ","));
 
-  const int64_t kNumReplicas = 8;
-  if (device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << device_count() << " available)";
+  constexpr int64_t kNumReplicas = 8;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -425,6 +464,97 @@ TEST_P(AllReduceTest, F32_8GPUs_2ReplicasPerGroup) {
   }
 }
 
+TEST_P(AllReduceTest, F32TwoD4GPUs) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[%1$s] parameter(0)
+    ROOT all-reduce = f32[%1$s] all-reduce(param_0), to_apply=apply_op,
+      replica_groups={{0,1,2,3}}
+  }
+  )";
+
+  constexpr int64_t kNumReplicas = 4;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+
+  const std::vector<int64_t> shape =
+      GetParam().GetShape(PrimitiveType::F32, /*rank=*/2);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(
+                       absl::StrFormat(kModuleStr, absl::StrJoin(shape, ",")),
+                       kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(
+      InputsOutputs test_io,
+      (BuildTestInputsOutputs<PrimitiveType::F32, HloOpcode::kAdd>(
+          *module, kNumReplicas, /*num_iterations=*/1)));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        /*arguments=*/test_io.InputLiteralPtrs()))
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    ASSERT_TRUE(LiteralTestUtil::Near(test_io.expected_outputs[i], results[i],
+                                      ErrorSpec{1e-4}))
+        << "ExpectedOutput != Result at index " << i;
+  }
+}
+
+TEST_P(AllReduceTest, F32_3D_2GPUs) {
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY test_computation {
+    param_0 = f32[%1$s] parameter(0)
+    ROOT all-reduce = f32[%1$s] all-reduce(param_0), to_apply=apply_op,
+      replica_groups={{0,1}}
+  }
+  )";
+  constexpr int64_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
+  const std::vector<int64_t> shape =
+      GetParam().GetShape(PrimitiveType::F32, /*rank=*/3);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(
+                       absl::StrFormat(kModuleStr, absl::StrJoin(shape, ",")),
+                       kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(
+      InputsOutputs test_io,
+      (BuildTestInputsOutputs<PrimitiveType::F32, HloOpcode::kAdd>(
+          *module, kNumReplicas, /*num_iterations=*/1)));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        /*arguments=*/test_io.InputLiteralPtrs()))
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    ASSERT_TRUE(LiteralTestUtil::Near(test_io.expected_outputs[i], results[i],
+                                      ErrorSpec{1e-4}))
+        << "ExpectedOutput != Result at index " << i;
+  }
+}
+
 // FP8 vs FP16 training step comparison.
 TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
   bool has_fp8_support = false;
@@ -441,7 +571,7 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
   }
 
   // FP16 baseline
-  const absl::string_view kF16ModuleStr = R"(
+  constexpr absl::string_view kF16ModuleStr = R"(
   HloModule f16_training_step
   add_f16 { x = f16[] parameter(0)  y = f16[] parameter(1)  ROOT add = f16[] add(x, y) }
   ENTRY training_step {
@@ -463,7 +593,7 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
   })";
 
   // FP8 version
-  const absl::string_view kF8ModuleStr = R"(
+  constexpr absl::string_view kF8ModuleStr = R"(
   HloModule fp8_training_step
   add_f8 { x = f8e4m3fn[] parameter(0)  y = f8e4m3fn[] parameter(1)  ROOT add = f8e4m3fn[] add(x, y) }
   ENTRY training_step {
@@ -486,10 +616,10 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
     ROOT result = (f16[32,128], f16[64,128]) tuple(output, new_weights)
   })";
 
-  const int64_t kNumReplicas = 2;
-  ASSERT_GE(device_count(), kNumReplicas)
-      << "Test requires at least " << kNumReplicas << " devices ("
-      << device_count() << " available)";
+  constexpr int64_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
 
   Array<Eigen::half> activations1({32, 64}), activations2({32, 64});
   activations1.FillRandom(Eigen::half(0.1f), 0.5f, /*seed=*/0);
@@ -575,7 +705,7 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_FailsOnUnsupportedGPUs) {
     GTEST_SKIP() << "Test requires pre-Hopper GPU (compute capability < 9.0).";
   }
 
-  const absl::string_view kF8ModuleStr = R"(
+  constexpr absl::string_view kF8ModuleStr = R"(
   HloModule fp8_allreduce_test
   add_f8 { x = f8e4m3fn[] parameter(0)  y = f8e4m3fn[] parameter(1)  ROOT add = f8e4m3fn[] add(x, y) }
   ENTRY test_computation {
@@ -585,10 +715,10 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_FailsOnUnsupportedGPUs) {
     ROOT result = f16[64,128] convert(allreduce_f8)
   })";
 
-  const int64_t kNumReplicas = 2;
-  ASSERT_GE(device_count(), kNumReplicas)
-      << "Test requires at least " << kNumReplicas << " devices ("
-      << device_count() << " available)";
+  constexpr int64_t kNumReplicas = 2;
+  if (!CheckDeviceCount(kNumReplicas)) {
+    return;
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kF8ModuleStr, kNumReplicas));
