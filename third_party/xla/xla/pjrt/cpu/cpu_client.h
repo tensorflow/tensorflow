@@ -394,7 +394,8 @@ class CpuPjRtRawLoadedExecutable : public PjRtRawLoadedExecutable {
       absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> input_buffers,
       absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>>
           output_leaf_buffers,
-      PjRtDeviceEventSet& extra_deps, PjRtDeviceEventSet& control_deps,
+      std::unique_ptr<PjRtDeviceEventSet> extra_deps,
+      std::unique_ptr<PjRtDeviceEventSet> control_deps,
       bool is_predetermined_error, bool fill_future) &&
       override;
 

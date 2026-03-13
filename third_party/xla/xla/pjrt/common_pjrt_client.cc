@@ -1037,12 +1037,12 @@ CommonPjRtLoadedExecutable::ExecuteLaunch(ExecuteLaunchArgs& launch_args,
                                           bool fill_future) const {
   CHECK(launch_args.extra_deps.get()) << "extra_deps is nullptr";
   CHECK(launch_args.control_deps.get()) << "control_deps is nullptr";
-  auto results =
-      std::move(*launch_args.executable)
-          .Execute(*launch_args.options, launch_args.input_buffers,
-                   launch_args.output_leaf_buffers, *launch_args.extra_deps,
-                   *launch_args.control_deps,
-                   launch_args.is_predetermined_error, fill_future);
+  auto results = std::move(*launch_args.executable)
+                     .Execute(*launch_args.options, launch_args.input_buffers,
+                              launch_args.output_leaf_buffers,
+                              std::move(launch_args.extra_deps),
+                              std::move(launch_args.control_deps),
+                              launch_args.is_predetermined_error, fill_future);
   {
     tsl::profiler::TraceMe t3("Handle input event recording");
     // Handle input event recording.

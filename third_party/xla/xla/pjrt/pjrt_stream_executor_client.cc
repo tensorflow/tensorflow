@@ -1679,7 +1679,8 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
     const ExecuteOptions& options,
     absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> inputs,
     absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
-    PjRtDeviceEventSet& extra_deps, PjRtDeviceEventSet& control_deps,
+    std::unique_ptr<PjRtDeviceEventSet> extra_deps,
+    std::unique_ptr<PjRtDeviceEventSet> control_deps,
     bool is_predetermined_error, bool fill_future) && {
   const uint64_t start_time_usecs = tsl::Env::Default()->NowMicros();
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device_)
@@ -1745,11 +1746,11 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
        replica = replica_, partition = partition_,
        extra_deps =
            std::move(*tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(
-                         &extra_deps))
+                         extra_deps.get()))
                .event_refs(),
        control_deps =
            std::move(*tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(
-                         &control_deps))
+                         control_deps.get()))
                .event_refs()]() mutable -> tsl::RCReference<PjRtDeviceEvent> {
     ExecutableRunOptions run_options;
     run_options.set_stream(device_state->compute_stream());
