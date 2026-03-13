@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/nccl_memory_allocator.h"
+#include "xla/stream_executor/cuda/nccl_allocator.h"
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -25,7 +26,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
+#include "xla/stream_executor/cuda/cuda_collective_allocator.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -35,9 +36,9 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor::gpu {
-namespace {
 
-absl::StatusOr<void*> NcclAllocate(StreamExecutor* executor, uint64_t size) {
+static absl::StatusOr<void*> NcclAllocate(StreamExecutor* executor,
+                                          uint64_t size) {
   std::unique_ptr<ActivateContext> activate = executor->Activate();
 
   void* ptr = nullptr;
@@ -54,7 +55,8 @@ absl::StatusOr<void*> NcclAllocate(StreamExecutor* executor, uint64_t size) {
   return ptr;
 }
 
-absl::Status NcclFree(StreamExecutor* executor, void* ptr, uint64_t size) {
+static absl::Status NcclFree(StreamExecutor* executor, void* ptr,
+                             uint64_t size) {
   std::unique_ptr<ActivateContext> activate = executor->Activate();
 
   ncclResult_t res = ncclMemFree(ptr);
@@ -70,13 +72,26 @@ absl::Status NcclFree(StreamExecutor* executor, void* ptr, uint64_t size) {
   return absl::OkStatus();
 }
 
-// A memory allocated from NCCL on the given executor.
+namespace {
+
+// A memory allocation backed by NCCL memory.
 class NcclMemoryAllocation : public MemoryAllocation {
  public:
-  NcclMemoryAllocation(StreamExecutor* executor, void* ptr, uint64_t size);
+  NcclMemoryAllocation(StreamExecutor* executor, void* ptr, uint64_t size)
+      : executor_(executor), ptr_(ptr), size_(size) {}
 
-  ~NcclMemoryAllocation() final;
-  DeviceAddressBase address() const final;
+  ~NcclMemoryAllocation() final {
+    CHECK_OK(NcclFree(executor_, ptr_, size_));  // Crash OK
+  }
+
+  DeviceAddressBase address() const final {
+    return DeviceAddressBase(ptr_, size_);
+  }
+
+  std::string ToString() const final {
+    return absl::StrFormat("NcclMemoryAllocation[device=%d, ptr=%p, size=%d]",
+                           executor_->device_ordinal(), ptr_, size_);
+  }
 
  private:
   StreamExecutor* executor_;
@@ -85,18 +100,6 @@ class NcclMemoryAllocation : public MemoryAllocation {
 };
 
 }  // namespace
-
-NcclMemoryAllocation::NcclMemoryAllocation(StreamExecutor* executor, void* ptr,
-                                           uint64_t size)
-    : executor_(executor), ptr_(ptr), size_(size) {}
-
-NcclMemoryAllocation::~NcclMemoryAllocation() {
-  CHECK_OK(NcclFree(executor_, ptr_, size_));  // Crash OK
-}
-
-DeviceAddressBase NcclMemoryAllocation::address() const {
-  return DeviceAddressBase(ptr_, size_);
-}
 
 NcclMemoryAllocator::NcclMemoryAllocator(StreamExecutor* executor)
     : executor_(executor) {}
@@ -110,7 +113,7 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> NcclMemoryAllocator::Allocate(
 }  // namespace stream_executor::gpu
 
 STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
-    nccl_memory_allocator,
+    nccl_allocator,
     stream_executor::gpu::RegisterCollectiveAllocatorFactory(
         stream_executor::gpu::CollectiveAllocatorType::kNccl,
         [](stream_executor::StreamExecutor* executor) {

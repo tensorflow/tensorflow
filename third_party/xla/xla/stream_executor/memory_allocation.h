@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_MEMORY_ALLOCATION_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/base/macros.h"
 #include "xla/stream_executor/device_address.h"
@@ -43,9 +44,18 @@ class MemoryAllocation {
   MemoryAllocation& operator=(MemoryAllocation&&) = delete;
 
   // A device address which gives access to the memory allocation. Can be
-  // nullptr if memory allocation is not adressable, i.e. physical allocation
+  // nullptr if memory allocation is not addressable, i.e. physical allocation
   // might not be mapped to any virtual address by default.
   virtual DeviceAddressBase address() const = 0;
+
+  // A human-readable representation of a memory allocation. Subclasses are
+  // encouraged to override it and add meaningful details.
+  virtual std::string ToString() const;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const MemoryAllocation& allocation) {
+    sink.Append(allocation.ToString());
+  }
 
   ABSL_DEPRECATE_AND_INLINE()
   void* opaque() const { return address().opaque(); }

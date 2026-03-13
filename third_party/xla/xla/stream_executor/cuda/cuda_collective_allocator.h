@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_MEMORY_ALLOCATOR_H_
-#define XLA_STREAM_EXECUTOR_CUDA_CUDA_MEMORY_ALLOCATOR_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_COLLECTIVE_ALLOCATOR_H_
+#define XLA_STREAM_EXECUTOR_CUDA_CUDA_COLLECTIVE_ALLOCATOR_H_
 
 #include <memory>
-#include <string>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
@@ -59,4 +58,4 @@ CreateCollectiveMemoryAllocator(StreamExecutor* executor,
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_MEMORY_ALLOCATOR_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_COLLECTIVE_ALLOCATOR_H_

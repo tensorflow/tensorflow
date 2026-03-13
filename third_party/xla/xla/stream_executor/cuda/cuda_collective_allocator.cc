@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
+#include "xla/stream_executor/cuda/cuda_collective_allocator.h"
 
 #include <cstdint>
 #include <memory>

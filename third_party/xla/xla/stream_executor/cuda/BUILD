@@ -120,9 +120,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":cuda_collective_allocator",
         ":cuda_diagnostics",
         ":cuda_executor",
-        ":cuda_memory_allocator",
         ":cuda_platform_id",
         ":cuda_runtime_abi_version",
         ":cuda_runtime_abi_version_registration",  # buildcleaner: keep
@@ -1063,9 +1063,142 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "cuda_memory_allocator",
-    srcs = ["cuda_memory_allocator.cc"],
-    hdrs = ["cuda_memory_allocator.h"],
+    name = "cuda_device_allocator",
+    srcs = ["cuda_device_allocator.cc"],
+    hdrs = ["cuda_device_allocator.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_status",
+        "//xla:util",
+        "//xla/stream_executor:activate_context",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@tsl//tsl/platform:numbers",
+    ],
+)
+
+xla_test(
+    name = "cuda_device_allocator_test",
+    srcs = ["cuda_device_allocator_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cuda_device_allocator",
+        ":cuda_platform",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cuda_host_allocator",
+    srcs = ["cuda_host_allocator.cc"],
+    hdrs = ["cuda_host_allocator.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_status",
+        "//xla:util",
+        "//xla/stream_executor:activate_context",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_test(
+    name = "cuda_host_allocator_test",
+    srcs = ["cuda_host_allocator_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cuda_device_allocator",
+        ":cuda_host_allocator",
+        ":cuda_platform",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_library(
+    name = "cuda_vmm_allocator",
+    srcs = ["cuda_vmm_allocator.cc"],
+    hdrs = ["cuda_vmm_allocator.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":cuda_status",
+        "//xla:util",
+        "//xla/stream_executor:activate_context",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@tsl//tsl/platform:numbers",
+    ],
+)
+
+xla_test(
+    name = "cuda_vmm_allocator_test",
+    srcs = ["cuda_vmm_allocator_test.cc"],
+    backends = ["gpu"],
+    tags = ["cuda-only"],
+    deps = [
+        ":cuda_platform",
+        ":cuda_vmm_allocator",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cuda_collective_allocator",
+    srcs = ["cuda_collective_allocator.cc"],
+    hdrs = ["cuda_collective_allocator.h"],
     tags = [
         "cuda-only",
         "gpu",
@@ -1087,15 +1220,15 @@ cc_library(
 )
 
 cc_library(
-    name = "nccl_memory_allocator",
-    srcs = ["nccl_memory_allocator.cc"],
-    hdrs = ["nccl_memory_allocator.h"],
+    name = "nccl_allocator",
+    srcs = ["nccl_allocator.cc"],
+    hdrs = ["nccl_allocator.h"],
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
-        ":cuda_memory_allocator",
+        ":cuda_collective_allocator",
         "//xla:util",
         "//xla/stream_executor:activate_context",
         "//xla/stream_executor:device_address",
@@ -1142,15 +1275,15 @@ cc_library(
 )
 
 cc_library(
-    name = "nvshmem_memory_allocator",
-    srcs = ["nvshmem_memory_allocator.cc"],
-    hdrs = ["nvshmem_memory_allocator.h"],
+    name = "nvshmem_allocator",
+    srcs = ["nvshmem_allocator.cc"],
+    hdrs = ["nvshmem_allocator.h"],
     tags = [
         "cuda-only",
         "gpu",
     ],
     deps = [
-        ":cuda_memory_allocator",
+        ":cuda_collective_allocator",
         ":nvshmem",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:memory_allocation",
@@ -1394,13 +1527,13 @@ cc_library(
         "gpu",
     ],
     deps = [
+        ":cuda_collective_allocator",
         ":cuda_command_buffer",
         ":cuda_compute_capability",
         ":cuda_context",
         ":cuda_core_info_table",
         ":cuda_event",
         ":cuda_kernel",
-        ":cuda_memory_allocator",
         ":cuda_platform_id",
         ":cuda_status",
         ":cuda_stream",

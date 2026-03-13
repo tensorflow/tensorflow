@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_CUDA_NVSHMEM_MEMORY_ALLOCATOR_H_
-#define XLA_STREAM_EXECUTOR_CUDA_NVSHMEM_MEMORY_ALLOCATOR_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_DEVICE_ALLOCATOR_H_
+#define XLA_STREAM_EXECUTOR_CUDA_CUDA_DEVICE_ALLOCATOR_H_
 
 #include <cstdint>
 #include <memory>
@@ -22,16 +22,24 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::gpu {
 
-// A memory allocator that uses NVSHMEM to allocate memory.
-class NvshmemMemoryAllocator : public MemoryAllocator {
+// MemoryAllocator that allocates device memory using the CUDA driver API
+// (cuMemAlloc/cuMemFree). This is the lowest-level device memory allocator
+// that directly talks to the CUDA driver without any caching or pooling.
+class CudaDeviceAllocator : public MemoryAllocator {
  public:
+  explicit CudaDeviceAllocator(StreamExecutor* executor);
+
   absl::StatusOr<std::unique_ptr<MemoryAllocation>> Allocate(
       uint64_t size) final;
+
+ private:
+  StreamExecutor* executor_;
 };
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_CUDA_NVSHMEM_MEMORY_ALLOCATOR_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_CUDA_DEVICE_ALLOCATOR_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_CUDA_NCCL_MEMORY_ALLOCATOR_H_
-#define XLA_STREAM_EXECUTOR_CUDA_NCCL_MEMORY_ALLOCATOR_H_
+#ifndef XLA_STREAM_EXECUTOR_CUDA_NCCL_ALLOCATOR_H_
+#define XLA_STREAM_EXECUTOR_CUDA_NCCL_ALLOCATOR_H_
 
 #include <cstdint>
 #include <memory>
@@ -40,4 +40,4 @@ class NcclMemoryAllocator : public MemoryAllocator {
 
 }  // namespace stream_executor::gpu
 
-#endif  // XLA_STREAM_EXECUTOR_CUDA_NCCL_MEMORY_ALLOCATOR_H_
+#endif  // XLA_STREAM_EXECUTOR_CUDA_NCCL_ALLOCATOR_H_
