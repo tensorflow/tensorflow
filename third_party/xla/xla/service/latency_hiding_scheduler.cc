@@ -31,6 +31,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/optimization.h"
+#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -62,6 +63,7 @@ limitations under the License.
 #include "xla/service/hlo_buffer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
+#include "xla/service/scheduling_annotations_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -2428,6 +2430,8 @@ absl::Status DefaultSchedulerCore::ScheduleAnnotation(
       if (!node.IsScheduled()) {
         TF_RET_CHECK(
             scheduling_context_->GetAsyncTracker()->IsSupportedAsyncStart(
+                node.GetInstr()) ||
+            scheduling_context_->GetAsyncTracker()->IsSupportedAsyncDone(
                 node.GetInstr()));
         VLOG(2) << "Could not schedule all annotated nodes with annotation ID "
                 << annotation << " in one go; clearing annotation for "
@@ -3322,6 +3326,54 @@ absl::Status DefaultSchedulerCore::InitializeScheduler(
 
   module_pressure_state_->InitializePressureStates();
   module_pressure_state_->SetMemoryPeak(0);
+  if (top_down_scheduling_) {
+    // We preprocess the annotations in two aspects:
+    // 1. If annotations are on async-done ops only, move them to the matching
+    //    async-start ops for top-down scheduling.
+    // 2. Drop annotations if they are on async ops only. This is to prevent
+    //    the scheduler to schedule async-start and done right next to each
+    //    other without overlapping with other instructions.
+    for (const HloComputation* comp : module->computations()) {
+      absl::btree_map<Annotation, std::vector<HloInstruction*>>
+          annotation_to_ops;
+      for (HloInstruction* instr : comp->instructions()) {
+        auto annotation = GetSchedulingAnnotation(instr);
+        CHECK_OK(annotation);
+        if (!(*annotation).has_value()) {
+          continue;
+        }
+        annotation_to_ops[**annotation].push_back(instr);
+      }
+      for (auto& [annotation, ops] : annotation_to_ops) {
+        if (absl::c_all_of(ops, [](const HloInstruction* instr) {
+              return instr->opcode() == HloOpcode::kAsyncStart ||
+                     instr->opcode() == HloOpcode::kAsyncDone;
+            })) {
+          VLOG(2) << "Dropping annotations on the following ops because the "
+                     "group contains only async-start and async-done ops: ";
+          for (HloInstruction* instr : ops) {
+            VLOG(2) << " " << instr->name();
+            RemoveSchedulingAnnotation(instr);
+          }
+          continue;
+        }
+        for (HloInstruction* instr : ops) {
+          if (instr->opcode() == HloOpcode::kAsyncDone) {
+            HloInstruction* start = instr->async_chain_start();
+            auto start_annotation = GetSchedulingAnnotation(start);
+            CHECK_OK(start_annotation);
+            if (!(*start_annotation).has_value()) {
+              VLOG(2) << "Moving annotation from async-done op "
+                      << instr->name() << " to async-start op "
+                      << start->name();
+              CHECK_OK(SetSchedulingAnnotation(start, annotation));
+              RemoveSchedulingAnnotation(instr);
+            }
+          }
+        }
+      }
+    }
+  }
   annotation_tracker_ = std::make_unique<AnnotationTracker>(module);
   if (VLOG_IS_ON(2)) {
     annotation_tracker_->PrintAnnotationSets(2);
@@ -3603,12 +3655,15 @@ DefaultSchedulerCore::ScheduleComputation(
   for (HloGraphNode* root : roots) {
     // Set ready time for the roots 0.
     root->SetReadyTime(0.0);
+    if (IsNopInstruction(root->GetInstr().opcode(), root->GetInstr())) {
+      sched_state->nop_set.push_back(root);
+    } else {
+      sched_state->ready_set.push_back(root);
+    }
   }
   VLOG(5) << "Initial memory pressure for " << computation->name() << ": "
           << memory_pressure_tracker.memory_usage();
-  sched_state->ready_set.insert(sched_state->ready_set.end(), roots.begin(),
-                                roots.end());
-  // Schedule in order bottom up.
+  //  Schedule in either top down or bottom up order.
   while (!sched_state->ready_set.empty() || !sched_state->nop_set.empty()) {
     VLOG(10) << "Current ready time: " << sched_state->current_time;
     VLOG(2) << "Current ready queue:";
