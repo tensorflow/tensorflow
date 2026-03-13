@@ -135,8 +135,8 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
       "external/eigen_archive/": "",
       "external/jsoncpp_git/": "",
       "external/com_google_protobuf/src/": "",
-      "external/xla/": "tensorflow/compiler",
-      "external/tsl/": "tensorflow",
+      "external/xla~/": "tensorflow/compiler",
+      "external/xla~~tsl_extension~tsl/": "tensorflow",
   }
 
   for file in headers:
@@ -202,8 +202,8 @@ def prepare_srcs(
     srcs_dir: target directory where files are copied to.
   """
   path_to_replace = {
-      "external/xla/": "tensorflow/compiler",
-      "external/tsl/": "tensorflow",
+      "external/xla~/": "tensorflow/compiler",
+      "external/tsl~~tsl_extension~tsl/": "tensorflow",
   }
 
   deps_mapping_dict = {}
@@ -268,9 +268,9 @@ def prepare_wheel_srcs(
     srcs_dir: directory to copy files to.
     version: tensorflow version.
   """
-  prepare_headers(headers, os.path.join(srcs_dir, "tensorflow/include"))
+  # prepare_headers(headers, os.path.join(srcs_dir, "tensorflow/include"))
   prepare_srcs(srcs, dests, srcs_dir)
-  prepare_aot(aot, os.path.join(srcs_dir, "tensorflow/xla_aot_runtime_src"))
+  # prepare_aot(aot, os.path.join(srcs_dir, "tensorflow/xla_aot_runtime_src"))
 
   # Every directory that contains a .py file gets an empty __init__.py file.
   create_init_files(os.path.join(srcs_dir, "tensorflow"))
