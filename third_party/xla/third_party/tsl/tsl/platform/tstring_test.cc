@@ -221,18 +221,24 @@ TEST(TF_TStringTest, Comparison) {
   tstring nullaa("\0aa", 3);
 
   EXPECT_TRUE(a < b);
+  EXPECT_TRUE(a <= b);
   EXPECT_TRUE(a != b);
   EXPECT_FALSE(a > b);
+  EXPECT_FALSE(a >= b);
   EXPECT_FALSE(a == b);
 
   EXPECT_TRUE(a < aa);
+  EXPECT_TRUE(a <= aa);
   EXPECT_TRUE(a != aa);
   EXPECT_FALSE(a > aa);
+  EXPECT_FALSE(a >= aa);
   EXPECT_FALSE(a == aa);
 
   EXPECT_TRUE(b > a);
+  EXPECT_TRUE(b >= a);
   EXPECT_TRUE(b != a);
   EXPECT_FALSE(b < a);
+  EXPECT_FALSE(b <= a);
   EXPECT_FALSE(b == a);
   EXPECT_FALSE(a == b);
 
@@ -240,28 +246,38 @@ TEST(TF_TStringTest, Comparison) {
   EXPECT_TRUE(b != c);
 
   EXPECT_TRUE(empty < a);
+  EXPECT_TRUE(empty <= a);
   EXPECT_TRUE(empty != a);
   EXPECT_FALSE(empty > a);
+  EXPECT_FALSE(empty >= a);
   EXPECT_FALSE(empty == a);
 
   EXPECT_TRUE(a > empty);
+  EXPECT_TRUE(a >= empty);
   EXPECT_TRUE(a != empty);
   EXPECT_FALSE(a < empty);
+  EXPECT_FALSE(a <= empty);
   EXPECT_FALSE(a == empty);
 
   EXPECT_FALSE(a < a_);
+  EXPECT_TRUE(a <= a_);
   EXPECT_FALSE(a != a_);
   EXPECT_FALSE(a > a_);
+  EXPECT_TRUE(a >= a_);
   EXPECT_TRUE(a == a_);
 
   EXPECT_TRUE(nulla < nullaa);
+  EXPECT_TRUE(nulla <= nullaa);
   EXPECT_TRUE(nulla != nullaa);
   EXPECT_FALSE(nulla > nullaa);
+  EXPECT_FALSE(nulla >= nullaa);
   EXPECT_FALSE(nulla == nullaa);
 
   EXPECT_TRUE(nulla < nullb);
+  EXPECT_TRUE(nulla <= nullb);
 
   EXPECT_TRUE(nullaa > nulla);
+  EXPECT_TRUE(nullaa >= nulla);
   EXPECT_TRUE(nullaa != nulla);
   EXPECT_FALSE(nullaa < nulla);
   EXPECT_FALSE(nullaa == nulla);
