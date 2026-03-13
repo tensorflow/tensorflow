@@ -1282,8 +1282,6 @@ OpSharding HloSharding::ToProto() const {
 /*static*/ HloSharding HloSharding::V3ToV2Sharding(
     const NamedSharding& sharding) {
   // TODO(b/477900810): Remove sharding conversions.
-  LOG(WARNING) << "V3ToV2Sharding method involves sharding conversions for "
-                  "HloShardingV3, its use cases should be avoided.";
   const Mesh& mesh = sharding.mesh();
   absl::Span<const OpMetadata> metadata = sharding.metadata();
   if (sharding.IsReplicated()) {
