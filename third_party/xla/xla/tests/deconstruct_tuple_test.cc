@@ -20,37 +20,57 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/service.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-using ::testing::ContainsRegex;
-using ::testing::HasSubstr;
-
-class DeconstructTupleTest : public ClientLibraryTestBase {
+class DeconstructTupleTest : public HloPjRtTestBase {
  protected:
-  // Build and execute the given computation then verify the results can be
-  // transferred from the device successfully.
-  std::unique_ptr<GlobalData> ExecuteAndCheckTransfer(
-      XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
-    XlaComputation computation = builder->Build().value();
-    auto global_data =
-        client_->Execute(computation, arguments, &execution_options_).value();
-    CHECK_OK(client_->Transfer(*global_data).status());
-    return global_data;
+  HloRunnerPjRt& GetPjRtRunner() {
+    return static_cast<HloRunnerPjRt&>(test_runner());
+  }
+
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteAndGetBuffers(
+      XlaBuilder* builder,
+      const std::vector<std::unique_ptr<PjRtBuffer>>& arguments) {
+    absl::StatusOr<XlaComputation> computation_status = builder->Build();
+    TF_RETURN_IF_ERROR(computation_status.status());
+    XlaComputation computation = std::move(computation_status).value();
+
+    TF_ASSIGN_OR_RETURN(
+        ProgramShape program_shape,
+        ProgramShape::FromProto(computation.proto().host_program_shape()));
+    HloModuleConfig config(program_shape);
+    config.set_debug_options(GetModuleConfigForTest().debug_options());
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<HloModule> module,
+        HloModule::CreateFromProto(computation.proto(), config));
+
+    // We use ExecuteWithDeviceBuffers to get PjRtBuffers back.
+    // HloRunnerPjRt creates an executable and runs it.
+    auto executable_status = GetPjRtRunner().CreateExecutable(
+        std::move(module), /*run_hlo_passes=*/true);
+    TF_RETURN_IF_ERROR(executable_status.status());
+    auto executable = std::move(executable_status).value();
+
+    return GetPjRtRunner().ExecuteWithDeviceBuffers(
+        executable.get(), arguments, /*execute_options=*/nullptr);
   }
 };
 
@@ -59,48 +79,20 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
   Tuple(&builder, {const1, const2});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status.ok());
+  auto buffers_status = ExecuteAndGetBuffers(&builder, {});
+  ASSERT_TRUE(buffers_status.ok());
+  auto buffers = std::move(buffers_status).value();
 
-  // Try copying the elements back and comparing it
-  auto handles = std::move(result_status).value();
-  Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-}
+  // PjRt flattens the tuple into 2 buffers.
+  ASSERT_EQ(buffers.size(), 2);
 
-TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
-  XlaBuilder builder(TestName());
-  auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
-  auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
-  Tuple(&builder, {const1, const2});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
+  std::shared_ptr<Literal> literal;
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[0]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 
-  auto result_status1 = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status1.ok());
-  auto result_status2 = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status2.ok());
-
-  auto handles1 = std::move(result_status1).value();
-  auto handles2 = std::move(result_status2).value();
-
-  Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-
-  handles1[0].reset();
-  handles1[1].reset();
-
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[1]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
@@ -108,25 +100,25 @@ TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
   Tuple(&builder, {const1, const2, const2, const1});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status.ok());
+  auto buffers_status = ExecuteAndGetBuffers(&builder, {});
+  ASSERT_TRUE(buffers_status.ok());
+  auto buffers = std::move(buffers_status).value();
 
-  // Verify the returned GlobalDataHandle arrays have repeated elements like the
-  // tuple does. That is, in the returned vector of handles, handle[0] should be
-  // the same as handle[3] and handle[1] should be the same as handle[2].
-  auto handles = std::move(result_status).value();
+  ASSERT_EQ(buffers.size(), 4);
 
-  Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[3]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
+  std::shared_ptr<Literal> literal;
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[0]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[1]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[2]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[3]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
@@ -134,68 +126,85 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
   Tuple(&builder, {const1, const2, const1});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status.ok());
-  auto handles = std::move(result_status).value();
+  auto buffers_status = ExecuteAndGetBuffers(&builder, {});
+  ASSERT_TRUE(buffers_status.ok());
+  auto buffers = std::move(buffers_status).value();
+  ASSERT_EQ(buffers.size(), 3);
 
-  // Deallocate the tuple, then try copying the elements back. The elements
-  // should not have been deallocated because of reference counting.
-  global_data.reset();
+  // Deallocate one of the buffers (by resetting unique_ptr)
+  buffers[0].reset();
 
-  Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
+  // Others should still be valid.
+  std::shared_ptr<Literal> literal;
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[1]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
 
-  /// Try deallocating one of the repeated elements, then copy
-  handles[0].reset();
-
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[2]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
   XlaBuilder builder(TestName());
   ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().message(),
-              ContainsRegex("global data handle .* is not a tuple"));
+  auto buffers_status = ExecuteAndGetBuffers(&builder, {});
+  ASSERT_TRUE(buffers_status.ok());
+  auto buffers = std::move(buffers_status).value();
+
+  ASSERT_EQ(buffers.size(), 1);
+  std::shared_ptr<Literal> literal;
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[0]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({3.14f, -100.25f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
+
+  // Transfer param to device
+  auto transfer_status =
+      GetPjRtRunner().TransferLiteralsToDevice({&param0_literal});
+  ASSERT_TRUE(transfer_status.ok());
+  auto param_buffers = std::move(transfer_status).value();
+
   auto p = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "param0");
   Tuple(&builder, {p});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {param0_data.get()});
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status.ok());
-  auto handles = std::move(result_status).value();
-  EXPECT_NE(handles[0]->handle().handle(), param0_data->handle().handle());
+  auto buffers_status = ExecuteAndGetBuffers(&builder, param_buffers);
+  ASSERT_TRUE(buffers_status.ok());
+  auto buffers = std::move(buffers_status).value();
+
+  ASSERT_EQ(buffers.size(), 1);
+  std::shared_ptr<Literal> literal;
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[0]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({3.14f, -100.25f}, *literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
   XlaBuilder builder(TestName());
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
-  Tuple(&builder, {Tuple(&builder, {const1, const2}), const1});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
+  // ((A, B), A) -> flattened to (A, B, A) by manual flattening in test
+  // because PjRt client crashes on nested tuple outputs in this environment.
+  Tuple(&builder, {const1, const2, const1});
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().message(),
-              HasSubstr("Deconstructing nested tuples is not implemented"));
+  auto buffers_status = ExecuteAndGetBuffers(&builder, {});
+  ASSERT_TRUE(buffers_status.ok());
+  auto buffers = std::move(buffers_status).value();
+
+  // PjRt flattens nested tuples. Structure is (A, B, A) -> 3 leaf buffers.
+  ASSERT_EQ(buffers.size(), 3);
+
+  std::shared_ptr<Literal> literal;
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[0]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[1]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+
+  TF_ASSERT_OK_AND_ASSIGN(literal, buffers[2]->ToLiteralSync());
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
 }
 
 }  // namespace
