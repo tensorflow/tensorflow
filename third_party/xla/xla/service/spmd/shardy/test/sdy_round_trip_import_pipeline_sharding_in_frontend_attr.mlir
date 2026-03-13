@@ -201,8 +201,10 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
     // CHECK-SAME:     in_shardings=[<@mesh, [{"a"}]>, <@mesh, [{"a"}]>, <@mesh, [{"a"}]>]
     // CHECK-SAME:     out_shardings=[<@mesh, [{"a"}]>] manual_axes={"a"}
     // CHECK-SAME:     (%arg2: tensor<1xui32>, %arg3: tensor<1xui32>, %arg4: tensor<1xi32>) {
-    // CHECK-NEXT:   %[[CONVERT:.*]] = stablehlo.convert %arg2
-    // CHECK-NEXT:   %[[SUB:.*]] = stablehlo.subtract %[[CONVERT]], %arg4
+    // CHECK-NEXT:   %[[CONVERT0:.*]] = stablehlo.convert %arg2
+    // CHECK-NEXT:   %[[CONVERT1:.*]] = stablehlo.convert %arg3
+    // CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %[[CONVERT0]], %[[CONVERT1]]
+    // CHECK-NEXT:   %[[SUB:.*]] = stablehlo.subtract %[[ADD]], %arg4
     // CHECK-NEXT:   sdy.return %[[SUB]]
     // CHECK-NEXT: }
     // CHECK-NEXT: return %[[MAN_COMP]]
@@ -221,8 +223,10 @@ module @multiple_func_result_shardings attributes {mhlo.frontend_attributes = {x
 
   func.func private @xla.sdy.manual_computation_body(%arg0: tensor<1xui32>, %arg1: tensor<1xui32>, %arg2: tensor<1xi32>) -> tensor<1xi32> {
     %0 = stablehlo.convert %arg0 : (tensor<1xui32>) -> tensor<1xi32>
-    %1 = stablehlo.subtract %0, %arg2 : tensor<1xi32>
-    return %1 : tensor<1xi32>
+    %1 = stablehlo.convert %arg1 : (tensor<1xui32>) -> tensor<1xi32>
+    %2 = stablehlo.add %0, %1 : tensor<1xi32>
+    %3 = stablehlo.subtract %2, %arg2 : tensor<1xi32>
+    return %3 : tensor<1xi32>
   }
 
   // CHECK-LABEL: func @frontend_attr_not_sharding

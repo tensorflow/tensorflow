@@ -95,17 +95,19 @@ func.func @main(%arg0: tensor<4xi64>) {
 // Make sure this temp attr doesn't exist anymore.
 // CHECK-NOT: sharding_hlo_string
 
+sdy.mesh @mesh = <["a"=2]>
+
 // CHECK-LABEL: func.func @main
-func.func @main() {
-  // CHECK-NEXT:     sdy.manual_computation()
-  // CHECK-SAME{LITERAL}: in_shardings=[] out_shardings=[] manual_axes={} () {
-  // CHECK-NEXT:       sdy.return
-  // CHECK-NEXT:     } : () -> ()
+func.func @main(%arg0 : tensor<4xi64>) -> tensor<4xi64> {
+  // CHECK-NEXT:     sdy.manual_computation(%arg0)
+  // CHECK-SAME{LITERAL}: in_shardings=[<@mesh, [{"a"}]>] out_shardings=[<@mesh, [{"a"}]>] manual_axes={"a"} (%arg1: tensor<2xi64>) {
+  // CHECK-NEXT:       sdy.return %arg1 : tensor<2xi64>
+  // CHECK-NEXT:     } : (tensor<4xi64>) -> tensor<4xi64>
   // CHECK-NEXT:     return
-  sdy.manual_computation() in_shardings=[] out_shardings=[] manual_axes={} () {
-    sdy.return
-  } : () -> ()
-  return
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh, [{"a"}]>] out_shardings=[<@mesh, [{"a"}]>] manual_axes={"a"} (%arg1: tensor<2xi64>) {
+    sdy.return %arg1 : tensor<2xi64>
+  } : (tensor<4xi64>) -> tensor<4xi64>
+  return %0 : tensor<4xi64>
 }
 
 // -----
