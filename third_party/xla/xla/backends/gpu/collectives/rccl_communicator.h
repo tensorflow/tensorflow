@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COMMUNICATOR_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_RCCL_COMMUNICATOR_H_
 
-#include <atomic>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -227,7 +226,7 @@ class RcclCommunicator : public GpuCommunicator {
   //
   // Concretely, the lack of thread safety comes from the fact that the RCCL
   // code uses thread-local variables that do not work properly when a
-  // ncclComm_t is accessed from multiple threads. Emperically, the lack of
+  // ncclComm_t is accessed from multiple threads. Empirically, the lack of
   // thread safety only manifests as buggy behavior when using non-blocking
   // communicators.
   std::unique_ptr<tsl::Executor> executor_;
