@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
@@ -230,12 +231,10 @@ class CommonAsyncHostToDeviceTransferManager
     allocation_events_[buffer_index].reset();
 
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
-    tsl::RCReference<PjRtDeviceEventPromise> definition_event;
     using std::swap;
     swap(raw_buffer, undispatched_buffer_ref);
     CHECK(raw_buffer);
-    swap(definition_event, definition_events_[buffer_index]);
-    CHECK(definition_event);
+    CHECK(definition_events_[buffer_index]);
 
     ++transfers_in_flight_;
     CHECK_EQ(buffer_transfers_in_flight_[buffer_index], 0);
@@ -244,6 +243,17 @@ class CommonAsyncHostToDeviceTransferManager
     // We release the lock here because EnqueueWork might sometimes run the
     // closure in this thread!
     l.Release();
+
+    absl::Cleanup cleanup = [&]() {
+      absl::MutexLock l(mu_);
+
+      CHECK_GT(transfers_in_flight_, 0);
+      --transfers_in_flight_;
+      CHECK_EQ(buffer_transfers_in_flight_[buffer_index], 1);
+      --buffer_transfers_in_flight_[buffer_index];
+      CHECK_GT(remaining_buffer_count_, 0);
+      --remaining_buffer_count_;
+    };
 
     tsl::profiler::TraceMeProducer producer("TransferLiteralToBuffer",
                                             tsl::profiler::ContextType::kPjRt);
@@ -255,14 +265,16 @@ class CommonAsyncHostToDeviceTransferManager
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             raw_buffer));
     if (client_->event_tracking_enabled()) {
+      // Acquire when logging, for the sake of definition_events_.
+      absl::MutexLock l(mu_);
       h2d_transfer_event->AppendDescriptionToEvent(
           " TransferToDevice TransferLiteralToBuffer",
-          {definition_event.get()});
+          {definition_events_[buffer_index].get()});
     }
 
-    auto cleanup = [this, buffer_index, transfer_event = h2d_transfer_event,
-                    definition_event = std::move(definition_event),
-                    on_done = std::move(on_done)]() mutable {
+    auto finish = [this, buffer_index, transfer_event = h2d_transfer_event,
+                   on_done = std::move(on_done)]() mutable {
+      tsl::RCReference<PjRtDeviceEventPromise> definition_event;
       {
         absl::MutexLock l(mu_);
 
@@ -272,6 +284,7 @@ class CommonAsyncHostToDeviceTransferManager
         --buffer_transfers_in_flight_[buffer_index];
         CHECK_GT(remaining_buffer_count_, 0);
         --remaining_buffer_count_;
+        swap(definition_event, definition_events_[buffer_index]);
       }
 
       // Call on_done after finishing all housekeeping and releasing the
@@ -289,7 +302,8 @@ class CommonAsyncHostToDeviceTransferManager
       // AppendDescriptionToEvent.
       definition_event->Set(std::move(transfer_event));
     };
-    h2d_transfer_event->AndThen(std::move(cleanup));
+    h2d_transfer_event->AndThen(std::move(finish));
+    std::move(cleanup).Cancel();
 
     return absl::OkStatus();
   }
@@ -345,6 +359,17 @@ class CommonAsyncHostToDeviceTransferManager
     //   (2) Cleanup of this class may be called within the `on_done` of
     //        `h2d_transfer_event.AndThen`, which would cause deadlock.
     l.Release();
+
+    absl::Cleanup cleanup = [&]() {
+      absl::MutexLock l(mu_);
+      CHECK_GT(transfers_in_flight_, 0);
+      --transfers_in_flight_;
+      CHECK_GT(buffer_transfers_in_flight_[buffer_index], 0);
+      --buffer_transfers_in_flight_[buffer_index];
+      CHECK_GT(remaining_buffer_count_, 0);
+      --remaining_buffer_count_;
+    };
+
     TF_ASSIGN_OR_RETURN(
         auto h2d_transfer_event,
         undispatched_buffer_ref->CopyRawHostToDeviceAndReturnEvent(
@@ -410,6 +435,8 @@ class CommonAsyncHostToDeviceTransferManager
         definition_event->Set(std::move(transfer_event));
       }
     });
+    std::move(cleanup).Cancel();
+
     return absl::OkStatus();
   }
 
