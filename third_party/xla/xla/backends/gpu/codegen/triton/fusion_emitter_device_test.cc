@@ -4721,7 +4721,6 @@ class TritonScaledDotTest : public TritonEmitterTest {
     debug_options.set_xla_gpu_experimental_scaled_dot_with_triton(true);
     debug_options.set_xla_gpu_autotune_level(0);
     debug_options.set_xla_gpu_cublas_fallback(false);
-    debug_options.set_xla_gpu_unsupported_disable_nested_gemm_fusions(true);
     return debug_options;
   }
 

@@ -59,13 +59,6 @@ class ConvertTritonGemmConfigTest : public HloHardwareIndependentTestBase {
     EXPECT_OK(verifier().Run(module.get()).status());
     return module;
   }
-
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_unsupported_disable_nested_gemm_fusions(true);
-    return debug_options;
-  }
 };
 
 TEST_F(ConvertTritonGemmConfigTest, BasicTest) {

@@ -170,11 +170,6 @@ class ConvertTritonGemmConfigVisitor : public DfsHloRewriteVisitor {
 absl::StatusOr<bool> ConvertTritonGemmConfig::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  if (!module->config()
-           .debug_options()
-           .xla_gpu_unsupported_disable_nested_gemm_fusions()) {
-    return false;
-  }
   bool changed = false;
   auto call_graph = CallGraph::Build(module, execution_threads);
   for (HloComputation* computation :

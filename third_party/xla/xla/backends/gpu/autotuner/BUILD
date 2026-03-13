@@ -446,7 +446,6 @@ cc_library(
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
         "//xla/backends/gpu/transforms:fusion_wrapper",
         "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
-        "//xla/backends/gpu/transforms:nest_gemm_fusion",
         "//xla/backends/gpu/transforms:priority_fusion",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
