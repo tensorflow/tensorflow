@@ -47,12 +47,14 @@ limitations under the License.
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/memory.h"
@@ -100,6 +102,18 @@ std::string PrettyPrintGeneric(mlir::Operation* op) {
 
 }  // namespace
 
+enum class ProgramFillStatus {
+  // Do not fill the status of any executables.
+  kFillNone,
+  // Fill the status of only leaf executables. Note that this assumes that
+  // no executables have side effects (e.g., custom calls, host callbacks, etc)
+  // because otherwise waiting for leaf ops isn't a sufficient signal for
+  // program completion.
+  kFillLeafOps,
+  // Fill the status of all executables.
+  kFillAll,
+};
+
 struct Environment {
   // Associates array with an opaque handle.
   void AssociateArray(ArrayHandle handle, ArrayState array) {
@@ -117,8 +131,9 @@ struct Environment {
   absl::flat_hash_map<ArrayHandle, ArrayState> handle_to_array;
   // Outputs of the program.
   std::vector<ArrayRef> outputs;
-  // `ExecuteOptions.fill_status` passed to Execute().
-  bool fill_status;
+  // Policy that controls how `ExecuteOptions.fill_status` is passed to
+  // `Execute()` calls.
+  ProgramFillStatus program_fill_status;
   // Contains a future for each ifrt.CallOp that is a leaf (i.e., has no outputs
   // or all its outputs are returned from the program).
   std::vector<tsl::Future<>> leaf_call_op_futures;
@@ -177,7 +192,29 @@ struct ProgramInterpreterState {
 
     Environment env;
     env.client = client;
-    env.fill_status = options.fill_status;
+    // TODO(icgog): Set default fill status to kFillLeafOps instead of kFillNone
+    // when  options.fill_status is set.
+    env.program_fill_status = options.fill_status
+                                  ? ProgramFillStatus::kFillAll
+                                  : ProgramFillStatus::kFillNone;
+    if (options.fill_status && options.custom_options.has_value()) {
+      absl::StatusOr<bool> fill_all_statuses =
+          options.custom_options->Get<bool>(
+              std::string(IfrtIRProgram::kFillAllStatuses));
+      if (fill_all_statuses.ok()) {
+        env.program_fill_status = *fill_all_statuses
+                                      ? ProgramFillStatus::kFillAll
+                                      : ProgramFillStatus::kFillLeafOps;
+      } else if (absl::Status status = fill_all_statuses.status();
+                 !absl::IsNotFound(status)) {
+        tsl::errors::AppendToMessage(
+            &status, absl::StrCat("Execute of IFRT IR program ", program_name,
+                                  " failed to get `fill_all_statuses` custom "
+                                  "option."));
+        return status;
+      }
+    }
+
     for (int idx = 0; idx < input_handles.size(); ++idx) {
       // Add to the environment the arrays that are used.
       bool is_donated = donated_input_indices.contains(idx) &&
@@ -203,7 +240,7 @@ struct ProgramInterpreterState {
 
     VLOG(2) << "Finished interpreting program: " << program_name;
     ExecuteResult result;
-    if (env.fill_status) {
+    if (env.program_fill_status != ProgramFillStatus::kFillNone) {
       result.status =
           tsl::JoinFutures(absl::MakeSpan(env.leaf_call_op_futures));
     }
@@ -292,7 +329,11 @@ struct CallLoadedExecutableOpState {
     VLOG(3) << pretty_print;
 
     ExecuteOptions options = execute_options;
-    options.fill_status = env.fill_status;
+    if (env.program_fill_status == ProgramFillStatus::kFillAll ||
+        (env.program_fill_status == ProgramFillStatus::kFillLeafOps &&
+         is_leaf_op)) {
+      options.fill_status = true;
+    }
 
     std::vector<ArrayHandle> arrays_to_remove;
     {
@@ -396,7 +437,7 @@ struct CallLoadedExecutableOpState {
                                    });
       }
     }
-    if (is_leaf_op && env.fill_status) {
+    if (is_leaf_op && env.program_fill_status != ProgramFillStatus::kFillNone) {
       env.leaf_call_op_futures.push_back(std::move(result.status));
     }
     return absl::OkStatus();
