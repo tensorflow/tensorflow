@@ -1568,12 +1568,12 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
     // Call WatchJobStateAsync.
     VLOG(3) << "Calling WatchJobStateAsync for task " << task_id
             << " with version number " << version_number;
-    absl::StatusOr<tensorflow::WatchJobStateResponse> response;
+    absl::StatusOr<xla::coordination::WatchJobStateResponse> response;
     bool done = false;
     std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchJobStateAsync(
         version_number,
         [this, &response,
-         &done](absl::StatusOr<tensorflow::WatchJobStateResponse> r) {
+         &done](absl::StatusOr<xla::coordination::WatchJobStateResponse> r) {
           response = std::move(r);
           absl::MutexLock lock(shutting_down_mu_);
           done = true;
@@ -1611,13 +1611,14 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 
     // Parse the response.
     version_number = response->version_number();
-    std::vector<tensorflow::CoordinatedTaskStateInfo> state(
+    std::vector<xla::coordination::CoordinatedTaskStateInfo> state(
         response->task_state().begin(), response->task_state().end());
-    absl::c_sort(state,
-                 [](const tensorflow::CoordinatedTaskStateInfo& x,
-                    const tensorflow::CoordinatedTaskStateInfo& y) -> bool {
-                   return x.task().task_id() < y.task().task_id();
-                 });
+    absl::c_sort(
+        state,
+        [](const xla::coordination::CoordinatedTaskStateInfo& x,
+           const xla::coordination::CoordinatedTaskStateInfo& y) -> bool {
+          return x.task().task_id() < y.task().task_id();
+        });
 
     // Pretty print the job state, if VLOG is on.
     if (VLOG_IS_ON(3)) {
