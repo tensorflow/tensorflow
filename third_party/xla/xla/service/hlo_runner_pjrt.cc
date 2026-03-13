@@ -327,6 +327,9 @@ absl::StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
       module->config().deduplicate_hlo());
   *compile_options.executable_build_options.mutable_debug_options() =
       module->config().debug_options();
+  if (module->config().seed() != 0) {
+    compile_options.executable_build_options.set_seed(module->config().seed());
+  }
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
   compile_options.executable_build_options.set_fdo_profile(

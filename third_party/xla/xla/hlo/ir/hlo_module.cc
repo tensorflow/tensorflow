@@ -1089,6 +1089,7 @@ absl::StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
         module_config, execution_options->shardable_value_update_pairs());
     module_config.set_use_shardy_partitioner(
         execution_options->use_shardy_partitioner());
+    module_config.set_seed(execution_options->seed());
   }
 
   // The module config is constructed with default layouts regardless of what is

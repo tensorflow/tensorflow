@@ -139,8 +139,8 @@ std::string ExecutableBuildOptions::ToString() const {
   }
   return absl::StrFormat(
       "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
-      "num_replicas=%d}",
-      device_ordinal_, result_layout, num_replicas_);
+      "num_replicas=%d, seed=%u}",
+      device_ordinal_, result_layout, num_replicas_, seed_);
 }
 
 absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
@@ -203,6 +203,9 @@ absl::StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto()
   output.set_process_index(process_index());
   output.set_process_count(process_count());
   output.set_slice_size(slice_size());
+  if (seed() != 0) {
+    output.set_seed(seed());
+  }
   return output;
 }
 
@@ -260,6 +263,7 @@ absl::StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
   output.set_process_index(input.process_index());
   output.set_process_count(input.process_count());
   output.set_slice_size(input.slice_size());
+  output.set_seed(input.seed());
   return output;
 }
 
@@ -327,6 +331,7 @@ ExecutionOptions CreateExecutionOptions(
   execution_options.set_device_memory_size(build_options.device_memory_size());
   execution_options.set_use_shardy_partitioner(
       build_options.use_shardy_partitioner());
+  execution_options.set_seed(build_options.seed());
   return execution_options;
 }
 
