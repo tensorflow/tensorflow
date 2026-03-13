@@ -1575,11 +1575,11 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
                         ShardingMetadata::ToShardingMetadata(metadata));
     const auto& sharding = sharding_metadata->sharding();
     if (sharding != nullptr) {
-      bool is_spatially_partitioned = !sharding->HasUniqueDevice();
+      bool is_spatially_partitioned = !sharding->IsSingleDevice();
       if (sharding->IsTuple()) {
         is_spatially_partitioned = absl::c_any_of(
             sharding->tuple_elements(),
-            [](const HloSharding& s) { return !s.HasUniqueDevice(); });
+            [](const HloSharding& s) { return !s.IsSingleDevice(); });
       }
       if (is_spatially_partitioned) {
         for (HloInstruction* d : domain.exit_domains) {
@@ -2164,8 +2164,7 @@ bool ShardingPropagation::InferShardingFromOperands(
       return false;
     }
     for (const HloInstruction* op : instruction->operands()) {
-      if (op->has_sharding() && op->sharding().IsReplicatedOrSingleDevice() &&
-          !op->sharding().HasUniqueDevice()) {
+      if (op->has_sharding() && op->sharding().IsReplicated()) {
         return MaybeImproveInstructionSharding(op->sharding(), instruction,
                                                may_combine_partial_sharding);
       }

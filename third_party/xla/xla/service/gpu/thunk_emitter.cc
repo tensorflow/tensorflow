@@ -2009,7 +2009,7 @@ static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
 
 static std::optional<GlobalDeviceId> DeviceConstraint(
     const HloInstruction* hlo) {
-  if (hlo->has_sharding() && hlo->sharding().HasUniqueDevice()) {
+  if (hlo->has_sharding() && hlo->sharding().IsSingleDevice()) {
     return GlobalDeviceId(hlo->sharding().GetUniqueDevice());
   }
   return std::nullopt;

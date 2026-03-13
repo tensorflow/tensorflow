@@ -86,7 +86,7 @@ TEST_P(HloShardingRepresentationTest, Replicate) {
 
   EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
                                  /*num_devices=*/2));
-  EXPECT_FALSE(sharding.HasUniqueDevice());
+  EXPECT_FALSE(sharding.IsSingleDevice());
 }
 
 TEST_P(HloShardingRepresentationTest, DevicePlacement) {
@@ -283,7 +283,7 @@ TEST_F(TileTest, PassesValidationAndMatchesTileInfo) {
     EXPECT_EQ(sharding.TileLimitForDevice(shape, 1),
               (std::vector<int64_t>{4, 5}));
 
-    EXPECT_FALSE(sharding.HasUniqueDevice());
+    EXPECT_FALSE(sharding.IsSingleDevice());
 
     // {device_index, tile_offest, tile_limit}.
     std::vector<std::tuple<int, std::vector<int64_t>, std::vector<int64_t>>>

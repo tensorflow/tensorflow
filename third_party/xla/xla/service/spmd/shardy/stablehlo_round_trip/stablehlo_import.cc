@@ -174,7 +174,7 @@ MeshAxesAndIds findMeshAxesAndIds(
   for (const xla::HloSharding& hloSharding : oldShardings) {
     // If the sharding is a maximal sharding, we do not need to find common
     // axes but add the device id to `deviceIdsForMaximalMesh`.
-    if (hloSharding.HasUniqueDevice()) {
+    if (hloSharding.IsSingleDevice()) {
       maximalDeviceIdSet.insert(hloSharding.GetUniqueDevice());
       continue;
     }
@@ -297,7 +297,7 @@ TensorShardingAttr convertToSdySharding(
   // If the sharding is a maximal sharding, return a fully closed sharding.
   // The exact sharding does not matter since the tensor can only exist on one
   // device.
-  if (hloSharding.HasUniqueDevice()) {
+  if (hloSharding.IsSingleDevice()) {
     if (inlineMesh) {
       return TensorShardingAttr::getFullyClosed(
           ctx, /*rank=*/0,

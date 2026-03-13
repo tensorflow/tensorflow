@@ -4296,7 +4296,7 @@ template <typename CreateShardedFunctor>
 absl::Status SpmdPartitioningVisitor::HandleDotHelper(
     HloInstruction* hlo, const DotConvolutionDimsInfo& dims_mapping,
     CreateShardedFunctor& create_sharded_dot) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return DefaultAction(hlo);
   }
   HloInstruction* partitioned_dot;

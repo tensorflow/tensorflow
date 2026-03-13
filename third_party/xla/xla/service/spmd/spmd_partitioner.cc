@@ -1605,7 +1605,7 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
 PartitionedHlo PartitionedHlo::Broadcast() const {
   const Shape& shape = hlo_->shape();
   const HloSharding& sharding = hlo_->sharding();
-  CHECK(sharding.HasUniqueDevice());
+  CHECK(sharding.IsSingleDevice());
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
 
   auto src_core_id = state_.b->AddInstruction(HloInstruction::CreateConstant(
@@ -2457,7 +2457,7 @@ absl::Status SpmdPartitioningVisitor::HandleCall(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
-  if (hlo->HasSideEffect() && !hlo->sharding().HasUniqueDevice()) {
+  if (hlo->HasSideEffect() && !hlo->sharding().IsSingleDevice()) {
     return Unimplemented("Side-effect ops cannot be replicated: %s",
                          hlo->ToString());
   }
@@ -2469,7 +2469,7 @@ absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   // The base sharding is a non-tuple sharding that is either assigned to a
   // specific device or replicated.
   const HloSharding base_sharding = [&]() {
-    if (hlo->sharding().HasUniqueDevice()) {
+    if (hlo->sharding().IsSingleDevice()) {
       return HloSharding::AssignDevice(hlo->sharding().GetUniqueDevice());
     }
     return HloSharding::Replicate();
@@ -2881,7 +2881,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     input_count = hlo->shape().tuple_shapes().size();
     CHECK_GT(input_count, 0);
   }
-  if (sharding.HasUniqueDevice()) {
+  if (sharding.IsSingleDevice()) {
     std::vector<HloInstruction*> new_operands(input_count, nullptr);
     for (int64_t i = 0; i != input_count; ++i) {
       // Handle variadic sort sharding.
@@ -2889,7 +2889,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
           hlo->sharding().IsTuple()
               ? hlo->sharding().GetSubSharding(hlo->shape(), {i})
               : hlo->sharding();
-      CHECK(!subsharding.IsTuple() && subsharding.HasUniqueDevice());
+      CHECK(!subsharding.IsTuple() && subsharding.IsSingleDevice());
       new_operands[i] =
           GetPartitionedHlo(hlo->operand(i)).Reshard(subsharding).hlo();
     }
@@ -3450,7 +3450,6 @@ absl::Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleSingleDevice(
     const HloInstruction* hlo) {
-  TF_RET_CHECK(hlo->sharding().HasUniqueDevice());
   int64_t device = hlo->sharding().GetUniqueDevice();
   const HloSharding sharding = HloSharding::AssignDevice(device);
 
@@ -4121,7 +4120,7 @@ absl::Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
     return absl::OkStatus();
   }
 
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().UniqueDevice()) {
     return HandleSingleDevice(hlo);
   }
 
@@ -4260,7 +4259,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
     input_count = hlo->shape().tuple_shapes().size();
     CHECK_GT(input_count, 0);
   }
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     std::vector<HloInstruction*> new_operands(input_count * 2, nullptr);
     for (auto i = 0; i != input_count; ++i) {
       // Handle variadic reduce sharding.
@@ -4268,7 +4267,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
           hlo->sharding().IsTuple()
               ? hlo->sharding().GetSubSharding(hlo->shape(), {i})
               : hlo->sharding();
-      CHECK(!subsharding.IsTuple() && subsharding.HasUniqueDevice());
+      CHECK(!subsharding.IsTuple() && subsharding.IsSingleDevice());
       // Partition reduce operands and init values.
       new_operands[i] =
           GetPartitionedHlo(hlo->operand(i)).Reshard(subsharding).hlo();
@@ -4459,7 +4458,7 @@ absl::Status SpmdPartitioningVisitor::HandleOptimizationBarrier(
 }
 
 absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return HandleSingleDevice(hlo);
   }
   if (hlo->sharding().IsManual()) {
@@ -4638,7 +4637,7 @@ absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return HandleSingleDevice(hlo);
   }
   auto clone_from_original = [&](const HloSharding& shared_sharding) {
