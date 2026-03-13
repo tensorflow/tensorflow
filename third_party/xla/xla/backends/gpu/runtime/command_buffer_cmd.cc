@@ -422,15 +422,14 @@ LaunchCmd::LaunchCmd(
     std::string kernel_name, absl::Span<const ShapedSlice> args,
     absl::Span<const BufferUse::MemoryAccess> args_access,
     LaunchDimensions dims, int64_t shmem_bytes,
-    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata, bool use_pdl)
+    std::optional<stream_executor::gpu::TmaMetadata> tma_metadata)
     : Command(CommandType::kLaunchCmd),
       kernel_name_(std::move(kernel_name)),
       args_(args.begin(), args.end()),
       args_access_(args_access.begin(), args_access.end()),
       dims_(dims),
       shmem_bytes_(shmem_bytes),
-      tma_metadata_(std::move(tma_metadata)),
-      use_pdl_(use_pdl) {}
+      tma_metadata_(std::move(tma_metadata)) {}
 
 absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params) {
   {
@@ -444,12 +443,12 @@ absl::Status LaunchCmd::Initialize(const Thunk::InitializeParams& params) {
   if (!params.src.binary.empty()) {
     TF_ASSIGN_OR_RETURN(
         kernel, CreateKernel(kernel_name_, args_.size(), params.src.binary,
-                             params.executor, shmem_bytes_, use_pdl_));
+                             params.executor, shmem_bytes_));
 
   } else {
     TF_ASSIGN_OR_RETURN(
         kernel, CreateKernel(kernel_name_, args_.size(), params.src.text,
-                             params.executor, shmem_bytes_, use_pdl_));
+                             params.executor, shmem_bytes_));
   }
 
   absl::MutexLock lock(mutex_);

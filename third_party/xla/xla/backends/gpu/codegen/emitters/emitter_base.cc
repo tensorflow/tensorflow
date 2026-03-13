@@ -133,14 +133,6 @@ using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::FuncOp;
 
-bool EnablePDL(const HloModule& module, const se::DeviceDescription& device) {
-  return module.config().debug_options().xla_gpu_enable_pdl() &&
-         device.gpu_compute_capability().IsCuda() &&
-         device.gpu_compute_capability()
-             .cuda_compute_capability()
-             ->IsAtLeastHopper();
-}
-
 void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
                llvm::Module* module) {
   for (auto& block : *func) {
@@ -348,12 +340,9 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
               VLOG(3) << "Skipped kernel compilation.";
             }
 
-            KernelReuseCache::Entry entry{kernel_name, launch_dims,
-                                          std::nullopt,
-                                          /*shmem_bytes=*/0};
-            entry.use_pdl = EnablePDL(*fusion.GetModule(),
-                                      ir_emitter_context.gpu_device_info());
-            return entry;
+            return KernelReuseCache::Entry{kernel_name, launch_dims,
+                                           std::nullopt,
+                                           /*shmem_bytes=*/0};
           });
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
@@ -368,8 +357,7 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
           &fusion, ir_emitter_context.GetNextThunkId()),
       entry->kernel_name, args, launch_dims, entry->cluster_dim,
       entry->shmem_bytes,
-      /*tma_metadata=*/se::gpu::TmaMetadata(),
-      /*zeroed_output_buffer_indices=*/std::vector<int64_t>{}, entry->use_pdl));
+      /*tma_metadata=*/se::gpu::TmaMetadata()));
   return result;
 }
 
@@ -385,9 +373,6 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
   mlir::PassManager pm(&mlir_context);
   emitters::RegisterOptimizationPasses(pm);
   AddLoopTransformationPasses(pm, device, unroll_factor());
-  if (EnablePDL(*fusion.GetModule(), device)) {
-    pm.addPass(CreateInsertPDLPass());
-  }
   AddLoweringPasses(pm, device);
 
   TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), *fusion.GetModule(), pm,
@@ -530,7 +515,6 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
                        const se::DeviceDescription& device) {
   pm.addNestedPass<FuncOp>(emitters::CreateConvertPureCallOpsPass());
   pm.addPass(emitters::CreateLowerTensorsPass(device));
-  pm.addPass(emitters::CreateLowerPdlWaitPass());
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(emitters::CreateMergePointersToSameSlicePass());
 
