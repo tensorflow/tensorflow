@@ -65,6 +65,9 @@ class SdyRoundTripShardMapExportPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(SdyRoundTripShardMapExportPass)
 
+  SdyRoundTripShardMapExportPass(bool enableHloShardingV3)
+      : enableHloShardingV3(enableHloShardingV3) {}
+
   void runOnOperation() final {
     ModuleOp moduleOp = getOperation();
     mlir::SymbolTableCollection symbolTableCollection;
@@ -94,8 +97,12 @@ class SdyRoundTripShardMapExportPass
         // CSE deduping it with another taking the same operands, as it would
         // ignore the frontend attributes that could be different.
         globalToLocalShape.setHasSideEffect(true);
-        setFrontendAttribute(globalToLocalShape, kInShardings,
-                             manualComputation.getInShardings());
+        sdy::TensorShardingPerValueAttr inShardings =
+            manualComputation.getInShardings();
+        if (enableHloShardingV3) {
+          inShardings = sdy::inlineMesh(symbolTable, inShardings);
+        }
+        setFrontendAttribute(globalToLocalShape, kInShardings, inShardings);
         setFrontendAttribute(globalToLocalShape, kManualAxes,
                              manualComputation.getManualAxesAttr());
         operands = globalToLocalShape->getResults();
@@ -115,8 +122,12 @@ class SdyRoundTripShardMapExportPass
         // We mark `xla.sdy.LocalToGlobalShape` as side-effecting to avoid
         // CSE removing it if it has no users.
         localToGlobalShape.setHasSideEffect(true);
-        setFrontendAttribute(localToGlobalShape, kOutShardings,
-                             manualComputation.getOutShardings());
+        sdy::TensorShardingPerValueAttr outShardings =
+            manualComputation.getOutShardings();
+        if (enableHloShardingV3) {
+          outShardings = sdy::inlineMesh(symbolTable, outShardings);
+        }
+        setFrontendAttribute(localToGlobalShape, kOutShardings, outShardings);
         setFrontendAttribute(localToGlobalShape, kManualAxes,
                              manualComputation.getManualAxesAttr());
         results = localToGlobalShape->getResults();
@@ -142,16 +153,20 @@ class SdyRoundTripShardMapExportPass
   void getDependentDialects(mlir::DialectRegistry& registry) const final {
     registry.insert<stablehlo::StablehloDialect>();
   }
+
+ private:
+  bool enableHloShardingV3 = false;
 };
 
 }  // namespace
 
 void registerSdyRoundTripShardMapExportPass() {
-  mlir::registerPass(createSdyRoundTripShardMapExportPass);
+  mlir::registerPass([]() { return createSdyRoundTripShardMapExportPass(); });
 }
 
-std::unique_ptr<mlir::Pass> createSdyRoundTripShardMapExportPass() {
-  return std::make_unique<SdyRoundTripShardMapExportPass>();
+std::unique_ptr<mlir::Pass> createSdyRoundTripShardMapExportPass(
+    bool enableHloShardingV3) {
+  return std::make_unique<SdyRoundTripShardMapExportPass>(enableHloShardingV3);
 }
 
 }  // namespace sdy
