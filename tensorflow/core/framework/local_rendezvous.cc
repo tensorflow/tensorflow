@@ -260,33 +260,36 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
         Item* item = nullptr;
         {
           mutex_lock l(bucket.mu);
-          auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
-          ItemQueue* queue = &it->second;
-          // Find an item in the queue with a cancellation token that matches
-          // `token`, and remove it.
-          if (queue->head != nullptr && queue->head->type == Item::kRecv) {
-            for (Item *prev = nullptr, *curr = queue->head; curr != nullptr;
-                 prev = curr, curr = curr->next) {
-              if (curr->recv_state.cancellation_token == token) {
-                item = curr;
-                if (queue->head->next == nullptr) {
-                  // We have a single-element queue, so we can erase it from
-                  // the table.
-                  bucket.table.erase(it);
-                } else {
-                  // Remove the current item from the queue.
-                  if (curr == queue->head) {
-                    DCHECK_EQ(prev, nullptr);
-                    queue->head = curr->next;
+
+          auto it = bucket.table.find(key_hash);
+          if (it != bucket.table.end()) {
+            ItemQueue* queue = &it->second;
+            // Find an item in the queue with a cancellation token that matches
+            // `token`, and remove it.
+            if (queue->head != nullptr && queue->head->type == Item::kRecv) {
+              for (Item *prev = nullptr, *curr = queue->head; curr != nullptr;
+                   prev = curr, curr = curr->next) {
+                if (curr->recv_state.cancellation_token == token) {
+                  item = curr;
+                  if (queue->head->next == nullptr) {
+                    // We have a single-element queue, so we can erase it from
+                    // the table.
+                    bucket.table.erase(it);
                   } else {
-                    DCHECK_NE(prev, nullptr);
-                    prev->next = curr->next;
+                    // Remove the current item from the queue.
+                    if (curr == queue->head) {
+                      DCHECK_EQ(prev, nullptr);
+                      queue->head = curr->next;
+                    } else {
+                      DCHECK_NE(prev, nullptr);
+                      prev->next = curr->next;
+                    }
+                    if (queue->tail == curr) {
+                      queue->tail = prev;
+                    }
                   }
-                  if (queue->tail == curr) {
-                    queue->tail = prev;
-                  }
+                  break;
                 }
-                break;
               }
             }
           }
@@ -302,6 +305,9 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       });
     }
     if (already_cancelled) {
+      if (queue->head == nullptr) {
+        bucket.table.erase(it);
+      }
       bucket.mu.unlock();
       done(StatusGroup::MakeDerived(
                errors::Cancelled("RecvAsync is cancelled.")),
@@ -424,6 +430,7 @@ void LocalRendezvous::DoAbort(const absl::Status& status) {
     }
     for (auto& p : table) {
       Item* item = p.second.head;
+      DCHECK(item);  // we delete all empty lists from the table
       while (item != nullptr) {
         switch (item->type) {
           case Item::kRecv:
