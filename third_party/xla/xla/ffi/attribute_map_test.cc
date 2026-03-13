@@ -284,5 +284,97 @@ TEST(AttributeTest, ProtoConversion) {
   EXPECT_THAT(Attribute::FromProto(attr.ToProto()), IsOkAndHolds(attr));
 }
 
+TEST(AttributesMapTest, ScalarConstruction) {
+  AttributesMap attrs = {
+      {"i32", 42},
+      {"f32", 42.0f},
+      {"f64", 42.0},
+      {"b", true},
+  };
+
+  EXPECT_EQ(attrs.size(), 4);
+  auto i32 = std::get<Scalar>(attrs.at("i32").AsVariant());
+  auto f32 = std::get<Scalar>(attrs.at("f32").AsVariant());
+  auto f64 = std::get<Scalar>(attrs.at("f64").AsVariant());
+  auto b = std::get<Scalar>(attrs.at("b").AsVariant());
+  EXPECT_EQ(i32, Scalar(int32_t{42}));
+  EXPECT_EQ(f32, Scalar(42.0f));
+  EXPECT_EQ(f64, Scalar(42.0));
+  EXPECT_EQ(b, Scalar(true));
+}
+
+TEST(AttributesMapTest, StringConstruction) {
+  AttributesMap attrs = {
+      {"str_literal", "hello"},
+      {"str_obj", std::string("world")},
+  };
+
+  EXPECT_EQ(attrs.size(), 2);
+  auto str_literal = std::get<std::string>(attrs.at("str_literal").AsVariant());
+  auto str_obj = std::get<std::string>(attrs.at("str_obj").AsVariant());
+  EXPECT_EQ(str_literal, "hello");
+  EXPECT_EQ(str_obj, "world");
+}
+
+TEST(AttributesMapTest, ArrayConstruction) {
+  AttributesMap attrs = {
+      {"i32_arr", {1, 2, 3}},
+      {"f32_arr", {1.0f, 2.0f, 3.0f}},
+  };
+
+  EXPECT_EQ(attrs.size(), 2);
+  auto i32_arr = std::get<Array>(attrs.at("i32_arr").AsVariant());
+  auto f32_arr = std::get<Array>(attrs.at("f32_arr").AsVariant());
+  EXPECT_EQ(i32_arr, Array(std::vector<int32_t>{1, 2, 3}));
+  EXPECT_EQ(f32_arr, Array(std::vector<float>{1.0f, 2.0f, 3.0f}));
+}
+
+TEST(AttributesMapTest, NestedConstruction) {
+  AttributesMap attrs = {
+      {"i32", 42},
+      {"nested", {{"f32", 1.0f}, {"str", "foo"}}},
+  };
+
+  EXPECT_EQ(attrs.size(), 2);
+  auto i32 = std::get<Scalar>(attrs.at("i32").AsVariant());
+  EXPECT_EQ(i32, Scalar(int32_t{42}));
+
+  auto& dict = std::get<AttributesDictionary>(attrs.at("nested").AsVariant());
+  ASSERT_NE(dict.attrs, nullptr);
+  EXPECT_EQ(dict.attrs->size(), 2);
+  auto f32 = std::get<Scalar>(dict.attrs->at("f32").AsVariant());
+  auto str = std::get<std::string>(dict.attrs->at("str").AsVariant());
+  EXPECT_EQ(f32, Scalar(1.0f));
+  EXPECT_EQ(str, "foo");
+}
+
+TEST(AttributesMapTest, DeeplyNestedConstruction) {
+  AttributesMap attrs = {
+      {"level1", {{"level2", {{"value", 123}}}}},
+  };
+
+  auto& l1 = std::get<AttributesDictionary>(attrs.at("level1").AsVariant());
+  ASSERT_NE(l1.attrs, nullptr);
+  auto& l2 = std::get<AttributesDictionary>(l1.attrs->at("level2").AsVariant());
+  ASSERT_NE(l2.attrs, nullptr);
+  auto value = std::get<Scalar>(l2.attrs->at("value").AsVariant());
+  EXPECT_EQ(value, Scalar(int32_t{123}));
+}
+
+TEST(AttributesMapTest, EmptyConstruction) {
+  AttributesMap attrs = {};
+  EXPECT_TRUE(attrs.empty());
+}
+
+TEST(AttributesMapTest, ConstructionProtoRoundTrip) {
+  AttributesMap attrs = {
+      {"i32", 42},
+      {"str", "hello"},
+      {"nested", {{"f32", 1.0f}}},
+  };
+
+  EXPECT_THAT(AttributesMap::FromProto(attrs.ToProto()), IsOkAndHolds(attrs));
+}
+
 }  // namespace
 }  // namespace xla::ffi
