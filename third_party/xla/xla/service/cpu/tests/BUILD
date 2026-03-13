@@ -228,28 +228,30 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_infeed_test",
     srcs = ["cpu_infeed_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
+    shard_count = 9,
     deps = [
         "//xla:error_spec",
-        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:arithmetic",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service",
-        "//xla/service:cpu_plugin",
-        "//xla/tests:client_library_test_base",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:client_library_test_runner_mixin",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
