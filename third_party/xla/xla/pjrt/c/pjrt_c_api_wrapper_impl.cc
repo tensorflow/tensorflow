@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -533,6 +534,29 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
       args->struct_size));
   args->code = StatusCodeToPjrtErrorCode(
       static_cast<absl::StatusCode>(args->error->status.code()));
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Error_ForEachPayload(PJRT_Error_ForEachPayload_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Error_ForEachPayload_Args",
+      PJRT_Error_ForEachPayload_Args_STRUCT_SIZE, args->struct_size));
+  if (!args->visitor) {
+    return new PJRT_Error{
+        absl::InvalidArgumentError("Visitor can not be null.")};
+  }
+  args->error->status.ForEachPayload(
+      [&](absl::string_view key, const absl::Cord& value) {
+        std::optional<absl::string_view> value_view = value.TryFlat();
+        if (value_view.has_value()) {
+          args->visitor(key.data(), key.size(), value_view->data(),
+                        value_view->size(), args->user_arg);
+        } else {
+          std::string value_str(value);
+          args->visitor(key.data(), key.size(), value_str.data(),
+                        value_str.size(), args->user_arg);
+        }
+      });
   return nullptr;
 }
 
@@ -3676,6 +3700,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_LoadedExecutable_AddressableDeviceLogicalIds=*/
       pjrt::PJRT_LoadedExecutable_AddressableDeviceLogicalIds,
       /*PJRT_Buffer_Bitcast=*/pjrt::PJRT_Buffer_Bitcast,
+
+      /*PJRT_Error_ForEachPayload=*/pjrt::PJRT_Error_ForEachPayload,
   };
 }
 

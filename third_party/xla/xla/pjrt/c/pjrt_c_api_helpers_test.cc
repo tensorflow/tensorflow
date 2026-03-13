@@ -28,11 +28,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/time/time.h"
 #include "stablehlo/dialect/Version.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_cpu.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -133,6 +135,20 @@ TEST(PjRtCApiHelperTest, Callback) {
           const absl::StatusOr<std::string>& result) { promise->Set(result); });
   EXPECT_EQ(call_options, nullptr);
   EXPECT_TRUE(absl::IsUnimplemented(future.Await().status()));
+}
+
+TEST(PjRtCApiHelperTest, PjrtErrorToStatusPayloadTest) {
+  absl::Status status = absl::InternalError("test error");
+  status.SetPayload("test_payload", absl::Cord("test_value"));
+  PJRT_Error error{status};
+
+  const PJRT_Api* api = GetPjrtApi();
+  absl::Status result = PjrtErrorToStatus(&error, api);
+  EXPECT_EQ(result.code(), absl::StatusCode::kInternal);
+  EXPECT_EQ(result.message(), "test error");
+  auto payload = result.GetPayload("test_payload");
+  ASSERT_TRUE(payload.has_value());
+  EXPECT_EQ(*payload, "test_value");
 }
 
 TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {
