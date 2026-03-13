@@ -268,9 +268,6 @@ struct RunningOptions {
   LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
   const MultiSliceConfig* multi_slice_config = nullptr;
   ProfilerInterface* profiler = nullptr;
-  // Whether to untuple the result of running HLO module into a vector of
-  // arrays. If unprovided, use the default in ExecuteOptions.
-  std::optional<bool> untuple_result = std::nullopt;
   // If not null, profiles will be stored for this run, one per repeat.
   // Note that the first repeat is a warmup run, and uses less precise
   // profiling method.
