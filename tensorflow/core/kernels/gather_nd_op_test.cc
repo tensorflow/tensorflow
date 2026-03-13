@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <functional>
-#include <memory>
-#include <vector>
+#include <cstdint>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
