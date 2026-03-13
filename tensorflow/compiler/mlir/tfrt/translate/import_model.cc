@@ -350,6 +350,8 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
       options.batch_queue_global_prioritization_num_threads;
   pipeline_options->enable_priority_aware_batch_scheduler =
       options.enable_priority_aware_batch_scheduler;
+  pipeline_options->enable_priority_aware_batch_scheduler_resplit =
+      options.enable_priority_aware_batch_scheduler_resplit;
   pipeline_options->batch_padding_policy = options.batch_padding_policy;
   pipeline_options->num_batch_threads =
       options.batch_options.num_batch_threads();
