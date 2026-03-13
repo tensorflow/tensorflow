@@ -48,13 +48,9 @@ namespace gpu {
 
 namespace {
 
-// Swaps operands of a dot instruction, while keeping the same physical output
-// layout. Logically, dot output shape has lhs non-contracting dimensions
-// followed by rhs non-contracting dimensions that have to be swapped, but
-// that's countered by the layout.
-HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
-  HloComputation* computation = dot->parent();
-
+// Takes a dot and returns the permutation of the old output shape to the new
+// output shape if the operands were swapped.
+std::vector<int64_t> MakeSwapOperandPermutation(const HloInstruction* dot) {
   const DotDimensionNumbers& dot_dims = dot->dot_dimension_numbers();
   const size_t num_batch_dims = dot_dims.lhs_batch_dimensions_size();
   const size_t num_lhs_noncontracting_dims =
@@ -64,11 +60,11 @@ HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
       dot->operand(1)->shape().dimensions().size() - num_batch_dims -
       dot_dims.rhs_contracting_dimensions_size();
 
-  std::vector<int64_t> out_shape_permutation;
-  out_shape_permutation.reserve(dot->shape().dimensions().size());
+  std::vector<int64_t> shape_permutation;
+  shape_permutation.reserve(dot->shape().dimensions().size());
   auto fill_permutation = [&](int64_t count, int64_t start) {
     while (count--) {
-      out_shape_permutation.push_back(start++);
+      shape_permutation.push_back(start++);
     }
   };
   // The output shape of a dot is batch dimensions, then lhs non-contracting,
@@ -78,8 +74,20 @@ HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
   fill_permutation(num_rhs_noncontracting_dims,
                    num_batch_dims + num_lhs_noncontracting_dims);
   fill_permutation(num_lhs_noncontracting_dims, num_batch_dims);
+  return shape_permutation;
+}
+
+// Swaps operands of a dot instruction, while keeping the same physical output
+// layout. Logically, dot output shape has lhs non-contracting dimensions
+// followed by rhs non-contracting dimensions that have to be swapped, but
+// that's countered by the layout.
+HloDotInstruction* MakeDotWithSwappedOperands(
+    HloInstruction* dot, absl::Span<const int64_t> shape_permutation) {
+  HloComputation* computation = dot->parent();
+  const DotDimensionNumbers& dot_dims = dot->dot_dimension_numbers();
+
   const Shape new_dot_shape =
-      ShapeUtil::ReorderLogicalDimensions(dot->shape(), out_shape_permutation);
+      ShapeUtil::ReorderLogicalDimensions(dot->shape(), shape_permutation);
 
   DotDimensionNumbers new_dot_dims = dot_dims;
   std::swap(*new_dot_dims.mutable_lhs_batch_dimensions(),
@@ -96,14 +104,17 @@ HloDotInstruction* MakeDotWithSwappedOperands(HloInstruction* dot) {
 
 // Swaps operands of a dot instruction in a fusion. This is done by swapping the
 // operands of the dot instruction, which keeps the same physical output layout,
-// and then bitcasting the result to the original logical shape.
+// and then transposing the result to the original logical shape.
 absl::Status SwapDotOperandsInFusion(HloComputation* computation) {
   HloInstruction* dot =
       hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
-  HloDotInstruction* new_dot = MakeDotWithSwappedOperands(dot);
-  HloInstruction* new_bitcast = computation->AddInstruction(
-      HloInstruction::CreateBitcast(dot->shape(), new_dot), &dot->metadata());
-  TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(new_bitcast));
+  std::vector<int64_t> shape_permutation = MakeSwapOperandPermutation(dot);
+  HloDotInstruction* new_dot =
+      MakeDotWithSwappedOperands(dot, shape_permutation);
+  HloInstruction* transpose = computation->AddInstruction(
+      HloInstruction::CreateTranspose(dot->shape(), new_dot, shape_permutation),
+      &dot->metadata());
+  TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(transpose));
   TF_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
   return absl::OkStatus();
 }

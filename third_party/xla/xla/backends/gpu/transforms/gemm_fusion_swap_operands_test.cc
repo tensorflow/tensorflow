@@ -50,7 +50,7 @@ ENTRY main {
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
   EXPECT_TRUE(*RunFileCheck(module->get()->ToString(), R"(
 CHECK: bf16[64,448,768]{1,2,0} dot
-CHECK-NEXT: bf16[64,768,448]{2,1,0} bitcast)"));
+CHECK-NEXT: bf16[64,768,448]{2,1,0} transpose)"));
 }
 
 TEST_F(SwapOperandsTest, CodeGeneratingMovesToLhsMultipleNoncontracting) {
@@ -81,7 +81,7 @@ ENTRY main {
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
   EXPECT_TRUE(*RunFileCheck(module->get()->ToString(), R"(
 CHECK: bf16[448,73728]{0,1} dot
-CHECK-NEXT: bf16[73728,448]{1,0} bitcast)"));
+CHECK-NEXT: bf16[73728,448]{1,0} transpose)"));
 }
 
 TEST_F(SwapOperandsTest, SplitNoncontractingIsKeptInLhs) {
@@ -157,7 +157,7 @@ ENTRY main {
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
   EXPECT_TRUE(*RunFileCheck(module->get()->ToString(), R"(
 CHECK: bf16[64,448,32]{1,2,0} dot
-CHECK-NEXT: bf16[64,32,448]{2,1,0} bitcast)"));
+CHECK-NEXT: bf16[64,32,448]{2,1,0} transpose)"));
 }
 
 TEST_F(SwapOperandsTest, BothCodeGeneratingSwapSmallLhs) {
@@ -185,7 +185,7 @@ ENTRY main {
   EXPECT_TRUE(GemmFusionSwapOperands().Run(module->get()).value());
   EXPECT_TRUE(*RunFileCheck(module->get()->ToString(), R"(
 CHECK: bf16[64,448,32]{1,2,0} dot
-CHECK-NEXT: bf16[64,32,448]{2,1,0} bitcast)"));
+CHECK-NEXT: bf16[64,32,448]{2,1,0} transpose)"));
 }
 
 TEST_F(SwapOperandsTest, BothNonCodeGeneratingDoNotSwapIfBothSmall) {
