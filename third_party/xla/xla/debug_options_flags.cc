@@ -241,7 +241,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // By default, copy TF's Eigen style min_max behavior with nans.
   opts.set_xla_cpu_enable_fast_min_max(true);
 
-  opts.set_xla_gpu_enable_cublaslt(false);
+  opts.set_xla_gpu_enable_cublaslt(true);
 
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
   opts.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);

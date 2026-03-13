@@ -196,7 +196,12 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     )");
     }
   } else {
-    EXPECT_THAT(Run(hlo_text).message(), HasSubstr("Unsupported algorithm"));
+    // Note: If the algorithm is not supported either the emitter will decline
+    // to emit it, or the autotuner will not find any supported configs.
+    EXPECT_THAT(
+        Run(hlo_text).message(),
+        ::testing::AnyOf(HasSubstr("Unsupported algorithm"),
+                         HasSubstr("could not find any supported configs")));
   }
 }
 
