@@ -27,18 +27,25 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/client/local_client.h"
+#include "xla/layout.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/pjrt_abi_version.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
+#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -99,11 +106,12 @@ StreamExecutorExecutable::GetCostAnalysis() const {
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
-    const CompileOptions& compile_options,
+    PjRtPlatformId platform_id, const CompileOptions& compile_options,
     std::vector<std::unique_ptr<CompiledModule>> executables, int num_replicas,
     int num_partitions, absl::string_view name, absl::string_view fingerprint,
     absl::string_view default_memory_kind)
-    : compile_options_(compile_options),
+    : platform_id_(platform_id),
+      compile_options_(compile_options),
       executables_(std::move(executables)),
       num_replicas_(num_replicas),
       num_partitions_(num_partitions),
@@ -119,13 +127,14 @@ StreamExecutorExecutable::StreamExecutorExecutable(
 }
 
 StreamExecutorExecutable::StreamExecutorExecutable(
-    const CompileOptions& compile_options,
+    PjRtPlatformId platform_id, const CompileOptions& compile_options,
     std::optional<HloModuleProto> unoptimized_hlo_module_proto,
     std::vector<std::unique_ptr<LocalExecutable>> local_executables,
     LocalClient* local_client, int num_replicas, int num_partitions,
     absl::string_view name, absl::string_view fingerprint,
     absl::string_view default_memory_kind)
-    : compile_options_(compile_options),
+    : platform_id_(platform_id),
+      compile_options_(compile_options),
       unoptimized_hlo_module_proto_(std::move(unoptimized_hlo_module_proto)),
       executables_(std::move(local_executables)),
       local_client_(local_client),
@@ -306,6 +315,44 @@ absl::StatusOr<LocalExecutable*> StreamExecutorExecutable::GetOrLoadExecutable(
     return result;
   }
   return absl::UnimplementedError("Unsupported executable type.");
+}
+
+absl::StatusOr<stream_executor::ExecutableAbiVersion>
+StreamExecutorExecutable::ExtractExecutableAbiVersion() const {
+  if (executables_.index() == 0) {
+    const std::vector<std::unique_ptr<CompiledModule>>& compiled_modules =
+        std::get<0>(executables_);
+    if (compiled_modules.empty()) {
+      return absl::InternalError("No compiled modules");
+    }
+
+    if (compiled_modules.size() > 1) {
+      return absl::InternalError(
+          "Can't extract the ABI version from multiple compiled modules");
+    }
+
+    return compiled_modules.front()->GetExecutableAbiVersion();
+  }
+  const std::vector<std::unique_ptr<LocalExecutable>>& local_executables =
+      std::get<1>(executables_);
+  if (local_executables.empty()) {
+    return absl::InternalError("No local executables");
+  }
+
+  if (local_executables.size() > 1) {
+    return absl::InternalError(
+        "Can't extract the ABI version from multiple local executables");
+  }
+
+  return local_executables.front()->executable()->GetExecutableAbiVersion();
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+StreamExecutorExecutable::GetAbiVersion() const {
+  ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion executable_abi_version,
+                   ExtractExecutableAbiVersion());
+  return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(
+      platform_id_, std::move(executable_abi_version));
 }
 
 }  // namespace xla

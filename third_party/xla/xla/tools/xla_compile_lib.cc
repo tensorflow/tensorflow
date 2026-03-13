@@ -42,6 +42,8 @@ limitations under the License.
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
+#include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/stream_executor_executable.h"
 #include "xla/service/compiled_module.h"
@@ -58,11 +60,14 @@ limitations under the License.
 #include "xla/service/symbol_repository.h"
 #include "xla/service/xla_compile_result.pb.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tools/hlo_module_loader.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
@@ -127,8 +132,22 @@ static absl::StatusOr<std::string> CompileGpuExecutable(
     xla::CompileOptions compile_options;
     compile_options.executable_build_options.set_num_replicas(num_replicas);
     compile_options.executable_build_options.set_num_partitions(num_partitions);
+
+    PjRtPlatformId pjrt_platform_id;
+    if (platform_id == stream_executor::cuda::kCudaPlatformId) {
+      pjrt_platform_id = xla::CudaId();
+    } else if (platform_id == stream_executor::rocm::kROCmPlatformId) {
+      pjrt_platform_id = xla::RocmId();
+    } else if (platform_id == stream_executor::sycl::kSyclPlatformId) {
+      pjrt_platform_id = xla::SyclId();
+    } else {
+      return absl::NotFoundError(absl::StrCat(
+          "Could not determine PjRtPlatformId for platform: ", platform_name));
+    }
+
     StreamExecutorExecutable stream_executor_executable(
-        compile_options, std::move(aot_results), /*num_replicas=*/num_replicas,
+        pjrt_platform_id, compile_options, std::move(aot_results),
+        /*num_replicas=*/num_replicas,
         /*num_partitions=*/num_partitions, /*name=*/"xla_compile",
         /*fingerprint=*/"fake_fingerprint",
         /*default_memory_kind=*/"fake_memory_kind");

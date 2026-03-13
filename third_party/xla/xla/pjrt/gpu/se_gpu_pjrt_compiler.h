@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -56,6 +57,11 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   PjRtPlatformId pjrt_platform_id() const { return pjrt_platform_id_; }
+
+  // Returns the target runtime ABI version that the compiled executables will
+  // be compatible with.
+  absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>>
+  GetTargetRuntimeAbiVersion() override;
 
  private:
   std::optional<stream_executor::Platform::Id> requested_platform_id_;

@@ -645,9 +645,10 @@ TfrtGpuClient::BuildPjRtExecutable(
   }
 
   return std::make_unique<StreamExecutorExecutable>(
-      std::move(compile_options), std::move(unoptimized_hlo_module_proto),
-      std::move(local_executables), xla_client_, num_replicas, num_partitions,
-      name, fingerprint, memory_spaces()[0]->kind());
+      platform_id(), std::move(compile_options),
+      std::move(unoptimized_hlo_module_proto), std::move(local_executables),
+      xla_client_, num_replicas, num_partitions, name, fingerprint,
+      memory_spaces()[0]->kind());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>

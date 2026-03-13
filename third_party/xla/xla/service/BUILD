@@ -1731,6 +1731,22 @@ cc_library(
 )
 
 cc_library(
+    name = "mock_compiled_module",
+    testonly = True,
+    hdrs = ["mock_compiled_module.h"],
+    deps = [
+        ":buffer_assignment",
+        ":compiled_module",
+        ":executable",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:platform_id",
+        "//xla/stream_executor/abi:executable_abi_version",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_library(
     name = "compiler",
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
