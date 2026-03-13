@@ -364,7 +364,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
 }  // namespace
 
 absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
-    const tsl::protobuf::RepeatedPtrField<ThunkProto>& thunk_protos,
+    const ThunkSequenceProto& thunk_sequence_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,
@@ -377,7 +377,7 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
   std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses =
       std::make_shared<NvshmemBufferAddresses>();
   ThunkSequence sequence;
-  for (const ThunkProto& thunk_proto : thunk_protos) {
+  for (const ThunkProto& thunk_proto : thunk_sequence_proto.thunks()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<Thunk> thunk,
         DeserializeThunkProtoImpl(

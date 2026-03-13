@@ -248,7 +248,7 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const DynamicSliceThunk& thunk, const ConvertToCommandsOptions& options) {
   TF_ASSIGN_OR_RETURN(
       CommandExecutor embedded_cmds,
-      ConvertToCommands(thunk.get_embedded_thunk()->thunks(), options));
+      ConvertToCommands(thunk.get_embedded_executor().thunks(), options));
 
   auto& thunk_fake_allocations = thunk.get_fake_allocations();
   std::vector<BufferAllocation> fake_allocations;

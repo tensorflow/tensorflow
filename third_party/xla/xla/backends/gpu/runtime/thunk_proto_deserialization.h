@@ -22,16 +22,16 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_spec.h"
 
 namespace xla::gpu {
 
-// Deserializes the given `thunk_proto` into a Thunk.
+// Deserializes the given `thunk_sequence_proto` into a ThunkSequence.
 // - `buffer_allocations` is used to deserialize buffer slices.
 // - `hlo_module` is used to deserialize thunks that reference HLO instructions.
 // - `platform_name` is used to look up platform-specific kernels in the
@@ -40,7 +40,7 @@ namespace xla::gpu {
 //   not inlined in the proto, but rather loaded at runtime via symbol
 //   resolution.
 absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
-    const tsl::protobuf::RepeatedPtrField<ThunkProto>& thunk_protos,
+    const ThunkSequenceProto& thunk_sequence_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,

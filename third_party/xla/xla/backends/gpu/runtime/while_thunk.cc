@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/host_memory_pool.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -37,7 +36,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -71,7 +69,7 @@ absl::Status WhileThunk::Initialize(const InitializeParams& params) {
 
   absl::MutexLock lock(mutex_);
   if (!host_memory_pools_.contains(params.executor)) {
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         std::unique_ptr<HostMemoryPool> pool,
         HostMemoryPool::Create(params.executor, PrimitiveType::PRED));
     host_memory_pools_[params.executor] = std::move(pool);
@@ -101,7 +99,7 @@ absl::Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     absl::MutexLock lock(mutex_);
     pool = host_memory_pools_.at(stream.parent()).get();
   }
-  TF_ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
+  ASSIGN_OR_RETURN(HostMemoryPool::Handle handle, pool->Acquire());
   bool* condition_result = handle.get<bool>();
   se::DeviceAddressBase condition_result_data =
       params.buffer_allocations->GetDeviceAddress(
@@ -169,22 +167,22 @@ absl::StatusOr<ThunkProto> WhileThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   auto* while_proto = proto.mutable_while_thunk();
-  TF_ASSIGN_OR_RETURN(*while_proto->mutable_condition_result_buffer_index(),
-                      condition_result_buffer_index_.ToProto());
+  ASSIGN_OR_RETURN(*while_proto->mutable_condition_result_buffer_index(),
+                   condition_result_buffer_index_.ToProto());
 
   {
-    SequentialThunkProto condition_proto;
+    ThunkSequenceProto condition_proto;
     for (const std::unique_ptr<Thunk>& thunk : condition_executor_.thunks()) {
-      TF_ASSIGN_OR_RETURN(*condition_proto.add_thunks(), thunk->ToProto());
+      ASSIGN_OR_RETURN(*condition_proto.add_thunks(), thunk->ToProto());
     }
     *while_proto->mutable_condition_thunk_sequence() =
         std::move(condition_proto);
   }
 
   {
-    SequentialThunkProto body_proto;
+    ThunkSequenceProto body_proto;
     for (const std::unique_ptr<Thunk>& thunk : body_executor_.thunks()) {
-      TF_ASSIGN_OR_RETURN(*body_proto.add_thunks(), thunk->ToProto());
+      ASSIGN_OR_RETURN(*body_proto.add_thunks(), thunk->ToProto());
     }
     *while_proto->mutable_body_thunk_sequence() = std::move(body_proto);
   }
@@ -199,26 +197,27 @@ absl::StatusOr<std::unique_ptr<WhileThunk>> WhileThunk::FromProto(
     ThunkInfo thunk_info, const WhileThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations,
     const Deserializer& deserializer) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       BufferAllocation::Slice condition_result_buffer_index,
       BufferAllocation::Slice::FromProto(
           thunk_proto.condition_result_buffer_index(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<SequentialThunk> condition_seq_thunk,
-      SequentialThunk::FromProto(
-          thunk_info, thunk_proto.condition_thunk_sequence(), deserializer));
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<SequentialThunk> body_seq_thunk,
-      SequentialThunk::FromProto(thunk_info, thunk_proto.body_thunk_sequence(),
-                                 deserializer));
+  ThunkSequence condition_thunks;
+  for (const auto& proto : thunk_proto.condition_thunk_sequence().thunks()) {
+    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
+    condition_thunks.push_back(std::move(thunk));
+  }
+  ThunkSequence body_thunks;
+  for (const auto& proto : thunk_proto.body_thunk_sequence().thunks()) {
+    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, deserializer(proto));
+    body_thunks.push_back(std::move(thunk));
+  }
   std::optional<int64_t> trip_count;
   if (thunk_proto.has_trip_count()) {
     trip_count = thunk_proto.trip_count();
   }
   return std::make_unique<WhileThunk>(
       std::move(thunk_info), condition_result_buffer_index,
-      std::move(condition_seq_thunk->thunks()),
-      std::move(body_seq_thunk->thunks()), trip_count);
+      std::move(condition_thunks), std::move(body_thunks), trip_count);
 }
 
 }  // namespace xla::gpu

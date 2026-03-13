@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
@@ -3309,10 +3308,7 @@ TEST_F(DynamicSliceFusionTest,
   DynamicSliceThunk* dynamic_slice_thunk =
       dynamic_cast<DynamicSliceThunk*>(thunks[2].get());
   ASSERT_NE(dynamic_slice_thunk, nullptr);
-  const SequentialThunk* embedded_thunk = dynamic_cast<const SequentialThunk*>(
-      dynamic_slice_thunk->embedded_thunk());
-  ASSERT_NE(embedded_thunk, nullptr);
-  EXPECT_THAT(embedded_thunk->thunks(),
+  EXPECT_THAT(dynamic_slice_thunk->get_embedded_executor().thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kReduceScatterStart)));
 
   // Check that the offsets were propagated as constants, and not as device

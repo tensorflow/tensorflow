@@ -1546,9 +1546,11 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   params.device_description = device_description;
 
+  ThunkSequenceProto thunk_sequence_proto;
+  *thunk_sequence_proto.mutable_thunks() = proto.thunks();
   ASSIGN_OR_RETURN(ThunkSequence thunk_sequence,
                    DeserializeThunkSequenceProto(
-                       proto.thunks(), params.mlir_allocations.value(),
+                       thunk_sequence_proto, params.mlir_allocations.value(),
                        params.debug_module.get(), platform_name,
                        gpu_compute_capability, symbol_resolver));
 

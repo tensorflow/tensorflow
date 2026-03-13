@@ -398,8 +398,8 @@ cc_library(
     hdrs = ["dynamic_slice_thunk.h"],
     deps = [
         ":dynamic_slice_thunk_proto_cc",
-        ":sequential_thunk",
         ":thunk",
+        ":thunk_executor",
         ":thunk_proto_cc",
         "//xla:literal",
         "//xla:literal_util",
@@ -415,8 +415,7 @@ cc_library(
         "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -444,7 +443,6 @@ xla_test(
         ":dynamic_slice_thunk",
         ":dynamic_slice_thunk_proto_cc",
         ":gemm_thunk",
-        ":sequential_thunk",
         ":thunk",
         ":thunk_proto_deserialization",
         "//xla:shape_util",
@@ -480,7 +478,6 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@com_google_protobuf//:protobuf_lite",
     ],
 )
 
@@ -619,7 +616,6 @@ cc_library(
     hdrs = ["conditional_thunk.h"],
     deps = [
         ":host_memory_pool",
-        ":sequential_thunk",
         ":thunk",
         ":thunk_executor",
         ":thunk_proto_cc",
@@ -632,7 +628,6 @@ cc_library(
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:overload",
@@ -3147,7 +3142,6 @@ cc_library(
     hdrs = ["while_thunk.h"],
     deps = [
         ":host_memory_pool",
-        ":sequential_thunk",
         ":thunk",
         ":thunk_executor",
         ":thunk_proto_cc",
@@ -3161,7 +3155,6 @@ cc_library(
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:status_macros",
-        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
@@ -3767,7 +3760,6 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@com_google_protobuf//:protobuf_lite",
     ],
 )
 

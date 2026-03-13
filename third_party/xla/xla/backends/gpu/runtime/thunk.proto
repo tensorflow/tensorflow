@@ -60,14 +60,14 @@ message ThunkMetadataListProto {
 
 message ConditionalThunkProto {
   ShapedSliceProto branch_index_buffer = 1;
-  repeated SequentialThunkProto branch_thunks = 2;
+  repeated ThunkSequenceProto branch_thunks = 2;
 }
 
 message WhileThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto
       condition_result_buffer_index = 1;
-  SequentialThunkProto condition_thunk_sequence = 2;
-  SequentialThunkProto body_thunk_sequence = 3;
+  ThunkSequenceProto condition_thunk_sequence = 2;
+  ThunkSequenceProto body_thunk_sequence = 3;
   optional int64 trip_count = 4;
 }
 
@@ -162,7 +162,7 @@ message HostExecuteDoneThunkProto {
 }
 
 message DynamicSliceThunkProto {
-  SequentialThunkProto embedded_thunk = 1;
+  ThunkSequenceProto embedded_thunk = 1;
   repeated OptionalBufferAllocationSliceProto arguments = 2;
   repeated OptionalDynamicSliceOffsetsProto offsets = 3;
   repeated OptionalShapeProto orig_shapes = 4;
@@ -390,6 +390,10 @@ message CopyDoneThunkProto {
   int64 copy_start_instr_id = 2;
 }
 
+message SequentialThunkProto {
+  repeated ThunkProto thunks = 1;
+}
+
 message ThunkProto {
   ThunkInfoProto thunk_info = 1;
 
@@ -453,6 +457,6 @@ message ThunkProto {
   }
 }
 
-message SequentialThunkProto {
+message ThunkSequenceProto {
   repeated ThunkProto thunks = 1;
 }
