@@ -7,6 +7,8 @@ load(
     "@local_config_sycl//sycl:build_defs.bzl",
     "if_sycl_is_configured",
 )
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//xla:lit.bzl", "lit_test_suite")
 load(
     "//xla:xla.default.bzl",
@@ -1346,5 +1348,50 @@ xla_cc_binary(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+cc_binary(
+    name = "isolate_hlo",
+    srcs = ["isolate_hlo.cc"],
+    deps = [
+        ":hlo_decomposer_lib",
+        ":hlo_module_loader",
+        "//xla:debug_options_flags",
+        "//xla:status_macros",
+        "//xla:util",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
+        "//xla/service:hlo_graph_dumper",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:protobuf",
+    ],
+)
+
+sh_test(
+    name = "isolate_hlo_test",
+    srcs = ["isolate_hlo_test.sh"],
+    args = [
+        "$(location :isolate_hlo)",
+        "$(location @llvm-project//llvm:FileCheck)",
+        "$(location data/isolate_hlo_test.hlo)",
+    ],
+    data = [
+        "data/isolate_hlo_test.hlo",
+        ":isolate_hlo",
+        "@llvm-project//llvm:FileCheck",
     ],
 )
