@@ -61,6 +61,7 @@ class CudaStream : public StreamCommon {
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
   absl::Status BlockHostUntilDone() override;
+  absl::Status RefreshStatus() override;
 
   void SetName(std::string name) override;
 

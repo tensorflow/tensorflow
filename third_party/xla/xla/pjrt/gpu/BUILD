@@ -766,3 +766,46 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
     ],
 )
+
+xla_test(
+    name = "gpu_client_stream_error_test",
+    srcs = ["gpu_client_stream_error_test.cc"],
+    # Heap errors are expected for this test.
+    # When we have a cuda stream in an illegal state, and we attempt to do anything with it,
+    # it will error out. This includes trying to deregister host memory such as that for cuda
+    # events. Therefore, we disable heap checking for this test.
+    args = ["--heap_check="],
+    backends = [
+        "nvgpu_any",
+    ],
+    # Each test case is a separate process since cuda stream errors are sticky.
+    shard_count = 2,
+    tags = [
+        "gpu",
+        "no_oss",
+        "noasan",
+        "nomsan",
+    ],
+    deps = [
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

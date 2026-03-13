@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -126,14 +125,6 @@ absl::Status ThunkExecutor::ExecuteOnStream(
   return absl::OkStatus();
 }
 
-absl::Status ThunkExecutor::WalkNested(
-    absl::FunctionRef<absl::Status(const Thunk*)> callback) const {
-  for (auto& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->Walk(callback));
-  }
-  return absl::OkStatus();
-}
-
 //===----------------------------------------------------------------------===//
 // Tracking Thunk execution progress.
 //===----------------------------------------------------------------------===//
@@ -221,18 +212,19 @@ ThunkExecutor::ScopedProgressTracker::LastPendingThunks(size_t n) {
 }
 
 absl::StatusOr<ThunkExecutor::ScopedProgressTracker> InstallProgressTracker(
-    se::StreamExecutor* stream_executor, const ThunkExecutor& executor) {
+    se::StreamExecutor* stream_executor, ThunkExecutor& executor) {
   tsl::profiler::TraceMe trace("InstallProgressTracker");
 
   using ThunkProgress = ThunkExecutor::ScopedProgressTracker::ThunkProgress;
   absl::flat_hash_map<const Thunk*, ThunkProgress> progress_map;
 
-  RETURN_IF_ERROR(executor.WalkNested([&](const Thunk* thunk) -> absl::Status {
-    size_t index = progress_map.size();
-    ASSIGN_OR_RETURN(auto event, stream_executor->CreateEvent());
-    progress_map[thunk] = {index, absl::InfinitePast(), std::move(event)};
-    return absl::OkStatus();
-  }));
+  RETURN_IF_ERROR(
+      executor.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
+        size_t index = progress_map.size();
+        ASSIGN_OR_RETURN(auto event, stream_executor->CreateEvent());
+        progress_map[thunk] = {index, absl::InfinitePast(), std::move(event)};
+        return absl::OkStatus();
+      }));
 
   XLA_VLOG_DEVICE(1, stream_executor->device_ordinal()) << absl::StreamFormat(
       "Installed progress tracker for %d thunks", progress_map.size());
