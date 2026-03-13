@@ -25,7 +25,7 @@ load(
     "tf_cuda_tests_tags",
     "tf_exec_properties",
 )
-load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
+load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "is_bzlmod_enabled", "tf_wheel", "tf_wheel_dep")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -365,6 +365,39 @@ tf_wheel(
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
         ":xla_cmake",
     ],
+    external_repos = [
+        "com_google_absl",
+        "eigen_archive",
+        "jsoncpp_git",
+        "com_google_protobuf",
+        "xla",
+        "tsl",
+        "llvm-project",
+        "cpuinfo",
+        "FXdiv",
+        "net_zstd",
+        "org_brotli",
+        "pthreadpool",
+        "riegeli",
+        "XNNPACK",
+        "pypi",
+        "local_config_cuda",
+        "local_config_tensorrt",
+        "cuda_cccl",
+        "cuda_cublas",
+        "cuda_cudart",
+        "cuda_cudnn",
+        "cuda_cufft",
+        "cuda_cupti",
+        "cuda_curand",
+        "cuda_cusolver",
+        "cuda_cusparse",
+        "cuda_nvcc",
+        "cuda_nvml",
+        "cuda_nvrtc",
+        "cuda_nvtx",
+        "cuda_nvjitlink",
+    ],
 )
 
 genrule(
@@ -419,6 +452,7 @@ py_test(
     ],
     deps = [
         ":tf_py_import",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
 
