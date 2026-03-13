@@ -254,9 +254,17 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     CancellationToken token = CancellationManager::kInvalidToken;
     bool already_cancelled = false;
     if (cm != nullptr) {
+      // Take a reference for the cancellation callback so that it does not
+      // access LocalRendezvous after it is destroyed. It's dropped either
+      // at the end of the callback, or when callback registration fails,
+      // or when the cancellation callback is cancelled.
+      if (rc_owner_) {
+        rc_owner_->Ref();
+      }
       token = cm->get_cancellation_token();
       already_cancelled = !cm->RegisterCallback(token, [this, token, key_hash,
                                                         &bucket] {
+        tsl::core::RefCountPtr<Rendezvous> rc_owner(rc_owner_);
         Item* item = nullptr;
         {
           mutex_lock l(bucket.mu);
@@ -312,6 +320,9 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       done(StatusGroup::MakeDerived(
                errors::Cancelled("RecvAsync is cancelled.")),
            Rendezvous::Args(), recv_args, Tensor(), /*is_dead=*/false);
+      if (rc_owner_) {
+        rc_owner_->Unref();
+      }
       return;
     }
 
@@ -346,7 +357,9 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
             // StartAbort, Unref will happen inside the cancellation callback
             // when called by the CM.
             if (cm->TryDeregisterCallback(token)) {
-              // Ignore the return value.
+              if (rc_owner_) {
+                rc_owner_->Unref();
+              }
             }
             done(s, send_args, recv_args, v, dead);
           },
