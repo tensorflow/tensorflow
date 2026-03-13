@@ -593,7 +593,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   if (!target.IsReplicatedOrSingleDevice() &&
-      sharding().ReplicateOnLastTileDim()) {
+      sharding().HasPartialReplication()) {
     auto try_reshard = ReshardFromPartialReplicateWithDynamicSlice(target);
     if (try_reshard.has_value()) {
       return try_reshard.value();
@@ -605,7 +605,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   if (!sharding().IsReplicatedOrSingleDevice() &&
-      target.ReplicateOnLastTileDim()) {
+      target.HasPartialReplication()) {
     auto try_reshard = ReshardToPartialReplicateWithAllGather(target);
     if (try_reshard.has_value()) {
       return try_reshard.value();
@@ -1529,7 +1529,7 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
     const HloSharding& target) const {
-  if (!sharding().ReplicateOnLastTileDim()) {
+  if (!sharding().HasPartialReplication()) {
     return std::nullopt;
   }
 
@@ -2223,17 +2223,17 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardPartialReplicateWithAllToAll(
     const HloSharding& target) const {
-  bool source_is_partial_replicate = sharding().ReplicateOnLastTileDim();
+  bool source_is_partial_replicate = sharding().HasPartialReplication();
   const auto& partial_replicate_sharding =
       source_is_partial_replicate ? sharding() : target;
   // If neither the source nor the target is partial replicate, return null.
-  if (!partial_replicate_sharding.ReplicateOnLastTileDim()) {
+  if (!partial_replicate_sharding.HasPartialReplication()) {
     return std::nullopt;
   }
   const auto& tile_sharding = source_is_partial_replicate ? target : sharding();
   // If both source and target are partial replicate, should be supported in
   // Reshard with AllToAll already.
-  if (tile_sharding.ReplicateOnLastTileDim() ||
+  if (tile_sharding.HasPartialReplication() ||
       tile_sharding.IsReplicatedOrSingleDevice()) {
     return std::nullopt;
   }
