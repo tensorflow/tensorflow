@@ -3899,7 +3899,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       newOperand->set_sharding(hlo->sharding());
     }
   } else if (update_tensor->opcode() == HloOpcode::kSlice) {
-    bool slice_expand_ellgible = true;
+    bool slice_expand_eligible = true;
     const xla::HloSliceInstruction* slice =
         DynCast<HloSliceInstruction>(update_tensor);
     const xla::HloDynamicUpdateSliceInstruction* dus =
@@ -3926,7 +3926,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       int64_t dus_limit = dus->operand(0)->shape().dimensions(i);
 
       if (slice_stride != 1) {
-        slice_expand_ellgible = false;
+        slice_expand_eligible = false;
         break;
       }
 
@@ -3961,7 +3961,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
         padding_dim->set_edge_padding_high(dus_limit - new_ending);
       }
     }
-    if (slice_expand_ellgible) {
+    if (slice_expand_eligible) {
       PartitionedHlo replacement = GetPartitionedHlo(slice->operand(0));
       if (needs_slice) {
         TF_ASSIGN_OR_RETURN(Shape new_shape,
