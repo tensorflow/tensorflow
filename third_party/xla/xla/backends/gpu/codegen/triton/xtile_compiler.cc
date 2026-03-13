@@ -120,6 +120,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
@@ -444,9 +445,10 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
         "(num_warps, num_ctas, num_stages) must be positive, but got: (",
         num_warps, ", ", num_ctas, ", ", num_stages, ")"));
   }
-  const bool enable_pdl = hlo_config.debug_options().xla_gpu_enable_pdl() &&
-                          gpu_cc.IsCuda() &&
-                          gpu_cc.cuda_compute_capability()->IsAtLeastHopper();
+  const bool enable_pdl =
+      hlo_config.debug_options().xla_gpu_enable_pdl() && gpu_cc.IsCuda() &&
+      gpu_cc.cuda_compute_capability()->IsAtLeastHopper() &&
+      device_info.driver_version() >= se::SemanticVersion{12, 3, 0};
   CreateTritonXlaPipeline(&pm, gpu_cc, /*rewrite_int4=*/is_xla_fusion,
                           block_level_parameters.is_tma_allowed, num_stages,
                           block_level_parameters.is_warp_specialization_allowed,

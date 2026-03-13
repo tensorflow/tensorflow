@@ -138,7 +138,8 @@ bool EnablePDL(const HloModule& module, const se::DeviceDescription& device) {
          device.gpu_compute_capability().IsCuda() &&
          device.gpu_compute_capability()
              .cuda_compute_capability()
-             ->IsAtLeastHopper();
+             ->IsAtLeastHopper() &&
+         device.driver_version() >= se::SemanticVersion{12, 3, 0};
 }
 
 void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
