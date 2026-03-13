@@ -81,10 +81,10 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_fusion_test",
     srcs = ["cpu_fusion_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
     deps = [
         "//xla:error_spec",
         "//xla:literal",
@@ -94,9 +94,8 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
-        "//xla/service:cpu_plugin",
         "//xla/service/cpu:cpu_instruction_fusion",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
