@@ -19,11 +19,11 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
+        "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
+        # copybara:uncomment "@llvm-project//mlir:run_lit.sh",
         "//tensorflow/compiler/mlir:tf-mlir-translate",
         "//tensorflow/compiler/mlir:tf-opt",
         "//tensorflow/compiler/mlir/tfrt:tf-tfrt-opt",
-        "@llvm-project//llvm:FileCheck",
-        "@llvm-project//llvm:not",
-        "@llvm-project//mlir:run_lit.sh",
     ],
 )

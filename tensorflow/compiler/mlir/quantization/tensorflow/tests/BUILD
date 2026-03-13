@@ -16,7 +16,6 @@ filegroup(
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf-quant-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
-        "@llvm-project//mlir:run_lit.sh",
     ],
 )
 

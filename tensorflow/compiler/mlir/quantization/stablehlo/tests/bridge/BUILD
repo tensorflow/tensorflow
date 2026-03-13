@@ -27,9 +27,9 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir/quantization/stablehlo:stablehlo-quant-opt",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
-        "@llvm-project//mlir:run_lit.sh",
+        # copybara:uncomment "@llvm-project//mlir:run_lit.sh",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:stablehlo-quant-opt",
     ],
 )

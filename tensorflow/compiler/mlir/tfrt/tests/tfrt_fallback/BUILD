@@ -14,7 +14,7 @@ filegroup(
         "//tensorflow/core/runtime_fallback/util:fallback_test_util",
         "@llvm-project//llvm:FileCheck",
         "@llvm-project//llvm:not",
-        "@llvm-project//mlir:run_lit.sh",
+        # copybara:uncomment "@llvm-project//mlir:run_lit.sh",
         "@tf_runtime//tools:tfrt_translate",
     ],
 )

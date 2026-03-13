@@ -27,11 +27,11 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
+        "@llvm-project//llvm:FileCheck",
+        # copybara:uncomment "@llvm-project//mlir:run_lit.sh",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
         "//tensorflow/compiler/mlir/lite/stablehlo:odml-to-stablehlo-opt",
         "//tensorflow/compiler/mlir/lite/stablehlo:odml_to_stablehlo",
-        "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
     ],
 )
