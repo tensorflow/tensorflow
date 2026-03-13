@@ -194,7 +194,7 @@ std::vector<AxisRef> GetOrderedAxisRefs(const NamedSharding& sharding) {
 
 }  // namespace
 
-HloSharding HloSharding::AssignDevice(int64_t device_id,
+HloSharding HloSharding::SingleDevice(int64_t device_id,
                                       absl::Span<const OpMetadata> metadata,
                                       bool use_named_sharding) {
   if (use_named_sharding) {
@@ -886,7 +886,7 @@ absl::Status HloSharding::ValidateNonTuple(
     return absl::InvalidArgumentError(
         "Tile assignment only contains a single device. If a replicated "
         "sharding was intended, use HloSharding::Replicated(). If a device "
-        "placement was intended, use HloSharding::AssignDevice()");
+        "placement was intended, use HloSharding::SingleDevice()");
   }
 
   // The tile assignment tensor must have the same rank as the tiled data rank.
@@ -1288,7 +1288,7 @@ OpSharding HloSharding::ToProto() const {
     return HloSharding::Replicate(metadata);
   }
   if (sharding.IsSingleDevice()) {
-    return HloSharding::AssignDevice(mesh.device_assignment()(0), metadata);
+    return HloSharding::SingleDevice(mesh.device_assignment()(0), metadata);
   }
 
   std::vector<int64_t> tile_assignment_dims;

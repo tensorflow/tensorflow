@@ -4571,7 +4571,7 @@ bool HloParserImpl::ParseSingleSharding(std::optional<HloSharding>& sharding,
       return Error(loc,
                    "maximal shardings should have exactly one device assigned");
     }
-    sharding = HloSharding::AssignDevice(devices[0], metadata);
+    sharding = HloSharding::SingleDevice(devices[0], metadata);
   } else if (manual) {
     if (!devices.empty()) {
       return Error(loc,

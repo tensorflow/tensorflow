@@ -186,11 +186,11 @@ absl::Status CustomCallBatchPartitioner::Partition(
     if (hlo->shape().IsTuple()) {
       std::vector<HloSharding> subshardings(
           hlo->sharding().tuple_elements().size(),
-          HloSharding::AssignDevice(0));
+          HloSharding::SingleDevice(0));
       partitioned_hlo->set_sharding(
           HloSharding::Tuple(hlo->shape(), subshardings));
     } else {
-      partitioned_hlo->set_sharding(HloSharding::AssignDevice(0));
+      partitioned_hlo->set_sharding(HloSharding::SingleDevice(0));
     }
     spmd::PartitionedHlo result_partitioned = spmd::PartitionedHlo(
         partitioned_hlo, hlo->shape(), partitioner->MakePartitioningState());

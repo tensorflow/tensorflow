@@ -1065,10 +1065,10 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
       if (hlo->shape().IsTuple()) {
         std::vector<HloSharding> subshardings(
             hlo->sharding().tuple_elements().size(),
-            HloSharding::AssignDevice(0));
+            HloSharding::SingleDevice(0));
         instr->set_sharding(HloSharding::Tuple(hlo->shape(), subshardings));
       } else {
-        instr->set_sharding(HloSharding::AssignDevice(0));
+        instr->set_sharding(HloSharding::SingleDevice(0));
       }
       return instr;
     });

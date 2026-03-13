@@ -1730,7 +1730,7 @@ class HloInstruction {
   void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.
   void set_device_sharding(int64_t device) {
-    set_single_sharding(HloSharding::AssignDevice(device));
+    set_single_sharding(HloSharding::SingleDevice(device));
   }
   // Remove any sharding from this operator.
   void clear_sharding() { sharding_ = nullptr; }

@@ -386,7 +386,7 @@ HloSharding convertToHloSharding(
   if (mesh.getAxes().empty()) {
     return mesh.getDeviceIds().empty()
                ? HloSharding::Replicate()
-               : HloSharding::AssignDevice(mesh.getDeviceIds().front());
+               : HloSharding::SingleDevice(mesh.getDeviceIds().front());
   }
 
   SmallVector<int64_t> tileAssignmentDims(sdySharding.getRank(), 1);

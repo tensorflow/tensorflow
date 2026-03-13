@@ -1399,7 +1399,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     std::vector<int64_t> dev_indices(grouped.sharding.num_dimensions(), 0);
     // TODO(b/476984041): Update tile_assignment() use case once GroupedSharding
     // supports HloShardingV3
-    hlo_->set_sharding(HloSharding::AssignDevice(
+    hlo_->set_sharding(HloSharding::SingleDevice(
         grouped.sharding.tile_assignment()(dev_indices)));
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
         state(), grouped.device_groups, state().b);
@@ -2470,7 +2470,7 @@ absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   // specific device or replicated.
   const HloSharding base_sharding = [&]() {
     if (hlo->sharding().IsSingleDevice()) {
-      return HloSharding::AssignDevice(hlo->sharding().GetUniqueDevice());
+      return HloSharding::SingleDevice(hlo->sharding().GetUniqueDevice());
     }
     return HloSharding::Replicate();
   }();
@@ -2519,7 +2519,7 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       for (HloSharding& subsharding : subshardings) {
         // Delay manual sharding substitution for CustomCalls.
         if (subsharding.IsManual() && opcode != HloOpcode::kCustomCall) {
-          subsharding = HloSharding::AssignDevice(0);
+          subsharding = HloSharding::SingleDevice(0);
         }
       }
       return HloSharding::Tuple(shape, subshardings);
@@ -2527,7 +2527,7 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
     // Delay manual sharding substitution for CustomCalls and PartitionIds.
     if (sharding.IsManual() && opcode != HloOpcode::kCustomCall &&
         opcode != HloOpcode::kPartitionId) {
-      return HloSharding::AssignDevice(0);
+      return HloSharding::SingleDevice(0);
     }
     return sharding;
   };
@@ -3451,7 +3451,7 @@ absl::Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
 absl::Status SpmdPartitioningVisitor::HandleSingleDevice(
     const HloInstruction* hlo) {
   int64_t device = hlo->sharding().GetUniqueDevice();
-  const HloSharding sharding = HloSharding::AssignDevice(device);
+  const HloSharding sharding = HloSharding::SingleDevice(device);
 
   std::vector<HloInstruction*> operands;
   std::vector<const Shape*> operand_shapes;
@@ -4661,7 +4661,7 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   if (hlo->sharding().IsReplicated()) {
     SetPartitionedHlo(hlo, [&] {
       // Run on a single device (0) and distribute the data to all other cores.
-      auto clone = clone_from_original(HloSharding::AssignDevice(0));
+      auto clone = clone_from_original(HloSharding::SingleDevice(0));
       return PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
           .Replicate()
           .hlo();
@@ -4696,7 +4696,7 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
     auto rng = b_.AddInstruction(HloInstruction::CreateRng(
         MakePartitionedShape(hlo->shape(), hlo->sharding()),
         hlo->random_distribution(), new_operands));
-    rng->set_sharding(HloSharding::AssignDevice(0));
+    rng->set_sharding(HloSharding::SingleDevice(0));
     SetPartitionedHlo(hlo, [&]() {
       return PartitionedHlo(rng, rng->shape(), per_group_state)
           .Replicate()
@@ -5031,7 +5031,7 @@ absl::StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
 
 absl::Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
   if (hlo->has_sharding() && hlo->sharding().IsManual()) {
-    hlo->set_sharding(HloSharding::AssignDevice(0));
+    hlo->set_sharding(HloSharding::SingleDevice(0));
     return DefaultAction(hlo);
   }
 
@@ -5745,7 +5745,7 @@ absl::Status SpmdPartitioner::PreprocessSharding(
         if (hlo->opcode() == HloOpcode::kRng) {
           hlo->set_sharding(enable_hlo_sharding_v3
                                 ? HloSharding(NamedSharding::SingleDevice(0))
-                                : HloSharding::AssignDevice(0));
+                                : HloSharding::SingleDevice(0));
         } else {
           hlo->set_sharding(HloSharding::Single(
               hlo->shape(), enable_hlo_sharding_v3

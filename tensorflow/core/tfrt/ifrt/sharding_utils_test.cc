@@ -89,7 +89,7 @@ xla::HloSharding PartialTile(absl::Span<const int64_t> dims) {
 }
 xla::HloSharding Replicate() { return xla::HloSharding::Replicate(); }
 xla::HloSharding Maximal(int64_t device_index = 0) {
-  return xla::HloSharding::AssignDevice(device_index);
+  return xla::HloSharding::SingleDevice(device_index);
 }
 
 // Wrapper function to build int4 tensor

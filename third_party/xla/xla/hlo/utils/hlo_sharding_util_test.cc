@@ -734,7 +734,7 @@ TEST(HloShardingUtilTest, ReshapeShardingDimensionSizeOnePartitioned5) {
 TEST(HloShardingUtilTest, ReshapeShardingMaximal) {
   Shape input_shape = ShapeUtil::MakeShape(F32, {2, 3, 5});
   Shape output_shape = ShapeUtil::MakeShape(F32, {3, 5, 2});
-  HloSharding sharding = HloSharding::AssignDevice(7);
+  HloSharding sharding = HloSharding::SingleDevice(7);
   std::optional<HloSharding> result =
       ReshapeSharding(input_shape, output_shape, sharding);
   EXPECT_EQ(result, sharding);

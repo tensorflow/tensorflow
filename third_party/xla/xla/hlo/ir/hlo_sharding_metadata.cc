@@ -267,7 +267,7 @@ absl::StatusOr<bool> ApplyShardingFromUsers(
   // In any case, kUnassignedDevice is never propagated, from the implementation
   // of AssignLeafSharding.
   ShapeTree<HloSharding> sharding_tree(
-      instruction->shape(), HloSharding::AssignDevice(kUnassignedDevice));
+      instruction->shape(), HloSharding::SingleDevice(kUnassignedDevice));
   for (HloInstruction* user : instruction->users()) {
     if (user->opcode() == HloOpcode::kDomain &&
         domain.exit_domains.contains(user)) {

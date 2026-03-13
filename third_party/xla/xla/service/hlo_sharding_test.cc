@@ -91,7 +91,7 @@ TEST_P(HloShardingRepresentationTest, Replicate) {
 
 TEST_P(HloShardingRepresentationTest, DevicePlacement) {
   bool use_named_sharding = GetParam();
-  HloSharding sharding = HloSharding::AssignDevice(5, {}, use_named_sharding);
+  HloSharding sharding = HloSharding::SingleDevice(5, {}, use_named_sharding);
   EXPECT_EQ(sharding.UseNamedShardingLeaf(), use_named_sharding);
   EXPECT_FALSE(sharding.IsReplicated());
   EXPECT_TRUE(sharding.IsReplicatedOrSingleDevice());
@@ -102,8 +102,8 @@ TEST_P(HloShardingRepresentationTest, DevicePlacement) {
   HloSharding other = HloSharding::Replicate({}, use_named_sharding);
   EXPECT_NE(other, sharding);
   // Shardings are compared regardless of representation.
-  EXPECT_EQ(HloSharding::AssignDevice(5),
-            HloSharding::AssignDevice(5, {}, /*use_named_sharding=*/true));
+  EXPECT_EQ(HloSharding::SingleDevice(5),
+            HloSharding::SingleDevice(5, {}, /*use_named_sharding=*/true));
 
   EXPECT_IS_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4}),
                                  /*num_devices=*/6));
@@ -604,7 +604,7 @@ TEST_P(HloShardingRepresentationTest, EmptySingleTuple) {
   bool use_named_sharding = GetParam();
   HloSharding sharding = HloSharding::SingleTuple(
       ShapeUtil::MakeTupleShape({}),
-      HloSharding::AssignDevice(0, {}, use_named_sharding));
+      HloSharding::SingleDevice(0, {}, use_named_sharding));
   EXPECT_TRUE(sharding.ExtractSingleSharding());
   EXPECT_EQ(sharding.ExtractSingleSharding()->UseNamedShardingLeaf(),
             use_named_sharding);
@@ -615,7 +615,7 @@ TEST_P(HloShardingRepresentationTest, EmptySingleTupleIsNotShardGroup) {
   bool use_named_sharding = GetParam();
   HloSharding sharding = HloSharding::SingleTuple(
       ShapeUtil::MakeTupleShape({}),
-      HloSharding::AssignDevice(0, {}, use_named_sharding));
+      HloSharding::SingleDevice(0, {}, use_named_sharding));
   EXPECT_FALSE(sharding.IsShardGroup());
   EXPECT_FALSE(sharding.IsShardAs());
   EXPECT_FALSE(sharding.IsShardLike());
@@ -637,14 +637,14 @@ TEST_F(HloShardingTest, NestedTuple) {
   OpSharding proto;
   proto.set_type(OpSharding::TUPLE);
   *proto.add_tuple_shardings() = HloSharding::Replicate().ToProto();
-  *proto.add_tuple_shardings() = HloSharding::AssignDevice(0).ToProto();
+  *proto.add_tuple_shardings() = HloSharding::SingleDevice(0).ToProto();
   *proto.add_tuple_shardings() = tiled_sharding.ToProto();
   HloSharding tuple_sharding = HloSharding::FromProto(proto).value();
 
   ShapeTree<HloSharding> shape_tree =
       tuple_sharding.GetAsShapeTree(nested_tuple_shape);
   EXPECT_EQ(shape_tree.element({0}), HloSharding::Replicate());
-  EXPECT_EQ(shape_tree.element({1, 0}), HloSharding::AssignDevice(0));
+  EXPECT_EQ(shape_tree.element({1, 0}), HloSharding::SingleDevice(0));
   EXPECT_EQ(shape_tree.element({2}), tiled_sharding);
 
   EXPECT_IS_OK(tuple_sharding.Validate(nested_tuple_shape, /*num_devices=*/2));
@@ -693,14 +693,14 @@ TEST_F(HloShardingTest, Hash) {
   }
 
   {
-    HloSharding sharding1 = HloSharding::AssignDevice(1);
-    HloSharding sharding2 = HloSharding::AssignDevice(1);
+    HloSharding sharding1 = HloSharding::SingleDevice(1);
+    HloSharding sharding2 = HloSharding::SingleDevice(1);
     EXPECT_TRUE(hash_compare_equal(sharding1, sharding2));
   }
 
   {
-    HloSharding sharding1 = HloSharding::AssignDevice(1);
-    HloSharding sharding2 = HloSharding::AssignDevice(2);
+    HloSharding sharding1 = HloSharding::SingleDevice(1);
+    HloSharding sharding2 = HloSharding::SingleDevice(2);
     EXPECT_FALSE(hash_compare_equal(sharding1, sharding2));
   }
 
@@ -744,7 +744,7 @@ TEST_F(HloShardingTest, Hash) {
     ShapeTree<HloSharding> shape_tree2(
         ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4})}),
         default_sharding);
-    *shape_tree2.mutable_element({0}) = HloSharding::AssignDevice(0);
+    *shape_tree2.mutable_element({0}) = HloSharding::SingleDevice(0);
     HloSharding sharding1 = HloSharding::Tuple(shape_tree1);
     HloSharding sharding2 = HloSharding::Tuple(shape_tree2);
     EXPECT_FALSE(hash_compare_equal(sharding1, sharding2));
@@ -754,11 +754,11 @@ TEST_F(HloShardingTest, Hash) {
     ShapeTree<HloSharding> shape_tree1(
         ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4})}),
         default_sharding);
-    *shape_tree1.mutable_element({0}) = HloSharding::AssignDevice(0);
+    *shape_tree1.mutable_element({0}) = HloSharding::SingleDevice(0);
     ShapeTree<HloSharding> shape_tree2(
         ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {4})}),
         default_sharding);
-    *shape_tree2.mutable_element({0}) = HloSharding::AssignDevice(0);
+    *shape_tree2.mutable_element({0}) = HloSharding::SingleDevice(0);
     HloSharding sharding1 = HloSharding::Tuple(shape_tree1);
     HloSharding sharding2 = HloSharding::Tuple(shape_tree2);
     EXPECT_TRUE(hash_compare_equal(sharding1, sharding2));
@@ -794,7 +794,7 @@ INSTANTIATE_TEST_SUITE_P(
             "{replicated metadata={{op_name=\"b\"}, {op_name=\"c\"}}}")));
 
 TEST_F(HloShardingTest, ToStringAssignDeviceTest) {
-  HloSharding sharding = HloSharding::AssignDevice(7);
+  HloSharding sharding = HloSharding::SingleDevice(7);
   EXPECT_EQ(sharding.ToString(), "{maximal device=7}");
 }
 
@@ -802,7 +802,7 @@ class HloAssignDeviceShardingWithMetadataTest
     : public ::testing::TestWithParam<ShardingWithMetadataParamType> {};
 
 TEST_P(HloAssignDeviceShardingWithMetadataTest, ToStringTest) {
-  HloSharding sharding = HloSharding::AssignDevice(7, std::get<0>(GetParam()));
+  HloSharding sharding = HloSharding::SingleDevice(7, std::get<0>(GetParam()));
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/false),
             "{maximal device=7}");
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true),
@@ -858,7 +858,7 @@ TEST_F(HloShardingTest, ToStringTupleTest) {
                                  ShapeUtil::MakeShape(U32, {7, 25}),
                                  ShapeUtil::MakeShape(S32, {9, 11})}),
       {HloSharding::Replicate(), HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
-       HloSharding::AssignDevice(3)});
+       HloSharding::SingleDevice(3)});
   EXPECT_EQ(sharding.ToString(),
             "{{replicated}, {devices=[1,2]3,5}, {maximal device=3}}");
 }
@@ -871,7 +871,7 @@ TEST_F(HloShardingTest, ToStringTupleWithMetadataTest) {
                                  ShapeUtil::MakeShape(S32, {9, 11})}),
       {HloSharding::Replicate({GetMetadata("d")}),
        HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
-       HloSharding::AssignDevice(3, {GetMetadata("e")})});
+       HloSharding::SingleDevice(3, {GetMetadata("e")})});
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/false),
             "{{replicated}, {devices=[1,2]3,5}, {maximal device=3}}");
   EXPECT_EQ(sharding.ToString(/*include_metadata=*/true),
@@ -921,7 +921,7 @@ TEST_P(HloParseShardingWithMetadataTest, ParseHloString) {
     EXPECT_EQ(sharding, parsed_sharding);
   };
   check(HloSharding::Replicate(GetParam()));
-  check(HloSharding::AssignDevice(2, GetParam()));
+  check(HloSharding::SingleDevice(2, GetParam()));
   check(HloSharding::Tile(Array4D<int64_t>({{{{0}, {1}}}}), GetParam()));
   // Empty tuple. One sharding is required for empty tuples, as we need to be
   // able to assign sharding to them, even though they have no leaves.
@@ -936,7 +936,7 @@ TEST_P(HloParseShardingWithMetadataTest, ParseHloString) {
     check(HloSharding::Tuple(
         tuple_shape,
         {HloSharding::Tile(Array4D<int64_t>({{{{0}, {1}}}})),
-         HloSharding::Replicate(GetParam()), HloSharding::AssignDevice(1)}));
+         HloSharding::Replicate(GetParam()), HloSharding::SingleDevice(1)}));
   }
   {
     // Nested tuple.
@@ -946,7 +946,7 @@ TEST_P(HloParseShardingWithMetadataTest, ParseHloString) {
                                     ShapeUtil::MakeShape(F32, {3, 7})})});
     std::vector<HloSharding> leaf_shardings = {
         HloSharding::Tile(Array4D<int64_t>({{{{0}, {1}}}})),
-        HloSharding::Replicate(), HloSharding::AssignDevice(1, GetParam())};
+        HloSharding::Replicate(), HloSharding::SingleDevice(1, GetParam())};
     ShapeTree<HloSharding> sharding_tree(tuple_shape, HloSharding::Replicate());
     // Assign leaf_shardings to sharding_tree leaves.
     auto it = leaf_shardings.begin();
@@ -972,7 +972,7 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
   }
 
   {
-    HloSharding sharding = HloSharding::AssignDevice(7, SingleMetadata());
+    HloSharding sharding = HloSharding::SingleDevice(7, SingleMetadata());
     auto sharding_new_metadata =
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/false);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 1);
@@ -987,7 +987,7 @@ TEST_F(HloShardingTest, WithMetadataNoOverwrite) {
                                    ShapeUtil::MakeShape(S32, {9, 11})}),
         {HloSharding::Replicate(SingleMetadata()),
          HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
-         HloSharding::AssignDevice(3, SingleMetadata())});
+         HloSharding::SingleDevice(3, SingleMetadata())});
     auto sharding_new_metadata =
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/false);
     EXPECT_TRUE(sharding_new_metadata.metadata().empty());
@@ -1021,7 +1021,7 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
   }
 
   {
-    HloSharding sharding = HloSharding::AssignDevice(7, SingleMetadata());
+    HloSharding sharding = HloSharding::SingleDevice(7, SingleMetadata());
     auto sharding_new_metadata =
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/true);
     ASSERT_EQ(sharding_new_metadata.metadata().size(), 2);
@@ -1038,7 +1038,7 @@ TEST_F(HloShardingTest, WithMetadataOverwrite) {
                                    ShapeUtil::MakeShape(S32, {9, 11})}),
         {HloSharding::Replicate(SingleMetadata()),
          HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
-         HloSharding::AssignDevice(3, SingleMetadata())});
+         HloSharding::SingleDevice(3, SingleMetadata())});
     auto sharding_new_metadata =
         sharding.WithMetadata(ListMetadata(), /*overwrite=*/true);
     EXPECT_TRUE(sharding_new_metadata.metadata().empty());
@@ -1062,7 +1062,7 @@ TEST_F(HloShardingTest, WithoutMetadata) {
   }
 
   {
-    HloSharding sharding = HloSharding::AssignDevice(7, SingleMetadata());
+    HloSharding sharding = HloSharding::SingleDevice(7, SingleMetadata());
     auto sharding_no_metadata = sharding.WithoutMetadata();
     EXPECT_TRUE(sharding_no_metadata.metadata().empty());
   }
@@ -1074,7 +1074,7 @@ TEST_F(HloShardingTest, WithoutMetadata) {
                                    ShapeUtil::MakeShape(S32, {9, 11})}),
         {HloSharding::Replicate(SingleMetadata()),
          HloSharding::Tile(Array2D<int64_t>({{3, 5}})),
-         HloSharding::AssignDevice(3, ListMetadata())});
+         HloSharding::SingleDevice(3, ListMetadata())});
     auto sharding_no_metadata = sharding.WithoutMetadata();
     EXPECT_TRUE(sharding_no_metadata.metadata().empty());
     ASSERT_TRUE(sharding_no_metadata.IsTuple());
@@ -1094,7 +1094,7 @@ TEST(V3ToV2Sharding, Replicated) {
 TEST(V3ToV2Sharding, Maximal) {
   Mesh mesh(5);
   NamedSharding ns(mesh);
-  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns), HloSharding::AssignDevice(5));
+  EXPECT_EQ(HloSharding::V3ToV2Sharding(ns), HloSharding::SingleDevice(5));
 }
 
 TEST(V3ToV2Sharding, SimpleIotaTile) {
@@ -1254,7 +1254,7 @@ TEST_F(HloShardingTest, ToNamedShardingReplicated) {
 }
 
 TEST_F(HloShardingTest, ToNamedShardingMaximal) {
-  HloSharding hlo_sharding = HloSharding::AssignDevice(5);
+  HloSharding hlo_sharding = HloSharding::SingleDevice(5);
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
   EXPECT_TRUE(named_sharding.IsSingleDevice());
@@ -1351,7 +1351,7 @@ TEST_P(HloShardingV2ToV3ToV2RoundTripTest, RoundTrip) {
 INSTANTIATE_TEST_SUITE_P(
     V2ToV3ToV2RoundTrip, HloShardingV2ToV3ToV2RoundTripTest,
     ::testing::Values(
-        HloSharding::Replicate(), HloSharding::AssignDevice(3),
+        HloSharding::Replicate(), HloSharding::SingleDevice(3),
         HloSharding::IotaTile({2, 4}), HloSharding::IotaTile({2, 4}, {8}, {0}),
         HloSharding::Subgroup(TileAssignment({2, 2}),
                               {OpSharding::MANUAL, OpSharding::REPLICATED}),

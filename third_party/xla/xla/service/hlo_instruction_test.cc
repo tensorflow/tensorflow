@@ -1008,7 +1008,7 @@ TEST_F(HloInstructionTest, PreserveTupleShapeThroughClone) {
 }
 
 TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
@@ -1030,7 +1030,7 @@ TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
 
 TEST_F(HloInstructionTest,
        DoNotPreserveShardingThroughTupleTreeIncompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
@@ -1050,7 +1050,7 @@ TEST_F(HloInstructionTest,
 
 TEST_F(HloInstructionTest,
        DoNotPreserveShardingThroughLeafRankIncompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({

@@ -83,7 +83,7 @@ class HloSharding {
 
   // Creates a sharding that emulates device placement; a tile shape equal to
   // the input shape (one tile) assigned to a single device.
-  static HloSharding AssignDevice(int64_t device_id,
+  static HloSharding SingleDevice(int64_t device_id,
                                   absl::Span<const OpMetadata> metadata = {},
                                   bool use_named_sharding = false);
 
