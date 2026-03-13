@@ -55,7 +55,6 @@ struct TritonWrapperResult {
   int64_t global_scratch_memory_size = 0;
   se::gpu::TmaMetadata tma_metadata;
   se::ThreadDim thread_dims;
-  bool use_pdl = false;
 
   // The captured nvvm.annotations from the lowest level LLVM IR coming from
   // Triton. We need to propagate them because we later create the kernel and

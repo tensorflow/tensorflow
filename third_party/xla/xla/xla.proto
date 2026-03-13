@@ -574,9 +574,6 @@ message DebugOptions {
   // Enable NCCL user buffers.
   optional bool xla_gpu_enable_nccl_user_buffers = 267;
 
-  // Enable PDL - Programmatic Dependent Launch.
-  optional bool xla_gpu_enable_pdl = 460;
-
   optional bool xla_gpu_enable_pipelined_all_gather = 227;
 
   optional bool xla_gpu_enable_pipelined_all_reduce = 217;
@@ -1421,7 +1418,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 461
+  // Next id: 460
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

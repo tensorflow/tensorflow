@@ -100,8 +100,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec);
 // The canonical storage for ptx should outlive the lifetime of the kernel.
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     std::string kernel_name, uint64_t num_args, absl::string_view ptx,
-    se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes = 0,
-    bool use_pdl = false);
+    se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes = 0);
 
 // Creates a kernel with a provided name, based from provided CUBIN in
 // cubin_data. The kernel should be executed using the provided executor.
@@ -110,7 +109,7 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     std::string kernel_name, uint64_t num_args,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
-    uint32_t shared_mem_bytes = 0, bool use_pdl = false);
+    uint32_t shared_mem_bytes = 0);
 
 // Runs loaded kernel on the stream with the provided arguments.
 absl::Status ExecuteKernelOnStream(

@@ -170,8 +170,7 @@ class LaunchCmd : public Command {
             absl::Span<const BufferUse::MemoryAccess> args_access,
             LaunchDimensions dims, int64_t shmem_bytes,
             std::optional<stream_executor::gpu::TmaMetadata> tma_metadata =
-                std::nullopt,
-            bool use_pdl = false);
+                std::nullopt);
 
   absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
@@ -181,7 +180,6 @@ class LaunchCmd : public Command {
       se::CommandBuffer* command_buffer) override;
 
   BufferUses buffer_uses() const override;
-  bool use_pdl() const { return use_pdl_; }
 
  private:
   std::string kernel_name_;
@@ -190,8 +188,6 @@ class LaunchCmd : public Command {
   LaunchDimensions dims_;
   int64_t shmem_bytes_;
   std::optional<stream_executor::gpu::TmaMetadata> tma_metadata_;
-  // Programmatic Dependent Launch.
-  bool use_pdl_;
 
   // Command sequence can be recorded concurrently for multiple command buffers
   // on different stream executors and we need to synchronize mutable state.
