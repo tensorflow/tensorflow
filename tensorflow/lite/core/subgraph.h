@@ -668,7 +668,7 @@ class Subgraph {
     // Constructor should be called with the non-nullptr profiler argument.
     SubgraphAwareProfiler(Profiler* profiler, int64_t subgraph_index)
         : profiler_(profiler), subgraph_index_(subgraph_index) {}
-    ~SubgraphAwareProfiler() override {}
+    ~SubgraphAwareProfiler() override = default;
 
     uint32_t BeginEvent(const char* tag, EventType event_type,
                         int64_t event_metadata1,
