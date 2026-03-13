@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/layout.h"
@@ -3124,16 +3125,77 @@ GetMeshAxesPartitionGroupsAcrossTargetDims(
   axis_refs.reserve(target_dims.size());
   for (int64_t i = 0; i < target_dims.size(); ++i) {
     int64_t target_dim = target_dims[i];
-    int64_t axis_size = mesh->axis_size(target_dim);
     int64_t group_size = group_sizes[i];
-    if (axis_size == group_size) {
-      axis_refs.push_back(AxisRef(target_dim));
+    if (group_size <= 1) {
       continue;
     }
-    axis_refs.push_back(
-        AxisRef(target_dim, {axis_size / group_size, group_size}));
+
+    // If we have a NamedSharding (V3), we must explicitly look up which mesh
+    // axes the tensor dimension is sharded across.
+    if (sharding.UseNamedShardingLeaf()) {
+      CHECK_LT(target_dim, sharding.num_dimensions());
+      const NamedSharding::DimensionSharding& dim_sharding =
+          sharding.named_sharding().dim_sharding(target_dim);
+      int64_t remaining_group_size = group_size;
+
+      // We consume the axes in reverse order (minor-to-major) to satisfy the
+      // group_size. This follows the convention where the most minor mesh axes
+      // are grouped first.
+      std::vector<AxisRef> axis_refs_for_dim;
+      for (auto it = dim_sharding.axes().rbegin();
+           it != dim_sharding.axes().rend(); ++it) {
+        if (remaining_group_size <= 1) {
+          break;
+        }
+
+        const AxisRef& axis = *it;
+        int64_t axis_size = axis.size(*mesh);
+
+        // If the remaining group size covers the entire axis, take the whole
+        // axis.
+        if (remaining_group_size >= axis_size) {
+          axis_refs_for_dim.push_back(axis);
+          CHECK_EQ(remaining_group_size % axis_size, 0);
+          remaining_group_size /= axis_size;
+        } else {
+          // Otherwise, we take a sub-portion of the axis.
+          CHECK_EQ(axis_size % remaining_group_size, 0);
+          axis_refs_for_dim.push_back(
+              AxisRef(axis.mesh_axis_index(),
+                      {axis.pre_size() * (axis_size / remaining_group_size),
+                       remaining_group_size}));
+          remaining_group_size = 1;
+        }
+      }
+
+      CHECK_EQ(remaining_group_size, 1)
+          << "Could not satisfy group_size " << group_size << " for target_dim "
+          << target_dim;
+      // The axis refs for this dim were collected in minor-to-major order.
+      // Append them to axis_refs in reverse (major-to-minor) order.
+      for (auto it = axis_refs_for_dim.rbegin(); it != axis_refs_for_dim.rend();
+           ++it) {
+        axis_refs.push_back(*it);
+      }
+      continue;
+    }
+
+    // For sharding version < V3 we can use positional since mesh axes
+    // correspond to target dims.
+    int64_t axis_size = mesh->axis_size(target_dim);
+    CHECK_EQ(axis_size % group_size, 0);
+    if (axis_size == group_size) {
+      axis_refs.push_back(AxisRef(target_dim));
+    } else {
+      // Partial grouping across a single mesh axis.
+      axis_refs.push_back(
+          AxisRef(target_dim, {axis_size / group_size, group_size}));
+    }
   }
-  return MeshAxesReplicaGroupList(mesh.value(), axis_refs);
+  if (axis_refs.empty()) {
+    return std::nullopt;
+  }
+  return MeshAxesReplicaGroupList(*mesh, axis_refs);
 }
 
 std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
@@ -3201,11 +3263,22 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
   CHECK(!hlo->sharding().IsReplicatedOrSingleDevice());
 
   DynamicUpdateSliceAnalysis analysis;
+  bool is_enzyme_opt_enabled = hlo->parent()
+                                   ->parent()
+                                   ->config()
+                                   .debug_options()
+                                   .xla_enable_enzyme_comms_opt();
 
   bool update_on_a_single_partition = true;
   bool has_partitioned_slice_dim_with_dynamic_index = false;
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
+      if (is_enzyme_opt_enabled && hlo->sharding().dimension(i) != 1) {
+        update_on_a_single_partition = false;
+        if (!hlo->operand(i + 2)->IsConstant()) {
+          has_partitioned_slice_dim_with_dynamic_index = true;
+        }
+      }
       continue;
     }
     analysis.slice_dims.push_back(i);
@@ -3251,11 +3324,6 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
   }
 
   // For now, only enable Method 3 if enzyme optimization is enabled.
-  bool is_enzyme_opt_enabled = hlo->parent()
-                                   ->parent()
-                                   ->config()
-                                   .debug_options()
-                                   .xla_enable_enzyme_comms_opt();
   if (!is_enzyme_opt_enabled &&
       analysis.method == DynamicUpdateSliceMethod::
                              kAllPartitionedSliceDimsHaveConstantIndices) {

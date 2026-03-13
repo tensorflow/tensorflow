@@ -151,6 +151,14 @@ struct GemmConfig : public se::gpu::GemmConfig {
       const se::GpuComputeCapability& gpu_version) const;
 };
 
+/* Temporary code due to split PRs */
+struct GroupedGemmConfig {
+  // For legacy Gemm operations XLA:GPU allocates its own workspace and passes
+  // it to all BLAS API calls.
+  static constexpr int64_t kUserArgsSizeBytes = 196;
+};
+/* End of temporary code due to split PRs */
+
 // Run the given GEMM instruction `gemm` subject to the configuration
 // in `gemm_config` and the passed buffers.
 //

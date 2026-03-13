@@ -539,27 +539,6 @@ std::string HumanReadableNumFlops(double flops, double nanoseconds);
 // e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
 std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
-// Split the text into multiple lines and log each line with the given
-// severity, filename, and line number.
-void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
-              int lineno);
-inline void LogLinesINFO(absl::string_view text, const char* fname,
-                         int lineno) {
-  return LogLines(absl::LogSeverity::kInfo, text, fname, lineno);
-}
-inline void LogLinesWARNING(absl::string_view text, const char* fname,
-                            int lineno) {
-  return LogLines(absl::LogSeverity::kWarning, text, fname, lineno);
-}
-inline void LogLinesERROR(absl::string_view text, const char* fname,
-                          int lineno) {
-  return LogLines(absl::LogSeverity::kError, text, fname, lineno);
-}
-inline void LogLinesFATAL(absl::string_view text, const char* fname,
-                          int lineno) {
-  return LogLines(absl::LogSeverity::kFatal, text, fname, lineno);
-}
-
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
 constexpr inline T LsbMask(int width) {
@@ -1028,17 +1007,6 @@ constexpr bool IsPowerOf2(size_t x) {
   // Checks that x is non-zero and has only a single bit set.
   return absl::has_single_bit(x);
 }
-
-// Note that STRING is evaluated regardless of whether it will be logged.
-#define XLA_LOG_LINES(SEV, STRING) \
-  ::xla::LogLines##SEV(STRING, __FILE__, __LINE__)
-
-// Like LOG_LINES, but only logs if VLOG is enabled for the given level.
-// STRING is evaluated only if it will be logged.
-#define XLA_VLOG_LINES(LEVEL, STRING)                   \
-  do {                                                  \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
-  } while (false)
 
 // Implementation details only below here
 

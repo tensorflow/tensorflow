@@ -459,7 +459,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(false);
   opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
   opts.set_xla_gpu_experimental_enable_fusion_autotuner(true);
-  opts.set_xla_gpu_experimental_allow_unroll_factor_eight(true);
+  opts.set_xla_gpu_experimental_max_unroll_factor(32);
   opts.set_xla_gpu_experimental_pack_dot_operands_along_k_dimension(true);
   opts.set_xla_unsupported_crash_on_hlo_pass_fix_max_iterations(false);
   opts.set_xla_hlo_pass_fix_detect_cycles(false);
@@ -480,6 +480,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_use_raft_select_k(false);
   opts.set_xla_early_exit_with_layouts(false);
   opts.set_xla_gpu_experimental_all_fusions_with_triton(false);
+  opts.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
 
   opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
   opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);
@@ -499,6 +500,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_rocm_max_trace_events(4 * 1024 * 1024);
 
   opts.set_xla_gpu_print_compilation_stats(false);
+
+  opts.set_xla_gpu_enable_pdl(false);
   return opts;
 }
 
@@ -992,6 +995,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               ->add_profile_annotation_regexes(regex_str);
         }
         return true;
+      };
+
+  auto setter_for_unroll_factor =
+      [debug_options](void (DebugOptions::*member_setter)(int32_t)) {
+        return [debug_options, member_setter](int32_t value) {
+          if (value < 1) {
+            return false;
+          }
+          (debug_options->*member_setter)(value);
+          return true;
+        };
       };
 
   // Don't use an initializer list for initializing the vector; this would
@@ -2769,12 +2783,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_experimental_enable_triton_warp_specialization),
       debug_options->xla_gpu_experimental_enable_triton_warp_specialization(),
       "Enable Triton's auto warp specialization feature where applicable."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_experimental_allow_unroll_factor_eight",
-      bool_setter_for(
-          &DebugOptions::set_xla_gpu_experimental_allow_unroll_factor_eight),
-      debug_options->xla_gpu_experimental_allow_unroll_factor_eight(),
-      "If true, allows unroll factor 8 on Blackwell architectures."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_experimental_max_unroll_factor",
+                setter_for_unroll_factor(
+                    &DebugOptions::set_xla_gpu_experimental_max_unroll_factor),
+                debug_options->xla_gpu_experimental_max_unroll_factor(),
+                "Controls max unroll factor on Blackwell architectures. Should "
+                "be at least 1."));
   flag_list->push_back(
       tsl::Flag("xla_detect_unstable_reductions",
                 setter_for_xla_detect_unstable_reductions,
@@ -2807,6 +2822,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_ragged_all_to_all_use_barrier(),
       "If true, use the MultiGpuBarrierKernel in one-shot RaggedAllToAll "
       "thunk."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_use_ragged_dot_grouped_gemm",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_experimental_use_ragged_dot_grouped_gemm),
+      debug_options->xla_gpu_experimental_use_ragged_dot_grouped_gemm(),
+      "If true, use grouped GEMM (hipBLASLt) for ragged dot operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_scaled_dot_with_triton",
       bool_setter_for(
@@ -2940,6 +2961,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_print_compilation_stats(),
       "Prints statistics about the HLO passes: how many times each pass was "
       "run, and how long it took."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_pdl",
+                bool_setter_for(&DebugOptions::set_xla_gpu_enable_pdl),
+                debug_options->xla_gpu_enable_pdl(),
+                "Enable PDL (Programmatic Dependent Launch)."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

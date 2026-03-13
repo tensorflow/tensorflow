@@ -1231,14 +1231,13 @@ PjRtCpuLoadedExecutable::PjRtCpuLoadedExecutable(
     std::shared_ptr<DeviceAssignment> device_assignment,
     std::vector<LogicalDeviceIds> addressable_device_logical_ids,
     std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client)
-    : CommonPjRtLoadedExecutable(executable->parameter_device_shapes_,
-                                 executable->cpu_executable_->result_shape(),
-                                 executable->output_memory_space_kind_ids_,
-                                 addressable_devices,
-                                 addressable_device_logical_ids),
+    : CommonPjRtLoadedExecutable(
+          executable->parameter_device_shapes_,
+          executable->cpu_executable_->result_shape(),
+          executable->output_memory_space_kind_ids_, addressable_devices,
+          addressable_device_logical_ids, std::move(device_assignment)),
       client_(client),
-      executable_(std::move(executable)),
-      device_assignment_(std::move(device_assignment)) {
+      executable_(std::move(executable)) {
   input_buffer_sizes_in_bytes_ = executable_->input_buffer_sizes_in_bytes_;
   parameters_that_must_be_donated_ =
       executable_->parameters_that_must_be_donated_;
@@ -1428,34 +1427,15 @@ absl::Status PjRtCpuLoadedExecutable::CheckBufferCompatibilities(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
-PjRtCpuLoadedExecutable::StartRawExecutable(const ExecuteOptions& options,
-                                            RunId run_id, int replica,
-                                            int partition,
-                                            PjRtDevice* device) const {
-  std::shared_ptr<DeviceAssignment> device_assignment;
-  if (device == nullptr) {
-    CHECK(device_assignment_ != nullptr);
-    const int64_t device_id = (*device_assignment_)(replica, partition);
-    GlobalDeviceId global_device_id(device_id);
-    TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
-                        client_->LookupDevice(global_device_id));
-    device = tsl::down_cast<PjRtCpuDevice*>(pjrt_device);
-    device_assignment = device_assignment_;
-  } else {
-    CHECK(device_assignment_ == nullptr);
-    CHECK_EQ(replica, 0);
-    CHECK_EQ(partition, 0);
-    CHECK(addressable_devices_.empty());
-    device_assignment = std::make_shared<DeviceAssignment>(1, 1);
-    (*device_assignment)(0, 0) = device->id();
-  }
-  CHECK_EQ(device->process_index(), client_->process_index());
+PjRtCpuLoadedExecutable::LoadRawExecutable(
+    const ExecuteOptions& options, size_t host_callback_idx, xla::RunId run_id,
+    DeviceAndAssignment device_and_assign) const {
   auto result = std::make_unique<CpuPjRtRawLoadedExecutable>(run_id);
   result->executable_ = executable_.get();
   result->client_ = client_;
   result->num_addressable_devices_ = addressable_devices_.size();
-  result->device_assignment_ = device_assignment;
-  result->device_ = tsl::down_cast<PjRtCpuDevice*>(device);
+  result->device_assignment_ = std::move(device_and_assign.device_assignment);
+  result->device_ = tsl::down_cast<PjRtCpuDevice*>(device_and_assign.device);
   return result;
 }
 

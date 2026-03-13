@@ -763,6 +763,31 @@ message HloModuleGroupProto {
   repeated HloModuleProto hlo_modules = 2;
 }
 
+// Serialization of memory usage report.
+message MemoryUsageReportProto {
+  // Individual allocation.
+  message AllocationEntry {
+    // BufferAllocation::Index (allocation ID, not sort position).
+    int64 index = 1;
+    int64 size = 2;
+    // Running sum as entries traverse largest→smallest within the memory space.
+    int64 cumulative_size = 3;
+    double cumulative_percentage = 4;
+    // Defining position(s) of HLO value(s) assigned to this allocation.
+    repeated string defining_positions = 5;
+    string hlo_text = 6;
+  }
+
+  // Allocations grouped by memory space (color).
+  message AllocationEntryInMemorySpace {
+    int64 total_bytes = 1;
+    optional int32 memory_space_color = 2;
+    repeated AllocationEntry allocation_entries = 3;
+  }
+
+  repeated AllocationEntryInMemorySpace memory_space_allocation_entries = 1;
+}
+
 // Serialization of BufferAssignment.
 message BufferAssignmentProto {
   // Alias represents a source LogicalBuffer, and the buffer location that

@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load(
@@ -637,9 +637,10 @@ cc_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "scatter_kernel_emitter_test",
     srcs = ["scatter_kernel_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -754,9 +755,10 @@ xla_cc_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "computation_kernel_emitter_test",
     srcs = ["computation_kernel_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -770,9 +772,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "fusion_emitter_test",
     srcs = ["fusion_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],

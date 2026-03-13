@@ -21,7 +21,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -230,11 +229,6 @@ TEST_P(ShardingConversionsTest, VerifyIncorrectShardings) {
       /*dim_shards=*/{4, 1},
       {/*permutation=*/{0, 1, 1}, /*axis_sizes=*/{2, 2, 2}}};
   EXPECT_FALSE(incorrect_permutation.verify().ok());
-  ShardingParam unreduced_on_wrong_axis{
-      /*dim_shards=*/{2, 1},
-      {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}},
-      /*unreduced_axes=*/{0, 1}};
-  EXPECT_FALSE(unreduced_on_wrong_axis.verify().ok());
   ShardingParam unreduced_repeated_axis{
       /*dim_shards=*/{1, 1},
       {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 2}},

@@ -44,7 +44,6 @@ limitations under the License.
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -52,7 +51,6 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
@@ -75,6 +73,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/add_tracking_suffix_to_instruction_names.h"
 #include "xla/backends/gpu/transforms/algebraic_simplifier.h"
@@ -82,6 +81,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/async_wrapper.h"
 #include "xla/backends/gpu/transforms/collectives/all_gather_combiner.h"
 #include "xla/backends/gpu/transforms/collectives/all_gather_dynamic_slice_simplifier.h"
+#include "xla/backends/gpu/transforms/collectives/all_gather_major_dimension_rewriter.h"
 #include "xla/backends/gpu/transforms/collectives/all_gather_optimizer.h"
 #include "xla/backends/gpu/transforms/collectives/all_reduce_blueconnect.h"
 #include "xla/backends/gpu/transforms/collectives/all_reduce_combiner.h"
@@ -132,6 +132,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/sanitize_constant_names.h"
 #include "xla/backends/gpu/transforms/scalar_constant_sinker.h"
 #include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
+#include "xla/backends/gpu/transforms/scan_rewriter.h"
 #include "xla/backends/gpu/transforms/scatter_expander.h"
 #include "xla/backends/gpu/transforms/scatter_slice_simplifier.h"
 #include "xla/backends/gpu/transforms/softmax_rewriter_triton.h"
@@ -251,8 +252,9 @@ limitations under the License.
 #include "xla/service/float_support.h"
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/alias_info.h"
+#include "xla/service/gpu/autotuning/autotuner_cache.h"
+#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
 #include "xla/service/gpu/cublas_cudnn.h"
@@ -313,6 +315,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -350,6 +353,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 namespace {
+
+// Marker for hlo_opt to indicate start of the ptx.
+constexpr absl::string_view kGpuExecutablePtxMarker = "// GPU Executable\n";
 
 using MaybeOwningThreadPool = MaybeOwning<tsl::thread::ThreadPool>;
 
@@ -395,20 +401,10 @@ DeviceOrDevicelessConfig GetDeviceConfig(
       DevicelessConfig{gpu_target_config.device_description}};
 }
 
-se::GpuComputeCapability GetGpuVersion(const se::StreamExecutor* stream_exec) {
-  return stream_exec->GetDeviceDescription().gpu_compute_capability();
-}
-
-bool IsDevicelessCompilation(const Compiler::CompileOptions& options,
-                             const se::StreamExecutor* stream_exec) {
-  return options.early_exit_with_layouts || stream_exec == nullptr;
-}
-
 absl::StatusOr<int> GetNumVisibleDevices(
     const Compiler::CompileOptions& options,
     const se::StreamExecutor* stream_exec, se::Platform::Id platform_id) {
-  if (IsDevicelessCompilation(options, stream_exec) &&
-      options.gpu_topology.has_value()) {
+  if (options.gpu_topology.has_value()) {
     return options.gpu_topology->num_devices_per_host();
   }
 
@@ -521,6 +517,7 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module,
   pre_spmd_pipeline.AddPass<CuDnnCustomCallConverter>();
   pre_spmd_pipeline.AddPass<CompositeRewriter>();
   pre_spmd_pipeline.AddPass<ConvertMemoryPlacementToInternalAnnotations>();
+  pre_spmd_pipeline.AddPass<ScanRewriter>();
   pre_spmd_pipeline.AddPass<ScanExpander>();
   pre_spmd_pipeline.AddPass<FlattenCallGraph>();
   pre_spmd_pipeline.AddPass<CallInliner>(
@@ -643,7 +640,7 @@ absl::Status RunOptimizationPasses(
     pipeline.AddPass<UnstableReductionDetector>();
   }
   pipeline.AddPass<OneHotGatherRewriter>();
-  pipeline.AddPass<RaggedDotRewriter>();
+  pipeline.AddPass<RaggedDotRewriter>(gpu_version);
   if (!debug_options.xla_gpu_experimental_scaled_dot_with_triton()) {
     pipeline.AddPass<ScaledDotRewriter>();
   }
@@ -1183,6 +1180,7 @@ absl::Status RunLayoutAssignmentPasses(
   // the creation of invalid transpose/bitcast operations within
   // host memory offloading segments.
   pipeline.AddPass<HostOffloadLegalize>();
+  pipeline.AddPass<AllGatherMajorDimensionRewriter>();
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
       .status();
 }
@@ -1540,7 +1538,7 @@ absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
     CompilationStats* compilation_stats) {
   HloPassPipeline pipeline("collective-schedule-linearizer", compilation_stats);
   pipeline.AddPass<CollectivesScheduleLinearizer>(
-      [this, stream_exec](const HloModule* module) {
+      [stream_exec](const HloModule* module) {
         return RequiresCollectiveScheduleLinearizer(module, stream_exec);
       });
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
@@ -1628,14 +1626,8 @@ absl::Status GpuCompiler::OptimizeHloModule(
 
   // Run target-specific HLO optimization passes for convolution
   // canonicalization.
-  se::dnn::VersionInfo dnn_version = gpu_target_config.dnn_version_info;
-  if (stream_exec != nullptr) {
-    gpu_version = GetGpuVersion(stream_exec);
-    ASSIGN_OR_RETURN(dnn_version, GetDnnVersionInfo(stream_exec));
-  }
-
   RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
-      hlo_module, gpu_version, dnn_version,
+      hlo_module, gpu_version, gpu_target_config.dnn_version_info,
       device_description.runtime_version(), compilation_stats));
 
   RETURN_IF_ERROR(RunLayoutAssignmentPasses(
@@ -1762,11 +1754,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           AlgebraicSimplifierMode::kPostLayoutAssignment,
           hlo_module->config().debug_options(),
           gpu_target_config.platform_name == "ROCM");
-  DeviceOrDevicelessConfig device_config =
-      GetDeviceConfig(stream_exec, options, gpu_target_config);
-  ASSIGN_OR_RETURN(
-      AutotuneConfig autotune_config,
-      AutotuneConfig::FromDebugOptions(device_config, debug_options));
   // Lambdas and related constants:
   const GpuFloatSupport bf16_support(gpu_version, BF16);
   const GpuFloatSupport f8e5m2_support(gpu_version, F8E5M2, F16);
@@ -1922,8 +1909,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   add_float_normalization(pipeline);
 
   TF_RETURN_IF_ERROR(AddConvAndGemmAutotuningPass(
-      &pipeline, hlo_module, gpu_version, options, autotune_config, thread_pool,
-      stream_exec, &gpu_target_config, options.key_value_store,
+      &pipeline, hlo_module, gpu_version, options, thread_pool, stream_exec,
+      &gpu_target_config, options.key_value_store,
       gpu_target_config.device_description.runtime_version(), alias_info,
       debug_options, &mlir_context_, ShapeSizeBytesFunction()));
 
@@ -2052,7 +2039,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     }
     return target_config;
   }
-  return absl::InternalError(
+  return absl::InvalidArgumentError(
       "Either GPU has to be attached, or --xla_gpu_target_config_filename "
       "has to be specified to specify the target to compile for.");
 }
@@ -2067,9 +2054,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 
   const DebugOptions debug_opts = module->config().debug_options();
   RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_opts));
-  bool is_deviceless = options.early_exit_with_layouts ||
-                       options.gpu_topology.has_value() ||
-                       !debug_opts.xla_gpu_target_config_filename().empty();
 
   std::unique_ptr<CompilationStats> compilation_stats;
 
@@ -2096,9 +2080,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   const se::DeviceDescription& device_description =
       gpu_target_config.device_description;
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
-  RETURN_IF_ERROR(OptimizeHloModule(
-      module.get(), is_deviceless ? nullptr : stream_exec, options,
-      gpu_target_config, alias_info.get(), compilation_stats.get()));
+  RETURN_IF_ERROR(OptimizeHloModule(module.get(), stream_exec, options,
+                                    gpu_target_config, alias_info.get(),
+                                    compilation_stats.get()));
   if (options.early_exit_with_layouts) {
     return std::move(module);
   }
@@ -2115,12 +2099,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   DumpHloModuleMetadataIfEnabled(module.get());
 
   AutotuneResults autotune_results;
-  DeviceOrDevicelessConfig device_config =
-      GetDeviceConfig(stream_exec, options, gpu_target_config);
-  ASSIGN_OR_RETURN(AutotuneConfig autotune_config,
-                   AutotuneConfig::FromDebugOptions(device_config, debug_opts));
-  if (!is_deviceless) {
-    RETURN_IF_ERROR(AutotunerUtil::SerializeAutotuneResults(&autotune_results));
+  if (stream_exec != nullptr) {
+    RETURN_IF_ERROR(
+        AutotunerCache::SerializeAutotuneResults(&autotune_results));
     RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_opts));
   }
   const std::optional<std::string> optimized_fingerprint =
@@ -2134,7 +2115,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   if (DumpingEnabledForHloModule(*module)) {
     ASSIGN_OR_RETURN(
         std::string autotune_results,
-        AutotunerUtil::SerializeAutotuneResults(/*as_textproto=*/true));
+        AutotunerCache::SerializeAutotuneResults(/*as_textproto=*/true));
     DumpToFileInDirOrStdout(*module, "", "autotune_results.pbtxt",
                             autotune_results);
   }
@@ -2316,16 +2297,6 @@ GpuCompiler::CompileSingleModule(
 }
 
 namespace {
-int CountFunctions(const llvm::Module& module) {
-  int num_functions = 0;
-  for (const llvm::Function& func : module.functions()) {
-    if (!func.isDeclaration() &&
-        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
-      ++num_functions;
-    }
-  }
-  return num_functions;
-}
 
 // Returns the name of the single function in the module or empty string if it's
 // not a single-function module.
@@ -2620,6 +2591,12 @@ GpuCompiler::CompileToBackendResult(
                             /*relocatable=*/false, options,
                             /*shard_number=*/std::nullopt));
   }
+
+  if (!backend_result.asm_text.empty()) {
+    backend_result.asm_text =
+        absl::StrCat(kGpuExecutablePtxMarker, backend_result.asm_text);
+  }
+
   RecordXlaDeviceBinarySize(backend_result.binary.size());
   if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(
@@ -2665,7 +2642,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   BinaryMap dnn_compiled_graphs;
   if (stream_exec) {
-    RETURN_IF_ERROR(RunCudnnCompilerPasses(module.get(), stream_exec,
+    se::dnn::DnnSupport* dnn_support = stream_exec->AsDnn();
+    TF_RET_CHECK(dnn_support != nullptr);
+    RETURN_IF_ERROR(RunCudnnCompilerPasses(module.get(), *dnn_support,
                                            &dnn_compiled_graphs));
   }
 
@@ -2725,6 +2704,11 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   });
 
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(gpu_device_info);
+
+  ASSIGN_OR_RETURN(stream_executor::ExecutableAbiVersion executable_abi_version,
+                   stream_executor::ExecutableAbiVersion::FromDeviceDescription(
+                       gpu_device_info));
+
   ASSIGN_OR_RETURN(
       std::unique_ptr<GpuExecutable> gpu_executable,
       GpuExecutable::Create(GpuExecutable::Params{
@@ -2733,7 +2717,9 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
           /*binary=*/std::move(res.backend_result.binary),
           /*dnn_compiled_graphs=*/
           std::move(dnn_compiled_graphs),
-          /*executable=*/std::move(res.compile_module_results.executable),
+          /*executable=*/
+          std::make_unique<ThunkExecutor>(
+              std::move(res.compile_module_results.executable->thunks())),
           /*constants=*/std::move(res.compile_module_results.constants),
           /*output_info=*/std::move(res.compile_module_results.output_info),
           /*module_name=*/std::move(res.compile_module_results.module_name),
@@ -2752,7 +2738,8 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
               ? std::move(module)
               : std::unique_ptr<HloModule>(),
           /*enable_debug_info_manager=*/embed_debug_info,
-          /*module_stats=*/std::move(module_stats)}));
+          /*module_stats=*/std::move(module_stats),
+          /*executable_abi_version=*/executable_abi_version}));
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
@@ -3094,7 +3081,7 @@ absl::Status GpuCompiler::LoadAutotuneResultsFromFile(
     static absl::once_flag once;
     absl::Status status = absl::OkStatus();
     absl::call_once(once, [&file_path, &status] {
-      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
+      status = AutotunerCache::LoadAutotuneResultsFromFile(file_path);
     });
     RETURN_IF_ERROR(status);
   }
@@ -3109,7 +3096,7 @@ absl::Status GpuCompiler::SerializeAutotuneResultsToFile(
       !file_path.empty()) {
     // Warning: This writes the autotune results at every compilation,
     // possibly multiple times per process.
-    RETURN_IF_ERROR(AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
+    RETURN_IF_ERROR(AutotunerCache::SerializeAutotuneResultsToFile(file_path));
   }
   return absl::OkStatus();
 }
@@ -3201,6 +3188,10 @@ GpuCompiler::LoadExecutableFromAotResult(
   DebugOptions debug_options = hlo_module->config().debug_options();
   std::string hlo_module_name = hlo_module->name();
 
+  ASSIGN_OR_RETURN(auto executable_abi_version,
+                   stream_executor::ExecutableAbiVersion::FromDeviceDescription(
+                       device_description));
+
   {
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
     std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
@@ -3210,7 +3201,8 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*dnn_compiled_graphs=*/
         BinaryMap(proto.dnn_compiled_graphs().cbegin(),
                   proto.dnn_compiled_graphs().cend()),
-        /*executable=*/std::move(sequential_thunk),
+        /*executable=*/
+        std::make_unique<ThunkExecutor>(std::move(sequential_thunk->thunks())),
         /*constants=*/std::move(constants),
         /*output_info=*/std::move(output_info),
         /*module_name=*/std::move(hlo_module_name),
@@ -3221,15 +3213,16 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*debug_options=*/std::move(debug_options),
         /*device_description=*/device_description,
         /*debug_module=*/std::move(hlo_module),
-        /*enable_debug_info_manager=*/true});
+        /*enable_debug_info_manager=*/true,
+        /*module_stats=*/{},
+        /*executable_abi_version=*/executable_abi_version});
   }
 }
 
 absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-    se::StreamExecutor* stream_exec,
+    tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
     const Compiler::GpuTargetConfig* target_config,
     const MultiProcessKeyValueStore& key_value_store,
     const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,

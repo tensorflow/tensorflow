@@ -3447,6 +3447,7 @@ tflite_portable_test_suite_combined(
     # TODO(b/229985981) : Remove `nnapi_args` after adding Relu0To1 is completed.
     nnapi_args = ["--gunit_filter=*Reshape*"],
     #nnapi_args = ["--gunit_filter=-*QuantizedActivationsOpTest.Relu0To1*"],
+    shard_count = 50,
 )
 
 # Note this is created mainly for validating external delegates in OSS.
@@ -3461,6 +3462,15 @@ tflite_combine_cc_tests(
     name = "combined_all_kernel_with_simple_allocator_tests",
     args = ["--use_simple_allocator=true"],
     deps_conditions = [":test_main"],
+    shard_count = 50,
+)
+
+# Test the XNNPACK delegate
+tflite_combine_cc_tests(
+    name = "combined_all_kernel_with_xnnpack_tests",
+    args = ["--use_xnnpack=true"],
+    deps_conditions = [":test_main"],
+    shard_count = 50,
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_tests")

@@ -1026,6 +1026,8 @@ class NanoExecutable final
     return devices_;
   }
 
+  void SetDeleteOptions(const DeleteOptions& options) override {}
+
   static char ID;  // NOLINT
 
  private:

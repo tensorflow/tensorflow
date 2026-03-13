@@ -51,9 +51,9 @@ message GpuDeviceInfoProto {
   int32 threads_per_core_limit = 5;
   int32 core_count = 6;
   int64 fpus_per_core = 7;
-  int32 block_dim_limit_x = 8;
-  int32 block_dim_limit_y = 9;
-  int32 block_dim_limit_z = 10;
+  int64 block_dim_limit_x = 8;
+  int64 block_dim_limit_y = 9;
+  int64 block_dim_limit_z = 10;
   int64 memory_bandwidth = 11;
   int64 l2_cache_size = 12;
   float clock_rate_ghz = 13;

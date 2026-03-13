@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/backends/gpu/ffi.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
@@ -69,7 +71,7 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
@@ -372,11 +374,11 @@ ENTRY e {
 class PersistedAutotuningTest : public HloPjRtTestBase {
  protected:
   void SetUp() override {
-    AutotunerUtil::ClearAutotuneResults();
+    AutotunerCache::ClearAutotuneResults();
     xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
   }
 
-  void TearDown() override { AutotunerUtil::ClearAutotuneResults(); }
+  void TearDown() override { AutotunerCache::ClearAutotuneResults(); }
 
   static constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -599,49 +601,14 @@ ENTRY main {
             HloOpcode::kAllGatherDone);
 }
 
-class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
- public:
-  void SetUp() override {
-    std::string path =
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                          "gpu_compiler_test_autotune_db.textproto");
-
-    tsl::Env* env = tsl::Env::Default();
-    std::string tmp_filepath = ::testing::TempDir();
-    ASSERT_TRUE(env->CreateUniqueFileName(&tmp_filepath, ".textproto"));
-
-    absl::Cleanup cleanup = [&] { CHECK_OK(env->DeleteFile(tmp_filepath)); };
-
-    std::string contents;
-    CHECK_OK(tsl::ReadFileToString(env, path, &contents));
-
-    // The autotuning cache entries depend on the DNN library version, but this
-    // is not relevant for these tests. Therefore we replace the DNN version
-    // with the actual version of the DNN library so that the cache entries
-    // match.
-    stream_executor::SemanticVersion dnn_version =
-        device_description().dnn_version();
-    constexpr absl::string_view kCudnnVersionPlaceholder = "1.2.3";
-    contents = absl::StrReplaceAll(
-        contents, {{kCudnnVersionPlaceholder, dnn_version.ToString()}});
-
-    TF_EXPECT_OK(tsl::WriteStringToFile(env, tmp_filepath, contents));
-    AutotunerUtil::ClearAutotuneResults();
-    TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(tmp_filepath));
-  }
-
-  static void TearDownTestSuite() { AutotunerUtil::ClearAutotuneResults(); }
-};
-
-TEST_F(GpuCompilerTestWithAutotuneDb,
+// This test ensures that the pathway for using the cuBLAS fallback (forming a
+// Triton fusion and falling back to cuBLAS in the autotuner) is exactly the
+// same as using cuBLAS directly (with Triton disabled).
+TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
   if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
                  << "and later GPUs";
-  }
-  if (get_cuda_cc().IsAtLeastBlackwell()) {
-    // TODO(b/445172709): Re-enable once fixed.
-    GTEST_SKIP();
   }
   const absl::string_view hlo_string = R"(
 HloModule test
@@ -670,27 +637,40 @@ ENTRY main {
 )";
 
   HloModuleConfig config;
-  DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
-  triton_enabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
-  triton_enabled_debug_options
-      .set_xla_gpu_require_complete_aot_autotune_results(true);
-  config.set_debug_options(triton_enabled_debug_options);
-  config.set_replica_count(1);
-  config.set_num_partitions(1);
+  AutotunerCache::ClearAutotuneResults();
 
+  // Triton enabled, but forced to fallback to cuBLAS (no Triton backend).
+  DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
+  triton_enabled_debug_options.clear_xla_gpu_experimental_autotune_backends();
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLAS_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLASLT_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::NATIVE_EMITTER);
+  config.set_debug_options(triton_enabled_debug_options);
   ASSERT_OK_AND_ASSIGN(auto triton_enabled_module_and_executable,
                        GetOptimizedModuleForExecutable(hlo_string, config));
   const HloModule* triton_enabled_module =
       triton_enabled_module_and_executable.first;
+
+  // Confirm fusion was made, but fell back to cuBLAS.
+  AutotuneResults results;
+  ASSERT_OK(AutotunerCache::SerializeAutotuneResults(&results));
+  EXPECT_FALSE(results.results().empty());
+  EXPECT_TRUE(absl::StrContains(results.DebugString(), "CUBLAS_FISSION") ||
+              absl::StrContains(results.DebugString(), "CUBLASLT_FISSION"));
+
+  // Triton disabled - this will skip the GemmFusion pass and use cuBLAS.
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
-  triton_disabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
   config.set_debug_options(triton_disabled_debug_options);
   ASSERT_OK_AND_ASSIGN(auto triton_disabled_module_and_executable,
                        GetOptimizedModuleForExecutable(hlo_string, config));
   const HloModule* triton_disabled_module =
       triton_disabled_module_and_executable.first;
-  // Make sure autotuner falls back to cuBLAS when enabling triton gemm
+
+  // Confirm autotuner fell back to cuBLAS on triton_enabled_module.
   const HloInstruction* root =
       triton_enabled_module->entry_computation()->root_instruction();
   const HloInstruction* custom_op = root->operand(0)->operand(0);
@@ -704,15 +684,11 @@ ENTRY main {
             triton_disabled_module->computation_count());
 }
 
-TEST_F(GpuCompilerTestWithAutotuneDb,
+TEST_F(GpuCompilerTest,
        CublasF8NumericallySameWithTritonFallbackAndWithoutTriton) {
   if (!get_cuda_cc().IsAtLeastHopper()) {
     GTEST_SKIP()
         << "Autotuning results have only been generated for Hopper GPUs";
-  }
-  if (get_cuda_cc().IsAtLeastBlackwell()) {
-    // TODO(b/445172709): Re-enable once fixed.
-    GTEST_SKIP();
   }
   const absl::string_view hlo_string = R"(
 HloModule test
@@ -727,26 +703,33 @@ ENTRY main {
   })";
 
   HloModuleConfig config;
+  // Triton enabled, but forced to fallback to cuBLAS (no Triton backend).
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
-  triton_enabled_debug_options
-      .set_xla_gpu_require_complete_aot_autotune_results(true);
+  triton_enabled_debug_options.clear_xla_gpu_experimental_autotune_backends();
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLAS_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLASLT_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::NATIVE_EMITTER);
   config.set_debug_options(triton_enabled_debug_options);
+  ASSERT_OK_AND_ASSIGN(auto triton_enabled_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_string, config));
+  auto triton_enabled_executable =
+      triton_enabled_module_and_executable.second.get();
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> triton_enabled_module,
-                       ParseAndReturnVerifiedModule(hlo_string, config));
-
+  // Triton disabled - this will skip the GemmFusion pass and use cuBLAS.
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
-  triton_disabled_debug_options.set_xla_gpu_cublas_fallback(true);
   config.set_debug_options(triton_disabled_debug_options);
+  ASSERT_OK_AND_ASSIGN(auto triton_disabled_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_string, config));
+  auto triton_disabled_executable =
+      triton_disabled_module_and_executable.second.get();
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> triton_disabled_module,
-      ParseAndReturnVerifiedModule(hlo_string, config));
-
-  EXPECT_TRUE(RunAndCompareTwoModules(std::move(triton_enabled_module),
-                                      std::move(triton_disabled_module),
-                                      ErrorSpec{1e-6, 1e-6}, false));
+  EXPECT_TRUE(RunAndCompareTwoExecutables(triton_enabled_executable,
+                                          triton_disabled_executable,
+                                          ErrorSpec{1e-6, 1e-6}));
 }
 
 class FloatNormalizationTest : public GpuCompilerTest,
@@ -1064,15 +1047,15 @@ ENTRY main {
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
 
-  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
+  EXPECT_THAT(gpu_exec->thunk_executor().thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
                                      ThunkKindIs(Thunk::kSequential),
                                      ThunkKindIs(Thunk::kWaitForStreams)));
 
   // Within the sequential thunk, there should only be a single gemm
   // thunk with an explicitly set execution stream id.
-  auto sequential_thunk =
-      static_cast<SequentialThunk*>(gpu_exec->GetThunk().thunks()[1].get());
+  auto sequential_thunk = static_cast<SequentialThunk*>(
+      gpu_exec->thunk_executor().thunks()[1].get());
   EXPECT_EQ(sequential_thunk->thunks().size(), 1);
   EXPECT_THAT(sequential_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
@@ -1128,15 +1111,15 @@ ENTRY main {
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
 
-  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
+  EXPECT_THAT(gpu_exec->thunk_executor().thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
                                      ThunkKindIs(Thunk::kSequential),
                                      ThunkKindIs(Thunk::kWaitForStreams)));
 
   // Within the sequential thunk, there should only be a single gemm
   // thunk with an explicitly set execution stream id.
-  auto sequential_thunk =
-      static_cast<SequentialThunk*>(gpu_exec->GetThunk().thunks()[1].get());
+  auto sequential_thunk = static_cast<SequentialThunk*>(
+      gpu_exec->thunk_executor().thunks()[1].get());
   EXPECT_EQ(sequential_thunk->thunks().size(), 1);
   EXPECT_THAT(sequential_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
@@ -1778,7 +1761,7 @@ ENTRY main {
                              compile_options));
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
-  const ThunkSequence& thunks = gpu_exec->GetThunk().thunks();
+  const ThunkSequence& thunks = gpu_exec->thunk_executor().thunks();
   ASSERT_EQ(thunks.size(), 1);
   EXPECT_EQ(thunks[0]->kind(), Thunk::Kind::kCommandBuffer);
 }
@@ -1907,7 +1890,7 @@ ENTRY main {
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
-  const SequentialThunk& seq_thunk = gpu_executable->GetThunk();
+  const ThunkExecutor& seq_thunk = gpu_executable->thunk_executor();
   std::vector<Thunk::Kind> kinds;
   kinds.reserve(seq_thunk.thunks().size());
   for (const auto& thunk : seq_thunk.thunks()) {

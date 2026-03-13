@@ -44,7 +44,6 @@ static void MakeTTIR(mlir::OpPassManager* pm,
                      const stream_executor::CudaComputeCapability& cuda_cc) {
   pm->addPass(mt_xla::CreateRoundF32ToTF32ForTf32DotRewritePass());
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createTritonRewriteTensorPointer());
   if (!cuda_cc.IsAtLeastHopper()) {
     pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   }
@@ -166,10 +165,9 @@ static void MakeLLIR(mlir::OpPassManager* pm,
       mt::createConvertTritonGPUToLLVMPass(cuda_cc_as_int, final_ptx_version));
   pm->addNestedPass<mlir::LLVM::LLVMFuncOp>(
       mlir::triton::gpu::createCanonicalizeLLVMIR());
-  pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
-  pm->addPass(mt::createConvertNVGPUToLLVM());
   pm->addPass(mt::createConvertWarpSpecializeToLLVM());
+  pm->addPass(mt::createConvertNVGPUToLLVM());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());

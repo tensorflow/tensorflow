@@ -32,7 +32,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -133,6 +133,8 @@ class IfrtIrLoadedExecutable
 
   absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>
   GetMpmdCostAnalysis() const override;
+
+  void SetDeleteOptions(const DeleteOptions& options) override {}
 
   // IFRT IR specific methods.
 

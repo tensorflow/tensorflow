@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/collective_emitter.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <type_traits>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -57,6 +59,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -196,12 +199,13 @@ std::optional<AllReduceInfo> MaybeBuildAllReduceInfo(
            .xla_gpu_unsupported_use_all_reduce_one_shot_kernel()) {
     return std::nullopt;
   }
-  if (all_reduce->device_list().replica_groups().empty()) {
+  if (all_reduce->device_list()->replica_groups().empty()) {
     VLOG(1) << "Replica groups are empty for " << all_reduce->name()
             << ". Codegen will not be supported.";
     return std::nullopt;
   }
-  const int64_t num_devices = all_reduce->device_list().num_devices_per_group();
+  const int64_t num_devices =
+      all_reduce->device_list()->num_devices_per_group();
   const std::optional<ReductionKind> reduction_kind =
       MatchReductionComputation(all_reduce->called_computations().front());
   if (!reduction_kind.has_value()) {
@@ -298,7 +302,8 @@ GetBlockLevelFusionConfigForAllReduce(
 absl::StatusOr<std::vector<Shape>> GetAllReduceUnmanagedKernelArguments(
     const HloComputation* computation,
     const HloAllReduceInstruction* all_reduce) {
-  const int32_t num_devices = all_reduce->device_list().num_devices_per_group();
+  const int32_t num_devices =
+      all_reduce->device_list()->num_devices_per_group();
   std::vector<Shape> unmanaged_arguments;
   unmanaged_arguments.reserve(computation->num_parameters() +
                               kNumCollectiveMetadataArgs);
@@ -791,6 +796,34 @@ class AllReduceEmitter {
 };
 
 }  // namespace
+
+llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
+                                                 int32_t num_blocks) {
+  CHECK_GT(num_blocks, 0) << "num_blocks must be positive. Was " << num_blocks;
+  // Rank fits in int32_t.
+  const auto rank = static_cast<int32_t>(output_shape.dimensions().size());
+  const llvm::ArrayRef<const int64_t> minor_to_major =
+      LayoutUtil::MinorToMajor(output_shape);
+  llvm::SmallVector<int64_t, 4> tile_sizes(rank);
+  // NB: Unsigned because llvm::bit_<> functions expect unsigned.
+  uint64_t remaining_blocks = num_blocks;
+  // Iterate from most major to most minor to keep memory contiguous for each
+  // block.
+  for (int32_t i = rank - 1; i >= 0; --i) {
+    const auto dim = static_cast<int32_t>(minor_to_major[i]);
+    const uint64_t dim_size = output_shape.dimensions(dim);
+    // Largest power-of-two k <= std::min(dim_size, remaining_blocks).
+    const uint64_t k = std::max(
+        uint64_t{1}, llvm::bit_floor(std::min(remaining_blocks, dim_size)));
+    // Round up number of tiles in this dimension to power of two.
+    tile_sizes[dim] =
+        static_cast<int64_t>(llvm::bit_ceil(xla::CeilOfRatio(dim_size, k)));
+    const uint64_t blocks_used =
+        xla::CeilOfRatio(dim_size, static_cast<uint64_t>(tile_sizes[dim]));
+    remaining_blocks = xla::FloorOfRatio(remaining_blocks, blocks_used);
+  }
+  return tile_sizes;
+}
 
 absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetCollectiveBlockLevelFusionConfig(const se::DeviceDescription& device_info,

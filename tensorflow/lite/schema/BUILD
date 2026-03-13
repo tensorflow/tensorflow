@@ -1,6 +1,8 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_schema_utils_friends")
 
@@ -36,13 +38,14 @@ package_group(
     ] + tflite_schema_utils_friends(),
 )
 
-py_strict_binary(
+py_binary(
     name = "upgrade_schema",
     srcs = ["upgrade_schema.py"],
+    strict_deps = True,
     deps = [":upgrade_schema_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "upgrade_schema_main_lib",
     srcs = [
         "upgrade_schema.py",
@@ -54,16 +57,18 @@ py_strict_library(
         "//tensorflow/compiler/mlir/lite/schema:schema_v3.fbs",
         "@flatbuffers//:flatc",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/platform:resource_loader",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
+    strict_deps = True,
     tags = [
         "manual",
         "no_oss",
@@ -78,13 +83,14 @@ py_strict_test(
 )
 
 # copybara:uncomment_begin(google-only)
-# py_strict_test(
+# py_test(
 #     name = "schema_validation_test",
 #     srcs = ["schema_validation_test.py"],
 #     data = [
 #         ":schema_fbs_srcs",
 #         ":schema_generated.h.oss",
 #     ],
+#     strict_deps = True,
 #     # TODO(b/235550563): Enable this TAP with FlatBuffer 2.0.6 migration.
 #     tags = [
 #         "manual",

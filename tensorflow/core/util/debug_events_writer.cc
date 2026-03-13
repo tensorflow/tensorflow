@@ -172,7 +172,7 @@ absl::Status DebugEventsWriter::Init() {
 
   int64_t time_in_seconds = env_->NowMicros() / 1e6;
   file_prefix_ = io::JoinPath(
-      dump_root_, strings::Printf("%s.%010lld.%s", kFileNamePrefix,
+      dump_root_, absl::StrFormat("%s.%010lld.%s", kFileNamePrefix,
                                   static_cast<long long>(time_in_seconds),
                                   port::Hostname().c_str()));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(SOURCE_FILES));
@@ -194,7 +194,7 @@ absl::Status DebugEventsWriter::Init() {
   DebugMetadata* metadata = debug_event.mutable_debug_metadata();
   metadata->set_tensorflow_version(TF_VERSION_STRING);
   metadata->set_file_version(
-      strings::Printf("%s%d", kVersionPrefix, kCurrentFormatVersion));
+      absl::StrFormat("%s%d", kVersionPrefix, kCurrentFormatVersion));
   metadata->set_tfdbg_run_id(tfdbg_run_id_);
   TF_RETURN_IF_ERROR(SerializeAndWriteDebugEvent(&debug_event, METADATA));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(

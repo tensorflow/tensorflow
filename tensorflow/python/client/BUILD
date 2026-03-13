@@ -1,7 +1,7 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-
 # Contains targets that expose client session APIs
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static")
@@ -18,9 +18,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "pywrap_tf_session",
     srcs = ["pywrap_tf_session.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tf_session",
@@ -152,9 +153,10 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "client",
     srcs = ["client_lib.py"],
+    strict_deps = True,
     deps = [
         ":_pywrap_device_lib",
         "//tensorflow/core:protos_all_py",
@@ -183,9 +185,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "device_lib",
     srcs = ["device_lib.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:internal",
         "//third_party/py/cleverhans:__subpackages__",
@@ -289,9 +292,10 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-py_strict_library(
+py_library(
     name = "session",
     srcs = ["session.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
@@ -329,9 +333,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "timeline",
     srcs = ["timeline.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",

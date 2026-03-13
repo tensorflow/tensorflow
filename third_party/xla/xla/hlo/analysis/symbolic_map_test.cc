@@ -172,6 +172,34 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlySymbols) {
   EXPECT_THAT(replaced.GetResults(), ElementsAre(d0 + c10, d1 * c2));
 }
 
+TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsChangeNumDims) {
+  SymbolicExpr new_d0 = CreateDimExpr(0, &ctx);
+  SymbolicExpr new_s0 = CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/1, &ctx);
+  SymbolicExpr new_s1 = CreateSymbolExpr(/*symbol_id=*/1, /*num_dims=*/1, &ctx);
+
+  SymbolicMap replaced_change_dims =
+      sample_map.ReplaceDimsAndSymbols({c2, new_d0}, {}, /*num_result_dims=*/1,
+                                       /*num_result_symbols=*/2);
+  EXPECT_EQ(replaced_change_dims.GetNumDims(), 1);
+  EXPECT_EQ(replaced_change_dims.GetNumSymbols(), 2);
+  EXPECT_THAT(replaced_change_dims.GetResults(),
+              ElementsAre((c2 + new_s0), (new_d0 * new_s1)));
+}
+
+TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsChangeNumSymbols) {
+  SymbolicExpr new_d0 = CreateDimExpr(0, &ctx);
+  SymbolicExpr new_d1 = CreateDimExpr(1, &ctx);
+  SymbolicExpr new_s0 = CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/2, &ctx);
+
+  SymbolicMap replaced_change_dims =
+      sample_map.ReplaceDimsAndSymbols({}, {c2, new_s0}, /*num_result_dims=*/2,
+                                       /*num_result_symbols=*/1);
+  EXPECT_EQ(replaced_change_dims.GetNumDims(), 2);
+  EXPECT_EQ(replaced_change_dims.GetNumSymbols(), 1);
+  EXPECT_THAT(replaced_change_dims.GetResults(),
+              ElementsAre((new_d0 + c2), (new_d1 * new_s0)));
+}
+
 TEST_F(SymbolicMapTest, Compose) {
   // Composition without Symbols
   SymbolicMap map1_no_symbols = SymbolicMap::Get(&ctx, 1, 0, {d0 * 2});

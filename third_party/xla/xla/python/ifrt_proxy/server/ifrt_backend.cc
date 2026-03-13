@@ -582,6 +582,11 @@ tsl::Future<BackendInterface::Response> IfrtBackend::ProcessInternal(
                   &array_store_);
       return tsl::Future<Response>(asr->ProcessResponse(
           HandleRemapArraysRequest(*asr, std::move(request))));
+    case IfrtRequest::RequestCase::kBitcastArraysRequest:
+      asr.emplace(request->bitcast_arrays_request().result_handles(),
+                  &array_store_);
+      return tsl::Future<Response>(asr->ProcessResponse(
+          HandleBitcastArraysRequest(*asr, std::move(request))));
     case IfrtRequest::RequestCase::kReshardArraysRequest:
       asr.emplace(request->reshard_arrays_request().result_handles(),
                   &array_store_);
@@ -1083,6 +1088,38 @@ IfrtBackend::HandleRemapArraysRequest(ArrayStore::Reservation& asr,
 
   auto response = NewIfrtResponse(request->request_metadata().op_id());
   response->mutable_remap_arrays_response()->mutable_array_handles()->Assign(
+      response_handles.begin(), response_handles.end());
+
+  return response;
+}
+
+absl::StatusOr<BackendInterface::Response>
+IfrtBackend::HandleBitcastArraysRequest(ArrayStore::Reservation& asr,
+                                        std::unique_ptr<IfrtRequest> request) {
+  const auto& bitcast_request = request->bitcast_arrays_request();
+
+  TF_ASSIGN_OR_RETURN(std::vector<IfrtArrayRef> arrays,
+                      array_store_.Find(bitcast_request.array_handles()));
+
+  std::vector<ArraySpec> array_specs;
+  array_specs.reserve(bitcast_request.array_specs_size());
+  for (const auto& array_spec_proto : bitcast_request.array_specs()) {
+    TF_ASSIGN_OR_RETURN(auto array_spec,
+                        ArraySpec::FromProto(client_.get(), array_spec_proto));
+    array_specs.push_back(std::move(array_spec));
+  }
+  TF_ASSIGN_OR_RETURN(auto semantics, FromArrayCopySemanticsProto(
+                                          bitcast_request.copy_semantics()));
+
+  TF_ASSIGN_OR_RETURN(
+      auto out_arrays,
+      client_->BitcastArrays(absl::MakeSpan(arrays), array_specs, semantics));
+
+  std::vector<uint64_t> response_handles = asr.Fill(std::move(out_arrays));
+
+  std::unique_ptr<IfrtResponse> response =
+      NewIfrtResponse(request->request_metadata().op_id());
+  response->mutable_bitcast_arrays_response()->mutable_array_handles()->Assign(
       response_handles.begin(), response_handles.end());
 
   return response;
@@ -2047,6 +2084,12 @@ IfrtBackend::HandleLoadedExecutableDestructRequest(
     }
     executable = std::move(it->second);
     executables_.erase(it);
+  }
+  if (destruct.has_delete_options()) {
+    xla::ifrt::LoadedExecutable::DeleteOptions delete_options;
+    delete_options.deletion_stream_id =
+        destruct.delete_options().deletion_stream_id();
+    executable->executable->SetDeleteOptions(delete_options);
   }
   executable.reset();
 

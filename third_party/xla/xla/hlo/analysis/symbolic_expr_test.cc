@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
@@ -145,19 +146,36 @@ TEST_F(SymbolicExprTest, ReplaceVariables) {
 }
 
 TEST_F(SymbolicExprTest, ReplaceDims) {
-  SymbolicExpr d0 = CreateSymbolicVariable(0, &ctx);
-  SymbolicExpr s0 = CreateSymbolicVariable(1, &ctx);
-  SymbolicExpr s1 = CreateSymbolicVariable(2, &ctx);
+  SymbolicExpr d0 = CreateDimExpr(0, &ctx);
+  SymbolicExpr s0 = CreateSymbolExpr(0, /*num_dims=*/1, &ctx);
+  SymbolicExpr s1 = CreateSymbolExpr(2, /*num_dims=*/1, &ctx);
+  SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
+  SymbolicExpr result =
+      expr_to_sub.ReplaceDims({d0 + s1}, /*current_num_dims=*/1,
+                              /*new_num_dims=*/1, /*num_symbols=*/2);
+
+  EXPECT_EQ(result, ((d0 + s1) + s0 * 2) * s1);
+}
+
+TEST_F(SymbolicExprTest, ReplaceDimsWithShiftedSymbols) {
+  SymbolicExpr d0 = CreateDimExpr(0, &ctx);
+  SymbolicExpr s0 = CreateSymbolExpr(0, /*num_dims=*/1, &ctx);
+  SymbolicExpr s1 = CreateSymbolExpr(1, /*num_dims=*/1, &ctx);
   SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
-  SymbolicExpr result = expr_to_sub.ReplaceDims({c7});
-  EXPECT_EQ(result.ToString(), "((7 + (v1 * 2)) * v2)");
+  SymbolicExpr result = expr_to_sub.ReplaceDims(
+      {c7}, /*current_num_dims=*/1, /*new_num_dims=*/0, /*num_symbols=*/2);
+  // Dimensions are replaced and symbols are shifted.
+
+  SymbolicExpr new_s0 = CreateSymbolExpr(0, /*num_dims=*/0, &ctx);
+  SymbolicExpr new_s1 = CreateSymbolExpr(1, /*num_dims=*/0, &ctx);
+  EXPECT_EQ(result, ((c7 + new_s0 * 2) * new_s1));
 }
 
 TEST_F(SymbolicExprTest, ReplaceSymbols) {
-  SymbolicExpr d0 = CreateSymbolicVariable(0, &ctx);
-  SymbolicExpr s0 = CreateSymbolicVariable(1, &ctx);
-  SymbolicExpr s1 = CreateSymbolicVariable(2, &ctx);
+  SymbolicExpr d0 = CreateDimExpr(0, &ctx);
+  SymbolicExpr s0 = CreateSymbolExpr(0, /*num_dims=*/1, &ctx);
+  SymbolicExpr s1 = CreateSymbolExpr(1, /*num_dims=*/1, &ctx);
   SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
   SymbolicExpr result = expr_to_sub.ReplaceSymbols({d0, c7}, /*num_dims=*/1);
@@ -165,9 +183,9 @@ TEST_F(SymbolicExprTest, ReplaceSymbols) {
 }
 
 TEST_F(SymbolicExprTest, ReplaceDimsAndSymbols) {
-  SymbolicExpr d0 = CreateSymbolicVariable(0, &ctx);
-  SymbolicExpr s0 = CreateSymbolicVariable(1, &ctx);
-  SymbolicExpr s1 = CreateSymbolicVariable(2, &ctx);
+  SymbolicExpr d0 = CreateDimExpr(0, &ctx);
+  SymbolicExpr s0 = CreateSymbolExpr(0, /*num_dims=*/1, &ctx);
+  SymbolicExpr s1 = CreateSymbolExpr(1, /*num_dims=*/1, &ctx);
   SymbolicExpr c7 = CreateSymbolicConstant(7, &ctx);
   SymbolicExpr expr_to_sub = (d0 + s0 * 2) * s1;
   SymbolicExpr result = expr_to_sub.ReplaceDimsAndSymbols({s0}, {d0, c7});

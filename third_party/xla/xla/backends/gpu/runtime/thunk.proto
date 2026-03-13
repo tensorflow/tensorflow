@@ -81,6 +81,7 @@ message KernelThunkProto {
   int64 shmem_bytes = 6;
   optional stream_executor.gpu.TmaMetadataProto tma_metadata = 7;
   repeated int64 zeroed_output_buffer_indices = 9;
+  bool use_pdl = 10;
 }
 
 message GemmThunkProto {
@@ -215,6 +216,15 @@ message CublasLtMatmulThunkProto {
   optional ShapedSliceProto d_amax = 15;
   optional ShapedSliceProto workspace = 16;
   int64 autotune_workspace_size = 17;
+}
+
+message CubScanThunkProto {
+  xla.PrimitiveType type = 1;
+  string platform_name = 2;
+  xla.buffer_assignment.BufferAllocationSliceProto input_slice = 3;
+  xla.buffer_assignment.BufferAllocationSliceProto output_slice = 4;
+  xla.buffer_assignment.BufferAllocationSliceProto scratch_slice = 5;
+  int64 num_elements = 6;
 }
 
 message CubSortThunkProto {
@@ -439,6 +449,7 @@ message ThunkProto {
         nvshmem_collective_permute_start_thunk = 53;
     NvshmemSendThunkProto nvshmem_send_thunk = 54;
     NvshmemRecvThunkProto nvshmem_recv_thunk = 55;
+    CubScanThunkProto cub_scan_thunk = 56;
   }
 }
 

@@ -54,7 +54,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -77,7 +77,7 @@ static const std::initializer_list<absl::string_view> kf16f32f64{"f16", "f32",
                                                                  "f64"};
 static const std::initializer_list<absl::string_view> kf16f32{"f16", "f32"};
 
-class CudnnFusedConvRewriterHloTest : public HloTestBase {
+class CudnnFusedConvRewriterHloTest : public HloTestBaseLegacy {
  public:
   bool IsCuda() const {
     return backend()
@@ -113,9 +113,9 @@ class CudnnFusedConvRewriterHloTest : public HloTestBase {
   }
 
   CudnnFusedConvRewriterHloTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/false,
-                    /*allow_mixed_precision_in_hlo_verifier=*/false,
-                    /*instruction_can_change_layout_func=*/{}) {}
+      : HloTestBaseLegacy(/*verifier_layout_sensitive=*/false,
+                          /*allow_mixed_precision_in_hlo_verifier=*/false,
+                          /*instruction_can_change_layout_func=*/{}) {}
 };
 
 class CudnnFusedConvRewriterTest : public GpuCodegenTest {
@@ -126,6 +126,13 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .gpu_compute_capability()
         .IsCuda();
+  }
+  bool IsRocm() const {
+    return backend()
+        .default_stream_executor()
+        ->GetDeviceDescription()
+        .gpu_compute_capability()
+        .IsRocm();
   }
   se::CudaComputeCapability GetCudaComputeCapability() const {
     return backend()
@@ -318,6 +325,7 @@ class CudnnFusedConvRewriterTest : public GpuCodegenTest {
   } while (0)
 
 TEST_F(CudnnFusedConvRewriterTest, TestConvOnly) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   // max(0, conv(x, w));
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -352,6 +360,7 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseReluWithDepthwiseConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestBias) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   // max(0, conv(x, w) + bias);
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -372,6 +381,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestBias) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, Test3D) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   // max(0, conv(x, w) + bias);
   std::string body = R"(
     HloModule Test
@@ -404,6 +414,7 @@ TEST_F(CudnnFusedConvRewriterTest, Test3D) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestBiasMultiCall) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   // max(0, conv(x, w) + bias);
   std::string code = R"(
     HloModule Test
@@ -431,6 +442,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestBiasMultiCall) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestBiasNoRelu) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   // conv(x, w) + bias;
   TestMatchWithAllTypes(R"(
     HloModule Test
@@ -467,6 +479,7 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseBiasWithDepthwiseConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestElu) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   // sum = conv(x, w) + bias
   // select(compare(sum, 0, GT), sum, exponential-minus-one(sum));
   TestMatchWithAllTypes(R"(
@@ -513,6 +526,7 @@ TEST_F(CudnnFusedConvRewriterTest, DontFuseEluWithDepthwiseConv) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
                       se::CudaComputeCapability::kAmpere)) {
     GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
@@ -541,6 +555,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6) {
 // number of input/output channels.  Check that we don't try to run this conv
 // with runtime fusion (or, if we do, that it works!).
 TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
                       se::CudaComputeCapability::kAmpere)) {
     GTEST_SKIP() << "Conv-Bias-Relu6 fusion is supported and recommended with "
@@ -562,6 +577,7 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
+  if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
                       se::CudaComputeCapability::kAmpere)) {
     GTEST_SKIP()

@@ -1,13 +1,15 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "liveness",
     srcs = ["liveness.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":annos",
@@ -18,9 +20,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "reaching_fndefs",
     srcs = ["reaching_fndefs.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/autograph/pyct:anno",
@@ -30,9 +33,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "reaching_fndefs_test",
     srcs = ["reaching_fndefs_test.py"],
+    strict_deps = True,
     deps = [
         ":activity",
         ":reaching_definitions",
@@ -48,9 +52,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "activity",
     srcs = ["activity.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":annos",
@@ -61,9 +66,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "type_inference",
     srcs = ["type_inference.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":activity",
@@ -76,9 +82,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "reaching_definitions",
     srcs = ["reaching_definitions.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/autograph/pyct:anno",
@@ -88,15 +95,17 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "annos",
     srcs = ["annos.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
 )
 
-py_strict_test(
+py_test(
     name = "activity_test",
     srcs = ["activity_test.py"],
+    strict_deps = True,
     deps = [
         ":activity",
         ":annos",
@@ -111,10 +120,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "liveness_test",
     testonly = True,
     srcs = ["liveness_test.py"],
+    strict_deps = True,
     deps = [
         ":activity",
         ":liveness",
@@ -130,9 +140,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "reaching_definitions_test",
     srcs = ["reaching_definitions_test.py"],
+    strict_deps = True,
     deps = [
         ":activity",
         ":reaching_definitions",
@@ -147,9 +158,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "type_inference_test",
     srcs = ["type_inference_test.py"],
+    strict_deps = True,
     deps = [
         ":activity",
         ":reaching_definitions",

@@ -230,7 +230,8 @@ TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
   HloInstruction* all_reduce =
       builder.AddInstruction(HloInstruction::CreateAllReduce(
           ShapeUtil::MakeTupleShape({shape, shape}), {a, b}, reduction,
-          /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
+          std::make_shared<CollectiveDeviceList>(),
+          /*constrain_layout=*/false,
           /*channel_id=*/1, /*use_global_device_ids=*/false));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, all_reduce, 0));

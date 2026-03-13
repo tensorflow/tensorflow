@@ -114,8 +114,8 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
     void** params = const_cast<void**>(packed.argument_addresses().data());
 
     return stream->LaunchKernel(thread_dims, block_dims, cluster_dims, function,
-                                name(), params,
-                                packed.number_of_shared_bytes());
+                                name(), params, packed.number_of_shared_bytes(),
+                                use_pdl());
   };
 
   // If arguments are already packed we can just launch the kernel.

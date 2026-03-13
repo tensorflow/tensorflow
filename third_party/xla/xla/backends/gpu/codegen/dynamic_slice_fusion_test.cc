@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/error_spec.h"
@@ -3064,7 +3065,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
   )";
 
   HloModuleConfig config;
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsForTest();
   options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
@@ -3102,8 +3103,8 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
   // kWaitsForStreams thunks because dynamic slice fusion with a collective hero
   // is converted into an async operation. The kWaitForStreams thunks are
   // expected because of the async operation.
-  ASSERT_EQ(gpu_exec->GetThunk().thunks().size(), 4ul);
-  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
+  ASSERT_EQ(gpu_exec->thunk_executor().thunks().size(), 4ul);
+  EXPECT_THAT(gpu_exec->thunk_executor().thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
                                      ThunkKindIs(Thunk::kReduceScatterStart),
                                      ThunkKindIs(Thunk::kReduceScatterDone),
@@ -3135,7 +3136,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDynamicSlice) {
   })";
 
   HloModuleConfig config;
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsForTest();
   options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
@@ -3224,7 +3225,7 @@ TEST_F(DynamicSliceFusionTest,
                               wrapped_executable.get()));
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec);
   ASSERT_NE(gpu_exec, nullptr);
-  const SequentialThunk& thunk = gpu_exec->GetThunk();
+  const ThunkExecutor& thunk = gpu_exec->thunk_executor();
   auto dynamic_slice_thunk =
       absl::c_find_if(thunk.thunks(), [](const std::unique_ptr<Thunk>& thunk) {
         return thunk->kind() == Thunk::kDynamicSlice;
@@ -3289,7 +3290,7 @@ TEST_F(DynamicSliceFusionTest,
                           test_runner_as_hlo_runner().ExecutableFromWrapped(
                               std::move(wrapped_exec)));
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
-  const ThunkSequence& thunks = gpu_exec->GetThunk().thunks();
+  const ThunkSequence& thunks = gpu_exec->thunk_executor().thunks();
 
   // This is only needed to ensure that the next checks don't fail.
   ASSERT_EQ(thunks.size(), 6);
@@ -3431,19 +3432,19 @@ TEST_F(DynamicSliceFusionTest,
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
 
-  auto while_thunk = absl::c_find_if(gpu_exec->GetThunk().thunks(),
+  auto while_thunk = absl::c_find_if(gpu_exec->thunk_executor().thunks(),
                                      [](const std::unique_ptr<Thunk>& thunk) {
                                        return thunk->kind() == Thunk::kWhile;
                                      });
-  ASSERT_NE(while_thunk, gpu_exec->GetThunk().thunks().end());
+  ASSERT_NE(while_thunk, gpu_exec->thunk_executor().thunks().end());
   WhileThunk* while_thunk_ptr = dynamic_cast<WhileThunk*>(while_thunk->get());
 
   auto ds_thunk =
-      absl::c_find_if(while_thunk_ptr->body_thunk_sequence()->thunks(),
+      absl::c_find_if(while_thunk_ptr->body_executor().thunks(),
                       [](const std::unique_ptr<Thunk>& thunk) {
                         return thunk->kind() == Thunk::kDynamicSlice;
                       });
-  ASSERT_NE(ds_thunk, while_thunk_ptr->body_thunk_sequence()->thunks().end());
+  ASSERT_NE(ds_thunk, while_thunk_ptr->body_executor().thunks().end());
   DynamicSliceThunk* ds_thunk_ptr =
       dynamic_cast<DynamicSliceThunk*>(ds_thunk->get());
   std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets =

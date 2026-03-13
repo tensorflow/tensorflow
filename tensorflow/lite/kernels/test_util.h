@@ -63,6 +63,64 @@ limitations under the License.
 
 namespace tflite {
 
+// A class like std::numeric_limits, but allowing specialization for types
+// that do not have it (e.g. half).
+template <typename T>
+struct NumericLimits {
+  static inline T epsilon() { return std::numeric_limits<T>::epsilon(); }
+  static inline T max() { return std::numeric_limits<T>::max(); }
+  static inline T min() { return std::numeric_limits<T>::lowest(); }
+  static inline T smallest_normal() { return std::numeric_limits<T>::min(); }
+  static constexpr bool kIsOptional = false;
+};
+
+template <>
+struct NumericLimits<half> {
+  static inline half epsilon() { return half::epsilon(); }
+  static inline half max() { return half::max(); }
+  static inline half min() { return half::min(); }
+  static inline half smallest_normal() { return half::smallest_normal(); }
+  static constexpr bool kIsOptional = true;
+};
+
+template <>
+struct NumericLimits<Eigen::bfloat16> {
+  static inline Eigen::bfloat16 epsilon() {
+    return std::numeric_limits<Eigen::bfloat16>::epsilon();
+  }
+  static inline Eigen::bfloat16 max() {
+    return std::numeric_limits<Eigen::bfloat16>::max();
+  }
+  static inline Eigen::bfloat16 min() {
+    return std::numeric_limits<Eigen::bfloat16>::lowest();
+  }
+  static inline Eigen::bfloat16 smallest_normal() {
+    return std::numeric_limits<Eigen::bfloat16>::min();
+  }
+  static constexpr bool kIsOptional = true;
+};
+
+inline std::ostream& operator<<(std::ostream& os, const half& h) {
+  os << static_cast<float>(h);
+  return os;
+}
+
+template <typename T>
+std::vector<T> ToVector(std::initializer_list<float> list) {
+  std::vector<T> res;
+  res.reserve(list.size());
+  for (float f : list) res.push_back(static_cast<T>(f));
+  return res;
+}
+
+template <typename T, typename U>
+std::vector<T> ToVector(const std::vector<U>& list) {
+  std::vector<T> res;
+  res.reserve(list.size());
+  for (const U& f : list) res.push_back(static_cast<T>(f));
+  return res;
+}
+
 // This constant indicates the error bound is derived automatically in functions
 // like ArrayFloatNear.
 constexpr float kFpErrorAuto = -1;
@@ -77,6 +135,15 @@ bool AllowFp16PrecisionForFp32();
 // where e_min is -24 for FP16, -126 for FP32; p is 10 for FP16, 23 for FP32.
 ::testing::Matcher<std::tuple<float, float>> FloatingPointAlmostEq();
 
+// Returns a matcher that checks if a float value is near 'value' within
+// max(max_abs_err, abs(value * max_rel_err)).
+MATCHER_P3(FloatAbsRelNear, value, max_abs_err, max_rel_err, "") {
+  auto matcher = ::testing::FloatNear(
+      value,
+      std::max(static_cast<float>(max_abs_err), std::abs(max_rel_err * value)));
+  return ::testing::ExplainMatchResult(matcher, arg, result_listener);
+}
+
 // In FP32 mode, it equals to Eq(), which means the error bound is zero (no
 // error allowed); in FP16 mode, it checks if the actual number almost equals
 // the expected number with the tolerance of 4 FP16 ULPs.
@@ -87,10 +154,35 @@ bool AllowFp16PrecisionForFp32();
 // max_rel_err). In FP16 mode, the tolerance is max(fp16_max_abs_err, value *
 // fp16_max_rel_err). If fp16_max_abs_err is kFpErrorAuto, it is set to
 // std::max(max_abs_err, sqrt(max_abs_err)) automatically.
+template <typename T>
 std::vector<::testing::Matcher<float>> ArrayFloatNear(
-    const std::vector<float>& values, float max_abs_err = 1e-5,
+    const std::vector<T>& values, float max_abs_err = 1e-5,
     float fp16_max_abs_err = kFpErrorAuto, float max_rel_err = 0,
-    float fp16_max_rel_err = 0.01);
+    float fp16_max_rel_err = 0.01) {
+  if (AllowFp16PrecisionForFp32()) {
+    if (fp16_max_abs_err == kFpErrorAuto) {
+      max_abs_err = std::max(max_abs_err, std::sqrt(max_abs_err));
+    } else {
+      max_abs_err = fp16_max_abs_err;
+    }
+    max_rel_err = fp16_max_rel_err;
+  }
+  std::vector<::testing::Matcher<float>> matchers;
+  matchers.reserve(values.size());
+  for (const T& v : values) {
+    matchers.emplace_back(
+        FloatAbsRelNear(static_cast<float>(v), max_abs_err, max_rel_err));
+  }
+  return matchers;
+}
+
+inline std::vector<::testing::Matcher<float>> ArrayFloatNear(
+    std::initializer_list<float> values, float max_abs_err = 1e-5,
+    float fp16_max_abs_err = kFpErrorAuto, float max_rel_err = 0,
+    float fp16_max_rel_err = 0.01) {
+  return ArrayFloatNear<float>(std::vector<float>(values), max_abs_err,
+                               fp16_max_abs_err, max_rel_err, fp16_max_rel_err);
+}
 
 // TODO(b/280061335): Add FP16 logic as ArrayFloatNear does.
 // A gmock matcher that check that elements of a complex vector match to a given
@@ -761,6 +853,8 @@ class SingleOpModel {
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         bool use_simple_allocator = false);
 
+  TfLiteStatus AllocateTensors();
+
   // Executes inference and return status code.
   TfLiteStatus Invoke();
 
@@ -777,6 +871,16 @@ class SingleOpModel {
   template <typename T>
   void PopulateTensor(int index, const std::initializer_list<T>& data) {
     PopulateTensorImpl<T>(index, /*offset=*/0, data);
+  }
+
+  // Populates the tensor given its index, converting from float.
+  // This is useful for populating quantized tensors with float values.
+  template <typename T, typename = std::enable_if_t<!std::is_integral_v<T>>>
+  void PopulateTensor(int index, std::initializer_list<float> data) {
+    std::vector<T> v;
+    v.reserve(data.size());
+    for (float f : data) v.push_back(static_cast<T>(f));
+    PopulateTensorImpl<T>(index, /*offset=*/0, v);
   }
 
   // Populates the tensor given its index.
@@ -800,8 +904,18 @@ class SingleOpModel {
   // Return a vector with the flattened contents of a tensor.
   template <typename T>
   std::vector<T> ExtractVector(int index) const {
-    const T* v = interpreter_->typed_tensor<T>(index);
     const auto* tensor = interpreter_->tensor(index);
+    ABSL_CHECK(tensor) << "Tensor at index " << index << " is null.";
+
+    // Get the total number of elements in the tensor.
+    int64_t num_elements = NumElements(tensor);
+
+    // If the tensor has no elements, return an empty vector immediately.
+    if (num_elements == 0) {
+      return std::vector<T>();
+    }
+
+    const T* v = interpreter_->typed_tensor<T>(index);
     if (!v && tensor->type == kTfLiteInt4 && std::is_same<T, uint8_t>::value) {
       v = reinterpret_cast<const T*>(tensor->data.raw);
     }
@@ -1314,6 +1428,26 @@ class SingleOpModel {
   // True by default as delegated graphs are tested elsewhere.
   bool bypass_default_delegates_ = true;
 };
+
+#define TFLITE_INVOKE_AND_CHECK(T, m)        \
+  if ((m)->Invoke() != kTfLiteOk) {          \
+    if (NumericLimits<T>::kIsOptional) {     \
+      GTEST_SKIP() << "Type not supported."; \
+    } else {                                 \
+      FAIL() << "Invoke failed.";            \
+    }                                        \
+    return;                                  \
+  }
+
+#define TFLITE_ALLOCATE_AND_CHECK(T, m)      \
+  if ((m)->AllocateTensors() != kTfLiteOk) { \
+    if (NumericLimits<T>::kIsOptional) {     \
+      GTEST_SKIP() << "Type not supported."; \
+    } else {                                 \
+      FAIL() << "AllocateTensors failed.";   \
+    }                                        \
+    return;                                  \
+  }
 
 // Populate string tensors.
 template <>

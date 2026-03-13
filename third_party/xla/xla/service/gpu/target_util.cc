@@ -360,6 +360,34 @@ std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op) {
   return std::nullopt;
 }
 
+bool HasF16Implementation(TargetDeviceFunctionID func_id,
+                          llvm::Triple target_triple) {
+  return target_triple.isAMDGPU() &&
+         (func_id == TargetDeviceFunctionID::kAtan2 ||
+          func_id == TargetDeviceFunctionID::kCbrt ||
+          func_id == TargetDeviceFunctionID::kCos ||
+          func_id == TargetDeviceFunctionID::kExp ||
+          func_id == TargetDeviceFunctionID::kExpm1 ||
+          func_id == TargetDeviceFunctionID::kFmod ||
+          func_id == TargetDeviceFunctionID::kHypot ||
+          func_id == TargetDeviceFunctionID::kLog ||
+          func_id == TargetDeviceFunctionID::kLog1p ||
+          func_id == TargetDeviceFunctionID::kPow ||
+          func_id == TargetDeviceFunctionID::kRsqrt ||
+          func_id == TargetDeviceFunctionID::kSin ||
+          func_id == TargetDeviceFunctionID::kSqrt ||
+          func_id == TargetDeviceFunctionID::kTan ||
+          func_id == TargetDeviceFunctionID::kTanh ||
+          func_id == TargetDeviceFunctionID::kErf ||
+          func_id == TargetDeviceFunctionID::kAcosh ||
+          func_id == TargetDeviceFunctionID::kAcos ||
+          func_id == TargetDeviceFunctionID::kSinh ||
+          func_id == TargetDeviceFunctionID::kAsin ||
+          func_id == TargetDeviceFunctionID::kAsinh ||
+          func_id == TargetDeviceFunctionID::kCosh ||
+          func_id == TargetDeviceFunctionID::kAtanh);
+}
+
 namespace {
 // TODO(b/370452608): Add more functions that have a fast approximation for f32
 // that we can use for f16 types.
@@ -397,6 +425,10 @@ std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     // TODO(b/370452608): Are there approximate functions we can use for BF16
     // and F16 types?
+    if (output_type == F16 && HasF16Implementation(func_id, target_triple)) {
+      // All these functions have f16 implementation - no need for conversion
+      return StrCat(gpu_root_names.amdgpu_root, "_f16");
+    }
     if (output_type == BF16 || output_type == F16 || output_type == F32) {
       return StrCat(gpu_root_names.amdgpu_root, "_f32");
     } else if (output_type == F64) {

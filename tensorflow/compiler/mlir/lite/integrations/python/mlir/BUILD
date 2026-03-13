@@ -36,6 +36,7 @@ symlink_inputs(
 
 py_library(
     name = "mlir",
+    strict_deps = False,
     deps = [
         ":mlir_libs",
         "//tensorflow/compiler/mlir/lite/integrations/python/mlir/_mlir_libs:_mlir",

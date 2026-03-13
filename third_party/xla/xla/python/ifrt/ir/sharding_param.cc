@@ -243,32 +243,13 @@ absl::Status ShardingParam::verify() const {
                        axis_size, "). Saw: ", unreduced));
     }
   }
-  int dim_index = 0;
-  int cum_size = 1;
-  for (int i = 0; i < minor_to_major().permutation.size(); ++i) {
-    const int perm_index = minor_to_major().permutation[i];
-    while (dim_index < dim_shards().size() && dim_shards()[dim_index] == 1) {
-      dim_index++;
-    }
-    if (dim_index == dim_shards().size()) {
-      break;
-    }
-    cum_size *= minor_to_major().axis_sizes[perm_index];
-    while (dim_index < dim_shards().size() &&
-           cum_size % dim_shards()[dim_index] == 0) {
-      cum_size /= dim_shards()[dim_index];
-      if (dim_shards()[dim_index] != 1 && unreduced_set.contains(i)) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "`unreduced_axes` contains an axis (=", i,
-            ") with more than one shard (=", dim_shards()[dim_index], ")"));
-      }
-      dim_index++;
-    }
+  // TODO(b/491122256): Improve validation logic to check if `dim_shards` can be
+  // distributed over the device mesh.
+  int total_dim_shards_size = 1;
+  for (const int dim_shard : dim_shards()) {
+    total_dim_shards_size *= dim_shard;
   }
-  while (dim_index < dim_shards().size() && dim_shards()[dim_index] == 1) {
-    dim_index++;
-  }
-  if (dim_index != dim_shards().size()) {
+  if (NumDevices() % total_dim_shards_size != 0) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Can't shard the dims ", absl::StrJoin(dim_shards(), "x"),
         " to the mesh of [", absl::StrJoin(minor_to_major().permutation, ","),

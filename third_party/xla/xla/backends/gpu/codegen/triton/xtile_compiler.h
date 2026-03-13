@@ -55,6 +55,7 @@ struct TritonWrapperResult {
   int64_t global_scratch_memory_size = 0;
   se::gpu::TmaMetadata tma_metadata;
   se::ThreadDim thread_dims;
+  bool use_pdl = false;
 
   // The captured nvvm.annotations from the lowest level LLVM IR coming from
   // Triton. We need to propagate them because we later create the kernel and
@@ -84,7 +85,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context);
+    mlir::MLIRContext& mlir_context, bool use_experimental_tiling = false);
 
 // Compiles a given Triton module to LLVM IR.
 // If `emit_kernels` is false, then the function skips emitting

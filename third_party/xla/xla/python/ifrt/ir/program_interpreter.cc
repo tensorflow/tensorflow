@@ -24,13 +24,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -44,20 +44,22 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/pjrt/host_memory_spaces.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/attribute_map.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
+#include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/remap_plan.pb.h"
-#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/concurrency/future.h"
@@ -72,7 +74,6 @@ namespace ifrt {
 using ::tsl::profiler::TraceMe;
 using ::tsl::profiler::TraceMeEncode;
 
-using ArrayRef = ::xla::ifrt::ArrayRef;
 using ExecuteOptions = ::xla::ifrt::LoadedExecutable::ExecuteOptions;
 using ExecuteResult = ::xla::ifrt::LoadedExecutable::ExecuteResult;
 
@@ -80,6 +81,8 @@ namespace {
 
 // Opaque handle that represents an array. Zero is reserved for null.
 using ArrayHandle = uintptr_t;
+
+static MemoryKind kPinnedHostMemoryKind(xla::PinnedHostMemorySpace::kKind);
 
 // Array with additional metadata (e.g., if it can be donated).
 struct ArrayState {
@@ -92,37 +95,24 @@ ArrayHandle ToArrayHandle(mlir::Value value) {
   return reinterpret_cast<ArrayHandle>(value.getAsOpaquePointer());
 }
 
-// Returns an xla::ifrt::Sharding for the given IFRT array type.
-absl::StatusOr<xla::ifrt::ShardingRef> GetSharding(
-    xla::ifrt::IfrtArrayType array_type, xla::ifrt::Client* client,
-    const xla::ifrt::DeviceListRef& devices) {
-  const absl::Span<xla::ifrt::Device* const> in_devices = devices->devices();
-  absl::InlinedVector<xla::ifrt::Device*, 1> out_devices;
-  out_devices.reserve(array_type.getDevices().size());
-  for (int logical_id : array_type.getDevices()) {
-    out_devices.push_back(in_devices[logical_id]);
-  }
-  auto sharding_param_attr =
-      mlir::dyn_cast_or_null<xla::ifrt::IfrtShardingParamAttr>(
-          array_type.getShardingAttr());
-  TF_RET_CHECK(sharding_param_attr != nullptr)
-      << "Array type: " << mlir::debugString(array_type)
-      << " if not of type `IfrtShardingParamAttr`";
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client->MakeDeviceList(std::move(out_devices)));
-  TF_ASSIGN_OR_RETURN(auto sharding,
-                      xla::ifrt::ShardingParamSharding::Create(
-                          sharding_param_attr.getSharding(),
-                          std::move(device_list), array_type.MemoryKind()));
-  return sharding;
-}
-
 std::string PrettyPrintGeneric(mlir::Operation* op) {
   return absl::StrCat(op->getName().getStringRef().str(), " from:\n",
                       GetPrettyLocation(op->getLoc()));
 }
 
 }  // namespace
+
+enum class ProgramFillStatus {
+  // Do not fill the status of any executables.
+  kFillNone,
+  // Fill the status of only leaf executables. Note that this assumes that
+  // no executables have side effects (e.g., custom calls, host callbacks, etc)
+  // because otherwise waiting for leaf ops isn't a sufficient signal for
+  // program completion.
+  kFillLeafOps,
+  // Fill the status of all executables.
+  kFillAll,
+};
 
 struct Environment {
   // Associates array with an opaque handle.
@@ -131,7 +121,7 @@ struct Environment {
   }
 
   // IFRT client for execution.
-  xla::ifrt::Client* client;
+  Client* client;
   // Name of the program.
   std::string program_name;
   // Set of donated program arguments, which can be deleted after their last
@@ -141,20 +131,20 @@ struct Environment {
   absl::flat_hash_map<ArrayHandle, ArrayState> handle_to_array;
   // Outputs of the program.
   std::vector<ArrayRef> outputs;
-  // `ExecuteOptions.fill_status` passed to Execute().
-  bool fill_status;
+  // Policy that controls how `ExecuteOptions.fill_status` is passed to
+  // `Execute()` calls.
+  ProgramFillStatus program_fill_status;
   // Contains a future for each ifrt.CallOp that is a leaf (i.e., has no outputs
   // or all its outputs are returned from the program).
   std::vector<tsl::Future<>> leaf_call_op_futures;
 };
 
 absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
-    xla::ifrt::Client* client, absl::string_view program_name,
-    mlir::ModuleOp mlir_module,
-    std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables,
-    xla::ifrt::DeviceListRef devices) {
-  mlir::func::FuncOp main_func = xla::ifrt::GetMainFunction(mlir_module);
-  if (!main_func->hasAttr(xla::ifrt::kIfrtFunctionAttrName)) {
+    Client* client, absl::string_view program_name, mlir::ModuleOp mlir_module,
+    std::shared_ptr<AtomExecutableMap> atom_program_executables,
+    DeviceListRef devices) {
+  mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
+  if (!main_func->hasAttr(kIfrtFunctionAttrName)) {
     return absl::InvalidArgumentError(
         absl::StrCat("`main` function of IFRT IR program: ", program_name,
                      " is not an IFRT function."));
@@ -167,7 +157,7 @@ absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
 namespace {
 
 struct ProgramInterpreterState {
-  xla::ifrt::Client* client;
+  Client* client;
   std::string program_name;
 
   std::vector<ArrayHandle> input_handles;
@@ -175,10 +165,9 @@ struct ProgramInterpreterState {
 
   std::vector<absl::AnyInvocable<absl::Status(Environment& env) const>> op_fns;
 
-  absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult> Run(
-      absl::Span<xla::ifrt::ArrayRef> arrays,
-      const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-      std::optional<xla::ifrt::DeviceListRef> devices) const {
+  absl::StatusOr<ExecuteResult> Run(
+      absl::Span<ArrayRef> arrays, const ExecuteOptions& options,
+      std::optional<DeviceListRef> devices) const {
     TraceMe traceme([&]() {
       return TraceMeEncode("DispatchProgram",
                            {{"ifrt_ir_program", program_name}});
@@ -193,7 +182,7 @@ struct ProgramInterpreterState {
     }
 
     for (int idx = 0; idx < arrays.size(); ++idx) {
-      const xla::ifrt::ArrayRef& array = arrays[idx];
+      const ArrayRef& array = arrays[idx];
       if (array->IsDeleted()) {
         return absl::InvalidArgumentError(
             absl::StrCat("Input array #", idx, " of program ", program_name,
@@ -203,7 +192,29 @@ struct ProgramInterpreterState {
 
     Environment env;
     env.client = client;
-    env.fill_status = options.fill_status;
+    // TODO(icgog): Set default fill status to kFillLeafOps instead of kFillNone
+    // when  options.fill_status is set.
+    env.program_fill_status = options.fill_status
+                                  ? ProgramFillStatus::kFillAll
+                                  : ProgramFillStatus::kFillNone;
+    if (options.fill_status && options.custom_options.has_value()) {
+      absl::StatusOr<bool> fill_all_statuses =
+          options.custom_options->Get<bool>(
+              std::string(IfrtIRProgram::kFillAllStatuses));
+      if (fill_all_statuses.ok()) {
+        env.program_fill_status = *fill_all_statuses
+                                      ? ProgramFillStatus::kFillAll
+                                      : ProgramFillStatus::kFillLeafOps;
+      } else if (absl::Status status = fill_all_statuses.status();
+                 !absl::IsNotFound(status)) {
+        tsl::errors::AppendToMessage(
+            &status, absl::StrCat("Execute of IFRT IR program ", program_name,
+                                  " failed to get `fill_all_statuses` custom "
+                                  "option."));
+        return status;
+      }
+    }
+
     for (int idx = 0; idx < input_handles.size(); ++idx) {
       // Add to the environment the arrays that are used.
       bool is_donated = donated_input_indices.contains(idx) &&
@@ -229,7 +240,7 @@ struct ProgramInterpreterState {
 
     VLOG(2) << "Finished interpreting program: " << program_name;
     ExecuteResult result;
-    if (env.fill_status) {
+    if (env.program_fill_status != ProgramFillStatus::kFillNone) {
       result.status =
           tsl::JoinFutures(absl::MakeSpan(env.leaf_call_op_futures));
     }
@@ -248,14 +259,13 @@ ProgramInterpreter::BuildExecuteFn() {
   state.client = client_;
   state.program_name = program_name_;
 
-  mlir::func::FuncOp main_func = xla::ifrt::GetMainFunction(mlir_module_);
+  mlir::func::FuncOp main_func = GetMainFunction(mlir_module_);
 
   for (const auto [idx, arg] : llvm::enumerate(main_func.getArguments())) {
     // Add to the environment the arrays that are used.
     const ArrayHandle handle = arg.use_empty() ? 0 : ToArrayHandle(arg);
     state.input_handles.push_back(handle);
-    if (main_func.getArgAttr(idx, xla::ifrt::kIfrtDonatedArgAttrName) !=
-        nullptr) {
+    if (main_func.getArgAttr(idx, kIfrtDonatedArgAttrName) != nullptr) {
       state.donated_input_indices.insert(idx);
     }
   }
@@ -265,8 +275,8 @@ ProgramInterpreter::BuildExecuteFn() {
   for (mlir::Operation& op : main_func.getOps()) {
     auto op_fn =
         llvm::TypeSwitch<const mlir::Operation&, absl::StatusOr<OpFn>>(op)
-            .Case<xla::ifrt::CallLoadedExecutableOp, xla::ifrt::RemapArraysOp,
-                  xla::ifrt::CopyArraysOp, mlir::func::ReturnOp>(
+            .Case<CallLoadedExecutableOp, BitcastArraysOp, RemapArraysOp,
+                  CopyArraysOp, mlir::func::ReturnOp>(
                 [this](const auto& op) { return HandleOp(op); })
             .Default([](const mlir::Operation& op) {
               return absl::InvalidArgumentError(absl::StrCat(
@@ -299,11 +309,14 @@ struct CallLoadedExecutableOpState {
   absl::flat_hash_set<int> donated_arg_idxs;
   absl::flat_hash_set<ArrayHandle> dead_inputs;
 
-  xla::ifrt::LoadedExecutable::ExecuteOptions execute_options;
-  std::shared_ptr<xla::ifrt::LoadedExecutable> executable;
+  ExecuteOptions execute_options;
+  std::shared_ptr<LoadedExecutable> executable;
 
   std::vector<ArrayHandle> output_handles;
   bool is_leaf_op;
+  // TODO(b/488047351): Remove this attribute once MPMD reshards are outlined in
+  // IFRT IR.
+  bool is_mpmd_reshard;
 
   absl::Status Run(Environment& env) const {
     TraceMe traceme([&]() {
@@ -315,44 +328,85 @@ struct CallLoadedExecutableOpState {
     });
     VLOG(3) << pretty_print;
 
-    xla::ifrt::LoadedExecutable::ExecuteOptions options = execute_options;
-    options.fill_status = env.fill_status;
+    ExecuteOptions options = execute_options;
+    if (env.program_fill_status == ProgramFillStatus::kFillAll ||
+        (env.program_fill_status == ProgramFillStatus::kFillLeafOps &&
+         is_leaf_op)) {
+      options.fill_status = true;
+    }
 
-    // Get the inputs of the loaded executable.
-    std::vector<ArrayRef> inputs;
     std::vector<ArrayHandle> arrays_to_remove;
-    for (int idx = 0; idx < input_handles.size(); ++idx) {
-      const ArrayHandle handle = input_handles[idx];
+    {
+      std::vector<ArrayRef> non_donatable_pinned_host_inputs;
+      std::vector<ArrayHandle> non_donatable_pinned_host_inputs_handles;
+      for (int idx = 0; idx < input_handles.size(); ++idx) {
+        const ArrayHandle handle = input_handles[idx];
 
-      auto array_it = env.handle_to_array.find(handle);
-      TF_RET_CHECK(array_it != env.handle_to_array.end())
-          << "Input array #" << idx << " not found. " << pretty_print;
-      if (array_it->second.array->IsDeleted()) {
-        // We explicitly check here for deletion in order to provide a more
-        // informative error message.
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Input array #", idx, "` has already been deleted or donated. ",
-            pretty_print));
-      }
-      inputs.push_back(array_it->second.array);
+        auto array_it = env.handle_to_array.find(handle);
+        TF_RET_CHECK(array_it != env.handle_to_array.end())
+            << "Input array #" << idx << " not found. " << pretty_print;
+        if (array_it->second.array->IsDeleted()) {
+          // We explicitly check here for deletion in order to provide a more
+          // informative error message.
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Input array #", idx, "` has already been deleted or donated. ",
+              pretty_print));
+        }
 
-      bool is_donated = donated_arg_idxs.contains(idx);
-      if (is_donated && !array_it->second.can_be_donated) {
-        VLOG(2) << "Atom program donates input #" << idx
-                << ", but it has not been donated to the IFRT IR program. "
-                   "Input will not be donated. \n"
-                << pretty_print;
-        is_donated = false;
+        bool is_donated = donated_arg_idxs.contains(idx);
+        if (is_donated && !array_it->second.can_be_donated) {
+          VLOG(2) << "Atom program donates input #" << idx
+                  << ", but it has not been donated to the IFRT IR program. "
+                     "Input will not be donated. \n"
+                  << pretty_print;
+          // TODO(b/401105456): Do not special case pinned host arrays once
+          // non-donatable pinned host inputs are supported.
+          if (!is_mpmd_reshard &&
+              array_it->second.array->sharding().memory_kind() ==
+                  kPinnedHostMemoryKind) {
+            non_donatable_pinned_host_inputs.push_back(array_it->second.array);
+            non_donatable_pinned_host_inputs_handles.push_back(handle);
+          } else {
+            options.non_donatable_input_indices.insert(idx);
+          }
+          is_donated = false;
+        }
+        if (is_donated || dead_inputs.contains(handle)) {
+          arrays_to_remove.push_back(handle);
+        }
+        if (!is_donated && is_mpmd_reshard) {
+          options.non_donatable_input_indices.insert(idx);
+        }
       }
-      if (is_donated || dead_inputs.contains(handle)) {
-        arrays_to_remove.push_back(handle);
-      }
-      if (!is_donated) {
-        options.non_donatable_input_indices.insert(idx);
+
+      // TODO(b/401105456): Remove this CopyArrays call once non-donatable
+      // pinned host inputs are supported.
+      if (!non_donatable_pinned_host_inputs.empty()) {
+        TF_ASSIGN_OR_RETURN(
+            std::vector<ArrayRef> copied_pinned_host_inputs,
+            env.client->CopyArrays(
+                absl::MakeSpan(non_donatable_pinned_host_inputs),
+                /*devices=*/std::nullopt,
+                /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+        for (int idx = 0; idx < copied_pinned_host_inputs.size(); ++idx) {
+          env.handle_to_array[non_donatable_pinned_host_inputs_handles[idx]] =
+              ArrayState{
+                  /*array=*/std::move(copied_pinned_host_inputs[idx]),
+                  /*can_be_donated=*/false,
+              };
+        }
       }
     }
 
-    TF_ASSIGN_OR_RETURN(xla::ifrt::LoadedExecutable::ExecuteResult result,
+    // Get the inputs of the loaded executable.
+    std::vector<ArrayRef> inputs;
+    inputs.reserve(input_handles.size());
+    for (int idx = 0; idx < input_handles.size(); ++idx) {
+      inputs.push_back(
+          env.handle_to_array.find(input_handles[idx])->second.array);
+    }
+
+    TF_ASSIGN_OR_RETURN(ExecuteResult result,
                         executable->Execute(absl::MakeSpan(inputs), options,
                                             /*devices=*/std::nullopt));
     TF_RET_CHECK(result.outputs.size() == output_handles.size())
@@ -383,7 +437,7 @@ struct CallLoadedExecutableOpState {
                                    });
       }
     }
-    if (is_leaf_op && env.fill_status) {
+    if (is_leaf_op && env.program_fill_status != ProgramFillStatus::kFillNone) {
       env.leaf_call_op_futures.push_back(std::move(result.status));
     }
     return absl::OkStatus();
@@ -393,12 +447,11 @@ struct CallLoadedExecutableOpState {
 }  // namespace
 
 absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
-    xla::ifrt::CallLoadedExecutableOp call_loaded_op) {
+    CallLoadedExecutableOp call_loaded_op) {
   CallLoadedExecutableOpState state;
   state.pretty_print = PrettyPrint(call_loaded_op);
 
-  xla::ifrt::LoadedExecutableOp loaded_exec_op =
-      call_loaded_op.getCalleeOp(symbol_table_);
+  LoadedExecutableOp loaded_exec_op = call_loaded_op.getCalleeOp(symbol_table_);
   state.atom_program_name = loaded_exec_op.getSymName().str();
 
   // Get the loaded executable for the atom program.
@@ -419,6 +472,14 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     if (liveness_.isDeadAfter(input, call_loaded_op)) {
       state.dead_inputs.insert(ToArrayHandle(input));
     }
+  }
+
+  if (auto module_type = call_loaded_op->getAttrOfType<mlir::StringAttr>(
+          kIfrtModuleTypeAttrName);
+      module_type != nullptr && module_type == kIfrtModuleTypeMpmdReshard) {
+    state.is_mpmd_reshard = true;
+  } else {
+    state.is_mpmd_reshard = false;
   }
 
   state.is_leaf_op = true;
@@ -445,7 +506,7 @@ namespace {
 struct RemapArraysOpState {
   std::string pretty_print;
 
-  xla::ifrt::RemapPlan remap_plan;
+  RemapPlan remap_plan;
   std::vector<ArrayHandle> input_handles;
   absl::flat_hash_set<ArrayHandle> dead_inputs;
   bool remap_is_donated;
@@ -462,7 +523,6 @@ struct RemapArraysOpState {
     std::vector<ArrayRef> inputs;
     inputs.reserve(remap_plan.input_specs.size());
 
-    std::optional<bool> is_donated;
     std::vector<ArrayHandle> arrays_to_remove;
 
     for (int idx = 0; idx < input_handles.size(); ++idx) {
@@ -478,41 +538,45 @@ struct RemapArraysOpState {
             "Input array #", idx, "` has already been deleted or donated. ",
             pretty_print));
       }
-      inputs.push_back(array_it->second.array);
 
       // The default buffer donation semantic is finalized at compilation time.
       // Users can override the donation semantic at runtime. In the meantime,
       // the IFRT client RemapArrays API requires all input arrays have the same
-      // donation semantic.
-      if (!is_donated.has_value()) {
-        is_donated = remap_is_donated && array_it->second.can_be_donated;
+      // donation semantic. Insert a CopyArrays op if RemapArrays requires all
+      // input arrays to be donated, but some of the input arrays have been
+      // marked as non-donatable.
+      if (remap_is_donated && !array_it->second.can_be_donated) {
+        ArrayRef array = array_it->second.array;
+        LOG_FIRST_N(WARNING, 5)
+            << "Array is cloned because remapping with more than one "
+               "input array requires input donation. array="
+            << array->DebugString()
+            << " (this warning is logged only at most 5 times). This clone "
+               "happens only if the array has been marked as non-donatable at "
+               "runtime."
+            << pretty_print;
+        TF_ASSIGN_OR_RETURN(
+            std::vector<ArrayRef> copied_arrays,
+            env.client->CopyArrays(
+                absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
+                /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+        inputs.push_back(std::move(copied_arrays[0]));
+      } else {
+        inputs.push_back(array_it->second.array);
       }
-      if (*is_donated && !array_it->second.can_be_donated) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Donation semantic must be consistent across all input arrays of "
-            "RemapArraysOp. Input array #",
-            idx,
-            " cannot be donated, but previous input arrays can be donated. "
-            "It's likely due to a MPMD program argument is marked as "
-            "non-donatable. ",
-            pretty_print));
-      }
-      if (*is_donated || dead_inputs.contains(handle)) {
+      if ((remap_is_donated && array_it->second.can_be_donated) ||
+          dead_inputs.contains(handle)) {
         arrays_to_remove.push_back(handle);
       }
     }
-    TF_RET_CHECK(is_donated.has_value())
-        << "Unable to determine the donation semantic of the remap op. The "
-           "remap op has no inputs. "
-        << pretty_print;
 
     // Apply the remap arrays operation.
-    xla::ifrt::ArrayCopySemantics copy_semantics =
-        *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
-                    : xla::ifrt::ArrayCopySemantics::kReuseInput;
-    TF_ASSIGN_OR_RETURN(auto out_arrays, env.client->RemapArrays(
-                                             remap_plan, absl::MakeSpan(inputs),
-                                             copy_semantics));
+    TF_ASSIGN_OR_RETURN(
+        auto out_arrays,
+        env.client->RemapArrays(remap_plan, absl::MakeSpan(inputs),
+                                remap_is_donated
+                                    ? ArrayCopySemantics::kDonateInput
+                                    : ArrayCopySemantics::kReuseInput));
 
     for (const auto handle : arrays_to_remove) {
       // Donated remapped arrays are pro-actively deleted, and aliased arrays
@@ -543,74 +607,57 @@ struct RemapArraysOpState {
 }  // namespace
 
 absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
-    xla::ifrt::RemapArraysOp remap_op) {
+    RemapArraysOp remap_op) {
   RemapArraysOpState state;
   state.pretty_print = PrettyPrint(remap_op);
 
   // Construct the mappings of the remap plan.
-  auto mappings =
-      std::make_shared<std::vector<xla::ifrt::RemapPlan::Mapping>>();
+  auto mappings = std::make_shared<std::vector<RemapPlan::Mapping>>();
   mappings->reserve(remap_op.getMappings().size());
   for (const auto& array_mapping : remap_op.getMappings()) {
     const auto array_mapping_attr =
-        llvm::cast<xla::ifrt::IfrtArrayMappingAttr>(array_mapping);
+        llvm::cast<IfrtArrayMappingAttr>(array_mapping);
     auto& mapping = mappings->emplace_back();
     mapping.in_array = array_mapping_attr.getInArrayIndex();
     mapping.out_array = array_mapping_attr.getOutArrayIndex();
     mapping.from.reserve(array_mapping_attr.getMappings().size());
     mapping.to.reserve(array_mapping_attr.getMappings().size());
     for (const auto& m : array_mapping_attr.getMappings()) {
-      const auto mapping_attr = llvm::cast<xla::ifrt::IfrtMappingAttr>(m);
+      const auto mapping_attr = llvm::cast<IfrtMappingAttr>(m);
       auto from_shards = mapping_attr.getFromShards();
       auto to_shards = mapping_attr.getToShards();
-      mapping.from.push_back(xla::ifrt::RemapPlan::Interval{
+      mapping.from.push_back(RemapPlan::Interval{
           from_shards.getStart(), from_shards.getEnd(), from_shards.getStep()});
-      mapping.to.push_back(xla::ifrt::RemapPlan::Interval{
+      mapping.to.push_back(RemapPlan::Interval{
           to_shards.getStart(), to_shards.getEnd(), to_shards.getStep()});
     }
   };
 
   // Get the input specs of the remap plan and the input arrays.
-  std::vector<xla::ifrt::ArraySpec> input_specs;
-  input_specs.reserve(remap_op.getOutputs().size());
-  for (const auto [idx, input] : llvm::enumerate(remap_op.getInputs())) {
+  std::vector<ArraySpec> input_specs;
+  input_specs.reserve(remap_op.getInputs().size());
+  for (const mlir::Value input : remap_op.getInputs()) {
     state.input_handles.push_back(ToArrayHandle(input));
-
-    const auto array_type =
-        llvm::cast<xla::ifrt::IfrtArrayType>(input.getType());
     TF_ASSIGN_OR_RETURN(
-        xla::ifrt::DType dtype,
-        xla::ifrt::ToIfrtDType(array_type.getShape().getElementType()));
-    TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
-                        GetSharding(array_type, client_, devices_));
-    input_specs.push_back(xla::ifrt::ArraySpec{
-        /*dtype=*/dtype,
-        /*shape=*/xla::ifrt::Shape(array_type.getShape().getShape()),
-        /*sharding=*/std::move(sharding)});
-
+        ArraySpec spec,
+        ArraySpecFromMlirType(input.getType(), client_, devices_));
+    input_specs.push_back(std::move(spec));
     if (liveness_.isDeadAfter(input, remap_op)) {
       state.dead_inputs.insert(ToArrayHandle(input));
     }
   }
 
   // Get the output specs of the remap plan.
-  std::vector<xla::ifrt::ArraySpec> output_specs;
+  std::vector<ArraySpec> output_specs;
   output_specs.reserve(remap_op.getOutputs().size());
-  for (const auto [idx, output] : llvm::enumerate(remap_op.getOutputs())) {
-    const auto array_type =
-        llvm::cast<xla::ifrt::IfrtArrayType>(output.getType());
+  for (const mlir::Value output : remap_op.getOutputs()) {
     TF_ASSIGN_OR_RETURN(
-        xla::ifrt::DType dtype,
-        xla::ifrt::ToIfrtDType(array_type.getShape().getElementType()));
-    TF_ASSIGN_OR_RETURN(xla::ifrt::ShardingRef sharding,
-                        GetSharding(array_type, client_, devices_));
-    output_specs.push_back(xla::ifrt::ArraySpec{
-        /*dtype=*/dtype,
-        /*shape=*/xla::ifrt::Shape(array_type.getShape().getShape()),
-        /*sharding=*/std::move(sharding)});
+        ArraySpec spec,
+        ArraySpecFromMlirType(output.getType(), client_, devices_));
+    output_specs.push_back(std::move(spec));
   }
 
-  state.remap_plan = xla::ifrt::RemapPlan{
+  state.remap_plan = RemapPlan{
       /*input_specs=*/std::move(input_specs),
       /*output_specs=*/std::move(output_specs),
       /*mappings=*/std::move(mappings),
@@ -629,6 +676,132 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
 }
 
 namespace {
+struct BitcastArraysOpState {
+  std::string pretty_print;
+
+  std::vector<ArrayHandle> input_handles;
+  absl::flat_hash_set<ArrayHandle> dead_inputs;
+  bool bitcast_is_donated;
+
+  std::vector<ArrayHandle> output_handles;
+  std::vector<ArraySpec> output_specs;
+
+  absl::Status Run(Environment& env) const {
+    TraceMe traceme([&]() {
+      return TraceMeEncode("DispatchBitcastArraysOp",
+                           {{"ifrt_ir_program", env.program_name}});
+    });
+    VLOG(3) << pretty_print;
+
+    std::vector<ArrayRef> inputs;
+    inputs.reserve(input_handles.size());
+
+    std::vector<ArrayHandle> arrays_to_remove;
+
+    for (int idx = 0; idx < input_handles.size(); ++idx) {
+      const ArrayHandle handle = input_handles[idx];
+
+      auto array_it = env.handle_to_array.find(handle);
+      TF_RET_CHECK(array_it != env.handle_to_array.end())
+          << "Input array #" << idx << " not found. " << pretty_print;
+      if (array_it->second.array->IsDeleted()) {
+        // We explicitly check here for deletion in order to provide a more
+        // informative error message.
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Input array #", idx, " has already been deleted or donated. ",
+            pretty_print));
+      }
+
+      // The default buffer donation semantic is finalized at compilation time.
+      // Users can override the donation semantic at runtime. In the meantime,
+      // the IFRT client BitcastArrays API requires all input arrays have the
+      // same donation semantic. Insert a CopyArrays op if BitcastArrays
+      // requires all input arrays to be donated, but some of the input arrays
+      // have been marked as non-donatable.
+      if (bitcast_is_donated && !array_it->second.can_be_donated) {
+        ArrayRef array = array_it->second.array;
+        LOG_FIRST_N(WARNING, 5)
+            << "Array is cloned because is have been marked as non-donatable "
+               "at runtime, but BitcastArrays requires all arrays to be "
+               "donated. array="
+            << array->DebugString()
+            << " (this warning is logged only at most 5 times)."
+            << pretty_print;
+        TF_ASSIGN_OR_RETURN(
+            std::vector<ArrayRef> copied_arrays,
+            env.client->CopyArrays(
+                absl::MakeSpan(&array, 1), /*devices=*/std::nullopt,
+                /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+        inputs.push_back(std::move(copied_arrays[0]));
+      } else {
+        inputs.push_back(array_it->second.array);
+      }
+      if ((bitcast_is_donated && array_it->second.can_be_donated) ||
+          dead_inputs.contains(handle)) {
+        arrays_to_remove.push_back(handle);
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        std::vector<ArrayRef> bitcast_arrays,
+        env.client->BitcastArrays(
+            absl::MakeSpan(inputs), absl::MakeSpan(output_specs),
+            bitcast_is_donated ? ArrayCopySemantics::kDonateInput
+                               : ArrayCopySemantics::kReuseInput));
+
+    for (const auto handle : arrays_to_remove) {
+      // Donated bitcast arrays are proactively deleted, and aliased arrays
+      // cannot be deleted later. Thus, remove the arrays from the deletable
+      // program arguments set.
+      env.deletable_program_arguments.erase(handle);
+      env.handle_to_array.erase(handle);
+    }
+
+    TF_RET_CHECK(bitcast_arrays.size() == inputs.size())
+        << "Got " << bitcast_arrays.size() << " results, but op has "
+        << inputs.size() << ". " << pretty_print;
+    for (int i = 0; i < output_handles.size(); ++i) {
+      const ArrayHandle handle = output_handles[i];
+      if (handle != 0) {
+        env.AssociateArray(handle, ArrayState{
+                                       /*array=*/std::move(bitcast_arrays[i]),
+                                       /*can_be_donated=*/true,
+                                   });
+      }
+    }
+
+    return absl::OkStatus();
+  }
+};
+
+}  // namespace
+
+absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
+    BitcastArraysOp bitcast_op) {
+  BitcastArraysOpState state;
+  state.pretty_print = PrettyPrint(bitcast_op);
+
+  for (const auto [idx, input] : llvm::enumerate(bitcast_op.getInputs())) {
+    state.input_handles.push_back(ToArrayHandle(input));
+    if (liveness_.isDeadAfter(input, bitcast_op)) {
+      state.dead_inputs.insert(ToArrayHandle(input));
+    }
+  }
+  state.bitcast_is_donated = bitcast_op.getDonated();
+
+  for (const auto output : bitcast_op.getOutputs()) {
+    const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
+    state.output_handles.push_back(handle);
+    TF_ASSIGN_OR_RETURN(
+        ArraySpec spec,
+        ArraySpecFromMlirType(output.getType(), client_, devices_));
+    state.output_specs.push_back(std::move(spec));
+  }
+
+  return absl::bind_front(&BitcastArraysOpState::Run, std::move(state));
+}
+
+namespace {
 
 struct CopyArraysOpState {
   std::string pretty_print;
@@ -638,7 +811,7 @@ struct CopyArraysOpState {
   bool copy_is_donated;
 
   std::vector<ArrayHandle> output_handles;
-  xla::ifrt::ShardingRef new_sharding;
+  ShardingRef new_sharding;
 
   absl::Status Run(Environment& env) const {
     TraceMe traceme([&]() {
@@ -649,8 +822,10 @@ struct CopyArraysOpState {
 
     std::vector<ArrayRef> inputs;
     inputs.reserve(input_handles.size());
-
-    std::optional<bool> is_donated;
+    // Indices of donated arrays that must be copied because they've been marked
+    // as non-donatable at runtime.
+    std::vector<int> array_idxs_to_copy;
+    std::vector<ArrayRef> arrays_to_copy;
     std::vector<ArrayHandle> arrays_to_remove;
 
     for (int idx = 0; idx < input_handles.size(); ++idx) {
@@ -668,41 +843,50 @@ struct CopyArraysOpState {
       }
       inputs.push_back(array_it->second.array);
 
-      // The default buffer donation semantic is finalized at compilation time.
-      // Users can override the donation semantic at runtime. In the meantime,
-      // the IFRT client CopyArrays API requires all input arrays have the same
-      // donation semantic.
-      if (!is_donated.has_value()) {
-        is_donated = copy_is_donated && array_it->second.can_be_donated;
+      if (copy_is_donated && !array_it->second.can_be_donated) {
+        array_idxs_to_copy.push_back(idx);
+        arrays_to_copy.push_back(array_it->second.array);
       }
-      if (*is_donated && !array_it->second.can_be_donated) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Donation semantic must be consistent across all input arrays of "
-            "CopyArraysOp. Input array #",
-            idx,
-            " cannot be donated, but previous input arrays can be donated. "
-            "It's likely due to a MPMD program argument is marked as "
-            "non-donatable. ",
-            pretty_print));
-      }
-      if (*is_donated || dead_inputs.contains(handle)) {
+      if ((copy_is_donated && array_it->second.can_be_donated) ||
+          dead_inputs.contains(handle)) {
         arrays_to_remove.push_back(handle);
       }
     }
-    TF_RET_CHECK(is_donated.has_value())
-        << "Unable to determine the donation semantic of the copy arrays op. "
-           "The copy arrays op has no inputs. "
-        << pretty_print;
 
-    auto array_copy_semantics =
-        *is_donated ? xla::ifrt::ArrayCopySemantics::kDonateInput
-                    : xla::ifrt::ArrayCopySemantics::kAlwaysCopy;
+    if (!array_idxs_to_copy.empty()) {
+      // The default buffer donation semantic is finalized at compilation time.
+      // Users can override the donation semantic at runtime. In the meantime,
+      // the IFRT client CopyArrays API requires all input arrays have the same
+      // donation semantic. Insert another CopyArrays op if CopyArrays requires
+      // all input arrays to be donated, but some of the input arrays have been
+      // marked as non-donatable.
+      LOG_FIRST_N(WARNING, 5)
+          << "Arrays are cloned because they have been marked as non-donatable "
+             "at runtime, but CopyArrays requires all arrays to be donated. "
+             "arrays="
+          << absl::StrJoin(arrays_to_copy, ",",
+                           [](std::string* out, const ArrayRef& array) {
+                             absl::StrAppend(out, array->DebugString());
+                           })
+          << " (this warning is logged only at most 5 times)." << pretty_print;
+      TF_ASSIGN_OR_RETURN(
+          std::vector<ArrayRef> copied_arrays,
+          env.client->CopyArrays(
+              absl::MakeSpan(arrays_to_copy), /*devices=*/std::nullopt,
+              /*memory_kind=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy));
+      for (int i = 0; i < array_idxs_to_copy.size(); ++i) {
+        inputs[array_idxs_to_copy[i]] = std::move(copied_arrays[i]);
+      }
+    }
+
     // It is safe to get the devices and memory kind from the first output
     // because all outputs use the same devices and have the same memory kind.
     TF_ASSIGN_OR_RETURN(auto copied_arrays,
                         env.client->CopyArrays(
                             absl::MakeSpan(inputs), new_sharding->devices(),
-                            new_sharding->memory_kind(), array_copy_semantics));
+                            new_sharding->memory_kind(),
+                            copy_is_donated ? ArrayCopySemantics::kDonateInput
+                                            : ArrayCopySemantics::kAlwaysCopy));
 
     for (const auto handle : arrays_to_remove) {
       if (env.deletable_program_arguments.erase(handle)) {
@@ -732,7 +916,7 @@ struct CopyArraysOpState {
 }  // namespace
 
 absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
-    xla::ifrt::CopyArraysOp copy_arrays_op) {
+    CopyArraysOp copy_arrays_op) {
   CopyArraysOpState state;
   state.pretty_print = PrettyPrint(copy_arrays_op);
 
@@ -744,13 +928,14 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   }
   state.copy_is_donated = copy_arrays_op.getDonated();
 
-  const auto out_array_type = llvm::cast<xla::ifrt::IfrtArrayType>(
-      copy_arrays_op.getOutputs().front().getType());
+  const auto out_array_type =
+      llvm::cast<IfrtArrayType>(copy_arrays_op.getOutputs().front().getType());
   TF_RET_CHECK(out_array_type != nullptr)
       << "Output array #0 is not of type `IfrtArrayType`. "
       << state.pretty_print;
-  TF_ASSIGN_OR_RETURN(state.new_sharding,
-                      GetSharding(out_array_type, client_, devices_));
+  TF_ASSIGN_OR_RETURN(
+      state.new_sharding,
+      ShardingFromIfrtArrayType(out_array_type, client_, devices_));
 
   for (const auto output : copy_arrays_op.getOutputs()) {
     const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);
@@ -798,7 +983,7 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
 }
 
 std::string ProgramInterpreter::PrettyPrint(mlir::Operation* op) {
-  if (auto call_op = mlir::dyn_cast<xla::ifrt::CallLoadedExecutableOp>(op)) {
+  if (auto call_op = mlir::dyn_cast<CallLoadedExecutableOp>(op)) {
     return absl::StrCat(call_op->getName().getStringRef().str(), " `",
                         call_op.getCalleeOp(symbol_table_).getSymName().str(),
                         "` from:\n", GetPrettyLocation(call_op->getLoc()));

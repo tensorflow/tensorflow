@@ -33,6 +33,7 @@ py_library(
         "serialization.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":advanced_activations",
         ":convolutional",
@@ -53,6 +54,7 @@ py_library(
     name = "advanced_activations",
     srcs = ["advanced_activations.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
@@ -70,6 +72,7 @@ py_library(
     name = "convolutional",
     srcs = ["convolutional.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":pooling",
         "//tensorflow/python/eager:context",
@@ -94,6 +97,7 @@ py_library(
     name = "convolutional_recurrent",
     srcs = ["convolutional_recurrent.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":recurrent",
         "//tensorflow/python/keras:activations",
@@ -116,6 +120,7 @@ py_library(
     name = "core",
     srcs = ["core.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -156,6 +161,7 @@ py_library(
     name = "dense_attention",
     srcs = ["dense_attention.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -176,6 +182,7 @@ py_library(
     name = "embeddings",
     srcs = ["embeddings.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
@@ -195,6 +202,7 @@ py_library(
     name = "merge",
     srcs = ["merge.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:base_layer",
@@ -210,6 +218,7 @@ py_library(
     name = "pooling",
     srcs = ["pooling.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras:backend",
@@ -227,6 +236,7 @@ py_library(
     name = "recurrent",
     srcs = ["recurrent.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
@@ -259,6 +269,7 @@ py_library(
     name = "rnn_cell_wrapper_v2",
     srcs = ["rnn_cell_wrapper_v2.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":recurrent",
         "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",

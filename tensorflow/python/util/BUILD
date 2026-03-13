@@ -1,8 +1,8 @@
 # Tensorflow util package
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap", "if_static")
@@ -41,8 +41,9 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "core",
+    strict_deps = True,
     deps = [
         ":tf_contextlib",
         ":tf_decorator_py",
@@ -393,10 +394,11 @@ pytype_strict_library(
     deps = [":tf_decorator_py"],
 )
 
-py_strict_library(
+py_library(
     name = "tf_decorator_py",
     srcs = ["tf_decorator.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = [
         "//learning/deepmind/research/language/translation/lm:__subpackages__",
         "//tensorflow:__pkg__",
@@ -427,9 +429,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_stack",
     srcs = ["tf_stack.py"],
+    strict_deps = True,
     # TODO(mdan): Remove public visibility.
     visibility = ["//visibility:public"],
     deps = [
@@ -617,10 +620,11 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nest_test_main_lib",
     testonly = True,
     srcs = ["nest_test.py"],
+    strict_deps = True,
     deps = [
         ":nest",
         ":nest_util",
@@ -684,9 +688,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_should_use",
     srcs = ["tf_should_use.py"],
+    strict_deps = True,
     deps = [
         ":tf_decorator_py",
         "//tensorflow/python/eager:context",
@@ -722,9 +727,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "example_parser_configuration",
     srcs = ["example_parser_configuration.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -733,9 +739,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "deprecation",
     srcs = ["deprecation.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -759,10 +766,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "type_annotations",
     srcs = ["type_annotations.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -772,9 +780,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nest_util",
     srcs = ["nest_util.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
@@ -791,10 +800,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_inspect",
     srcs = ["tf_inspect.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":tf_decorator_py",
@@ -805,9 +815,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "deprecated_module",
     srcs = ["deprecated_module.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":deprecated_module_new",
@@ -819,9 +830,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lazy_loader",
     srcs = ["lazy_loader.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -850,10 +862,11 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "decorator_utils",
     srcs = ["decorator_utils.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -863,10 +876,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -876,9 +890,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "variable_utils",
     srcs = ["variable_utils.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
@@ -893,10 +908,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "compat",
     srcs = ["compat.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -914,10 +930,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "numpy_compat",
     srcs = ["numpy_compat.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -928,10 +945,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "object_identity",
     srcs = ["object_identity.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":compat",
@@ -942,10 +960,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "keyword_args",
     srcs = ["keyword_args.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":decorator_utils",
@@ -956,9 +975,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "serialization",
     srcs = ["serialization.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility + [
         "//tensorflow_kfac/python/kernel_tests:__subpackages__",
     ],
@@ -975,10 +995,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "traceback_utils",
     srcs = ["traceback_utils.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":tf_decorator_py",
@@ -990,9 +1011,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "module_wrapper",
     srcs = ["module_wrapper.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":__init__",
@@ -1009,9 +1031,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "function_utils",
     srcs = ["function_utils.py"],
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         ":tf_decorator_py",
@@ -1024,10 +1047,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "lock_util",
     srcs = ["lock_util.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -1037,10 +1061,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "is_in_graph_mode",
     srcs = ["is_in_graph_mode.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -1050,9 +1075,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "dispatch",
     srcs = ["dispatch.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -1075,10 +1101,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "keras_deps",
     srcs = ["keras_deps.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -1095,9 +1122,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nest",
     srcs = ["nest.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -1118,10 +1146,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "deprecated_module_new",
     srcs = ["deprecated_module_new.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = util_subpackage_visibility,
     deps = [
         # global_test_configuration is added here because all major tests depend on this
@@ -1131,10 +1160,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "all_util",
     srcs = ["all_util.py"],
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = util_subpackage_visibility,
     # copybara:uncomment_end_and_comment_begin
@@ -1304,16 +1334,18 @@ tf_python_pybind_extension(
     ] + if_pywrap(["//tensorflow/compiler/tf2xla:tf2xla_opset"]),
 )
 
-py_strict_library(
+py_library(
     name = "tf_decorator_export",
     srcs = ["tf_decorator_export.py"],
+    strict_deps = True,
     deps = [
         ":tf_decorator_py",
         ":tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "custom_nest_protocol",
     srcs = ["custom_nest_protocol.py"],
+    strict_deps = True,
 )

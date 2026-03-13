@@ -15,7 +15,7 @@
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("@rules_python//python:py_test.bzl", "py_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_library")
 
 package(

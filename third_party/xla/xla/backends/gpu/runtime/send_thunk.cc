@@ -156,10 +156,9 @@ absl::Status RunSend(DeviceBufferPair& buffer, se::Stream& stream,
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
-                                              const GpuCliqueKey&,
-                                              se::Stream& stream,
-                                              Communicator& comm) {
+absl::Status SendThunk::RunCollective(const ExecuteParams& params,
+                                      const GpuCliqueKey&, se::Stream& stream,
+                                      Communicator& comm) {
   DeviceBufferPair device_buffer_pair{
       config_.config.operand_element_type[0],
       buffer_.element_count,
@@ -190,7 +189,7 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
 
   if (!target_id) {
     VLOG(3) << "[" << device_ordinal << "] Skipping Send";
-    return false;
+    return absl::OkStatus();
   }
 
   VLOG(3) << "[" << device_ordinal << "] Performing Send "
@@ -198,9 +197,8 @@ absl::StatusOr<bool> SendThunk::RunCollective(const ExecuteParams& params,
           << CollectiveOpGroupModeToString(config_.config.group_mode)
           << ", hlo_name=(" << hlo_name_ << ")";
 
-  TF_RETURN_IF_ERROR(RunSend(device_buffer_pair, stream, comm, current_id,
-                             *target_id, device_string));
-  return false;
+  return RunSend(device_buffer_pair, stream, comm, current_id, *target_id,
+                 device_string);
 }
 
 }  // namespace gpu

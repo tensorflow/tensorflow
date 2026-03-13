@@ -196,7 +196,6 @@ xla_test(
     tags = [
         "gpu",
         "oneapi-only",
-        "pjrt_migration_candidate",
     ],
     use_legacy_runtime = True,
     deps = [
@@ -205,6 +204,7 @@ xla_test(
         ":sycl_platform_id",
         ":sycl_stream",
         "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/service/gpu:gpu_executable",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:platform_manager",
@@ -292,6 +292,7 @@ cc_library(
     ],
     deps = [
         ":sycl_context",
+        ":sycl_device_description",
         ":sycl_event",
         ":sycl_gpu_runtime",
         ":sycl_kernel",
@@ -334,12 +335,12 @@ xla_test(
     tags = [
         "gpu",
         "oneapi-only",
-        "pjrt_migration_candidate",
     ],
     use_legacy_runtime = True,
     deps = [
         ":sycl_executor",
         "//xla/backends/gpu/runtime:kernel_thunk",
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:intel_gpu_compiler",
@@ -486,6 +487,46 @@ xla_test(
         ":sycl_platform_id",
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream_executor_h",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+sycl_library(
+    name = "sycl_device_description",
+    srcs = ["sycl_device_description.cc"],
+    hdrs = ["sycl_device_description.h"],
+    compatible_with = [],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":oneapi_compute_capability",
+        ":sycl_gpu_runtime",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:read_numa_node",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:platform_port",
+    ],
+)
+
+xla_test(
+    name = "sycl_device_description_test",
+    srcs = ["sycl_device_description_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "gpu",
+        "oneapi-only",
+    ],
+    deps = [
+        ":sycl_device_description",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TOOLS_XLA_COMPILE_LIB_H_
 #define XLA_TOOLS_XLA_COMPILE_LIB_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -42,7 +43,7 @@ absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
     std::optional<Compiler::GpuTargetConfig> gpu_target_config,
     std::optional<Compiler::CpuTargetConfig> cpu_target_config,
-    CompilationResult& result);
+    int32_t num_partitions, int32_t num_replicas, CompilationResult& result);
 
 // Merges the measured duration into compilation_result and writes
 // compilation_result to result_output_file in the wire format.
@@ -60,6 +61,9 @@ struct XlaCompileOptions {
   std::string output_file;
   std::string platform;
   std::string result_output_file;
+  bool use_shardy_partitioner = false;
+  int32_t num_partitions = 1;
+  int32_t num_replicas = 1;
 
   // Options for SymbolRepository lookup.
   struct SymbolRepoOptions {

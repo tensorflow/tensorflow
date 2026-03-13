@@ -67,6 +67,24 @@ constexpr AccuracyBudget kLog1pF64Budget = {
      /*subnormal=*/0},
 };
 
+// Log
+constexpr AccuracyBudget kLogF32Budget = {
+    /*cpu=*/{/*regular=*/1,
+             /*subnormal=*/0},
+    /*gpu=*/
+    {/*regular=*/1,
+     /*subnormal=*/0},
+};
+
+constexpr AccuracyBudget kLogF64Budget = {
+    /*cpu=*/{/*regular=*/1,
+             /*subnormal=*/1,
+             /*special_values=*/4},
+    /*gpu=*/
+    {/*regular=*/1,
+     /*subnormal=*/0},
+};
+
 // Rsqrt
 constexpr AccuracyBudget kRsqrtF32Budget = {
     /*cpu=*/{/*regular=*/1,

@@ -5162,6 +5162,7 @@ ENTRY %module {
 
   auto sched_config = GetDefaultSchedConfig();
   sched_config.top_down_scheduling = true;
+  sched_config.aggressive_scheduling_policies = true;
   TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
@@ -5177,6 +5178,72 @@ ENTRY %module {
   auto c0_index = GetIndex(new_instruction_sequence, "c0");
   auto ag_done_index = GetIndex(new_instruction_sequence, "ag-done");
   EXPECT_TRUE(c0_index > ag_start_index && ag_done_index > c0_index);
+}
+
+TEST_F(LatencyHidingSchedulerTest, AllGatherAsyncHeightTopDownScheduling) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY %module {
+  %constant.19 = u32[] constant(0)
+  %replica_id = u32[]{:T(128)} replica-id()
+  %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
+  %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(
+    f32[]{:T(128)} %convert), dimensions={}
+  %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(
+    f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0}
+  %ag-done = f32[16,256,256] all-gather-done(
+    (f32[8,256,256], f32[16,256,256]) %ag-start)
+  %ag-start.1 = (f32[8,256,256], f32[16,256,256]) all-gather-start(
+    f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0}
+  %ag-done.1 = f32[16,256,256] all-gather-done(
+    (f32[8,256,256], f32[16,256,256]) %ag-start.1)
+  %ag-start.2 = (f32[16,256,256], f32[32,256,256]) all-gather-start(
+    f32[16,256,256] %ag-done.1), replica_groups={{0,1}}, dimensions={0}
+  %ag-done.2 = f32[32,256,256] all-gather-done(
+    (f32[16,256,256], f32[32,256,256]) %ag-start.2)
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[16,256,256]{2,1,0} parameter(2)
+  p3 = f32[16,256,256]{2,1,0} parameter(3)
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb
+  a2 = f32[16,256,256]{2,1,0} add(%ag-done, c0)
+  ROOT tuple = (f32[16,256,256], f32[32,256,256]) tuple(a2, ag-done.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = true;
+  sched_config.aggressive_scheduling_policies = true;
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  // Check that AG1 overlaps with c0 (because of its async height). Then AG will
+  // overlap with c1.
+  auto ag_start1_index = GetIndex(new_instruction_sequence, "ag-start.1");
+  auto c0_index = GetIndex(new_instruction_sequence, "c0");
+  auto ag_done1_index = GetIndex(new_instruction_sequence, "ag-done.1");
+  EXPECT_TRUE(c0_index > ag_start1_index && ag_done1_index > c0_index);
+  auto ag_start_index = GetIndex(new_instruction_sequence, "ag-start");
+  auto c1_index = GetIndex(new_instruction_sequence, "c1");
+  auto ag_done_index = GetIndex(new_instruction_sequence, "ag-done");
+  EXPECT_TRUE(c1_index > ag_start_index && ag_done_index > c1_index);
 }
 
 class LatencyHidingSchedulerBenchmark : public LatencyHidingSchedulerTest {

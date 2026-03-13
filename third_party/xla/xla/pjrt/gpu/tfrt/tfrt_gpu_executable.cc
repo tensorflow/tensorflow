@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
@@ -57,12 +58,14 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/utils.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
 #include "xla/pjrt/utils.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
@@ -80,6 +83,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -1237,5 +1241,21 @@ absl::StatusOr<CompiledMemoryStats> TfrtGpuExecutable::GetCompiledMemoryStats()
   memory_stats.PopulateBufferStatsFromAllocations(
       executables_[0]->executable()->GetAllocations());
   return memory_stats;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+TfrtGpuExecutable::GetAbiVersion() const {
+  if (executables_.empty()) {
+    return absl::InternalError("No executables.");
+  }
+  if (executables_.size() > 1) {
+    return absl::InternalError("Multiple executables are not supported.");
+  }
+  ASSIGN_OR_RETURN(
+      stream_executor::ExecutableAbiVersion se_abi_version,
+      executables_.front()->executable()->GetExecutableAbiVersion());
+
+  return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(
+      client_->platform_id(), std::move(se_abi_version));
 }
 }  // namespace xla

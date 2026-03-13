@@ -113,6 +113,10 @@ inline constexpr absl::string_view kCublasLtMatmulCallTarget =
 inline constexpr absl::string_view kCublasLtMatmulF8CallTarget =
     "__cublas$lt$matmul$f8";
 
+// A call to cuBLAS Lt Ext API Grouped matrix multiplication.
+inline constexpr absl::string_view kCublasLtGroupedMatmulCallTarget =
+    "__cublas$lt$groupedMatmul";
+
 // A call to cuBLAS for a triangular solve.
 //
 // Like cudnn convolutions, this op returns a tuple (result, scratch_memory).
@@ -250,6 +254,14 @@ inline constexpr absl::string_view
 
 bool IsCubDeviceRadixSort(const HloInstruction& hlo);
 bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo);
+
+inline constexpr absl::string_view kCubDeviceScanTarget = "__cub$DeviceScan";
+
+inline constexpr absl::string_view kCubDeviceScanUnassignedScratchSizeTarget =
+    "__cub$DeviceScanUnassignedScratchSize";
+
+bool IsCubDeviceScan(const HloInstruction& hlo);
+bool IsCubDeviceScanNoScratchSize(const HloInstruction& hlo);
 
 }  // namespace gpu
 }  // namespace xla

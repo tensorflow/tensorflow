@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_done_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/cub_scan_thunk.h"
 #include "xla/backends/gpu/runtime/cub_sort_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -236,6 +237,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return CubSortThunk::FromProto(std::move(thunk_info),
                                      thunk_proto.cub_sort_thunk(),
                                      buffer_allocations, platform_name);
+    case ThunkProto::kCubScanThunk:
+      return CubScanThunk::FromProto(std::move(thunk_info),
+                                     thunk_proto.cub_scan_thunk(),
+                                     buffer_allocations);
     case ThunkProto::kHostExecuteStartThunk:
       return HostExecuteStartThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_start_thunk(),
@@ -358,8 +363,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
 
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
-    const ThunkProto& thunk_proto,
+absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
+    const tsl::protobuf::RepeatedPtrField<ThunkProto>& thunk_protos,
     absl::Span<const BufferAllocation> buffer_allocations,
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     const se::GpuComputeCapability& gpu_compute_capability,
@@ -371,11 +376,18 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
   CopyThunk::AsyncEventsMap copy_async_events_map;
   std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses =
       std::make_shared<NvshmemBufferAddresses>();
-  return DeserializeThunkProtoImpl(
-      thunk_proto, buffer_allocations, hlo_module, platform_name,
-      host_executable_async_events_map, host_send_recv_async_events_map,
-      collective_async_events_map, copy_async_events_map,
-      gpu_compute_capability, symbol_resolver, nvshmem_buffer_addresses);
+  ThunkSequence sequence;
+  for (const ThunkProto& thunk_proto : thunk_protos) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<Thunk> thunk,
+        DeserializeThunkProtoImpl(
+            thunk_proto, buffer_allocations, hlo_module, platform_name,
+            host_executable_async_events_map, host_send_recv_async_events_map,
+            collective_async_events_map, copy_async_events_map,
+            gpu_compute_capability, symbol_resolver, nvshmem_buffer_addresses));
+    sequence.push_back(std::move(thunk));
+  }
+  return sequence;
 }
 
 }  // namespace xla::gpu

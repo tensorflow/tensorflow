@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo.pb.h"
@@ -185,8 +185,8 @@ class GpuCompiler : public LLVMCompiler {
   virtual absl::Status AddConvAndGemmAutotuningPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const se::GpuComputeCapability& gpu_version,
-      const CompileOptions& options, AutotuneConfig& autotune_config,
-      tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
+      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+      se::StreamExecutor* stream_exec,
       const Compiler::GpuTargetConfig* target_config,
       const MultiProcessKeyValueStore& key_value_store,
       const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
@@ -204,7 +204,7 @@ class GpuCompiler : public LLVMCompiler {
 
   // Runs cuDNN fusion and custom call compiler passes.
   virtual absl::Status RunCudnnCompilerPasses(HloModule* module,
-                                              se::StreamExecutor* stream_exec,
+                                              se::dnn::DnnSupport& dnn_support,
                                               BinaryMap* dnn_compiled_graphs) {
     return absl::OkStatus();
   }

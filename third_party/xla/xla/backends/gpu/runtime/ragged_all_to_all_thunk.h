@@ -179,10 +179,13 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   }
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     const GpuCliqueKey& clique_key,
-                                     se::Stream& stream,
-                                     Communicator& comm) override;
+  // No rendezvous needed when using one-shot kernel in local mode instead of
+  // NCCL.
+  bool RequiresRendezvous() const override { return !one_shot_kernel_enabled_; }
+
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
 
  private:
   bool is_local(int device_count) const {

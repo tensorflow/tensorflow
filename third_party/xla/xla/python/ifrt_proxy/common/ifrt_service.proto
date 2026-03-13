@@ -38,7 +38,7 @@ message IfrtProxyVersion {
   int32 ifrt_serdes_version_number = 2;
 }
 
-// Next ID: 34.
+// Next ID: 35.
 message IfrtRequest {
   RequestMetadata request_metadata = 1;
 
@@ -59,6 +59,7 @@ message IfrtRequest {
     AssembleArrayFromSingleDeviceArraysRequest
         assemble_array_from_single_device_arrays_request = 5;
     RemapArraysRequest remap_arrays_request = 23;
+    BitcastArraysRequest bitcast_arrays_request = 34;
     ReshardArraysRequest reshard_arrays_request = 33;
     CopyToHostBufferRequest copy_to_host_buffer_request = 6;
     DisassembleIntoSingleDeviceArraysRequest
@@ -106,7 +107,7 @@ message IfrtRequest {
   reserved 10;
 }
 
-// Next ID: 34.
+// Next ID: 35.
 message IfrtResponse {
   ResponseMetadata response_metadata = 1;
 
@@ -127,6 +128,7 @@ message IfrtResponse {
     AssembleArrayFromSingleDeviceArraysResponse
         assemble_array_from_single_device_arrays_response = 5;
     RemapArraysResponse remap_arrays_response = 23;
+    BitcastArraysResponse bitcast_arrays_response = 34;
     ReshardArraysResponse reshard_arrays_response = 33;
     CopyToHostBufferResponse copy_to_host_buffer_response = 6;
     DisassembleIntoSingleDeviceArraysResponse
@@ -393,6 +395,16 @@ message RemapArraysResponse {
   repeated fixed64 array_handles = 1;
 }
 
+message BitcastArraysRequest {
+  repeated fixed64 array_handles = 1;
+  repeated xla.ifrt.ArraySpecProto array_specs = 2;
+  proto.ArrayCopySemantics copy_semantics = 3;
+  repeated fixed64 result_handles = 4;
+}
+message BitcastArraysResponse {
+  repeated fixed64 array_handles = 1;
+}
+
 // Reshards the given IFRT arrays to new IFRT arrays.
 // Equivalent to ifrt::Client::ReshardArrays.
 message ReshardArraysRequest {
@@ -648,10 +660,16 @@ message LoadedExecutableIsDeletedResponse {
   bool is_deleted = 1;
 }
 
+// Mirrors `LoadedExecutable::DeleteOptions`.
+message LoadedExecutableDeleteOptionsProto {
+  int64 deletion_stream_id = 1;
+}
+
 // Mirrors `LoadedExecutable::~LoadedExecutable`. The LoadedExecutable handle
 // becomes unusable after this request.
 message LoadedExecutableDestructRequest {
   fixed64 loaded_executable_handle = 1;
+  LoadedExecutableDeleteOptionsProto delete_options = 2;
 }
 message LoadedExecutableDestructResponse {}
 

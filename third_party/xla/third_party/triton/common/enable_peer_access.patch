@@ -33,8 +33,8 @@ new file mode 100644
 
 --- a/third_party/nvidia/backend/driver.c
 +++ b/third_party/nvidia/backend/driver.c
-@@ -844,6 +844,37 @@ static void ensureCudaContext() {
-   }
+@@ -928,6 +928,37 @@ cleanup:
+   return NULL;
  }
  
 +// Enable peer access if dev_ptr is allocated on a different device than the
@@ -71,7 +71,7 @@ new file mode 100644
  static void _launch(int gridX, int gridY, int gridZ, int num_warps,
                      int num_ctas, int launch_cooperative_grid, int launch_pdl,
                      int shared_memory, CUstream stream, CUfunction function,
-@@ -943,6 +974,9 @@ bool extractPointer(void *ptr, PyObject *obj) {
+@@ -1027,6 +1058,9 @@ bool extractPointer(void *ptr, PyObject *obj) {
    if (*dev_ptr == 0) {
      return true; // valid nullptr
    }

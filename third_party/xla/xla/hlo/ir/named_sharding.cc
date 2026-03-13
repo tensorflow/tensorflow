@@ -49,7 +49,7 @@ NamedSharding::NamedSharding(Mesh mesh,
                              absl::Span<const AxisRef> manual_axes,
                              absl::Span<const OpMetadata> metadata)
     : mesh_(std::move(mesh)),
-      dim_shardings_(CanonicalizedDimShardings(dim_shardings)),
+      dim_shardings_(dim_shardings.begin(), dim_shardings.end()),
       replicated_axes_(replicated_axes.begin(), replicated_axes.end()),
       unreduced_axes_(unreduced_axes.begin(), unreduced_axes.end()),
       manual_axes_(manual_axes.begin(), manual_axes.end()),
@@ -165,18 +165,6 @@ bool DimensionSharding::IsPrefixOf(const DimensionSharding& other,
   return true;
 }
 
-std::vector<std::string> NamedSharding::DimensionSharding::axis_names(
-    const Mesh& mesh) const {
-  std::vector<std::string> names;
-  names.reserve(axes_.size());
-  for (const AxisRef& axis : axes_) {
-    CHECK(!axis.sub_axis_info().has_value())
-        << "axis_names should only be called for non-sub-axis.";
-    names.push_back(std::string(mesh.axis_names()[axis.mesh_axis_index()]));
-  }
-  return names;
-}
-
 int64_t DimensionSharding::getShardedSize(const Mesh& mesh) const {
   return std::accumulate(axes_.begin(), axes_.end(), 1,
                          [&mesh](int64_t cur, const AxisRef& axis) {
@@ -242,27 +230,27 @@ std::string NamedSharding::ToString(bool include_metadata) const {
   absl::StrAppend(&result, mesh_.ToString());
 
   // Special cases.
-  if (IsReplicated() && replicated_axes_.empty()) {
+  if (IsReplicated() && num_dimensions() == 0 && replicated_axes_.empty()) {
     absl::StrAppend(&result, ", replicated");
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
   }
 
-  if (IsMaximal()) {
+  if (IsSingleDevice()) {
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
   }
 
-  if (IsUnreduced()) {
+  if (IsUnreduced() && num_dimensions() == 0) {
     absl::StrAppend(&result, ", unreduced");
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
     return result;
   }
 
-  if (IsManual()) {
+  if (IsManual() && num_dimensions() == 0) {
     absl::StrAppend(&result, ", manual");
     absl::StrAppend(&result, metadata_str);
     absl::StrAppend(&result, "}");
@@ -376,6 +364,22 @@ std::ostream& operator<<(std::ostream& out, const NamedSharding& sharding) {
   return out << sharding.ToString();
 }
 
+std::vector<std::vector<std::string>> NamedSharding::JaxPartitions() const {
+  std::vector<std::vector<std::string>> partitions;
+  partitions.reserve(dim_shardings_.size());
+  for (const DimensionSharding& dim_sharding : dim_shardings_) {
+    CHECK(dim_sharding.is_closed()) << "JaxPartitions should only be "
+                                       "called for closed dimension shardings.";
+    std::vector<std::string>& partition = partitions.emplace_back();
+    for (const AxisRef& axis : dim_sharding.axes()) {
+      partition.emplace_back(mesh_.axis_names()[axis.mesh_axis_index()]);
+      CHECK(!axis.sub_axis_info().has_value())
+          << "JaxPartitions should only be called for full axis.";
+    }
+  }
+  return partitions;
+}
+
 namespace test_utils {
 
 namespace {
@@ -476,16 +480,6 @@ NamedSharding FromAxisNames(
 
 namespace {
 
-bool CompareAxisRefs(const AxisRef& a, const AxisRef& b, const Mesh& mesh) {
-  if (a.mesh_axis_index() != b.mesh_axis_index()) {
-    return a.mesh_axis_index() < b.mesh_axis_index();
-  }
-  int64_t a_pre = a.sub_axis_info() ? a.sub_axis_info()->pre_size : 1;
-  int64_t b_pre = b.sub_axis_info() ? b.sub_axis_info()->pre_size : 1;
-
-  return a_pre != b_pre ? a_pre < b_pre : a.size(mesh) < b.size(mesh);
-}
-
 absl::Status VerifyAndTrack(
     const AxisRef& axis, const Mesh& mesh,
     absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
@@ -503,9 +497,7 @@ absl::Status VerifyAndTrack(
 absl::Status VerifySortedAxes(
     absl::Span<const AxisRef> axes, absl::string_view name, const Mesh& mesh,
     absl::flat_hash_map<int64_t, std::vector<AxisRef>>& seen_axes) {
-  if (!absl::c_is_sorted(axes, [&](const AxisRef& a, const AxisRef& b) {
-        return CompareAxisRefs(a, b, mesh);
-      })) {
+  if (!absl::c_is_sorted(axes)) {
     return absl::InvalidArgumentError(
         absl::StrCat(name,
                      " axes must be sorted by mesh axis index and "

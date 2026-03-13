@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compilation_stats.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -65,7 +67,7 @@ class NVPTXCompiler : public GpuCompiler {
       CompilationStats* compilation_stats) override;
 
   absl::Status RunCudnnCompilerPasses(HloModule* module,
-                                      se::StreamExecutor* stream_exec,
+                                      se::dnn::DnnSupport& dnn_support,
                                       BinaryMap* dnn_compiled_graphs) override;
 
   std::unique_ptr<GpuAliasInfo> GetAliasInfo(

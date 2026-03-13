@@ -2229,6 +2229,8 @@ def TF_XlaLocalSparseDenseMatmulOp : TF_Op<"XlaLocalSparseDenseMatmul", [Pure]> 
     TF_Tensor:$embedding_table,
 
     ConfinedAttr<I64Attr, [IntMinValue<1>]>:$batch_size,
+    DefaultValuedAttr<I64Attr, "0x7fffffff">:$pad_value,
+    DefaultValuedAttr<BoolAttr, "false">:$is_univalent,
     TypeAttr:$T
   );
 

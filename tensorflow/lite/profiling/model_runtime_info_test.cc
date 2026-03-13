@@ -208,7 +208,9 @@ ModelRuntimeDetails CreateExpectedModelRuntimeDetails(
   node_2->add_inputs(4);
   node_2->add_inputs(5);
   node_2->add_outputs(2);
-  node_2->add_temporaries(6);
+  if (!is_xnnpack_delegate) {
+    node_2->add_temporaries(6);
+  }
 
   if (is_xnnpack_delegate) {
     node->set_delegated_to_node_id(2);
@@ -298,29 +300,31 @@ ModelRuntimeDetails CreateExpectedModelRuntimeDetails(
   edge->add_shape(1);
   edge->set_allocation_type("kTfLiteMmapRo");
 
-  edge = subgraph->add_edges();
-  edge->set_id(6);
-  edge->set_data_type(Edge::FLOAT32);
-  edge->set_layout_type(Edge::UNKNOWN);
-  edge->set_allocation_type("kTfLiteArenaRwPersistent");
+  if (!is_xnnpack_delegate) {
+    edge = subgraph->add_edges();
+    edge->set_id(6);
+    edge->set_data_type(Edge::FLOAT32);
+    edge->set_layout_type(Edge::UNKNOWN);
+    edge->set_allocation_type("kTfLiteArenaRwPersistent");
 
 #if (__ANDROID__ && (__aarch64__ || __arm__ || __aarch32__)) || \
     (defined(__APPLE__) && TARGET_OS_IPHONE)
-  //  On Android Arm and iOS builds, the Conv2D op uses im2col.
-  edge->set_name("");
-  edge->set_size(is_xnnpack_delegate ? 0 : 400);
-  edge->add_shape(1);
-  edge->add_shape(5);
-  edge->add_shape(5);
-  edge->add_shape(4);
-  edge->set_allocation_type("kTfLiteArenaRw");
+    //  On Android Arm and iOS builds, the Conv2D op uses im2col.
+    edge->set_name("");
+    edge->set_size(is_xnnpack_delegate ? 0 : 400);
+    edge->add_shape(1);
+    edge->add_shape(5);
+    edge->add_shape(5);
+    edge->add_shape(4);
+    edge->set_allocation_type("kTfLiteArenaRw");
 #else
-  edge->set_name("Conv_hwcn_weights");
-  edge->set_size(is_xnnpack_delegate ? 0 : 16);
-  edge->add_shape(4);
-  edge->add_shape(1);
-  edge->set_allocation_type("kTfLiteArenaRwPersistent");
+    edge->set_name("Conv_hwcn_weights");
+    edge->set_size(is_xnnpack_delegate ? 0 : 16);
+    edge->add_shape(4);
+    edge->add_shape(1);
+    edge->set_allocation_type("kTfLiteArenaRwPersistent");
 #endif
+  }
 
   return expected_model_runtime_details;
 }
@@ -384,7 +388,11 @@ TEST(MODEL_RUNTIME_INFO_TEST, PadAndConv2DWithXnnpackDelegate) {
       CreateExpectedModelRuntimeDetails(/*is_xnnpack_delegate=*/true);
 
   ASSERT_TRUE(AreModelRuntimeDetailsEqual(model_runtime_details,
-                                          expected_model_runtime_details));
+                                          expected_model_runtime_details))
+      << "model_runtime_details:\n"
+      << model_runtime_details.DebugString()
+      << "expected_model_runtime_details:\n"
+      << expected_model_runtime_details.DebugString();
 }
 
 }  // namespace profiling

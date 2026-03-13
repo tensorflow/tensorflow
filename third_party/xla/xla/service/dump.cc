@@ -364,6 +364,21 @@ static std::vector<std::string> DumpHloModuleImpl(
     file_paths.push_back(DumpToFileInDirImpl(
         StrCat(filename, opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
         pb, opts, opts.dump_compress_protos));
+
+    if (buffer_assn) {
+      MemoryUsageReportProto memory_report_proto =
+          buffer_assn->GetMemoryUsageReportProto();
+      std::string memory_report_pb;
+      if (!tsl::SerializeToStringDeterministic(memory_report_proto,
+                                               &memory_report_pb)) {
+        memory_report_pb = "Failed to serialize memory usage report proto.";
+      }
+      file_paths.push_back(DumpToFileInDirImpl(
+          StrCat(filename, opts.dump_compress_protos
+                               ? "-memory-usage-report.pb.gz"
+                               : "-memory-usage-report.pb"),
+          memory_report_pb, opts, opts.dump_compress_protos));
+    }
   }
 
   if (opts.dump_as_dot) {

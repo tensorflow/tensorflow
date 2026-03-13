@@ -408,7 +408,7 @@ class AutotunerFlagsTest
 
 TEST_P(AutotunerFlagsTest, AutotuneLevel) {
   const AutotuneLevelParams& params = GetParam();
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_autotune_level(params.autotune_level);
 
   xla::AutotuneConfig autotune_config = GetAutotuneConfig(debug_options);
@@ -448,7 +448,7 @@ class AutotunerRegSpillsTest
 
 TEST_P(AutotunerRegSpillsTest, RegSpills) {
   const RegSpillsParams& params = GetParam();
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(
       params.fail_on_spill_flag);
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
@@ -480,14 +480,14 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 TEST_F(AutotunerFlagsTest, DevicelessUsesDefaultConfig) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsForTest();
   EXPECT_EQ(GetAutotuneConfig(debug_options, /*is_deviceless=*/true)
                 .use_default_config,
             true);
 }
 
 TEST_F(AutotunerFlagsTest, DeterministicAutotuningSetsSelectFirstConfig) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsForTest();
   debug_options.set_xla_gpu_deterministic_ops(true);
   EXPECT_EQ(GetAutotuneConfig(debug_options).select_first_config, true);
   debug_options.set_xla_gpu_deterministic_ops(false);

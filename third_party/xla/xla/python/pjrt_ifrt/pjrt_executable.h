@@ -367,6 +367,8 @@ class PjRtLoadedExecutable final
     return xla::ifrt::FromPjRtAttributeMap(std::move(result));
   }
 
+  void SetDeleteOptions(const DeleteOptions& options) override {}
+
   static char ID;  // NOLINT
 
  private:

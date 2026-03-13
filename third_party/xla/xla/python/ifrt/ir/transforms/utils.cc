@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
@@ -44,18 +46,30 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/mlir/utils/type_util.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/python/ifrt/support/sharding_conversions.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
+#include "xla/python/pjrt_ifrt/xla_sharding.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
 
@@ -310,6 +324,55 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
   }
 
   return compile_options;
+}
+
+absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
+    const IfrtArrayType array_type, Client* client,
+    const DeviceListRef& device_list) {
+  DeviceListRef array_device_list;
+  {
+    std::vector<Device*> array_devices;
+    array_devices.reserve(array_type.getDevices().size());
+    absl::Span<Device* const> devices = device_list->devices();
+    for (int logical_id : array_type.getDevices()) {
+      TF_RET_CHECK(devices[logical_id] != nullptr);
+      array_devices.push_back(devices[logical_id]);
+    }
+    TF_ASSIGN_OR_RETURN(array_device_list,
+                        client->MakeDeviceList(std::move(array_devices)));
+  }
+
+  auto sharding_attr =
+      mlir::dyn_cast<IfrtShardingParamAttr>(array_type.getShardingAttr());
+  TF_RET_CHECK(sharding_attr != nullptr)
+      << "Array type sharding attribute: " << mlir::debugString(array_type)
+      << " if not of type `IfrtShardingParamAttr`";
+
+  TF_ASSIGN_OR_RETURN(
+      xla::HloSharding hlo_sharding,
+      xla::ifrt::support::ToHloSharding(sharding_attr.getSharding()));
+  return xla::ifrt::HloSharding::Create(std::move(array_device_list),
+                                        array_type.MemoryKind(),
+                                        std::move(hlo_sharding));
+}
+
+absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
+    mlir::Type array_type, Client* client, const DeviceListRef& device_list) {
+  auto ifrt_array_type = mlir::dyn_cast<IfrtArrayType>(array_type);
+  TF_RET_CHECK(array_type != nullptr)
+      << "Unsupported type `" << mlir::debugString(array_type) << "`";
+
+  TF_ASSIGN_OR_RETURN(DType dtype,
+                      ToIfrtDType(ifrt_array_type.getShape().getElementType()));
+
+  TF_ASSIGN_OR_RETURN(
+      ShardingRef sharding,
+      ShardingFromIfrtArrayType(ifrt_array_type, client, device_list));
+  return ArraySpec{
+      /*dtype=*/dtype,
+      /*shape=*/Shape(ifrt_array_type.getShape().getShape()),
+      /*sharding=*/std::move(sharding),
+  };
 }
 
 }  // namespace ifrt

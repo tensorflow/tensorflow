@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1184 @@
+@@ -0,0 +1,1202 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -175,17 +175,29 @@ new file mode 100644
 +)
 +
 +gentbl_cc_library(
++    name = "triton_gpu_attr_interfaces_inc_gen",
++    tbl_outs = {
++        "include/triton/Dialect/TritonGPU/IR/AttrInterfaces.h.inc": ["--gen-attr-interface-decls"],
++        "include/triton/Dialect/TritonGPU/IR/AttrInterfaces.cpp.inc": ["--gen-attr-interface-defs"],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/triton/Dialect/TritonGPU/IR/TritonGPUAttrInterfaces.td",
++    deps = ["td_files"],
++)
++
++gentbl_cc_library(
 +    name = "triton_gpu_attr_inc_gen",
 +    tbl_outs = {
 +        "include/triton/Dialect/TritonGPU/IR/AttrDefs.h.inc": ["--gen-attrdef-decls"],
 +        "include/triton/Dialect/TritonGPU/IR/AttrEnums.h.inc": ["--gen-enum-decls"],
 +        "include/triton/Dialect/TritonGPU/IR/AttrEnums.cpp.inc": ["--gen-enum-defs"],
-+        "include/triton/Dialect/TritonGPU/IR/AttrInterfaces.h.inc": ["--gen-attr-interface-decls"],
-+        "include/triton/Dialect/TritonGPU/IR/AttrInterfaces.cpp.inc": ["--gen-attr-interface-defs"],
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
 +    td_file = "include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td",
-+    deps = ["td_files"],
++    deps = [
++        "td_files",
++        ":triton_gpu_attr_interfaces_inc_gen",
++    ],
 +)
 +
 +gentbl_cc_library(
@@ -548,6 +560,7 @@ new file mode 100644
 +        ":triton_dialect_inc_gen",
 +        ":triton_gpu_attr_impls_inc_gen",
 +        ":triton_gpu_attr_inc_gen",
++        ":triton_gpu_attr_interfaces_inc_gen",
 +        ":triton_gpu_cga_encoding_attr_inc_gen",
 +        ":triton_gpu_dialect_inc_gen",
 +        ":triton_gpu_enums_inc_gen",
@@ -1007,6 +1020,11 @@ new file mode 100644
 +)
 +
 +cc_library(
++    name = "Dump",
++    hdrs = ["include/triton/Tools/Sys/Dump.hpp"],
++)
++
++cc_library(
 +    name = "TritonTools",
 +    srcs = glob(["lib/Tools/*.cpp"]),
 +    hdrs = glob(["include/triton/Tools/*.h"]),
@@ -1195,7 +1213,7 @@ diff --git b/python/BUILD b/python/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/BUILD
-@@ -0,0 +1,113 @@
+@@ -0,0 +1,116 @@
 +# NOTE: Do not depend on any targets from this directory,
 +# but use //third_party/py/triton instead.
 +
@@ -1242,7 +1260,10 @@ new file mode 100644
 +        "src/passes.cc",
 +        "src/specialize.cc",
 +    ],
-+    copts = ["-DTRITON_BACKENDS_TUPLE=(nvidia)"],
++    copts = [
++        "-DTRITON_BACKENDS_TUPLE=(nvidia)",
++        "-Wno-string-conversion",
++    ],
 +    deps = [
 +        ":passes",
 +        "@llvm-project//llvm:Analysis",
@@ -1314,7 +1335,7 @@ diff --git b/python/test/BUILD b/python/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/test/BUILD
-@@ -0,0 +1,317 @@
+@@ -0,0 +1,379 @@
 +load("//third_party/py/pytest:pytest_defs.bzl", "pytest_multi_tests", "pytest_test")
 +
 +package(
@@ -1352,13 +1373,17 @@ new file mode 100644
 +})
 +
 +DEVICELESS_TARGETS = [
++    # go/keep-sorted start
 +    "unit/language/test_compile_only.py",
 +    "unit/language/test_frontend.py",
++    "unit/language/test_mxfp.py",
++    "unit/plugins/test_plugin.py",
 +    "unit/runtime/test_specialize.py",
 +    "unit/test_filecheck.py",
 +    "unit/tools/test_linear_layout.py",
-+    "unit/plugins/test_plugin.py",
-+    "unit/language/test_mxfp.py",
++    "unit/tools/test_slice_kernel.py",
++    "unit/tools/test_stable_toposort.py",
++    # go/keep-sorted end
 +]
 +
 +EXCLUDE_TESTS = [
@@ -1381,12 +1406,16 @@ new file mode 100644
 +    "unit/test_knobs.py",  # testing binary and file path utilites, which do not work in google's environment
 +    "unit/test_perf_warning.py",  # No backtraces in non-debug builds.
 +    "unit/runtime/test_build.py",  # this tests OSS launcher, we implement this differently in g3
++    "unit/runtime/test_no_torch_dispatch.py",  # we run tests differently in g3 & we only use torch in g3 for testing, see third_party/py/triton/google/BUILD
 +
 +    # requires 2 GPUs to run
 +    "unit/runtime/test_peer_access.py",  # this requires 2 GPUs to run, we have a separate target for it
 +
 +    # sharded tests
 +    "unit/language/test_core.py",  # this test is huge and we shard it separately
++    "unit/runtime/test_driver.py",  # Some of the test cases does not use the
++    # device and thus suite fails with go/forge-accel-or-fail. We run it as a
++    # single shard to avoid this.
 +] + DEVICELESS_TARGETS  # targets that don't require a GPU to run
 +
 +B200_FULL_GPU_ONLY_TESTS = [
@@ -1398,6 +1427,7 @@ new file mode 100644
 +    tests = [
 +        ":ampere",
 +        ":unit/language/test_core_a100",
++        ":unit/runtime/test_driver_a100",
 +    ],
 +)
 +
@@ -1406,6 +1436,7 @@ new file mode 100644
 +    tests = [
 +        ":hopper",
 +        ":unit/language/test_core_h100",
++        ":unit/runtime/test_driver_h100",
 +        ":unit/runtime/test_peer_access_h100_x2",
 +    ],
 +)
@@ -1416,6 +1447,7 @@ new file mode 100644
 +        ":blackwell",
 +        ":blackwell_full",
 +        ":unit/language/test_core_b200",
++        ":unit/runtime/test_driver_b200",
 +        ":unit/runtime/test_peer_access_b200_x2",
 +    ],
 +)
@@ -1502,6 +1534,57 @@ new file mode 100644
 +    tags = _requires_gpu_sm80,
 +    target_compatible_with = _requires_config_cuda,
 +    tests = ["unit/language/test_core.py"],
++    deps = [
++        "//third_party/py/torch:pytorch",
++        "//third_party/py/triton",
++    ],
++)
++
++pytest_test(
++    name = "unit/runtime/test_driver_a100",
++    size = "large",
++    srcs = ["conftest.py"],
++    exec_properties = _asan_needs_extra_link_memory,
++    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
++    # We run it as a single shard to avoid this.
++    shard_count = 1,
++    tags = _requires_gpu_sm80,
++    target_compatible_with = _requires_config_cuda,
++    tests = ["unit/runtime/test_driver.py"],
++    deps = [
++        "//third_party/py/torch:pytorch",
++        "//third_party/py/triton",
++    ],
++)
++
++pytest_test(
++    name = "unit/runtime/test_driver_h100",
++    size = "large",
++    srcs = ["conftest.py"],
++    exec_properties = _asan_needs_extra_link_memory,
++    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
++    # We run it as a single shard to avoid this.
++    shard_count = 1,
++    tags = _requires_gpu_sm90,
++    target_compatible_with = _requires_config_cuda,
++    tests = ["unit/runtime/test_driver.py"],
++    deps = [
++        "//third_party/py/torch:pytorch",
++        "//third_party/py/triton",
++    ],
++)
++
++pytest_test(
++    name = "unit/runtime/test_driver_b200",
++    size = "large",
++    srcs = ["conftest.py"],
++    exec_properties = _asan_needs_extra_link_memory,
++    # Some of the test cases does not use the device and thus suite fails with go/forge-accel-or-fail.
++    # We run it as a single shard to avoid this.
++    shard_count = 1,
++    tags = _requires_gpu_sm100,
++    target_compatible_with = _requires_config_cuda,
++    tests = ["unit/runtime/test_driver.py"],
 +    deps = [
 +        "//third_party/py/torch:pytorch",
 +        "//third_party/py/triton",
@@ -1638,8 +1721,8 @@ new file mode 100644
 --- /dev/null
 +++ b/python/tutorials/BUILD
 @@ -0,0 +1,192 @@
-+load("//third_party/bazel_rules/rules_python/python:py_library.bzl", "py_library")
-+load("//third_party/bazel_rules/rules_python/python:py_test.bzl", "py_test")
++load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
++load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 +
 +package(
 +    default_applicable_licenses = ["@triton//:license"],
@@ -2431,7 +2514,7 @@ diff --git b/third_party/nvidia/BUILD b/third_party/nvidia/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
-@@ -0,0 +1,555 @@
+@@ -0,0 +1,556 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +# copybara:uncomment load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
@@ -2974,6 +3057,7 @@ new file mode 100644
 +        "@llvm-project//mlir:Support",
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
++        "@triton//:Dump",
 +        "@triton//:GetEnv",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUTransforms",

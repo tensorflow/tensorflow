@@ -60,7 +60,7 @@ using ::tsl::proto_testing::EqualsProto;
 
 TEST(DumpHloIfEnabled, LargeConstantElided) {
   HloModuleConfig config;
-  DebugOptions options = config.debug_options();
+  DebugOptions options = GetDebugOptionsFromFlags();
   auto env = tsl::Env::Default();
   std::string dump_dir;
   EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
@@ -90,7 +90,7 @@ TEST(DumpHloIfEnabled, LargeConstantElided) {
 
 TEST(DumpHloIfEnabled, LargeConstantPrinted) {
   HloModuleConfig config;
-  DebugOptions options = config.debug_options();
+  DebugOptions options = GetDebugOptionsFromFlags();
   auto env = tsl::Env::Default();
   std::string dump_dir;
   EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
@@ -122,7 +122,7 @@ TEST(DumpHloIfEnabled, LargeConstantPrinted) {
 
 TEST(DumpHloModule, WithBufferAssignment) {
   HloModuleConfig config;
-  DebugOptions options = config.debug_options();
+  DebugOptions options = GetDebugOptionsFromFlags();
   tsl::Env* env = tsl::Env::Default();
   std::string dump_dir;
   EXPECT_TRUE(env->LocalTempFilename(&dump_dir));
@@ -166,7 +166,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
   EXPECT_TRUE(absl::StrContains(data, "BufferAssignment:"));
   // Third file is the memory usage report.
   EXPECT_TRUE(ReadFileToString(env, paths[2], &data).ok());
-  EXPECT_TRUE(absl::StrContains(data, "Total bytes used:"));
+  EXPECT_TRUE(absl::StrContains(data, "Total bytes:"));
   // Fourth file is the debug options.
   EXPECT_TRUE(ReadFileToString(env, paths[3], &data).ok());
 }
@@ -175,7 +175,7 @@ TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {
   std::string filename =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "disable_override");
   std::string contents = "hello";
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsFromFlags();
   options.set_xla_enable_dumping(false);
   options.set_xla_dump_to(filename);
   DumpToFileInDir(options, "disable_override", contents);
@@ -189,7 +189,7 @@ TEST(DumpTest, DumpingToFileWorksWhenEnabled) {
   std::string filename =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "enable_dumping");
   std::string contents = "hello";
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsFromFlags();
   options.set_xla_dump_to(tsl::testing::TmpDir());
   options.set_xla_enable_dumping(true);
   DumpToFileInDir(options, "enable_dumping", contents);
@@ -206,7 +206,7 @@ TEST(DumpTest, DumpProtobufToFileWhenEnabled) {
   std::string filename =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "enable_proto_dumping.txt");
 
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsFromFlags();
   options.set_xla_dump_to(tsl::testing::TmpDir());
   options.set_xla_enable_dumping(true);
   DumpProtobufToFile(module, options, "enable_proto_dumping");
@@ -222,7 +222,7 @@ TEST(DumpTest, DumpProtobufToFileWhenDisabled) {
   std::string filename =
       tsl::io::JoinPath(tsl::testing::TmpDir(), "disable_proto_dumping.txt");
 
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsFromFlags();
   options.set_xla_dump_to(tsl::testing::TmpDir());
   options.set_xla_enable_dumping(false);
   DumpProtobufToFile(module, options, "disable_proto_dumping");
@@ -236,7 +236,7 @@ TEST(DumpTest, DumpFdoProfileToFileWhenEnabled) {
   std::string fdo_profile = "fdo_profile";
   HloModuleConfig config;
   config.set_fdo_profile(fdo_profile);
-  DebugOptions options = config.debug_options();
+  DebugOptions options = GetDebugOptionsFromFlags();
   auto env = tsl::Env::Default();
   std::string dump_dir;
   ASSERT_TRUE(env->LocalTempFilename(&dump_dir));
@@ -273,13 +273,11 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshot) {
   *hlo_snapshot.mutable_hlo_module() = module;
   *hlo_snapshot.add_partitions() = HloInputs();
 
-  HloModuleConfig config;
-  DebugOptions options = config.debug_options();
+  DebugOptions options = GetDebugOptionsFromFlags();
 
   options.set_xla_dump_to(tsl::testing::TmpDir());
   options.set_xla_dump_hlo_as_text(true);
   options.set_xla_dump_hlo_unoptimized_snapshots(true);
-  config.set_debug_options(options);
 
   DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot, options);
 
@@ -303,7 +301,7 @@ TEST(DumpHloIfEnabled, DumpsBuildClNumber) {
   }
 
   HloModuleConfig config;
-  DebugOptions options = config.debug_options();
+  DebugOptions options = GetDebugOptionsFromFlags();
   auto env = tsl::Env::Default();
 
   std::string dump_dir;
@@ -338,8 +336,7 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
   *hlo_snapshot.mutable_hlo_module() = module;
   *hlo_snapshot.add_partitions() = HloInputs();
 
-  HloModuleConfig config;
-  DebugOptions options = config.debug_options();
+  DebugOptions options = GetDebugOptionsFromFlags();
 
   auto env = tsl::Env::Default();
   std::string dump_dir;
@@ -347,7 +344,6 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
   options.set_xla_dump_to(dump_dir);
   options.set_xla_dump_hlo_as_proto(true);
   options.set_xla_dump_hlo_unoptimized_snapshots(true);
-  config.set_debug_options(options);
 
   DumpHloUnoptimizedSnapshotIfEnabled(hlo_snapshot, options);
 
@@ -369,7 +365,7 @@ TEST(DumpTest, DumpHloUnoptimizedSnapshotProtoBinary) {
 }
 
 TEST(DumpTest, GetNonDefaultDebugOptions) {
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsFromFlags();
   DebugOptions default_options = DefaultDebugOptionsIgnoringFlags();
   std::string dump_folder = tsl::testing::TmpDir();
 
@@ -401,10 +397,10 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
       default_options.xla_gpu_analytical_latency_estimator_options().at(
           "chunk_size_bytes"),
       &chunk_size_bytes));
-  options.mutable_xla_gpu_analytical_latency_estimator_options()->insert(
-      {"gpus_per_node", std::to_string(gpus_per_node + 1)});
-  options.mutable_xla_gpu_analytical_latency_estimator_options()->insert(
-      {"chunk_size_bytes", std::to_string(chunk_size_bytes)});
+  (*options.mutable_xla_gpu_analytical_latency_estimator_options())
+      ["gpus_per_node"] = std::to_string(gpus_per_node + 1);
+  (*options.mutable_xla_gpu_analytical_latency_estimator_options())
+      ["chunk_size_bytes"] = std::to_string(chunk_size_bytes);
 
   auto non_default_options = GetNonDefaultDebugOptions(options);
   EXPECT_THAT(non_default_options,
@@ -425,8 +421,6 @@ TEST(DumpTest, GetNonDefaultDebugOptions) {
               100)));
   EXPECT_THAT(non_default_options,
               testing::HasSubstr("xla_gpu_enable_nccl_user_buffers: true"));
-  EXPECT_THAT(non_default_options,
-              testing::HasSubstr("xla_gpu_enable_shared_constants: false"));
   EXPECT_THAT(non_default_options,
               testing::HasSubstr("xla_gpu_enable_command_buffer: CUBLAS"));
   EXPECT_THAT(non_default_options,

@@ -1,6 +1,6 @@
 """Provides build configuration for TSL"""
 
-load("@rules_python//python:py_library.bzl", "py_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",

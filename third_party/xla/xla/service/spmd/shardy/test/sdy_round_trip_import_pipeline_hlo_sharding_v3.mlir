@@ -35,7 +35,7 @@ module @module_1 {
   // CHECK-LABEL: func @while_with_free_variables
   func.func @while_with_free_variables(
       %arg0: tensor<32x96xf32>,
-      %arg1: tensor<32x96xf32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{?}, {?}]}"})
+      %arg1: tensor<32x96xf32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{}, {}]}"})
       -> tensor<32x96xf32> {
     // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
     // CHECK-NEXT: %[[C1:.*]] = sdy.constant dense<1>

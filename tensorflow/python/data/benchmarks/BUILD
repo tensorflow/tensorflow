@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_benchmark_test",
@@ -10,9 +10,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "benchmark_base",
     srcs = ["benchmark_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:dataset_ops",

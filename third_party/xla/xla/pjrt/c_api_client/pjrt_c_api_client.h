@@ -223,13 +223,6 @@ class PjRtCApiCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override {
-    return Compile(options, MaybeOwningMlirModule(std::move(module)), topology,
-                   client);
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
@@ -408,15 +401,6 @@ class PjRtCApiClient : public PjRtClient {
       const XlaComputation& computation, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp module, CompileOptions options) override {
-    return Compile(MaybeOwningMlirModule(std::move(module)), options);
-  }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) override {
-    return CompileAndLoad(MaybeOwningMlirModule(std::move(module)), options);
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       MaybeOwningMlirModule module, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
@@ -537,6 +521,13 @@ class PjRtCApiClient : public PjRtClient {
   absl::Status InvokeCallbacks(PJRT_Callback_Type callback_type,
                                void* callback_args);
 
+  using ProgramVariant =
+      std::variant<xla::MaybeOwningMlirModule, xla::XlaComputation>;
+
+  // Serialize PJRT program, returns serialized code and format.
+  absl::StatusOr<std::pair<std::string, std::string>> SerializeProgram(
+      ProgramVariant program, const CompileOptions& options);
+
  private:
   void InitDevicesAndMemorySpaces();
   void InitAttributes();
@@ -554,9 +545,6 @@ class PjRtCApiClient : public PjRtClient {
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       std::variant<PjRtDevice*, PjRtMemorySpace*> device_or_memory,
       const Layout* device_layout);
-
-  absl::StatusOr<std::string> SerializeMlirModule(
-      MaybeOwningMlirModule module, const CompileOptions& options);
 
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;

@@ -14,14 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class UnknownCustomCallFails : public GpuCodegenTest {};
+using UnknownCustomCallFails = HloPjRtTestBase;
 
 TEST_F(UnknownCustomCallFails, UnknownCustomCallFails) {
   const char* hlo_text = R"(
@@ -36,9 +35,9 @@ TEST_F(UnknownCustomCallFails, UnknownCustomCallFails) {
   EXPECT_FALSE(Run(hlo_text));
 }
 
-class MockedCustomCall : public GpuCodegenTest {
+class MockedCustomCall : public HloPjRtTestBase {
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions opts;
+    DebugOptions opts = HloPjRtTestBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_mock_custom_calls(true);
     return opts;
   }
@@ -58,5 +57,4 @@ TEST_F(MockedCustomCall, CustomCallIgnored) {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

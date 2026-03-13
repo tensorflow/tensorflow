@@ -38,7 +38,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -292,15 +292,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp mlir_module, CompileOptions options) override {
-    return Compile(MaybeOwningMlirModule(std::move(mlir_module)), options);
-  }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp mlir_module, CompileOptions options) override {
-    return CompileAndLoad(MaybeOwningMlirModule(std::move(mlir_module)),
-                          options);
-  }
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       MaybeOwningMlirModule mlir_module, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       MaybeOwningMlirModule mlir_module, CompileOptions options) override;
@@ -444,8 +435,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) override;
 
-  void WaitForAllocation(se::Stream* stream,
-                         const CommonPjRtRawBuffer& raw_buffer);
+  absl::Status WaitForAllocation(se::Stream* stream,
+                                 const CommonPjRtRawBuffer& raw_buffer);
 
   void LaunchOnDevice(PjRtDevice* device,
                       absl::AnyInvocable<void()> execute_fn) const override;
@@ -495,15 +486,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::unique_ptr<LocalExecutable> local_executables,
       CompileOptions compile_options);
 
-  absl::StatusOr<std::pair<std::unique_ptr<LocalExecutable>, CompileOptions>>
-  DeserializeToLocalExecutable(absl::string_view serialized,
-                               std::optional<CompileOptions> options);
-
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadInternal(
-      std::optional<HloModuleProto> unoptimized_hlo_module_proto,
-      std::unique_ptr<LocalExecutable> local_executables,
-      CompileOptions compile_options, bool dump,
-      std::optional<std::string> fingerprint = std::nullopt);
+      std::shared_ptr<PjRtExecutable> executable, bool dump);
 
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
@@ -574,11 +558,6 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
         on_device_executable_parameter_shapes_(
             std::move(on_device_executable_parameter_shapes)) {}
 
-  absl::Status Load(const ExecuteOptions& options,
-                    size_t host_callback_idx) override {
-    return absl::OkStatus();
-  }
-
   PjRtDevice* device() override { return device_; }
 
   PjRtRawLoadedExecutable::RawExecuteResult Execute(
@@ -606,8 +585,8 @@ class PjRtStreamExecutorRawLoadedExecutable : public PjRtRawLoadedExecutable {
 class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
  public:
   PjRtStreamExecutorLoadedExecutable(
-      std::unique_ptr<LocalExecutable> executables,
-      std::optional<std::string> fingerprint,
+      std::shared_ptr<LocalExecutable> executables,
+      std::shared_ptr<PjRtExecutable> pjrt_executable,
       bool parameter_is_tupled_arguments,
       std::shared_ptr<DeviceAssignment> device_assignment,
       CompileOptions compile_options,
@@ -620,62 +599,17 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
 
   PjRtStreamExecutorClient* client() const override { return client_; }
 
-  absl::string_view name() const override;
-
-  int num_replicas() const override {
-    return executable_->build_options().num_replicas();
-  }
-
-  int num_partitions() const override {
-    return executable_->build_options().num_partitions();
-  }
-
-  int64_t SizeOfGeneratedCodeInBytes() const override {
-    return executable_->executable()->SizeOfGeneratedCodeInBytes();
-  }
-
-  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
-    CompiledMemoryStats memory_stats = CompiledMemoryStats();
-    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
-    const BufferAssignmentProto* proto =
-        executable_->executable()->buffer_assignment_proto();
-    if (proto != nullptr) {
-      memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-      TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
-                          ComputePeakMemory(*proto));
-    }
-    memory_stats.PopulateBufferStatsFromAllocations(
-        executable_->executable()->GetAllocations());
-    return memory_stats;
+  PjRtExecutable* GetExecutable() const override {
+    return pjrt_executable_.get();
   }
 
   const HloInputOutputAliasConfig& input_output_alias_config() const override {
     return executable_->executable()->module().input_output_alias_config();
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> StartRawExecutable(
-      const ExecuteOptions& options, xla::RunId run_id, int replica,
-      int partition, PjRtDevice* device) const override;
-
-  const DeviceAssignment& device_assignment() const override {
-    return *device_assignment_;
-  }
-
-  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
-      const override {
-    return addressable_device_logical_ids_;
-  }
-
-  absl::Span<PjRtDevice* const> addressable_devices() const override {
-    return addressable_devices_;
-  }
-
-  // Return an HloModule per partition.
-  absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
-      const override;
-
-  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const override;
+  absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
+      const ExecuteOptions& options, size_t host_callback_idx,
+      xla::RunId run_id, DeviceAndAssignment device_and_assign) const override;
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
@@ -711,16 +645,15 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
     return compile_options_;
   }
 
-  absl::StatusOr<std::string> FingerprintExecutable() const override {
-    return fingerprint_;
-  };
-
   void SetInputHloSnapshotBits(HloModuleProto hlo_module,
                                DebugOptions debug_options) {
     input_hlo_snapshot_bits_ =
         std::make_optional<InputHloSnapshotBits>(InputHloSnapshotBits{
             HloModuleProto(std::move(hlo_module)), std::move(debug_options)});
   }
+
+  absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>> GetAbiVersion()
+      const override;
 
  protected:
   bool parameter_is_tupled_arguments() const {
@@ -742,15 +675,14 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
   PjRtStreamExecutorClient* const client_;
   // One executable per partition.
   std::shared_ptr<LocalExecutable> executable_;
+  std::shared_ptr<PjRtExecutable> pjrt_executable_;
   // On device shapes of the executable parameters.
   std::shared_ptr<std::vector<Shape>> on_device_executable_parameter_shapes_;
-  std::shared_ptr<DeviceAssignment> device_assignment_;
   CompileOptions compile_options_;
 
   // True if the executables were compiled expecting arguments in a single
   // tuple.
   const bool parameter_is_tupled_arguments_;
-  std::string fingerprint_;
 
   struct InputHloSnapshotBits {
     HloModuleProto hlo_module;

@@ -662,12 +662,15 @@ absl::StatusOr<Literal> MakeFakeLiteral(const Shape& shape,
 // for the type.
 // 'index_alignment' indicates that generated data is aligned to the given
 // number (integer formats only).
+// 'index_known_zeroes' indicates the number of zeroes in the generated data
+// (integer formats only).
 absl::StatusOr<Literal> MakeFakeLiteral(
     const Shape& shape, std::minstd_rand0* engine,
     std::optional<std::pair<int64_t, int64_t>> limit, bool is_sorted,
     bool no_duplicates, bool use_large_range,
     std::optional<int64_t> max_bits_of_precision,
     std::optional<int64_t> index_alignment = std::nullopt,
+    std::optional<uint64_t> index_known_zeroes = std::nullopt,
     std::function<double(std::minstd_rand0*)> float_generator = nullptr);
 
 }  // namespace xla

@@ -173,7 +173,6 @@ typedef std::function<void(const absl::Status&)> StatusCallback;
 #ifdef SWIG
 #define TF_CHECK_OK(val) CHECK_OK(val)
 #define TF_QCHECK_OK(val) QCHECK_OK(val)
-#define TF_DCHECK_OK(val) DCHECK_OK(val)
 #else
 
 ABSL_DEPRECATED("TF_CHECK_OK macro is deprecated. call CHECK_OK instead")
@@ -181,7 +180,6 @@ inline void TfCheckOkDeprecationMarker() {}
 
 #define TF_CHECK_OK(val) CHECK_OK((::tsl::TfCheckOkDeprecationMarker(), val))
 #define TF_QCHECK_OK(val) QCHECK_OK((::tsl::TfCheckOkDeprecationMarker(), val))
-#define TF_DCHECK_OK(val) DCHECK_OK((::tsl::TfCheckOkDeprecationMarker(), val))
 
 #endif
 

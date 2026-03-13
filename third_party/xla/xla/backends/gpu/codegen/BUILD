@@ -84,10 +84,7 @@ xla_test(
     name = "cudnn_test",
     srcs = ["cudnn_test.cc"],
     backends = ["gpu"],
-    tags = [
-        "cuda-only",
-        "pjrt_migration_candidate",
-    ],
+    tags = ["cuda-only"],
     use_legacy_runtime = True,
     deps = [
         "//xla:comparison_util",
@@ -213,7 +210,7 @@ xla_test(
             "no_oss",
         ],
         "b200": [
-            "broken",
+            "multi_gpu",
             "no_oss",
         ],
     },
@@ -229,6 +226,7 @@ xla_test(
         "//xla/backends/gpu/runtime:dynamic_slice_thunk",
         "//xla/backends/gpu/runtime:sequential_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/backends/gpu/runtime:thunk_executor",
         "//xla/backends/gpu/runtime:while_thunk",
         "//xla/backends/gpu/transforms:dynamic_slice_fusion_rewriter",
         "//xla/ffi",

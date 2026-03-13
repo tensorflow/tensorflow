@@ -78,6 +78,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_done_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
+#include "xla/backends/gpu/runtime/cub_scan_thunk.h"
 #include "xla/backends/gpu/runtime/cub_sort_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -99,7 +100,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/nvshmem_recv_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_send_thunk.h"
 #include "xla/backends/gpu/runtime/outfeed_thunk.h"
-#include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
@@ -324,17 +324,10 @@ void AppendThunkSequence(ThunkSequence& thunks,
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConditional(
     const HloInstruction* instr) {
-  std::vector<std::unique_ptr<SequentialThunk>> branch_thunks;
+  std::vector<ThunkSequence> branch_thunks;
   branch_thunks.reserve(instr->branch_count());
   for (auto comp : instr->branch_computations()) {
-    TF_ASSIGN_OR_RETURN(auto thunk_sequence, EmitHloComputation(comp));
-    Thunk::ThunkInfo branch_thunk_info =
-        Thunk::ThunkInfo::WithProfileAnnotation(
-            instr, ir_emitter_context_->GetNextThunkId());
-    branch_thunk_info.profile_annotation +=
-        absl::StrCat("_branch_", comp->name());
-    branch_thunks.push_back(std::make_unique<SequentialThunk>(
-        branch_thunk_info, std::move(thunk_sequence)));
+    TF_ASSIGN_OR_RETURN(branch_thunks.emplace_back(), EmitHloComputation(comp));
   }
   TF_ASSIGN_OR_RETURN(auto slice,
                       GetAllocationSliceForHlo(instr->operand(0), {}));
@@ -378,9 +371,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSliceToDynamic(
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCommandBufferThunk(
     const HloInstruction* instr) {
   // Spawn a new ThunkEmitter to emit thunks for the command buffer computation.
-  // Then convert emitted thunks to a sequence of CommandBufferCmd. The
-  // resulting thunk added to the thunk sequence is a CommandBufferThunk. Thunks
-  // emitted from the command buffer computation are discarded.
+  // Then convert emitted thunks to a sequence of Commands. The resulting thunk
+  // added to the thunk sequence is a CommandBufferThunk. Thunks emitted from
+  // the command buffer computation are discarded.
   DCHECK_EQ(instr->called_computations().size(), 1);
   const HloComputation* command_buffer = instr->called_computations().front();
   TF_ASSIGN_OR_RETURN(auto thunk_sequence, EmitHloComputation(command_buffer));
@@ -867,6 +860,30 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCubDeviceRadixSort(
   return GetThunkSequence(std::move(thunk));
 }
 
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCubDeviceScan(
+    const HloCustomCallInstruction* instr) {
+  absl::InlinedVector<ShapedSlice, 2> results;
+  TF_ASSIGN_OR_RETURN(ShapedSlice result, GetShapedSliceForHlo(instr, {0}));
+  results.push_back(result);
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch,
+                      GetAllocationSliceForHlo(instr, {1}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input,
+                      GetAllocationSliceForHlo(instr->operand(0), {}));
+
+  const Shape& operand_shape = instr->operand(0)->shape();
+  int64_t num_elements = Product(operand_shape.dimensions());
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<CubScanThunk> thunk,
+      CubScanThunk::Create(Thunk::ThunkInfo::WithProfileAnnotation(
+                               instr, ir_emitter_context_->GetNextThunkId()),
+                           operand_shape.element_type(), input, result.slice,
+                           scratch, num_elements));
+
+  return GetThunkSequence(std::move(thunk));
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
     const HloCustomCallInstruction* instr) {
   const std::string& call_target_name = instr->custom_call_target();
@@ -1226,7 +1243,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
 
     kernel_modules_.push_back(std::move(result.llvm_module));
     return {{kernel_name, launch_dimensions, /*cluster_dim=*/std::nullopt,
-             result.shmem_bytes}};
+             result.shmem_bytes, /*binary=*/"", /*tma_metadata=*/{},
+             result.use_pdl}};
   };
 
   auto [status_or_entry, was_cached] =
@@ -1248,7 +1266,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTritonCustomCall(
           instr, ir_emitter_context_->GetNextThunkId()),
       entry->kernel_name, kernel_arguments, entry->launch_dimensions,
       /*cluster_dim=*/std::nullopt, entry->shmem_bytes, entry->tma_metadata,
-      /*zeroed_output_buffer_indices=*/call.zeroed_outputs));
+      /*zeroed_output_buffer_indices=*/call.zeroed_outputs, entry->use_pdl));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitAsyncComputation(
@@ -1392,22 +1410,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitWhile(
   TF_ASSIGN_OR_RETURN(
       auto pred, GetAllocationSliceForHlo(condition->root_instruction(), {}));
 
-  Thunk::ThunkInfo while_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+  Thunk::ThunkInfo info = Thunk::ThunkInfo::WithProfileAnnotation(
       instr, ir_emitter_context_->GetNextThunkId());
-  Thunk::ThunkInfo cond_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
-      instr, ir_emitter_context_->GetNextThunkId());
-  cond_thunk_info.profile_annotation += "_condition";
-  Thunk::ThunkInfo body_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
-      instr, ir_emitter_context_->GetNextThunkId());
-  body_thunk_info.profile_annotation += "_body";
-
-  return GetThunkSequence(
-      std::make_unique<WhileThunk>(while_thunk_info, instr, pred,
-                                   std::make_unique<SequentialThunk>(
-                                       cond_thunk_info, std::move(cond_thunks)),
-                                   std::make_unique<SequentialThunk>(
-                                       body_thunk_info, std::move(body_thunks)),
-                                   trip_count));
+  return GetThunkSequence(std::make_unique<WhileThunk>(
+      info, pred, std::move(cond_thunks), std::move(body_thunks), trip_count));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRngGetAndUpdateState(
@@ -2003,7 +2009,7 @@ static absl::flat_hash_map<std::string, std::string> ConvertFrontendAttributes(
 
 static std::optional<GlobalDeviceId> DeviceConstraint(
     const HloInstruction* hlo) {
-  if (hlo->has_sharding() && hlo->sharding().HasUniqueDevice()) {
+  if (hlo->has_sharding() && hlo->sharding().IsSingleDevice()) {
     return GlobalDeviceId(hlo->sharding().GetUniqueDevice());
   }
   return std::nullopt;
@@ -2539,6 +2545,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallSwitch(
   }
   if (IsCubDeviceRadixSort(*hlo)) {
     return EmitCubDeviceRadixSort(custom_call);
+  }
+  if (IsCubDeviceScan(*hlo)) {
+    return EmitCubDeviceScan(custom_call);
   }
   if (custom_call->custom_call_target() == "PadToStatic") {
     return EmitPadToStatic(custom_call);

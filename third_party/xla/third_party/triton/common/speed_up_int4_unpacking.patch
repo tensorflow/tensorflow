@@ -27,7 +27,7 @@ an early stage on the XLA side with further optimizations from nVidia #24 and
 
 --- a/lib/Dialect/TritonGPU/Transforms/Utility.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Utility.cpp
-@@ -1122,6 +1122,39 @@ swizzleDotOperandLike(RankedTensorType type, ttg::CGAEncodingAttr cgaLayout) {
+@@ -1113,6 +1113,39 @@ swizzleDotOperandLike(RankedTensorType type, ttg::CGAEncodingAttr cgaLayout) {
        type.getElementTypeBitWidth(), false);
  }
  
@@ -67,7 +67,7 @@ an early stage on the XLA side with further optimizations from nVidia #24 and
  // If all the transitive uses of the given value have are used by a convert to
  // the same dot operand encoding, return the shared encoding that needs to be
  // used to be compatible with users' layouts. If there are incompatible shared
-@@ -1156,14 +1189,21 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
+@@ -1147,14 +1180,21 @@ getSharedEncIfAllUsersAreDotEnc(Value val, bool &incompatible) {
        auto CGALayout = isa<ttg::LinearEncodingAttr>(dstTy.getEncoding())
                             ? ttg::getCGALayout(srcTy.getEncoding())
                             : ttg::getCGALayout(dstTy.getEncoding());
