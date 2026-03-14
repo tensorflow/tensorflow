@@ -817,7 +817,7 @@ inline void UpdateDevice(NewNode<GraphViewT>* new_node,
   if (device.empty()) {
     new_node->node.clear_device();
   } else {
-    new_node->node.set_device(string(device));
+    new_node->node.set_device(device);
   }
 }
 
