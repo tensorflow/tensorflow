@@ -906,9 +906,12 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Handlers for specific custom call targets.
   // go/keep-sorted start
+  // multi_rotate(x, dim, L, R) = (rotate_left(x, L), ..., rotate_left(x, -R))
   absl::Status HandleCustomCallSPMDInternal_MultiRotate(HloInstruction* hlo);
+  // mult_slice(x[idxs...], dim, amt) = (x[idxs...], ..., x[idx+amt...])
   absl::Status HandleCustomCallSPMDInternal_MultiSlice(HloInstruction* hlo);
   absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+  // wrap(x, L, R) = (x[-L:], x, x[0:R])
   absl::Status HandleCustomCallSPMDInternal_Wrap(HloInstruction* hlo);
   absl::Status HandleCustomCallTopK(HloInstruction* hlo);
   // go/keep-sorted end

@@ -463,27 +463,27 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
 
   const int64_t participating_shards = CeilOfRatio(full_size, shard_size);
 
-  TF_RET_CHECK(left_amount < shard_size)
-      << "Left amount must be entirely within a shard";
-
-  bool divisible_by_participating_shards =
-      full_size % participating_shards == 0;
-
-  if (divisible_by_participating_shards) {
-    TF_RET_CHECK(right_amount < shard_size)
-        << "Right amount must be entirely within a shard";
-  } else {
-    TF_RET_CHECK(right_amount < full_size % shard_size)
-        << "Right amount must be entirely within final shard";
-  }
-
   int64_t post_elements_per_shard =
       CeilOfRatio(full_size, participating_shards);
   int64_t post_halo_shard_size = post_elements_per_shard;
 
+  // The multi-rotate  operation computes
+  //   rotate_left(x, L)
+  //   rotate_left(x, L-1)
+  //   ...
+  //   rotate_right(x, R)
+  // where L is left_amount, and R is right_amount from the op definition.
+  // We construct a super_shard by performing a halo exchange, which moves some
+  // elements from the left and right of the shard to the center.
+  // rotate_left(x, L) = concat(x[L:], x[:L]).
+  // This means that we need the first L elements from the right via a
+  // halo exchange. Similarly, we need the last R elements from the left via a
+  // halo exchange.
   TF_ASSIGN_OR_RETURN(auto super_shard_and_offset,
                       ConstructHaloExchangeSuperShard(
-                          hlo->operand(0), dim, left_amount, right_amount,
+                          hlo->operand(0), dim,
+                          /*left_amount=*/right_amount,
+                          /*right_amount=*/left_amount,
                           /*handle_last_shard=*/true, post_halo_shard_size));
 
   auto [super_shard, shard_offset] = super_shard_and_offset;
@@ -549,17 +549,18 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
   const int64_t participating_shards =
       CeilOfRatio(full_pre_wrap_size, shard_size);
 
-  TF_RET_CHECK(left_amount < shard_size)
+  TF_RET_CHECK(left_amount <= shard_size)
       << "Left amount must be entirely within a shard";
 
   bool divisible_by_participating_shards =
       full_pre_wrap_size % participating_shards == 0;
 
   if (divisible_by_participating_shards || !handle_last_shard) {
-    TF_RET_CHECK(right_amount < shard_size)
+    TF_RET_CHECK(right_amount <= shard_size)
         << "Right amount must be entirely within a shard";
   } else {
-    TF_RET_CHECK(right_amount < full_pre_wrap_size % participating_shards)
+    TF_RET_CHECK(right_amount <=
+                 full_pre_wrap_size - ((participating_shards - 1) * shard_size))
         << "Right amount must be entirely within final shard";
   }
 
@@ -728,7 +729,8 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
 
       HloInstruction* last_offset = b_.AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
-              left_amount + (full_pre_wrap_size % participating_shards))));
+              left_amount +
+              (full_pre_wrap_size - (participating_shards - 1) * shard_size))));
       HloInstruction* other_offset =
           b_.AddInstruction(HloInstruction::CreateConstant(
               LiteralUtil::CreateR0<int32_t>(left_amount + shard_size)));
@@ -812,12 +814,6 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
   // Here to perform all the slices at once, we construct a super shard, and
   // then perform collective permute to exchange the halo elements, and then
   // slice the results.
-
-  TF_RET_CHECK(start_index <= sharded_input_size)
-      << "start_index must be entirely within a shard";
-
-  TF_RET_CHECK(full_input_size - limit_index <= sharded_input_size)
-      << "right_remaining must be entirely within a shard";
 
   int64_t post_elems_per_shard =
       CeilOfRatio(output_shape.dimensions(dim), participating_shards);
