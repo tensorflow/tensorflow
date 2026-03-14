@@ -49,9 +49,10 @@ namespace xla::gpu {
 namespace {
 
 using se::gpu::AllReduceStrategy;
-static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * 1024;  // 256 KB
-static constexpr int64_t kMaxTwoShotAllReduceSizeBytes =
-    2 * 1024 * 1024;  // 2 MB
+static constexpr int64_t kKB = 1024;
+static constexpr int64_t kMB = kKB * 1024;
+static constexpr int64_t kMaxOneShotAllReduceSizeBytes = 256 * kKB;
+static constexpr int64_t kMaxTwoShotAllReduceSizeBytes = 4 * kMB;
 
 template <typename T, ReductionKind kReductionKindV>
 class TagRegistry {
