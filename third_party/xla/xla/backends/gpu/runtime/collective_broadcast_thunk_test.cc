@@ -61,7 +61,7 @@ using ::testing::ElementsAre;
 using Kind = Thunk::Kind;
 using ::tsl::proto_testing::EqualsProto;
 
-class GpuCollectiveBroadcastTest : public HloTestBase {};
+using GpuCollectiveBroadcastTest = HloTestBase;
 
 TEST_F(GpuCollectiveBroadcastTest, TestConvertToCommands) {
   // Generate HLO text with parameters substituted.

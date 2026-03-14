@@ -58,7 +58,7 @@ namespace {
 using ::testing::UnorderedElementsAre;
 using Kind = Thunk::Kind;
 
-class GpuSendRecvTest : public HloTestBase {};
+using GpuSendRecvTest = HloTestBase;
 
 // Test case to verify that Send HLO instruction is correctly
 // converted into a sequence of command buffer commands (Send and SendDone).

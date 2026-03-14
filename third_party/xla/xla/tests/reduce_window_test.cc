@@ -1609,7 +1609,7 @@ INSTANTIATE_TEST_CASE_P(
 
 // Test class for text-based test cases. Note that this compares with the
 // results on the interpreter backend.
-class ReduceWindowTextTest : public HloTestBase {};
+using ReduceWindowTextTest = HloTestBase;
 
 TEST_F(ReduceWindowTextTest, R2General256x384) {
   const std::string hlo_string = R"(

@@ -61,7 +61,7 @@ using ::testing::ElementsAre;
 using Kind = Thunk::Kind;
 using ::tsl::proto_testing::EqualsProto;
 
-class GpuCollectivePermuteTest : public HloTestBase {};
+using GpuCollectivePermuteTest = HloTestBase;
 
 // Test case to verify that a CollectivePermute HLO instruction is correctly
 // converted into a sequence of command buffer commands (Start and Done).
