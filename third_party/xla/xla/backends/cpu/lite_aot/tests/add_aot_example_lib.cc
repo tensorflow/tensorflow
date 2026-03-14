@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/lite_aot/xla_aot_function.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/platform.h"
