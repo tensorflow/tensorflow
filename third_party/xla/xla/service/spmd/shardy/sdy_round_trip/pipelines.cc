@@ -69,7 +69,8 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport,
                                    bool liftAndDedupMeshes,
-                                   bool enableHloShardingV3) {
+                                   bool enableHloShardingV3,
+                                   bool enableNativeNonFlatSupport) {
   addCommonPreImportPasses(pm, enableConstantImport);
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
   pm.addPass(createSdyRoundTripFlattenCallGraphPass());

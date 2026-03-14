@@ -379,7 +379,8 @@ absl::Status runShardingPropagation(
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
                                   /*liftAndDedupMeshes=*/true,
-                                  debugOptions.xla_enable_hlo_sharding_v3());
+                                  debugOptions.xla_enable_hlo_sharding_v3(),
+                                  enableNativeNonFlatSupport);
   }
 
   // NOTE: if we are using auto-spmd, we will use conservative propagation
