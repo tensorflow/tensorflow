@@ -111,7 +111,6 @@ cc_library(
     deps = [
         ":device_address",
         ":stream_executor_h",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
