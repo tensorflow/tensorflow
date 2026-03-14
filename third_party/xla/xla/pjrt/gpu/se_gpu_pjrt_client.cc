@@ -1953,13 +1953,20 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
   for (auto& ordinal_and_device : local_device_states) {
     const se::DeviceDescription& desc =
         ordinal_and_device.second->executor()->GetDeviceDescription();
+    int local_device_id = ordinal_and_device.second->local_device_id().value();
     auto device = std::make_unique<StreamExecutorGpuDevice>(
-        ordinal_and_device.first, std::move(ordinal_and_device.second),
-        desc.name(), desc.device_vendor(),
-        MakeComputeCapabilityAttributeString(desc), desc.core_count(),
-        desc.shared_memory_per_block_optin(),
-        ordinal_and_device.second->local_device_id().value(), process_id,
-        desc.numa_node());
+        /*id=*/ordinal_and_device.first,
+        /*local_device_state=*/std::move(ordinal_and_device.second),
+        /*device_kind=*/desc.name(),
+        /*device_vendor=*/desc.device_vendor(),
+        /*compute_capability=*/MakeComputeCapabilityAttributeString(desc),
+        /*core_count=*/desc.core_count(),
+        /*shared_memory_per_block_optin=*/desc.shared_memory_per_block_optin(),
+        /*local_device_id=*/local_device_id,
+        /*process_index=*/process_id,
+        /*process_index_in_partition=*/0,
+        /*partition_index=*/0,
+        /*numa_node=*/desc.numa_node());
     devices.push_back(std::move(device));
   }
   return devices;

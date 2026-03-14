@@ -79,9 +79,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           std::string compute_capability, int core_count,
                           int shared_memory_per_block_optin,
                           int local_device_id, int process_index,
-                          int process_index_in_partition = 0,
-                          int partition_index = 0,
-                          int numa_node = tsl::port::kNUMANoAffinity);
+                          int process_index_in_partition, int partition_index,
+                          int numa_node);
 
   absl::string_view device_vendor() const;
 
