@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_node_key.h"
 
 #include <cstdint>
+#include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
