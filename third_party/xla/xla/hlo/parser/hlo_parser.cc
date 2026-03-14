@@ -2101,10 +2101,19 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone: {
-      std::optional<HloComputation*> async_computation;
       if (!preset_operands && !ParseOperands(&operands, builder)) {
         return nullptr;
       }
+
+      std::optional<HloComputation*> async_computation;
+      std::optional<std::string> async_execution_thread;
+      std::optional<
+          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
+          output_to_operand_aliasing;
+
+      attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
+                                         &async_execution_thread};
+
       if (opcode == HloOpcode::kAsyncStart) {
         if (!shape->IsTuple() || shape->tuple_shapes().size() < 2 ||
             !shape->tuple_shapes(0).IsTuple()) {
@@ -2113,130 +2122,107 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
               "((async-operands), async-outputs, state).");
           return nullptr;
         }
-      }
-      // async-{update,done} expect their one singular operand to be the
-      // previous async op.
-      if (opcode == HloOpcode::kAsyncUpdate ||
-          opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 || !operands[0]->IsAsynchronous() ||
-            operands[0]->opcode() == HloOpcode::kAsyncDone) {
-          TokenError(
-              "AsyncUpdate and AsyncDone expect a single async op as their "
-              "operand.");
-          return nullptr;
-        }
-      }
-      // For AsyncUpdate, the operand and the result should have the same shape.
-      if (opcode == HloOpcode::kAsyncUpdate) {
-        if (operands[0]->shape() != *shape) {
-          TokenError(
-              "AsyncUpdate expects the op shape to be the same as the operand "
-              "shape.");
-          return nullptr;
-        }
-      }
-      optional<std::string> async_execution_thread;
-      attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
-                                         &async_execution_thread};
 
-      optional<
-          std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
-          output_to_operand_aliasing;
-      if (opcode == HloOpcode::kAsyncStart) {
         attrs["output_to_operand_aliasing"] = {/*required=*/false,
                                                AttrTy::kInstructionAliasing,
                                                &output_to_operand_aliasing};
-      }
-      if (async_wrapped_opcode) {
-        // Only generate async-wrapper for async-start.
-        if (opcode == HloOpcode::kAsyncStart) {
+
+        if (async_wrapped_opcode) {
           std::vector<HloInstruction*> async_wrapped_operands;
           std::vector<Shape> async_wrapped_operand_shapes;
-          Shape async_wrapped_root_shape;
           async_wrapped_operand_shapes.reserve(operands.size());
           for (const HloInstruction* operand : operands) {
             async_wrapped_operand_shapes.push_back(operand->shape());
           }
-          async_wrapped_root_shape = shape->tuple_shapes(1);
+
           HloComputation::Builder async_wrapped_builder("async_wrapped");
-          async_wrapped_operands.reserve(async_wrapped_operand_shapes.size());
           for (int i = 0; i < async_wrapped_operand_shapes.size(); ++i) {
             async_wrapped_operands.push_back(
                 async_wrapped_builder.AddInstruction(
                     HloInstruction::CreateParameter(
-                        i, async_wrapped_operand_shapes.at(i), "async_param")));
+                        i, async_wrapped_operand_shapes[i], "async_param")));
           }
-          HloInstruction* root =
-              CreateInstruction(&async_wrapped_builder, "async_op",
-                                async_wrapped_root_shape, *async_wrapped_opcode,
-                                /*async_wrapped_opcode=*/std::nullopt, attrs,
-                                allow_attributes, &async_wrapped_operands);
+
+          HloInstruction* root = CreateInstruction(
+              &async_wrapped_builder, "async_op", shape->tuple_shapes(1),
+              *async_wrapped_opcode, /*async_wrapped_opcode=*/std::nullopt,
+              attrs, allow_attributes, &async_wrapped_operands);
           if (!root) {
             return nullptr;
           }
+
           computations_.emplace_back(async_wrapped_builder.Build(root));
           async_computation = computations_.back().get();
         } else {
-          // Since async-{update,done} will inherit the computation from
-          // async-start, we'll only need to make sure it matches what was
-          // specified explicitly.
-          if (operands[0]->async_wrapped_opcode() != *async_wrapped_opcode) {
-            TokenError(
-                StrFormat("Expect async wrapped opcode to be %s, but got %s",
-                          HloOpcodeString(operands[0]->async_wrapped_opcode()),
-                          HloOpcodeString(*async_wrapped_opcode)));
+          attrs["calls"] = {/*required=*/true, AttrTy::kHloComputation,
+                            &async_computation};
+          if (!ParseAttributes(attrs, allow_attributes, shape)) {
             return nullptr;
           }
         }
-      } else {
-        attrs["calls"] = {/*required=*/opcode == HloOpcode::kAsyncStart,
-                          AttrTy::kHloComputation, &async_computation};
-      }
-      // Attributes would have already been consumed when constructing the
-      // async wrapped computation for async-start.
-      if (!(async_wrapped_opcode && opcode == HloOpcode::kAsyncStart)) {
-        if (!ParseAttributes(attrs, allow_attributes, shape)) {
-          return nullptr;
-        }
-      }
-      // Async attributes on async-{update,done} are allowed for backward
-      // compatibility reasons, but are ignored, since they are inherited
-      // from the async-start op. Simply check that whatever is explicitly
-      // specified matches what is inherited.
-      if (opcode == HloOpcode::kAsyncUpdate ||
-          opcode == HloOpcode::kAsyncDone) {
-        if (async_execution_thread &&
-            operands[0]->async_execution_thread() != *async_execution_thread) {
-          TokenError(StrFormat(
-              "Expect async_execution_thread to be %s, but got %s",
-              operands[0]->async_execution_thread(), *async_execution_thread));
-          return nullptr;
-        }
-        if (async_computation &&
-            operands[0]->async_wrapped_computation() != *async_computation) {
-          TokenError(
-              StrFormat("Expect async_wrapped_computation to be %s, but got %s",
-                        operands[0]->async_wrapped_computation()->name(),
-                        (*async_computation)->name()));
-          return nullptr;
-        }
-      }
 
-      if (opcode == HloOpcode::kAsyncStart) {
-        // async_execution_thread only needs to be populated for async-start,
-        // as the rest of the async chain will reference the root op.
         if (!async_execution_thread) {
           async_execution_thread = HloInstruction::kMainExecutionThread;
         }
-        auto instr = builder->AddInstruction(HloInstruction::CreateAsyncStart(
+        auto* instr = builder->AddInstruction(HloInstruction::CreateAsyncStart(
             *shape, operands, *async_computation, *async_execution_thread));
-
-        if (output_to_operand_aliasing.has_value()) {
+        if (output_to_operand_aliasing) {
           Cast<HloAsyncStartInstruction>(instr)->set_output_to_operand_aliasing(
               std::move(*output_to_operand_aliasing));
         }
         return instr;
       }
+
+      // Handle AsyncUpdate and AsyncDone.
+      if (operands.size() != 1 || !operands[0]->IsAsynchronous() ||
+          operands[0]->opcode() == HloOpcode::kAsyncDone) {
+        TokenError(
+            "AsyncUpdate and AsyncDone expect a single async op as their "
+            "operand.");
+        return nullptr;
+      }
+
+      if (opcode == HloOpcode::kAsyncUpdate && operands[0]->shape() != *shape) {
+        TokenError(
+            "AsyncUpdate expects the op shape to be the same as the operand "
+            "shape.");
+        return nullptr;
+      }
+
+      if (async_wrapped_opcode) {
+        if (operands[0]->async_wrapped_opcode() != *async_wrapped_opcode) {
+          TokenError(
+              StrFormat("Expect async wrapped opcode to be %s, but got %s",
+                        HloOpcodeString(operands[0]->async_wrapped_opcode()),
+                        HloOpcodeString(*async_wrapped_opcode)));
+          return nullptr;
+        }
+      } else {
+        attrs["calls"] = {/*required=*/false, AttrTy::kHloComputation,
+                          &async_computation};
+      }
+
+      if (!ParseAttributes(attrs, allow_attributes, shape)) {
+        return nullptr;
+      }
+
+      // Validate inherited attributes for backward compatibility.
+      if (async_execution_thread &&
+          operands[0]->async_execution_thread() != *async_execution_thread) {
+        TokenError(StrFormat(
+            "Expect async_execution_thread to be %s, but got %s",
+            operands[0]->async_execution_thread(), *async_execution_thread));
+        return nullptr;
+      }
+      if (async_computation &&
+          operands[0]->async_wrapped_computation() != *async_computation) {
+        TokenError(
+            StrFormat("Expect async_wrapped_computation to be %s, but got %s",
+                      operands[0]->async_wrapped_computation()->name(),
+                      (*async_computation)->name()));
+        return nullptr;
+      }
+
       if (opcode == HloOpcode::kAsyncUpdate) {
         return builder->AddInstruction(
             HloInstruction::CreateAsyncUpdate(*shape, operands[0]));
