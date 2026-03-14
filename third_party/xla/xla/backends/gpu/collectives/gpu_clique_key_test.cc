@@ -174,4 +174,42 @@ TEST(GpuCliqueIdStringTest, ToString) {
   }
 }
 
+// Test that IsSubsetOf correctly identifies subset relationships for clique
+// invalidation. This is important for preventing deadlocks when cached subset
+// cliques need to be invalidated after a larger clique is created.
+TEST(GpuCliqueKeyTest, IsSubsetOfForCliqueInvalidation) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+  GlobalDeviceId id2 = GlobalDeviceId(2);
+  GlobalDeviceId id3 = GlobalDeviceId(3);
+
+  // Scenario: First we create clique [0,1], then later create [0,1,2,3].
+  // The cached [0,1] clique should be identified as a subset of [0,1,2,3]
+  // so it can be invalidated to prevent deadlock during comm splitting.
+  GpuCliqueKey small_clique({id0, id1}, /*num_local_participants=*/2, false);
+  GpuCliqueKey large_clique({id0, id1, id2, id3}, /*num_local_participants=*/4,
+                            false);
+
+  // [0,1] is a subset of [0,1,2,3]
+  EXPECT_TRUE(small_clique.IsSubsetOf(large_clique));
+
+  // [0,1,2,3] is not a subset of [0,1]
+  EXPECT_FALSE(large_clique.IsSubsetOf(small_clique));
+
+  // A clique is a subset of itself
+  EXPECT_TRUE(small_clique.IsSubsetOf(small_clique));
+  EXPECT_TRUE(large_clique.IsSubsetOf(large_clique));
+
+  // [2,3] is also a subset of [0,1,2,3]
+  GpuCliqueKey other_small({id2, id3}, /*num_local_participants=*/2, false);
+  EXPECT_TRUE(other_small.IsSubsetOf(large_clique));
+
+  // [0,1] is not a subset of [2,3] (disjoint)
+  EXPECT_FALSE(small_clique.IsSubsetOf(other_small));
+
+  // Different is_p2p flag should prevent subset relationship
+  GpuCliqueKey p2p_clique({id0, id1}, /*num_local_participants=*/2, true);
+  EXPECT_FALSE(p2p_clique.IsSubsetOf(large_clique));
+}
+
 }  // namespace xla::gpu

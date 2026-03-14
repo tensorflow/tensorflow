@@ -469,6 +469,48 @@ InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
       VLOG(3) << absl::StrFormat("[%s] [ranks=%s] Created new clique %v",
                                  DeviceOrdinalsToString(ranks),
                                  DeviceRanksToString(ranks), clique_key);
+
+      // When NCCL comm splitting is enabled, invalidate any cached cliques
+      // that are proper subsets of the newly created clique. This ensures
+      // that subsequent operations using those subset device groups will
+      // create split communicators from this parent clique rather than
+      // reusing stale standalone communicators.
+      //
+      // Without this, if clique [0,1] exists from a previous run and we
+      // create [0,1,2,3], a subsequent [2,3] operation would try to split
+      // from [0,1,2,3] but [0,1] operations would use the old standalone
+      // clique, causing rendezvous deadlocks because NCCL comm split
+      // requires all ranks of the parent clique to participate.
+      static const bool enable_nccl_comm_splitting =
+          xla::GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
+      if (enable_nccl_comm_splitting) {
+        std::vector<GpuCliqueKey> keys_to_remove;
+        for (auto& [cached_key, cached_clique] : state.cliques) {
+          // Skip the clique we just created and check if cached is a proper
+          // subset of the new clique (same devices would mean equal keys).
+          if (!(cached_key == clique_key) &&
+              cached_key.IsSubsetOf(clique_key)) {
+            VLOG(3) << absl::StrFormat(
+                "[%s] [ranks=%s] Invalidating cached subset clique %v "
+                "(subset of new clique %v)",
+                DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+                cached_key, clique_key);
+            keys_to_remove.push_back(cached_key);
+          }
+        }
+        for (const auto& key : keys_to_remove) {
+          auto it = state.cliques.find(key);
+          if (it != state.cliques.end()) {
+            // Abort the communicators before removing to ensure clean
+            // shutdown of NCCL resources.
+            if (auto status = it->second->Abort(); !status.ok()) {
+              LOG(WARNING) << "Failed to abort subset clique " << key.ToString()
+                           << ": " << status;
+            }
+            state.cliques.erase(it);
+          }
+        }
+      }
     }
 
     return emplaced.first->second->Acquire();
