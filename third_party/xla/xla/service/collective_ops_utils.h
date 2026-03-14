@@ -38,17 +38,23 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/literal.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);
 
-// Attempts to match instruction to one of the possible cases for ReductionKind.
+// Returns the ReductionKind corresponding to the given HloOpcode and
+// PrimitiveType.
+// Returns std::nullopt if the HloOpcode cannot be mapped to a ReductionKind.
+std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
+                                                   PrimitiveType type);
+
+// Attempts to match instruction to one of the possible cases for
+// ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
 
@@ -61,7 +67,11 @@ std::unique_ptr<HloComputation> MakeReductionComputation(
     ReductionKind reduction_kind, PrimitiveType element_type);
 
 // Returns the HloOpcode corresponding to the given ReductionKind.
-std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
+// Certain reduction kinds can map to different opcodes depending on the
+// element type (e.g. ReductionKind::MIN maps to kMinimum for numeric types and
+// kAnd for PRED).
+HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
+                                PrimitiveType element_type);
 
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.

@@ -17,6 +17,7 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -24,6 +25,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -42,11 +45,14 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/tests/collective_ops_e2e_test_base.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/tests/literal_test_util.h"
@@ -200,23 +206,213 @@ struct AllReduceTestParams {
   }
 };
 
+constexpr bool IsFloatingPoint(PrimitiveType element_type) {
+  return absl::c_linear_search(gpu::kSupportedFloatingPointTypes, element_type);
+}
+
+constexpr bool IsIntegral(PrimitiveType element_type) {
+  return absl::c_linear_search(gpu::kSupportedIntegralTypes, element_type);
+}
+
+constexpr bool IsNumeric(PrimitiveType element_type) {
+  return IsFloatingPoint(element_type) || IsIntegral(element_type);
+}
+
+constexpr bool IsPredicate(PrimitiveType element_type) {
+  return absl::c_linear_search(gpu::kSupportedPredicateTypes, element_type);
+}
+
+struct AllReduceTypesTestParams : public AllReduceTestParams {
+  // The element type of the all-reduce.
+  PrimitiveType element_type;
+  // The opcode of the all-reduce.
+  HloOpcode hlo_opcode;
+
+  ReductionKind GetReductionKind() const {
+    const std::optional<ReductionKind> reduction_kind =
+        OpcodeToReductionKind(hlo_opcode, element_type);
+    // Shouldn't happen because we only generate supported combinations.
+    CHECK(reduction_kind.has_value())
+        << "Unsupported reduction kind for element type: "
+        << absl::StrFormat(
+               "PrimitiveType: %s, HloOpcode: (%s)",
+               primitive_util::LowercasePrimitiveTypeName(element_type),
+               HloOpcodeString(hlo_opcode));
+    return reduction_kind.value();
+  }
+
+  static std::vector<AllReduceTypesTestParams> Generate() {
+    std::vector<AllReduceTypesTestParams> params;
+    for (auto& all_reduce_test_params : AllReduceTestParams::Generate()) {
+      for (const PrimitiveType element_type : gpu::SupportedTypes()) {
+        for (const HloOpcode hlo_opcode :
+             gpu::SupportedReductionOps(element_type)) {
+          const std::optional<ReductionKind> reduction_kind =
+              OpcodeToReductionKind(hlo_opcode, element_type);
+          CHECK(reduction_kind.has_value());
+          params.push_back({all_reduce_test_params, element_type, hlo_opcode});
+        }
+      }
+    }
+    return params;
+  }
+};
+
+template <typename T>
+std::optional<T> Evaluate(const T a, const T b, HloOpcode hlo_opcode) {
+  constexpr PrimitiveType primitive_type =
+      primitive_util::NativeToPrimitiveType<T>();
+  if constexpr (IsNumeric(primitive_type)) {
+    switch (hlo_opcode) {
+      case HloOpcode::kAdd:
+        return a + b;
+      case HloOpcode::kMultiply:
+        return a * b;
+      case HloOpcode::kMaximum:
+        return std::max(a, b);
+      case HloOpcode::kMinimum:
+        return std::min(a, b);
+      default:
+        break;
+    }
+  } else if constexpr (IsPredicate(primitive_type)) {
+    switch (hlo_opcode) {
+      case HloOpcode::kOr:
+        return a | b;
+      case HloOpcode::kAnd:
+        return a & b;
+      default:
+        break;
+    }
+  }
+  return std::nullopt;
+}
+
+struct InputsOutputs {
+  std::vector<Literal> inputs;
+  std::vector<Literal> expected_outputs;
+
+  [[nodiscard]] std::vector<std::vector<Literal*>> InputLiteralPtrs() {
+    std::vector<std::vector<Literal*>> result;
+    for (auto& input : inputs) {
+      result.push_back(std::vector<Literal*>{&input});
+    }
+    return result;
+  }
+};
+
+template <typename T>
+static void FillRandom(Array<T>& array, int64_t seed) {
+  constexpr PrimitiveType primitive_type =
+      primitive_util::NativeToPrimitiveType<T>();
+  if constexpr (IsFloatingPoint(primitive_type)) {
+    array.FillRandom(T{1.0f}, T{10.0}, seed);
+  } else if constexpr (IsPredicate(primitive_type)) {
+    array.FillRandomBool(seed);
+  } else if constexpr (IsIntegral(primitive_type)) {
+    array.FillRandomUniform(0, 100, seed);
+  } else {
+    GTEST_FAIL() << "Unsupported element type: "
+                 << absl::StrFormat("%v",
+                                    primitive_util::NativeToPrimitiveType<T>());
+  }
+}
+
+template <PrimitiveType kElementType>
+static absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(
+    HloOpcode hlo_opcode, const HloModule& module, int64_t num_replicas,
+    int64_t num_iterations) {
+  using ElementType = primitive_util::NativeTypeOf<kElementType>;
+
+  std::vector<Array<ElementType>> inputs;
+  std::vector<Literal> input_literals;
+  const HloInstruction* const hlo_instr =
+      HloHardwareIndependentTestBase::FindInstruction(&module,
+                                                      HloOpcode::kAllReduce);
+  if (hlo_instr == nullptr) {
+    return absl::InvalidArgumentError(
+        "Instruction 'all-reduce' not found in module.");
+  }
+  const HloAllReduceInstruction* instr =
+      Cast<HloAllReduceInstruction>(hlo_instr);
+  const Shape& shape = module.entry_computation()->root_instruction()->shape();
+  for (int i = 0; i < num_replicas; ++i) {
+    auto& input = inputs.emplace_back(Array<ElementType>(shape.dimensions()));
+    FillRandom<ElementType>(input, i);
+    input_literals.push_back(LiteralUtil::CreateFromArray(input));
+  }
+  std::vector<Literal> expected_output_literals;
+
+  const std::vector<ReplicaGroup>& replica_groups =
+      instr->device_list()->replica_groups();
+  // Map each device to set of replica groups it belongs to.
+  std::vector<std::vector<int64_t>> device_to_groups(num_replicas);
+  for (const auto& replica_group : replica_groups) {
+    const auto& replica_ids = replica_group.replica_ids();
+    for (int64_t replica : replica_group.replica_ids()) {
+      CHECK_EQ(device_to_groups[replica].size(), 0);
+      device_to_groups[replica].assign(replica_ids.begin(), replica_ids.end());
+    }
+  }
+  const ReductionKind reduction_kind =
+      OpcodeToReductionKind(hlo_opcode, kElementType).value();
+  const ElementType identity =
+      GetReductionIdentity(reduction_kind, kElementType)
+          .value()
+          .Get<ElementType>({});
+  std::vector<Array<ElementType>> expected_outputs(
+      num_replicas, Array<ElementType>(shape.dimensions(), identity));
+
+  for (int i = 0; i < num_replicas; ++i) {
+    expected_outputs[i].Each(
+        [&](absl::Span<const int64_t> indices, ElementType* val) {
+          constexpr PrimitiveType primitive_type =
+              primitive_util::NativeToPrimitiveType<ElementType>();
+          for (const int64_t replica : device_to_groups[i]) {
+            auto result = Evaluate(*val, inputs[replica](indices), hlo_opcode);
+            if (!result.has_value()) {
+              GTEST_FAIL() << "Unsupported reduction kind for element type: "
+                           << absl::StrFormat("%v : %v", primitive_type,
+                                              hlo_opcode);
+            }
+            *val = result.value();
+          }
+          if constexpr (IsNumeric(primitive_type)) {
+            if (hlo_opcode == HloOpcode::kAdd) {
+              // Each iteration after the first,the output is doubled.
+              *val *= static_cast<ElementType>(
+                  std::pow(device_to_groups[i].size(), num_iterations - 1));
+            } else if (num_iterations > 1) {
+              GTEST_FAIL()
+                  << "Iterations > 1 not supported for non-add reductions.";
+            }
+          }
+        });
+  }
+  for (auto& expected_output : expected_outputs) {
+    expected_output_literals.push_back(
+        LiteralUtil::CreateFromArray(expected_output));
+  }
+  return InputsOutputs{std::move(input_literals),
+                       std::move(expected_output_literals)};
+}
+
+absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(PrimitiveType element_type,
+                                                     HloOpcode hlo_opcode,
+                                                     const HloModule& module,
+                                                     int64_t num_replicas,
+                                                     int64_t num_iterations) {
+  const auto dispatch = [&](auto type) {
+    return BuildTestInputsOutputs<type>(hlo_opcode, module, num_replicas,
+                                        num_iterations);
+  };
+  return primitive_util::ArrayTypeSwitch(dispatch, element_type);
+}
+
 class AllReduceTest
     : public AllReduceTestNoParams,
       public ::testing::WithParamInterface<AllReduceTestParams> {
  public:
-  struct InputsOutputs {
-    std::vector<Literal> inputs;
-    std::vector<Literal> expected_outputs;
-
-    [[nodiscard]] std::vector<std::vector<Literal*>> InputLiteralPtrs() {
-      std::vector<std::vector<Literal*>> result;
-      for (auto& input : inputs) {
-        result.push_back(std::vector<Literal*>{&input});
-      }
-      return result;
-    }
-  };
-
   AllReduceTest() : AllReduceTestNoParams(/*is_async=*/GetParam().is_async) {}
 
  protected:
@@ -226,76 +422,21 @@ class AllReduceTest
         GetParam().use_all_reduce_one_shot_kernel);
     return opts;
   }
+};
 
-  template <PrimitiveType kElementType, HloOpcode kHloOpcode>
-  static absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(
-      const HloModule& module, int64_t num_replicas, int64_t num_iterations) {
-    using ElementType = primitive_util::NativeTypeOf<kElementType>;
+class AllReduceTypesTest
+    : public AllReduceTestNoParams,
+      public ::testing::WithParamInterface<AllReduceTypesTestParams> {
+ public:
+  AllReduceTypesTest()
+      : AllReduceTestNoParams(/*is_async=*/GetParam().is_async) {}
 
-    std::vector<Array<ElementType>> inputs;
-    std::vector<Literal> input_literals;
-    const HloInstruction* const hlo_instr =
-        FindInstruction(&module, HloOpcode::kAllReduce);
-    if (hlo_instr == nullptr) {
-      return absl::InvalidArgumentError(
-          "Instruction 'all-reduce' not found in module.");
-    }
-    const HloAllReduceInstruction* instr =
-        Cast<HloAllReduceInstruction>(hlo_instr);
-    const Shape& shape =
-        module.entry_computation()->root_instruction()->shape();
-    for (int i = 0; i < num_replicas; ++i) {
-      auto& input = inputs.emplace_back(Array<ElementType>(shape.dimensions()));
-      if constexpr (std::is_same_v<ElementType, bool>) {
-        input.FillRandomBool(/*seed=*/i);
-      } else {
-        input.FillRandom(1.0f, 10.0f, /*seed=*/i);
-      }
-      input_literals.push_back(LiteralUtil::CreateFromArray(input));
-    }
-    std::vector<Literal> expected_output_literals;
-
-    const std::vector<ReplicaGroup>& replica_groups =
-        instr->device_list()->replica_groups();
-    // Map each device to set of replica groups it belongs to.
-    std::vector<std::vector<int64_t>> device_to_groups(num_replicas);
-    for (const auto& replica_group : replica_groups) {
-      const auto& replica_ids = replica_group.replica_ids();
-      for (int64_t replica : replica_group.replica_ids()) {
-        CHECK_EQ(device_to_groups[replica].size(), 0);
-        device_to_groups[replica].assign(replica_ids.begin(),
-                                         replica_ids.end());
-      }
-    }
-    std::vector<Array<ElementType>> expected_outputs(
-        num_replicas, Array<ElementType>(shape.dimensions()));
-    // Aggregate inputs from each replica group
-    for (int i = 0; i < num_replicas; ++i) {
-      expected_outputs[i].Each(
-          [&](absl::Span<const int64_t> indices, ElementType* val) {
-            for (const int64_t replica : device_to_groups[i]) {
-              if constexpr (kHloOpcode == HloOpcode::kAdd) {
-                *val += inputs[replica](indices);
-              } else if (kHloOpcode == HloOpcode::kOr) {
-                *val |= inputs[replica](indices);
-              } else {
-                GTEST_FAIL() << "Unsupported reduction kind: "
-                             << absl::StrFormat("%v", kHloOpcode);
-              }
-            }
-            if constexpr (kHloOpcode == HloOpcode::kAdd) {
-              // Each iteration after the first,the output is doubled.
-              // For kOr, it remains the same.
-              *val *= std::pow(device_to_groups[i].size(), num_iterations - 1);
-            }
-          });
-    }
-    for (auto& expected_output : expected_outputs) {
-      expected_output_literals.push_back(
-          LiteralUtil::CreateFromArray(expected_output));
-    }
-    return InputsOutputs{std::move(input_literals),
-                         std::move(expected_output_literals)};
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(
+        GetParam().use_all_reduce_one_shot_kernel);
+    return opts;
   }
 };
 
@@ -309,37 +450,53 @@ INSTANTIATE_TEST_SUITE_P(
           info.param.strategy);
     });
 
-TEST_P(AllReduceTest, Pred_2GPUs) {
+INSTANTIATE_TEST_SUITE_P(
+    AllReduceTypesTest, AllReduceTypesTest,
+    ::testing::ValuesIn(AllReduceTypesTestParams::Generate()),
+    [](const ::testing::TestParamInfo<AllReduceTypesTestParams>& info) {
+      return absl::StrCat(
+          GetAsyncTestName(info.param.is_async) + "_",
+          primitive_util::LowercasePrimitiveTypeName(info.param.element_type),
+          "_", HloOpcodeString(info.param.hlo_opcode), "_",
+          info.param.use_all_reduce_one_shot_kernel ? "xla" : "nccl", "_",
+          info.param.strategy);
+    });
+
+TEST_P(AllReduceTypesTest, SupportedTypes2GPUs) {
   constexpr absl::string_view kModuleStr = R"(
   HloModule test
 
-  apply_op {
-    x = pred[] parameter(0)
-    y = pred[] parameter(1)
-    ROOT apply_op = pred[] or(x, y)
-  }
+   apply_op {
+     x = %1$s[] parameter(0)
+     y = %1$s[] parameter(1)
+     ROOT apply_op = %1$s[] %3$s(x, y)
+   }
 
-  ENTRY test_computation {
-    param_0 = pred[%1$s] parameter(0)
-    ROOT all-reduce = pred[%1$s] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
-  }
-  )";
-  const std::vector<int64_t> shape = GetParam().GetShape(PrimitiveType::PRED);
+   ENTRY test_computation {
+     param_0 = %1$s[%2$s] parameter(0)
+     ROOT all-reduce = %1$s[%2$s] all-reduce(param_0), to_apply=apply_op,
+     replica_groups={{0,1}}
+   }
+   )";
   constexpr int64_t kNumReplicas = 2;
   if (!CheckDeviceCount(kNumReplicas)) {
     return;
   }
 
+  const PrimitiveType element_type = GetParam().element_type;
+  const ReductionKind reduction_kind = GetParam().GetReductionKind();
+  const std::vector<int64_t> shape = GetParam().GetShape(element_type);
+  const HloOpcode opcode = ReductionKindToOpcode(reduction_kind, element_type);
+  const std::string module_str = absl::StrFormat(
+      kModuleStr, primitive_util::LowercasePrimitiveTypeName(element_type),
+      absl::StrJoin(shape, ","), HloOpcodeString(opcode));
+  SCOPED_TRACE(::testing::Message() << "module_str: " << module_str);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(
-                       absl::StrFormat(kModuleStr, absl::StrJoin(shape, ",")),
-                       kNumReplicas));
-
+      auto module, ParseAndReturnVerifiedModule(module_str, kNumReplicas));
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
-      (BuildTestInputsOutputs<PrimitiveType::PRED, HloOpcode::kOr>(
-          *module, kNumReplicas, /*num_iterations=*/1)));
-
+      (BuildTestInputsOutputs(element_type, opcode, *module, kNumReplicas,
+                              /*num_iterations=*/1)));
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
@@ -381,8 +538,8 @@ TEST_P(AllReduceTest, F32_8GPUs_AllReplicasOneGroup) {
                        kNumReplicas));
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
-      (BuildTestInputsOutputs<PrimitiveType::F32, HloOpcode::kAdd>(
-          *module, kNumReplicas, /*num_iterations=*/1)));
+      (BuildTestInputsOutputs<PrimitiveType::F32>(
+          HloOpcode::kAdd, *module, kNumReplicas, /*num_iterations=*/1)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -449,8 +606,8 @@ TEST_P(AllReduceTest, F32_8GPUs_2ReplicasPerGroup) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
-      (BuildTestInputsOutputs<PrimitiveType::F32, HloOpcode::kAdd>(
-          *module, kNumReplicas, kNumIterations)));
+      (BuildTestInputsOutputs<PrimitiveType::F32>(
+          HloOpcode::kAdd, *module, kNumReplicas, kNumIterations)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -495,8 +652,8 @@ TEST_P(AllReduceTest, F32TwoD4GPUs) {
                        kNumReplicas));
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
-      (BuildTestInputsOutputs<PrimitiveType::F32, HloOpcode::kAdd>(
-          *module, kNumReplicas, /*num_iterations=*/1)));
+      (BuildTestInputsOutputs<PrimitiveType::F32>(
+          HloOpcode::kAdd, *module, kNumReplicas, /*num_iterations=*/1)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -539,8 +696,8 @@ TEST_P(AllReduceTest, F32_3D_2GPUs) {
                        kNumReplicas));
   TF_ASSERT_OK_AND_ASSIGN(
       InputsOutputs test_io,
-      (BuildTestInputsOutputs<PrimitiveType::F32, HloOpcode::kAdd>(
-          *module, kNumReplicas, /*num_iterations=*/1)));
+      (BuildTestInputsOutputs<PrimitiveType::F32>(
+          HloOpcode::kAdd, *module, kNumReplicas, /*num_iterations=*/1)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ExecutionResult execution_result,
@@ -675,8 +832,9 @@ TEST_F(AllReduceTestNoParams, AsyncAllReduce_F8E4M3FN_TrainingStep_2GPUs) {
   EXPECT_TRUE(
       LiteralTestUtil::Near(f16_r0[1], f8_r0[1], ErrorSpec{1e-2, 1e-2}));
 
-  // Numerical precision check: FP8 should produce measurably different results
-  // than FP16. FP8 e4m3 has ~6% relative error (2^-4), FP16 has ~0.1% (2^-10).
+  // Numerical precision check: FP8 should produce measurably different
+  // results than FP16. FP8 e4m3 has ~6% relative error (2^-4), FP16 has ~0.1%
+  // (2^-10).
   TF_ASSERT_OK_AND_ASSIGN(Literal f16_f32, f16_r0[1].Convert(F32));
   TF_ASSERT_OK_AND_ASSIGN(Literal f8_f32, f8_r0[1].Convert(F32));
   absl::Span<const float> f16_data = f16_f32.data<float>();

@@ -24,14 +24,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -54,12 +55,9 @@ limitations under the License.
 namespace xla {
 using CycleType = collective_permute_cycle::CycleType;
 
-// Match the instruction to a reduction kind. We can represent and/or of pred as
-// min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
-std::optional<ReductionKind> MatchReductionInstruction(
-    const HloInstruction* hlo) {
-  PrimitiveType type = hlo->shape().element_type();
-  switch (hlo->opcode()) {
+std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
+                                                   PrimitiveType type) {
+  switch (hlo_opcode) {
     case HloOpcode::kAdd:
       return ReductionKind::SUM;
     case HloOpcode::kMultiply:
@@ -77,6 +75,14 @@ std::optional<ReductionKind> MatchReductionInstruction(
     default:
       return std::nullopt;
   }
+}
+
+// Match the instruction to a reduction kind. We can represent and/or of pred as
+// min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
+std::optional<ReductionKind> MatchReductionInstruction(
+    const HloInstruction* hlo) {
+  PrimitiveType type = hlo->shape().element_type();
+  return OpcodeToReductionKind(hlo->opcode(), type);
 }
 
 std::optional<ReductionKind> MatchReductionComputation(
@@ -101,23 +107,24 @@ std::unique_ptr<HloComputation> MakeReductionComputation(
   auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(element_type, {}), "rhs"));
   builder.AddInstruction(HloInstruction::CreateBinary(
-      lhs->shape(), *ReductionKindToOpcode(reduction_kind), lhs, rhs));
+      lhs->shape(), ReductionKindToOpcode(reduction_kind, element_type), lhs,
+      rhs));
   return builder.Build();
 }
 
-std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind) {
+HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
+                                PrimitiveType element_type) {
   switch (reduction_kind) {
     case ReductionKind::SUM:
       return HloOpcode::kAdd;
     case ReductionKind::PRODUCT:
       return HloOpcode::kMultiply;
     case ReductionKind::MIN:
-      return HloOpcode::kMinimum;
+      return element_type == PRED ? HloOpcode::kAnd : HloOpcode::kMinimum;
     case ReductionKind::MAX:
-      return HloOpcode::kMaximum;
-    default:
-      return std::nullopt;
+      return element_type == PRED ? HloOpcode::kOr : HloOpcode::kMaximum;
   }
+  ABSL_UNREACHABLE();
 }
 
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,

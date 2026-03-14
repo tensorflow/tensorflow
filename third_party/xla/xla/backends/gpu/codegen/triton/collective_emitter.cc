@@ -221,6 +221,9 @@ std::optional<AllReduceInfo> MaybeBuildAllReduceInfo(
            ->config()
            .debug_options()
            .xla_gpu_unsupported_use_all_reduce_one_shot_kernel()) {
+    VLOG(1)
+        << "Skipping all-reduce codegen because "
+           "xla_gpu_unsupported_use_all_reduce_one_shot_kernel is disabled.";
     return std::nullopt;
   }
   if (all_reduce->device_list()->replica_groups().empty()) {
