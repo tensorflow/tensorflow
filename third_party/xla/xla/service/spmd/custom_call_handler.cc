@@ -488,6 +488,17 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
 
   auto [super_shard, shard_offset] = super_shard_and_offset;
 
+  int64_t post_elems_per_shard = CeilOfRatio(full_size, participating_shards);
+  int64_t post_halo_shard_size =
+      post_elems_per_shard + left_amount + right_amount;
+
+  TF_ASSIGN_OR_RETURN(auto super_shard_and_offset,
+                      ConstructHaloExchangeSuperShard(
+                          hlo->operand(0), dim, left_amount, right_amount,
+                          /*handle_last_shard=*/true, post_halo_shard_size));
+
+  auto&& [super_shard, shard_offset] = super_shard_and_offset;
+
   auto create_slice = [&](HloInstruction* val, int64_t start, int64_t limit) {
     Shape slice_shape = val->shape();
     slice_shape.set_dimensions(dim, limit - start);
