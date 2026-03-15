@@ -290,11 +290,11 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   auto session = CreateSession();
   ASSERT_TRUE(session != nullptr);
   TF_ASSERT_OK(session->Create(def_));
-  std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<std::pair<std::string, Tensor>> inputs;
 
   // Request two targets: one fetch output and one non-fetched output.
-  std::vector<string> output_names = {y_ + ":0"};
-  std::vector<string> target_nodes = {y_neg_};
+  std::vector<std::string> output_names = {y_ + ":0"};
+  std::vector<std::string> target_nodes = {y_neg_};
   std::vector<Tensor> outputs;
 
   TF_ASSERT_OK(tracer->Start());
