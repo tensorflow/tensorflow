@@ -476,7 +476,7 @@ static absl::Status ToProto(const CollectiveThunk& thunk, ThunkProto& proto) {
       break;
     case CollectiveThunk::CollectiveKind::kReduceScatter:
       TF_RETURN_IF_ERROR(
-          ToProto(tsl::down_cast<const ReduceScatterThunk&>(thunk),
+          ToProto(absl::down_cast<const ReduceScatterThunk&>(thunk),
                   *collective_thunk_proto->mutable_reduce_scatter_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kCollectivePermute:
