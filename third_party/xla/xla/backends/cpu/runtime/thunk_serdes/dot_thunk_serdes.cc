@@ -36,7 +36,7 @@ namespace xla::cpu {
 namespace {
 
 absl::Status ToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& dot_thunk = tsl::down_cast<const DotThunk&>(thunk);
+  const auto& dot_thunk = absl::down_cast<const DotThunk&>(thunk);
   DotThunkProto* dot_thunk_proto = proto.mutable_dot_thunk();
 
   *dot_thunk_proto->mutable_dot_dimensions() = dot_thunk.dot_dimensions();

@@ -40,7 +40,7 @@ namespace {
 
 absl::Status ConvolutionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
   const auto& convolution_thunk =
-      tsl::down_cast<const ConvolutionThunk&>(thunk);
+      absl::down_cast<const ConvolutionThunk&>(thunk);
 
   ConvolutionThunkProto* convolution_thunk_proto =
       proto.mutable_convolution_thunk();
