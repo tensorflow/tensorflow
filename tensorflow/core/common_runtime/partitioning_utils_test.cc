@@ -15,12 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 
+#include <cstddef>
 #include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -28,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/placer.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
