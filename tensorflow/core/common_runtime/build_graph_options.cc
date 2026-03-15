@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
