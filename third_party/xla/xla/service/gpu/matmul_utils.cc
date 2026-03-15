@@ -260,16 +260,17 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
-    double alpha_real, double alpha_imag, double beta,
-    PrecisionConfig::Algorithm precision_algorithm,
-    std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-    bool grad_y, const se::GpuComputeCapability& gpu_version) {
+    double alpha_real, double alpha_imag, double beta_val,
+    PrecisionConfig::Algorithm precision_alg,
+    std::optional<int64_t> algorithm_val, int64_t compute_precision_val,
+    bool grad_x_val, bool grad_y_val,
+    const se::GpuComputeCapability& gpu_version) {
   return GemmConfig::For(lhs_shape, lhs_batch_dims, lhs_contracting_dims,
                          rhs_shape, rhs_batch_dims, rhs_contracting_dims,
                          /*c_shape=*/output_shape, /*bias_shape_ptr=*/nullptr,
-                         output_shape, alpha_real, alpha_imag, beta,
-                         precision_algorithm, algorithm, compute_precision,
-                         grad_x, grad_y, gpu_version);
+                         output_shape, alpha_real, alpha_imag, beta_val,
+                         precision_alg, algorithm_val, compute_precision_val,
+                         grad_x_val, grad_y_val, gpu_version);
 }
 
 /*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
@@ -278,10 +279,11 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
     const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
-    double alpha_imag, double beta,
-    PrecisionConfig::Algorithm precision_algorithm,
-    std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-    bool grad_y, const se::GpuComputeCapability& gpu_version) {
+    double alpha_imag, double beta_val,
+    PrecisionConfig::Algorithm precision_alg,
+    std::optional<int64_t> algorithm_val, int64_t compute_precision_val,
+    bool grad_x_val, bool grad_y_val,
+    const se::GpuComputeCapability& gpu_version) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -324,7 +326,8 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   // with fp8 output. Thus only do this for CUDA side.
   if (gpu_version.IsCuda() &&
       primitive_util::IsF8Type(lhs_shape.element_type()) &&
-      primitive_util::IsF8Type(output_shape.element_type()) && (beta == 0.0)) {
+      primitive_util::IsF8Type(output_shape.element_type()) &&
+      (beta_val == 0.0)) {
     // By default, if c is not present (i.e., beta is 0), c_shape will be the
     // output shape. cublasLT requires a valid c_shape to be passed, even if c
     // is not present, and normally setting it to the output shape is fine.
@@ -389,17 +392,29 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                           output_shape.element_type()));
   }
 
-  return GemmConfig(se::gpu::GemmConfig{lhs_layout,
+  se::gpu::MatrixLayout blas_lhs = lhs_layout, blas_rhs = rhs_layout,
+                        blas_output = output_layout, blas_c = c_layout;
+
+  bool operands_swapped =
+      se::gpu::MakeOutputColumnMajor(blas_lhs, blas_rhs, blas_output, &blas_c);
+
+  GemmConfig config(se::gpu::GemmConfig{lhs_layout,
                                         rhs_layout,
                                         c_layout,
                                         output_layout,
                                         {alpha_real, alpha_imag},
-                                        beta,
-                                        compute_precision,
-                                        precision_algorithm,
-                                        algorithm,
-                                        grad_x,
-                                        grad_y});
+                                        beta_val,
+                                        compute_precision_val,
+                                        precision_alg,
+                                        algorithm_val,
+                                        grad_x_val,
+                                        grad_y_val},
+                    operands_swapped);
+  config.blas_lhs_layout = blas_lhs;
+  config.blas_rhs_layout = blas_rhs;
+  config.blas_output_layout = blas_output;
+  config.blas_c_layout = blas_c;
+  return config;
 }
 
 namespace {
@@ -462,7 +477,7 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
   for (auto operand_precision : config.precision_config().operand_precision()) {
     precision = std::max(precision, static_cast<int64_t>(operand_precision));
   }
-  const PrecisionConfig::Algorithm precision_algorithm =
+  const PrecisionConfig::Algorithm precision_alg =
       config.precision_config().algorithm();
 
   return GemmConfig::For(
@@ -472,8 +487,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
       /*c_shape=*/c_shape,
       /*bias_shape_ptr=*/
       vector_bias_shape ? &vector_bias_shape.value() : nullptr, output_shape,
-      config.alpha_real(), config.alpha_imag(), config.beta(),
-      precision_algorithm, algorithm, precision, grad_x, grad_y, gpu_version);
+      config.alpha_real(), config.alpha_imag(), config.beta(), precision_alg,
+      algorithm, precision, grad_x, grad_y, gpu_version);
 }
 
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
@@ -492,34 +507,31 @@ absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
              ? se::blas::Transpose::kNoTranspose
              : se::blas::Transpose::kTranspose)};
   };
-  // TODO: make a local copy to prevent modification of layouts,
-  // but maybe we can modify them once instead during creation ?
-  se::gpu::MatrixLayout lhs = lhs_layout, rhs = rhs_layout, out = output_layout;
 
-  bool must_swap_operands = MakeOutputColumnMajor(lhs, rhs, out);
-  if (must_swap_operands) {
+  if (operands_swapped) {
     std::swap(lhs_buf, rhs_buf);
   }
 
   TF_ASSIGN_OR_RETURN(se::gpu::OutputMatrixDescriptor out_desc,
-                      create_matrix_desc(out, out_buf));
-  out_desc.batch_size = out.batch_size;
-  out_desc.m = out.num_rows;
-  out_desc.n = out.num_cols;
-  out_desc.k = lhs.num_cols;
+                      create_matrix_desc(blas_output_layout, out_buf));
+  out_desc.batch_size = blas_output_layout.batch_size;
+  out_desc.m = blas_output_layout.num_rows;
+  out_desc.n = blas_output_layout.num_cols;
+  out_desc.k = blas_lhs_layout.num_cols;
   // TODO(tdanyluk): Investigate why don't we use the actual precision (and
   // algorithm) here? Why do we use the default?
   TF_ASSIGN_OR_RETURN(out_desc.compute_type,
                       se::gpu::GetBlasComputationType(
-                          PrecisionConfig::ALG_UNSET, lhs.dtype, out.dtype,
+                          PrecisionConfig::ALG_UNSET, blas_lhs_layout.dtype,
+                          blas_output_layout.dtype,
                           se::blas::kDefaultComputePrecision, gpu_version));
 
   TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor lhs_desc,
-                      create_matrix_desc(lhs, lhs_buf));
+                      create_matrix_desc(blas_lhs_layout, lhs_buf));
   TF_ASSIGN_OR_RETURN(se::gpu::MatrixDescriptor rhs_desc,
-                      create_matrix_desc(rhs, rhs_buf));
+                      create_matrix_desc(blas_rhs_layout, rhs_buf));
 
-  return DescriptorsTuple{lhs_desc, rhs_desc, out_desc, must_swap_operands};
+  return DescriptorsTuple{lhs_desc, rhs_desc, out_desc, operands_swapped};
 }
 
 namespace {

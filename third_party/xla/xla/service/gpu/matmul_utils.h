@@ -89,11 +89,21 @@ struct MatrixLayout : public se::gpu::MatrixLayout {
 };
 
 struct GemmConfig : public se::gpu::GemmConfig {
-  GemmConfig() = default;
-  explicit GemmConfig(const se::gpu::GemmConfig& base)
-      : se::gpu::GemmConfig(base) {}
-  explicit GemmConfig(se::gpu::GemmConfig&& base)
-      : se::gpu::GemmConfig(std::move(base)) {}
+  explicit GemmConfig(const se::gpu::GemmConfig& base,
+                      bool operands_swapped = false)
+      : se::gpu::GemmConfig(base),
+        operands_swapped(operands_swapped),
+        blas_lhs_layout(base.lhs_layout),
+        blas_rhs_layout(base.rhs_layout),
+        blas_output_layout(base.output_layout),
+        blas_c_layout(base.c_layout) {}
+  explicit GemmConfig(se::gpu::GemmConfig&& base, bool operands_swapped = false)
+      : se::gpu::GemmConfig(std::move(base)),
+        operands_swapped(operands_swapped),
+        blas_lhs_layout(lhs_layout),
+        blas_rhs_layout(rhs_layout),
+        blas_output_layout(output_layout),
+        blas_c_layout(c_layout) {}
 
   // For legacy Gemm operations XLA:GPU allocates its own workspace and passes
   // it to all BLAS API calls.
@@ -121,10 +131,11 @@ struct GemmConfig : public se::gpu::GemmConfig {
       absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
-      double alpha_real, double alpha_imag, double beta,
-      PrecisionConfig::Algorithm precision_algorithm,
-      std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-      bool grad_y, const se::GpuComputeCapability& gpu_version);
+      double alpha_real, double alpha_imag, double beta_val,
+      PrecisionConfig::Algorithm precision_alg,
+      std::optional<int64_t> algorithm_val, int64_t compute_precision_val,
+      bool grad_x_val, bool grad_y_val,
+      const se::GpuComputeCapability& gpu_version);
 
   // As above with additional `c_shape` and `bias_shape_ptr` parameter, both
   // which are only necessarily for F8 gemms.
@@ -134,10 +145,11 @@ struct GemmConfig : public se::gpu::GemmConfig {
       absl::Span<const int64_t> rhs_batch_dims,
       absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
       const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
-      double alpha_imag, double beta,
-      PrecisionConfig::Algorithm precision_algorithm,
-      std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-      bool grad_y, const se::GpuComputeCapability& gpu_version);
+      double alpha_imag, double beta_val,
+      PrecisionConfig::Algorithm precision_alg,
+      std::optional<int64_t> algorithm_val, int64_t compute_precision_val,
+      bool grad_x_val, bool grad_y_val,
+      const se::GpuComputeCapability& gpu_version);
 
   struct DescriptorsTuple {
     se::gpu::MatrixDescriptor lhs;
@@ -149,6 +161,12 @@ struct GemmConfig : public se::gpu::GemmConfig {
       se::DeviceAddressBase lhs_buf, se::DeviceAddressBase rhs_buf,
       se::DeviceAddressBase out_buf,
       const se::GpuComputeCapability& gpu_version) const;
+
+  bool operands_swapped = false;
+  se::gpu::MatrixLayout blas_lhs_layout;
+  se::gpu::MatrixLayout blas_rhs_layout;
+  se::gpu::MatrixLayout blas_output_layout;
+  se::gpu::MatrixLayout blas_c_layout;
 };
 
 /* Temporary code due to split PRs */
