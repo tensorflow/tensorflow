@@ -299,7 +299,7 @@ static absl::StatusOr<bool> EnablePeerAccess(
   std::vector<se::StreamExecutor*> devices;
   devices.reserve(ranks.size());
   for (int64_t i = 0; i < ranks.size(); ++i) {
-    auto* device = tsl::down_cast<GpuCollectives::Device*>(ranks[i].device);
+    auto* device = absl::down_cast<GpuCollectives::Device*>(ranks[i].device);
     TF_RET_CHECK(device != nullptr);
     devices.push_back(device->stream_executor());
   }
