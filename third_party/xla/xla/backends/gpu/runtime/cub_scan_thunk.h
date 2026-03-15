@@ -33,10 +33,11 @@ namespace xla::gpu {
 class CubScanRunnerInterface {
  public:
   virtual ~CubScanRunnerInterface() = default;
-  virtual absl::Status Run(const se::DeviceMemoryBase& input_buffer,
-                           const se::DeviceMemoryBase& output_buffer,
-                           const se::DeviceMemoryBase& scratch_buffer,
-                           int64_t num_elements, se::Stream* stream) = 0;
+  virtual absl::Status Run(
+      const stream_executor::DeviceAddressBase& input_buffer,
+      const stream_executor::DeviceAddressBase& output_buffer,
+      const stream_executor::DeviceAddressBase& scratch_buffer,
+      int64_t num_elements, se::Stream* stream) = 0;
   virtual absl::StatusOr<int64_t> GetScratchSize(int64_t num_elements) = 0;
 
   static absl::StatusOr<std::unique_ptr<CubScanRunnerInterface>> Create(
