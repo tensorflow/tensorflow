@@ -734,7 +734,7 @@ def tsl_pybind_extension_opensource(
             ],
             defines = defines,
             local_defines = local_defines,
-            features = features + ["-use_header_modules"],
+            features = features + ["-use_header_modules", "asan_runtime_closure"],
             linkshared = 1,
             testonly = testonly,
             licenses = licenses,
