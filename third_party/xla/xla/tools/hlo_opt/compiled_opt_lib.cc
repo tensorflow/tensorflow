@@ -82,7 +82,8 @@ absl::StatusOr<std::optional<std::string>> CompiledOptProvider::GenerateStage(
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                         GetOptimizedHlo(std::move(module)));
     return optimized_module->ToString();
-  } else if (stage == "html") {
+  }
+  if (stage == "html") {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
                         GetOptimizedHlo(std::move(module)));
     TF_ASSIGN_OR_RETURN(std::string cmps,
