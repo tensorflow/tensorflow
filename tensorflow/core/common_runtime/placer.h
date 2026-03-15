@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
