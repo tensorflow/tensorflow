@@ -374,10 +374,17 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
     return any;
   }
 
-  // Default config would require stream_executor to check if the fusion is
-  // supported by Cudnn.
+  if (stream_executor() != nullptr && instr.opcode() == HloOpcode::kFusion &&
+      IsSupportedCudnnFusion(instr, stream_executor(), debug_options())) {
+    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                        GetCudnnFusionConfigs(instr, stream_executor()));
+    if (!configs.empty()) {
+      return std::move(configs[0]);
+    }
+  }
+
   return absl::InvalidArgumentError(
-      "Cudnn backend doesn't support getting a default config.");
+      "Cannot get default config for cudnn backend without device.");
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

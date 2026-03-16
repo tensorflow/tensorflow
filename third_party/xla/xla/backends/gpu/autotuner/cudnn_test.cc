@@ -191,15 +191,17 @@ TEST_F(CudnnBackendTest,
   EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(0)));
 }
 
-TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {
+TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnFusionHlo));
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_->GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  TF_ASSERT_OK(config);
+  CudnnBackendConfig algorithm_config;
+  ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
+  EXPECT_GE(algorithm_config.algo_id(), 0);
 }
 
 TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
@@ -212,6 +214,19 @@ TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
   CudnnBackendConfig algorithm_config;
   ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
   EXPECT_EQ(algorithm_config.algo_id(), -1);
+}
+
+TEST_F(CudnnBackendTest, GetDefaultConfigFailsWithNullStreamExecutor) {
+  CudnnBackend backend_without_stream_executor(nullptr, &debug_options_,
+                                               &compiler_, &target_config_);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kCudnnFusionHlo));
+
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_without_stream_executor.GetDefaultConfig(
+          (*hlo_module->entry_computation()->root_instruction()));
+  EXPECT_THAT(config,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
