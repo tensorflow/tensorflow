@@ -26,9 +26,12 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 
 namespace xla {
 namespace {
+
+using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 const int kNumThreads = 100;
 const int kNumRepetitions = 100;
@@ -37,7 +40,7 @@ const int kNumRepetitions = 100;
 // since the == operator does not canonicalize the raw strings before comparing
 // them.
 constexpr absl::string_view kRawString =
-    R"({"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_m":"256","block_n":"256","block_k":"32","split_k":"1","num_stages":"1","num_warps":"16","num_ctas":"1","is_tma_allowed":false,"is_warp_specialization_allowed":false}},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"})";
+    R"({"device_type":"DEVICE_TYPE_INVALID","force_earliest_schedule":false,"fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{"block_k":"32","block_m":"256","block_n":"256","is_tma_allowed":false,"is_warp_specialization_allowed":false,"num_ctas":"1","num_stages":"1","num_warps":"16","split_k":"1"}},"operation_queue_id":"0","reification_cost":[],"wait_on_operation_queues":[]})";
 
 template <typename Input, typename CheckFn>
 void RunThreaded(Input input, CheckFn check_fn) {
@@ -112,6 +115,26 @@ TEST(BackendConfigWrapperTest, ComparisonDoesNotDeadlock) {
     BackendConfigWrapper other_second(proto);
     EXPECT_TRUE(source == other_second);
   });
+}
+
+TEST(BackendConfigWrapperTest, ToRawStringIsSorted) {
+  BackendConfigWrapper wrapper1(
+      ParseTextProtoOrDie<gpu::CudnnConvBackendConfig>(
+          R"pb(algorithm: {
+                 tuning_knobs: { key: 1, value: 1 }
+                 tuning_knobs: { key: 2, value: 2 }
+                 tuning_knobs: { key: 3, value: 3 }
+               })pb"));
+
+  BackendConfigWrapper wrapper2(
+      ParseTextProtoOrDie<gpu::CudnnConvBackendConfig>(
+          R"pb(algorithm: {
+                 tuning_knobs: { key: 3, value: 3 }
+                 tuning_knobs: { key: 2, value: 2 }
+                 tuning_knobs: { key: 1, value: 1 }
+               })pb"));
+
+  EXPECT_EQ(wrapper1.GetRawString(), wrapper2.GetRawString());
 }
 
 }  // namespace

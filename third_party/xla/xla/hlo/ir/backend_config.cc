@@ -24,10 +24,12 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "google/protobuf/message.h"
+#include "xla/sort_json.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/human_readable_json.h"
 #include "tsl/platform/protobuf.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -47,7 +49,12 @@ absl::StatusOr<std::string> BackendConfigToRawString(
   // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
   // INT64_MAX, JsonFormat will return an error status, although there is no
   // accuracy loss for int64_t.
-  return tsl::ProtoToHumanReadableJson(proto, /*ignore_accuracy_loss=*/true);
+  ASSIGN_OR_RETURN(
+      std::string raw_string,
+      tsl::ProtoToHumanReadableJson(proto, /*ignore_accuracy_loss=*/true));
+  // The order of fields in the JSON string is not guaranteed, so we sort it
+  // to make it deterministic.
+  return SortJson(raw_string);
 }
 
 const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
