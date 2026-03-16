@@ -99,15 +99,17 @@ xla_cc_binary(
     name = "hlo_runner_main_gpu",
     testonly = True,
     tags = [
-        "cuda-only",
         "gpu",
         "no_mac",
     ] + tf_gpu_tests_tags(),
     deps = [
         ":hlo_runner_main_lib",
         "//xla/service:gpu_plugin",
+    ] + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ] + if_google([
+    ]) + if_rocm([
+        "//xla/stream_executor:rocm_platform",
+    ]) + if_google([
         "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
     ]),
 )
