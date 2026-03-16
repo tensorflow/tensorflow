@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <queue>
 #include <tuple>
 
 #include "absl/log/check.h"
@@ -48,131 +47,112 @@ class IfrtMergeReshardsPass
   void runOnOperation() override;
 };
 
-// We need to group reshard ops by:
-//
-// - src and dst devices because some reshards will be lowered to copies and
-//   IFRT CopyArrays requires src and dst devices to match.
-// - donated because the donation is all-or-nothing.
-// - src and dst memory kind because we can't merge reshards that change
-//   memory kind.
-using ReshardKey = std::tuple<             //
-    /*input_devices=*/IfrtDevicesAttr,     //
-    /*output_devices=*/IfrtDevicesAttr,    //
-    /*donated=*/mlir::Attribute,           //
-    /*src_memory_kind=*/mlir::StringAttr,  //
-    /*dst_memory_kind=*/mlir::StringAttr>;
-
-ReshardKey GetReshardKey(ReshardOp op) {
-  auto input_type = mlir::cast<IfrtArrayType>(op.getInputs().front().getType());
-  auto output_type =
-      mlir::cast<IfrtArrayType>(op.getOutputs().front().getType());
-
-  return ReshardKey{
-      input_type.getDevicesAttr(),
-      output_type.getDevicesAttr(),
-      // We can't hash by the bool itself, and `donated` is a optional attr, so
-      // false can be represented by nullptr or BoolAttr(false). So we
-      // explicitly convert to BoolAttr.
-      mlir::BoolAttr::get(op.getContext(), op.getDonated()),
-      input_type.getMemoryKindAttr(),
-      output_type.getMemoryKindAttr(),
-  };
-}
-
 // Merges reshards in `func_op`. We merge only if the reshard:
 //
 // - has only one input and output. I.e. it isn't already merged.
 // - has no input control dependencies.
 // - has the same source and destination devices.
 // - has the same `donation` setting.
-//
-// TODO(b/492972846): Take into account control dependencies.
 bool MergeReshardsIgnoringControlDependencies(mlir::func::FuncOp func_op) {
   mlir::IRRewriter rewriter(func_op->getContext());
 
-  // Reshard ops grouped by keys. Values are sorted in program order.
-  llvm::DenseMap<ReshardKey, std::queue<ReshardOp>> reshard_groups;
+  // We group reshards by {first_user, devices, donated, src_memory_kind,
+  // dst_memory_kind}. We need to group by:
+  //
+  // - first_user because we need to pick some destination. Also, reshard ops
+  //   with the same first user are always safe to merge without violating
+  //   dominance order because if one of reshard X's arguments is transitively
+  //   produced by reshard Y, reshard Y's first user will be either reshard X or
+  //   any operation before reshard X.
+  //
+  // - src and dst devices because some reshards will be lowered to copies and
+  //   IFRT CopyArrays requires src and dst devices to match.
+  //
+  // - donated because the donation is all-or-nothing.
+  //
+  // - src and dst memory kind because we can't merge reshards that change
+  //   memory kind.
+  using Key = std::tuple<mlir::Operation*, IfrtDevicesAttr, IfrtDevicesAttr,
+                         mlir::Attribute, mlir::StringAttr, mlir::StringAttr>;
+  llvm::DenseMap<Key, llvm::SmallVector<ReshardOp>> reshard_groups;
 
   func_op.walk([&](ReshardOp reshard_op) {
-    if (reshard_op.getOutputs().size() == 1 && !reshard_op->use_empty() &&
-        reshard_op.getControlInputs().empty()) {
-      reshard_groups[GetReshardKey(reshard_op)].push(reshard_op);
+    if (reshard_op.getOutputs().size() != 1 || reshard_op->use_empty() ||
+        !reshard_op.getControlInputs().empty()) {
+      return;
     }
+
+    // This could potentially be very expensive as `isBeforeInBlock` is
+    // average O(1) but worst case O(n).
+    mlir::Operation* first_reshard_user = *llvm::min_element(
+        reshard_op->getUsers(), [](mlir::Operation* a, mlir::Operation* b) {
+          return a->isBeforeInBlock(b);
+        });
+
+    auto input_type =
+        mlir::cast<IfrtArrayType>(reshard_op.getInputs().front().getType());
+    auto output_type =
+        mlir::cast<IfrtArrayType>(reshard_op.getOutputs().front().getType());
+
+    const Key key = std::make_tuple(
+        first_reshard_user, input_type.getDevicesAttr(),
+        output_type.getDevicesAttr(),
+        // We can't hash by the bool itself, and `donated` is a optional
+        // attr, so false can be represented by nullptr or BoolAttr(false).
+        // So we explicitly convert to BoolAttr.
+        rewriter.getBoolAttr(reshard_op.getDonated()),
+        input_type.getMemoryKindAttr(), output_type.getMemoryKindAttr());
+    reshard_groups[key].push_back(reshard_op);
   });
 
-  // Rewrite each group of reshards while respecting the dominance order.
+  // Rewrite each group of reshards.
   bool rewritten = false;
   for (auto& [_, reshards] : reshard_groups) {
     if (reshards.size() <= 1) {
       continue;
     }
 
-    while (!reshards.empty()) {
-      llvm::SmallVector<ReshardOp> group;
+    // Create a new reshard op that takes all the inputs of the reshards.
+    llvm::SmallVector<mlir::Value> inputs;
+    llvm::SmallVector<mlir::Type> output_types;
+    llvm::SmallVector<mlir::Location> locs;
+    inputs.reserve(reshards.size());
+    output_types.reserve(reshards.size());
+    locs.reserve(reshards.size());
 
-      ReshardOp op = reshards.front();
-      reshards.pop();
-      group.push_back(op);
-
-      // This could potentially be very expensive as `isBeforeInBlock` is
-      // average O(1) but worst case O(n).
-      mlir::Operation* first_reshard_user = *llvm::min_element(
-          op->getUsers(), [](mlir::Operation* a, mlir::Operation* b) {
-            return a->isBeforeInBlock(b);
-          });
-
-      // Only the reshard ops that are before the first user of `op` can be
-      // merged with `op` because otherwise it would violate dominance order.
-      // `reshards` is sorted in program order.
-      while (!reshards.empty() &&
-             reshards.front()->isBeforeInBlock(first_reshard_user)) {
-        group.push_back(reshards.front());
-        reshards.pop();
-      }
-      if (group.size() <= 1) {
-        continue;
-      }
-
-      // Create a new reshard op that takes all the inputs of the reshards.
-      llvm::SmallVector<mlir::Value> inputs;
-      llvm::SmallVector<mlir::Type> output_types;
-      llvm::SmallVector<mlir::Location> locs;
-      inputs.reserve(group.size());
-      output_types.reserve(group.size());
-      locs.reserve(group.size());
-
-      for (ReshardOp reshard : group) {
-        CHECK_EQ(reshard.getInputs().size(), 1);
-        CHECK_EQ(reshard.getOutputs().size(), 1);
-        inputs.push_back(reshard.getInputs()[0]);
-        output_types.push_back(reshard.getOutputs()[0].getType());
-        locs.push_back(reshard.getLoc());
-      }
-
-      // Insert the new reshard op just before the last reshard in the block
-      // order in order to minimize reordering reshards while not violating
-      // dominance order after the merge.
-      rewriter.setInsertionPoint(group.back());
-      auto merged_reshard =
-          ReshardOp::create(rewriter, rewriter.getFusedLoc(locs),
-                            /*outputs=*/output_types,
-                            /*control_output=*/
-                            IfrtControlType::get(rewriter.getContext()),
-                            /*inputs=*/inputs,
-                            /*donated=*/group.front().getDonated(),
-                            /*control_inputs=*/mlir::ValueRange());
-
-      // Replace the original group with the new merged reshard.
-      for (auto [index, reshard] : llvm::enumerate(group)) {
-        rewriter.replaceAllUsesWith(reshard.getOutputs()[0],
-                                    merged_reshard.getOutputs()[index]);
-        rewriter.replaceAllUsesWith(reshard.getControlOutput(),
-                                    merged_reshard.getControlOutput());
-        rewriter.eraseOp(reshard);
-      }
-      rewritten = true;
+    for (ReshardOp reshard : reshards) {
+      CHECK_EQ(reshard.getInputs().size(), 1);
+      CHECK_EQ(reshard.getOutputs().size(), 1);
+      inputs.push_back(reshard.getInputs()[0]);
+      output_types.push_back(reshard.getOutputs()[0].getType());
+      locs.push_back(reshard.getLoc());
     }
+
+    // Insert the new reshard op just before the last reshard in the block order
+    // in order to minimize reordering reshards while not violating dominance
+    // order after the merge.
+    rewriter.setInsertionPoint(reshards.back());
+    auto merged_reshard =
+        ReshardOp::create(rewriter, rewriter.getFusedLoc(locs),
+                          /*outputs=*/output_types,
+                          /*control_output=*/
+                          IfrtControlType::get(rewriter.getContext()),
+                          /*inputs=*/inputs,
+                          /*donated=*/reshards.front().getDonated(),
+                          /*control_inputs=*/mlir::ValueRange());
+
+    // Replace the original reshards with the new merged reshard.
+    for (auto [index, reshard] : llvm::enumerate(reshards)) {
+      rewriter.replaceAllUsesWith(reshard.getOutputs()[0],
+                                  merged_reshard.getOutputs()[index]);
+      rewriter.replaceAllUsesWith(reshard.getControlOutput(),
+                                  merged_reshard.getControlOutput());
+      rewriter.eraseOp(reshard);
+    }
+
+    rewritten = true;
   }
+
   return rewritten;
 }
 
