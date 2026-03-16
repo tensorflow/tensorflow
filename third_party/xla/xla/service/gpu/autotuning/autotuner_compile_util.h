@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -36,88 +35,24 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
-// TODO(b/489788600): Remove this file once the users are migrated.
 
 namespace xla {
 namespace gpu {
 
-struct DeviceConfig {
-  se::StreamExecutor* stream_exec;  // never null
-
-  // If the `allocator` parameter is not null, we will use it to allocate temp
-  // memory while timing the various convolution algorithms.  If it's null,
-  // we'll use the default allocator on the StreamExecutor.
-  se::DeviceAddressAllocator* allocator = nullptr;  // may be null
-};
-
-struct DevicelessConfig {
-  // The device description of the target device.
-  se::DeviceDescription device_description;
-};
-
-class DeviceOrDevicelessConfig {
- public:
-  DeviceOrDevicelessConfig(const DeviceOrDevicelessConfig& right)
-      : config_(right.config_) {}
-  explicit DeviceOrDevicelessConfig(
-      const std::variant<DeviceConfig, DevicelessConfig>& config)
-      : config_(config) {}
-
-  se::StreamExecutor* GetExecutor() const {
-    CHECK(std::holds_alternative<DeviceConfig>(config_));
-    return std::get<DeviceConfig>(config_).stream_exec;
-  }
-
-  se::DeviceAddressAllocator* GetAllocator() const {
-    CHECK(std::holds_alternative<DeviceConfig>(config_));
-    auto& cf = std::get<DeviceConfig>(config_);
-    if (cf.allocator != nullptr) {
-      return cf.allocator;
-    }
-    if (allocator_ == nullptr) {
-      allocator_ =
-          std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
-              GetExecutor());
-    }
-    return allocator_.get();
-  }
-
-  absl::StatusOr<se::Stream*> GetStream() const {
-    CHECK(std::holds_alternative<DeviceConfig>(config_));
-    return GetAllocator()->GetStream(GetExecutor()->device_ordinal());
-  }
-
-  const se::GpuComputeCapability& GetGpuComputeCapability() const {
-    return GetDeviceDescription().gpu_compute_capability();
-  }
-
-  const se::DeviceDescription& GetDeviceDescription() const {
-    if (auto* device_config = std::get_if<DeviceConfig>(&config_)) {
-      return device_config->stream_exec->GetDeviceDescription();
-    }
-    return std::get<DevicelessConfig>(config_).device_description;
-  }
-
-  bool IsDeviceless() const {
-    return std::holds_alternative<DevicelessConfig>(config_);
-  }
-
- private:
-  std::variant<DeviceConfig, DevicelessConfig> config_;
-  mutable std::unique_ptr<se::DeviceAddressAllocator> allocator_;
-};
-
 // Autotuning utils which require compiling fusions separately. Requires a
 // separate target, as runtime autotuning cannot perform compilation.
+// TODO(b/489788600): Remove this class once the users are migrated.
 class AutotunerCompileUtil {
  public:
+  static absl::StatusOr<std::unique_ptr<AutotunerCompileUtil>> Create(
+      se::StreamExecutor& stream_executor,
+      se::DeviceAddressAllocator& allocator, const DebugOptions& opts);
+
   // The GenerateModuleFn must generate/extract a module using the provided
   // debug options. Typically it should set the debug options of the extracted
   // module before it would transform it, to ensure that the transforms can use
@@ -126,10 +61,6 @@ class AutotunerCompileUtil {
   using GenerateModuleFn =
       absl::AnyInvocable<absl::StatusOr<std::unique_ptr<HloModule>>(
           const DebugOptions&)>;
-
-  // Generates a compile util for a platform associated with the `stream`.
-  static absl::StatusOr<AutotunerCompileUtil> Create(
-      const DeviceOrDevicelessConfig& config, const DebugOptions& opts);
 
   struct ProfilingOutput {
     ProfilingOutput(absl::Duration duration, ScopedShapedBuffer&& buffer)
@@ -145,7 +76,7 @@ class AutotunerCompileUtil {
   // Runs the resulting executable with the given extractor, cached with
   // `(cache_key, config)`.
   absl::StatusOr<ProfilingOutput> ProfileExecutable(
-      Executable* executable, se::Stream* stream,
+      Executable* executable,
       absl::Span<se::DeviceAddressBase const> input_buffers,
       absl::Span<Shape const> input_shapes);
 
@@ -165,20 +96,21 @@ class AutotunerCompileUtil {
   absl::StatusOr<std::unique_ptr<HloModule>> ExtractModule(
       GenerateModuleFn extractor);
 
+  se::Stream& stream() const { return stream_; }
+
  private:
   AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
-                       se::StreamExecutor& stream_executor, se::Stream& stream,
+                       se::StreamExecutor& stream_executor,
                        se::DeviceAddressAllocator& allocator,
-                       const DebugOptions& opts);
-
+                       se::Stream& stream, const DebugOptions& opts);
   absl::StatusOr<ExecutionOutput> Execute(Executable& executable,
                                           std::vector<ExecutionInput> arguments,
                                           ExecutionProfile* profile = nullptr);
 
   std::unique_ptr<Compiler> compiler_;
   se::StreamExecutor& stream_executor_;
-  se::Stream& stream_;
   se::DeviceAddressAllocator& allocator_;
+  se::Stream& stream_;
   DebugOptions opts_;
 };
 
