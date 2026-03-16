@@ -367,8 +367,8 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
     return false;
   }
 
-  // Only support 2D convolution.
-  if (window.dimensions_size() != 2) {
+  // Only support 1D or 2D convolution.
+  if (window.dimensions_size() != 1 && window.dimensions_size() != 2) {
     return false;
   }
 
@@ -395,30 +395,35 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
     return false;
   }
 
+  const int lhs_rank = lhs_shape.dimensions_size();
+  const int out_rank = out_shape.dimensions_size();
+
   // Make sure that this layout is supported.
-  if (conv_dimensions.input_feature_dimension() != 3 ||
-      conv_dimensions.output_feature_dimension() != 3) {
+  if (conv_dimensions.input_feature_dimension() != lhs_rank - 1 ||
+      conv_dimensions.output_feature_dimension() != out_rank - 1) {
     return false;
   }
 
-  if (conv_dimensions.kernel_input_feature_dimension() != 2 ||
-      conv_dimensions.kernel_output_feature_dimension() != 3) {
+  if (conv_dimensions.kernel_input_feature_dimension() !=
+          rhs_shape.dimensions_size() - 2 ||
+      conv_dimensions.kernel_output_feature_dimension() !=
+          rhs_shape.dimensions_size() - 1) {
     return false;
   }
 
-  if (conv_dimensions.input_spatial_dimensions_size() != 2 ||
-      conv_dimensions.kernel_spatial_dimensions_size() != 2 ||
-      conv_dimensions.output_spatial_dimensions_size() != 2) {
+  const int num_spatial_dims = window.dimensions_size();
+  if (conv_dimensions.input_spatial_dimensions_size() != num_spatial_dims ||
+      conv_dimensions.kernel_spatial_dimensions_size() != num_spatial_dims ||
+      conv_dimensions.output_spatial_dimensions_size() != num_spatial_dims) {
     return false;
   }
 
-  if (conv_dimensions.input_spatial_dimensions(0) != 1 ||
-      conv_dimensions.input_spatial_dimensions(1) != 2 ||
-      conv_dimensions.kernel_spatial_dimensions(0) != 0 ||
-      conv_dimensions.kernel_spatial_dimensions(1) != 1 ||
-      conv_dimensions.output_spatial_dimensions(0) != 1 ||
-      conv_dimensions.output_spatial_dimensions(1) != 2) {
-    return false;
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    if (conv_dimensions.input_spatial_dimensions(i) != i + 1 ||
+        conv_dimensions.kernel_spatial_dimensions(i) != i ||
+        conv_dimensions.output_spatial_dimensions(i) != i + 1) {
+      return false;
+    }
   }
 
   if (std::max({
@@ -447,16 +452,18 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
   }
 
   // No base dilation for now.
-  if ((window.dimensions(0).base_dilation() != 1) ||
-      (window.dimensions(1).base_dilation() != 1)) {
-    return false;
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    if (window.dimensions(i).base_dilation() != 1) {
+      return false;
+    }
   }
 
   // TODO(b/474103597): we might be able to do this using negative strides,
   // but this feature is rarely used and considered for deprecation.
-  if ((window.dimensions(0).window_reversal() != 0) ||
-      (window.dimensions(1).window_reversal() != 0)) {
-    return false;
+  for (int i = 0; i < num_spatial_dims; ++i) {
+    if (window.dimensions(i).window_reversal() != 0) {
+      return false;
+    }
   }
 
   return true;

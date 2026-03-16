@@ -166,6 +166,7 @@ ynn_status DefineConvolution(
     const std::vector<int64_t>& padding_lows,
     const std::vector<int64_t>& padding_highs) {
   size_t num_k_dims = stencil_dims.size() + 1;
+  const int num_spatial_dims = stencil_axes.size();
   ynn_status status;
 
   // We will need to create an intermediate buffer for the output if it's
@@ -175,7 +176,7 @@ ynn_status DefineConvolution(
 
   if (feature_group_count != 1) {
     uint32_t split_id = YNN_INVALID_VALUE_ID;
-    CHECK_EQ(filter_dims.size(), 4);
+    CHECK(filter_dims.size() == 3 || filter_dims.size() == 4);
     // [kh, kw, ci/g, co] -> [kh, kw, ci/g, g, co/g].
     size_t filter_split[] = {feature_group_count,
                              kernel_output_channels / feature_group_count};
@@ -188,11 +189,16 @@ ynn_status DefineConvolution(
     input2_id = split_id;
 
     uint32_t transposed_filter_id = YNN_INVALID_VALUE_ID;
-    // [kh, kw, ci/g, g, co/g] -> [g, kh, kw, ci/g, co/g]
-    int32_t swap_co_ci[5] = {3, 0, 1, 2, 4};
-    status =
-        ynn_define_static_transpose(subgraph, /*rank=*/5, swap_co_ci, input2_id,
-                                    &transposed_filter_id, /*flags=*/0);
+    // (..., ci/g, g, co/g) -> (g, ..., ci/g, co/g)
+    std::vector<int32_t> perm(filter_dims.size() + 1);
+    perm[0] = filter_dims.size() - 1;
+    for (int i = 0; i < filter_dims.size() - 1; ++i) {
+      perm[i + 1] = i;
+    }
+    perm[filter_dims.size()] = filter_dims.size();
+    status = ynn_define_static_transpose(subgraph, perm.size(), perm.data(),
+                                         input2_id, &transposed_filter_id,
+                                         /*flags=*/0);
 
     if (status != ynn_status_success) {
       return status;
@@ -244,22 +250,31 @@ ynn_status DefineConvolution(
   std::vector<int32_t> new_axes;
 
   if (feature_group_count != 1) {
-    // (n, h, w, c) -> (n, h, w, [g, 1,] kh, kw, c / g)
+    // (n, spatial..., ci) -> (n, spatial..., [g, 1,] stencil..., c / g)
     stencil_dims.push_back(feature_group_count);
     stencil_dims.push_back(1);
-    stencil_axes.push_back(3);
-    stencil_axes.push_back(3);
-    // We need to insert stencil dimensions [kh, kw] right before the channel
+    stencil_axes.push_back(num_spatial_dims + 1);
+    stencil_axes.push_back(num_spatial_dims + 1);
+    // We need to insert stencil dimensions right before the channel
     // dimension and [g, 1] before stencil dimensions.
-    new_axes = {-3, -2, -5, -4};
+    new_axes.reserve(num_spatial_dims + 2);
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      new_axes.push_back(-(num_spatial_dims + 1) + i);
+    }
+    new_axes.push_back(-(num_spatial_dims + 1) - 2);
+    new_axes.push_back(-(num_spatial_dims + 1) - 1);
+
     stencil_strides.push_back(1);
     stencil_strides.push_back(1);
     stencil_dilations.push_back(input_channels / feature_group_count);
     stencil_dilations.push_back(1);
   } else {
-    // We need to insert stencil dimensions [kh, kw] right before the channel
+    // We need to insert stencil dimensions right before the channel
     // dimension.
-    new_axes = {-3, -2};
+    new_axes.reserve(num_spatial_dims);
+    for (int i = 0; i < num_spatial_dims; ++i) {
+      new_axes.push_back(-(num_spatial_dims + 1) + i);
+    }
   }
 
   uint32_t stencil_id = YNN_INVALID_VALUE_ID;

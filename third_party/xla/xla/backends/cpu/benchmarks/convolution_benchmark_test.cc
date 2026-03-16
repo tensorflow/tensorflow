@@ -547,10 +547,10 @@ void AddConv1DArgs(::benchmark::internal::Benchmark* b) {
   auto add_args = [&](const std::vector<int64_t>& shape_args) {
     b->Args(shape_args);
   };
-  add_args({8, 128, 4, 1, 1, 32, kSamePadding});
-  add_args({8, 128, 4, 3, 1, 32, kSamePadding});
-  add_args({32, 256, 4, 3, 1, 16, kSamePadding});
-  add_args({32, 256, 4, 3, 1, 16, kValidPadding});
+  add_args({8, 128, 16, 1, 1, 32, kSamePadding});
+  add_args({8, 128, 16, 3, 1, 32, kSamePadding});
+  add_args({32, 256, 32, 3, 1, 16, kSamePadding});
+  add_args({32, 256, 32, 3, 1, 128, kValidPadding});
 }
 
 void AddGroupedConv1DArgs(::benchmark::internal::Benchmark* b) {
