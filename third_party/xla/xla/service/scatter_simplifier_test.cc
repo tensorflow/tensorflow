@@ -170,8 +170,9 @@ TEST_F(ScatterSimplifierTest, MovesIndexVectorDim) {
   )");
 }
 
-TEST_F(ScatterSimplifierTest,
-       DoesNotTransformsUpdatesAndOperandUsingScatterDims) {
+TEST_F(ScatterSimplifierTest, TransformsUpdatesAndOperandUsingScatterDims) {
+  // Verifies that ScatterSimplifier transposes updates and operands to conform
+  // to scatter_dims_to_operand_dims.
   constexpr absl::string_view kModuleStr = R"(
     HloModule scatter_simplifier
 
@@ -192,7 +193,17 @@ TEST_F(ScatterSimplifierTest,
           index_vector_dim=1
     })";
 
-  RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), std::nullopt);
+  RunAndFilecheckHloRewrite(kModuleStr, ScatterSimplifier(), R"(
+           CHECK: %[[T_OPERAND:.*]] = f32[5,3,4]{2,1,0} transpose(%operand),
+      CHECK-SAME:     dimensions={2,0,1}
+           CHECK: %[[T_UPDATES:.*]] = f32[2,3,1,1]{3,2,1,0} transpose(%update),
+      CHECK-SAME:     dimensions={0,3,1,2}
+           CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
+      CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
+      CHECK-SAME:     scatter_dims_to_operand_dims={0,1},
+           CHECK: ROOT %{{.*}} = f32[3,4,5]
+      CHECK-SAME:     transpose(%[[SCATTER]]), dimensions={1,2,0}
+  )");
 }
 
 TEST_F(ScatterSimplifierTest, MakesScatterDimensionsLeadingInUpdates) {
@@ -546,44 +557,48 @@ TEST_F(SimpleScatterExampleTest,
     HloModule scatter_simplifier
 
     scatter_computation {
-      %p0 = s4[] parameter(0)
+      p0 = s4[] parameter(0)
       ROOT result = s4[] parameter(1)
     }
 
     ENTRY kernel_entry {
-      operand = s4[3,3]{1,0$0} parameter(0)
-      indices = s32[2,1]{1,0} parameter(1)
-      update = s4[1,3,3]{2,1,0$0} parameter(2)
-      ROOT scatter = s4[3,3]{1,0$0} scatter(operand, indices, update),
+      operand = s4[3,4,5]{2,1,0$0} parameter(0)
+      indices = s32[2,2]{1,0} parameter(1)
+      update = s4[2,1,1,3]{3,2,1,0$0} parameter(2)
+      ROOT scatter = s4[3,4,5]{2,1,0$0} scatter(operand, indices, update),
           to_apply=scatter_computation,
-          update_window_dims={1, 2},
+          update_window_dims={1, 2, 3},
           inserted_window_dims={},
-          scatter_dims_to_operand_dims={0,1},
-          index_vector_dim=0
+          scatter_dims_to_operand_dims={2,0},
+          index_vector_dim=1
     })";
 
   // First, test with no packing.
   std::string unpacked_module_str = absl::Substitute(kHloTextTemplate, "");
   RunAndFilecheckHloRewrite(unpacked_module_str, ScatterSimplifier(), R"(
-           CHECK: %[[OPERAND:.*]] = s4[3,3]{1,0} parameter(0)
-           CHECK: %[[INDICES:.*]] = s32[2,1]{1,0} parameter(1)
-           CHECK: %[[TR_INDICES:.*]] = s32[1,2]{1,0} transpose(%indices), dimensions={1,0}
-           CHECK: %[[UPDATE:.*]] = s4[1,3,3]{2,1,0} parameter(2) 
-           CHECK: ROOT %[[SCATTER:.*]] = {{.*}} scatter(
-      CHECK-SAME:     %[[OPERAND]], %[[TR_INDICES]], %[[UPDATE]])
+           CHECK: %[[T_OPERAND:.*]] = s4[5,3,4]{2,1,0} transpose(%operand),
+      CHECK-SAME:     dimensions={2,0,1}
+           CHECK: %[[T_UPDATES:.*]] = s4[2,3,1,1]{3,2,1,0} transpose(%update),
+      CHECK-SAME:     dimensions={0,3,1,2}
+           CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
+      CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
       CHECK-SAME:     scatter_dims_to_operand_dims={0,1},
+           CHECK: ROOT %{{.*}} = s4[3,4,5]{2,1,0}
+      CHECK-SAME:     transpose(%[[SCATTER]]), dimensions={1,2,0}
   )");
 
   // Second, test with packing.
   std::string packed_module_str = absl::Substitute(kHloTextTemplate, ":E(4)");
   RunAndFilecheckHloRewrite(packed_module_str, ScatterSimplifier(), R"(
-           CHECK: %[[OPERAND:.*]] = s4[3,3]{1,0:E(4)} parameter(0)
-           CHECK: %[[INDICES:.*]] = s32[2,1]{1,0} parameter(1)
-           CHECK: %[[TR_INDICES:.*]] = s32[1,2]{1,0} transpose(%indices), dimensions={1,0}
-           CHECK: %[[UPDATE:.*]] = s4[1,3,3]{2,1,0:E(4)} parameter(2) 
-           CHECK: ROOT %[[SCATTER:.*]] = s4[3,3]{1,0:E(4)} scatter(
-      CHECK-SAME:     %[[OPERAND]], %[[TR_INDICES]], %[[UPDATE]])
+           CHECK: %[[T_OPERAND:.*]] = s4[5,3,4]{2,1,0:E(4)} transpose(%operand),
+      CHECK-SAME:     dimensions={2,0,1}
+           CHECK: %[[T_UPDATES:.*]] = s4[2,3,1,1]{3,2,1,0:E(4)} transpose(%update),
+      CHECK-SAME:     dimensions={0,3,1,2}
+           CHECK: %[[SCATTER:.*]] = {{.*}} scatter(
+      CHECK-SAME:     %[[T_OPERAND]], %indices, %[[T_UPDATES]])
       CHECK-SAME:     scatter_dims_to_operand_dims={0,1},
+           CHECK: ROOT %{{.*}} = s4[3,4,5]{2,1,0:E(4)}
+      CHECK-SAME:     transpose(%[[SCATTER]]), dimensions={1,2,0}
   )");
 }
 

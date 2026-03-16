@@ -373,8 +373,6 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
 
   const ScatterDimensionNumbers& scatter_dims =
       scatter->scatter_dimension_numbers();
-  const auto& scatter_dims_to_operand_dims =
-      scatter_dims.scatter_dims_to_operand_dims();
   int64_t index_vector_dim = scatter_dims.index_vector_dim();
 
   auto results = emitters::EmitXlaLoopOp(
@@ -403,16 +401,15 @@ absl::Status CpuScatterFusion::EmitEntryFunction(
           } else {
             index = nested_b.create<ma::IndexCastOp>(b.getIndexType(), index);
           }
-          int64_t remapped_index = scatter_dims_to_operand_dims[i];
           Value ub = nested_b.create<ma::ConstantIndexOp>(
-              scatter_operands.front()->shape().dimensions(remapped_index) -
-              scatter_updates.front()->shape().dimensions(remapped_index + 1));
+              scatter_operands.front()->shape().dimensions(i) -
+              scatter_updates.front()->shape().dimensions(i + 1));
           // One bounds check is enough even for signed indices: `sge 0` is
           // implied by `ule ub`, because `ub >= 0`.
           in_bounds = nested_b.create<ma::AndIOp>(
               in_bounds,
               nested_b.create<ma::CmpIOp>(ma::CmpIPredicate::ule, index, ub));
-          update_offsets[remapped_index] = index;
+          update_offsets[i] = index;
         }
         ValueRange predicated_updates =
             nested_b
