@@ -95,15 +95,16 @@ class CubScanKernelCudaTest
                                               col_length, kind, is_reverse));
 
     // Allocate device buffers
-
     se::DeviceAddress<T> device_data =
         executor_->AllocateArray<T>(num_elements);
     auto data_cleanup =
         absl::MakeCleanup([&]() { executor_->Deallocate(&device_data); });
-    se::DeviceAddress<uint8_t> device_temp =
-        executor_->AllocateArray<uint8_t>(temp_bytes);
-    auto temp_cleanup =
-        absl::MakeCleanup([&]() { executor_->Deallocate(&device_temp); });
+    se::DeviceAddressBase device_temp = executor_->Allocate(temp_bytes);
+    auto temp_cleanup = absl::MakeCleanup([&]() {
+      if (device_temp != nullptr) {
+        executor_->Deallocate(&device_temp);
+      }
+    });
 
     // Copy data to device.
     size_t size_bytes = num_elements * sizeof(T);
