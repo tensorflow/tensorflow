@@ -308,6 +308,7 @@ xla_cc_test(
     deps = [
         ":amdgpu_backend",
         ":load_ir_module",
+        "//xla:xla_proto_cc",
         "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -338,6 +339,7 @@ xla_cc_test(
         "//xla/stream_executor:kernel_stats",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:path",
@@ -353,6 +355,7 @@ xla_cc_test(
     deps = [
         ":load_ir_module",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:ir_headers",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:test",
@@ -377,6 +380,7 @@ xla_cc_test(
     deps = [
         ":utils",
         "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:test",
     ],

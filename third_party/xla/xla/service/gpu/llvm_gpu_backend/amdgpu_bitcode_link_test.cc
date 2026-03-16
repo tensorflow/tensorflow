@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 
 namespace xla::gpu {
