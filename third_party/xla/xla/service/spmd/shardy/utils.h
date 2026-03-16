@@ -204,6 +204,10 @@ mlir::func::FuncOp cloneFuncRecursively(
     mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
     mlir::SymbolTable& symbolTable);
 
+// Returns the argument shardings for the given `funcOp`.
+mlir::sdy::TensorShardingPerValueAttr getFuncArgShardings(
+    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable);
+
 }  // namespace sdy
 }  // namespace xla
 
