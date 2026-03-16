@@ -120,6 +120,17 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     bool generate_aligned_ds_indices = false,
     GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
 
+// A new mechanism leveraging a full reverse topological propagation algorithm
+// to deduce Hard and Soft constraints. It preserves legacy structural
+// constraints and is guaranteed not to touch or break the existing
+// MakeFakeArguments code.
+absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
+    const HloModule* module, std::minstd_rand0* engine = nullptr,
+    bool use_large_range = false,
+    std::optional<int64_t> max_bits_of_precision = std::nullopt,
+    bool generate_aligned_ds_indices = false,
+    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr);
+
 // Check that a given module satisfies various constraints before trying to
 // execute it.
 absl::Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
