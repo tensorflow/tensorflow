@@ -349,13 +349,15 @@ static XLA_FFI_Error* XLA_FFI_State_Set(XLA_FFI_State_Set_Args* args) {
   // If struct size matches the legacy struct layout, always assume that we set
   // the state for instantiation stage.
   if (args->struct_size == XLA_FFI_State_Args_V02_STRUCT_SIZE) {
-    auto* v02 = reinterpret_cast<XLA_FFI_State_Args_V02*>(args);
+    // memcpy to safely avoid U.B.
+    XLA_FFI_State_Args_V02 v02{};
+    std::memcpy(&v02, args, XLA_FFI_State_Args_V02_STRUCT_SIZE);
 
     XLA_FFI_State_Set_Args compat = {XLA_FFI_State_Set_Args_STRUCT_SIZE};
-    compat.ctx = v02->ctx;
+    compat.ctx = v02.ctx;
     compat.stage = XLA_FFI_ExecutionStage_INSTANTIATE;
-    compat.type_id = v02->type_id;
-    compat.state = v02->state;
+    compat.type_id = v02.type_id;
+    compat.state = v02.state;
 
     return XLA_FFI_State_Set(&compat);
   }
@@ -380,15 +382,25 @@ static XLA_FFI_Error* XLA_FFI_State_Get(XLA_FFI_State_Get_Args* args) {
   // If struct size matches the legacy struct layout, always assume that we get
   // the state for instantiation stage.
   if (args->struct_size == XLA_FFI_State_Args_V02_STRUCT_SIZE) {
-    auto* v02 = reinterpret_cast<XLA_FFI_State_Args_V02*>(args);
+    // memcpy to safely avoid U.B.
+    XLA_FFI_State_Args_V02 v02{};
+    std::memcpy(&v02, args, XLA_FFI_State_Args_V02_STRUCT_SIZE);
 
-    XLA_FFI_State_Get_Args compat = {XLA_FFI_State_Set_Args_STRUCT_SIZE};
-    compat.ctx = v02->ctx;
+    XLA_FFI_State_Get_Args compat = {XLA_FFI_State_Get_Args_STRUCT_SIZE};
+    compat.ctx = v02.ctx;
     compat.stage = XLA_FFI_ExecutionStage_INSTANTIATE;
-    compat.type_id = v02->type_id;
-    compat.state = v02->state;
+    compat.type_id = v02.type_id;
+    compat.state = v02.state;
 
-    return XLA_FFI_State_Get(&compat);
+    XLA_FFI_Error* err = XLA_FFI_State_Get(&compat);
+    if (ABSL_PREDICT_FALSE(err != nullptr)) {
+      return err;
+    }
+
+    v02.state = compat.state;
+    std::memcpy(args, &v02, XLA_FFI_State_Args_V02_STRUCT_SIZE);
+
+    return nullptr;
   }
 
   XLA_FFI_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
