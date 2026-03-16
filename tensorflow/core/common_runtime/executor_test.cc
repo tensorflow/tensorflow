@@ -16,7 +16,20 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <random>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -31,11 +44,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/testlib.h"
