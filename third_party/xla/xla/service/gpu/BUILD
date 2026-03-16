@@ -500,7 +500,6 @@ cc_library(
         "//xla/backends/gpu/runtime:convolution_thunk",
         "//xla/backends/gpu/runtime:copy_done_thunk",
         "//xla/backends/gpu/runtime:copy_thunk",
-        "//xla/backends/gpu/runtime:cub_scan_thunk",
         "//xla/backends/gpu/runtime:cub_sort_thunk",
         "//xla/backends/gpu/runtime:cudnn_thunk",
         "//xla/backends/gpu/runtime:custom_call_target",

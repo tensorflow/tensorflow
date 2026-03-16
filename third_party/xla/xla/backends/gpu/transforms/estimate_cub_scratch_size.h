@@ -29,9 +29,10 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Updates the scratch size of CUB sort custom calls to match the actual
-// scratch size. Also changes the custom call target from
-// kCubDeviceRadixSortUnassignedScratchSizeTarget to kCubDeviceRadixSortTarget.
+// Updates the scratch size of CUB sort and scan custom calls to match the
+// actual scratch size. Also changes the custom call target from
+// kCubDevice{RadixSort|Scan}UnassignedScratchSizeTarget to
+// kCubDevice{RadixSort|Scan}Target.
 class EstimateCubScratchSize : public HloModulePass {
  public:
   explicit EstimateCubScratchSize(std::string platform_name)

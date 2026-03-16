@@ -959,6 +959,18 @@ message CholeskyOptions {
   bool lower = 1;
 }
 
+message CubScanOptions {
+  int64 vector_length = 1;
+  int64 row_length = 2;
+  int64 column_length = 3;
+  enum Kind {
+    KIND_INVALID = 0;
+    SUM = 1;
+  }
+  Kind kind = 4;
+  bool is_reverse = 5;
+}
+
 // Attributes of the sort custom call (cub::DeviceRadixSort).
 message SortOptions {
   bool descending = 1;

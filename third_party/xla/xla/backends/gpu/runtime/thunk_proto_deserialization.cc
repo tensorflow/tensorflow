@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
 #include "xla/backends/gpu/runtime/copy_done_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
-#include "xla/backends/gpu/runtime/cub_scan_thunk.h"
 #include "xla/backends/gpu/runtime/cub_sort_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -237,10 +236,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return CubSortThunk::FromProto(std::move(thunk_info),
                                      thunk_proto.cub_sort_thunk(),
                                      buffer_allocations, platform_name);
-    case ThunkProto::kCubScanThunk:
-      return CubScanThunk::FromProto(std::move(thunk_info),
-                                     thunk_proto.cub_scan_thunk(),
-                                     buffer_allocations);
     case ThunkProto::kHostExecuteStartThunk:
       return HostExecuteStartThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_start_thunk(),
