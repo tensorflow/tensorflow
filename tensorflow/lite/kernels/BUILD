@@ -3453,16 +3453,32 @@ tflite_portable_test_suite_combined(
 # Note this is created mainly for validating external delegates in OSS.
 tflite_combine_cc_tests(
     name = "combined_all_kernel_tests",
+    build_test_tags = [
+        "manual",
+        "tflite_portable_build_test",
+    ],
     deps_conditions = [":test_main"],
     generate_cc_library = True,
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 # This test uses SimpleAllocator and works nicely with ASAN.
 tflite_combine_cc_tests(
     name = "combined_all_kernel_with_simple_allocator_tests",
     args = ["--use_simple_allocator=true"],
+    build_test_tags = [
+        "manual",
+        "tflite_portable_build_test",
+    ],
     deps_conditions = [":test_main"],
     shard_count = 50,
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 # Test the XNNPACK delegate
