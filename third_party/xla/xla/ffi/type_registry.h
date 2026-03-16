@@ -214,7 +214,7 @@ absl::string_view TypeRegistry::GetTypeName() {
 template <typename T>
 TypeRegistry::TypeId TypeRegistry::GetTypeId() {
   static const absl::NoDestructor<absl::StatusOr<TypeId>> id(
-      AssignTypeId(GetTypeName<T>(), GetTypeInfo<T>()));
+      GetOrAssignTypeId<T>(internal::StaticTypeRegistrationMap()));
   return **id;
 }
 

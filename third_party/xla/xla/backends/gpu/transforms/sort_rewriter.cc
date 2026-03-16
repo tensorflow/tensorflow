@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -726,9 +727,12 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
           call_shape, absl::MakeSpan(operands),
           kCubDeviceRadixSortUnassignedScratchSizeTarget));
 
-  xla::SortOptions backend_config;
-  backend_config.set_descending(sort_analysis.descending);
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+  // Store sort direction in SortOptions backend config. The
+  // EstimateCubScratchSize pass will convert this to an FFI custom call with
+  // MLIR dictionary attributes when rewriting to the final FFI target.
+  SortOptions sort_options;
+  sort_options.set_descending(sort_analysis.descending);
+  TF_RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
 
   // Build the replacement instruction.
   HloInstruction* replacement;

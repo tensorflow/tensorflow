@@ -267,15 +267,10 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
   if (execution_state == nullptr) {
     execution_state = std::make_unique<ffi::ExecutionState>();
     if (bundle.instantiate) {
-      // At FFI handler instantiation time, we don't have any arguments or
-      // results or access to the underlying device (stream, etc.)
-      CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
-
-      CallFrameBuilder::AttributesBuilder attrs;
-      attrs.Append(attributes);
-
-      builder.AddAttributes(attrs.Build());
-      CallFrame call_frame = builder.Build();
+      // Build a call frame with placeholder buffers so the instantiate handler
+      // can read operand/result types and shapes. Data pointers are nullptr.
+      ASSIGN_OR_RETURN(CallFrame call_frame,
+                       BuildCallFramePrototype(operands, results, attributes));
 
       InvokeContext call_options = BuildInstantiateInvokeContext(
           execution_state.get(), &gpu_compute_capability);
@@ -309,17 +304,10 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
 
   // Initialize FFI handler state if it has an instantiate callback.
   if (bundle.instantiate) {
-    // At FFI handler instantiation time, we don't have any arguments or
-    // results or access to the underlying device (stream, etc.), however users
-    // have access to some information about the target architecture like
-    // `TargetGpuComputeCapability`.
-    CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
-
-    CallFrameBuilder::AttributesBuilder attrs;
-    attrs.Append(attributes);
-
-    builder.AddAttributes(attrs.Build());
-    CallFrame call_frame = builder.Build();
+    // Build a call frame with placeholder buffers so the instantiate handler
+    // can read operand/result types and shapes. Data pointers are nullptr.
+    TF_ASSIGN_OR_RETURN(CallFrame call_frame,
+                        BuildCallFramePrototype(operands, results, attributes));
 
     InvokeContext context = BuildInstantiateInvokeContext(
         execution_state.get(), &gpu_compute_capability);
