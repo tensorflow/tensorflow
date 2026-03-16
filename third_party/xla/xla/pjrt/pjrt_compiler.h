@@ -386,8 +386,7 @@ inline bool IsTpuId(PjRtPlatformId platform_id) {
 
 // Returns true if it's GPU id.
 inline bool IsGpuId(PjRtPlatformId platform_id) {
-  return platform_id == xla::CudaId() || platform_id == xla::RocmId() ||
-         platform_id == xla::SyclId();
+  return platform_id == xla::CudaId() || platform_id == xla::RocmId();
 }
 
 // Returns true if it's CPU id.

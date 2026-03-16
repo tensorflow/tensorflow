@@ -45,10 +45,6 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
   explicit StreamExecutorGpuCompiler(PjRtPlatformId pjrt_platform_id,
                                      stream_executor::PlatformId platform_id);
 
-  // Constructs a compiler with a given XLA compiler instance.
-  StreamExecutorGpuCompiler(PjRtPlatformId pjrt_platform_id,
-                            std::unique_ptr<Compiler> compiler);
-
   // Setting CompileOptions.TargetConfig field will trigger deviceless
   // compilation, which will not query the GPU attached to the machine.
   // In this case, the `client` argument could be left as `nullptr`.
