@@ -230,7 +230,7 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
     // Copy the func output shardings to the call op.
     FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
     if (TensorShardingPerValueAttr funcResultShardings =
-            getFuncResultShardings(callOp, funcOp, symbolTable);
+            getFuncResultShardings(funcOp, symbolTable);
         funcResultShardings) {
       mlir::sdy::setShardings(callOp, funcResultShardings);
       if (outShardings.has_value()) {

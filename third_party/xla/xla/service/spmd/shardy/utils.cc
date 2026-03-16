@@ -408,11 +408,14 @@ std::optional<Attribute> getMeshOrRefOnResults(
   }
   return std::nullopt;
 }
+
+int64_t getFuncResultTensorRank(FuncOp funcOp, int64_t resNum) {
+  return mlir::sdy::getTensorRank(funcOp.getResultTypes()[resNum]);
+}
 }  // namespace
 
 mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
-    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
-    const mlir::SymbolTable& symbolTable) {
+    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable) {
   std::optional<mlir::Attribute> meshOrRef =
       getMeshOrRefOnResults(funcOp, symbolTable);
   if (!meshOrRef) {
@@ -424,11 +427,11 @@ mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
     mlir::sdy::TensorShardingAttr sdySharding =
         mlir::sdy::getFuncResultSharding(funcOp, resultNum);
     resultShardings.push_back(
-        sdySharding ? sdySharding
-                    : mlir::sdy::TensorShardingAttr::getFullyOpen(
-                          funcOp.getContext(),
-                          mlir::sdy::getTensorRank(callOp.getResult(resultNum)),
-                          *meshOrRef));
+        sdySharding
+            ? sdySharding
+            : mlir::sdy::TensorShardingAttr::getFullyOpen(
+                  funcOp.getContext(),
+                  getFuncResultTensorRank(funcOp, resultNum), *meshOrRef));
   }
   return mlir::sdy::TensorShardingPerValueAttr::get(funcOp.getContext(),
                                                     resultShardings);
