@@ -138,6 +138,8 @@ class GpuPerformanceModelBase {
   static constexpr absl::Duration kKernelLaunchOverhead = absl::Microseconds(1);
   static constexpr absl::Duration kNcclKernelLaunchOverhead =
       absl::Microseconds(5);
+  // Base penalty for spilling and causing reduced blocks per SM.
+  static constexpr absl::Duration kSpillBasePenalty = absl::Microseconds(1);
   static constexpr float kL2CacheSpeedup = 2.5;
   static constexpr float kL1CacheSpeedup = 8;
   // Factor for how much parallelism between compute and memory accesses should
@@ -223,6 +225,22 @@ class GpuPerformanceModelBase {
 
   static absl::Duration CombineComputeAndMemoryAccessTime(
       absl::Duration compute_time, absl::Duration memory_access_time);
+
+  struct RegisterUsage {
+    int64_t registers_per_thread;
+    std::vector<int64_t> bytes_accessed;
+  };
+
+  // Estimates the number of registers per thread and their use counts for a
+  // given HLO computation.
+  static RegisterUsage EstimateRegisterUsage(const HloInstruction* instr);
+
+  // Calculates a spill penalty duration based on register usage and max
+  // threshold.
+  static absl::Duration CalculateSpillPenalty(
+      const se::DeviceDescription& gpu_device_info,
+      const RegisterUsage& register_usage, int64_t num_blocks,
+      int64_t num_threads_per_block);
 
   // Logs estimates for the operand read if VLOG is enabled.
   static void VLogOperandRead(const HloInstruction* operand,

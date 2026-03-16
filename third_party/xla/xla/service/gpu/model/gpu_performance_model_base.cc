@@ -392,6 +392,194 @@ absl::Duration GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
          std::min(compute_time, memory_access_time) * kMemoryComputeParallelism;
 }
 
+namespace {
+bool ProducesRegister(const HloInstruction* instr) {
+  switch (instr->opcode()) {
+    case HloOpcode::kConstant:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kReshape:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kTuple:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kSlice:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kPad:
+    case HloOpcode::kReverse:
+    case HloOpcode::kTranspose:
+      return false;
+    default:
+      return true;
+  }
+}
+}  // namespace
+
+/*static*/
+GpuPerformanceModelBase::RegisterUsage
+GpuPerformanceModelBase::EstimateRegisterUsage(const HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kFusion) {
+    int64_t byte_size = 0;
+    if (instr->shape().IsArray()) {
+      byte_size =
+          ShapeUtil::ByteSizeOfPrimitiveType(instr->shape().element_type());
+    }
+    return {1, {1 * byte_size}};  // Base case for non-fusion ops.
+  }
+
+  // A very rough heuristic for register pressure within a fusion.
+  // We start with a base number of registers for loop counters and indexing.
+  int64_t base_registers = 16;
+
+  // Calculate maximum number of live values using a simulated schedule
+  // (currently just the topological sort order already present in
+  // fused_instructions).
+
+  // 1. Keep track of how many times each instruction is used, to know when its
+  // value dies.
+  absl::flat_hash_map<const HloInstruction*, int64_t> use_counts;
+
+  // For each value, keep track of the operands which are required to compute
+  // it. In the case of non-producing operands, we forward to their inputs.
+  absl::flat_hash_map<const HloInstruction*, std::set<const HloInstruction*>>
+      indirect_operands;
+
+  for (const HloInstruction* fused_instr : instr->fused_instructions()) {
+    for (const HloInstruction* operand : fused_instr->operands()) {
+      use_counts[operand]++;
+      indirect_operands[fused_instr].insert(operand);
+    }
+  }
+
+  // 2. Simulate execution and track live values
+  int64_t current_live_values = 0;
+  int64_t max_live_values = 0;
+
+  std::vector<int64_t> spilling_bytes_accessed;
+
+  absl::flat_hash_map<const HloInstruction*, int64_t> indirect_users;
+
+  for (const HloInstruction* fused_instr : instr->fused_instructions()) {
+    if (!ProducesRegister(fused_instr)) {
+      // If the instruction doesn't produce a register, any users of this value
+      // actually depend on the current indirect_operands of this instruction.
+      for (const auto& operand : indirect_operands[fused_instr]) {
+        use_counts[operand] += use_counts[fused_instr];
+      }
+      use_counts[fused_instr] = 0;
+      for (const auto& user : fused_instr->users()) {
+        auto& indirect_of_user = indirect_operands[user];
+        indirect_of_user.erase(fused_instr);
+        for (auto& operand : indirect_operands[fused_instr]) {
+          indirect_of_user.insert(operand);
+        }
+      }
+    } else {
+      for (const auto& operand : indirect_operands[fused_instr]) {
+        indirect_users[operand]++;
+        use_counts[operand]--;
+        if (use_counts[operand] == 0) {
+          current_live_values--;
+        }
+      }
+      current_live_values++;
+      max_live_values = std::max(max_live_values, current_live_values);
+    }
+  }
+
+  for (const HloInstruction* fused_instr : instr->fused_instructions()) {
+    if (ProducesRegister(fused_instr)) {
+      // We collect the bytes accessed associated with this instruction's
+      // result. (1 store + N loads) * element_size
+      int64_t element_size = 0;
+      std::vector<Shape> shape_sizes = {fused_instr->shape()};
+      while (!shape_sizes.empty()) {
+        Shape shape = shape_sizes.back();
+        shape_sizes.pop_back();
+        if (shape.IsArray()) {
+          element_size +=
+              ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
+        } else if (shape.IsTuple()) {
+          for (const auto& operand : shape.tuple_shapes()) {
+            shape_sizes.push_back(operand);
+          }
+        } else {
+          LOG(FATAL) << "Unexpected shape: " << shape;
+        }
+      }
+      spilling_bytes_accessed.push_back((1 + indirect_users[fused_instr]) *
+                                        element_size);
+    } else {
+      assert(indirect_users.find(fused_instr) == indirect_users.end());
+    }
+  }
+
+  // Assume approximately 1 physical register per live HLO value.
+  return {base_registers + max_live_values, spilling_bytes_accessed};
+}
+
+/*static*/
+absl::Duration GpuPerformanceModelBase::CalculateSpillPenalty(
+    const se::DeviceDescription& gpu_device_info,
+    const RegisterUsage& register_usage, int64_t num_blocks,
+    int64_t num_threads_per_block) {
+  int64_t registers_per_thread = register_usage.registers_per_thread;
+  // Try to derive the hard limit for PTX from device information.
+  // NVIDIA GPUs typically support up to 255 registers per thread.
+  // We can approximate the thread limit as the block limit divided by warp
+  // size, capped at a known architecture max like 255.
+  int64_t max_registers_per_thread = 255;
+  if (gpu_device_info.registers_per_block_limit() > 0 &&
+      gpu_device_info.threads_per_warp() > 0) {
+    int64_t derived_limit = gpu_device_info.registers_per_block_limit() /
+                            gpu_device_info.threads_per_warp();
+    // Often the thread limit is smaller than the block limit / warp size
+    // allows, but it won't exceed the derived limit. We cap at 255 as a safe
+    // PTX default.
+    max_registers_per_thread = std::min<int64_t>(255, derived_limit);
+  }
+
+  if (registers_per_thread <= max_registers_per_thread) {
+    // Also consider if we use too many registers preventing multiple blocks per
+    // SM. For many GPUs 64K registers are available per SM.
+    int64_t registers_per_block = registers_per_thread * num_threads_per_block;
+    if (registers_per_block <= gpu_device_info.registers_per_block_limit()) {
+      return absl::ZeroDuration();
+    }
+
+    // Penalty if we limit occupancy due to register usage, but don't spill.
+    return GpuPerformanceModelBase::kSpillBasePenalty;
+  }
+
+  // Major penalty for spilling.
+  int64_t spilled_registers = registers_per_thread - max_registers_per_thread;
+
+  // Assume each spilled register causes extra local memory reads/writes.
+  // We track the number of bytes accessed by these spilled values.
+  std::vector<int64_t> bytes_accessed = register_usage.bytes_accessed;
+  std::sort(bytes_accessed.begin(), bytes_accessed.end());
+
+  // We remove the (max_registers_per_thread) most frequently used items since
+  // they are in registers. We sum the rest as spilled registers.
+  int64_t total_spill_bytes_per_thread = 0;
+  for (int i = 0;
+       i < std::min<int64_t>(spilled_registers, bytes_accessed.size()); ++i) {
+    total_spill_bytes_per_thread += bytes_accessed[i];
+  }
+
+  // Multiply by the actual number of blocks and threads. Total bytes =
+  // bytes_accessed_per_thread * grids_size. We read total_spill_bytes using
+  // ReadTimeWithDRAMHeuristic which accounts for coalescing block sizes.
+  int64_t total_threads = num_blocks * num_threads_per_block;
+  int64_t total_spill_bytes = total_spill_bytes_per_thread * total_threads;
+
+  absl::Duration memory_access_latency = ReadTimeWithDRAMHeuristic(
+      gpu_device_info, num_blocks, /*n_bytes_net=*/total_spill_bytes,
+      /*n_bytes_total=*/total_spill_bytes, PrimitiveType::F32,
+      /*hbm_bandwidth_utilization_rate=*/1.0);
+
+  return GpuPerformanceModelBase::kSpillBasePenalty + memory_access_latency;
+}
+
 /*static*/
 void GpuPerformanceModelBase::VLogOperandRead(const HloInstruction* operand,
                                               int64_t n_bytes_total,

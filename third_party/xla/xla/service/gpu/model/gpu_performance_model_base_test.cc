@@ -351,6 +351,51 @@ TEST_F(GpuPerformanceModelBaseTest, CalculatePeakF64OpsPerNsH100) {
   EXPECT_LT(flops_per_ns, 68000);
 }
 
+TEST_F(GpuPerformanceModelBaseTest, EstimateRegisterUsage_SliceKeepsOperandsAlive) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f1 {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  add = f32[128] add(p0, p1)
+  slice = f32[64] slice(add), slice_sizes={64}, start_indices={0}, strides={1}
+  log = f32[64] log(slice)
+  exp = f32[64] exponential(slice)
+  ROOT root_add = f32[64] add(log, exp)
+}
+
+ENTRY entry_computation {
+  param_0 = f32[128] parameter(0)
+  param_1 = f32[128] parameter(1)
+  ROOT fusion = f32[64] fusion(param_0, param_1), kind=kLoop, calls=f1
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto computation = module->entry_computation();
+  auto root = computation->root_instruction();
+
+  auto register_usage = GpuPerformanceModelBase::EstimateRegisterUsage(root);
+
+  // Without the lifetime forwarding logic, `slice` would die immediately after its multiple uses
+  // but wait `slice` is used by *both* `log` and `exp`.
+  // The correct calculation preserves the `add` register's lifetime while `log` and `exp` evaluate.
+  // base_registers = 16.
+  // Schedule (post order):
+  // 1. p0 (Register) -> max_live=1
+  // 2. p1 (Register) -> max_live=2
+  // 3. add(p0, p1) (Register) -> p0,p1 consumed. max_live=2. live=1
+  // 4. slice(add) (No Register) -> forwards to `add`. `add` usages becomes 2. live=1.
+  // 5. log(slice) (Register) -> `add` usages becomes 1. live=2.
+  // 6. exp(slice) (Register) -> `add` usages becomes 0 so `add` dies. live=2.
+  // 7. root_add(log, exp) (Register) -> `log`, `exp` consumed. live=1
+  // max_live_values = 2.
+  // Total expected = 16 + 2 = 18.
+  EXPECT_EQ(register_usage.registers_per_thread, 18);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
