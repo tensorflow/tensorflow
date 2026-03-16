@@ -338,3 +338,63 @@ module @output_of_call_donated {
     }
   }
 }
+
+// -----
+
+!array0 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [2,3],
+                      memory_kind = "device">
+!array1 = !ifrt.array<tensor<2x2xi32>,
+                      #ifrt.sharding_param<2x1 to [0] on 2>, [3,2],
+                      memory_kind = "device">
+// CHECK-LABEL: @populate_device_attr_permutation
+module @populate_device_attr_permutation {
+  func.func @main(%arg0: !array0, %arg1: !array1) attributes {ifrt.function} {
+    // CHECK: ifrt.Call @[[CALLEE_0:.+]]::@main(%arg0, %arg1)
+    %ctrl_0 = ifrt.Call @callee::@main(%arg0, %arg1) on devices [2,3] : (!array0, !array1) -> ()
+    // CHECK: ifrt.Call @[[CALLEE_1:.+]]::@main(%arg0, %arg1)
+    %ctrl_1 = ifrt.Call @callee::@main(%arg0, %arg1) on devices [3,2] : (!array0, !array1) -> ()
+    return
+  }
+
+  // CHECK: module @[[CALLEE_0]]
+  // CHECK-SAME: attributes {
+  // CHECK-DAG:    ifrt.num_devices = 2
+  // CHECK-DAG:    sym_visibility = "private"
+  // CHECK-SAME: }
+  // CHECK: func.func @main(%arg0: tensor<2x2xi32>
+  // CHECK-SAME: {
+  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.memory_kind = "device"
+  // CHECK-SAME: }
+  // CHECK: %arg1: tensor<2x2xi32>
+  // CHECK-SAME: {
+  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.memory_kind = "device"
+  // CHECK-DAG:     ifrt.devices = #ifrt<devices[1, 0]>
+  // CHECK-SAME: }
+
+
+  // CHECK: module @[[CALLEE_1]]
+  // CHECK-SAME: attributes {
+  // CHECK-DAG:    ifrt.num_devices = 2
+  // CHECK-DAG:    sym_visibility = "private"
+  // CHECK-SAME: }
+  // CHECK: func.func @main(%arg0: tensor<2x2xi32>
+  // CHECK-SAME: {
+  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.memory_kind = "device"
+  // CHECK-DAG:     ifrt.devices = #ifrt<devices[1, 0]>
+  // CHECK-SAME: }
+  // CHECK: %arg1: tensor<2x2xi32>
+  // CHECK-SAME: {
+  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.memory_kind = "device"
+  // CHECK-SAME: }
+  // CHECK-NOT: ifrt
+  module @callee attributes {sym_visibility = "private"} {
+    func.func @main(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) {
+      return
+    }
+  }
+}
