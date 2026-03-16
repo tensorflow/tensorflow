@@ -42,12 +42,23 @@ cc_library(
     srcs = ["worker_thread.cc"],
     hdrs = ["worker_thread.h"],
     deps = [
+        "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:env",
+    ],
+)
+
+xla_cc_test(
+    name = "worker_thread_test",
+    srcs = ["worker_thread_test.cc"],
+    deps = [
+        "worker_thread",
+        "//xla/tsl/concurrency:async_value",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -152,6 +163,7 @@ cc_library(
         ":pjrt_executable",
         ":raw_buffer",
         ":utils",
+        ":worker_thread",
         "//xla:executable_run_options",
         "//xla:future",
         "//xla:literal",
