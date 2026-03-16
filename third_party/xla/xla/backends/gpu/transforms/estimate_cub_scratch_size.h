@@ -30,9 +30,9 @@ limitations under the License.
 namespace xla::gpu {
 
 // Updates the scratch size of CUB sort and scan custom calls to match the
-// actual scratch size. Also changes the custom call target from
-// kCubDevice{RadixSort|Scan}UnassignedScratchSizeTarget to
-// kCubDevice{RadixSort|Scan}Target.
+// actual scratch size. For sort, invokes the FFI instantiate handler to compute
+// the scratch size and changes the custom call target to the FFI handler name
+// (xla.gpu.ext.cub_sort_keys or xla.gpu.ext.cub_sort_pairs).
 class EstimateCubScratchSize : public HloModulePass {
  public:
   explicit EstimateCubScratchSize(std::string platform_name)

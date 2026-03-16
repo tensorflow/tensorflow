@@ -603,7 +603,10 @@ ENTRY %main {
       dimensions={0}, to_apply=%compare, metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}
 })";
   constexpr char kExpectedPattern[] = R"(
-    // CHECK: %[[CC:.*]] = (u16[1000]{0}, u8[{{[0-9]+}}]{0}) custom-call({{.*}}), custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize", metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}, backend_config={"descending":true}
+    // CHECK: %[[CC:.*]] = {{.*}} custom-call({{.*}})
+    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize"
+    // CHECK-SAME: metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}
+    // CHECK-SAME: backend_config={"descending":true}
   )";
 
   bool is_cuda = test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuCuda);

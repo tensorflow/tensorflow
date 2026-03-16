@@ -1925,9 +1925,9 @@ ENTRY main {
         // LLVM
         EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCommandBuffer));
       } else if (kinds.size() == 4) {
-        // CUBSort
+        // CUB sort via FFI custom call
         EXPECT_THAT(kinds,
-                    ElementsAre(Thunk::Kind::kKernel, Thunk::Kind::kCubSort,
+                    ElementsAre(Thunk::Kind::kKernel, Thunk::Kind::kCustomCall,
                                 Thunk::Kind::kKernel, Thunk::Kind::kKernel));
       } else {
         FAIL() << "Unexpected thunk sequence size: " << kinds.size();

@@ -218,14 +218,6 @@ message CublasLtMatmulThunkProto {
   int64 autotune_workspace_size = 17;
 }
 
-message CubSortThunkProto {
-  repeated ShapedSliceProto operands = 1;
-  repeated ShapedSliceProto results = 2;
-  xla.buffer_assignment.BufferAllocationSliceProto scratch = 3;
-  bool descending = 4;
-  int64 batch_size = 5;
-}
-
 message NormThunkProto {
   GpuNormDescriptorProto norm_descriptor = 1;
   xla.buffer_assignment.BufferAllocationSliceProto x = 2;
@@ -417,7 +409,6 @@ message ThunkProto {
     FftThunkProto fft_thunk = 27;
     Memset32BitValueThunkProto memset32bit_value_thunk = 28;
     CustomCallThunkProto custom_call_thunk = 30;
-    CubSortThunkProto cub_sort_thunk = 31;
     HostSendThunkProto host_send_thunk = 32;
     HostSendDoneThunkProto host_send_done_thunk = 33;
     HostRecvThunkProto host_recv_thunk = 34;
@@ -448,6 +439,7 @@ message ThunkProto {
 
   reserved 56;
   reserved "cub_scan_thunk";
+  reserved "cub_sort_thunk";
 }
 
 message ThunkSequenceProto {

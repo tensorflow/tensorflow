@@ -726,9 +726,12 @@ absl::StatusOr<bool> SortRewriter::RunOnInstruction(
           call_shape, absl::MakeSpan(operands),
           kCubDeviceRadixSortUnassignedScratchSizeTarget));
 
-  xla::SortOptions backend_config;
-  backend_config.set_descending(sort_analysis.descending);
-  TF_RETURN_IF_ERROR(custom_call->set_backend_config(backend_config));
+  // Store sort direction in SortOptions backend config. The
+  // EstimateCubScratchSize pass will convert this to an FFI custom call with
+  // MLIR dictionary attributes when rewriting to the final FFI target.
+  SortOptions sort_options;
+  sort_options.set_descending(sort_analysis.descending);
+  TF_RETURN_IF_ERROR(custom_call->set_backend_config(sort_options));
 
   // Build the replacement instruction.
   HloInstruction* replacement;
