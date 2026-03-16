@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/ifrt/support/sharding_conversions.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -48,8 +50,10 @@ namespace ifrt {
 namespace support {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::Return;
-using xla::HloSharding;
+using ::tsl::proto_testing::ParseTextProtoOrDie;
+using ::xla::HloSharding;
 
 absl::StatusOr<HloSharding> ToHloShardingViaOpSharding(
     const ShardingParam& sharding_param) {
@@ -122,101 +126,111 @@ class ShardingConversionsTest : public testing::TestWithParam<int> {
   std::shared_ptr<Client> client_;
 };
 
-TEST_P(ShardingConversionsTest, Replicated) {
-  ShardingParam expected_sharding_param{
-      /*dim_shards=*/{1, 1, 1},
-      {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
-  TF_EXPECT_OK(expected_sharding_param.verify());
+struct ShardingParamToHloShardingTestParam {
+  ShardingParam sharding_param;
+  std::string expected_hlo_sharding_str;
+};
+
+using ShardingParamToHloShardingTest =
+    ::testing::TestWithParam<ShardingParamToHloShardingTestParam>;
+
+TEST_P(ShardingParamToHloShardingTest, ShardingParamToHloSharding) {
+  const ShardingParamToHloShardingTestParam& param = GetParam();
+  TF_EXPECT_OK(param.sharding_param.verify());
   TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_iota_sharding,
-                          ToHloSharding(expected_sharding_param));
+                          ToHloSharding(param.sharding_param));
   TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(expected_sharding_param));
-  EXPECT_EQ(hlo_sharding.ToString(), "{replicated}");
+                          ToHloShardingViaOpSharding(param.sharding_param));
+  EXPECT_EQ(hlo_sharding.ToString(), param.expected_hlo_sharding_str);
   EXPECT_EQ(hlo_sharding, hlo_iota_sharding);
-  TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
-                          ToShardingParam(hlo_iota_sharding, 3, 6));
-  // We do not compare expected_sharding_param and sharding_param because they
-  // haven't been canonicalized (1x1x1 to [0, 1] on 2x3 vs. 1x1x1 to [0] on 6).
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto sharding_param,
+      ToShardingParam(hlo_iota_sharding,
+                      param.sharding_param.dim_shards().size(),
+                      param.sharding_param.NumDevices()));
+
+  if (param.sharding_param.minor_to_major().axis_sizes.size() ==
+          hlo_sharding.num_dimensions() &&
+      hlo_sharding.subgroup_types().size() < 2) {
+    // We compare expected_sharding_param and sharding_param if the HloSharding
+    // has not canonicalized the axes and if there is at most one subgroup type.
+    // HloShardings with multiple subgroup types may have canonicalized axes
+    // that have multiple valid expansions.
+    EXPECT_EQ(sharding_param, param.sharding_param);
+  }
   TF_ASSERT_OK_AND_ASSIGN(const HloSharding actual_hlo_sharding,
                           ToHloSharding(sharding_param));
   EXPECT_EQ(hlo_iota_sharding, actual_hlo_sharding);
 }
 
-TEST_P(ShardingConversionsTest, SingleDeviceReplicated) {
-  ShardingParam expected_sharding_param{
-      /*dim_shards=*/{1, 1}, {/*permutation=*/{0}, /*axis_sizes=*/{1}}};
-  TF_EXPECT_OK(expected_sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_iota_sharding,
-                          ToHloSharding(expected_sharding_param));
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(expected_sharding_param));
-  EXPECT_EQ(hlo_sharding.ToString(), "{replicated}");
-  EXPECT_EQ(hlo_sharding, hlo_iota_sharding);
-  TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
-                          ToShardingParam(hlo_iota_sharding, 2, 1));
-  EXPECT_EQ(expected_sharding_param, sharding_param);
-}
-
-TEST_P(ShardingConversionsTest, Permutation) {
-  ShardingParam expected_sharding_param{
-      /*dim_shards=*/{2, 1, 3},
-      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  TF_EXPECT_OK(expected_sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_iota_sharding,
-                          ToHloSharding(expected_sharding_param));
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(expected_sharding_param));
-  EXPECT_EQ(hlo_sharding.ToString(), "{devices=[2,1,3]<=[2,3]T(1,0)}");
-  EXPECT_EQ(hlo_sharding, hlo_iota_sharding);
-  TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
-                          ToShardingParam(hlo_iota_sharding, 3, 6));
-  EXPECT_EQ(expected_sharding_param, sharding_param);
-}
-
-TEST_P(ShardingConversionsTest, Partial) {
-  ShardingParam expected_sharding_param{
-      /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}};
-  TF_EXPECT_OK(expected_sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_iota_sharding,
-                          ToHloSharding(expected_sharding_param));
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(expected_sharding_param));
-  EXPECT_EQ(hlo_sharding.ToString(),
-            "{devices=[2,1,3]<=[6] last_tile_dim_replicate}");
-  EXPECT_EQ(hlo_sharding, hlo_iota_sharding);
-  TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
-                          ToShardingParam(hlo_iota_sharding, 2, 6));
-  // We do not compare expected_sharding_param and sharding_param because they
-  // haven't been canonicalized (2x1 to [0, 1] on 2x3 vs. 2x1 to [0] on 6).
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding actual_hlo_sharding,
-                          ToHloSharding(sharding_param));
-  EXPECT_EQ(hlo_iota_sharding, actual_hlo_sharding);
-}
-
-TEST_P(ShardingConversionsTest, OneDimToTwoAxes) {
-  ShardingParam expected_sharding_param{
-      /*dim_shards=*/{4}, {/*permutation=*/{1, 0}, /*axis_sizes=*/{2, 2}}};
-  TF_EXPECT_OK(expected_sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_iota_sharding,
-                          ToHloSharding(expected_sharding_param));
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(expected_sharding_param));
-  EXPECT_EQ(hlo_sharding.ToString(), "{devices=[4]<=[2,2]T(1,0)}");
-  EXPECT_EQ(hlo_sharding, hlo_iota_sharding);
-  TF_ASSERT_OK_AND_ASSIGN(auto sharding_param,
-                          ToShardingParam(hlo_iota_sharding, 1, 4));
-  EXPECT_EQ(expected_sharding_param, sharding_param);
-}
-
-TEST_P(ShardingConversionsTest, NonTrivialDeviceAssignment) {
-  ShardingParam expected_sharding_param{
-      /*dim_shards=*/{2, 1, 3},
-      {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}};
-  TF_EXPECT_OK(expected_sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloShardingViaOpSharding(expected_sharding_param));
-  EXPECT_EQ(hlo_sharding.ToString(), "{devices=[2,1,3]<=[2,3]T(1,0)}");
-}
+INSTANTIATE_TEST_SUITE_P(
+    ShardingParamToHloSharding, ShardingParamToHloShardingTest,
+    testing::ValuesIn<ShardingParamToHloShardingTestParam>(
+        {{ShardingParam{/*dim_shards=*/{1, 1, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          "{replicated}"},
+         {ShardingParam{/*dim_shards=*/{1, 1},
+                        {/*permutation=*/{0}, /*axis_sizes=*/{1}}},
+          "{replicated}"},
+         {ShardingParam{/*dim_shards=*/{1, 1, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}},
+                        /*unreduced_axes=*/{0, 1}},
+          "{unreduced}"},
+         {ShardingParam{/*dim_shards=*/{},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}},
+                        /*unreduced_axes=*/{0, 1}},
+          "{unreduced}"},
+         {ShardingParam{/*dim_shards=*/{2, 1, 3},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}}},
+          "{devices=[2,1,3]<=[2,3]T(1,0)}"},
+         {ShardingParam{/*dim_shards=*/{4},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{2, 2}}},
+          "{devices=[4]<=[2,2]T(1,0)}"},
+         {ShardingParam{/*dim_shards=*/{2, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}}},
+          "{devices=[2,1,3]<=[6] last_tile_dim_replicate}"},
+         {ShardingParam{/*dim_shards=*/{1, 1, 3},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{3, 2}},
+                        /*unreduced_axes=*/{1}},
+          "{devices=[1,1,3,2]<=[6] last_tile_dims={unreduced}}"},
+         {ShardingParam{/*dim_shards=*/{3, 1},
+                        {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}},
+                        /*unreduced_axes=*/{1}},
+          "{devices=[3,1,2]<=[2,3]T(1,0) last_tile_dims={unreduced}}"},
+         {ShardingParam{/*dim_shards=*/{6, 1},
+                        {/*permutation=*/{3, 1, 2, 0},
+                         /*axis_sizes=*/{3, 5, 2, 7}},
+                        /*unreduced_axes=*/{1, 3}},
+          "{devices=[6,1,35]<=[7,10,3]T(2,1,0) last_tile_dims={unreduced}}"},
+         {ShardingParam{/*dim_shards=*/{1, 1, 1},
+                        {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}},
+                        /*unreduced_axes=*/{0}},
+          "{devices=[1,1,1,2,3]<=[3,2]T(1,0) "
+          "last_tile_dims={unreduced, replicated}}"},
+         {ShardingParam{/*dim_shards=*/{3},
+                        {/*permutation=*/{1, 0, 2},
+                         /*axis_sizes=*/{2, 2, 3}},
+                        /*unreduced_axes=*/{0}},
+          "{devices=[3,2,2]<=[3,2,2]T(0,2,1) "
+          "last_tile_dims={unreduced, replicated}}"},
+         {ShardingParam{/*dim_shards=*/{3, 1},
+                        {/*permutation=*/{3, 1, 2, 0},
+                         /*axis_sizes=*/{3, 5, 2, 7}},
+                        /*unreduced_axes=*/{2}},
+          "{devices=[3,1,2,35]<=[7,2,5,3]T(3,1,0,2) "
+          "last_tile_dims={unreduced, replicated}}"},
+         {ShardingParam{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{6, 1, 3, 7, 2, 0, 5, 4},
+                         /*axis_sizes=*/{3, 3, 6, 5, 2, 3, 4, 3}},
+                        /*unreduced_axes=*/{0, 1, 3}},
+          "{devices=[2,3,45,72]<=[12,3,2,5,6,3,3]T(2,1,6,3,5,0,4) "
+          "last_tile_dims={unreduced, replicated}}"},
+         {ShardingParam{/*dim_shards=*/{2, 3},
+                        {/*permutation=*/{6, 1, 3, 7, 2, 0, 5, 4},
+                         /*axis_sizes=*/{3, 3, 6, 5, 2, 3, 4, 3}},
+                        /*unreduced_axes=*/{0, 3}},
+          "{devices=[2,3,15,216]<=[12,3,2,5,18,3]T(2,1,5,3,0,4) "
+          "last_tile_dims={unreduced, replicated}}"}}));
 
 TEST_P(ShardingConversionsTest, VerifyIncorrectShardings) {
   ShardingParam different_permutation_and_axis{
@@ -239,6 +253,14 @@ TEST_P(ShardingConversionsTest, VerifyIncorrectShardings) {
                                               /*axis_sizes=*/{2, 2}},
                                              /*unreduced_axes=*/{2}};
   EXPECT_FALSE(unreduced_out_of_bounds_axis.verify().ok());
+}
+
+TEST_P(ShardingConversionsTest, ShardingParamWithWrongUnreducedAxisError) {
+  ShardingParam sharding_param{/*dim_shards=*/{3, 1},
+                               {/*permutation=*/{1, 0}, /*axis_sizes=*/{3, 2}},
+                               /*unreduced_axes=*/{0}};
+  auto hlo_sharding = ToHloShardingViaOpSharding(sharding_param);
+  EXPECT_THAT(hlo_sharding, StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_P(ShardingConversionsTest, ShardingParamFullySharded) {
@@ -280,25 +302,6 @@ TEST_P(ShardingConversionsTest, OpShardingReplicated) {
   EXPECT_EQ(actual, expected);
 }
 
-TEST_P(ShardingConversionsTest, ShardingParamUnreduced) {
-  ShardingParam expected_sharding_param{
-      /*dim_shards=*/{1, 1, 1},
-      {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 3}},
-      /*unreduced_axes=*/{0, 1}};
-  TF_EXPECT_OK(expected_sharding_param.verify());
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
-                          ToHloSharding(expected_sharding_param));
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_via_op_sharding,
-                          ToHloShardingViaOpSharding(expected_sharding_param));
-  EXPECT_EQ(hlo_via_op_sharding.ToString(), "{unreduced}");
-  EXPECT_EQ(hlo_via_op_sharding, hlo_sharding);
-  TF_ASSERT_OK_AND_ASSIGN(ShardingParam sharding_param,
-                          ToShardingParam(hlo_sharding, 3, 6));
-  TF_ASSERT_OK_AND_ASSIGN(const HloSharding actual_hlo_sharding,
-                          ToHloSharding(sharding_param));
-  EXPECT_EQ(hlo_sharding, actual_hlo_sharding);
-}
-
 TEST_P(ShardingConversionsTest, OpShardingUnreduced) {
   OpSharding op_sharding;
   op_sharding.set_type(OpSharding::UNREDUCED);
@@ -311,6 +314,37 @@ TEST_P(ShardingConversionsTest, OpShardingUnreduced) {
                          /*unreduced_axes=*/{0}};
   TF_EXPECT_OK(expected.verify());
   EXPECT_EQ(actual, expected);
+}
+
+TEST_P(ShardingConversionsTest, OpShardingWithUnreduced) {
+  OpSharding op_sharding = ParseTextProtoOrDie<OpSharding>(R"pb(
+    type: OTHER
+    tile_assignment_dimensions: 1
+    tile_assignment_dimensions: 1
+    tile_assignment_dimensions: 2
+    tile_assignment_dimensions: 5
+    tile_assignment_dimensions: 3
+    iota_reshape_dims: 5
+    iota_reshape_dims: 3
+    iota_reshape_dims: 2
+    iota_transpose_perm: 2
+    iota_transpose_perm: 0
+    iota_transpose_perm: 1
+    last_tile_dims: UNREDUCED
+    last_tile_dims: REPLICATED
+  )pb");
+  TF_ASSERT_OK_AND_ASSIGN(const HloSharding hlo_sharding,
+                          HloSharding::FromProto(op_sharding));
+  TF_ASSERT_OK_AND_ASSIGN(ShardingParam actual,
+                          ToShardingParam(hlo_sharding, 3, 30));
+  ShardingParam expected{/*dim_shards=*/{1, 1, 2},
+                         {/*permutation=*/{1, 2, 0}, /*axis_sizes=*/{2, 3, 5}},
+                         /*unreduced_axes=*/{2}};
+  TF_ASSERT_OK_AND_ASSIGN(const HloSharding expected_hlo_sharding,
+                          ToHloSharding(expected));
+  TF_EXPECT_OK(expected.verify());
+  TF_EXPECT_OK(actual.verify());
+  EXPECT_EQ(hlo_sharding, expected_hlo_sharding);
 }
 
 INSTANTIATE_TEST_SUITE_P(NumDevices, ShardingConversionsTest,
@@ -399,7 +433,81 @@ INSTANTIATE_TEST_SUITE_P(
          {HloSharding::PartialTile(TileAssignment({12, 1, 1, 2}, {2, 12},
                                                   {1, 0})),
           3, 24},
-         {HloSharding::Unreduced(), 3, 24}}));
+         {HloSharding::Unreduced(), 3, 24},
+         {HloSharding::Subgroup(TileAssignment({1, 1, 8}, {4, 2}, {1, 0}),
+                                {OpSharding::UNREDUCED}),
+          2, 8},
+         {HloSharding::Subgroup(TileAssignment({4, 1, 2}, {8}, {0}),
+                                {OpSharding::UNREDUCED}),
+          2, 8},
+         {HloSharding::Subgroup(TileAssignment({2, 1, 4}, {4, 2}, {1, 0}),
+                                {OpSharding::UNREDUCED}),
+          2, 8},
+         {HloSharding::Subgroup(TileAssignment({4, 3, 2}, {2, 3, 4}, {2, 1, 0}),
+                                {OpSharding::UNREDUCED}),
+          2, 24},
+         {HloSharding::Subgroup(TileAssignment({12, 1, 2}, {2, 12}, {1, 0}),
+                                {OpSharding::UNREDUCED}),
+          2, 24},
+         {HloSharding::Subgroup(TileAssignment({8, 1, 3}, {6, 4}, {1, 0}),
+                                {OpSharding::UNREDUCED}),
+          2, 24},
+         {HloSharding::Subgroup(TileAssignment({2, 1, 12}, {24}, {0}),
+                                {OpSharding::UNREDUCED}),
+          2, 24},
+         {HloSharding::Subgroup(TileAssignment({3, 1, 8}, {2, 3, 4}, {1, 0, 2}),
+                                {OpSharding::UNREDUCED}),
+          2, 24},
+         {HloSharding::Subgroup(TileAssignment({1, 12, 2}, {2, 12}, {1, 0}),
+                                {OpSharding::UNREDUCED}),
+          2, 24},
+         {HloSharding::Subgroup(TileAssignment({3, 2, 1, 4}, {2, 3, 4},
+                                               {1, 0, 2}),
+                                {OpSharding::UNREDUCED}),
+          3, 24},
+         {HloSharding::Subgroup(TileAssignment({2, 4, 1, 3}, {2, 3, 4},
+                                               {0, 2, 1}),
+                                {OpSharding::UNREDUCED}),
+          3, 24},
+         {HloSharding::Subgroup(TileAssignment({4, 3, 1, 2}, {2, 3, 4},
+                                               {2, 1, 0}),
+                                {OpSharding::UNREDUCED}),
+          3, 24},
+         {HloSharding::Subgroup(TileAssignment({12, 1, 1, 2}, {2, 12}, {1, 0}),
+                                {OpSharding::UNREDUCED}),
+          3, 24},
+         {HloSharding::Subgroup(TileAssignment({1, 1, 2, 4}, {4, 2}, {1, 0}),
+                                {OpSharding::REPLICATED,
+                                 OpSharding::UNREDUCED}),
+          2, 8},
+         {HloSharding::Subgroup(TileAssignment({4, 2, 3}, {6, 4}, {1, 0}),
+                                {OpSharding::REPLICATED,
+                                 OpSharding::UNREDUCED}),
+          1, 24},
+         {HloSharding::Subgroup(TileAssignment({6, 1, 4}, {24}, {0}),
+                                {OpSharding::UNREDUCED,
+                                 OpSharding::REPLICATED}),
+          1, 24},
+         {HloSharding::Subgroup(TileAssignment({1, 4, 2}, {8}, {0}),
+                                {OpSharding::UNREDUCED,
+                                 OpSharding::REPLICATED}),
+          1, 8},
+         {HloSharding::Subgroup(
+              TileAssignment({3, 2, 5, 7}, {7, 10, 3}, {2, 1, 0}),
+              {OpSharding::UNREDUCED, OpSharding::REPLICATED}),
+          2, 210},
+         {HloSharding::Subgroup(TileAssignment({1, 4, 3, 2}, {6, 4}, {1, 0}),
+                                {OpSharding::REPLICATED,
+                                 OpSharding::UNREDUCED}),
+          2, 24},
+         {HloSharding::Subgroup(TileAssignment({2, 3, 4}, {2, 3, 4}, {0, 1, 2}),
+                                {OpSharding::REPLICATED,
+                                 OpSharding::UNREDUCED}),
+          1, 24},
+         {HloSharding::Subgroup(
+              TileAssignment({4, 1, 3, 2}, {2, 3, 4}, {2, 1, 0}),
+              {OpSharding::REPLICATED, OpSharding::UNREDUCED}),
+          2, 24}}));
 
 }  // namespace
 }  // namespace support
