@@ -758,8 +758,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
         "CopyToMemorySpace called on deleted or donated buffer");
   }
 
-  TfrtGpuDevice* gpu_src_device = tsl::down_cast<TfrtGpuDevice*>(device());
-  TfrtGpuDevice* gpu_dst_device = tsl::down_cast<TfrtGpuDevice*>(dst_device);
+  TfrtGpuDevice* gpu_src_device = absl::down_cast<TfrtGpuDevice*>(device());
+  TfrtGpuDevice* gpu_dst_device = absl::down_cast<TfrtGpuDevice*>(dst_device);
   tsl::AsyncValueRef<GpuDeviceMemory> src_buffer = src_device_buffer->buffer();
 
   auto dst_definition_event = tsl::MakeConstructedAsyncValueRef<GpuEvent>();
