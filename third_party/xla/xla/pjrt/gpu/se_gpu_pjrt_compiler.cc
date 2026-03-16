@@ -146,8 +146,7 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
   CompileOptions input_options = options;
   if (xla::IsEarlyExitCompilation(options)) {
     auto* se_gpu_topology =
-        tsl::down_cast<const xla::StreamExecutorGpuTopologyDescription*>(
-            &topology);
+        absl::down_cast<const StreamExecutorGpuTopologyDescription*>(&topology);
     const xla::GpuTopology& gpu_topology = se_gpu_topology->gpu_topology();
     TF_RET_CHECK(gpu_topology.has_gpu_target_config())
         << "GPU cross-compile is not yet implemented for topology "
