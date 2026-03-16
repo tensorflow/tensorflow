@@ -124,6 +124,11 @@ CublasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
   configs.reserve(num_algorithms);
   for (int i = 0; i < num_algorithms; ++i) {
+    // TODO(b/493195617): Skip algorithm 3, which is numerically unstable for
+    // complex numbers.
+    if (i == 3) {
+      continue;
+    }
     CublasLtBackendConfig gemm_key;
     gemm_key.set_algorithm(i);
     gemm_key.set_autotune_workspace_size(workspace_size);
