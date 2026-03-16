@@ -43,6 +43,7 @@ void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
 template <>
 struct PrimitiveTrait<kOnednnMatmulConfig> {
   using pointer_type = xla::cpu::OneDnnMatMulConfig*;
+  using primitive_desc = dnnl::matmul::primitive_desc;
   static const BackendConfigOneofCase kConfigVal = kOnednnMatmulConfig;
 };
 

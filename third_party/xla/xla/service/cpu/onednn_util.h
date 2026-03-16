@@ -70,11 +70,15 @@ typedef BackendConfig::BackendConfigOneofCase BackendConfigOneofCase;
 
 // These template functions must have explicit specialization at the definition
 // site.
-template <typename PrimDesc>
-std::unique_ptr<PrimDesc> CreateOneDnnPrimDesc(HloInstruction*);
+template <BackendConfigOneofCase config>
+dnnl::memory::desc GetSrcWeightMemDesc(HloInstruction*, const Shape&);
 
 template <BackendConfigOneofCase config, typename TransformationType = void>
 struct PrimitiveTrait;
+
+template <BackendConfigOneofCase config>
+std::unique_ptr<typename PrimitiveTrait<config>::primitive_desc>
+CreateOneDnnPrimDesc(HloInstruction*);
 
 template <BackendConfigOneofCase config>
 typename PrimitiveTrait<config>::pointer_type GetKernelConfig(
