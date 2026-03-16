@@ -3573,16 +3573,15 @@ xla_test(
     srcs = ["test_utils_test.cc"],
     # There is nothing backend specific in this test, so just pick an arbitrary backend.
     backends = ["cpu"],
-    use_legacy_runtime = True,
     deps = [
-        ":local_client_test_base",
+        ":hlo_pjrt_test_base",
         ":test_utils",
         ":xla_internal_test_main",
         "//xla:literal",
         "//xla:shape_util",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",

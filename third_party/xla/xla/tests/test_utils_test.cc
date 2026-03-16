@@ -19,16 +19,19 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/local_client_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -37,7 +40,7 @@ namespace xla {
 namespace {
 
 // A test fixture is used because we need a client for our computation builder.
-class TestUtilsTest : public LocalClientTestBase {};
+class TestUtilsTest : public HloPjRtTestBase {};
 
 TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
@@ -56,13 +59,17 @@ TEST_F(TestUtilsTest, UnusedParam) {
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executables,
-                          local_client_->Compile(computation_status.value(),
-                                                 {&pair_float, &single_float},
-                                                 ExecutableBuildOptions()));
-  HloModule& module =
-      const_cast<HloModule&>(executables[0]->executable()->module());
-  TF_ASSERT_OK(MakeFakeArguments(&module).status());
+  ExecutionOptions execution_options;
+  *execution_options.mutable_debug_options() =
+      GetModuleConfigForTest().debug_options();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_ptr,
+                          HloModuleFromXlaComputation(
+                              computation_status.value(), execution_options));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                          CreateExecutable(std::move(module_ptr), true));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* optimized_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK(MakeFakeArguments(optimized_module).status());
 }
 
 TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
