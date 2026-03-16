@@ -1639,6 +1639,38 @@ HloSharding GetAllToAllSharding(const HloSharding& source_sharding,
                                 absl::Span<const int64_t> source_dims,
                                 absl::Span<const int64_t> target_dims) {
   CHECK_EQ(source_dims.size(), target_dims.size());
+  if (source_sharding.UseNamedShardingLeaf()) {
+    const NamedSharding& old_named_sharding = source_sharding.named_sharding();
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings(
+        old_named_sharding.dim_shardings().begin(),
+        old_named_sharding.dim_shardings().end());
+    for (int64_t i = 0; i < source_dims.size(); ++i) {
+      const int64_t source_dim = source_dims[i];
+      const int64_t target_dim = target_dims[i];
+      CHECK_NE(source_dim, target_dim);
+      int64_t target_size = old_named_sharding.dimension(target_dim);
+      CHECK_EQ(old_named_sharding.dimension(source_dim) % target_size, 0);
+
+      NamedSharding::DimensionSharding& src_sharding =
+          new_dim_shardings[source_dim];
+      NamedSharding::DimensionSharding& tgt_sharding =
+          new_dim_shardings[target_dim];
+
+      NamedSharding::DimensionSharding to_move = src_sharding;
+      std::optional<NamedSharding::DimensionSharding> keep =
+          to_move.Slice(old_named_sharding.mesh(), target_size);
+      CHECK(keep.has_value());
+
+      src_sharding = *keep;
+      tgt_sharding.Append(to_move, old_named_sharding.mesh());
+    }
+    return HloSharding(NamedSharding(
+        old_named_sharding.mesh(), new_dim_shardings,
+        old_named_sharding.replicated_axes(),
+        old_named_sharding.unreduced_axes(), old_named_sharding.manual_axes(),
+        old_named_sharding.metadata()));
+  }
+
   TileAssignment result = source_sharding.tile_assignment();
 
   for (int64_t i = 0; i < source_dims.size(); ++i) {
@@ -1996,6 +2028,79 @@ std::optional<std::tuple<HloSharding, HloSharding, int64_t>>
 PatternMatchMergeOrSplitSharding(const Shape& base_shape,
                                  const HloSharding& source,
                                  const HloSharding& target) {
+  if (source.UseNamedShardingLeaf() && target.UseNamedShardingLeaf()) {
+    const NamedSharding& source_ns = source.named_sharding();
+    const NamedSharding& target_ns = target.named_sharding();
+
+    if (source_ns.mesh() != target_ns.mesh() ||
+        source_ns.num_dimensions() != target_ns.num_dimensions()) {
+      return std::nullopt;
+    }
+
+    std::vector<int64_t> diff_index_1;
+    std::vector<int64_t> diff_index_2;
+
+    for (int64_t d = 0; d < source_ns.num_dimensions(); ++d) {
+      const auto& s_axes = source_ns.dim_sharding(d);
+      const auto& t_axes = target_ns.dim_sharding(d);
+
+      if (s_axes == t_axes) {
+        continue;
+      }
+
+      if (s_axes.axes().empty() || t_axes.axes().empty()) {
+        diff_index_1.push_back(d);
+        continue;
+      }
+
+      if (s_axes.IsPrefixOf(t_axes, source_ns.mesh(), target_ns.mesh()) ||
+          t_axes.IsPrefixOf(s_axes, target_ns.mesh(), source_ns.mesh())) {
+        int64_t min = std::min(source.dimension(d), target.dimension(d));
+        int64_t max = std::max(source.dimension(d), target.dimension(d));
+        if (CeilOfRatio(base_shape.dimensions(d), min) * min % max == 0) {
+          diff_index_2.push_back(d);
+        }
+      }
+    }
+
+    // Iterate combination of diff_index_1 and diff_index_2.
+    for (int64_t i : diff_index_2) {
+      for (int64_t j : diff_index_1) {
+        const auto& s_axes_i = source_ns.dim_sharding(i).axes();
+        const auto& t_axes_i = target_ns.dim_sharding(i).axes();
+        const auto& s_axes_j = source_ns.dim_sharding(j).axes();
+        const auto& t_axes_j = target_ns.dim_sharding(j).axes();
+
+        std::vector<AxisRef> union_s(s_axes_i.begin(), s_axes_i.end());
+        union_s.insert(union_s.end(), s_axes_j.begin(), s_axes_j.end());
+
+        std::vector<AxisRef> union_t(t_axes_i.begin(), t_axes_i.end());
+        union_t.insert(union_t.end(), t_axes_j.begin(), t_axes_j.end());
+
+        auto axis_cmp = [](const AxisRef& a, const AxisRef& b) {
+          return a.mesh_axis_index() < b.mesh_axis_index();
+        };
+        absl::c_sort(union_s, axis_cmp);
+        absl::c_sort(union_t, axis_cmp);
+
+        if (union_s == union_t) {
+          int64_t new_dim_size =
+              std::min(source.dimension(i), target.dimension(i));
+          return CreateSplitShardingTuple(source, target, i, new_dim_size);
+        }
+      }
+    }
+
+    // Iterate each index in diff_index_2.
+    for (int64_t i : diff_index_2) {
+      if (source.dimension(i) > target.dimension(i)) {
+        return CreateSplitShardingTuple(source, target, i, target.dimension(i));
+      }
+    }
+
+    return std::nullopt;
+  }
+
   if (!source.IsTiled() || !target.IsTiled()) {
     return std::nullopt;
   }
