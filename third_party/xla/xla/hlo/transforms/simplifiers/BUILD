@@ -1832,7 +1832,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils/concurrency:concurrency_utils",
-        "//xla/hlo/utils/concurrency:tsl_task_executor",
         "//xla/service:call_graph",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
