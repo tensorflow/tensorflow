@@ -112,8 +112,10 @@ class DotAlgorithmSupportTest
     : public HloPjRtGpuTestBase,
       public WithParamInterface<TestParams::TupleType> {
  public:
-  se::DeviceDescription GetDeviceDescription() { return device_description(); }
-  se::GpuComputeCapability GetGpuComputeCapability() {
+  se::DeviceDescription GetDeviceDescription() const {
+    return device_description();
+  }
+  se::GpuComputeCapability GetGpuComputeCapability() const {
     return GetDeviceDescription().gpu_compute_capability();
   }
 
@@ -123,6 +125,13 @@ class DotAlgorithmSupportTest
     // dot's dimensions are under the rewrite size threshold:
     // (2 * non_contracting_size * contracting_size < threshold).
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(100);
+    const TestParams params(GetParam());
+    // TF32 support on ROCm comes from hipBLASLt
+    if (GetGpuComputeCapability().IsRocm() &&
+        (params.algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
+         params.algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3)) {
+      debug_options.set_xla_gpu_enable_cublaslt(true);
+    }
     return debug_options;
   }
 };

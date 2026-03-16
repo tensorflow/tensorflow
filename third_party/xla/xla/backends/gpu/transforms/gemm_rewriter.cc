@@ -2421,6 +2421,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
          PrimitiveType::F8E4M3FNUZ, DataType::kHalf},
         {ComputationType::kF32, DataType::kFloat, PrimitiveType::F8E5M2FNUZ,
          PrimitiveType::F8E4M3FNUZ, DataType::kFloat},
+
+        // TF32
+        {ComputationType::kTF32AsF32, DataType::kFloat, PrimitiveType::F32,
+         PrimitiveType::F32, DataType::kFloat},
     };
     if (gpu_version_.IsRocm() &&
         absl::c_linear_search(supported_hipblas_type_combinations,
