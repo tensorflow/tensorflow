@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
@@ -749,8 +750,11 @@ static absl::Status ToProto(const KernelThunkBase& thunk, ThunkProto& proto) {
                         buffer.ToProto());
   }
 
+  std::vector<int64_t> invariant_arguments(thunk.invariant_arguments().begin(),
+                                           thunk.invariant_arguments().end());
+  absl::c_sort(invariant_arguments);
   kernel_thunk_proto->mutable_invariant_arguments()->Add(
-      thunk.invariant_arguments().begin(), thunk.invariant_arguments().end());
+      invariant_arguments.begin(), invariant_arguments.end());
 
   return absl::OkStatus();
 }
