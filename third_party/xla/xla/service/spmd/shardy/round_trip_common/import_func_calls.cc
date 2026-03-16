@@ -79,7 +79,7 @@ std::optional<mlir::Attribute> getMeshOrRefOnArguments(
   return std::nullopt;
 }
 
-TensorShardingPerValueAttr getFuncArgShardings(CallOp callOp, FuncOp funcOp,
+TensorShardingPerValueAttr getFuncArgShardings(FuncOp funcOp,
                                                const SymbolTable& symbolTable) {
   std::optional<mlir::Attribute> meshOrRef =
       getMeshOrRefOnArguments(funcOp, symbolTable);
@@ -95,7 +95,7 @@ TensorShardingPerValueAttr getFuncArgShardings(CallOp callOp, FuncOp funcOp,
                                ? sdySharding
                                : TensorShardingAttr::getFullyOpen(
                                      funcOp.getContext(),
-                                     getTensorRank(callOp.getOperand(argNum)),
+                                     getTensorRank(funcOp.getArgument(argNum)),
                                      *meshOrRef));
   }
   return TensorShardingPerValueAttr::get(funcOp.getContext(), argShardings);
@@ -122,7 +122,7 @@ void importCallOp(
   auto namedCompOp = NamedComputationOp::create(
       rewriter, callOp->getLoc(), callOp->getResultTypes(),
       getOriginalFuncName(funcOp), callOp.getOperands(),
-      /*inShardings=*/getFuncArgShardings(callOp, funcOp, symbolTable),
+      /*inShardings=*/getFuncArgShardings(funcOp, symbolTable),
       // TODO(b/439018088): Take func result shardings if call op result
       // shardings are empty.
       /*outShardings=*/
