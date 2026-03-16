@@ -11,14 +11,11 @@ func.func public @main(%arg0: !m1_4x8, %arg1: !m1_4x8)
   -> (!m2_4x8, !m2_4x8) attributes {
     topology = #mpmd.topology<<"mesh1" : <["x"=4]>>, <"mesh2" : <["x"=4]>>>,
     xla_tpu_user_reserved_hbm_bytes = 256 : i64} {
-// Note that we batch the reshards out of the first call, but not the reshards
-// into the second call.
 // CHECK-NEXT: %[[M1_C0:.*]]:2, %{{.*}} = ifrt.Call @f(%arg0, %arg1)
 // CHECK-NEXT: %[[M1_C1:.*]]:2, %{{.*}} = ifrt.Call @f(%arg0, %arg1)
-// CHECK-NEXT: %[[BATCHED_RESHARD:.*]]:2, %{{.*}} = ifrt.Reshard(%[[M1_C0]]#0, %[[M1_C0]]#1)
-// CHECK-NEXT: %[[RESHARD1:.*]], %{{.*}} = ifrt.Reshard(%[[M1_C1]]#0)
+// CHECK-NEXT: %[[BATCHED_RESHARD:.*]]:3, %{{.*}} = ifrt.Reshard(%[[M1_C0]]#0, %[[M1_C0]]#1, %[[M1_C1]]#0)
 // CHECK-NEXT: %[[M2_C0:.*]]:2, %{{.*}} = ifrt.Call @f(%[[BATCHED_RESHARD]]#0, %[[BATCHED_RESHARD]]#1)
-// CHECK-NEXT: %[[M2_C1:.*]]:2, %{{.*}} = ifrt.Call @f(%[[BATCHED_RESHARD]]#1, %[[RESHARD1]])
+// CHECK-NEXT: %[[M2_C1:.*]]:2, %{{.*}} = ifrt.Call @f(%[[BATCHED_RESHARD]]#1, %[[BATCHED_RESHARD]]#2)
 // CHECK-NEXT: return %[[M2_C0]]#0, %[[M2_C1]]#1
   %m1_c0:2 = mpmd.fragment_call<mesh="mesh1", origin=[]> @f(%arg0, %arg1) : (!m1_4x8, !m1_4x8) -> (!m1_4x8, !m1_4x8)
   %m1_c1:2 = mpmd.fragment_call<mesh="mesh1", origin=[]> @f(%arg0, %arg1) : (!m1_4x8, !m1_4x8) -> (!m1_4x8, !m1_4x8)
