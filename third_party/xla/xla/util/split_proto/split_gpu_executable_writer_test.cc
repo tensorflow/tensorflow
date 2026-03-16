@@ -39,7 +39,7 @@ using ::xla::gpu::GpuExecutableProto;
 
 TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutable) {
   auto initialExecutable = ParseTextProtoOrDie<GpuExecutableProto>(R"pb(
-    hlo_module_with_config { hlo_module { name: "test_module" } }
+    hlo_module_with_config { hlo_module { id: 1 name: "test_module" } }
     buffer_allocations { values { index: 0 size: 2 } }
     asm_text: "asm_text"
     binary: "binary_data"
@@ -74,6 +74,10 @@ TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutable) {
   auto reader = std::make_unique<riegeli::StringReader<>>(serialized);
   ASSERT_OK(ReadSplitProto(std::move(reader), deserializedExecutable));
 
+  // The module ID shouldn't be serialized.
+  initialExecutable.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
   EXPECT_THAT(deserializedExecutable, EqualsProto(initialExecutable));
 }
 

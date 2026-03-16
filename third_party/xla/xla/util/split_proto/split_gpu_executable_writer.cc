@@ -116,6 +116,9 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
 
   // The rest of the fields (i.e. the non-offloaded fields)
   NormalizeBackendConfig(executable);
+  // Module IDs are created via a static counter when deserializing, and they
+  // can cause non-determinism, so we don't preserve them.
+  executable.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();
   TF_RETURN_IF_ERROR(WriteRecord(record_writer, executable));
 
   if (!record_writer.Close()) {

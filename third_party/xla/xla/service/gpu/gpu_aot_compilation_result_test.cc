@@ -190,6 +190,13 @@ TEST_F(GpuAotCompilationResultTest, CreateAndSerialize) {
       std::make_unique<riegeli::StringReader<>>(serialized_result),
       deserialized_executable));
 
+  // Module IDs are re-created during deserialization so ignore them
+  deserialized_executable.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
+  reference_executable.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
   EXPECT_THAT(deserialized_executable, EqualsProto(reference_executable));
 }
 
