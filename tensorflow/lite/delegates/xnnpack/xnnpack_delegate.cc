@@ -3578,6 +3578,20 @@ class Subgraph {
         CheckTensorFloatOrQUInt8Type(delegate, logging_context, output_tensor,
                                      node->outputs->data[0], node_index));
 
+    const int axis = concat_params->axis;
+    for (int i = 0; i < num_inputs; ++i) {
+      const TfLiteTensor& input_tensor = tensors[node->inputs->data[i]];
+      if (axis >= input_tensor.dims->size) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "failed to delegate %s node #%d. Concatenating in a new dimension "
+            "%d is not supported.",
+            EnumNameBuiltinOperator(BuiltinOperator_CONCATENATION), node_index,
+            axis);
+        return kTfLiteError;
+      }
+    }
+
     // Check dimensions
     if (output_tensor.type == kTfLiteUInt8) {
       const int32_t zero_point =
@@ -3615,7 +3629,6 @@ class Subgraph {
 
     if (subgraph != nullptr) {
       xnn_status status = xnn_status_invalid_parameter;
-      int axis = concat_params->axis;
       std::vector<uint32_t> input_ids(num_inputs);
       for (int i = 0; i < num_inputs; i++) {
         input_ids[i] = input_output_tensors.at(node->inputs->data[i]);
