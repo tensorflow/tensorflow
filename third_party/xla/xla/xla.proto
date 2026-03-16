@@ -430,6 +430,9 @@ message DebugOptions {
   // backend config after compilation.
   optional bool xla_gpu_collect_cost_model_stats = 240;
 
+  // Maximum number of instructions to be combined in collective combiners.
+  optional int64 xla_gpu_collective_combine_threshold_count = 461;
+
   // Inflate collective cost by running each collective multiple times.
   optional int32 xla_gpu_collective_inflation_factor = 205;
 
@@ -1417,7 +1420,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 461
+  // Next id: 462
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

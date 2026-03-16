@@ -1241,7 +1241,6 @@ void AddDoubleBufferingPasses(const HloModule& module,
   }
 }
 
-constexpr int kCombineThresholdCount = 256;
 
 void AddCollectiveCombinerPasses(
     HloPassPipeline& pipeline, const HloModule& module,
@@ -1259,21 +1258,22 @@ void AddCollectiveCombinerPasses(
 
   pipeline.AddPass<GpuAllGatherCombiner>(
       kDefaultAllGatherCombineThreshold,
-      opts.xla_gpu_all_gather_combine_threshold_bytes(), kCombineThresholdCount,
+      opts.xla_gpu_all_gather_combine_threshold_bytes(),
+      opts.xla_gpu_collective_combine_threshold_count(),
       opts.xla_gpu_enable_all_gather_combine_by_dim(),
       /*combine_different_dtypes=*/true);
   pipeline.AddPass<GpuAllReduceCombiner>(
       kDefaultAllReduceCombineThreshold,
       opts.xla_gpu_all_reduce_combine_threshold_bytes(),
-      kCombineThresholdCount);
+      opts.xla_gpu_collective_combine_threshold_count());
   pipeline.AddPass<GpuReduceScatterCombiner>(
       kDefaultReduceScatterCombineThreshold,
       opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
-      kCombineThresholdCount,
+      opts.xla_gpu_collective_combine_threshold_count(),
       opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
   pipeline.AddPass<CollectivePermuteCombiner>(
       opts.xla_gpu_collective_permute_combine_threshold_bytes(),
-      kCombineThresholdCount);
+      opts.xla_gpu_collective_combine_threshold_count());
 }
 
 absl::Status RunPostFusionPasses(
@@ -1412,7 +1412,7 @@ absl::Status RunDynamicSliceFusionPasses(HloModule* hlo_module,
     pipeline.AddPass<GpuReduceScatterCombiner>(
         kDefaultReduceScatterCombineThreshold,
         opts.xla_gpu_reduce_scatter_combine_threshold_bytes(),
-        kCombineThresholdCount,
+        opts.xla_gpu_collective_combine_threshold_count(),
         opts.xla_gpu_enable_reduce_scatter_combine_by_dim());
     pipeline.AddPass<DynamicSliceFusionRewriter>(platform_id);
     pipeline.AddPass<AsyncWrapper>([](const HloInstruction* instr) {
