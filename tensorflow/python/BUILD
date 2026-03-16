@@ -790,7 +790,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
-        "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/gradients",
         "//tensorflow/c/experimental/gradients/tape",
         "//tensorflow/c/experimental/ops",

@@ -300,7 +300,6 @@ tf_cuda_library(
             ":env",
             ":tf_status",
             ":tf_tensor",
-            "//tensorflow/c/experimental/filesystem:modular_filesystem",
             "//tensorflow/cc:grad_ops",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
