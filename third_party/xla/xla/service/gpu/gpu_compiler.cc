@@ -3305,16 +3305,24 @@ GpuCompiler::GetAutotunerBackends(
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLAS);
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLASLT);
     disabled_autotune_backends.push_back(autotuner::Backend::CUDNN);
+    disabled_autotune_backends.push_back(autotuner::Backend::ROCBLAS);
+    disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT);
+    disabled_autotune_backends.push_back(autotuner::Backend::MIOPEN);
+    disabled_autotune_backends.push_back(autotuner::Backend::ROCBLAS_FISSION);
+    disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT_FISSION);
   }
 
   if (!debug_options.xla_gpu_enable_cublaslt()) {
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLASLT);
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLASLT_FISSION);
+    disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT);
+    disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT_FISSION);
   } else {
     // Breaks xla/backends/gpu/transforms:gemm_rewriter_test_b200, it requires
     // CUBLAS and CUBLASLT both to be available. TODO: fix tests and uncomment.
     // disabled_autotune_backends.push_back(autotuner::Backend::CUBLAS);
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLAS_FISSION);
+    disabled_autotune_backends.push_back(autotuner::Backend::ROCBLAS_FISSION);
   }
 
   autotune_backends.erase(

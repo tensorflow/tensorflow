@@ -93,17 +93,17 @@ TEST_P(FactoryTest, GetCodegenBackends) {
 INSTANTIATE_TEST_SUITE_P(
     All, FactoryTest,
     ::testing::Values(
-        FactoryTestParams{{}, 7, /*run_on_cuda=*/true, /*run_on_cuda=*/false},
-        FactoryTestParams{{}, 4, /*run_on_cuda=*/false, /*run_on_cuda=*/true},
+        FactoryTestParams{{}, 7, /*run_on_cuda=*/true, /*run_on_rocm=*/false},
+        FactoryTestParams{{}, 6, /*run_on_cuda=*/false, /*run_on_rocm=*/true},
         FactoryTestParams{{Backend::TRITON}, 1},
         FactoryTestParams{{Backend::TRITON, Backend::CUBLAS},
                           2,
                           /*run_on_cuda=*/true,
-                          /*run_on_cuda=*/false},
+                          /*run_on_rocm=*/false},
         FactoryTestParams{{Backend::TRITON, Backend::ROCBLAS},
                           2,
                           /*run_on_cuda=*/false,
-                          /*run_on_cuda=*/true}));
+                          /*run_on_rocm=*/true}));
 
 }  // namespace
 }  // namespace gpu

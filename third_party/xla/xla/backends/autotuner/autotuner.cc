@@ -536,7 +536,9 @@ std::optional<std::unique_ptr<Executable>> Autotuner::Compile(
     HloInstruction* instr, const Config& config) {
   if (autotune_config_.exclude_cublas_config &&
       (config.codegen_backend->name() == "CUBLAS_FISSION" ||
-       config.codegen_backend->name() == "CUBLASLT_FISSION")) {
+       config.codegen_backend->name() == "CUBLASLT_FISSION" ||
+       config.codegen_backend->name() == "ROCBLAS_FISSION" ||
+       config.codegen_backend->name() == "HIPBLASLT_FISSION")) {
     return std::nullopt;
   }
   absl::StatusOr<std::unique_ptr<Executable>> executable =
