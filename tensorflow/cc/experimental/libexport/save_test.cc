@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/cc/experimental/libexport/save.h"
 
+#include <string>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
