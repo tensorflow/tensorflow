@@ -116,6 +116,12 @@ struct OutputMatrixDescriptor : public MatrixDescriptor {
 bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
                            MatrixLayout& output, MatrixLayout* c = nullptr);
 
+enum class ScaleMode {
+  kNone,
+  kTensorScaling,
+  kBlockScaling,
+};
+
 struct GemmConfig {  // plain GemmConfig which is extended with create functions
                      // in matmul_utils.h
   MatrixLayout lhs_layout;
@@ -131,6 +137,7 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   std::optional<int64_t> algorithm;
   bool grad_x;
   bool grad_y;
+  ScaleMode scale_mode = ScaleMode::kNone;
   std::optional<blas::ComputationType> compute_type;
 
   static absl::StatusOr<GemmConfig> FromProto(

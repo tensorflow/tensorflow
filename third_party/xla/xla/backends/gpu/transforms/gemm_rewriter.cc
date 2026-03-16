@@ -1484,6 +1484,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     std::vector<HloInstruction*> operands_list = {a.fp8_input, b.fp8_input,
                                                   scales_f32[0], scales_f32[1]};
 
+    gemm_backend_config.set_scale_mode(
+        static_cast<int32_t>(se::gpu::ScaleMode::kTensorScaling));
+
     HloInstruction* new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
             ShapeUtil::MakeShapeWithDenseLayout(

@@ -112,6 +112,9 @@ message GemmBackendConfig {
 
   // The workspace size used during autotuning when the algorithm was selected.
   int64 autotune_workspace_size = 20;
+
+  // Scale mode: 0=none, 1=tensor_scaling (fp8), 2=block_scaling (MX).
+  int32 scale_mode = 21;
 }
 
 // Backend config for the GEMM operation running through cuBLASLt.

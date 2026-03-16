@@ -707,13 +707,16 @@ cc_library(
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_query",
         "//xla/service:compiler",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:matmul_utils",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_description",
@@ -723,6 +726,7 @@ cc_library(
         "//xla/stream_executor/rocm:amdhipblaslt_plugin",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -730,7 +734,31 @@ cc_library(
 )
 
 xla_test(
+    name = "hipblaslt_mx_execution_test",
+    timeout = "long",
+    srcs = ["hipblaslt_mx_execution_test.cc"],
+    backends = [
+        "amdgpu_any",
+    ],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        "//xla:error_spec",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
     name = "hipblaslt_test",
+    timeout = "long",
     srcs = ["hipblaslt_test.cc"],
     backends = [
         "amdgpu_any",

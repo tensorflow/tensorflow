@@ -263,13 +263,14 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     double alpha_real, double alpha_imag, double beta,
     PrecisionConfig::Algorithm precision_algorithm,
     std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-    bool grad_y, const se::GpuComputeCapability& gpu_version) {
+    bool grad_y, se::gpu::ScaleMode scale_mode,
+    const se::GpuComputeCapability& gpu_version) {
   return GemmConfig::For(lhs_shape, lhs_batch_dims, lhs_contracting_dims,
                          rhs_shape, rhs_batch_dims, rhs_contracting_dims,
                          /*c_shape=*/output_shape, /*bias_shape_ptr=*/nullptr,
                          output_shape, alpha_real, alpha_imag, beta,
                          precision_algorithm, algorithm, compute_precision,
-                         grad_x, grad_y, gpu_version);
+                         grad_x, grad_y, scale_mode, gpu_version);
 }
 
 /*static*/ absl::StatusOr<GemmConfig> GemmConfig::For(
@@ -281,7 +282,8 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     double alpha_imag, double beta,
     PrecisionConfig::Algorithm precision_algorithm,
     std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-    bool grad_y, const se::GpuComputeCapability& gpu_version) {
+    bool grad_y, se::gpu::ScaleMode scale_mode,
+    const se::GpuComputeCapability& gpu_version) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -399,7 +401,8 @@ absl::StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                         precision_algorithm,
                                         algorithm,
                                         grad_x,
-                                        grad_y});
+                                        grad_y,
+                                        scale_mode});
 }
 
 namespace {
@@ -473,7 +476,8 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
       /*bias_shape_ptr=*/
       vector_bias_shape ? &vector_bias_shape.value() : nullptr, output_shape,
       config.alpha_real(), config.alpha_imag(), config.beta(),
-      precision_algorithm, algorithm, precision, grad_x, grad_y, gpu_version);
+      precision_algorithm, algorithm, precision, grad_x, grad_y,
+      static_cast<se::gpu::ScaleMode>(config.scale_mode()), gpu_version);
 }
 
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(

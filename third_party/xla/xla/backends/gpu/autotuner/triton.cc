@@ -114,6 +114,13 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
       hlo_query::GetFirstInstructionWithOpcode(
           *instr.fused_instructions_computation(), HloOpcode::kScaledDot);
   if (scaled_dot_instr != nullptr) {
+    // Triton scaled dot emitter is not supported on ROCm; skip to allow
+    // other backends (e.g. HipblasLtBackend) to handle kScaledDot.
+    const auto& gpu_cc =
+        target_config().device_description.gpu_compute_capability();
+    if (gpu_cc.IsRocm()) {
+      return std::vector<std::unique_ptr<BackendConfig>>();
+    }
     return GetSupportedConfigsForScaledDot(scaled_dot_instr);
   }
   return std::vector<std::unique_ptr<BackendConfig>>();

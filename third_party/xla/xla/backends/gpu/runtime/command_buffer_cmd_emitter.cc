@@ -431,7 +431,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return Internal(
           "Error trying to emit command for a CommandBufferThunk. Input HLO "
           "must already contain command buffers and XLA should not run command "
-          "buffer scheduling pass the second time. It it happens in the test, "
+          "buffer scheduling pass the second time. If it happens in the test, "
           "try explicitly disabling command buffers in tested HLO module.");
 
     default:

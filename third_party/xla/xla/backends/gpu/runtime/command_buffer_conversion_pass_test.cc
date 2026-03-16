@@ -152,6 +152,7 @@ std::unique_ptr<GemmThunk> CreateGemmThunk(const BufferAllocation& alloc1) {
       ShapeUtil::MakeShape(PrimitiveType::F32, {1, 1}), 1.0, 0.0, 0.0,
       PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
+      /*scale_mode=*/se::gpu::ScaleMode::kNone,
       executor->GetDeviceDescription().gpu_compute_capability());
   BufferAllocation::Slice slice1(&alloc1, 0, 16 * 4);
   return std::make_unique<GemmThunk>(Thunk::ThunkInfo(), config.value(), slice1,
