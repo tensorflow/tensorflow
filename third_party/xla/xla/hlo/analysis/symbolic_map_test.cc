@@ -279,9 +279,39 @@ TEST_F(SymbolicMapTest, ReplaceWithMap) {
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacements;
   replacements[d0 + 1] = c10;
   replacements[d1] = d0;
-  SymbolicMap replaced1 = map.Replace(replacements, 1, 0);
+  SymbolicMap replaced1 = map.Replace(replacements);
   EXPECT_THAT(replaced1.GetResults(), ElementsAre(c10 * (d0 + 2)));
-  EXPECT_EQ(replaced1.GetNumDims(), 1);
+  // Even thought d1 is unused, GetNumDims() should return the original number
+  // of dimensions.
+  EXPECT_EQ(replaced1.GetNumDims(), 2);
+}
+
+TEST_F(SymbolicMapTest, SetNumDimensions) {
+  SymbolicExpr d0 = CreateDimExpr(0, &ctx);
+  SymbolicExpr d1 = CreateDimExpr(1, &ctx);
+  [[maybe_unused]] SymbolicExpr unused_d2 = CreateDimExpr(2, &ctx);
+  SymbolicExpr s0 = CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/3, &ctx);
+
+  SymbolicMap map = SymbolicMap::Get(&ctx, 3, 1, {d0 + s0, d1 * c2});
+
+  SymbolicMap added_dims = map.SetNumDimensions(4);
+  EXPECT_EQ(added_dims.GetNumDims(), 4);
+  EXPECT_EQ(added_dims.GetNumSymbols(), 1);
+  SymbolicExpr added_dims_s0 =
+      CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/4, &ctx);
+  EXPECT_THAT(added_dims.GetResults(),
+              ElementsAre(d0 + added_dims_s0, d1 * c2));
+
+  SymbolicMap removed_dims = map.SetNumDimensions(2);
+  EXPECT_EQ(removed_dims.GetNumDims(), 2);
+  EXPECT_EQ(removed_dims.GetNumSymbols(), 1);
+  SymbolicExpr removed_dims_s0 =
+      CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/2, &ctx);
+  EXPECT_THAT(removed_dims.GetResults(),
+              ElementsAre(d0 + removed_dims_s0, d1 * c2));
+
+  EXPECT_DEATH(map.SetNumDimensions(1),
+               "Cannot decrease num_dims to 1 if dimension 1 is used.");
 }
 
 TEST_F(SymbolicMapTest, GetUnusedVariables) {

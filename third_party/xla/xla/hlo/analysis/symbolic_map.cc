@@ -221,14 +221,36 @@ SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
 }
 
 SymbolicMap SymbolicMap::Replace(
-    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map,
-    int64_t numResultDims, int64_t numResultSyms) const {
+    const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) const {
   llvm::SmallVector<SymbolicExpr> new_exprs;
   new_exprs.reserve(exprs_.size());
   for (const auto& expr : exprs_) {
     new_exprs.push_back(expr.Replace(map));
   }
-  return SymbolicMap(ctx_, numResultDims, numResultSyms, std::move(new_exprs));
+  return SymbolicMap(ctx_, GetNumDims(), GetNumSymbols(), std::move(new_exprs));
+}
+
+SymbolicMap SymbolicMap::SetNumDimensions(int num_new_dims) const {
+  auto unused_dims = GetUnusedDimensionsBitVector(*this);
+  for (int i = num_new_dims; i < GetNumDims(); ++i) {
+    CHECK(unused_dims[i]) << "Cannot decrease num_dims to " << num_new_dims
+                          << " if dimension " << i << " is used.";
+  }
+
+  // SymbolicMap takes responsibility for its own internal state by shifting its
+  // own symbols to preserve the invariance that their id ranges start from
+  // num_dims to num_dims + num_symbols.
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> sym_replacements;
+  for (int i = 0; i < GetNumSymbols(); ++i) {
+    auto old_sym = CreateSymbolExpr(i, /*num_dims=*/num_dimensions_, ctx_);
+    auto new_sym = CreateSymbolExpr(i, /*num_dims=*/num_new_dims, ctx_);
+    sym_replacements[old_sym] = new_sym;
+  }
+
+  SymbolicMap replaced_map = this->Replace(sym_replacements);
+  return SymbolicMap::Get(
+      ctx_, num_new_dims, GetNumSymbols(),
+      llvm::SmallVector<SymbolicExpr>(replaced_map.GetResults()));
 }
 
 bool SymbolicMap::operator==(const SymbolicMap& other) const {
