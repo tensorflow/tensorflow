@@ -5741,7 +5741,7 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
 
 def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
     Pure,
-    AccumulatorUniformScale<2, 0, 1>,
+    AccumulatorUniformScale<3, 1, 2>,
     TFL_OperandHasRank<0, 1>,
     TFL_OperandHasRank<1, 5>,
     TFL_OperandHasRank<2, 5>,
@@ -5793,8 +5793,8 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
 
   let extraClassDeclaration = [{
     // RequiresQuantizedBiasInterface
-    int GetBiasOperandIndex() { return 2; }
-    std::vector<int> GetNonBiasOperandIndices() { return {0, 1}; }
+    int GetBiasOperandIndex() { return 3; }
+    std::vector<int> GetNonBiasOperandIndices() { return {0, 1, 2}; }
   }];
 }
 
