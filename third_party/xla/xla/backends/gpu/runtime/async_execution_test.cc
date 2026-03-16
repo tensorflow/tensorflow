@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/executable_run_options.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -73,9 +72,8 @@ TEST(AsyncExecutionTest, InitializeStartDone) {
   ASSERT_OK(async_execution.Initialize(&state, executor));
 
   {  // Start creates a dependency from stream to async_stream.
-    ASSERT_OK_AND_ASSIGN(auto guard,
-                         async_execution.Start(RunId(0), &state, stream.get(),
-                                               async_stream.get()));
+    ASSERT_OK_AND_ASSIGN(auto guard, async_execution.Start(&state, stream.get(),
+                                                           async_stream.get()));
   }  // ExecutionGuard destructor records the completion event on async_stream.
 
   // Done waits for the event recorded by the guard.

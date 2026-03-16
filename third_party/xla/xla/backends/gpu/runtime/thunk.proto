@@ -58,6 +58,22 @@ message ThunkMetadataListProto {
   repeated ThunkMetadataProto thunk_metadata = 1;
 }
 
+message AsyncStartThunkProto {
+  enum AsyncKind {
+    ASYNC_KIND_UNSPECIFIED = 0;
+    ASYNC_KIND_COMMUNICATION = 1;
+    ASYNC_KIND_COMPUTE = 2;
+  }
+
+  uint64 async_execution_id = 1;
+  AsyncKind async_kind = 2;
+  ThunkSequenceProto thunks = 3;
+}
+
+message AsyncDoneThunkProto {
+  uint64 async_execution_id = 1;
+}
+
 message ConditionalThunkProto {
   ShapedSliceProto branch_index_buffer = 1;
   repeated ThunkSequenceProto branch_thunks = 2;
@@ -435,6 +451,8 @@ message ThunkProto {
         nvshmem_collective_permute_start_thunk = 53;
     NvshmemSendThunkProto nvshmem_send_thunk = 54;
     NvshmemRecvThunkProto nvshmem_recv_thunk = 55;
+    AsyncStartThunkProto async_start_thunk = 57;
+    AsyncDoneThunkProto async_done_thunk = 58;
   }
 
   reserved 56;

@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -54,9 +53,6 @@ class ThunkExecutor {
   absl::Status Prepare(const Thunk::PrepareParams& params);
   absl::Status Initialize(const Thunk::InitializeParams& params);
   absl::Status ExecuteOnStream(const Thunk::ExecuteParams& params);
-
-  absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(const Thunk*)> callback) const;
 
   const ThunkSequence& thunks() const { return thunks_; }
   ThunkSequence& thunks() { return thunks_; }
@@ -119,7 +115,7 @@ class ThunkExecutor::ScopedProgressTracker {
  private:
   friend class ThunkExecutor;
   friend absl::StatusOr<ThunkExecutor::ScopedProgressTracker>
-  InstallProgressTracker(se::StreamExecutor*, const ThunkExecutor&);
+  InstallProgressTracker(se::StreamExecutor*, ThunkExecutor&);
 
   // We use global indexing across all nested thunks in a sequence, not only the
   // top-level thunks executed by `ThunkExecutor`. This is different from the
@@ -161,7 +157,7 @@ class ThunkExecutor::ScopedProgressTracker {
 // destroyed. It is an error to install a progress tracker twice;
 // trying to do so will lead to a process crash.
 absl::StatusOr<ThunkExecutor::ScopedProgressTracker> InstallProgressTracker(
-    se::StreamExecutor* stream_executor, const ThunkExecutor& executor);
+    se::StreamExecutor* stream_executor, ThunkExecutor& executor);
 
 }  // namespace xla::gpu
 

@@ -16,21 +16,29 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_ASYNC_EXECUTION_H_
 #define XLA_BACKENDS_GPU_RUNTIME_ASYNC_EXECUTION_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/executable_run_options.h"
 #include "xla/runtime/object_pool.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/lib/gtl/int_type.h"
 
 namespace xla::gpu {
+
+// Unique identifier for async execution scopes. The same identifier shared
+// between start and done thunks means that they belong to the same execution
+// scope. This identifier is used during thunk serialization and deserialization
+// to/from proto to connect done thunks to their corresponding start thunks.
+TSL_LIB_GTL_DEFINE_INT_TYPE(AsyncExecutionId, uint64_t);
 
 // AsyncExecution is a helper class to manage async execution of XLA thunks.
 //
@@ -99,14 +107,17 @@ class AsyncExecution {
   // on `async_stream` will observe all prior operations launched on `stream`.
   // Start can be called at most once. Before the next Start can be called,
   // the async execution has to be completed with Done.
-  absl::StatusOr<ExecutionGuard> Start(RunId run_id,
-                                       Thunk::ExecutionScopedState* state,
+  absl::StatusOr<ExecutionGuard> Start(Thunk::ExecutionScopedState* state,
                                        se::Stream* stream,
                                        se::Stream* async_stream);
 
   // Completes an async execution on `stream` by synchronizing with the event
   // recorded by the corresponding Start call.
   absl::Status Done(Thunk::ExecutionScopedState* state, se::Stream* stream);
+
+  // Returns an async thunk that owns the async execution scope. For pipelined
+  // async operations this is the canonical start thunk.
+  const Thunk* start_thunk() const { return start_thunk_; }
 
  private:
   // Returns or creates an event pool for the given executor.
@@ -118,6 +129,11 @@ class AsyncExecution {
   absl::node_hash_map<se::StreamExecutor*, EventPool> event_pools_
       ABSL_GUARDED_BY(mu_);
 };
+
+// Map from AsyncExecutionId to shared AsyncExecution, used during
+// deserialization to connect AsyncStartThunk and AsyncDoneThunk pairs.
+using AsyncExecutionMap =  // NOLINT
+    absl::flat_hash_map<AsyncExecutionId, std::shared_ptr<AsyncExecution>>;
 
 }  // namespace xla::gpu
 

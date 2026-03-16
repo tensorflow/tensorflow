@@ -202,9 +202,9 @@ using ::tsl::profiler::ScopedAnnotation;
 // `GpuExecutable`. At run time `Thunks` may use additional streams to launch
 // compute operations in parallel.
 static absl::flat_hash_set<ExecutionStreamId> GetExecutionStreamIds(
-    const ThunkExecutor& executor) {
+    ThunkExecutor& executor) {
   absl::flat_hash_set<ExecutionStreamId> stream_ids;
-  CHECK_OK(executor.WalkNested([&](const Thunk* thunk) -> absl::Status {
+  CHECK_OK(executor.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
     if (thunk->execution_stream_id() > 0) {
       stream_ids.insert(thunk->execution_stream_id());
     }
