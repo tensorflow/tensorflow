@@ -30,10 +30,10 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/lockable.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
@@ -86,7 +86,7 @@ absl::Status CheckCliqueIsntStale(const GpuCliqueKey& clique_key);
 // invalidates all cliques that were created via AcquireGpuClique with
 // incarnations that have become stale.
 absl::Status UpdateGlobalProcessInfo(
-    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos);
+    absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos);
 
 namespace internal {
 // Destroys all cliques that were acquired for the given process. This is

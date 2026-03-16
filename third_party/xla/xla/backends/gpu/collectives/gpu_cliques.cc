@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/core/collectives/rank_id.h"
 #include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/lockable.h"
 #include "xla/service/rendezvous.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/hash.h"
@@ -118,7 +118,7 @@ struct ProcessGpuCliques {
       pending_cliques ABSL_GUARDED_BY(mu);
 
   // The latest state of every task.
-  std::vector<tensorflow::CoordinatedTaskStateInfo> task_state_infos
+  std::vector<xla::coordination::CoordinatedTaskStateInfo> task_state_infos
       ABSL_GUARDED_BY(mu);
 };
 }  // namespace
@@ -222,7 +222,8 @@ static void StartGpuCliqueHeartBeatMonitor() {
 
 // REQUIRES: GetProcessGpuCliques().mu held
 static absl::Status CheckCliqueIsntStaleImpl(
-    absl::Span<const tensorflow::CoordinatedTaskStateInfo> task_state_infos,
+    absl::Span<const xla::coordination::CoordinatedTaskStateInfo>
+        task_state_infos,
     const GpuCliqueKey& clique_key) {
   GetProcessGpuCliques().mu.AssertHeld();
 
@@ -232,7 +233,7 @@ static absl::Status CheckCliqueIsntStaleImpl(
   }
 
   // Create an index from incarnation id to task state info.
-  using Info = tensorflow::CoordinatedTaskStateInfo;
+  using Info = xla::coordination::CoordinatedTaskStateInfo;
   absl::flat_hash_map<IncarnationId, const Info*> incarnation_to_info;
   for (const Info& info : task_state_infos) {
     incarnation_to_info[IncarnationId(info.incarnation())] = &info;
@@ -246,7 +247,7 @@ static absl::Status CheckCliqueIsntStaleImpl(
     }
     const auto& [unused, info] = *it;
     if (info->state() !=
-        tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED) {
+        xla::coordination::CoordinatedTaskState::TASKSTATE_CONNECTED) {
       return FailedPrecondition("Task with incarnation id %d is not connected",
                                 id.value());
     }
@@ -1045,8 +1046,10 @@ static absl::Status AbortCliquesWithIncarnations(
 static absl::Status AbortOnFailure(
     absl::flat_hash_map<GpuCliqueKey, std::shared_ptr<LockableGpuClique>>&
         cliques,
-    absl::Span<const tensorflow::CoordinatedTaskStateInfo> previous_state,
-    absl::Span<const tensorflow::CoordinatedTaskStateInfo> current_state) {
+    absl::Span<const xla::coordination::CoordinatedTaskStateInfo>
+        previous_state,
+    absl::Span<const xla::coordination::CoordinatedTaskStateInfo>
+        current_state) {
   GetProcessGpuCliques().mu.AssertHeld();
 
   if (previous_state.empty()) {
@@ -1065,20 +1068,22 @@ static absl::Status AbortOnFailure(
 
   std::vector<IncarnationId> failed_incarnations;
   for (int i = 0; i < previous_state.size(); ++i) {
-    const tensorflow::CoordinatedTaskStateInfo& previous = previous_state[i];
-    const tensorflow::CoordinatedTaskStateInfo& current = current_state[i];
+    const xla::coordination::CoordinatedTaskStateInfo& previous =
+        previous_state[i];
+    const xla::coordination::CoordinatedTaskStateInfo& current =
+        current_state[i];
     if (previous.task().task_id() != current.task().task_id()) {
       return FailedPrecondition(
           "Previous and current job states have mismatched task ids: %d vs %d",
           previous.task().task_id(), current.task().task_id());
     }
     if (previous.state() !=
-        tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED) {
+        xla::coordination::CoordinatedTaskState::TASKSTATE_CONNECTED) {
       // A task that was not previously connected cannot fail.
       continue;
     }
     if (current.state() !=
-            tensorflow::CoordinatedTaskState::TASKSTATE_CONNECTED ||
+            xla::coordination::CoordinatedTaskState::TASKSTATE_CONNECTED ||
         previous.incarnation() != current.incarnation()) {
       // The task is either failed, or restarted with a different incarnation.
       VLOG(1) << "Task " << previous.task().task_id() << " (incarnation "
@@ -1094,7 +1099,7 @@ static absl::Status AbortOnFailure(
 }
 
 absl::Status UpdateGlobalProcessInfo(
-    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+    absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) {
   ProcessGpuCliques& state = GetProcessGpuCliques();
   absl::MutexLock lock(state.mu);
   absl::Status s = AbortOnFailure(state.cliques, state.task_state_infos, infos);

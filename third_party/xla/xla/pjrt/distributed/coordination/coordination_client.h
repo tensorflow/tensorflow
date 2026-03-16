@@ -19,41 +19,41 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
-using tensorflow::BarrierRequest;
-using tensorflow::BarrierResponse;
-using tensorflow::CancelBarrierRequest;
-using tensorflow::CancelBarrierResponse;
-using tensorflow::DeleteKeyValueRequest;
-using tensorflow::DeleteKeyValueResponse;
-using tensorflow::GetAliveTasksRequest;
-using tensorflow::GetAliveTasksResponse;
-using tensorflow::GetKeyValueDirRequest;
-using tensorflow::GetKeyValueDirResponse;
-using tensorflow::GetKeyValueRequest;
-using tensorflow::GetKeyValueResponse;
-using tensorflow::HeartbeatRequest;
-using tensorflow::HeartbeatResponse;
-using tensorflow::IncrementKeyValueRequest;
-using tensorflow::IncrementKeyValueResponse;
-using tensorflow::InsertKeyValueRequest;
-using tensorflow::InsertKeyValueResponse;
-using tensorflow::PollForErrorRequest;
-using tensorflow::PollForErrorResponse;
-using tensorflow::RegisterTaskRequest;
-using tensorflow::RegisterTaskResponse;
-using tensorflow::ResetTaskRequest;
-using tensorflow::ResetTaskResponse;
-using tensorflow::ShutdownTaskRequest;
-using tensorflow::ShutdownTaskResponse;
-using tensorflow::TryGetKeyValueRequest;
-using tensorflow::TryGetKeyValueResponse;
-using tensorflow::WatchJobStateRequest;
-using tensorflow::WatchJobStateResponse;
+using xla::coordination::BarrierRequest;
+using xla::coordination::BarrierResponse;
+using xla::coordination::CancelBarrierRequest;
+using xla::coordination::CancelBarrierResponse;
+using xla::coordination::DeleteKeyValueRequest;
+using xla::coordination::DeleteKeyValueResponse;
+using xla::coordination::GetAliveTasksRequest;
+using xla::coordination::GetAliveTasksResponse;
+using xla::coordination::GetKeyValueDirRequest;
+using xla::coordination::GetKeyValueDirResponse;
+using xla::coordination::GetKeyValueRequest;
+using xla::coordination::GetKeyValueResponse;
+using xla::coordination::HeartbeatRequest;
+using xla::coordination::HeartbeatResponse;
+using xla::coordination::IncrementKeyValueRequest;
+using xla::coordination::IncrementKeyValueResponse;
+using xla::coordination::InsertKeyValueRequest;
+using xla::coordination::InsertKeyValueResponse;
+using xla::coordination::PollForErrorRequest;
+using xla::coordination::PollForErrorResponse;
+using xla::coordination::RegisterTaskRequest;
+using xla::coordination::RegisterTaskResponse;
+using xla::coordination::ResetTaskRequest;
+using xla::coordination::ResetTaskResponse;
+using xla::coordination::ShutdownTaskRequest;
+using xla::coordination::ShutdownTaskResponse;
+using xla::coordination::TryGetKeyValueRequest;
+using xla::coordination::TryGetKeyValueResponse;
+using xla::coordination::WatchJobStateRequest;
+using xla::coordination::WatchJobStateResponse;
 
 // Base class of client interface for communicating with coordination service.
 // Can be implemented by a variety of transports such as gRPC.

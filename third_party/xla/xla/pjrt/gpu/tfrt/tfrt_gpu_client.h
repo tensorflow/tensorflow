@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/maybe_owning.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
@@ -151,7 +151,7 @@ class TfrtGpuClient final : public PjRtClient {
       LocalDeviceId local_device_id) const override;
 
   void UpdateGlobalProcessInfo(
-      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
+      absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 

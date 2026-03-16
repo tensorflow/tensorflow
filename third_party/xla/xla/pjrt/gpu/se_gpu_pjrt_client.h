@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/device_event.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_allocator.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/numa.h"
 
@@ -135,7 +135,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
   void UpdateGlobalProcessInfo(
-      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
+      absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) override;
 
   using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
