@@ -860,6 +860,8 @@ cc_library(
         ":ifrt_ir_program",
         ":serialized_executable_metadata_proto_cc",
         ":version",
+        "//third_party/protobuf/io",
+        "//third_party/protobuf/util:delimited_message_util",
         "//xla/python/ifrt",
         "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_proto_cc",
