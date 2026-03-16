@@ -238,7 +238,11 @@ void convertShardyAttrs(FuncOp funcOp, IRRewriter& rewriter,
 
   // Extract the round-tripped shardy attributes from the operations.
   funcOp.front().walk([&](Operation* op) {
-    if (!enableHloShardingV3) {
+    // Preserve hlo shardings on infeed & outfeed ops, as frontend attributes
+    // are not always added for them, and we don't propagate shardings for these
+    // ops.
+    if (!enableHloShardingV3 &&
+        !mlir::isa<stablehlo::InfeedOp, stablehlo::OutfeedOp>(op)) {
       op->removeAttr(kXlaShardingAttr);
     }
     DictionaryAttr dictAttr = getFrontendAttrs(op);
