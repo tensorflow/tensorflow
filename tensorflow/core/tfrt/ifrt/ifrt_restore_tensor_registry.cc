@@ -85,14 +85,25 @@ void IfrtRestoreTensorRegistry::Freeze() {
 
 absl::StatusOr<DtypeAndShape> IfrtRestoreTensorRegistry::GetDtypeAndShape(
     absl::string_view name) const {
-  absl::MutexLock lock(mutex_);
-  auto it = restored_tensors_.find(name);
-  if (it == restored_tensors_.end()) {
-    return absl::NotFoundError(
-        absl::StrCat("Variable '", name, "' not found."));
+  tsl::Future<DtypeAndShape> dtype_and_shape_future;
+  {
+    absl::MutexLock lock(mutex_);
+    auto it = restored_tensors_.find(name);
+    if (it == restored_tensors_.end()) {
+      return absl::NotFoundError(
+          absl::StrCat("Variable '", name, "' not found."));
+    }
+    dtype_and_shape_future = it->second.dtype_and_shape;
   }
 
-  return it->second.dtype_and_shape.Await();
+  if (!dtype_and_shape_future.IsValid()) {
+    // This case should ideally not happen if TryRegister ensures futures are
+    // valid
+    return absl::InternalError(
+        absl::StrCat("Invalid future for variable '", name, "'"));
+  }
+
+  return dtype_and_shape_future.Await();
 }
 
 }  // namespace ifrt_serving

@@ -30,8 +30,12 @@ IfrtServingCoreSelector::IfrtServingCoreSelector(
 
 tsl::DeviceReservation IfrtServingCoreSelector::ReserveDevice(
     int64_t program_id) {
-  absl::MutexLock lock(mu_);
-  int64_t run_count = run_counter_[program_id]++;
+  int64_t run_count;
+  {
+    absl::MutexLock lock(mu_);
+    run_count = run_counter_[program_id]++;
+  }
+
   if (run_count < num_cores_) {
     // If run_count is less than the number of TPU cores, we use run_count
     // as device index to iterate through all the TPU cores for the given
@@ -42,6 +46,5 @@ tsl::DeviceReservation IfrtServingCoreSelector::ReserveDevice(
   }
   return device_selector_->ReserveDevice(absl::StrCat(program_id));
 }
-
 }  // namespace ifrt_serving
 }  // namespace tensorflow
