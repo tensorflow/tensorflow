@@ -81,7 +81,7 @@ AsyncExecution::ExecutionGuard::~ExecutionGuard() {
 
 AsyncExecution::EventPool& AsyncExecution::GetOrCreatePool(
     se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto [it, _] = event_pools_.try_emplace(
       executor, [executor] { return executor->CreateEvent(); });
   return it->second;
