@@ -356,6 +356,23 @@ cc_library(
 )
 
 cc_library(
+    name = "mock_pjrt_client",
+    testonly = 1,
+    hdrs = ["mock_pjrt_client.h"],
+    visibility = internal_visibility(["//xla:friends"]),
+    deps = [
+        ":pjrt_client",
+        ":pjrt_common",
+        ":pjrt_executable",
+        "//xla/hlo/builder:xla_computation",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
+cc_library(
     name = "pjrt_client_utils",
     srcs = ["pjrt_client_utils.cc"],
     hdrs = ["pjrt_client_utils.h"],
