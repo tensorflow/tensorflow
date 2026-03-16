@@ -1692,6 +1692,7 @@ tf_cc_test(
         "@tsl//tsl/platform:refcount",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 

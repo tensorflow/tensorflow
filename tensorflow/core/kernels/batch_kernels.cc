@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -204,6 +205,8 @@ class BatchResource : public serving::BatchResourceBase {
         serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
       batcher_options.use_global_scheduler = true;
       batcher_options.rank_queues = true;
+      // TODO(b/425391952): consider making this option configurable.
+      batcher_options.num_warmup_threads = port::MaxParallelism();
     }
     if (enable_priority_aware_batch_scheduler) {
       batcher_options.use_global_scheduler = true;
@@ -213,7 +216,8 @@ class BatchResource : public serving::BatchResourceBase {
               << "num_batch_threads=" << batcher_options.num_batch_threads
               << ", use_global_scheduler="
               << batcher_options.use_global_scheduler
-              << ", rank_queues=" << batcher_options.rank_queues;
+              << ", rank_queues=" << batcher_options.rank_queues
+              << ", num_warmup_threads=" << batcher_options.num_warmup_threads;
     std::shared_ptr<BatcherT> batcher;
     TF_RETURN_IF_ERROR(BatcherT::Create(batcher_options, &batcher));
 

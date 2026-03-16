@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -92,9 +93,10 @@ class SharedBatchFunctionTestState : public OpsTestBase {
  protected:
   // Create common batch function op for testing.
   absl::StatusOr<NodeDefBuilder> CreateBatchFunctionBuilder(
-      const std::vector<int> &allowed_batch_sizes, int max_batch_size,
+      const std::vector<int>& allowed_batch_sizes, int max_batch_size,
       absl::string_view padding_policy,
-      const TensorShape &expected_output_shape) {
+      const TensorShape& expected_output_shape,
+      absl::string_view mixed_priority_policy) {
     NameAttrList f;
     f.set_name("ShapeEnforcingFunction");
     FunctionDef func = FunctionDefHelper::Create(
@@ -118,21 +120,27 @@ class SharedBatchFunctionTestState : public OpsTestBase {
 
     std::vector<NodeDefBuilder::NodeOut> inputs(
         {NodeDefBuilder::NodeOut({"n1", 0, DataType::DT_INT64})});
-    return NodeDefBuilder(absl::StrCat("BatchTPUInput", padding_policy),
-                          "BatchFunction")
-        .Attr("max_batch_size", max_batch_size)
-        .Attr("num_batch_threads", 8)
-        .Attr("allowed_batch_sizes", allowed_batch_sizes)
-        .Attr("batch_timeout_micros", 1000000)
-        .Attr("max_enqueued_batches", 10)
-        .Attr("enable_large_batch_splitting", true)
-        .Attr("batch_padding_policy", padding_policy)
-        .Attr("Tin", {DataType::DT_INT64})
-        .Input(inputs)
-        .Attr("Tcaptured", std::vector<DataType>{})
-        .Input(std::vector<NodeDefBuilder::NodeOut>{})
-        .Attr("Tout", std::vector<DataType>{DT_INT64})
-        .Attr("f", f);
+    auto builder =
+        NodeDefBuilder(absl::StrCat("BatchTPUInput", padding_policy,
+                                    mixed_priority_policy, max_batch_size),
+                       "BatchFunction")
+            .Attr("max_batch_size", max_batch_size)
+            .Attr("num_batch_threads", 8)
+            .Attr("allowed_batch_sizes", allowed_batch_sizes)
+            .Attr("batch_timeout_micros", 1000000)
+            .Attr("max_enqueued_batches", 10)
+            .Attr("enable_large_batch_splitting", true)
+            .Attr("batch_padding_policy", padding_policy)
+            .Attr("Tin", {DataType::DT_INT64})
+            .Input(inputs)
+            .Attr("Tcaptured", std::vector<DataType>{})
+            .Input(std::vector<NodeDefBuilder::NodeOut>{})
+            .Attr("Tout", std::vector<DataType>{DT_INT64})
+            .Attr("f", f);
+    if (!mixed_priority_policy.empty()) {
+      builder = builder.Attr("mixed_priority_policy", mixed_priority_policy);
+    }
+    return builder;
   }
 };
 
@@ -150,7 +158,8 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
     const TensorShape expected_output_shape({expected_batch_size, 2});
     TF_ASSIGN_OR_RETURN(
         NodeDefBuilder builder,
-        CreateBatchFunctionBuilder({4, 8}, 8, "PAD_UP", expected_output_shape));
+        CreateBatchFunctionBuilder({4, 8}, 8, "PAD_UP", expected_output_shape,
+                                   mixed_priority_policy));
     TF_RETURN_IF_ERROR(builder
                            .Attr("low_priority_max_batch_size",
                                  enable_low_priority_queue ? 8 : 0)
@@ -162,7 +171,6 @@ class BatchFunctionTestState : public SharedBatchFunctionTestState {
                                      : std::vector<int>())
                            .Attr("low_priority_max_enqueued_batches",
                                  enable_low_priority_queue ? 2 : 0)
-                           .Attr("mixed_priority_policy", mixed_priority_policy)
                            .Finalize(node_def()));
 
     return OpsTestBase::InitOp();
@@ -583,7 +591,8 @@ class BatchFunctionKernelParallelWarmupTestState
     : public SharedBatchFunctionTestState {
  public:
   // Init test fixture with a batch kernel instance.
-  absl::Status Init(bool enable_splitting) {
+  absl::Status Init(bool enable_splitting,
+                    absl::string_view mixed_priority_policy) {
     static auto *const cpu_device = []() {
       auto device =
           DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
@@ -595,10 +604,10 @@ class BatchFunctionKernelParallelWarmupTestState
     device_ = cpu_device;
 
     const TensorShape expected_output_shape({2});
-    TF_ASSIGN_OR_RETURN(
-        NodeDefBuilder builder,
-        CreateBatchFunctionBuilder({2, 4, 8}, enable_splitting ? 16 : 8,
-                                   "PAD_UP", expected_output_shape));
+    TF_ASSIGN_OR_RETURN(NodeDefBuilder builder,
+                        CreateBatchFunctionBuilder(
+                            {2, 4, 8}, enable_splitting ? 16 : 8, "PAD_UP",
+                            expected_output_shape, mixed_priority_policy));
     TF_RETURN_IF_ERROR(builder.Finalize(node_def()));
 
     return OpsTestBase::InitOp();
@@ -608,9 +617,11 @@ class BatchFunctionKernelParallelWarmupTestState
 };
 
 class BatchFunctionKernelParallelWarmupTest
-    : public ::testing::TestWithParam<bool> {};
+    : public ::testing::TestWithParam<std::tuple<bool, absl::string_view>> {};
 
 TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
+  const auto [enable_splitting, mixed_priority_policy] = GetParam();
+
   SessionMetadata session_metadata;
   session_metadata.set_name("test_model");
   session_metadata.set_version(123);
@@ -618,8 +629,6 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
                                         session_metadata.version());
 
   int num_requests = 16;
-
-  bool enable_splitting = GetParam();
 
   {
     // Setting the state to warmup disables batching in the BatchFunction op. We
@@ -633,7 +642,7 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
       Env::Default()->SchedClosure([&]() {
         BatchFunctionKernelParallelWarmupTestState test;
         test.set_session_metadata(session_metadata);
-        TF_CHECK_OK(test.Init(enable_splitting));
+        TF_CHECK_OK(test.Init(enable_splitting, mixed_priority_policy));
         test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
         TF_CHECK_OK(test.RunOpKernel());
 
@@ -654,7 +663,7 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
       Env::Default()->SchedClosure([&]() {
         BatchFunctionKernelParallelWarmupTestState test;
         test.set_session_metadata(session_metadata);
-        TF_CHECK_OK(test.Init(enable_splitting));
+        TF_CHECK_OK(test.Init(enable_splitting, mixed_priority_policy));
         test.AddInputFromList<int64_t>(TensorShape({2}), {123, 456});
         // We expect requests to be batched together when the warm-up mode is
         // turned off, which will make the execution fail at `EnsureShape`.
@@ -667,9 +676,19 @@ TEST_P(BatchFunctionKernelParallelWarmupTest, ParallelWarmup) {
   }
 }
 
+#if defined(PLATFORM_GOOGLE)
+INSTANTIATE_TEST_SUITE_P(
+    BatchFunctionKernelParallelWarmupTestSuite,
+    BatchFunctionKernelParallelWarmupTest,
+    ::testing::Combine(::testing::Bool(),
+                       ::testing::Values("",
+                                         serving::kPriorityMergeAttrValue)));
+#else
 INSTANTIATE_TEST_SUITE_P(BatchFunctionKernelParallelWarmupTestSuite,
                          BatchFunctionKernelParallelWarmupTest,
-                         ::testing::Bool());
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Values("")));
+#endif
 
 class BatchFunctionKernelPaddingTestState
     : public SharedBatchFunctionTestState {
@@ -688,7 +707,8 @@ class BatchFunctionKernelPaddingTestState
 
     const TensorShape expected_output_shape({expected_batch_size, 2});
     TF_RETURN_IF_ERROR(CreateBatchFunctionBuilder({4, 8}, 8, padding_policy,
-                                                  expected_output_shape)
+                                                  expected_output_shape,
+                                                  /*mixed_priority_policy=*/"")
                            ->Finalize(node_def()));
 
     return OpsTestBase::InitOp();
