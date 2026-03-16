@@ -86,6 +86,7 @@ class SpaceToBatchNDOpConstModel : public SpaceToBatchNDOpModel {
                  BuiltinOptions_SpaceToBatchNDOptions,
                  CreateSpaceToBatchNDOptions(builder_).Union());
     BuildInterpreter({input.shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -112,6 +113,7 @@ class SpaceToBatchNDOpDynamicModel : public SpaceToBatchNDOpModel {
                  BuiltinOptions_SpaceToBatchNDOptions,
                  CreateSpaceToBatchNDOptions(builder_).Union());
     BuildInterpreter({input.shape, block_shape_dims, paddings_dims});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

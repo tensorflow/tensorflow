@@ -42,6 +42,7 @@ class ListFromTensorModel : public SingleOpModel {
     SetCustomOp("TensorListFromTensor", /*custom_option=*/{},
                 Register_LIST_FROM_TENSOR);
     BuildInterpreter({tensor_data.shape, shape_data.shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   const TensorArray* GetOutputTensorArray(int tensor_id) {

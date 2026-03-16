@@ -56,6 +56,7 @@ class BaseMulOpModel : public SingleOpModel {
                  CreateMulOptions(builder_, activation_type).Union());
     SetBypassDefaultDelegates();
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (!constant_tensors) {
       PopulateTensor<QuantizedType>(input1_, input1_data);
       PopulateTensor<QuantizedType>(input2_, input2_data);
@@ -140,6 +141,7 @@ class QuantizedMulOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_MUL, BuiltinOptions_MulOptions,
                  CreateMulOptions(builder_, activation_type).Union());
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (!constant_tensors) {
       QuantizeAndPopulate<InputType>(input1_, input1_data);
       QuantizeAndPopulate<InputType>(input2_, input2_data);

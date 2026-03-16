@@ -204,6 +204,7 @@ class UnidirectionalRNNOpModel : public SingleOpModel {
                         {units_},
                         {batches_, units_}});
     }
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }

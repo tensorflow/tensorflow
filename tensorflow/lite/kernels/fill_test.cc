@@ -54,6 +54,7 @@ class FillOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_FILL, BuiltinOptions_FillOptions,
                  CreateFillOptions(builder_).Union());
     BuildInterpreter({dims_shape, {}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     if (input_tensor_types == TestType::kDynamic) {
       if (dims_data.size() > 0) {
@@ -87,6 +88,7 @@ class QuantizedFillOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_FILL, BuiltinOptions_FillOptions,
                  CreateFillOptions(builder_).Union());
     BuildInterpreter({dims_shape, {}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     if (dims_data.size() > 0) {
       PopulateTensor<dims_type>(dims_, dims_data);

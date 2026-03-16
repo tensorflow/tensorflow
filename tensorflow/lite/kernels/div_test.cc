@@ -38,6 +38,7 @@ class BaseDivOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_DIV, BuiltinOptions_DivOptions,
                  CreateDivOptions(builder_, activation_type).Union());
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

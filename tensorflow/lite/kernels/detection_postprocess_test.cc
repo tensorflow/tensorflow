@@ -67,6 +67,7 @@ class BaseDetectionPostprocessOpModel : public SingleOpModel {
     SetCustomOp("TFLite_Detection_PostProcess", fbb.GetBuffer(),
                 Register_DETECTION_POSTPROCESS);
     BuildInterpreter({GetShape(input1_), GetShape(input2_), GetShape(input3_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

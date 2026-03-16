@@ -35,6 +35,7 @@ class FakeQuantOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_FAKE_QUANT, BuiltinOptions_FakeQuantOptions,
                  CreateFakeQuantOptions(builder_, min, max, num_bits).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <class T>

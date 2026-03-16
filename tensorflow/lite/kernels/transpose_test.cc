@@ -48,6 +48,7 @@ class TransposeOpInt4Model : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
                  CreateTransposeOptions(builder_).Union());
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(const std::vector<int8_t> data) {
@@ -122,6 +123,7 @@ class TransposeOpConstModel : public TransposeOpModel {
     SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
                  CreateTransposeOptions(builder_).Union());
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -142,6 +144,7 @@ class TransposeOpDynamicModel : public TransposeOpModel {
     SetBuiltinOp(BuiltinOperator_TRANSPOSE, BuiltinOptions_TransposeOptions,
                  CreateTransposeOptions(builder_).Union());
     BuildInterpreter({input_shape, perm_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

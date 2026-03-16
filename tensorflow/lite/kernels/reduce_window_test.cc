@@ -114,6 +114,7 @@ class DilateOpModel : public SingleOpModel {
         BuiltinOperator_REDUCE_WINDOW, BuiltinOptions2_ReduceWindowOptions,
         CreateReduceWindowOptions(builder_, ReduceWindowFunction_ADD).Union());
     BuildInterpreter({input_shape_});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     PopulateTensor(input_, input_data_);
   }
 

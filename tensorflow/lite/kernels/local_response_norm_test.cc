@@ -38,6 +38,7 @@ class LocalResponseNormOpModel : public SingleOpModel {
                                                          alpha, beta)
                      .Union());
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<float> data) {

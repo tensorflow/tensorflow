@@ -46,6 +46,7 @@ class BcastGradArgsInt32OpModel : public SingleOpModel {
     SetCustomOp("BroadcastGradientArgs", custom_option,
                 Register_BROADCAST_GRADIENT_ARGS);
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput1(const std::vector<int>& data) {
@@ -148,6 +149,7 @@ class BcastGradArgsInt64OpModel : public SingleOpModel {
     SetCustomOp("BroadcastGradientArgs", custom_option,
                 Register_BROADCAST_GRADIENT_ARGS);
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput1(const std::vector<int64_t>& data) {

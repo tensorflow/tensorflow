@@ -157,6 +157,7 @@ class BaseSVDFOpModel : public SingleOpModel {
         {units_},                             // bias tensor
         {batches, memory_size * num_filters}  // activation_state tensor
     });
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   // Populates the weights_feature tensor.
@@ -494,6 +495,7 @@ class IntegerSVDFOpModel : public SingleOpModel {
         {units},                              // bias tensor
         {batches, memory_size * num_filters}  // activation_state tensor
     });
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   // Populates the weights_feature tensor.

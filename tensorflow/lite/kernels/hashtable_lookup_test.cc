@@ -49,6 +49,7 @@ class HashtableLookupOpModel : public SingleOpModel {
     hit_ = AddOutput(TensorType_UINT8);
     SetBuiltinOp(BuiltinOperator_HASHTABLE_LOOKUP, BuiltinOptions_NONE, 0);
     BuildInterpreter({lookup_shape, key_shape, value_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetLookup(std::initializer_list<int> data) {

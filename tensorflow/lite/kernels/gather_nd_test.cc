@@ -41,6 +41,7 @@ class GatherNdOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_GATHER_ND, BuiltinOptions_GatherNdOptions,
                  CreateGatherNdOptions(builder_).Union());
     BuildInterpreter({GetShape(params_), GetShape(indices_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

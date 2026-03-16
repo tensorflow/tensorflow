@@ -47,6 +47,7 @@ class RandomOpModel : public SingleOpModel {
     SetBuiltinOp(op_code, BuiltinOptions_RandomOptions,
                  CreateRandomOptions(builder_, seed, seed2).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (!is_input_const) {
       PopulateTensor<int32_t>(input_, std::vector<int32_t>(shape));
     }
@@ -80,6 +81,7 @@ class MultinomialOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_MULTINOMIAL, BuiltinOptions_RandomOptions,
                  CreateRandomOptions(builder_, seed, seed2).Union());
     BuildInterpreter({GetShape(logits_), GetShape(num_samples_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (!is_input_const) {
       PopulateTensor<float>(logits_, std::vector<float>(logits));
     }

@@ -37,6 +37,7 @@ class ListStackModel : public ListOpModel {
     shape_id_ = AddInput({TensorType_INT32, {1}});
     SetCustomOp("ListStack", {}, Register_LIST_STACK);
     BuildInterpreter({{}, {1}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   ListStackModel(TensorData output_data, TensorData shape_input_data) {
@@ -45,6 +46,7 @@ class ListStackModel : public ListOpModel {
     shape_id_ = AddInput(shape_input_data);
     SetCustomOp("ListStack", {}, Register_LIST_STACK);
     BuildInterpreter({{}, shape_input_data.shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   const TfLiteTensor* GetOutputTensor(int tensor_id) {

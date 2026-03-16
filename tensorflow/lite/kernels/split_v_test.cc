@@ -60,8 +60,10 @@ class SplitVOpModel : public SingleOpModel {
     if (axis == kAxisIsATensor) {
       BuildInterpreter(
           {GetShape(input_), GetShape(size_splits_), GetShape(axis_)});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     } else {
       BuildInterpreter({GetShape(input_), GetShape(size_splits_), {}});
+      AllocateAndDelegate(/*apply_delegate=*/true);
     }
   }
 

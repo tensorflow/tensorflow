@@ -51,6 +51,7 @@ class ListSetItemModel : public ListOpModel {
     SetCustomOp("ListSetItem", {}, Register_LIST_SET_ITEM);
 
     BuildInterpreter({{}, {1}, item_data.shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     interpreter_->input_tensor(0)->allocation_type = kTfLiteVariantObject;
   }

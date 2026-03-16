@@ -45,6 +45,7 @@ class UnpackOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_UNPACK, BuiltinOptions_UnpackOptions,
                  CreateUnpackOptions(builder_, num_outputs, axis).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   // In this test, we represent all input and output test data as integers, and

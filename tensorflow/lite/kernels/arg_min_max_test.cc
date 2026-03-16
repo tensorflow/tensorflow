@@ -90,6 +90,7 @@ class ArgMaxOpModel : public ArgBaseOpModel {
         BuiltinOperator_ARG_MAX, BuiltinOptions_ArgMaxOptions,
         CreateArgMaxOptions(ArgBaseOpModel::builder_, output_type).Union());
     ArgBaseOpModel::BuildInterpreter({input_shape, {1}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     PopulateAxisIfNeeded();
   }
 };
@@ -105,6 +106,7 @@ class ArgMinOpModel : public ArgBaseOpModel {
         BuiltinOperator_ARG_MIN, BuiltinOptions_ArgMinOptions,
         CreateArgMinOptions(ArgBaseOpModel::builder_, output_type).Union());
     ArgBaseOpModel::BuildInterpreter({input_shape, {1}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     PopulateAxisIfNeeded();
   }
 };

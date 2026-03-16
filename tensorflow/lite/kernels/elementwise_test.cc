@@ -51,6 +51,7 @@ class ElementWiseOpIntModel : public ElementWiseOpBaseModel {
     output_ = AddOutput(TensorType_INT32);
     SetBuiltinOp(op, BuiltinOptions_NONE, 0);
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -62,6 +63,7 @@ class ElementWiseOpFloatModel : public ElementWiseOpBaseModel {
     output_ = AddOutput(TensorType_FLOAT32);
     SetBuiltinOp(op, BuiltinOptions_NONE, 0);
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -73,6 +75,7 @@ class ElementWiseOpQuantizedModel : public ElementWiseOpBaseModel {
     output_ = AddOutput(SymmetricInt16Scaling(output_tensor_data));
     SetBuiltinOp(op, BuiltinOptions_NONE, 0);
     BuildInterpreter({input_tensor_data.shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>
@@ -129,6 +132,7 @@ class ElementWiseOpBoolModel : public ElementWiseOpBaseModel {
     output_ = AddOutput(TensorType_BOOL);
     SetBuiltinOp(op, BuiltinOptions_NONE, 0);
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

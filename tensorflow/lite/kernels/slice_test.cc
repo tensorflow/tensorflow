@@ -64,6 +64,7 @@ class SliceOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_SLICE, BuiltinOptions_SliceOptions,
                  CreateSliceOptions(builder_).Union());
     BuildInterpreter({input_shape, begin_shape, size_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<index_type>(begin_, begin_data);

@@ -33,6 +33,7 @@ class ShiftLeftOpModel : public SingleOpModel {
     output_ = AddOutput(TensorData(input1.type, GetShape(input1_)));
     SetBuiltinOp(BuiltinOperator_STABLEHLO_SHIFT_LEFT, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

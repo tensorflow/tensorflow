@@ -240,6 +240,7 @@ class ParseExampleOpModel : public SingleOpModel {
     const auto buffer = fbb.GetBuffer();
     SetCustomOp("ParseExample", buffer, Register_PARSE_EXAMPLE);
     BuildInterpreter({{input_size}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     int idx = 0;
     PopulateStringTensor(string_indices_[idx++], serialized_examples);
     PopulateStringTensor(string_indices_[idx++], {""});

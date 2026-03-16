@@ -50,6 +50,7 @@ class MaxpoolingWithArgMaxOpModel : public SingleOpModel {
         stride_height, stride_width, filter_height, filter_width, padding);
     SetCustomOp("MaxPoolWithArgmax", custom_option, RegisterMaxPoolWithArgmax);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(const std::vector<float>& data) {

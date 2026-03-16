@@ -69,6 +69,7 @@ class SelectOpModel : public BaseSelectOpModel {
     SetBuiltinOp(BuiltinOperator_SELECT, BuiltinOptions_SelectOptions,
                  CreateSelectOptions(builder_).Union());
     BuildInterpreter({input1_shape, input2_shape, input3_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -83,6 +84,7 @@ class SelectV2OpModel : public BaseSelectOpModel {
     SetBuiltinOp(BuiltinOperator_SELECT_V2, BuiltinOptions_SelectV2Options,
                  CreateSelectV2Options(builder_).Union());
     BuildInterpreter({input1_shape, input2_shape, input3_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

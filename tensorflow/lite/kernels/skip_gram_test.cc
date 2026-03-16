@@ -43,6 +43,7 @@ class SkipGramOp : public SingleOpModel {
                                        include_all_ngrams)
                      .Union());
     BuildInterpreter({{1}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
   void SetInput(const string& content) {
     PopulateStringTensor(input_, {content});

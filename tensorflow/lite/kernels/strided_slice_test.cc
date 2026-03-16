@@ -71,6 +71,7 @@ class StridedSliceOpModel : public SingleOpModel {
                                   new_axis_mask, shrink_axis_mask, offset)
             .Union());
     BuildInterpreter({input_shape, begin_shape, end_shape, strides_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (!constant_tensors) {
       if (!input_data.empty()) {
         SetInput(input_data, std::is_same<std::string, input_type>());
@@ -110,6 +111,7 @@ class StridedSliceOpModel : public SingleOpModel {
                                            shrink_axis_mask, /*offset=*/true)
                      .Union());
     BuildInterpreter({input_shape, begin_shape, end_shape, strides_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     SetBegin(begin_data);
   }
 

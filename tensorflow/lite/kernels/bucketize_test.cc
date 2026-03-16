@@ -41,6 +41,7 @@ class BucketizeOpModel : public SingleOpModel {
                      builder_, builder_.CreateVector<float>(boundaries_))
                      .Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

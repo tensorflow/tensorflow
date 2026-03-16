@@ -36,6 +36,7 @@ class RangeOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_RANGE, BuiltinOptions_RangeOptions,
                  CreateRangeOptions(builder_).Union());
     BuildInterpreter({GetShape(start_), GetShape(limit_), GetShape(delta_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   explicit RangeOpModel(const TensorType& dtype, const std::vector<T>& start,
@@ -48,6 +49,7 @@ class RangeOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_RANGE, BuiltinOptions_RangeOptions,
                  CreateRangeOptions(builder_).Union());
     BuildInterpreter({GetShape(start_), GetShape(limit_), GetShape(delta_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int start() { return start_; }

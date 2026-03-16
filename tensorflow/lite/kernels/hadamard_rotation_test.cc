@@ -56,6 +56,7 @@ class BaseHadamardRotationOpModel : public SingleOpModel {
     SetCustomOp("aeq.hadamard_rotation", fbb.GetBuffer(),
                 Register_HADAMARD_ROTATION);
     BuildInterpreter({GetShape(input1_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

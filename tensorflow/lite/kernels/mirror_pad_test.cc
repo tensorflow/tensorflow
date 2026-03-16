@@ -37,6 +37,7 @@ class BaseMirrorPadOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_MIRROR_PAD, BuiltinOptions_MirrorPadOptions,
                  CreateMirrorPadOptions(builder_, mode).Union());
     BuildInterpreter({GetShape(input_id_), GetShape(padding_matrix_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input_tensor_id() { return input_id_; }

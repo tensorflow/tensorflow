@@ -134,6 +134,7 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
             time_major, asymmetric_quantize_inputs, diagonal_recurrent_weights)
             .Union());
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInputToInputWeights(const std::vector<float>& f) {

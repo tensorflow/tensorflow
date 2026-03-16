@@ -55,6 +55,7 @@ class DequantizeOpModel : public SingleOpModel {
         version);
 
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>
@@ -182,6 +183,7 @@ class DequantizePerChannelOpModel : public DequantizeOpModel {
         version);
 
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

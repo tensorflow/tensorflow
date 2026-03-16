@@ -121,6 +121,7 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
         BuiltinOperator_DEPTHWISE_CONV_2D, registration);
 
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
  protected:

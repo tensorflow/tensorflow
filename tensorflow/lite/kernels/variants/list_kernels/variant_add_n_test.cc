@@ -44,6 +44,7 @@ class ListAddNModel : public ListOpModel {
     output_ind_ = AddOutput({TensorType_VARIANT, {}});
     SetCustomOp("VariantAddN", {}, Register_VARIANT_ADD_N);
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   const TensorArray* GetOutput() {

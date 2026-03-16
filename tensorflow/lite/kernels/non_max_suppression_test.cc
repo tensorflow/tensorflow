@@ -93,6 +93,7 @@ class NonMaxSuppressionV4OpModel : public BaseNMSOp {
                       GetShape(input_max_output_size_),
                       GetShape(input_iou_threshold_),
                       GetShape(input_score_threshold_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     // Default data.
     PopulateTensor<float>(input_boxes_, {
@@ -186,6 +187,7 @@ class NonMaxSuppressionV5OpModel : public BaseNMSOp {
         {GetShape(input_boxes_), GetShape(input_scores_),
          GetShape(input_max_output_size_), GetShape(input_iou_threshold_),
          GetShape(input_score_threshold_), GetShape(input_sigma_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     // Default data.
     PopulateTensor<float>(input_boxes_, {

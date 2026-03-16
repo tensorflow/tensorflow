@@ -35,6 +35,7 @@ class LogicalOpModel : public SingleOpModel {
     output_ = AddOutput(TensorType_BOOL);
     ConfigureBuiltinOp(op);
     BuildInterpreter({input1_shape, input2_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

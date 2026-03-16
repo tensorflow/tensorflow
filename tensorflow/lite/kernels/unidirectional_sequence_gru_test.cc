@@ -49,6 +49,7 @@ class GRUOpModel : public SingleOpModel {
     SetCustomOp("UNIDIRECTIONAL_SEQUENCE_GRU", {},
                 Register_UNIDIRECTIONAL_SEQUENCE_GRU);
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }

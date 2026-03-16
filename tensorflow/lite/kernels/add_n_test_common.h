@@ -37,6 +37,7 @@ class BaseAddNOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_ADD_N, BuiltinOptions_AddNOptions,
                  CreateAddNOptions(builder_).Union());
     BuildInterpreter(input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input(int i) { return inputs_[i]; }

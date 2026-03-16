@@ -46,6 +46,7 @@ class Atan2Model : public tflite::SingleOpModel {
     output_ = AddOutput(output);
     SetCustomOp("atan2", {}, ops::custom::Register_ATAN2);
     BuildInterpreter({GetShape(y_), GetShape(x_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int y_;

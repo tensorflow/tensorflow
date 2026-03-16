@@ -38,6 +38,7 @@ class BroadcastToOpModel : public SingleOpModel {
                  BuiltinOptions_BroadcastToOptions,
                  CreateBroadcastToOptions(builder_).Union());
     BuildInterpreter({input_shape, shape_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   // BroadcastTo with const shape.
@@ -52,6 +53,7 @@ class BroadcastToOpModel : public SingleOpModel {
                  BuiltinOptions_BroadcastToOptions,
                  CreateBroadcastToOptions(builder_).Union());
     BuildInterpreter({input_shape, shape_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<InputType> data) {

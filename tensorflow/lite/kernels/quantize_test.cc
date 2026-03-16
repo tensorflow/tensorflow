@@ -42,6 +42,7 @@ class QuantizeOpModel : public SingleOpModel {
                  CreateQuantizeOptions(builder_).Union());
 
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -113,6 +114,7 @@ class QuantizePerChannelOpModel : public QuantizeOpModel {
                  CreateQuantizeOptions(builder_).Union());
 
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

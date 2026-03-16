@@ -45,6 +45,7 @@ class SignModel : public tflite::SingleOpModel {
     output_ = AddOutput(output);
     SetCustomOp("Sign", {}, ops::custom::Register_SIGN);
     BuildInterpreter({GetShape(x_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int x_;

@@ -38,6 +38,7 @@ class RngBitGeneratorOpModel : public SingleOpModel {
         BuiltinOptions2_StablehloRngBitGeneratorOptions,
         CreateStablehloRngBitGeneratorOptions(builder_, algorithm).Union());
     BuildInterpreter({GetShape(initial_state_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

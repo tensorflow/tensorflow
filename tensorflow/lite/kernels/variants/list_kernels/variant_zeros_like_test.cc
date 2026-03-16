@@ -44,6 +44,7 @@ class VariantZerosLikeModel : public ListOpModel {
     list_output_ = AddOutput({TensorType_VARIANT, {}});
     SetCustomOp("VariantZerosLike", {}, Register_VARIANT_ZEROS_LIKE);
     BuildInterpreter({{}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   const TensorArray* GetOutputTensorArray() {

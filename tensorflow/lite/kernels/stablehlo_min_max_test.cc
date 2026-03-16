@@ -51,6 +51,7 @@ class MinMaxOpModel : public SingleOpModel {
     }
     SetBypassDefaultDelegates();
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() { return input1_; }

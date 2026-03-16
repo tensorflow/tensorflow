@@ -86,7 +86,7 @@ class BaseTransposeConvOpModel : public SingleOpModel {
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter(
         {GetShape(output_shape_), GetShape(filter_), GetShape(input_)});
-
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (test_type == TestType::kDynamic) {
       PopulateTensor<int32_t>(output_shape_, output_shape_data);
       if (!std::is_same<InputType, int16_t>::value &&
@@ -873,6 +873,7 @@ class BaseTransposeConvBiasOpModel : public SingleOpModel {
         BuiltinOperator_TRANSPOSE_CONV, registration, version);
     BuildInterpreter({GetShape(output_shape_), GetShape(filter_),
                       GetShape(input_), GetShape(bias_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (test_type == TestType::kDynamic) {
       PopulateTensor<int32_t>(output_shape_, output_shape_data);
       if (!std::is_same<InputType, int16_t>::value &&

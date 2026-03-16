@@ -52,6 +52,7 @@ class RandomStandardNormalOpModel : public SingleOpModel {
     SetCustomOp("RandomStandardNormal", {},
                 ops::custom::Register_RANDOM_STANDARD_NORMAL);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
     if (dynamic_input) {
       PopulateTensor<int32_t>(input_, std::vector<int32_t>(input));
     }

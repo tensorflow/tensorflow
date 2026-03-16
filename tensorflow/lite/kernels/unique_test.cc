@@ -37,6 +37,7 @@ class UniqueOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_UNIQUE, BuiltinOptions_UniqueOptions,
                  CreateUniqueOptions(builder_, index_out_type).Union());
     BuildInterpreter({GetShape(input_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input_tensor_id() { return input_id_; }

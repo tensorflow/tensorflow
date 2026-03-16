@@ -46,6 +46,7 @@ class BaseRollOpModel : public SingleOpModel {
 
     SetCustomOp("Roll", {}, ops::custom::Register_ROLL);
     BuildInterpreter({GetShape(input_), GetShape(shift_), GetShape(axis_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
 
     PopulateTensor(shift_, shift);
     PopulateTensor(axis_, axis);

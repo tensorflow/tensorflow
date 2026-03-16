@@ -52,6 +52,7 @@ class BaseConcatenationOpModel : public SingleOpModel {
         CreateConcatenationOptions(builder_, axis, ActivationFunctionType_NONE)
             .Union());
     BuildInterpreter(all_input_shapes);
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
   BaseConcatenationOpModel(const TensorData& input_template, int axis,
                            int num_inputs)

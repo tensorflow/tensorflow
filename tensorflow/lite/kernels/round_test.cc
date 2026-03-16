@@ -37,6 +37,7 @@ class RoundOpModel : public SingleOpModel {
     BuildInterpreter({
         input_shape,
     });
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

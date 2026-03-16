@@ -53,6 +53,7 @@ class Atan2Model : public tflite::SingleOpModel {
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_ATAN2, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(y_), GetShape(x_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

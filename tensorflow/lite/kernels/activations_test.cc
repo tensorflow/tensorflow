@@ -90,6 +90,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     }
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   BaseActivationsOpModel(TfLiteRegistration* registration, BuiltinOperator type,
@@ -105,6 +106,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
     resolver_ = std::make_unique<SingleOpResolver>(type, registration);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   // A dedicated constructor for SOFTMAX, which does some options.
@@ -134,6 +136,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_SOFTMAX,
                                                    registration);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   // A dedicated constructor for LeakyRelu, which does some options.
@@ -163,6 +166,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_LEAKY_RELU,
                                                    registration);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   BaseActivationsOpModel(BuiltinOperator type, const TensorData& input,
@@ -171,6 +175,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     output_ = AddOutput(output);
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   BaseActivationsOpModel(TfLiteRegistration* registration, BuiltinOperator type,
@@ -180,6 +185,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
     resolver_ = std::make_unique<SingleOpResolver>(type, registration);
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
  protected:
@@ -2549,6 +2555,7 @@ class BasePReluOpModel : public SingleOpModel {
     output_ = AddOutput({input.type, input.shape, input.min, input.max});
     SetBuiltinOp(BuiltinOperator_PRELU, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(input_), GetShape(alpha_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
  protected:
@@ -2858,6 +2865,7 @@ class LeakyReluOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
                  CreateLeakyReluOptions(builder_, alpha).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
   void SetInput(std::initializer_list<float> data) {
     PopulateTensor(input_, data);
@@ -2892,6 +2900,7 @@ class GeluOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_GELU, BuiltinOptions_GeluOptions,
                  CreateGeluOptions(builder_, approximate).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
   void SetInput(std::initializer_list<float> data) {
     PopulateTensor(input_, data);
@@ -2912,6 +2921,7 @@ class BaseGeluOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_GELU, BuiltinOptions_GeluOptions,
                  CreateGeluOptions(builder_, approximate).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
  protected:

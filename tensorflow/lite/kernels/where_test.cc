@@ -38,6 +38,7 @@ class BaseWhereOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_WHERE, BuiltinOptions_WhereOptions,
                  CreateWhereOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input() { return input_; }

@@ -49,6 +49,7 @@ class L2NormOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_L2_NORMALIZATION, BuiltinOptions_L2NormOptions,
                  CreateL2NormOptions(builder_, activation_type).Union());
     BuildInterpreter({input_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput(std::initializer_list<float> data) {

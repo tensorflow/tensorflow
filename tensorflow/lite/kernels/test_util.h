@@ -245,6 +245,7 @@ constexpr TfLiteType typeToTfLiteType<Eigen::bfloat16>() {
 //    int c = m.AddOutput({TensorType_FLOAT32, {}});
 //    m.SetBuiltinOp(...);
 //    m.BuildInterpreter({GetShape(a), GetShape(b)});
+//    AllocateAndDelegate(/*apply_delegate=*/true);
 //    m.PopulateTensor(a, {...});
 //    m.PopulateTensor(b, {...});
 //    m.Invoke();
@@ -847,11 +848,9 @@ class SingleOpModel {
   // `apply_delegate` is ignored.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
-                        bool apply_delegate, bool allocate_and_delegate = true,
-                        bool use_simple_allocator = false);
+                        bool apply_delegate, bool allocate_and_delegate = true);
 
-  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                        bool use_simple_allocator = false);
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
   TfLiteStatus AllocateTensors();
 

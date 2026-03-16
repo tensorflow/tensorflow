@@ -89,6 +89,7 @@ class BatchToSpaceNDOpConstModel : public BatchToSpaceNDOpModel {
                  BuiltinOptions_BatchToSpaceNDOptions,
                  CreateBatchToSpaceNDOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -114,6 +115,7 @@ class BatchToSpaceNDOpDynamicModel : public BatchToSpaceNDOpModel {
                  BuiltinOptions_BatchToSpaceNDOptions,
                  CreateBatchToSpaceNDOptions(builder_).Union());
     BuildInterpreter({GetShape(input_), {spatial_dims}, {spatial_dims, 2}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

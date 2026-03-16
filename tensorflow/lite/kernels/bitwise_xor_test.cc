@@ -38,6 +38,7 @@ class BitwiseXorOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_BITWISE_XOR, BuiltinOptions_BitwiseXorOptions,
                  CreateBitwiseXorOptions(builder_).Union());
     BuildInterpreter({input1_shape, input2_shape});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int input1() const { return input1_; }

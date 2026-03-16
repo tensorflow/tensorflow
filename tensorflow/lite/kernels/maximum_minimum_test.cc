@@ -41,6 +41,7 @@ class MaxMinOpModel : public SingleOpModel {
     SetBuiltinOp(op, BuiltinOptions_MaximumMinimumOptions,
                  CreateMaximumMinimumOptions(builder_).Union());
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   MaxMinOpModel(tflite::BuiltinOperator op, const TensorData& input1,
@@ -52,6 +53,7 @@ class MaxMinOpModel : public SingleOpModel {
     SetBuiltinOp(op, BuiltinOptions_MaximumMinimumOptions,
                  CreateMaximumMinimumOptions(builder_).Union());
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   void SetInput1(const std::vector<T>& data) { PopulateTensor(input1_, data); }

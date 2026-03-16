@@ -71,6 +71,7 @@ class BatchMatMulOpModel : public SingleOpModel {
                  BuiltinOptions_BatchMatMulOptions,
                  CreateBatchMatMulOptions(builder_, adj_x, adj_y).Union());
     BuildInterpreter({GetShape(lhs_id_), GetShape(rhs_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int lhs() const { return lhs_id_; }
@@ -375,6 +376,7 @@ class ConstRHSBatchMatMulOpModel : public MultiOpModel {
     AddBuiltinOp(BuiltinOperator_NEG, BuiltinOptions_NegOptions,
                  CreateNegOptions(builder_).Union(), neg_inputs, neg_outputs);
     BuildInterpreter({GetShape(lhs_id_), GetShape(rhs_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   int lhs() const { return lhs_id_; }
@@ -999,6 +1001,7 @@ class QuantizedBatchMatMulOpModel : public SingleOpModel {
                  BuiltinOptions_BatchMatMulOptions,
                  CreateBatchMatMulOptions(builder_, adj_x, adj_y).Union());
     BuildInterpreter({GetShape(lhs_id_), GetShape(rhs_id_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>

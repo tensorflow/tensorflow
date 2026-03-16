@@ -35,6 +35,7 @@ class ListLengthModel : public ListOpModel {
     length_output_ = AddOutput({TensorType_INT32, {}});
     SetCustomOp("ListLength", {}, Register_LIST_LENGTH);
     BuildInterpreter({{}});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
   const TfLiteTensor* GetOutputTensor() {
     return interpreter_->tensor(length_output_);

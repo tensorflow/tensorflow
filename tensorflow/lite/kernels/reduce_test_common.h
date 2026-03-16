@@ -88,6 +88,7 @@ class BaseConstOpModel : public BaseOpModel {
     SetBuiltinOp(op_code, BuiltinOptions_ReducerOptions,
                  CreateReducerOptions(builder_, keep_dims).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -110,6 +111,7 @@ class BaseFullyConstOpModel : public BaseOpModel {
     SetBuiltinOp(op_code, BuiltinOptions_ReducerOptions,
                  CreateReducerOptions(builder_, keep_dims).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 
@@ -129,6 +131,7 @@ class BaseDynamicOpModel : public BaseOpModel {
     SetBuiltinOp(op_code, BuiltinOptions_ReducerOptions,
                  CreateReducerOptions(builder_, keep_dims).Union());
     BuildInterpreter({GetShape(input_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 };
 

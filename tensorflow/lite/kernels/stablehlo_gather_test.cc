@@ -57,6 +57,7 @@ class StablehloGatherOpModel : public SingleOpModel {
             params.indices_are_sorted)
             .Union());
     BuildInterpreter({GetShape(input_), GetShape(indices_)});
+    AllocateAndDelegate(/*apply_delegate=*/true);
   }
 
   template <typename T>
