@@ -252,6 +252,17 @@ CudaStream::~CudaStream() {
   DestroyStream(executor_, stream_handle_);
 }
 
+absl::Status CudaStream::RefreshStatus() {
+  TraceMe trace([] { return TraceMeEncode("CudaStream::RefreshStatus", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  CUresult res = cuStreamQuery(stream_handle_);
+  if (res == CUDA_SUCCESS || res == CUDA_ERROR_NOT_READY) {
+    return absl::OkStatus();
+  }
+  return cuda::ToStatus(res, "Error querying CUDA stream status");
+}
+
 absl::Status CudaStream::BlockHostUntilDone() {
   TraceMe trace(
       [] { return TraceMeEncode("CudaStream::BlockHostUntilDone", {}); },

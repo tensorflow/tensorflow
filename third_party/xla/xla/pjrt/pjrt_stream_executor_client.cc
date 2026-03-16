@@ -92,6 +92,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "riegeli/bytes/string_reader.h"
@@ -153,6 +154,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
@@ -1097,6 +1099,35 @@ PjRtStreamExecutorDevice::GetStreamForExternalReadyEvents() const {
         platform_name());
   }
   return absl::bit_cast<std::intptr_t>(raw_stream);
+}
+
+absl::Status PjRtStreamExecutorDevice::AwaitWithPeriodicStreamStatusCheck(
+    const tsl::Future<void>& future, absl::Duration poll_interval) const {
+  tsl::AsyncValue* async_value = future.async_value();
+  if (async_value->IsAvailable()) {
+    return absl::OkStatus();
+  }
+  // The host callback will not get scheduled in case of error, however the
+  // enqueued method will have a dangling reference to the event. To avoid this
+  // we use a shared pointer to the event.
+  auto event = std::make_shared<absl::Notification>();
+  async_value->AndThen([event] { event->Notify(); });
+  while (!event->WaitForNotificationWithTimeout(poll_interval)) {
+    se::Stream* stream = local_device_state_->compute_stream();
+    XLA_VLOG_DEVICE(3, stream->parent()->device_ordinal())
+        << "PjRtStreamExecutorDevice::AwaitWithPeriodicStreamStatusCheck "
+           "timed out after "
+        << poll_interval << ". Querying stream status.";
+    // In case of an error, the host callback will not get scheduled.
+    // So query the stream status (if possible) to avoid waiting indefinitely.
+    // NB: Not all stream implementations implement RefreshStatus.
+    // We treat UnimplementedError as a signal to keep waiting.
+    if (auto stream_status = stream->RefreshStatus();
+        !stream_status.ok() && !absl::IsUnimplemented(stream_status)) {
+      return stream_status;
+    }
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<PjRtDevice*> PjRtStreamExecutorClient::LookupAddressableDevice(
@@ -2051,7 +2082,8 @@ PjRtStreamExecutorLoadedExecutable::Execute(
     for (const auto& argument_handle : argument_handles) {
       HloInputs hlo_inputs;
       for (const auto& buffer : argument_handle) {
-        TF_ASSIGN_OR_RETURN(auto literal, buffer->ToLiteral().Await());
+        TF_ASSIGN_OR_RETURN(auto literal,
+                            buffer->device()->Await(buffer->ToLiteral()));
         *hlo_inputs.add_arguments() = literal->ToProto();
       }
       *hlo_snapshot.add_partitions() = std::move(hlo_inputs);

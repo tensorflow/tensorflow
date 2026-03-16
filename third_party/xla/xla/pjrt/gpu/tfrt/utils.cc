@@ -962,19 +962,33 @@ absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
   return device_incarnations;
 }
 
-absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream) {
-  absl::Notification event;
-
+absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream,
+                                                absl::Duration poll_interval) {
+  // The host callback will not get scheduled in case of error, however the
+  // enqueued method will have a dangling reference to the event. To avoid this
+  // we use a shared pointer to the event.
+  auto event = std::make_shared<absl::Notification>();
   tsl::profiler::TraceMe traceme("BlockHostUntilDoneWithHostCallback");
-  auto status = stream->DoHostCallback([&event]() {
+  TF_RETURN_IF_ERROR(stream->DoHostCallback([event]() {
     tsl::profiler::TraceMe traceme(
         "BlockHostUntilDoneWithHostCallback::Callback");
-    event.Notify();
-  });
-
-  event.WaitForNotification();
-
-  return status;
+    event->Notify();
+  }));
+  while (!event->WaitForNotificationWithTimeout(poll_interval)) {
+    XLA_VLOG_DEVICE(3, stream->parent()->device_ordinal())
+        << "BlockHostUntilDoneWithHostCallback::WaitForNotification "
+           "timed out after "
+        << poll_interval << ". Querying stream status.";
+    // In case of an error, the host callback will not get scheduled.
+    // So query the stream status (if possible) to avoid waiting indefinitely.
+    // NB: Not all stream implementations implement RefreshStatus.
+    // We treat UnimplementedError as a signal to keep waiting.
+    if (auto stream_status = stream->RefreshStatus();
+        !stream_status.ok() && !absl::IsUnimplemented(stream_status)) {
+      return stream_status;
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla

@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
@@ -186,6 +187,15 @@ class PjRtStreamExecutorDevice : public PjRtDevice {
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
     return nullptr;
+  }
+
+  // Await a future with periodic stream status checks.
+  absl::Status AwaitWithPeriodicStreamStatusCheck(
+      const tsl::Future<void>& future, absl::Duration poll_interval) const;
+
+  inline absl::Status Await(const tsl::Future<void>& future) const override {
+    return AwaitWithPeriodicStreamStatusCheck(
+        future, /*poll_interval=*/absl::Seconds(5));
   }
 
  private:

@@ -193,7 +193,17 @@ absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
     absl::Span<PjRtDevice* const> devices,
     const absl::flat_hash_map<int, IncarnationId>& incarnations);
 
-absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream);
+// Schedules a host callback on the given stream and blocks until the callback
+// is done.
+//
+// poll_interval determines how long we wait for the host callback to be
+// finished before querying the stream status directly. It does not limit the
+// time we wait for the host callback to be scheduled. If stream status is okay
+// or unimplemented, this method will wait indefinitely regardless of the
+// timeout. The only case where timeout returns earlier than the callback is
+// when we can query the stream status and it is in an error state.
+absl::Status BlockHostUntilDoneWithHostCallback(
+    se::Stream* stream, absl::Duration poll_interval = absl::Seconds(5));
 
 }  // namespace xla
 

@@ -262,6 +262,22 @@ class PjRtDevice {
                                                absl::Status error) {
     return absl::UnimplementedError("PoisonExecution is not supported");
   }
+
+  // Allows clients to override how futures are awaited.
+  //
+  // Client implementations can use the timeout to periodically check for
+  // poisoned streams. Provides a default implementation that blocks on the
+  // future.
+  virtual absl::Status Await(const tsl::Future<void>& future) const {
+    return future.Await();
+  }
+
+  template <typename T>
+  absl::StatusOr<T> Await(tsl::Future<T> future) const {
+    tsl::Future<void> void_future = future.GetReadyFuture();
+    TF_RETURN_IF_ERROR(Await(void_future));
+    return std::move(future).Await();
+  }
 };
 
 // Helper struct for cross host transfers, returned by the callback from a call
@@ -1193,7 +1209,10 @@ class PjRtBuffer {
 
   // Synchronous overload of ToLiteral, as a convenience.
   absl::Status ToLiteralSync(MutableLiteralBase* literal) {
-    return ToLiteral(literal).Await();
+    PjRtDevice* device_ptr = device();
+    Future<> literal_future = ToLiteral(literal);
+    return device_ptr == nullptr ? literal_future.Await()
+                                 : device_ptr->Await(literal_future);
   }
 
   absl::StatusOr<Shape> HostShape();
@@ -1202,7 +1221,9 @@ class PjRtBuffer {
   // layout.
   ABSL_DEPRECATE_AND_INLINE()
   absl::StatusOr<std::shared_ptr<Literal>> ToLiteralSync() {
-    return ToLiteral().Await();
+    PjRtDevice* device_ptr = device();
+    return device_ptr == nullptr ? ToLiteral().Await()
+                                 : device_ptr->Await(ToLiteral());
   }
 
   // ToLiteral overload which async allocates a literal with default layout.

@@ -22,6 +22,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -279,6 +280,15 @@ absl::StatusOr<DeviceAssignment> GetBestDeviceAssignment(
                                                    client);
 }
 
+template <typename T>
+std::conditional_t<std::is_void_v<T>, absl::Status, absl::StatusOr<T>> Await(
+    PjRtDevice* device, tsl::Future<T> future) {
+  if (device == nullptr) {
+    return std::move(future).Await();
+  }
+  return device->Await(std::move(future));
+}
+
 }  // namespace
 
 HloRunnerPjRt::HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client)
@@ -455,13 +465,13 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
       wrapped_executable->GetOrLoadExecutable(pjrt_client_.get()));
   std::vector<PjRtBuffer*> argument_ptrs = BufferVecToPointerVec(arguments);
   std::optional<Future<>> returned_future = {};
+  PjRtDevice* device = pjrt_client_->addressable_devices()[kDeviceIdx];
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<PjRtBuffer>> buffers,
-      pjrt_executable->ExecuteSharded(
-          argument_ptrs, pjrt_client_->addressable_devices()[kDeviceIdx],
-          *execute_options, returned_future, true));
+      pjrt_executable->ExecuteSharded(argument_ptrs, device, *execute_options,
+                                      returned_future, true));
   if (returned_future.has_value()) {
-    TF_RETURN_IF_ERROR(returned_future->Await());
+    TF_RETURN_IF_ERROR(Await(device, std::move(*returned_future)));
   }
   return buffers;
 }
@@ -702,8 +712,9 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                   /*returned_future=*/returned_future,
                   /*fill_future=*/true);
               if (returned_future.has_value()) {
-                if (const absl::Status& status = returned_future->Await();
-                    !status.ok()) {
+                absl::Status status =
+                    Await(device_ptr, std::move(*returned_future));
+                if (!status.ok()) {
                   per_replica_results[i] = status;
                 }
               }
@@ -934,7 +945,7 @@ HloRunnerPjRt::TransferLiteralToDevice(
 
 absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
     PjRtBuffer& buffer) {
-  TF_RETURN_IF_ERROR(buffer.GetReadyFuture().Await());
+  TF_RETURN_IF_ERROR(Await(buffer.device(), buffer.GetReadyFuture()));
 
   // Implementations of ToLiteralSync() do not support empty tuples. Since an
   // empty tuple literal is easy to construct, we do so here.
@@ -943,7 +954,7 @@ absl::StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(
     return LiteralUtil::MakeTuple({});
   }
   TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal,
-                      buffer.ToLiteral().Await());
+                      Await(buffer.device(), buffer.ToLiteral()));
   return std::move(*literal);
 }
 
