@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/padding.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -125,8 +126,8 @@ class HloCostAnalysisTest : public ::testing::Test {
     auto computation_status = builder->Build();
     CHECK_OK(computation_status.status());
     auto computation = std::move(computation_status).value();
-    auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
-                                                         DebugOptions())
+    auto config = HloModule::CreateModuleConfigFromProto(
+                      computation.proto(), GetDebugOptionsFromFlags())
                       .value();
     return HloModule::CreateFromProto(computation.proto(), config).value();
   }

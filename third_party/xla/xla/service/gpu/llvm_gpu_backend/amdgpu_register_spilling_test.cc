@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/stream_executor/device_description.h"
@@ -64,7 +65,7 @@ class AMDGPURegisterSpillingTest
   absl::StatusOr<amdgpu::HsacoResult> CompileModule(
       llvm::Module* module, const std::string& module_id,
       bool fail_on_spilling) {
-    DebugOptions debug_options;
+    DebugOptions debug_options = GetDebugOptionsFromFlags();
     debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(
         fail_on_spilling);
 
@@ -169,7 +170,7 @@ TEST(AMDGPUCacheHitModuleStatsTest, CacheHitReturnsIdenticalModuleStats) {
         &context);
   };
   auto compile = [&module_id](llvm::Module* module) {
-    DebugOptions debug_options;
+    DebugOptions debug_options = GetDebugOptionsFromFlags();
     module->setModuleIdentifier(module_id);
     return amdgpu::CompileToHsaco(
         module, se::GpuComputeCapability{se::RocmComputeCapability{"gfx1100"}},

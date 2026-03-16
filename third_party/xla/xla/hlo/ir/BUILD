@@ -281,6 +281,7 @@ xla_cc_test(
     srcs = ["hlo_module_test.cc"],
     deps = [
         ":hlo",
+        "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",

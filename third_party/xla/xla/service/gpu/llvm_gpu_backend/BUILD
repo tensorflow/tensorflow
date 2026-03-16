@@ -308,6 +308,7 @@ xla_cc_test(
     deps = [
         ":amdgpu_backend",
         ":load_ir_module",
+        "//xla:debug_options_flags",
         "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -333,6 +334,7 @@ xla_cc_test(
     deps = [
         ":amdgpu_backend",
         ":load_ir_module",
+        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:kernel_stats",

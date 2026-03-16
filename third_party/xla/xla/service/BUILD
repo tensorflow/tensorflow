@@ -3514,6 +3514,7 @@ xla_cc_test(
         ":hlo_cost_analysis",
         ":service",
         "//xla:array4d",
+        "//xla:debug_options_flags",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

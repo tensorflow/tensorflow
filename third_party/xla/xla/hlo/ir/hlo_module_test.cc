@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -1073,7 +1074,7 @@ TEST(HloModuleTest, LoadAndFixNonConsecutiveInstructionIds) {
 
   TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
                           xla::HloModule::CreateModuleConfigFromProto(
-                              hlo_module_proto, xla::DebugOptions()));
+                              hlo_module_proto, GetDebugOptionsFromFlags()));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> module,
       xla::HloModule::CreateFromProto(hlo_module_proto, config,
@@ -1185,7 +1186,8 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
   TF_ASSERT_OK_AND_ASSIGN(
       HloModuleConfig config,
       HloModule::CreateModuleConfigFromShape(
-          module->entry_computation()->ComputeProgramShape(), DebugOptions()));
+          module->entry_computation()->ComputeProgramShape(),
+          GetDebugOptionsFromFlags()));
 
   module->set_config(std::move(config));
 
@@ -1238,10 +1240,10 @@ TEST(HloModuleTest, TestCreateFromProtoUpdatesBufferAssignment) {
       opt_hlo_module_proto_str, &opt_hlo_module_proto_modified));
 
   // Recreate the hlo module from the altered protos.
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloModuleConfig module_config_recreated,
-      HloModule::CreateModuleConfigFromProto(
-          opt_hlo_module_proto_modified.hlo_module(), DebugOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig module_config_recreated,
+                          HloModule::CreateModuleConfigFromProto(
+                              opt_hlo_module_proto_modified.hlo_module(),
+                              GetDebugOptionsFromFlags()));
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloModule> hlo_module_recreated,
@@ -1325,9 +1327,9 @@ TEST(HloModuleTest, OnTheFlyCanonicalizeStackFrameId) {
   frame3->set_file_location_id(1);
   frame3->set_parent_frame_id(0);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloModuleConfig config,
-      HloModule::CreateModuleConfigFromProto(proto, DebugOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           HloModule::CreateFromProto(proto, config));
@@ -1380,7 +1382,7 @@ TEST(HloModuleTest, DeviceTypeSerialization) {
   // Create config from proto (which we verified sets device type)
   // But let's unset it to be sure CreateFromProto does the work.
   auto status_or_config_default =
-      HloModule::CreateModuleConfigFromProto(proto, DebugOptions());
+      HloModule::CreateModuleConfigFromProto(proto, GetDebugOptionsFromFlags());
   ASSERT_TRUE(status_or_config_default.ok());
   HloModuleConfig config_default = std::move(status_or_config_default).value();
   config_default.set_device_type("");
