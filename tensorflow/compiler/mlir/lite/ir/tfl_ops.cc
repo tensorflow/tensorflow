@@ -98,6 +98,12 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/util/padding.h"
 
+#ifndef ENABLE_DENSE_RESOURCE_ATTR_FOLD
+#define ENABLE_DENSE_RESOURCE_ATTR_FOLD 0
+#else
+#define ENABLE_DENSE_RESOURCE_ATTR_FOLD 1
+#endif
+
 namespace mlir {
 namespace TFL {
 
@@ -233,11 +239,27 @@ DenseElementsAttr GetSqueezedPermutation(Value input_value,
       llvm::ArrayRef(squeezed_permutation));
 }
 
+bool HasDenseResourceOperand(mlir::Operation* op) {
+  ElementsAttr elements_attr;
+  for (auto operand : op->getOperands()) {
+    if (matchPattern(operand, m_Constant(&elements_attr))) {
+      if (llvm::isa<mlir::DenseResourceElementsAttr>(elements_attr)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // Utility function to determine if an operation should be folded.
 // This is a heuristic to avoid folding operations that result in larger
 // constants.
 // TODO(b/394905516): Remove this once we have a way to configure the threshold.
 bool ShouldFoldOperation(Operation* inst) {
+  if (!(ENABLE_DENSE_RESOURCE_ATTR_FOLD) && HasDenseResourceOperand(inst)) {
+    return false;
+  }
+
   auto get_size = [&](TypeRange types) {
     int64_t size = 0;
     for (auto t : types) {
