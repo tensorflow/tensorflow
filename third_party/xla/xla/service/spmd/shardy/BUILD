@@ -159,6 +159,7 @@ xla_cc_binary(
         "//xla/service/spmd/shardy/stablehlo_round_trip:shard_map_import",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_export",
         "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:unflatten_call_graph",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",

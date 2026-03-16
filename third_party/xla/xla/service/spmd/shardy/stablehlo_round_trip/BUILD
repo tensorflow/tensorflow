@@ -109,6 +109,7 @@ cc_library(
         ":export_ops",
         ":export_shardings",
         ":shard_map_export",
+        ":unflatten_call_graph",
         "//xla/service/spmd/shardy/round_trip_common:export_named_computations",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
@@ -207,5 +208,18 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+cc_library(
+    name = "unflatten_call_graph",
+    srcs = ["unflatten_call_graph.cc"],
+    hdrs = ["unflatten_call_graph.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )
