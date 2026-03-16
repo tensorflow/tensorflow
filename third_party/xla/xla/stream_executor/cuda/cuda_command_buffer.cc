@@ -245,6 +245,12 @@ CudaCommandBuffer::CreateConditionalNode(
     absl::Span<const GraphNodeHandle> dependencies,
     GraphConditionalHandle conditional, ConditionType type) {
 #if CUDA_VERSION >= 12030
+  if (stream_exec_->GetDeviceDescription().driver_version() <
+      SemanticVersion{12, 3, 0}) {
+    return absl::UnimplementedError(
+        "Conditional nodes require CUDA driver version >= 12.3");
+  }
+
   // Add conditional node to a graph.
   VLOG(2) << "Add conditional node to a graph " << graph_
           << "; type: " << ConditionalTypeToString(type)
@@ -454,6 +460,12 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNode(
   child_command_buffer->is_owned_graph_ = false;
 
 #if CUDA_VERSION >= 12090
+  if (stream_exec_->GetDeviceDescription().driver_version() <
+      SemanticVersion{12, 9, 0}) {
+    return absl::UnimplementedError(
+        "Moved child node require CUDA driver version >= 12.9");
+  }
+
   CUgraphNodeParams nodeParams{};
   nodeParams.type = CU_GRAPH_NODE_TYPE_GRAPH;
   nodeParams.graph.graph = child_graph;
