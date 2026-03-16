@@ -2830,7 +2830,8 @@ AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
     HloInstruction* rhs, int64_t rhs_contracting_dim, bool swapped) {
   bool can_optimize = lhs->opcode() == HloOpcode::kConcatenate &&
                       lhs->concatenate_dimension() == lhs_contracting_dim &&
-                      rhs->opcode() == HloOpcode::kConstant;
+                      rhs->opcode() == HloOpcode::kConstant &&
+                      rhs->shape().dimensions().size() == 2;
   if (!can_optimize) {
     return nullptr;
   }

@@ -8729,6 +8729,30 @@ ENTRY ConstScalarMultiply {
   ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
+TEST_F(DotOfConcatSimplificationTest, DotOfConcatRank3LhsRank1Rhs) {
+  const char* hlo_string = R"(
+HloModule m
+ENTRY e {
+  p0 = f32[10,4,2] parameter(0)
+  p1 = f32[10,4,1] parameter(1)
+  concat = f32[10,4,3] concatenate(p0, p1), dimensions={2}
+  rhs = f32[3] constant({0.5, 0.5, 0.1})
+  ROOT dot = f32[10,4] dot(concat, rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  // workaround to induce the same path shardy takes
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_enable_dot_strength_reduction(false);
+
+  AlgebraicSimplifier simplifier(options);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
+  EXPECT_FALSE(changed);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Concatenate(), m::Constant())));
+}
+
 INSTANTIATE_TEST_SUITE_P(DotOfConcatSimplificationTestInstantiation,
                          DotOfConcatSimplificationTest,
                          ::testing::ValuesIn(kDotOfConcatTestSpecs));
