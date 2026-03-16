@@ -71,13 +71,14 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-namespace {
 
 using memory_space_assignment::PresetAssignments;
 using ::testing::FieldsAre;
 using ::testing::HasSubstr;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
+
+namespace {
 
 // DFS visitor that collects the instructions referenced by a computation
 // without descending into nested computations, i.e., only from the operands.
@@ -112,6 +113,8 @@ std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
 int64_t BufferSizeBytes(const BufferValue& buffer) {
   return ShapeUtil::ByteSizeOf(buffer.shape(), sizeof(void*));
 }
+
+}  // namespace
 
 class BufferAssignmentTest : public HloHardwareIndependentTestBase {
  protected:
@@ -389,6 +392,12 @@ class BufferAssignmentTest : public HloHardwareIndependentTestBase {
       total_size += allocation.size();
     }
     return total_size;
+  }
+
+  absl::Status AddAssignment(BufferAllocation& allocation,
+                             const HloValue& buffer, int64_t offset,
+                             int64_t size) {
+    return allocation.AddAssignment(buffer, offset, size);
   }
 
   // Shapes for use in the examples.
@@ -4746,5 +4755,71 @@ TEST(ComputeTotalAllocationBytesTest, OnlyMatchingColorAllocations) {
   EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 30);
 }
 
-}  // namespace
+TEST_F(BufferAssignmentTest, ComputesPeakMemoryWithCollocatingBuffers) {
+  auto module = CreateNewVerifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  // We need a dummy instruction to attach HloValues to.
+  auto dummy_inst = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+
+  HloValue bm0(0, dummy_inst, ShapeIndex{});
+  bm0.set_color(0);
+  HloValue b1(1, dummy_inst, ShapeIndex{});
+  b1.set_color(0);
+  HloValue b2(2, dummy_inst, ShapeIndex{});
+  b2.set_color(0);
+  HloValue bm1(3, dummy_inst, ShapeIndex{});
+  bm1.set_color(0);
+  HloValue b3(4, dummy_inst, ShapeIndex{});
+  b3.set_color(0);
+
+  BufferAllocation allocation(/*index=*/0, /*size=*/8, /*color=*/0);
+
+  // Add assignments: buffer, offset, size
+  TF_ASSERT_OK(AddAssignment(allocation, bm0, 5, 3));
+  TF_ASSERT_OK(AddAssignment(allocation, b1, 1, 2));
+  TF_ASSERT_OK(AddAssignment(allocation, b2, 2, 3));
+  TF_ASSERT_OK(AddAssignment(allocation, bm1, 4, 4));
+  TF_ASSERT_OK(AddAssignment(allocation, b3, 0, 3));
+
+  HeapSimulatorTrace trace;
+  auto add_event = [&](HeapSimulatorTrace::Event::Kind kind, int buffer_id) {
+    auto* event = trace.add_events();
+    event->set_kind(kind);
+    event->set_buffer_id(buffer_id);
+  };
+
+  // User trace:
+  // t0 = 0: ALLOC b1 (1)
+  // t1 = 2: ALLOC bm0 (0)
+  // t2 = 3: FREE b1 (1)
+  // t3 = 4: ALLOC b2 (2)
+  // t4 = 6: FREE b2 (2)
+  // t5 = 8: FREE bm0 (0)
+  // t6 = 9: ALLOC bm1 (3)
+  // t7 = 10: ALLOC b3 (4)
+  // t8 = 12: FREE bm1 (3)
+  // t9 = 13: FREE b3 (4)
+
+  add_event(HeapSimulatorTrace::Event::ALLOC, 1);
+  add_event(HeapSimulatorTrace::Event::ALLOC, 0);
+  add_event(HeapSimulatorTrace::Event::FREE, 1);
+  add_event(HeapSimulatorTrace::Event::ALLOC, 2);
+  add_event(HeapSimulatorTrace::Event::FREE, 2);
+  add_event(HeapSimulatorTrace::Event::FREE, 0);
+  add_event(HeapSimulatorTrace::Event::ALLOC, 3);
+  add_event(HeapSimulatorTrace::Event::ALLOC, 4);
+  add_event(HeapSimulatorTrace::Event::FREE, 3);
+  add_event(HeapSimulatorTrace::Event::FREE, 4);
+
+  std::vector<const HloValue*> min_frag_buffers =
+      ComputePeakMemoryLogicalBuffers(allocation, trace);
+
+  // We expect {bm1, b3} which means sizes 4 and 3, offsets 4 and 0. IDs 3
+  // and 4.
+  ASSERT_EQ(min_frag_buffers.size(), 2);
+  EXPECT_EQ(min_frag_buffers[0]->id(), 3);
+  EXPECT_EQ(min_frag_buffers[1]->id(), 4);
+}
+
 }  // namespace xla
