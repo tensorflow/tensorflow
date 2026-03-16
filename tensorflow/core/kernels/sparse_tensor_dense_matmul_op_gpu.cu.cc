@@ -81,11 +81,11 @@ namespace functor {
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
 struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
-  static EIGEN_ALWAYS_INLINE Status
-  Compute(OpKernelContext* ctx, typename TTypes<T>::Matrix out,
-          typename TTypes<Tindices>::ConstMatrix a_indices,
-          typename TTypes<T>::ConstVec a_values,
-          typename TTypes<T>::ConstMatrix b) {
+  static EIGEN_ALWAYS_INLINE absl::Status Compute(
+      OpKernelContext* ctx, typename TTypes<T>::Matrix out,
+      typename TTypes<Tindices>::ConstMatrix a_indices,
+      typename TTypes<T>::ConstVec a_values,
+      typename TTypes<T>::ConstMatrix b) {
     int nnz = a_values.size();
     // out = A * B, A is [m x n] and B is [n x p], out is [m x p]
     int m = out.dimension(0);
@@ -132,7 +132,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
       out.device(d) = temp_out_t.matrix<Tsum>().template cast<T>();
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

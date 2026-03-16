@@ -108,13 +108,11 @@ __global__ void SparseSplitSliceIndexesKernel(
 }
 
 template <typename Index>
-Status LaunchSparseSplitSliceIndexesKernel(const GPUDevice& device,
-                                           Index input_nnz, int num_split,
-                                           int rank, int axis,
-                                           SliceIndexer<Index> slice_indexer,
-                                           const Index* input_indices,
-                                           int* slice_indexes) {
-  if (input_nnz == 0) return OkStatus();
+absl::Status LaunchSparseSplitSliceIndexesKernel(
+    const GPUDevice& device, Index input_nnz, int num_split, int rank, int axis,
+    SliceIndexer<Index> slice_indexer, const Index* input_indices,
+    int* slice_indexes) {
+  if (input_nnz == 0) return absl::OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_nnz, device, &SparseSplitSliceIndexesKernel<Index>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -136,10 +134,9 @@ __global__ void SparseSplitFindSliceEndsKernel(
 }
 
 template <typename Index>
-Status LaunchSparseSplitFindSliceEndsKernel(const GPUDevice& device,
-                                            Index input_nnz, int num_split,
-                                            const int* sorted_slice_indexes,
-                                            Index* slice_ends) {
+absl::Status LaunchSparseSplitFindSliceEndsKernel(
+    const GPUDevice& device, Index input_nnz, int num_split,
+    const int* sorted_slice_indexes, Index* slice_ends) {
   GpuLaunchConfig config = GetGpuLaunchConfig(
       num_split, device, &SparseSplitFindSliceEndsKernel<Index>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -183,13 +180,13 @@ __global__ void SparseSplitScatterKernel(
 }
 
 template <typename T, typename Index>
-Status LaunchSparseSplitScatterKernel(
+absl::Status LaunchSparseSplitScatterKernel(
     const GPUDevice& device, Index input_nnz, int rank, int axis,
     SliceIndexer<Index> slice_indexer, const Index* sort_permutation,
     const Index* slice_ends, const Index* input_indices, const T* input_values,
     int64_t index_bound, GpuDeviceArrayStruct<Index*> output_indices_data,
     GpuDeviceArrayStruct<T*> output_values_data) {
-  if (input_nnz == 0) return OkStatus();
+  if (input_nnz == 0) return absl::OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_nnz, device, &SparseSplitScatterKernel<T, Index>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -287,7 +284,7 @@ struct SparseSplitFunctor<GPUDevice, T> {
     OP_REQUIRES_OK_ASYNC(
         context,
         stream->Memcpy(slice_ends_host.mutable_data(),
-                       se::DeviceMemoryBase(
+                       stream_executor::DeviceAddressBase(
                            slice_ends_ptr, num_split * sizeof(*slice_ends_ptr)),
                        num_split * sizeof(*slice_ends_ptr)),
         done);
@@ -339,12 +336,13 @@ struct SparseSplitFunctor<GPUDevice, T> {
 
  private:
   template <typename Index>
-  Status AllocateOutputs(OpKernelContext* context, int num_split, int rank,
-                         int axis, const TensorShape& dense_shape,
-                         const SliceIndexer<Index>& slice_indexer,
-                         const Index* slice_ends_host,
-                         GpuDeviceArrayOnHost<Index*>* output_indices,
-                         GpuDeviceArrayOnHost<T*>* output_values) const {
+  absl::Status AllocateOutputs(OpKernelContext* context, int num_split,
+                               int rank, int axis,
+                               const TensorShape& dense_shape,
+                               const SliceIndexer<Index>& slice_indexer,
+                               const Index* slice_ends_host,
+                               GpuDeviceArrayOnHost<Index*>* output_indices,
+                               GpuDeviceArrayOnHost<T*>* output_values) const {
     TF_RETURN_IF_ERROR(output_indices->Init());
     TF_RETURN_IF_ERROR(output_values->Init());
     for (int slice_index = 0; slice_index < num_split; ++slice_index) {
@@ -370,7 +368,7 @@ struct SparseSplitFunctor<GPUDevice, T> {
     }
     TF_RETURN_IF_ERROR(output_indices->Finalize());
     TF_RETURN_IF_ERROR(output_values->Finalize());
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

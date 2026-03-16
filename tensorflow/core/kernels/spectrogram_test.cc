@@ -32,12 +32,12 @@ namespace tensorflow {
 
 using ::std::complex;
 
-string InputFilename() {
+std::string InputFilename() {
   return io::JoinPath("tensorflow", "core", "kernels", "spectrogram_test_data",
                       "short_test_segment.wav");
 }
 
-string ExpectedFilename() {
+std::string ExpectedFilename() {
   return io::JoinPath("tensorflow", "core", "kernels", "spectrogram_test_data",
                       "short_test_segment_spectrogram.csv.bin");
 }
@@ -45,7 +45,7 @@ string ExpectedFilename() {
 const int kDataVectorLength = 257;
 const int kNumberOfFramesInTestData = 178;
 
-string ExpectedNonPowerOfTwoFilename() {
+std::string ExpectedNonPowerOfTwoFilename() {
   return io::JoinPath("tensorflow", "core", "kernels", "spectrogram_test_data",
                       "short_test_segment_spectrogram_400_200.csv.bin");
 }
