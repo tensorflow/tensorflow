@@ -236,12 +236,12 @@ ENTRY main {
 
 TEST_F(ConvDepthwiseBackpropFilterTest, DepthwiseBatchOuterDot) {
   const std::string hlo_string = R"(
-HloModule main, entry_computation_layout={(f32[8,30,1,64,5]{3,0,2,1,4},f32[8,30,30,64,3]{3,0,2,1,4})->f32[30,30,64,1,11]{2,3,1,0,4}}
+HloModule main, entry_computation_layout={(f32[8,30,1,16,5]{3,0,2,1,4},f32[8,30,30,16,3]{3,0,2,1,4})->f32[30,30,16,1,11]{2,3,1,0,4}}
 
 ENTRY main {
-  p0 = f32[8,30,1,64,5] parameter(0)
-  p1 = f32[8,30,30,64,3] parameter(1)
-  ROOT conv.1 = convolution(p0, p1), window={size=30x30x3 pad=0_0x29_29x0_0 lhs_dilate=30x1x3 rhs_dilate=29x1x1}, dim_labels=f01b2_i01o2->01fb2, batch_group_count=64
+  p0 = f32[8,30,1,16,5] parameter(0)
+  p1 = f32[8,30,30,16,3] parameter(1)
+  ROOT conv.1 = convolution(p0, p1), window={size=30x30x3 pad=0_0x29_29x0_0 lhs_dilate=30x1x3 rhs_dilate=29x1x1}, dim_labels=f01b2_i01o2->01fb2, batch_group_count=16
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0.01, 0.01}));
