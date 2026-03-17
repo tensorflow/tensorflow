@@ -671,9 +671,19 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
         choose_compact_layout_for_shape_function,
     std::optional<std::vector<Shape>>& argument_layouts,
     ExecutableBuildOptions* build_options,
-    std::vector<const Shape*>* argument_layout_pointers) {
+    std::vector<const Shape*>* argument_layout_pointers,
+    bool tuple_argument_layouts) {
   TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                       computation.GetProgramShape());
+  if (tuple_argument_layouts && program_shape.parameters_size() == 1 &&
+      program_shape.parameters(0).IsTuple() &&
+      argument_layouts->size() ==
+          program_shape.parameters(0).tuple_shapes().size()) {
+    VLOG(2) << "Packing " << argument_layouts->size()
+            << " argument layouts into a tuple.";
+    Shape tuple_shape = ShapeUtil::MakeTupleShape(*argument_layouts);
+    *argument_layouts = {std::move(tuple_shape)};
+  }
   const bool given_argument_layouts = argument_layouts.has_value();
   if (!argument_layouts) {
     argument_layouts.emplace(program_shape.parameters());
