@@ -405,6 +405,7 @@ INSTANTIATE_TEST_SUITE_P(
     TestRadixSort, CubSortPairsTest,
     ::testing::Combine(
         ::testing::Values(CreateRandomLiteral<U16, uint16_t>(32768, 1000),
+                          CreateRandomLiteral<S32, int32_t>(32768, 1000),
                           CreateRandomLiteral<U32, uint32_t>(32768, 1000),
                           CreateRandomLiteral<U64, uint64_t>(32768, 1000)),
         ::testing::Values(F16, F32, F64), ::testing::Bool()),

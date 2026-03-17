@@ -83,7 +83,9 @@ XLA_CUB_EXTERN_SORT_PAIRS(int32_t, uint32_t);
 XLA_CUB_EXTERN_SORT_PAIRS(int32_t, uint64_t);
 
 // Pairs with unsigned 32-bit key.
+XLA_CUB_EXTERN_SORT_PAIRS(uint32_t, uint16_t);
 XLA_CUB_EXTERN_SORT_PAIRS(uint32_t, uint32_t);
+XLA_CUB_EXTERN_SORT_PAIRS(uint32_t, uint64_t);
 
 // Pairs with 64-bit key.
 XLA_CUB_EXTERN_SORT_PAIRS(uint64_t, uint16_t);

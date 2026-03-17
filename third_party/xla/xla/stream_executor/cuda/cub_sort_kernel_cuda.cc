@@ -107,11 +107,6 @@ absl::StatusOr<SortPairsFn> GetSortPairsFn(xla::PrimitiveType key_type,
     case xla::U16:
       return GetSortPairsFnForValueWidth<uint16_t>(value_bit_width);
     case xla::S32:
-      if (value_bit_width != 32) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "Unsupported value type for CUB sort with key S32 and value: ",
-            xla::primitive_util::LowercasePrimitiveTypeName(key_type)));
-      }
       return GetSortPairsFnForValueWidth<int32_t>(value_bit_width);
     case xla::U32:
       return GetSortPairsFnForValueWidth<uint32_t>(value_bit_width);
