@@ -335,6 +335,31 @@ class PjRtRawLoadedExecutable {
 
 class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  public:
+  struct DispatchInfo {
+    std::vector<Shape> parameter_device_shapes;
+    Shape output_device_shape;
+    std::vector<int> output_memory_space_kind_ids;
+    std::vector<PjRtDevice*> addressable_devices;
+    std::vector<LogicalDeviceIds> addressable_device_logical_ids;
+    std::shared_ptr<DeviceAssignment> device_assignment;
+    std::vector<int> parameters_that_must_be_donated;
+    std::vector<int64_t> input_buffer_sizes_in_bytes;
+  };
+
+  explicit CommonPjRtLoadedExecutable(DispatchInfo info)
+      : parameter_device_shapes_(std::move(info.parameter_device_shapes)),
+        parameters_that_must_be_donated_(
+            std::move(info.parameters_that_must_be_donated)),
+        output_device_shape_(std::move(info.output_device_shape)),
+        output_memory_space_kind_ids_(
+            std::move(info.output_memory_space_kind_ids)),
+        input_buffer_sizes_in_bytes_(
+            std::move(info.input_buffer_sizes_in_bytes)),
+        addressable_devices_(std::move(info.addressable_devices)),
+        addressable_device_logical_ids_(
+            std::move(info.addressable_device_logical_ids)),
+        device_assignment_(std::move(info.device_assignment)) {}
+
   CommonPjRtLoadedExecutable(
       std::vector<Shape> parameter_device_shapes, Shape output_device_shape,
       std::vector<int> output_memory_space_kind_ids,
@@ -384,6 +409,13 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       const ExecuteOptions& options,
       std::optional<tsl::Future<void>>& returned_future,
       bool fill_future) const override;
+
+  DispatchInfo GetDispatchInfo() const {
+    return {parameter_device_shapes_,         output_device_shape_,
+            output_memory_space_kind_ids_,    addressable_devices_,
+            addressable_device_logical_ids_,  device_assignment_,
+            parameters_that_must_be_donated_, input_buffer_sizes_in_bytes_};
+  }
 
  protected:
   // Execute is split into Prepare and Launch.
