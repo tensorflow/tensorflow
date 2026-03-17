@@ -5,7 +5,7 @@ package xla;
 import "xla/stream_executor/device_description.proto";
 
 option java_multiple_files = true;
-option java_outer_classname = "GpuTopologyProto";
+option java_outer_classname = "GpuTopology";
 
 // A proto used to serialize GpuTopology instances.
 message GpuTopologyProto {
