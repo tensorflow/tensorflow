@@ -212,4 +212,54 @@ TEST(GpuCliqueKeyTest, IsSubsetOfForCliqueInvalidation) {
   EXPECT_FALSE(p2p_clique.IsSubsetOf(large_clique));
 }
 
+// Test that IsSubsetOf correctly compares incarnations to prevent false
+// positives. This is a regression test for a bug where incarnations were
+// not being compared, causing cliques with different incarnations to be
+// incorrectly identified as subsets, leading to deadlocks.
+TEST(GpuCliqueKeyTest, IsSubsetOfComparesIncarnations) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+  GlobalDeviceId id2 = GlobalDeviceId(2);
+  GlobalDeviceId id3 = GlobalDeviceId(3);
+
+  // Create two cliques with the same devices and is_p2p flag,
+  // but different incarnations
+  std::vector<IncarnationId> incarnations1 = {IncarnationId(1),
+                                              IncarnationId(2)};
+  std::vector<IncarnationId> incarnations2 = {IncarnationId(3),
+                                              IncarnationId(4)};
+
+  GpuCliqueKey key_with_incarnations1({id0, id1}, /*num_local_participants=*/2,
+                                      /*is_p2p=*/false, incarnations1);
+  GpuCliqueKey key_with_incarnations2({id0, id1}, /*num_local_participants=*/2,
+                                      /*is_p2p=*/false, incarnations2);
+
+  // These keys should NOT be subsets of each other because their
+  // incarnations differ, even though devices and is_p2p match
+  EXPECT_FALSE(key_with_incarnations1.IsSubsetOf(key_with_incarnations2));
+  EXPECT_FALSE(key_with_incarnations2.IsSubsetOf(key_with_incarnations1));
+
+  // Test subset relationship with matching incarnations
+  GpuCliqueKey small_key({id0, id1}, /*num_local_participants=*/2,
+                         /*is_p2p=*/false, incarnations1);
+  GpuCliqueKey large_key({id0, id1, id2, id3}, /*num_local_participants=*/4,
+                         /*is_p2p=*/false, incarnations1);
+
+  // With matching incarnations, the subset relationship should work
+  EXPECT_TRUE(small_key.IsSubsetOf(large_key));
+  EXPECT_FALSE(large_key.IsSubsetOf(small_key));
+
+  // But with different incarnations, it should fail even if devices are a
+  // subset
+  GpuCliqueKey small_key_different_incarnations(
+      {id0, id1}, /*num_local_participants=*/2, /*is_p2p=*/false,
+      incarnations2);
+
+  EXPECT_FALSE(small_key_different_incarnations.IsSubsetOf(large_key));
+
+  // Keys with same devices and incarnations should be subsets of themselves
+  EXPECT_TRUE(key_with_incarnations1.IsSubsetOf(key_with_incarnations1));
+  EXPECT_TRUE(key_with_incarnations2.IsSubsetOf(key_with_incarnations2));
+}
+
 }  // namespace xla::gpu
