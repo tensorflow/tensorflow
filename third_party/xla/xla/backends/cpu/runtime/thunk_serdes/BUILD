@@ -122,6 +122,29 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "fft_thunk_serdes",
+    srcs = ["fft_thunk_serdes.cc"],
+    hdrs = ["fft_thunk_serdes.h"],
+    deps = [
+        "//xla/backends/cpu/runtime:fft_thunk",
+        "//xla/backends/cpu/runtime:thunk",
+        "//xla/backends/cpu/runtime:thunk_proto_cc",
+        "//xla/backends/cpu/runtime:thunk_proto_serdes_impl",
+        "//xla/backends/cpu/runtime:thunk_proto_serdes_utils",
+        "//xla/hlo/ir:hlo",
+        "//xla/runtime:resource_use",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@tsl//tsl/platform:casts",
+    ],
+    alwayslink = 1,
+)
+
 # Utility target to link all thunk serdes implementations.
 cc_library(
     name = "all_thunk_serdes",
@@ -129,6 +152,7 @@ cc_library(
         ":collective_thunk_serdes",
         ":convolution_thunk_serdes",
         ":dot_thunk_serdes",
+        ":fft_thunk_serdes",
         ":ynn_fusion_thunk_serdes",
     ],
     alwayslink = 1,

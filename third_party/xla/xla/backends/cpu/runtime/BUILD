@@ -1248,7 +1248,6 @@ cc_library(
         ":conditional_thunk",
         ":copy_thunk",
         ":custom_call_thunk",
-        ":fft_thunk",
         ":infeed_thunk",
         ":kernel_thunk",
         ":logical_id_thunk",

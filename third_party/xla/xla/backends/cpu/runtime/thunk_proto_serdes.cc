@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/conditional_thunk.h"
 #include "xla/backends/cpu/runtime/copy_thunk.h"
 #include "xla/backends/cpu/runtime/custom_call_thunk.h"
-#include "xla/backends/cpu/runtime/fft_thunk.h"
 #include "xla/backends/cpu/runtime/infeed_thunk.h"
 #include "xla/backends/cpu/runtime/kernel_thunk.h"
 #include "xla/backends/cpu/runtime/logical_id_thunk.h"
@@ -406,25 +405,6 @@ static absl::Status ToProto(const WhileThunk& thunk, ThunkProto& proto) {
   return absl::OkStatus();
 }
 
-static absl::Status ToProto(const FftThunk& thunk, ThunkProto& proto) {
-  FftThunkProto* fft_thunk_proto = proto.mutable_fft_thunk();
-
-  fft_thunk_proto->set_is_multi_thread_eigen(thunk.is_multi_thread_eigen());
-  fft_thunk_proto->set_fft_type(thunk.fft_type());
-  const auto& fft_length = thunk.fft_length();
-  fft_thunk_proto->mutable_fft_length()->Add(fft_length.begin(),
-                                             fft_length.end());
-
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.input_buffer(), thunk.input_shape(),
-      fft_thunk_proto->mutable_input_buffer_shape()));
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.output_buffer(), thunk.output_shape(),
-      fft_thunk_proto->mutable_output_buffer_shape()));
-
-  return absl::OkStatus();
-}
-
 static absl::Status ToProto(const RngGetAndUpdateStateThunk& thunk,
                             ThunkProto& proto) {
   RngGetAndUpdateStateThunkProto* rng_get_and_update_state_thunk_proto =
@@ -527,10 +507,6 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
     case Thunk::Kind::kConditional:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           tsl::down_cast<const ConditionalThunk&>(thunk), proto));
-      break;
-    case Thunk::Kind::kFft:
-      TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const FftThunk&>(thunk), proto));
       break;
     case Thunk::Kind::kRngGetAndUpdateState:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
@@ -688,29 +664,6 @@ CustomCallThunkFromProto(
       std::move(info), proto.custom_call_thunk().target_name(),
       std::move(op_buffers), proto.custom_call_thunk().backend_config(),
       proto.custom_call_thunk().api_version());
-}
-
-static absl::StatusOr<std::unique_ptr<FftThunk>> FftThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
-
-  TF_ASSIGN_OR_RETURN(
-      auto input_slice_shape,
-      DeserializeSliceShapeFromProto(proto.fft_thunk().input_buffer_shape(),
-                                     buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
-      auto output_slice_shape,
-      DeserializeSliceShapeFromProto(proto.fft_thunk().output_buffer_shape(),
-                                     buffer_allocations));
-
-  const auto& [input_buffer, input_shape] = input_slice_shape;
-  const auto& [output_buffer, output_shape] = output_slice_shape;
-
-  return FftThunk::Create(
-      std::move(info), proto.fft_thunk().is_multi_thread_eigen(),
-      proto.fft_thunk().fft_type(), proto.fft_thunk().fft_length(),
-      input_buffer, input_shape, output_buffer, output_shape);
 }
 
 static absl::StatusOr<std::unique_ptr<InfeedThunk>> InfeedThunkFromProto(
@@ -1006,8 +959,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       return CopyThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kCustomCall:
       return CustomCallThunkFromProto(proto, *buffer_allocations_);
-    case Thunk::Kind::kFft:
-      return FftThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kInfeed:
       return InfeedThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kKernel:
