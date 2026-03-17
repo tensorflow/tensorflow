@@ -358,13 +358,13 @@ TEST_F(TileAnalysisTest, DotIsSupportedConcreteTileSizes) {
 
   EXPECT_THAT(tiled_computation, MatchString(R"(
     Dimensions:
-    0 type: parallel size: 4 dim ID:0
+    0 type: parallel size: 4 tile size: 2 dim ID:0
       hlo: %dot = f32[4,16]{1,0} dot(%p0, %p1), lhs_contracting_dims={1},
                   rhs_contracting_dims={0}
-    1 type: parallel size: 16 dim ID:1
+    1 type: parallel size: 16 tile size: 4 dim ID:1
       hlo: %dot = f32[4,16]{1,0} dot(%p0, %p1), lhs_contracting_dims={1},
                   rhs_contracting_dims={0}
-    2 type: sequential size: 8 dim ID:2
+    2 type: sequential size: 8 tile size: 8 dim ID:2
       hlo: %dot = f32[4,16]{1,0} dot(%p0, %p1), lhs_contracting_dims={1},
                   rhs_contracting_dims={0}
 

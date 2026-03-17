@@ -81,6 +81,11 @@ class TilingSpace {
 
     // Tile size for the dimension.
     int64_t tile_size = -1;
+
+    // Whether the tile size is set.
+    bool IsTileSizeSet() const { return tile_size != -1; }
+
+    std::string ToString() const;
   };
 
   // Information about a runtime variable.
@@ -133,6 +138,10 @@ class TilingSpace {
   // `operand_id`. This runtime variable info must exist.
   const RTVarInfo& GetRTVarInfo(const HloInstruction& hlo,
                                 int64_t operand_id) const;
+
+  llvm::SmallVector<DimensionInfo, 4> dimensions() const {
+    return llvm::to_vector(dimensions_);
+  }
 
   ConstraintExpression& mutable_constraint() { return constraints_; }
   const ConstraintExpression& constraint() const { return constraints_; }
