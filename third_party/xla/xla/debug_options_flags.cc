@@ -2572,6 +2572,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Disable XLA GPU passes that depend on non-open source binary "
       "libraries"));
   flag_list->push_back(
+      tsl::Flag("xla_gpu_experimental_enable_conv_fusion",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_experimental_enable_conv_fusion),
+                debug_options->xla_gpu_experimental_enable_conv_fusion(),
+                "enable experimental XLA GPU passes that rewrite conv as hlo "
+                "fusion instead of custom call."));
+  flag_list->push_back(
       tsl::Flag("xla_ignore_channel_id",
                 bool_setter_for(&DebugOptions::set_xla_ignore_channel_id),
                 debug_options->xla_ignore_channel_id(),

@@ -1562,6 +1562,7 @@ cc_library(
     deps = [
         ":alias_info",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms:conv_fusion_rewriter",
         "//xla/backends/gpu/transforms:multi_output_fusion",
         "//xla/backends/gpu/transforms:priority_fusion",
         "//xla/backends/gpu/transforms:sort_iota_fusion",

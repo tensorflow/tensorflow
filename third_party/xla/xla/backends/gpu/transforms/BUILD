@@ -583,6 +583,67 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "conv_fusion_rewriter",
+    srcs = ["conv_fusion_rewriter.cc"],
+    hdrs = ["conv_fusion_rewriter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_test(
+    name = "conv_fusion_rewriter_test",
+    srcs = ["conv_fusion_rewriter_test.cc"],
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        ":conv_fusion_rewriter",
+        ":conv_kind_assignment",
+        "//xla:error_spec",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/transforms/simplifiers:algebraic_simplifier",
+        "//xla/service:hlo_module_config",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/stream_executor:dnn",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "cublas_pad_for_gemms",
     srcs = ["cublas_pad_for_gemms.cc"],
     hdrs = ["cublas_pad_for_gemms.h"],
