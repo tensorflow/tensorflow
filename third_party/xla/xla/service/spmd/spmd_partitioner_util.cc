@@ -3314,6 +3314,10 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
 
   if (analysis.partitioned_slice_dims.empty()) {
     analysis.method = DynamicUpdateSliceMethod::kDefault;
+  } else if (is_enzyme_opt_enabled &&
+             !has_partitioned_slice_dim_with_dynamic_index) {
+    analysis.method =
+        DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices;
   } else if (update_on_a_single_partition) {
     analysis.method = DynamicUpdateSliceMethod::kUpdateOnASinglePartition;
   } else if (has_partitioned_slice_dim_with_dynamic_index) {
