@@ -53,7 +53,7 @@ class AsyncSignatureRunner {
   // `buffer`, `attrs`, and `handle` should not be null.
   // The application must provide the buffer type in `attrs`. It can also
   // include additional attributes for the backends to validate (e.g. padding).
-  // Returns kTfLiteError is any of the backends failed to register
+  // Returns kTfLiteError if any of the backends failed to register
   // the buffer (e.g. buffer type is not supported).
   TfLiteStatus RegisterBuffer(TfLiteIoType io_type,
                               const TfLiteBackendBuffer* buffer,
@@ -172,7 +172,7 @@ class AsyncSignatureRunner {
   // `task` should not be nullptr and will be deleted.
   // NOTE: Caller needs to ensure `Finish` is not called concurrently with
   // `InvokeAsync` or `Wait`.
-  // Returns kTfLiteError if failes to release the task. The task will be
+  // Returns kTfLiteError if fails to release the task. The task will be
   // destroyed regardless of error or not.
   TfLiteStatus Finish(TfLiteExecutionTask* task);
 
