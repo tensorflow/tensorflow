@@ -161,6 +161,13 @@ struct TfrtPipelineOptions
                      "subqueue for each criticality."),
       llvm::cl::init(false)};
 
+  Option<int64_t> num_warmup_batch_threads{
+      *this, "tfrt-num-warmup-threads",
+      llvm::cl::desc(
+          "If non-zero, this number of threads will be used to process warmup "
+          "requests."),
+      llvm::cl::init(0)};
+
   Option<std::string> batch_padding_policy{
       *this, "tfrt-batch-padding-policy",
       llvm::cl::desc("The policy used when padding (or splitting) batches."),

@@ -85,6 +85,7 @@ struct ReconfigBatchOpPassOptions {
   int64_t max_enqueued_batches = 0;
   int64_t batch_queue_global_prioritization_num_threads = 0;
   bool enable_priority_aware_batch_scheduler = false;
+  int64_t num_warmup_batch_threads = 0;
 };
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
     ReconfigBatchOpPassOptions options);
