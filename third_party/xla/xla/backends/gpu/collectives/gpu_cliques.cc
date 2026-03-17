@@ -796,7 +796,8 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
     const GpuCliqueKey& clique_key,
     absl::Span<const std::vector<GlobalDeviceId>> device_groups,
     const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
-    const AcquiredCliquesMap& acquired_cliques, int64_t max_nchannels) {
+    const AcquiredCliquesMap& acquired_cliques, int64_t max_nchannels,
+    bool use_minimal_resource) {
   VLOG(2) << absl::StreamFormat(
       "[%d] [rank=%v] [run=%v] Acquire GPU clique %v; device_groups=%d:[%s]; "
       "acquired_cliques=%d; max_channels=%d",
@@ -937,7 +938,7 @@ absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
       GetDebugOptionsFromFlags().xla_gpu_nccl_blocking_communicators();
   config.async_execution =
       GetDebugOptionsFromFlags().xla_gpu_nccl_async_execution();
-
+  config.use_minimal_resource = use_minimal_resource;
   // Split from the already acquired clique.
   if (split_from) {
     return InitializeGpuClique(collectives, device, run_id, clique_key,

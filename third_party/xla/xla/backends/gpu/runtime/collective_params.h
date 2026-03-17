@@ -45,7 +45,8 @@ struct CollectiveParams {
       const ServiceExecutableRunOptions& run_options,
       absl::Span<se::Stream* const> async_streams,
       LocalDeviceId local_device_id, int64_t collective_max_nchannels = 0,
-      int64_t p2p_max_nchannels = 0);
+      int64_t p2p_max_nchannels = 0,
+      bool collective_use_minimal_resource = false);
 
   GpuCollectives* collectives;
   se::StreamExecutor* executor;
@@ -69,6 +70,8 @@ struct CollectiveParams {
   int64_t p2p_max_nchannels;
 
   int local_device_count = 0;
+  bool need_barrier = false;
+  bool collective_use_minimal_resource;
 
  private:
   CollectiveParams(
@@ -80,7 +83,7 @@ struct CollectiveParams {
       const CliqueIdCallback* clique_id_callback,
       const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
       int64_t collective_max_nchannels, int64_t p2p_max_nchannels,
-      int local_device_count);
+      int local_device_count, bool collective_use_minimal_resource);
 };
 
 }  // namespace xla::gpu
