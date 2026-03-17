@@ -950,7 +950,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           )
       )
       # Verify the result is sorted [2, 4, 8]
-      self.assertEqual(list(result), [2, 4, 8])
+      self.assertAllEqual(result, [2, 4, 8])
 
 
 if __name__ == "__main__":
