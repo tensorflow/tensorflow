@@ -920,6 +920,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   ConstructHaloExchangeSuperShard(const HloInstruction* input_operand,
                                   int64_t dim, int64_t left_amount,
                                   int64_t right_amount, bool handle_last_shard,
+                                  int64_t max_start_index,
                                   int64_t post_halo_shard_size);
 };
 

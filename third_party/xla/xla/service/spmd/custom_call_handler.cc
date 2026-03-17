@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -439,6 +440,11 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
       << "No dimension attribute in SPMD multi rotate op";
   int64_t dim = dim_it->second;
 
+  auto bufferize_it = attrs.find("bufferize");
+  TF_RET_CHECK(bufferize_it != attrs.end())
+      << "No bufferize attribute in SPMD multi rotate op";
+  int64_t bufferize = bufferize_it->second;
+
   auto left_amount_it = attrs.find("left_amount");
   TF_RET_CHECK(left_amount_it != attrs.end())
       << "No left_amount attribute in SPMD multi rotate op";
@@ -467,6 +473,8 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
       CeilOfRatio(full_size, participating_shards);
   int64_t post_halo_shard_size = post_elements_per_shard;
 
+  int64_t max_start_index = left_amount + right_amount;
+
   // The multi-rotate  operation computes
   //   rotate_left(x, L)
   //   rotate_left(x, L-1)
@@ -479,14 +487,20 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
   // This means that we need the first L elements from the right via a
   // halo exchange. Similarly, we need the last R elements from the left via a
   // halo exchange.
-  TF_ASSIGN_OR_RETURN(auto super_shard_and_offset,
-                      ConstructHaloExchangeSuperShard(
-                          hlo->operand(0), dim,
-                          /*left_amount=*/right_amount,
-                          /*right_amount=*/left_amount,
-                          /*handle_last_shard=*/true, post_halo_shard_size));
+  TF_ASSIGN_OR_RETURN(
+      auto super_shard_and_offset,
+      ConstructHaloExchangeSuperShard(hlo->operand(0), dim,
+                                      /*left_amount=*/right_amount,
+                                      /*right_amount=*/left_amount,
+                                      /*handle_last_shard=*/true,
+                                      max_start_index, post_halo_shard_size));
 
   auto [super_shard, shard_offset] = super_shard_and_offset;
+
+  if (bufferize) {
+    super_shard = b_.AddInstruction(HloInstruction::CreateUnary(
+        super_shard->shape(), HloOpcode::kOptimizationBarrier, super_shard));
+  }
 
   auto create_slice = [&](HloInstruction* val, int64_t start, int64_t limit) {
     Shape slice_shape = val->shape();
@@ -532,7 +546,7 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiRotate(
 absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
 SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
     const HloInstruction* input_operand, int64_t dim, int64_t left_amount,
-    int64_t right_amount, bool handle_last_shard,
+    int64_t right_amount, bool handle_last_shard, int64_t max_start_index,
     int64_t post_halo_shard_size) {
   PartitionedHlo input = GetPartitionedHlo(input_operand);
   HloSharding element_sharding = input_operand->sharding();
@@ -579,11 +593,15 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
             return;
           }
           std::vector<int64_t> dst_idx(indices.begin(), indices.end());
-          dst_idx[dim] += 1;
+          dst_idx[dim] += participating_shards - 1;
           dst_idx[dim] %= participating_shards;
+          if (!handle_last_shard && dst_idx[dim] == participating_shards - 1) {
+            return;
+          }
           pairs.emplace_back(device,
                              element_sharding.tile_assignment()(dst_idx));
         });
+    absl::c_sort(pairs);
 
     Shape slice_shape = local_input->shape();
     slice_shape.set_dimensions(dim, right_amount);
@@ -629,11 +647,15 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
             return;
           }
           std::vector<int64_t> dst_idx(indices.begin(), indices.end());
-          dst_idx[dim] += participating_shards - 1;
+          dst_idx[dim] += 1;
           dst_idx[dim] %= participating_shards;
+          if (!handle_last_shard && dst_idx[dim] == 0) {
+            return;
+          }
           pairs.emplace_back(device,
                              element_sharding.tile_assignment()(dst_idx));
         });
+    std::sort(pairs.begin(), pairs.end());
 
     Shape dynamic_slice_shape = local_input->shape();
     dynamic_slice_shape.set_dimensions(dim, left_amount);
@@ -678,8 +700,6 @@ SpmdPartitioningVisitor::ConstructHaloExchangeSuperShard(
 
   HloInstruction* super_shard = local_input;
 
-  int64_t max_start_index =
-      (post_halo_shard_size - shard_size) * (participating_shards - 1);
   int64_t max_end_index = max_start_index + post_halo_shard_size;
   int64_t result_right_padding =
       max_end_index - left_amount - shard_size - right_amount;
@@ -776,6 +796,11 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
       << "No dimension attribute in SPMD multi slice op";
   int64_t dim = dim_it->second;
 
+  auto bufferize_it = int_attrs.find("bufferize");
+  TF_RET_CHECK(bufferize_it != int_attrs.end())
+      << "No bufferize attribute in SPMD multi slice op";
+  int64_t bufferize = bufferize_it->second;
+
   auto amount_it = int_attrs.find("amount");
   TF_RET_CHECK(amount_it != int_attrs.end())
       << "No amount attribute in SPMD multi slice op";
@@ -817,10 +842,12 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
 
   int64_t post_elems_per_shard =
       CeilOfRatio(output_shape.dimensions(dim), participating_shards);
-  // Semantics of MultiSlice return amount + 1 results (or specifically, the
-  // given slice, and amount slices after), the original result is handled by
-  // post_elems_per_shard so we need to add amount to it to get the others.
-  int64_t post_halo_shard_size = post_elems_per_shard + amount;
+
+  TF_RET_CHECK(start_index <= sharded_input_size)
+      << "Start index must be less than or equal to sharded input size.";
+
+  TF_RET_CHECK(limit_index >= (participating_shards - 1) * sharded_input_size)
+      << "Limit index must occur on the last shard.";
 
   // Consider a tensor with 4 shards, whose data we care about is 0-D
   // [xyz01][23456][789AB][CDuvm]
@@ -842,20 +869,19 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
   // This ensures all the data is available on the local shard, so we can
   // perform all the slices at once.
 
-  int64_t from_right =
-      post_elems_per_shard + amount -
-      std::min(post_elems_per_shard + amount, sharded_input_size - start_index);
-  int64_t from_left =
-      post_elems_per_shard -
-      std::min(post_elems_per_shard,
-               limit_index - (participating_shards - 1) * sharded_input_size);
+  int64_t from_right = std::max<int64_t>(
+      0, post_elems_per_shard + amount - sharded_input_size + start_index);
 
-  TF_ASSIGN_OR_RETURN(auto super_shard_and_offset,
-                      ConstructHaloExchangeSuperShard(
-                          input_operand, dim, /*left_amount=*/from_left,
-                          /*right_amount=*/from_right,
-                          /*handle_last_shard=*/false, post_halo_shard_size));
-  auto&& [super_shard, shard_offset] = super_shard_and_offset;
+  int64_t from_left =
+      std::max<int64_t>(0, (participating_shards - 1) *
+                                   (sharded_input_size - post_elems_per_shard) -
+                               start_index);
+
+  // Semantics of MultiSlice return amount + 1 results (or specifically, the
+  // given slice, and amount slices after), the original result is handled by
+  // post_elems_per_shard so we need to add amount to it to get the others.
+  int64_t post_halo_shard_size = post_elems_per_shard;
+
   // We now must actually index into our super shard and get the desired data.
   // We want the data starting at start_index + per_partition_after *
   // shard_offset in the overall previous array. We know that our local shard
@@ -869,13 +895,26 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
   // = (start_index + from_left) + (per_partition_after - per_partition_before)
   // * shard_offset
 
+  int64_t max_start_index =
+      (start_index + from_left) +
+      (post_halo_shard_size - sharded_input_size) * (participating_shards - 1);
+
+  TF_ASSIGN_OR_RETURN(
+      auto super_shard_and_offset,
+      ConstructHaloExchangeSuperShard(
+          input_operand, dim, /*left_amount=*/from_left,
+          /*right_amount=*/from_right,
+          /*handle_last_shard=*/false, max_start_index, post_halo_shard_size));
+  auto&& [super_shard, shard_offset] = super_shard_and_offset;
+
   HloInstruction* shard_to_slice;
-  {
+  int64_t additional_offset = 0;
+  if (post_elems_per_shard != sharded_input_size) {
     HloInstruction* zero_offset = b_.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
 
     Shape slice_shape = super_shard->shape();
-    slice_shape.set_dimensions(dim, post_halo_shard_size);
+    slice_shape.set_dimensions(dim, post_elems_per_shard + amount);
 
     HloInstruction* shard_size_change = b_.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(
@@ -898,10 +937,19 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
 
     std::vector<int64_t> slice_sizes(super_shard->shape().dimensions().begin(),
                                      super_shard->shape().dimensions().end());
-    slice_sizes[dim] = post_halo_shard_size;
+    slice_sizes[dim] = post_elems_per_shard + amount;
 
     shard_to_slice = b_.AddInstruction(HloInstruction::CreateDynamicSlice(
         slice_shape, super_shard, start_indices, slice_sizes));
+  } else {
+    shard_to_slice = super_shard;
+    additional_offset = start_index + from_left;
+  }
+
+  if (bufferize) {
+    shard_to_slice = b_.AddInstruction(HloInstruction::CreateUnary(
+        shard_to_slice->shape(), HloOpcode::kOptimizationBarrier,
+        shard_to_slice));
   }
 
   std::vector<HloInstruction*> sliced_results;
@@ -910,11 +958,11 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_MultiSlice(
     Shape final_slice_shape = shard_to_slice->shape();
     final_slice_shape.set_dimensions(dim, post_elems_per_shard);
     std::vector<int64_t> slice_starts(final_slice_shape.dimensions().size(), 0);
-    slice_starts[dim] = i;
+    slice_starts[dim] = i + additional_offset;
     std::vector<int64_t> slice_limits(
         shard_to_slice->shape().dimensions().begin(),
         shard_to_slice->shape().dimensions().end());
-    slice_limits[dim] = i + post_elems_per_shard;
+    slice_limits[dim] = i + post_elems_per_shard + additional_offset;
     sliced_results.push_back(b_.AddInstruction(HloInstruction::CreateSlice(
         final_slice_shape, shard_to_slice, slice_starts, slice_limits,
         std::vector<int64_t>(final_slice_shape.dimensions().size(), 1))));
@@ -955,10 +1003,13 @@ absl::Status SpmdPartitioningVisitor::HandleCustomCallSPMDInternal_Wrap(
 
   int64_t post_wrap_shard_size =
       CeilOfRatio(hlo->shape().dimensions(dim), participating_shards);
-  TF_ASSIGN_OR_RETURN(auto super_shard_and_offset,
-                      ConstructHaloExchangeSuperShard(
-                          hlo->operand(0), dim, left_amount, right_amount,
-                          /*handle_last_shard=*/true, post_wrap_shard_size));
+  int64_t max_start_index =
+      (post_wrap_shard_size - shard_size) * (participating_shards - 1);
+  TF_ASSIGN_OR_RETURN(
+      auto super_shard_and_offset,
+      ConstructHaloExchangeSuperShard(
+          hlo->operand(0), dim, left_amount, right_amount,
+          /*handle_last_shard=*/true, max_start_index, post_wrap_shard_size));
   auto&& [super_shard, shard_offset] = super_shard_and_offset;
   HloInstruction* zero_offset = b_.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));

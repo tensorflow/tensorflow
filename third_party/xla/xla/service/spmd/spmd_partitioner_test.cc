@@ -3187,7 +3187,7 @@ ENTRY entry {
   %param0 = f32[12] parameter(0), sharding={devices=[4]<=[4]}
   ROOT %custom-call = (f32[12], f32[12], f32[12]) custom-call(%param0),
     custom_call_target="_SPMDInternalOp_MultiRotate",
-    backend_config="dimension=0,left_amount=1,right_amount=1",
+    backend_config="dimension=0,left_amount=1,right_amount=1,bufferize=0",
     sharding={{devices=[4]<=[4]}, {devices=[4]<=[4]}, {devices=[4]<=[4]}}
 })";
 
@@ -3240,7 +3240,7 @@ ENTRY entry {
   ROOT %custom-call = (f64[1520]{0}, f64[1520]{0}, f64[1520]{0}, f64[1520]{0}) custom-call(%param0),
     custom_call_target="_SPMDInternalOp_MultiSlice",
     sharding={{devices=[2]<=[2]}, {devices=[2]<=[2]}, {devices=[2]<=[2]}, {devices=[2]<=[2]}},
-    backend_config="dimension=0,amount=3,start_indices=[6],limit_indices=[1526],strides=[1]"
+    backend_config="dimension=0,amount=3,start_indices=[6],limit_indices=[1526],strides=[1],bufferize=0"
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -3270,7 +3270,7 @@ ENTRY entry {
   ROOT %custom-call = (f64[1520]{0}, f64[1520]{0}) custom-call(%param0),
     custom_call_target="_SPMDInternalOp_MultiSlice",
     sharding={{devices=[2]<=[2]}, {devices=[2]<=[2]}},
-    backend_config="dimension=0,amount=1,start_indices=[7],limit_indices=[1527],strides=[1]"
+    backend_config="dimension=0,amount=1,start_indices=[7],limit_indices=[1527],strides=[1],bufferize=0"
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -3287,6 +3287,66 @@ ENTRY entry {
   auto pre_slice = op::DynamicSlice(super_shard, slice_idx);
   EXPECT_THAT(root, AllOf(op::Tuple(op::Slice(pre_slice), op::Slice(pre_slice)),
                           op::Shape("(f64[760], f64[760])")));
+}
+
+TEST_P(SpmdPartitioningTest, CustomCallMultiSliceRealWorldPaddingBug) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f64[1536] parameter(0), sharding={devices=[2]<=[2]}
+  ROOT %custom-call = (f64[1520]{0}, f64[1520]{0}, f64[1520]{0}) custom-call(%param0),
+    custom_call_target="_SPMDInternalOp_MultiSlice",
+    sharding={{devices=[2]<=[2]}, {devices=[2]<=[2]}, {devices=[2]<=[2]}},
+    backend_config="dimension=0,amount=2,start_indices=[5],limit_indices=[1525],strides=[1],bufferize=0"
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  int collective_permutes = 0;
+  for (auto* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCollectivePermute) {
+      collective_permutes++;
+      for (const auto& pair : inst->source_target_pairs()) {
+        // Device 0 should not fetch from device 1.
+        EXPECT_NE(pair.second, 0LL);
+      }
+    }
+  }
+  EXPECT_EQ(collective_permutes, 1);
+}
+
+TEST_P(SpmdPartitioningTest, CustomCallMultiSlicePaddingRequiresNoLeftHalo) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f64[400] parameter(0), sharding={devices=[4]<=[4]}
+  ROOT %custom-call = (f64[398]{0}, f64[398]{0}) custom-call(%param0),
+    custom_call_target="_SPMDInternalOp_MultiSlice",
+    sharding={{devices=[4]<=[4]}, {devices=[4]<=[4]}},
+    backend_config="dimension=0,amount=1,start_indices=[1],limit_indices=[399],strides=[1],bufferize=0"
+})";
+  // Here we compute a slice of [1, 399) and [2, 400)
+  // As a result, we should only need to fetch right halo.
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  std::cerr << module->ToString() << "\n";
+  int collective_permutes = 0;
+  for (auto* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kCollectivePermute) {
+      collective_permutes++;
+      for (const auto& pair : inst->source_target_pairs()) {
+        // Dest should be to the left of source.
+        EXPECT_EQ(pair.second, pair.first - 1);
+      }
+    }
+    EXPECT_NE(inst->opcode(), HloOpcode::kDynamicSlice);
+    EXPECT_NE(inst->opcode(), HloOpcode::kPad);
+  }
+
+  EXPECT_EQ(collective_permutes, 1);
 }
 
 TEST_P(SpmdPartitioningTest, PartitionCustomCall) {
