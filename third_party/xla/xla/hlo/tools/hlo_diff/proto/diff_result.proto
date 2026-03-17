@@ -43,7 +43,7 @@ message ComputationGroupProto {
 
 message ComputationDiffPatternProto {
   // The fingerprint of the computation group.
-  uint64 fingerprint = 1;
+  uint64 fingerprint = 1 [jstype = JS_STRING];
   repeated ComputationGroupProto computation_group = 2;
   uint64 changed_instruction_count = 3;
   uint64 left_unmatched_instruction_count = 4;
