@@ -65,7 +65,7 @@ class GpuPerformanceModel : public GpuPerformanceModelBase {
   EstimateRunTimeData EstimateRunTimeForInstructionImpl(
       const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis);
 
-  absl::Duration EstimateRunTimeForFusionImpl(
+  absl::StatusOr<absl::Duration> EstimateRunTimeForFusionImpl(
       const HloInstruction* producer, const HloInstruction* consumer,
       const EstimateRunTimeData& producer_runtime,
       const EstimateRunTimeData& consumer_runtime,

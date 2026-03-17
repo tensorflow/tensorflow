@@ -17,17 +17,24 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <optional>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_clone_context.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -36,10 +43,14 @@ limitations under the License.
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 
 namespace xla {
 namespace gpu {
@@ -52,7 +63,110 @@ GpuPerformanceModel::GpuPerformanceModel(
     : device_info_(device_info),
       fusion_analysis_cache_(fusion_analysis_cache),
       gpu_performance_model_cache_(gpu_performance_model_cache),
-      mlir_context_(mlir_context) {};
+      mlir_context_(mlir_context) {}
+
+static absl::StatusOr<RegisterUsage> cached_register_estimate(
+    GpuPerformanceModelCache& cache, const HloInstruction* instr,
+    const se::DeviceDescription& device_info) {
+  if (instr->opcode() != HloOpcode::kFusion) {
+    return RegisterUsage{1, 0};
+  }
+  auto found = cache.register_usage_.find(instr);
+  if (found != cache.register_usage_.end()) {
+    return found->second;
+  }
+  auto register_usage = GpuPerformanceModelBase::EstimateRegisterUsage(
+    instr, &device_info);
+  if (!register_usage.ok()) {
+    return register_usage;
+  }
+  cache.register_usage_[instr] = register_usage.value();
+  return register_usage;
+}
+
+static absl::StatusOr<RegisterUsage> cached_fusion_register_estimate(
+    GpuPerformanceModelCache& cache,
+    const HloInstruction* producer, const HloInstruction* consumer,
+    const se::DeviceDescription& device_info) {
+
+    auto producer_register_usage = cached_register_estimate(cache, producer, device_info);
+  auto consumer_register_usage = cached_register_estimate(cache, consumer, device_info);
+  if (!producer_register_usage.ok()) {
+    return producer_register_usage;
+  }
+  if (!consumer_register_usage.ok()) {
+    return consumer_register_usage;
+  }
+  if (producer_register_usage.value().registers_per_thread + consumer_register_usage.value().registers_per_thread < 255) {
+    return RegisterUsage{
+        producer_register_usage.value().registers_per_thread + consumer_register_usage.value().registers_per_thread, 0};
+  }
+
+  // Create a fake fusion instruction for register usage estimation.
+  auto cloned_module = std::make_unique<HloModule>(
+      producer->GetModule()->name(), producer->GetModule()->config(),
+      std::make_unique<CompilationEnvironments>(
+          producer->GetModule()->comp_envs()));
+  HloComputation::Builder builder("fake");
+  auto context = std::make_unique<HloCloneContext>(cloned_module.get());
+
+  int64_t next_parameter_number = 0;
+  absl::flat_hash_map<const HloInstruction*, HloInstruction*>
+      external_operand_map;
+
+  auto clone_surgical = [&](const HloInstruction* instr) {
+    if (HloInstruction* cloned_instr = context->FindInstruction(instr)) {
+      return cloned_instr;
+    }
+    std::vector<HloInstruction*> new_operands;
+    for (const HloInstruction* operand : instr->operands()) {
+      if (HloInstruction* cloned_op = context->FindInstruction(operand)) {
+        new_operands.push_back(cloned_op);
+      } else {
+        HloInstruction*& fake_operand = external_operand_map[operand];
+        if (fake_operand == nullptr) {
+          fake_operand = builder.AddInstruction(
+              HloInstruction::CreateParameter(next_parameter_number++,
+                                              operand->shape(),
+                                              operand->name()));
+        }
+        new_operands.push_back(fake_operand);
+      }
+    }
+    return builder.AddInstruction(
+        instr->CloneWithNewOperands(instr->shape(), new_operands, context.get()));
+  };
+
+  HloInstruction* cloned_producer = clone_surgical(producer);
+  HloInstruction* cloned_consumer = clone_surgical(consumer);
+  cloned_module->AddEntryComputation(builder.Build(cloned_consumer));
+
+  HloFusionInstruction* fusion;
+  if (cloned_consumer->opcode() == HloOpcode::kFusion) {
+    fusion = Cast<HloFusionInstruction>(cloned_consumer);
+  } else {
+    fusion =
+        Cast<HloFusionInstruction>(cloned_consumer->parent()->AddInstruction(
+            HloInstruction::CreateFusion(cloned_consumer->shape(),
+                                          HloInstruction::FusionKind::kLoop,
+                                          cloned_consumer)));
+  }
+
+
+  if (cloned_producer->opcode() == HloOpcode::kFusion) {
+    if (!absl::c_linear_search(fusion->operands(), cloned_producer)) {
+      fusion->AddFusionOperand(cloned_producer);
+    }
+    fusion->MergeFusionInstruction(
+        Cast<HloFusionInstruction>(cloned_producer));
+  } else {
+    fusion->FuseInstruction(cloned_producer);
+  }
+  // We don't cache the result because it is not meaningful as the fusion
+  // is a temporary instruction here.
+  return GpuPerformanceModelBase::EstimateRegisterUsage(
+    fusion, &device_info);
+}
 
 EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
     const HloInstruction* instr, const GpuHloCostAnalysis* cost_analysis) {
@@ -97,6 +211,25 @@ EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
   absl::Duration exec_time =
       CombineComputeAndMemoryAccessTime(compute_time, read_time + write_time);
 
+  if (instr->parent()
+          ->parent()
+          ->config()
+          .debug_options()
+          .xla_gpu_predict_fusion_spills()) {
+    auto register_usage = cached_register_estimate(gpu_performance_model_cache_, instr, device_info_);
+    if (!register_usage.ok()) {
+      LOG(ERROR) << "Failed to estimate register usage: "
+                 << register_usage.status();
+      return EstimateRunTimeData::Infinite();
+    }
+    absl::Duration spill_penalty =
+        GpuPerformanceModelBase::CalculateSpillPenalty(
+            device_info_, register_usage.value(),
+            launch_dimensions.num_blocks(),
+            launch_dimensions.num_threads_per_block());
+    exec_time += spill_penalty;
+  }
+
   EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
                                       read_time, write_time, compute_time,
                                       exec_time};
@@ -119,7 +252,8 @@ EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstruction(
   return runtime_data;
 }
 
-absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
+absl::StatusOr<absl::Duration>
+GpuPerformanceModel::EstimateRunTimeForFusionImpl(
     const HloInstruction* producer, const HloInstruction* consumer,
     const EstimateRunTimeData& producer_runtime,
     const EstimateRunTimeData& consumer_runtime,
@@ -193,6 +327,23 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
   auto exec_time =
       CombineComputeAndMemoryAccessTime(compute_time, read_time + write_time);
 
+  if (producer->parent()
+          ->parent()
+          ->config()
+          .debug_options()
+          .xla_gpu_predict_fusion_spills()) {
+
+    TF_ASSIGN_OR_RETURN(auto register_usage, cached_fusion_register_estimate(gpu_performance_model_cache_, producer, consumer, device_info_));
+    absl::Duration spill_penalty =
+        GpuPerformanceModelBase::CalculateSpillPenalty(
+            device_info_, register_usage, launch_dimensions.num_blocks(),
+            launch_dimensions.num_threads_per_block());
+    //std::ostringstream strm;
+    //strm << " fusion attempt of " << producer->name() << " (" << producer << ") with " << consumer->name() << " (" << consumer << ") - result, " << register_usage.registers_per_thread << " and " << register_usage.spilled_bytes_accessed << "\n";
+    //std::cerr << strm.str();
+    exec_time += spill_penalty;
+  }
+
   VLOG(3) << "Runtime data for producer-consumer fusion:\n"
           << " producer: " << producer->name() << "\n"
           << " consumer: " << consumer->name() << "\n"
@@ -215,9 +366,15 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusion(
     return *fusion_runtime_opt;
   }
 
-  auto fusion_runtime = EstimateRunTimeForFusionImpl(
+  auto fusion_runtime_or = EstimateRunTimeForFusionImpl(
       producer, consumer, producer_runtime, consumer_runtime, cost_analysis,
       producer_writes_side_output);
+  if (!fusion_runtime_or.ok()) {
+    VLOG(1) << "EstimateRunTimeForFusionImpl failed: "
+            << fusion_runtime_or.status();
+    return absl::InfiniteDuration();
+  }
+  auto fusion_runtime = fusion_runtime_or.value();
 
   gpu_performance_model_cache_.Set(*producer, *consumer, fusion_runtime);
   return fusion_runtime;

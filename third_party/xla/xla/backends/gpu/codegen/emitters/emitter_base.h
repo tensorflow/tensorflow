@@ -62,7 +62,8 @@ class EmitterBase : public KernelFusionInterface {
       mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
       const se::DeviceDescription& device, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
-      const BufferAssignment* buffer_assignment) const;
+      const BufferAssignment* buffer_assignment,
+      bool use_diagnostic_handler = true) const;
 
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
@@ -127,6 +128,13 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
 // Adds passes that lower transformed loops to LLVM.
 void AddLoweringPasses(mlir::OpPassManager& pm,
                        const se::DeviceDescription& device);
+
+bool EnablePDL(const HloModule& module, const se::DeviceDescription& device);
+absl::Status RunPassPipeline(mlir::ModuleOp module,
+                             const HloModule& hlo_module,
+                             mlir::PassManager& pm,
+                             absl::string_view entry_function_name,
+                             bool use_diagnostic_handler = true);
 
 }  // namespace gpu
 }  // namespace xla
