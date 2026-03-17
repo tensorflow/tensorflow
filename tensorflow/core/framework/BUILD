@@ -742,6 +742,7 @@ cc_library(
         "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
         "//waymo/ml/data/ops:__pkg__",
         "//waymo/ml/woodshed/ops:__pkg__",
+        "//waymo/sim/simulator/sensor/rendering_engine:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
