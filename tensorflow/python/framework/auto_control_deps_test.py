@@ -944,8 +944,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
       mock_op._set_attr("_read_only_resource_inputs", attr_value)
 
       # Test your fix
-      result = auto_control_deps_utils._get_read_only_resource_input_indices_op(mock_op)
-
+      result = (
+          auto_control_deps_utils._get_read_only_resource_input_indices_op(
+              mock_op
+          )
+      )
       # Verify the result is sorted [2, 4, 8]
       self.assertEqual(list(result), [2, 4, 8])
 
