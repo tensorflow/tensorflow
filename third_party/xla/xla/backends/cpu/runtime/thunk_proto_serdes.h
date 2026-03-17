@@ -67,7 +67,8 @@ class ThunkSerDesRegistry {
  public:
   using ToProtoFn = std::function<absl::Status(const Thunk&, ThunkProto&)>;
   using FromProtoFn = std::function<absl::StatusOr<std::unique_ptr<Thunk>>(
-      const ThunkProto&, const std::vector<BufferAllocation>&)>;
+      const ThunkProto&, const std::vector<BufferAllocation>&,
+      const HloModule*)>;
 
   static ThunkSerDesRegistry& Get();
 
