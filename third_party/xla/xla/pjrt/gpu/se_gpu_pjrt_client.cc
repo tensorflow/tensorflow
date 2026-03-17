@@ -1645,8 +1645,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     device_proto->set_shared_memory_per_block_optin(
         desc->shared_memory_per_block_optin());
     device_proto->set_numa_node(desc->numa_node());
-
-    se::DeviceInterconnectInfo info = desc->device_interconnect_info();
+    const se::DeviceInterconnectInfo& info = desc->device_interconnect_info();
     if (!info.cluster_uuid.empty() && !info.clique_id.empty()) {
       device_proto->set_fabric_uuid(
           absl::StrCat(info.cluster_uuid, "/", info.clique_id));
@@ -1739,7 +1738,7 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
           device_proto.shared_memory_per_block_optin(),
           device_proto.local_device_ordinal(), node.process_id(),
           curr_process_index_in_partition, device_proto.partition_index(),
-          device_proto.numa_node());
+          device_proto.numa_node(), device_proto.fabric_uuid());
       devices.push_back(std::move(device));
     }
   }
@@ -1781,7 +1780,8 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
     std::string device_kind, std::string device_vendor,
     std::string compute_capability, int core_count,
     int shared_memory_per_block_optin, int local_device_id, int process_index,
-    int process_index_in_partition, int partition_index, int numa_node)
+    int process_index_in_partition, int partition_index, int numa_node,
+    std::string fabric_uuid)
     : PjRtStreamExecutorDevice(
           id, std::move(local_device_state), local_device_id, process_index,
           process_index_in_partition, partition_index, std::move(device_kind)),
@@ -1789,14 +1789,16 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
   VLOG(1) << absl::StreamFormat(
       "Constructed StreamExecutor GPU device: compute_capability=%s "
       "core_count=%d shmem_per_block=%d local_device_id=%d process_index=%d "
-      "process_index_in_partition=%d partition_index=%d numa_node=%d",
+      "process_index_in_partition=%d partition_index=%d numa_node=%d "
+      "fabric_uuid=%s",
       compute_capability, core_count, shared_memory_per_block_optin,
       local_device_id, process_index, process_index_in_partition,
-      partition_index, numa_node);
+      partition_index, numa_node, fabric_uuid);
 
   StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
       description(), device_vendor_, compute_capability, core_count,
-      static_cast<int64_t>(shared_memory_per_block_optin), partition_index);
+      static_cast<int64_t>(shared_memory_per_block_optin), partition_index,
+      fabric_uuid);
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes =
       description().Attributes();
   if (numa_node != tsl::port::kNUMANoAffinity) {
@@ -1953,6 +1955,7 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
   for (auto& ordinal_and_device : local_device_states) {
     const se::DeviceDescription& desc =
         ordinal_and_device.second->executor()->GetDeviceDescription();
+    const se::DeviceInterconnectInfo& info = desc.device_interconnect_info();
     int local_device_id = ordinal_and_device.second->local_device_id().value();
     auto device = std::make_unique<StreamExecutorGpuDevice>(
         /*id=*/ordinal_and_device.first,
@@ -1966,7 +1969,8 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
         /*process_index=*/process_id,
         /*process_index_in_partition=*/0,
         /*partition_index=*/0,
-        /*numa_node=*/desc.numa_node());
+        /*numa_node=*/desc.numa_node(),
+        /*fabric_uuid=*/absl::StrCat(info.cluster_uuid, "/", info.clique_id));
     devices.push_back(std::move(device));
   }
   return devices;

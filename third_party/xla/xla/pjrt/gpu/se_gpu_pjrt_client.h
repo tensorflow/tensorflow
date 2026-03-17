@@ -80,7 +80,7 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           int shared_memory_per_block_optin,
                           int local_device_id, int process_index,
                           int process_index_in_partition, int partition_index,
-                          int numa_node);
+                          int numa_node, std::string fabric_uuid);
 
   absl::string_view device_vendor() const;
 

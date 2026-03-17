@@ -49,8 +49,8 @@ namespace xla {
 /*static*/ void StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
     PjRtStreamExecutorDeviceDescription& description,
     const std::string& device_vendor, const std::string& compute_capability,
-    int core_count, int64_t shared_memory_per_block_optin,
-    int partition_index) {
+    int core_count, int64_t shared_memory_per_block_optin, int partition_index,
+    const std::string& fabric_uuid) {
   std::vector<int64_t> v_coords(description.coords().begin(),
                                 description.coords().end());
 
@@ -64,6 +64,7 @@ namespace xla {
       {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
       {"shared_memory_per_block_optin", shared_memory_per_block_optin},
       {"core_count", static_cast<int64_t>(core_count)},
+      {"fabric_uuid", fabric_uuid},
   };
   description.SetAttributes(std::move(attributes));
   description.SetToString(absl::StrFormat(
@@ -140,7 +141,7 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
         *description, gpu_vendor, compute_capability,
         target_config_->gpu_device_info().core_count(),
         target_config_->gpu_device_info().shared_memory_per_block_optin(),
-        /*partition_index=*/0);
+        /*partition_index=*/0, /*fabric_uuid=*/"");
   }
   return description;
 }
