@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.pb.h"
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_device_compiler_client.h"
+#include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/client/client_library.h"
 #include "xla/client/local_client.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -584,14 +586,15 @@ TEST_F(DeviceCompilerTestWithDump, CompileStrictDebugInformationDumpWorks) {
   EXPECT_THAT(compile_call_args_proto.compile_options(),
               StrEq(compile_options.DebugString()));
   EXPECT_THAT(compile_call_args_proto.function(), EqualsProto(fn));
-  std::vector<std::string> xla_arguments_human_strings;
-  absl::c_transform(SampleArgsForAddXY(),
-                    std::back_inserter(xla_arguments_human_strings),
-                    [](const XlaCompiler::Argument& xla_argument) {
-                      return xla_argument.HumanString();
+  std::vector<XlaArgument> xla_arguments_from_proto;
+  absl::c_transform(compile_call_args_proto.xla_args(),
+                    std::back_inserter(xla_arguments_from_proto),
+                    [](const tf2xla::XlaArgumentProto& proto) -> XlaArgument {
+                      auto arg = XlaArgument::FromProto(proto);
+                      CHECK_OK(arg);  // Crash OK
+                      return arg.value();
                     });
-  EXPECT_THAT(compile_call_args_proto.xla_arguments(),
-              ElementsAreArray(xla_arguments_human_strings));
+  EXPECT_THAT(xla_arguments_from_proto, ElementsAreArray(SampleArgsForAddXY()));
 }
 
 TEST_F(OpsTestBase, CompileSingleOpSuccess) {
