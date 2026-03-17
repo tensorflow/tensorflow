@@ -902,7 +902,8 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
   } else {
     CHECK(is_predetermined_error)
         << "Nontuple results must have a single result buffer.";
-    res.push_back(CreateOutputLeafBuffer(output_device_shape, definition_event,
+    res.push_back(CreateOutputLeafBuffer(output_device_shape,
+                                         std::move(definition_event),
                                          is_predetermined_error, this, device,
                                          {}, output_memory_space_kind_ids[0]));
   }
