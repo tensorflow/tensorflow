@@ -1786,6 +1786,25 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "mock_compiler",
+    testonly = True,
+    hdrs = ["mock_compiler.h"],
+    deps = [
+        ":compiled_module",
+        ":compiler",
+        ":executable",
+        ":hlo_cost_analysis",
+        "//xla/client:executable_build_options",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_id",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_for_library",
+    ],
+)
+
 xla_test(
     name = "compiler_test",
     srcs = ["compiler_test.cc"],
