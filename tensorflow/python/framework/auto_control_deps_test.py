@@ -922,7 +922,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       with self.assertRaises(ValueError):
         read_op1.get_attr("_has_manual_control_dependencies")
       with self.assertRaises(ValueError):
-        read_op2.get_attr("_has_manual_control_dependencies
+        read_op2.get_attr("_has_manual_control_dependencies")
 
   def testGetReadOnlyResourceInputIndicesSorted(self):
     """Checks that read-only resource indices are returned in sorted order."""
