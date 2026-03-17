@@ -593,7 +593,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   if (!target.IsReplicatedOrSingleDevice() &&
-      sharding().ReplicateOnLastTileDim()) {
+      sharding().HasPartialReplication()) {
     auto try_reshard = ReshardFromPartialReplicateWithDynamicSlice(target);
     if (try_reshard.has_value()) {
       return try_reshard.value();
