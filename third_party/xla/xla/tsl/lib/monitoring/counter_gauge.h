@@ -24,6 +24,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -85,11 +86,22 @@ class CounterGauge {
 
   // Creates the metric based on the metric-definition arguments.
   //
-  // Example;
-  // auto* counter_with_label = CounterGauge<1>::New("/tensorflow/counter",
-  //   "Tensorflow counter", "MyLabelName");
+  // Example:
+  // auto* counter_with_label = CounterGauge<1>::New(
+  //     "/tensorflow/counter", "Tensorflow counter", "MyLabelName");
   template <typename... MetricDefArgs>
   static CounterGauge* New(MetricDefArgs&&... metric_def_args);
+
+  // Creates the metric based on the metric-definition arguments. Doesn't use
+  // the heap; instead, allocates a static stack object whose destructor will
+  // never be called. (See `absl::NoDestructor` documentation.)
+  //
+  // Example:
+  // auto counter_with_label = CounterGauge<1>::MakeStatic(
+  //     "/tensorflow/counter", "Tensorflow counter", "MyLabelName");
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<CounterGauge> MakeStatic(
+      MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -99,6 +111,8 @@ class CounterGauge {
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<CounterGauge<NumLabels>>;
+
   explicit CounterGauge(
       const MetricDef<MetricKind::kGauge, int64_t, NumLabels>& metric_def)
       : metric_def_(metric_def),
@@ -156,6 +170,15 @@ template <typename... MetricDefArgs>
 CounterGauge<NumLabels>* CounterGauge<NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
   return new CounterGauge<NumLabels>(
+      MetricDef<MetricKind::kGauge, int64_t, NumLabels>(
+          std::forward<MetricDefArgs>(metric_def_args)...));
+}
+
+template <int NumLabels>
+template <typename... MetricDefArgs>
+absl::NoDestructor<CounterGauge<NumLabels>> CounterGauge<NumLabels>::MakeStatic(
+    MetricDefArgs&&... metric_def_args) {
+  return absl::NoDestructor<CounterGauge<NumLabels>>(
       MetricDef<MetricKind::kGauge, int64_t, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));
 }

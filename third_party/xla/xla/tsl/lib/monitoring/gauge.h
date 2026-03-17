@@ -28,6 +28,7 @@ limitations under the License.
 #include <functional>
 #include <string>
 
+#include "absl/base/no_destructor.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
@@ -38,7 +39,6 @@ namespace monitoring {
 // GaugeCell which has a null implementation.
 template <typename T>
 class GaugeCell {
- public:
  public:
   GaugeCell() {}
   ~GaugeCell() {}
@@ -59,16 +59,13 @@ class Gauge {
 
   template <typename... MetricDefArgs>
   static Gauge* New(MetricDefArgs&&... metric_def_args) {
-    static_assert(std::is_same_v<ValueType, int64> ||
-                      std::is_same_v<ValueType, std::string> ||
-                      std::is_same_v<ValueType, bool> ||
-                      std::is_same_v<ValueType, std::function<int64()>> ||
-                      std::is_same_v<ValueType, std::function<std::string()>> ||
-                      std::is_same_v<ValueType, std::function<bool()>> ||
-                      std::is_same_v<ValueType, std::function<double()>> ||
-                      std::is_same_v<ValueType, double>,
-                  "Gauge only allows bool, int64, double and string types.");
     return new Gauge();
+  }
+
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<Gauge> MakeStatic(
+      MetricDefArgs&&... metric_def_args) {
+    return absl::NoDestructor<Gauge>();
   }
 
   template <typename... Labels>
@@ -79,7 +76,19 @@ class Gauge {
   absl::Status GetStatus() { return absl::OkStatus(); }
 
  private:
-  Gauge() {}
+  friend class absl::NoDestructor<Gauge<ValueType, NumLabels>>;
+
+  Gauge() {
+    static_assert(std::is_same_v<ValueType, int64> ||
+                      std::is_same_v<ValueType, std::string> ||
+                      std::is_same_v<ValueType, bool> ||
+                      std::is_same_v<ValueType, std::function<int64()>> ||
+                      std::is_same_v<ValueType, std::function<std::string()>> ||
+                      std::is_same_v<ValueType, std::function<bool()>> ||
+                      std::is_same_v<ValueType, std::function<double()>> ||
+                      std::is_same_v<ValueType, double>,
+                  "Gauge only allows bool, int64, double and string types.");
+  }
 
   GaugeCell<ValueType> default_gauge_cell_;
 
@@ -102,6 +111,7 @@ class Gauge {
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -208,19 +218,38 @@ class Gauge {
 
   // Creates the metric based on the metric-definition arguments.
   //
-  // Example:
+  // Examples:
   //
-  // auto* string_gauge_with_label = Gauge<string,1>::New(
-  //   "/tensorflow/string_gauge_with_label",
-  //   "String gauge with one label.", "MyLabelName");
+  // auto* string_gauge_with_label = Gauge<std::string, 1>::New(
+  //     "/tensorflow/string_gauge_with_label", "String gauge with one label.",
+  //     "MyLabelName");
   //
-  // auto* integer_gauge = Gauge<int64, 0>::New("/tensorflow/integer_gauge",
-  //   "Integer gauge")
+  // auto* integer_gauge = Gauge<int64, 0>::New(
+  //     "/tensorflow/integer_gauge", "Integer gauge")
   //
-  // auto* bool_gauge = Gauge<bool, 0>::New("/tensorflow/bool_gauge",
-  //   "Bool gauge")
+  // auto* bool_gauge = Gauge<bool, 0>::New(
+  //     "/tensorflow/bool_gauge", "Bool gauge")
   template <typename... MetricDefArgs>
   static Gauge* New(MetricDefArgs&&... metric_def_args);
+
+  // Creates the metric based on the metric-definition arguments. Doesn't use
+  // the heap; instead, allocates a static stack object whose destructor will
+  // never be called. (See `absl::NoDestructor` documentation.)
+  //
+  // Examples:
+  //
+  // auto string_gauge_with_label = Gauge<string, 1>::MakeStatic(
+  //     "/tensorflow/string_gauge_with_label", "String gauge with one label.",
+  //     "MyLabelName");
+  //
+  // auto integer_gauge = Gauge<int64, 0>::MakeStatic(
+  //     "/tensorflow/integer_gauge", "Integer gauge")
+  //
+  // auto bool_gauge = Gauge<bool, 0>::MakeStatic(
+  //     "/tensorflow/bool_gauge", "Bool gauge")
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<Gauge> MakeStatic(
+      MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if not
   // already present.
@@ -231,6 +260,8 @@ class Gauge {
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<Gauge<ValueType, NumLabels>>;
+
   explicit Gauge(
       const MetricDef<MetricKind::kGauge, ValueType, NumLabels>& metric_def)
       : metric_def_(metric_def),
@@ -243,6 +274,15 @@ class Gauge {
                 metric_collector.CollectValue(cell.first, cell.second->value());
               }
             })) {
+    static_assert(std::is_same_v<ValueType, int64_t> ||
+                      std::is_same_v<ValueType, std::string> ||
+                      std::is_same_v<ValueType, bool> ||
+                      std::is_same_v<ValueType, std::function<int64_t()>> ||
+                      std::is_same_v<ValueType, std::function<std::string()>> ||
+                      std::is_same_v<ValueType, std::function<bool()>> ||
+                      std::is_same_v<ValueType, std::function<double()>> ||
+                      std::is_same_v<ValueType, double>,
+                  "Gauge only allows bool, int64, double, and string types.");
     if (registration_handle_) {
       status_ = absl::OkStatus();
     } else {
@@ -298,16 +338,16 @@ template <typename ValueType, int NumLabels>
 template <typename... MetricDefArgs>
 Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
-  static_assert(std::is_same_v<ValueType, int64_t> ||
-                    std::is_same_v<ValueType, std::string> ||
-                    std::is_same_v<ValueType, bool> ||
-                    std::is_same_v<ValueType, std::function<int64_t()>> ||
-                    std::is_same_v<ValueType, std::function<std::string()>> ||
-                    std::is_same_v<ValueType, std::function<bool()>> ||
-                    std::is_same_v<ValueType, std::function<double()>> ||
-                    std::is_same_v<ValueType, double>,
-                "Gauge only allows bool, int64, double, and string types.");
   return new Gauge<ValueType, NumLabels>(
+      MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
+          std::forward<MetricDefArgs>(metric_def_args)...));
+}
+
+template <typename ValueType, int NumLabels>
+template <typename... MetricDefArgs>
+absl::NoDestructor<Gauge<ValueType, NumLabels>>
+Gauge<ValueType, NumLabels>::MakeStatic(MetricDefArgs&&... metric_def_args) {
+  return absl::NoDestructor<Gauge<ValueType, NumLabels>>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));
 }

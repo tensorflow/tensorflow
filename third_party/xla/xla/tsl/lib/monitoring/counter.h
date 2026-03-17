@@ -28,6 +28,7 @@ limitations under the License.
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
 
+#include "absl/base/no_destructor.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
@@ -60,6 +61,12 @@ class Counter {
     return new Counter<NumLabels>();
   }
 
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<Counter> MakeStatic(
+      MetricDefArgs&&... metric_def_args) {
+    return absl::NoDestructor<Counter<NumLabels>>();
+  }
+
   template <typename... Labels>
   CounterCell* GetCell(const Labels&... labels) {
     return &default_counter_cell_;
@@ -68,6 +75,8 @@ class Counter {
   absl::Status GetStatus() { return absl::OkStatus(); }
 
  private:
+  friend class absl::NoDestructor<Counter<NumLabels>>;
+
   Counter() {}
 
   CounterCell default_counter_cell_;
@@ -87,6 +96,7 @@ class Counter {
 #include <string>
 #include <tuple>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -148,11 +158,24 @@ class Counter {
 
   // Creates the metric based on the metric-definition arguments.
   //
-  // Example;
-  // auto* counter_with_label = Counter<1>::New("/tensorflow/counter",
-  //   "Tensorflow counter", "MyLabelName");
+  // Example:
+  // auto* counter_with_label =
+  //     Counter<1>::New("/tensorflow/counter", "Tensorflow counter",
+  //                     "MyLabelName");
   template <typename... MetricDefArgs>
   static Counter* New(MetricDefArgs&&... metric_def_args);
+
+  // Creates the metric based on the metric-definition arguments. Doesn't use
+  // the heap; instead, allocates a static stack object whose destructor will
+  // never be called. (See `absl::NoDestructor` documentation.)
+  //
+  // Example:
+  // auto counter_with_label =
+  //     Counter<1>::MakeStatic("/tensorflow/counter", "Tensorflow counter",
+  //                            "MyLabelName");
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<Counter> MakeStatic(
+      MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -162,6 +185,8 @@ class Counter {
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<Counter<NumLabels>>;
+
   explicit Counter(
       const MetricDef<MetricKind::kCumulative, int64_t, NumLabels>& metric_def)
       : metric_def_(metric_def),
@@ -218,6 +243,15 @@ template <typename... MetricDefArgs>
 Counter<NumLabels>* Counter<NumLabels>::New(
     MetricDefArgs&&... metric_def_args) {
   return new Counter<NumLabels>(
+      MetricDef<MetricKind::kCumulative, int64_t, NumLabels>(
+          std::forward<MetricDefArgs>(metric_def_args)...));
+}
+
+template <int NumLabels>
+template <typename... MetricDefArgs>
+absl::NoDestructor<Counter<NumLabels>> Counter<NumLabels>::MakeStatic(
+    MetricDefArgs&&... metric_def_args) {
+  return absl::NoDestructor<Counter<NumLabels>>(
       MetricDef<MetricKind::kCumulative, int64_t, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));
 }

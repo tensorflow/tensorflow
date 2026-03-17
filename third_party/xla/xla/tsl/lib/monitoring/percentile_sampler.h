@@ -26,6 +26,7 @@ limitations under the License.
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
 
+#include "absl/base/no_destructor.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
@@ -51,6 +52,12 @@ class PercentileSampler {
       std::vector<double> percentiles, size_t max_samples,
       UnitOfMeasure unit_of_measure);
 
+  static absl::NoDestructor<PercentileSampler> MakeStatic(
+      const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
+          metric_def,
+      std::vector<double> percentiles, size_t max_samples,
+      UnitOfMeasure unit_of_measure);
+
   template <typename... Labels>
   PercentileSamplerCell* GetCell(const Labels&... labels) {
     return &default_cell_;
@@ -59,6 +66,8 @@ class PercentileSampler {
   absl::Status GetStatus() { return absl::OkStatus(); }
 
  private:
+  friend class absl::NoDestructor<PercentileSampler<NumLabels>>;
+
   PercentileSamplerCell default_cell_;
 
   PercentileSampler() = default;
@@ -91,6 +100,7 @@ PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -168,12 +178,25 @@ class PercentileSampler {
 
   // Creates the metric based on the metric-definition arguments and buckets.
   //
-  // Example;
-  // auto* sampler_with_label =
-  // PercentileSampler<1>::New({"/tensorflow/sampler",
-  //   "Tensorflow sampler", "MyLabelName"}, {10.0, 20.0, 30.0}, 1024,
-  //   UnitOfMeasure::kTime);
+  // Example:
+  // auto* sampler_with_label = PercentileSampler<1>::New(
+  //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
+  //     {10.0, 20.0, 30.0}, 1024, UnitOfMeasure::kTime);
   static PercentileSampler* New(
+      const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
+          metric_def,
+      std::vector<double> percentiles, size_t max_samples,
+      UnitOfMeasure unit_of_measure);
+
+  // Creates the metric based on the metric-definition arguments and buckets.
+  // Doesn't use the heap; instead, allocates a static stack object whose
+  // destructor will never be called. (See `absl::NoDestructor` documentation.)
+  //
+  // Example:
+  // auto sampler_with_label = PercentileSampler<1>::MakeStatic(
+  //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
+  //     {10.0, 20.0, 30.0}, 1024, UnitOfMeasure::kTime);
+  static absl::NoDestructor<PercentileSampler> MakeStatic(
       const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
           metric_def,
       std::vector<double> percentiles, size_t max_samples,
@@ -188,6 +211,7 @@ class PercentileSampler {
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<PercentileSampler<NumLabels>>;
   friend class PercentileSamplerCell;
 
   PercentileSampler(const MetricDef<MetricKind::kCumulative, Percentiles,
@@ -264,6 +288,17 @@ PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
     UnitOfMeasure unit_of_measure) {
   return new PercentileSampler<NumLabels>(metric_def, std::move(percentiles),
                                           max_samples, unit_of_measure);
+}
+
+template <int NumLabels>
+absl::NoDestructor<PercentileSampler<NumLabels>>
+PercentileSampler<NumLabels>::MakeStatic(
+    const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
+        metric_def,
+    std::vector<double> percentiles, size_t max_samples,
+    UnitOfMeasure unit_of_measure) {
+  return absl::NoDestructor<PercentileSampler<NumLabels>>(
+      metric_def, std::move(percentiles), max_samples, unit_of_measure);
 }
 
 template <int NumLabels>

@@ -27,6 +27,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/base/no_destructor.h"
 #include "absl/status/status.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
@@ -89,6 +90,14 @@ class Sampler {
     return new Sampler<NumLabels>(std::move(buckets));
   }
 
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<Sampler> MakeStatic(
+      const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
+          metric_def,
+      std::unique_ptr<Buckets> buckets) {
+    return absl::NoDestructor<Sampler<NumLabels>>(std::move(buckets));
+  }
+
   template <typename... Labels>
   SamplerCell* GetCell(const Labels&... labels) {
     return &default_sampler_cell_;
@@ -97,6 +106,8 @@ class Sampler {
   absl::Status GetStatus() { return absl::OkStatus(); }
 
  private:
+  friend class absl::NoDestructor<Sampler<NumLabels>>;
+
   Sampler(std::unique_ptr<Buckets> buckets) : buckets_(std::move(buckets)) {}
 
   SamplerCell default_sampler_cell_;
@@ -122,6 +133,7 @@ class Sampler {
 #include <utility>
 #include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -292,12 +304,24 @@ class Sampler {
 
   // Creates the metric based on the metric-definition arguments and buckets.
   //
-  // Example;
-  // auto* sampler_with_label = Sampler<1>::New({"/tensorflow/sampler",
-  //   "Tensorflow sampler", "MyLabelName"}, {10.0, 20.0, 30.0});
+  // Example:
+  // auto* sampler_with_label = Sampler<1>::New(
+  //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
+  //     {10.0, 20.0, 30.0});
   static Sampler* New(const MetricDef<MetricKind::kCumulative, HistogramProto,
                                       NumLabels>& metric_def,
                       std::unique_ptr<Buckets> buckets);
+
+  // Creates the metric based on the metric-definition arguments and buckets.
+  //
+  // Example:
+  // auto sampler_with_label = Sampler<1>::MakeStatic(
+  //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
+  //     {10.0, 20.0, 30.0});
+  static absl::NoDestructor<Sampler> MakeStatic(
+      const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
+          metric_def,
+      std::unique_ptr<Buckets> buckets);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -307,6 +331,7 @@ class Sampler {
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<Sampler<NumLabels>>;
   friend class SamplerCell;
 
   Sampler(const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
@@ -374,6 +399,14 @@ Sampler<NumLabels>* Sampler<NumLabels>::New(
         metric_def,
     std::unique_ptr<Buckets> buckets) {
   return new Sampler<NumLabels>(metric_def, std::move(buckets));
+}
+
+template <int NumLabels>
+absl::NoDestructor<Sampler<NumLabels>> Sampler<NumLabels>::MakeStatic(
+    const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
+        metric_def,
+    std::unique_ptr<Buckets> buckets) {
+  return absl::NoDestructor<Sampler<NumLabels>>(metric_def, std::move(buckets));
 }
 
 template <int NumLabels>
