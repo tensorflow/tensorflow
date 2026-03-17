@@ -344,6 +344,22 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     std::shared_ptr<DeviceAssignment> device_assignment;
     std::vector<int> parameters_that_must_be_donated;
     std::vector<int64_t> input_buffer_sizes_in_bytes;
+    // Executable shape information that is computable from the PjRtExecutable*.
+    struct Extras {
+      std::string name;
+      int num_partitions;
+      int num_replicas;
+      absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+          parameter_layouts;
+      absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+          output_layouts;
+      std::optional<std::vector<OpSharding>> parameter_shardings;
+      std::optional<std::vector<OpSharding>> output_shardings;
+      std::vector<absl::string_view> output_memory_kinds;
+      absl::StatusOr<std::string> fingerprint;
+      HloInputOutputAliasConfig input_output_alias_config;
+    };
+    std::unique_ptr<Extras> extras;
   };
 
   explicit CommonPjRtLoadedExecutable(DispatchInfo info)
@@ -358,7 +374,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
         addressable_devices_(std::move(info.addressable_devices)),
         addressable_device_logical_ids_(
             std::move(info.addressable_device_logical_ids)),
-        device_assignment_(std::move(info.device_assignment)) {}
+        device_assignment_(std::move(info.device_assignment)),
+        extras_(std::move(info.extras)) {}
 
   CommonPjRtLoadedExecutable(
       std::vector<Shape> parameter_device_shapes, Shape output_device_shape,
@@ -415,6 +432,66 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
             output_memory_space_kind_ids_,    addressable_devices_,
             addressable_device_logical_ids_,  device_assignment_,
             parameters_that_must_be_donated_, input_buffer_sizes_in_bytes_};
+  }
+
+  absl::string_view name() const override {
+    if (extras_) {
+      return extras_->name;
+    }
+    return GetExecutable()->name();
+  }
+  int num_partitions() const override {
+    if (extras_) {
+      return extras_->num_partitions;
+    }
+    return GetExecutable()->num_partitions();
+  }
+  int num_replicas() const override {
+    if (extras_) {
+      return extras_->num_replicas;
+    }
+    return GetExecutable()->num_replicas();
+  }
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetParameterLayouts() const override {
+    if (extras_) {
+      return extras_->parameter_layouts;
+    }
+    return GetExecutable()->GetParameterLayouts();
+  }
+  absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
+  GetOutputLayouts() const override {
+    if (extras_) {
+      return extras_->output_layouts;
+    }
+    return GetExecutable()->GetOutputLayouts();
+  }
+  std::optional<std::vector<OpSharding>> GetOutputShardings() const override {
+    if (extras_) {
+      return extras_->output_shardings;
+    }
+    return GetExecutable()->GetOutputShardings();
+  }
+  std::optional<std::vector<OpSharding>> GetParameterShardings()
+      const override {
+    if (extras_) {
+      return extras_->parameter_shardings;
+    }
+    return GetExecutable()->GetParameterShardings();
+  }
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetOutputMemoryKinds() const override {
+    if (extras_) {
+      return std::vector<std::vector<absl::string_view>>(
+          {extras_->output_memory_kinds});
+    }
+    return GetExecutable()->GetOutputMemoryKinds();
+  }
+  absl::StatusOr<std::string> FingerprintExecutable() const {
+    if (extras_) {
+      return extras_->fingerprint;
+    }
+    return GetExecutable()->FingerprintExecutable();
   }
 
  protected:
@@ -511,6 +588,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
 
   std::shared_ptr<DeviceAssignment> device_assignment_;
+
+  std::unique_ptr<DispatchInfo::Extras> extras_;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.
