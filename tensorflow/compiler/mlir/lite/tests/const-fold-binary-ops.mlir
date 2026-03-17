@@ -1,5 +1,6 @@
 // RUN: litert-opt %s -canonicalize | FILECHECK_OPTS="" FileCheck %s
-// RUN: litert-opt %s --tfl-dense-to-dense-resource-elements -canonicalize | litert-opt --tfl-dense-resource-to-dense-elements | FILECHECK_OPTS="" FileCheck %s
+// TODO(b/493282789): Enable DenseResourceElementsAttr constant folding with
+// more peformant folder implementations.
 
 // CHECK-LABEL: @add_float
 func.func @add_float() -> (tensor<f32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {
