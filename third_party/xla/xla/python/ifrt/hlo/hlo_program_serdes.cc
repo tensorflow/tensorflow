@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
 #include "stablehlo/dialect/Serialization.h"
+#include "xla/debug_options_flags.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -89,8 +90,11 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
         llvm::cast<mlir::ModuleOp>(program.mlir_module()->clone()));
 
     // Serialize portable artifact.
+    bool enable_hlo_sharding_v3 =
+        xla::GetDebugOptionsFromFlags().xla_enable_hlo_sharding_v3();
     return xla::SerializeUsingVersionedStablehlo(
-        *module, xla::GetDefaultStablehloVersion());
+        *module, xla::GetDefaultStablehloVersion(), /*inplace=*/false,
+        /*allow_mixed_serialization=*/false, enable_hlo_sharding_v3);
   }
 
   absl::StatusOr<std::unique_ptr<Serializable>> Deserialize(

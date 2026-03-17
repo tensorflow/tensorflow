@@ -274,7 +274,7 @@ absl::StatusOr<T> ExpectSuccess(mlir::FailureOr<T> result, std::string msg) {
 
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view requested_target,
-    bool inplace, bool allow_mixed_serialization) {
+    bool inplace, bool allow_mixed_serialization, bool enable_hlo_sharding_v3) {
   mlir::MLIRContext* context = mlir_module->getContext();
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
 
@@ -298,7 +298,8 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   // - For shardy, convert Shardy ops to StableHLO ops, and stringify the Shardy
   //   attributes.
   if (!allow_mixed_serialization) {
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
+    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
+                                            enable_hlo_sharding_v3);
   }
   pm.addPass(mlir::stablehlo_ext::createChloPreserveHighLevelOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(

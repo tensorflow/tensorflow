@@ -106,7 +106,8 @@ absl::StatusOr<std::string> Serialize(mlir::ModuleOp mlir_module,
 // MLIR bytecode format will be used.
 absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir::ModuleOp mlir_module, absl::string_view requested_target,
-    bool inplace = false, bool allow_mixed_serialization = false);
+    bool inplace = false, bool allow_mixed_serialization = false,
+    bool enable_hlo_sharding_v3 = false);
 
 // Given a module that might be a portable artifact, deserialize and upgrade it
 // back to StableHLO.
