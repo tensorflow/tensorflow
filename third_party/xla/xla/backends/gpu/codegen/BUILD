@@ -203,15 +203,15 @@ xla_test(
         "h100": [
             "full",
             "multi_gpu",
-            "no_oss",
+            #"no_oss",
         ],
         "gpu": [
             "multi_gpu",
-            "no_oss",
+            #"no_oss",
         ],
         "b200": [
             "multi_gpu",
-            "no_oss",
+            #"no_oss",
         ],
     },
     backends = ["gpu"],
@@ -222,6 +222,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu:ffi",
+        "//xla/backends/gpu/runtime:async_thunk",
         "//xla/backends/gpu/runtime:dynamic_slice_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:thunk_executor",

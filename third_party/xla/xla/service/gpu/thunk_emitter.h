@@ -23,11 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/nullability.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/host_send_recv_thunk.h"
@@ -241,6 +243,12 @@ class ThunkEmitter {
 
   // Shared buffer addresses registry for NVSHMEM put/get operations.
   std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses_;
+
+  // Maps async-start instructions to their AsyncExecution so that the
+  // corresponding async-done can emit an AsyncDoneThunk sharing the same
+  // AsyncExecution.
+  absl::flat_hash_map<const HloInstruction*, std::shared_ptr<AsyncExecution>>
+      hlo_async_executions_;
 
   // Cache to store the call_graph.
   std::unique_ptr<CallGraph> call_graph_;

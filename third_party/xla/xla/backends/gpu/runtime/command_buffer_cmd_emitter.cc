@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -389,6 +390,20 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return AppendCommands(ctx, cmd_sequence,
                             static_cast<const SequentialThunk&>(thunk).thunks(),
                             options);
+
+    // Async start/done thunks are no-op from command buffer perspective as
+    // command buffers resolve dependencies using buffer conflicts. We inline
+    // the nested thunk sequence from async start into the command buffer.
+    case Thunk::Kind::kAsyncStart:
+      return AppendCommands(ctx, cmd_sequence,
+                            static_cast<const AsyncStartThunk&>(thunk).thunks(),
+                            options);
+    case Thunk::Kind::kAsyncDone:
+      if (thunk.control_predecessors().empty()) {
+        return absl::OkStatus();
+      }
+      return append(absl::StatusOr<std::unique_ptr<Command>>(
+          std::make_unique<EmptyCmd>()));
 
     case Thunk::Kind::kAllGatherDone:
     case Thunk::Kind::kAllReduceDone:

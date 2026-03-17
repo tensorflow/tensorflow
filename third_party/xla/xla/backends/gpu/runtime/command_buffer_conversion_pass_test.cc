@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
@@ -780,6 +781,7 @@ TEST(CommandBufferConversionPassTest, ConvertsCuDnnThunkToCommandBufferThunk) {
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kCuDnn));
 }
+
 TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
   CommandBufferConversionPass pass{"test"};
 
@@ -838,6 +840,67 @@ TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer, ThunkKindsAre(Thunk::kGemm));
+}
+
+TEST(CommandBufferConversionPassTest, ConvertAsyncStartDonePair) {
+  ThunkSequence thunks;
+
+  // Create AsyncStartThunk with an empty nested sequence.
+  auto start_thunk = std::make_unique<AsyncStartThunk>(
+      Thunk::ThunkInfo(), AsyncStartThunk::AsyncKind::kCompute,
+      ThunkSequence{});
+  auto async_execution = start_thunk->async_execution();
+  thunks.push_back(std::move(start_thunk));
+
+  // Create AsyncDoneThunk paired with the start thunk.
+  thunks.push_back(
+      std::make_unique<AsyncDoneThunk>(Thunk::ThunkInfo(), async_execution));
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  DebugOptions debug_options;
+  debug_options.clear_xla_gpu_enable_command_buffer();
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test");
+  ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(true));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
+}
+
+TEST(CommandBufferConversionPassTest,
+     DontConvertAsyncStartDoneIfNonConvertibleThunkInBetween) {
+  ThunkSequence thunks;
+
+  // Create AsyncStartThunk with an empty nested sequence.
+  auto start_thunk = std::make_unique<AsyncStartThunk>(
+      Thunk::ThunkInfo(), AsyncStartThunk::AsyncKind::kCompute,
+      ThunkSequence{});
+  auto async_execution = start_thunk->async_execution();
+  thunks.push_back(std::move(start_thunk));
+
+  // Create a non-convertible thunk in between.
+  BufferAllocation alloc0(0, 1024, 0);
+  thunks.push_back(CreateCopyThunk(alloc0));
+
+  // Create AsyncDoneThunk paired with the start thunk.
+  thunks.push_back(
+      std::make_unique<AsyncDoneThunk>(Thunk::ThunkInfo(), async_execution));
+
+  se::DeviceDescription device_info = TestGpuDeviceInfo::CudaOrRocmDeviceInfo();
+  DebugOptions debug_options;
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+
+  FakeErrorAllocator allocator;
+  CommandBufferConversionPass pass("test");
+  // Expected no transformation, because there is a non-convertible thunk in
+  // between the async start and done.
+  ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
+                       device_info, allocator),
+              IsOkAndHolds(false));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kCopy,
+                                    Thunk::kAsyncDone));
 }
 
 }  // namespace

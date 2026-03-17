@@ -46,6 +46,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -1048,19 +1049,15 @@ ENTRY main {
       static_cast<GpuExecutable*>(executable.release()));
 
   EXPECT_THAT(gpu_exec->thunk_executor().thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
-                                     ThunkKindIs(Thunk::kSequential),
-                                     ThunkKindIs(Thunk::kWaitForStreams)));
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kAsyncStart),
+                                     ThunkKindIs(Thunk::kAsyncDone)));
 
-  // Within the sequential thunk, there should only be a single gemm
-  // thunk with an explicitly set execution stream id.
-  auto sequential_thunk = static_cast<SequentialThunk*>(
-      gpu_exec->thunk_executor().thunks()[1].get());
-  EXPECT_EQ(sequential_thunk->thunks().size(), 1);
-  EXPECT_THAT(sequential_thunk->thunks(),
+  // Within the async start thunk, there should only be a single gemm thunk.
+  auto async_start_thunk = static_cast<AsyncStartThunk*>(
+      gpu_exec->thunk_executor().thunks()[0].get());
+  EXPECT_EQ(async_start_thunk->thunks().size(), 1);
+  EXPECT_THAT(async_start_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
-  // Ensure the gemm is run on the explicitly set stream.
-  EXPECT_EQ(sequential_thunk->thunks()[0]->execution_stream_id(), 1);
 }
 
 TEST_F(GpuCompilerTest, StreamAnnotationThunkTestFDO) {
@@ -1112,19 +1109,15 @@ ENTRY main {
       static_cast<GpuExecutable*>(executable.release()));
 
   EXPECT_THAT(gpu_exec->thunk_executor().thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
-                                     ThunkKindIs(Thunk::kSequential),
-                                     ThunkKindIs(Thunk::kWaitForStreams)));
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kAsyncStart),
+                                     ThunkKindIs(Thunk::kAsyncDone)));
 
-  // Within the sequential thunk, there should only be a single gemm
-  // thunk with an explicitly set execution stream id.
-  auto sequential_thunk = static_cast<SequentialThunk*>(
-      gpu_exec->thunk_executor().thunks()[1].get());
-  EXPECT_EQ(sequential_thunk->thunks().size(), 1);
-  EXPECT_THAT(sequential_thunk->thunks(),
+  // Within the async start thunk, there should only be a single gemm thunk.
+  auto async_start_thunk = static_cast<AsyncStartThunk*>(
+      gpu_exec->thunk_executor().thunks()[0].get());
+  EXPECT_EQ(async_start_thunk->thunks().size(), 1);
+  EXPECT_THAT(async_start_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
-  // Ensure the gemm is run on the explicitly set stream.
-  EXPECT_EQ(sequential_thunk->thunks()[0]->execution_stream_id(), 1);
 }
 
 using GpuCompilerPassTest = GpuCompilerTest;

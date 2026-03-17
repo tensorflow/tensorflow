@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/async_thunk.h"
 
+#include <functional>
 #include <memory>
 #include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -53,26 +55,29 @@ absl::Status AsyncStartThunk::Initialize(const InitializeParams& params) {
                                       params.executor);
 }
 
-absl::StatusOr<se::Stream*> AsyncStartThunk::GetAsyncStream(
-    const ExecuteParams& params) {
-  switch (async_kind_) {
-    case AsyncKind::kCompute:
-      return Thunk::GetStreamForExecution(execution_stream_id(), params);
-    case AsyncKind::kCommunication:
-      return params.collective_params->async_streams.at(
-          execution_stream_id().value());
-  }
-}
-
 absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
-  ASSIGN_OR_RETURN(se::Stream * async_stream, GetAsyncStream(params));
+  auto get_async_stream = [&]() -> absl::StatusOr<se::Stream*> {
+    switch (async_kind_) {
+      case AsyncKind::kCompute:
+        return GetStreamForExecution(execution_stream_id(), params);
+      case AsyncKind::kCommunication:
+        return params.collective_params->async_streams.at(
+            execution_stream_id().value());
+    }
+  };
 
-  ASSIGN_OR_RETURN(auto guard,
-                   async_execution_->Start(params.execution_scoped_state,
-                                           params.stream, async_stream));
+  ASSIGN_OR_RETURN(se::Stream * async_stream, std::invoke(get_async_stream));
+  XLA_VLOG_DEVICE(1, async_stream->parent()->device_ordinal())
+      << absl::StreamFormat(
+             "Execute async %s for `%s`: stream_id=%v, stream=%p",
+             async_kind_ == AsyncKind::kCompute ? "compute" : "communication",
+             profile_annotation(), execution_stream_id(), async_stream);
 
   // Execute the nested thunks on the async stream. The guard will record the
   // completion event when it goes out of scope.
+  ASSIGN_OR_RETURN(auto guard,
+                   async_execution_->Start(params.execution_scoped_state,
+                                           params.stream, async_stream));
   return executor_.ExecuteOnStream(params.WithComputeStream(async_stream));
 }
 

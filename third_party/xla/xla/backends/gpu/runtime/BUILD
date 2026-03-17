@@ -295,6 +295,7 @@ cc_library(
         ":all_gather_thunk",
         ":all_reduce_thunk",
         ":all_to_all_thunk",
+        ":async_thunk",
         ":collective_broadcast_thunk",
         ":collective_permute_thunk",
         ":collective_thunk",
@@ -404,6 +405,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -4060,6 +4062,7 @@ cc_library(
     srcs = ["command_buffer_conversion_pass.cc"],
     hdrs = ["command_buffer_conversion_pass.h"],
     deps = [
+        ":async_thunk",
         ":command_buffer_cmd_emitter",
         ":command_buffer_thunk",
         ":command_executor",
@@ -4067,6 +4070,7 @@ cc_library(
         ":custom_call_thunk",
         ":device_to_device_copy_thunk",
         ":dynamic_memcpy_thunk",
+        ":dynamic_slice_thunk",
         ":ragged_all_to_all_thunk",
         ":sequential_thunk",
         ":thunk",
@@ -4101,6 +4105,7 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":all_gather_thunk",
+        ":async_thunk",
         ":collective_thunk",
         ":command_buffer_conversion_pass",
         ":command_buffer_thunk",
