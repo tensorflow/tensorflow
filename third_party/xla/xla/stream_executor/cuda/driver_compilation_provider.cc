@@ -38,14 +38,11 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
-#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor::cuda {
@@ -68,11 +65,7 @@ absl::StatusOr<Assembly> DriverCompilationProvider::CompileAndLink(
     const CudaComputeCapability& cc,
     absl::Span<const RelocatableModuleOrPtx> inputs,
     const CompilationOptions& options) const {
-  TF_ASSIGN_OR_RETURN(Platform * platform,
-                      PlatformManager::PlatformWithId(kCudaPlatformId));
-  TF_ASSIGN_OR_RETURN(StreamExecutor * executor,
-                      platform->ExecutorForDevice(0));
-  std::unique_ptr<ActivateContext> context = executor->Activate();
+  std::unique_ptr<ActivateContext> context = stream_exec_->Activate();
 
   CUlinkState link_state;
   CUjit_option jit_options[] = {CU_JIT_TARGET,

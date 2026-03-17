@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/compilation_provider_test.h"
 #include "xla/stream_executor/cuda/composite_compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/driver_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_compilation_provider.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
@@ -39,9 +40,11 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
 #include "xla/stream_executor/cuda/subprocess_compilation.h"
 #include "xla/stream_executor/cuda/subprocess_compilation_provider.h"
+#include "xla/stream_executor/platform_manager.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor::cuda {
 using ::testing::_;
@@ -85,10 +88,10 @@ void CompilationProviderTest::SetUp() {
 absl::StatusOr<std::unique_ptr<CompilationProvider>>
 CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
   if (name == kSubprocessCompilationProviderName) {
-    TF_ASSIGN_OR_RETURN(auto ptxas,
-                        FindCudaExecutable("ptxas", "/does/not/exist"));
-    TF_ASSIGN_OR_RETURN(auto nvlink,
-                        FindCudaExecutable("nvlink", "/does/not/exist"));
+    ASSIGN_OR_RETURN(auto ptxas,
+                     FindCudaExecutable("ptxas", "/does/not/exist"));
+    ASSIGN_OR_RETURN(auto nvlink,
+                     FindCudaExecutable("nvlink", "/does/not/exist"));
     return std::make_unique<SubprocessCompilationProvider>(ptxas, nvlink);
   }
 
@@ -101,7 +104,11 @@ CompilationProviderTest::CreateCompilationProvider(absl::string_view name) {
   }
 
   if (name == kDriverCompilationProviderName) {
-    return std::make_unique<DriverCompilationProvider>();
+    ASSIGN_OR_RETURN(stream_executor::Platform * platform,
+                     PlatformManager::PlatformWithId(kCudaPlatformId));
+    ASSIGN_OR_RETURN(stream_executor::StreamExecutor * executor,
+                     platform->ExecutorForDevice(0));
+    return std::make_unique<DriverCompilationProvider>(executor);
   }
 
   if (name == kCompositeNvptxCompilerAndNvJitLinkCompilationProviderName) {

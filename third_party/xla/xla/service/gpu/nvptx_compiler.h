@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -81,13 +82,15 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config,
-      const stream_executor::DeviceDescription& device_description) override;
+      const stream_executor::DeviceDescription& device_description,
+      se::StreamExecutor* absl_nullable stream_exec) override;
 
  private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,
       std::vector<std::vector<uint8_t>> modules,
-      const DebugOptions& debug_options) override;
+      const DebugOptions& debug_options,
+      se::StreamExecutor* absl_nullable stream_exec) override;
 
   absl::Mutex compilation_providers_mutex_;
   absl::flat_hash_map<se::cuda::CompilationProviderOptions,
@@ -95,7 +98,8 @@ class NVPTXCompiler : public GpuCompiler {
       compilation_providers_ ABSL_GUARDED_BY(compilation_providers_mutex_);
 
   absl::StatusOr<const se::cuda::CompilationProvider*> GetCompilationProvider(
-      const DebugOptions& debug_options);
+      const DebugOptions& debug_options,
+      se::StreamExecutor* absl_nullable stream_exec);
 
   NVPTXCompiler(const NVPTXCompiler&) = delete;
   NVPTXCompiler& operator=(const NVPTXCompiler&) = delete;

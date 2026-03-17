@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,18 +18,22 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::cuda {
 
 class DriverCompilationProvider : public CompilationProvider {
  public:
-  explicit DriverCompilationProvider() = default;
+  explicit DriverCompilationProvider(
+      stream_executor::StreamExecutor* absl_nonnull stream_exec)
+      : stream_exec_(stream_exec) {}
 
   std::string name() const override { return "DriverCompilationProvider"; }
 
@@ -50,6 +54,9 @@ class DriverCompilationProvider : public CompilationProvider {
       const CompilationOptions& options) const override;
 
   absl::StatusOr<int> GetLatestPtxIsaVersion() const override;
+
+ private:
+  stream_executor::StreamExecutor* absl_nonnull stream_exec_;
 };
 
 }  // namespace stream_executor::cuda

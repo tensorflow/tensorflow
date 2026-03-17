@@ -122,7 +122,8 @@ class GpuCompiler : public LLVMCompiler {
 
   virtual absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& config,
-      const stream_executor::DeviceDescription& device_description) {
+      const stream_executor::DeviceDescription& device_description,
+      se::StreamExecutor* absl_nullable stream_exec) {
     return false;
   }
 
@@ -219,13 +220,15 @@ class GpuCompiler : public LLVMCompiler {
   absl::StatusOr<CompileResultWithMetadata> CompileToBackendResult(
       HloModule* module, llvm::LLVMContext* llvm_context,
       const CompileOptions& options,
-      const se::DeviceDescription& gpu_device_info);
+      const se::DeviceDescription& gpu_device_info,
+      se::StreamExecutor* absl_nullable stream_exec);
 
   absl::StatusOr<BackendCompileResult> CompileAndLink(
       const HloModuleConfig& module_config,
       CompileModuleResults& compile_module_results,
       const stream_executor::DeviceDescription& device_description,
-      const CompileOptions& options, const HloModule* debug_module);
+      const CompileOptions& options, const HloModule* debug_module,
+      se::StreamExecutor* absl_nullable stream_exec);
 
   absl::StatusOr<BackendCompileResult> CompileSingleModule(
       const HloModuleConfig& module_config,
@@ -277,7 +280,8 @@ class GpuCompiler : public LLVMCompiler {
   virtual absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,
       std::vector<std::vector<uint8_t>> modules,
-      const DebugOptions& debug_options) {
+      const DebugOptions& debug_options,
+      se::StreamExecutor* absl_nullable stream_exec) {
     return Unimplemented("LinkModules is not implemented.");
   }
 

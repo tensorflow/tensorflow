@@ -465,7 +465,8 @@ void WarnIfBadDriverJITVersion() {
 }
 
 absl::StatusOr<const se::cuda::CompilationProvider*>
-NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options) {
+NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options,
+                                      se::StreamExecutor* stream_exec) {
   absl::MutexLock lock(compilation_providers_mutex_);
   std::unique_ptr<se::cuda::CompilationProvider>& compilation_provider =
       compilation_providers_[se::cuda::CompilationProviderOptions::
@@ -475,7 +476,7 @@ NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options) {
         compilation_provider,
         se::cuda::AssembleCompilationProvider(
             se::cuda::CompilationProviderOptions::FromDebugOptions(
-                debug_options)));
+                debug_options, stream_exec)));
   }
   return compilation_provider.get();
 }
@@ -547,8 +548,9 @@ NVPTXCompiler::CompileTargetBinary(
     return BackendCompileResult{};
   }
 
-  TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
-                      GetCompilationProvider(module_config.debug_options()));
+  TF_ASSIGN_OR_RETURN(
+      const se::cuda::CompilationProvider* compilation_provider,
+      GetCompilationProvider(module_config.debug_options(), nullptr));
 
   se::cuda::CompilationOptions compilation_options =
       PtxCompileOptionsFromDebugOptions(module_config.debug_options());
@@ -600,10 +602,11 @@ NVPTXCompiler::CompileTargetBinary(
 
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config,
-    const stream_executor::DeviceDescription& device_description) {
+    const stream_executor::DeviceDescription& device_description,
+    se::StreamExecutor* stream_exec) {
   TF_ASSIGN_OR_RETURN(
       const se::cuda::CompilationProvider* compilation_provider,
-      GetCompilationProvider(hlo_module_config.debug_options()));
+      GetCompilationProvider(hlo_module_config.debug_options(), stream_exec));
   return compilation_provider->SupportsCompileAndLink() &&
          compilation_provider->SupportsCompileToRelocatableModule();
 }
@@ -611,7 +614,7 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     const stream_executor::DeviceDescription& device_description,
     std::vector<std::vector<uint8_t>> modules,
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options, se::StreamExecutor* stream_exec) {
   if (modules.empty()) {
     return std::vector<uint8_t>{};
   }
@@ -620,7 +623,7 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
       device_description.gpu_compute_capability().cuda_compute_capability();
 
   TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
-                      GetCompilationProvider(debug_options));
+                      GetCompilationProvider(debug_options, stream_exec));
 
   std::vector<se::cuda::CompilationProvider::RelocatableModuleOrPtx> inputs;
   inputs.reserve(modules.size());
