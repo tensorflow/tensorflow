@@ -182,6 +182,9 @@ test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
 # Default options should come above this line.
 
+# Enable bzlmod
+common:bzlmod --enable_bzlmod --noenable_workspace
+
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
 # https://docs.bazel.build/versions/master/user-manual.html#flag--fat_apk_cpu

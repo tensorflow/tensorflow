@@ -146,7 +146,7 @@ py_library(
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/python:schema_util",
         "//tensorflow/python/platform:gfile",
-        "@pypi_flatbuffers//:pkg",
+        "@pypi//flatbuffers",
     ],
 )
 
@@ -170,7 +170,7 @@ py_library(
     strict_deps = True,
     deps = [
         "//tensorflow/lite/python:schema_py",
-        "@pypi_flatbuffers//:pkg",
+        "@pypi//flatbuffers",
     ],
 )
 

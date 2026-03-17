@@ -419,7 +419,7 @@ py_library(
         "//tensorflow/python/training:saver",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
-        "@pypi_flatbuffers//:pkg",
+        "@pypi//flatbuffers",
     ],
 )
 
