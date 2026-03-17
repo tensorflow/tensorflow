@@ -68,14 +68,13 @@ template <typename T, typename TIndex>
 struct CubDeviceReduceCount {
   gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
                         const T* d_in, TIndex* d_out, int num_items,
-                        gpuStream_t stream = 0,
-                        bool debug_synchronous = false) {
+                        gpuStream_t stream = 0) {
     IsNonzero<T> is_nonzero;
     gpuprim::TransformInputIterator<bool, IsNonzero<T>, const T*>
         is_nonzero_iter(d_in, is_nonzero);
     return gpuprim::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes,
-                                      is_nonzero_iter, d_out, num_items, stream,
-                                      debug_synchronous);
+                                      is_nonzero_iter, d_out, num_items,
+                                      stream);
   }
 };
 
@@ -83,11 +82,9 @@ template <typename TIndex>
 struct CubDeviceReduceCount<bool, TIndex> {
   gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
                         const bool* d_in, TIndex* d_out, int num_items,
-                        gpuStream_t stream = 0,
-                        bool debug_synchronous = false) {
+                        gpuStream_t stream = 0) {
     return gpuprim::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in,
-                                      d_out, num_items, stream,
-                                      debug_synchronous);
+                                      d_out, num_items, stream);
   }
 };
 
@@ -101,8 +98,7 @@ struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
   gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
                         const T* d_flags, OutputIterator d_out,
                         TIndex* d_num_selected_out, int num_items,
-                        gpuStream_t stream = 0,
-                        bool debug_synchronous = false) {
+                        gpuStream_t stream = 0) {
     gpuprim::CountingInputIterator<TIndex> select_counter(0);
     IsNonzero<T> is_nonzero;
     gpuprim::TransformInputIterator<bool, IsNonzero<T>, const T*>
@@ -110,7 +106,7 @@ struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
     return gpuprim::DeviceSelect::Flagged(
         d_temp_storage, temp_storage_bytes, select_counter /*d_in*/,
         is_nonzero_iter /*d_flags*/, d_out, d_num_selected_out, num_items,
-        stream, debug_synchronous);
+        stream);
   }
 };
 
@@ -120,12 +116,11 @@ struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
   gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
                         const T* d_flags, OutputIterator d_out,
                         TIndex* d_num_selected_out, int num_items,
-                        gpuStream_t stream = 0,
-                        bool debug_synchronous = false) {
+                        gpuStream_t stream = 0) {
     gpuprim::CountingInputIterator<TIndex> select_counter(0);
     return gpuprim::DeviceSelect::Flagged(
         d_temp_storage, temp_storage_bytes, select_counter /*d_in*/, d_flags,
-        d_out, d_num_selected_out, num_items, stream, debug_synchronous);
+        d_out, d_num_selected_out, num_items, stream);
   }
 };
 

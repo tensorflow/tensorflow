@@ -1,6 +1,6 @@
 # Tests of TensorFlow NN kernels written using the Python API.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -97,9 +97,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "bias_op_base",
     srcs = ["bias_op_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -370,9 +371,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cudnn_deterministic_base",
     srcs = ["cudnn_deterministic_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:constant_op",
@@ -414,9 +416,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "depthwise_conv_op_base",
     srcs = ["depthwise_conv_op_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
@@ -899,9 +902,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "xent_op_test_base",
     srcs = ["xent_op_test_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:config",

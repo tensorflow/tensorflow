@@ -26,7 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/shape.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_config.pb.h"
@@ -67,7 +69,9 @@ absl::Status AsyncLoadRestoredTensorAsIfrtLoadedVariable(
     ifrt_serving::IfrtLoadedVariableRegistry& ifrt_loaded_variable_registry,
     tfrt::ConcurrentWorkQueue* checkpoint_loader_queue,
     const VariableDeviceShardingConfig& sharding_config,
-    const xla::ifrt::LayoutRef& xla_input_layout);
+    const xla::ifrt::LayoutRef& xla_input_layout,
+    std::shared_ptr<xla::Shape> shape_on_device,
+    const xla::ifrt::DeviceListRef& device_list);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

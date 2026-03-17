@@ -1,4 +1,4 @@
-/* Copyright 2017 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,16 @@ limitations under the License.
 #ifndef XLA_TESTS_HLO_TEST_BASE_H_
 #define XLA_TESTS_HLO_TEST_BASE_H_
 
+#include <memory>
+#include <utility>
+
+#include "absl/base/attributes.h"
+#include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_legacy.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/tests/hlo_test_base_legacy.h"
+#include "xla/util.h"
+
 // Inclusion of this header indicates that the test has NOT been migrated to use
 // HloRunnerPjRt. Migration requires tagging the build target so that the
 // correct dependencies are included. The whole target must be migrated at once.
@@ -28,33 +38,6 @@ static_assert(false,
               "HloTestBase cannot be used in the same target as a test that "
               "has been explicitly migrated to use HloRunnerPjRt.");
 #endif  // XLA_TEST_MIGRATED_TO_HLO_RUNNER_PJRT
-
-#include <cstdint>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <vector>
-
-#include "absl/base/attributes.h"
-#include "absl/log/log.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
-#include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/literal.h"
-#include "xla/service/backend.h"
-#include "xla/service/computation_placer.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/hlo_runner_interface.h"
-#include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/tests/hlo_runner_agnostic_reference_mixin.h"
-#include "xla/tests/hlo_runner_agnostic_test_base.h"
-#include "xla/tsl/platform/test.h"
-#include "xla/util.h"
-#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -88,39 +71,8 @@ namespace xla {
 class ABSL_DEPRECATED(
     "Please avoid introducing new tests that use this class. Tests that use "
     "this base class are being incrementally migrated to use HloPjRtTestBase "
-    "or HloRunnerAgnosticTestBase directly. For Googlers, the migration "
-    "process is documented at go/xla-test-migration. For external users, "
-    "please use existing support channels if you run into any issues. In most "
-    "cases we anticipate that migrating a single test suite should be a matter "
-    "of replacing HloTestBase with HloPjRtTestBase (or another "
-    "HloRunnerAgnosticTestBase subclass). You can use the "
-    "HloPjRtInterpreterReferenceMixin<T> class to add a PjRt-based "
-    "interpreter reference backend to your test. Once a test target is "
-    "migrated, if using one of the xla_test macros, you should add the "
-    "test_migrated_to_hlo_runner_pjrt tag to include the correct "
-    "backend-specific dependencies.") HloTestBase
-    : public HloRunnerAgnosticReferenceMixin<HloRunnerAgnosticTestBase> {
- public:
-  // Compiles the given `hlo` with optimizations, and verifies that optimized
-  // HLO matches the given FileCheck pattern.
-  void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern,
-                         bool print_operand_shape = false);
-
-  // Like MatchOptimizedHlo, but checks operand shapes as well.
-  void MatchOptimizedHloWithShapes(absl::string_view hlo,
-                                   absl::string_view pattern) {
-    MatchOptimizedHlo(hlo, pattern, /*print_operand_shape=*/true);
-  }
-
-  // Compiles and returns module with optimizations from a given HLO.
-  absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
-      absl::string_view hlo);
-
-  absl::StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
-      std::unique_ptr<HloModule> hlo_module);
-
-  using HloRunnerAgnosticTestBase::ParseAndReturnVerifiedModule;
-
+    "or HloRunnerAgnosticTestBase directly.") HloTestBase
+    : public HloTestBaseLegacy {
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the
@@ -128,7 +80,11 @@ class ABSL_DEPRECATED(
   // and the reference backend.
   explicit HloTestBase(bool verifier_layout_sensitive = false,
                        bool allow_mixed_precision_in_hlo_verifier = true,
-                       HloPredicate instruction_can_change_layout_func = {});
+                       HloPredicate instruction_can_change_layout_func = {})
+      : HloTestBaseLegacy(verifier_layout_sensitive,
+                          allow_mixed_precision_in_hlo_verifier,
+                          std::move(instruction_can_change_layout_func),
+                          DefaultRunnerFactory) {}
 
   // If your test doesn't use interpreter as the reference backend, you can use
   // this constructor. Note that your test target is responsible for linking in
@@ -136,95 +92,18 @@ class ABSL_DEPRECATED(
   HloTestBase(se::Platform* test_platform, se::Platform* reference_platform,
               bool verifier_layout_sensitive = false,
               bool allow_mixed_precision_in_hlo_verifier = true,
-              HloPredicate instruction_can_change_layout_func = {});
-
-  // DO NOT USE: This is a temporary method to help migrate away from HloRunner.
-  // Some test fixures rely on functionality that is not supported by other
-  // HloRunnerInterface implementations, thus we expose it here.
-  [[nodiscard]] [[deprecated(
-      "This is a temporary method to help migrate existing tests away from "
-      "directly depending on HloRunner. Please do not introduce new uses.")]]
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicatedWithHloRunner(
-      OpaqueExecutable* executable,
-      const HloRunnerInterface::ReplicatedExecuteOptions& options,
-      DeviceAssignment* device_assignment) {
-    return test_runner_as_hlo_runner().ExecuteReplicated(
-        executable, options, device_assignment, nullptr);
-  }
-
-  [[nodiscard]] ::testing::AssertionResult RunAndCompareFromFile(
-      const std::string& filename, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
-  [[nodiscard]] ::testing::AssertionResult RunAndCompareNoHloPassesFromFile(
-      const std::string& filename, const std::optional<ErrorSpec>& error,
-      const std::function<void(HloModule*)>& reference_preprocessor = nullptr);
-
-  // DO NOT USE: This is a temporary method to help migrate away from HloRunner.
-  // Some test fixures rely on functionality that is not supported by other
-  // HloRunnerInterface implementations, thus we expose it here.
-  [[deprecated(
-      "This is a temporary method to help migrate existing tests away from "
-      "directly depending on HloRunner. Please do not introduce new uses.")]]
-  const Backend& backend() const {
-    return test_runner_as_hlo_runner().backend();
-  }
-  // Returns the backend owned by the test runner.
-  // DO NOT USE: This is a temporary method to help migrate away from HloRunner.
-  // Some test fixures rely on functionality that is not supported by other
-  // HloRunnerInterface implementations, thus we expose it here.
-  [[deprecated(
-      "This is a temporary method to help migrate existing tests away from "
-      "directly depending on HloRunner. Please do not introduce new uses.")]]
-  Backend& backend() {
-    return test_runner_as_hlo_runner().backend();
-  }
-
-  // DO NOT USE: This is a temporary method to help migrate away from HloRunner.
-  // Some test fixures rely on functionality that is not supported by other
-  // HloRunnerInterface implementations, thus we expose it here.
-  [[deprecated(
-      "This is a temporary method to help migrate existing tests away from "
-      "directly depending on HloRunner. Please do not introduce new uses.")]]
-  const HloRunner& test_runner_as_hlo_runner() const {
-    return *static_cast<HloRunner*>(&test_runner());
-  }
-  // DO NOT USE: This is a temporary method to help migrate away from HloRunner.
-  // Some test fixures rely on functionality that is not supported by other
-  // HloRunnerInterface implementations, thus we expose it here.
-  [[deprecated(
-      "This is a temporary method to help migrate existing tests away from "
-      "directly depending on HloRunner. Please do not introduce new uses.")]]
-  HloRunner& test_runner_as_hlo_runner() {
-    return *static_cast<HloRunner*>(&test_runner());
-  }
-
-  [[deprecated(
-      "This is a temporary method to help migrate existing tests away from "
-      "directly depending on HloRunner. Please do not introduce new uses.")]]
-  int64_t num_devices() {
-    return backend().device_count();
-  }
-
-  // Helper functions to get test and reference platforms.
-  static se::Platform* GetReferencePlatform();
-  static se::Platform* GetTestPlatform();
-
-  // Creates or retrieves the allocator.
-  se::DeviceAddressAllocator* GetAllocator();
-
-  ErrorSpec error_spec_{0.0001};
+              HloPredicate instruction_can_change_layout_func = {})
+      : HloTestBaseLegacy(test_platform, reference_platform,
+                          verifier_layout_sensitive,
+                          allow_mixed_precision_in_hlo_verifier,
+                          std::move(instruction_can_change_layout_func),
+                          DefaultRunnerFactory) {}
 
  private:
-  HloTestBase(std::tuple<std::unique_ptr<HloRunnerInterface>,
-                         HloRunnerAgnosticTestBase::DeviceShapeRepresentationFn,
-                         HloRunnerAgnosticTestBase::DeviceShapeSizeFn>
-                  test_runner_and_functions,
-              std::unique_ptr<HloRunnerInterface> reference_runner,
-              bool verifier_layout_sensitive,
-              bool allow_mixed_precision_in_hlo_verifier,
-              HloPredicate instruction_can_change_layout_func);
-
-  std::unique_ptr<se::DeviceAddressAllocator> allocator_;
+  static std::unique_ptr<HloRunnerLegacy> DefaultRunnerFactory(
+      se::Platform* platform) {
+    return std::make_unique<HloRunner>(platform);
+  }
 };
 
 }  // namespace xla

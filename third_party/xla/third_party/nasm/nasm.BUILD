@@ -124,7 +124,7 @@ cc_binary(
     ],
     copts = COPTS,
     includes = INCLUDES,
-    visibility = ["@libjpeg_turbo//:__pkg__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":nasm_2_14_02",
     ],

@@ -88,13 +88,13 @@ class HloSharding final
       const Shape& shape,
       SingleDeviceShardSemantics single_device_shard_semantics) const override;
 
-  std::string DebugString() const override;
-
   static char ID;  // NOLINT
 
  private:
   HloSharding(DeviceListRef devices, MemoryKind memory_kind,
               xla::HloSharding xla_hlo_sharding);
+
+  std::string DebugString() const override;
 
   void Hash(absl::HashState state) const override;
 

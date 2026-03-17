@@ -95,17 +95,18 @@ class AllToAllStartThunk : public CollectiveThunk {
   }
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     const GpuCliqueKey& clique_key,
-                                     se::Stream& stream,
-                                     Communicator& comm) override;
+  // No rendezvous needed when using P2P memcpy in local mode instead of NCCL.
+  bool RequiresRendezvous() const override { return !p2p_memcpy_enabled_; }
 
-  bool is_local() const;
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
+
+  bool is_local(int device_count) const;
 
  private:
   const AllToAllConfig config_;
   const std::vector<Buffer> buffers_;
-  int64_t device_count_ = 1;
   bool p2p_memcpy_enabled_ = false;
 
   absl::Mutex pointer_maps_mutex_;

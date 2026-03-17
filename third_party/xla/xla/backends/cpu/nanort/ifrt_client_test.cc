@@ -149,9 +149,9 @@ static absl::StatusOr<ifrt::ArrayRef> MakeArrayFromLiteral(
   return client->MakeArrayFromHostBuffer(
       literal.untyped_data(),
       DTypeFromPrimitiveType(literal.shape().element_type()),
-      ifrt::Shape(literal.shape().dimensions()),
-      /*byte_strides=*/std::nullopt, std::move(sharding),
-      ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
+      ifrt::Shape(literal.shape().dimensions()), /*byte_strides=*/std::nullopt,
+      std::move(sharding),
+      /*layout=*/nullptr, ifrt::Client::HostBufferSemantics::kImmutableZeroCopy,
       /*on_done_with_host_buffer=*/nullptr);
 }
 
@@ -338,6 +338,9 @@ int main(int argc, char** argv) {
       "ArrayImplTest.CopyArraysSubByteDType:"
       // NanoRT does not handle zero-sized buffers correctly.
       "ArrayImplTest.MakeAndCopyZeroSizedBuffers:"
+      // NanoRT does not handle CopyArrays with re-ordered devices correctly.
+      "ArrayImplTest.CopyArraysWithPartialReuse:"
+      "ArrayImplTest.CopyToDifferentDevice:"
       // Executable returns a wrong number of devices.
       "*LoadedExecutableImplTest.Properties*:"
       // Incorrect deleted state of donated inputs.

@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/codegen/triton/test_utils.h"
+#include "xla/backends/gpu/codegen/triton/xtile_test_base.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
-#include "xla/tests/hlo_test_base_with_mlir_context.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -38,7 +38,8 @@ namespace {
 // emitter becomes a reality.
 // *****************************************************************************
 
-using XTileDialectTest = HloTestBaseWithMLIRContext;
+class XTileDialectTest : public HloHardwareIndependentTestBase,
+                         public XTileTestBase {};
 
 TEST_F(XTileDialectTest, HloTransposeIsLoweredToStableHloTranspose) {
   constexpr absl::string_view kHloText = R"(
@@ -62,7 +63,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{16, 32}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("transpose_fusion"),
+      *module->GetComputationWithName("transpose_fusion"),
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.transpose %[[ARG:.*]], dims = [1, 0] : (tensor<32x16xf32>) -> tensor<16x32xf32>
@@ -91,8 +92,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{16, 32}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("bitcast_fusion"),
-      block_level_parameters,
+      *module->GetComputationWithName("bitcast_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = tensor.bitcast %[[ARG:.*]] : tensor<16x32xf32> to tensor<16x32xi32>
 )"));
@@ -118,8 +118,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{16}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("iota_fusion"),
-      block_level_parameters,
+      *module->GetComputationWithName("iota_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.iota dim = 0 : tensor<16xi32>
 )"));
@@ -147,7 +146,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{16, 32, 8}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("broadcast_in_dim_fusion"),
+      *module->GetComputationWithName("broadcast_in_dim_fusion"),
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [0, 1] : (tensor<16x32xf32>) -> tensor<16x32x8xf32>
@@ -177,7 +176,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{16, 32, 8}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("broadcast_in_dim_fusion"),
+      *module->GetComputationWithName("broadcast_in_dim_fusion"),
       block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.broadcast_in_dim %[[ARG:.*]], dims = [] : (tensor<f32>) -> tensor<16x32x8xf32>
@@ -213,8 +212,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{16}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("reduce_fusion"),
-      block_level_parameters,
+      *module->GetComputationWithName("reduce_fusion"), block_level_parameters,
       R"(
 CHECK: %[[INIT:.*]] = arith.constant dense<0.000000e+00> : tensor<f32>
 CHECK: %[[MASKED_INPUT:.*]] = xtile.mask {{.*}}
@@ -244,8 +242,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{1, 16}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("reshape_fusion"),
-      block_level_parameters,
+      *module->GetComputationWithName("reshape_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.reshape %[[ARG:.*]] : (tensor<16xi32>) -> tensor<1x16xi32>
 )"));
@@ -255,33 +252,12 @@ TEST_F(XTileDialectTest, HloDotIsLoweredToStableHloDot) {
   constexpr absl::string_view kHloText = R"(
 HloModule t
 
-flhs {
-  ROOT flhs.p0 = f32[150,160] parameter(0)
-}
-
-frhs {
-  ROOT frhs.p0 = f32[160,31] parameter(0)
-}
-
 dot_fusion {
   fdot.p0 = f32[150,160] parameter(0)
   fdot.p1 = f32[160,31] parameter(1)
-  fdot.lhs = f32[150,160] fusion(fdot.p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["32", "8"]}]
-      }
-    }
-  }
-  fdot.rhs = f32[160,31]{1,0} fusion(fdot.p1), kind=kCustom, calls=frhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["32", "8"]}]
-      }
-    }
-  }
-
-  ROOT dot = f32[150,31] dot(fdot.lhs, fdot.rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot = f32[150,31] dot(fdot.p0, fdot.p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[8]}
 }
 
 ENTRY e {
@@ -298,8 +274,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{32, 8}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("dot_fusion"),
-      block_level_parameters,
+      *module->GetComputationWithName("dot_fusion"), block_level_parameters,
       R"(
 CHECK: %[[RES:.*]] = stablehlo.dot_general %[[ARG0:.*]], %[[ARG1:.*]], contracting_dims = [1] x [0], precision = [DEFAULT, DEFAULT] : (tensor<32x8xf32>, tensor<8x8xf32>) -> tensor<32x8xf32>
 CHECK: %[[ADD_RES:.*]] = arith.addf %[[ARG2:.*]], %[[RES]] : tensor<32x8xf32>
@@ -309,83 +284,16 @@ CHECK: %[[ADD_RES:.*]] = arith.addf %[[ARG2:.*]], %[[RES]] : tensor<32x8xf32>
 TEST_F(XTileDialectTest, HloScaledDotIsLoweredToXTileDotScaled) {
   constexpr absl::string_view kHloText = R"(
 HloModule m
-flhs (p0: f8e5m2[128,128]) -> f8e5m2[128,128] {
-  ROOT p0 = f8e5m2[128,128]{1,0} parameter(0)
-}
-frhs (p0: f8e5m2[128,256]) -> f8e5m2[128,256] {
-  ROOT p0 = f8e5m2[128,256]{1,0} parameter(0)
-}
-flhs_scale (p0: f8e8m0fnu[128,4]) -> f8e8m0fnu[128,4] {
-  ROOT p0 = f8e8m0fnu[128,4]{1,0} parameter(0)
-}
-frhs_scale (p0: f8e8m0fnu[4,256]) -> f8e8m0fnu[4,256] {
-  ROOT p0 = f8e8m0fnu[4,256]{1,0} parameter(0)
-}
 
 triton_dot {
   lhs = f8e5m2[128,128] parameter(0)
-  lhs1 = f8e5m2[128,128]{1,0} fusion(lhs),
-    kind=kCustom,
-    calls=flhs,
-    backend_config={
-      "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["128","128"]}],
-          "num_warps":"4",
-          "num_stages":"1",
-          "num_ctas":"1",
-        }
-      }
-    }
   rhs = f8e5m2[128,256] parameter(1)
-  rhs1 = f8e5m2[128,256]{1,0} fusion(rhs),
-    kind=kCustom,
-    calls=frhs,
-    backend_config={
-      "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["128","256"]}],
-          "num_warps":"4",
-          "num_stages":"1",
-          "num_ctas":"1",
-        }
-      }
-    }
   lhs_scale = f8e8m0fnu[128,4] parameter(2)
-  lhs_scale1 = f8e8m0fnu[128,4]{1,0} fusion(lhs_scale),
-    kind=kCustom,
-    calls=flhs_scale,
-    backend_config={
-      "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["128","128"]}],
-          "num_warps":"4",
-          "num_stages":"1",
-          "num_ctas":"1",
-        }
-      }
-    }
   rhs_scale = f8e8m0fnu[4,256] parameter(3)
-  rhs_scale1 = f8e8m0fnu[4,256]{1,0} fusion(rhs_scale),
-    kind=kCustom,
-    calls=frhs_scale,
-    backend_config={
-      "fusion_backend_config":{
-        "kind":"__triton_nested_gemm_fusion",
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["128", "256"]}],
-          "num_warps":"4",
-          "num_stages":"1",
-          "num_ctas":"1",
-        }
-      }
-    }
-  ROOT _ = bf16[128,256]{1,0} scaled-dot(lhs1, rhs1, lhs_scale1, rhs_scale1),
+  ROOT _ = bf16[128,256]{1,0} scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
     lhs_contracting_dims={1},
-    rhs_contracting_dims={0}
+    rhs_contracting_dims={0},
+    backend_config={sizes:[128]}
 }
 
 ENTRY e {
@@ -420,8 +328,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{128, 256}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("triton_dot"),
-      block_level_parameters,
+      *module->GetComputationWithName("triton_dot"), block_level_parameters,
       R"(
       CHECK: %[[DOT:.*]] = xtile.dot_scaled %[[LHS:.*]] scale %[[LHS_SCALE:.*]], %[[RHS:.*]] scale %[[RHS_SCALE:.*]] {fastMath = true} : tensor<128x128xf8E5M2>, tensor<128x4xi8> * tensor<128x256xf8E5M2>, tensor<256x4xi8> -> tensor<128x256xf32>
       CHECK: %[[RES:.*]] = arith.addf %{{.*}}, %[[DOT]] : tensor<128x256xf32>
@@ -459,7 +366,7 @@ TEST_F(XTileDialectTest, HloAllReduceIsLoweredToStableHloAllReduce) {
   block_level_parameters.output_tile_sizes = {{4096}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *hlo_module->GetComputationWithName("wrapped_all-reduce-start"),
+      *hlo_module->GetComputationWithName("wrapped_all-reduce-start"),
       block_level_parameters,
       R"(
 CHECK: stablehlo.all_reduce
@@ -489,8 +396,7 @@ ENTRY e {
   block_level_parameters.output_tile_sizes = {{16}};
 
   TF_EXPECT_OK(CreateXTileIrAndFileCheck(
-      this, *module->GetComputationWithName("add_fusion"),
-      block_level_parameters,
+      *module->GetComputationWithName("add_fusion"), block_level_parameters,
       R"(
 CHECK: stablehlo.add{{.*}}: tensor<16xui32>
 )"));

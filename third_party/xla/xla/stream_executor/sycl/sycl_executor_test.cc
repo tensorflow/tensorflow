@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -35,8 +36,11 @@ namespace {
 
 using testing::IsEmpty;
 using testing::Not;
+using ::tsl::testing::IsOk;
 using ::tsl::testing::IsOkAndHolds;
 using ::tsl::testing::StatusIs;
+
+constexpr size_t kMemoryAllocationSize = 1024;
 
 class SyclExecutorTest : public xla::LlvmIrGenTestBase {};
 
@@ -46,7 +50,7 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
                           stream_executor::PlatformManager::PlatformWithId(
                               stream_executor::sycl::kSyclPlatformId));
   TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
-                          platform->ExecutorForDevice(0));
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
 
   std::string hlo_text = R"(
     ENTRY e {
@@ -69,7 +73,7 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
 
-  const xla::gpu::SequentialThunk& seq_thunk = gpu_exec->GetThunk();
+  const xla::gpu::ThunkExecutor& seq_thunk = gpu_exec->thunk_executor();
   EXPECT_EQ(seq_thunk.thunks().size(), 1);
 
   const xla::gpu::Thunk* thunk = seq_thunk.thunks().at(0).get();
@@ -100,6 +104,63 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
 
   EXPECT_THAT(sycl_executor->GetSyclKernel(nullptr),
               StatusIs(absl::StatusCode::kNotFound));
+}
+
+TEST_F(SyclExecutorTest, CreateUnifiedMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          stream_executor::PlatformManager::PlatformWithId(
+                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kUnified));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(kMemoryAllocationSize));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
+  allocation.reset();
+}
+
+TEST_F(SyclExecutorTest, CreateHostMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          stream_executor::PlatformManager::PlatformWithId(
+                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocator> allocator,
+                          executor->CreateMemoryAllocator(MemoryType::kHost));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(kMemoryAllocationSize));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
+  allocation.reset();
+}
+
+TEST_F(SyclExecutorTest, CreateCollectiveMemoryAllocatorWorks) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          stream_executor::PlatformManager::PlatformWithId(
+                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<MemoryAllocator> allocator,
+      executor->CreateMemoryAllocator(MemoryType::kCollective));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> allocation,
+                          allocator->Allocate(kMemoryAllocationSize));
+  EXPECT_NE(allocation->opaque(), nullptr);
+  EXPECT_EQ(allocation->size(), kMemoryAllocationSize);
+  allocation.reset();
+}
+
+TEST_F(SyclExecutorTest, CreateUnsupportedMemoryAllocatorsFail) {
+  TF_ASSERT_OK_AND_ASSIGN(Platform * platform,
+                          stream_executor::PlatformManager::PlatformWithId(
+                              stream_executor::sycl::kSyclPlatformId));
+  TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
+                          platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+  EXPECT_THAT(executor->CreateMemoryAllocator(MemoryType::kDevice),
+              Not(IsOk()));
 }
 
 }  // namespace

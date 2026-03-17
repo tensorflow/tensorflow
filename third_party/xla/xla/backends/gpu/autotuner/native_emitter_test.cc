@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
@@ -92,17 +91,17 @@ ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32
 class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
  protected:
   NativeEmitterBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
-                             .value()
-                             ->ExecutorForDevice(0)
-                             .value()),
+      : platform_(PlatformUtil::GetDefaultPlatform().value()),
+        stream_executor_(platform_->ExecutorForDevice(0).value()),
         target_config_(stream_executor_),
-        backend_(&debug_options_, &compiler_, &target_config_) {}
+        compiler_(Compiler::GetForPlatform(platform_->id()).value()),
+        backend_(&debug_options_, compiler_.get(), &target_config_) {}
 
   DebugOptions debug_options_;
-  NVPTXCompiler compiler_;
+  se::Platform* platform_;
   se::StreamExecutor* stream_executor_;
   Compiler::GpuTargetConfig target_config_;
+  std::unique_ptr<Compiler> compiler_;
   NativeEmitterBackend backend_;
 };
 

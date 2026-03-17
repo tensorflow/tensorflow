@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -47,18 +47,15 @@ limitations under the License.
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 
-namespace mlir {
-namespace triton {
-}  // namespace triton
-}  // namespace mlir
-
 namespace xla {
 namespace gpu {
 
 struct TritonWrapperResult {
   int64_t shmem_bytes = 0;
+  int64_t global_scratch_memory_size = 0;
   se::gpu::TmaMetadata tma_metadata;
   se::ThreadDim thread_dims;
+  bool use_pdl = false;
 
   // The captured nvvm.annotations from the lowest level LLVM IR coming from
   // Triton. We need to propagate them because we later create the kernel and
@@ -88,7 +85,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     absl::string_view fn_name, const HloFusionInstruction* fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::MLIRContext& mlir_context);
+    mlir::MLIRContext& mlir_context, bool use_experimental_tiling = false);
 
 // Compiles a given Triton module to LLVM IR.
 // If `emit_kernels` is false, then the function skips emitting
@@ -101,7 +98,8 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     mlir::ModuleOp triton_module, const llvm::Triple& target_triple,
     const std::string& data_layout, llvm::LLVMContext& llvm_context,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion,
-    bool emit_kernel = true);
+    bool emit_kernel = true,
+    absl::AnyInvocable<void()> error_handler = nullptr);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);

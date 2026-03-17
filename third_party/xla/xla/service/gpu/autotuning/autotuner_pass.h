@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
@@ -37,6 +38,14 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
+                                 bool is_deviceless = false,
+                                 bool optimize_scratch_bytes = true,
+                                 bool allow_reg_spills = true);
+
+ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
+                                 const AutotuneConfig& autotune_config);
 
 // HloModulePass that runs the autotuner.
 class AutotunerPass : public HloModulePass {

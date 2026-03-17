@@ -41,8 +41,7 @@ namespace xla {
 namespace gpu {
 
 CollectiveGroupThunk::CollectiveGroupThunk(
-    ThunkInfo thunk_info, Thunk::Kind kind,
-    std::vector<std::unique_ptr<Thunk>> thunks,
+    ThunkInfo thunk_info, Thunk::Kind kind, ThunkSequence thunks,
     std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
     : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {
   for (auto& thunk : thunks) {
@@ -77,18 +76,14 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
 
   // Gather the set of all communicators. There should be only one.
   absl::flat_hash_set<Communicator*> communicator_set;
-  absl::Status s;
-  ForAllThunks([&params, &s, &communicator_set](const Thunk* thunk) {
-    absl::StatusOr<std::vector<Communicator*>> communicators =
-        thunk->GetCommunicators(params);
-    if (!communicators.ok()) {
-      s = communicators.status();
-      return;
-    }
-    for (Communicator* comm : *communicators) {
+  RETURN_IF_ERROR(Walk([&](const Thunk* thunk) -> absl::Status {
+    ASSIGN_OR_RETURN(auto communicators, thunk->GetCommunicators(params));
+    for (Communicator* comm : communicators) {
       communicator_set.insert(comm);
     }
-  });
+    return absl::OkStatus();
+  }));
+
   if (communicator_set.empty()) {
     return absl::InvalidArgumentError("No communicators in NCCL group");
   }
@@ -115,29 +110,17 @@ absl::Status CollectiveGroupThunk::ExecuteOnStream(
   return absl::OkStatus();
 }
 
-void CollectiveGroupThunk::ForAllThunks(
-    absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
+absl::Status CollectiveGroupThunk::WalkNested(Walker callback) {
   for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->ForAllThunks(fn);
+    RETURN_IF_ERROR(thunk->Walk(callback));
   }
+  return absl::OkStatus();
 }
 
-void CollectiveGroupThunk::ForAllThunksMutable(
-    absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-  for (const std::unique_ptr<Thunk>& thunk : thunks_) {
-    thunk->ForAllThunksMutable(fn);
-  }
-}
-
-absl::Status CollectiveGroupThunk::TransformAllNestedThunks(
-    absl::FunctionRef<
-        absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-        fn) {
+absl::Status CollectiveGroupThunk::TransformNested(Transformer callback) {
   for (std::unique_ptr<Thunk>& thunk : thunks_) {
-    RETURN_IF_ERROR(thunk->TransformAllNestedThunks(fn));
-    ASSIGN_OR_RETURN(thunk, fn(std::move(thunk)));
+    RETURN_IF_ERROR(thunk->TransformNested(callback));
+    ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
   }
   return absl::OkStatus();
 }

@@ -25,11 +25,11 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/stream.h"
 
 namespace xla {
@@ -65,8 +65,8 @@ class ConvolutionThunk : public Thunk {
     for (const ShapedSlice& slice : result_buffers_) {
       res.push_back(BufferUse::Write(slice.slice, slice.shape));
     }
-    res.emplace_back(scratch_buffer_, BufferUse::MemoryAccess::kWrite,
-                     BufferUse::ContentValidity::kUndefined);
+    res.push_back(BufferUse::Scratch(
+        scratch_buffer_, ShapeUtil::MakeShape(U8, {scratch_buffer_.size()})));
     return res;
   }
 

@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -497,7 +500,6 @@ TEST_F(CallInlinerTest, InlineCallWithOverriddenAttributeInlineableFalse) {
       CallInliner(
           /*single_call_site=*/false, /*update_domain=*/false,
           /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
-          /*uniquify_channel_ids=*/false,
           /*override_policy=*/
           [](const CallGraph&, const HloInstruction*) {
             return CallInliner::InlineOverridePolicy::
@@ -640,42 +642,6 @@ TEST_F(CallInlinerTest, ControlDepsPropagateToRootOfInlinedInstructions) {
   // CHECK-DAG: %[[call3:.+]] = custom-call({{.+}}), custom_call_target="baz", control-predecessors={%[[res]]}
   )"));
   EXPECT_TRUE(filecheck_result);
-}
-
-TEST_F(CallInlinerTest, ChannelIdsAreUniquifiedWhenSettingIsEnabled) {
-  const char* hlo = R"(
-ag {
-  input = f32[128,32] parameter(0)
-  ROOT ag = f32[128,128] all-gather(input),
-    replica_groups={}, dimensions={1}, channel_id=1337
-}
-
-ag2 {
-  input = f32[128,128] parameter(0)
-  ROOT ag = f32[128,128] all-gather(input),
-    replica_groups={}, dimensions={1}, channel_id=1337
-}
-
-ENTRY main {
-  input = f32[128,32] parameter(0)
-  ag = f32[128,128] call(input), to_apply=ag
-  ag2 = f32[128,128] call(ag), to_apply=ag2
-  ROOT result = (f32[128,128], f32[128,128]) tuple(ag2, ag)
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
-  CallInliner call_inliner(
-      /*single_call_site=*/false, /*update_domain=*/false,
-      /*composites_to_preserve=*/{}, /*uniquify_channel_ids=*/true);
-  ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
-
-  auto ag = m->entry_computation()->root_instruction()->operand(0);
-  auto ag2 = m->entry_computation()->root_instruction()->operand(1);
-
-  EXPECT_THAT(ag, op::AllGather());
-  EXPECT_THAT(ag2, op::AllGather());
-  EXPECT_NE(ag->channel_id(), ag2->channel_id());
 }
 
 TEST_F(CallInlinerTest, InlineScheduledModule) {
@@ -1022,7 +988,6 @@ ENTRY main {
   };
   CallInliner call_inliner(/*single_call_site=*/false, /*update_domain=*/false,
                            /*composites_to_preserve=*/{},
-                           /*uniquify_channel_ids=*/false,
                            /*override_policy=*/inline_trivial_only);
 
   ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
@@ -1030,81 +995,115 @@ ENTRY main {
               op::Subtract(op::Call(op::Parameter(0)), op::Parameter(0)));
 }
 
-TEST_F(CallInlinerTest, HostSendChannelIdNotUniquified) {
-  const char* hlo = R"(
-callee {
-  input = f32[128,32] parameter(0)
-  token.0 = token[] parameter(1)
-  send = (f32[128, 32], token[]) send(input, token.0), channel_id=1, is_host_transfer=true
-  ROOT send-done = token[] send-done(send), channel_id=1, is_host_transfer=true
+struct ModuleWithCall {
+  std::unique_ptr<HloModule> module;
+  HloInstruction* call;
+  HloInstruction* neg;
+};
+
+ModuleWithCall CreateModuleWithCall(const std::string& module_name) {
+  auto module = std::make_unique<HloModule>(module_name, HloModuleConfig());
+  HloComputation::Builder inner_builder("inner");
+  auto* p0 = inner_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  auto* neg = inner_builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kNegate, p0));
+  HloComputation* inner = module->AddEmbeddedComputation(inner_builder.Build());
+
+  HloComputation::Builder outer_builder("outer");
+  auto* constant = outer_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  auto* call = outer_builder.AddInstruction(HloInstruction::CreateCall(
+      ShapeUtil::MakeShape(F32, {}), {constant}, inner));
+  module->AddEntryComputation(outer_builder.Build());
+
+  return {std::move(module), call, neg};
 }
 
-ENTRY main {
-  input = f32[128,32] parameter(0)
-  token.0 = token[] after-all()
-  call.0 = token[] call(input, token.0), to_apply=callee
-  ROOT call.1 = token[] call(input, call.0), to_apply=callee
-})";
+TEST_F(CallInlinerTest, InlinedStackFrameConcatenation) {
+  ModuleWithCall m = CreateModuleWithCall(TestName());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
-  CallInliner call_inliner(/*single_call_site=*/false, /*update_domain=*/false,
-                           /*composites_to_preserve=*/{},
-                           /*uniquify_channel_ids=*/true);
-  ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
-  HloComputation* entry = m->entry_computation();
-  for (HloInstruction* inst : entry->instructions()) {
-    HloSendRecvInstruction* send_recv = DynCast<HloSendRecvInstruction>(inst);
-    if (send_recv && send_recv->is_host_transfer()) {
-      EXPECT_EQ(send_recv->channel_id(), 1);
+  HloStackFrame frame1;
+  frame1.file_name = "file1.py";
+  frame1.function_name = "func1";
+  frame1.line = 10;
+  frame1.parent_frame_id = StackFrameId{0};
+  StackFrameId id1 = m.module->mutable_stack_frames().AddStackFrame(frame1);
+
+  HloStackFrame frame2;
+  frame2.file_name = "file2.py";
+  frame2.function_name = "func2";
+  frame2.line = 20;
+  frame2.parent_frame_id = StackFrameId{0};
+  StackFrameId id2 = m.module->mutable_stack_frames().AddStackFrame(frame2);
+
+  OpMetadata neg_metadata;
+  neg_metadata.set_stack_frame_id(id2.value);
+  m.neg->set_metadata(neg_metadata);
+
+  OpMetadata call_metadata;
+  call_metadata.set_stack_frame_id(id1.value);
+  m.call->set_metadata(call_metadata);
+
+  TF_ASSERT_OK(CallInliner::Inline(m.call).status());
+
+  HloInstruction* inlined_neg = nullptr;
+  for (auto* inst : m.module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kNegate) {
+      inlined_neg = inst;
+      break;
     }
   }
+  ASSERT_NE(inlined_neg, nullptr);
+
+  StackFrameId new_frame_id{inlined_neg->metadata().stack_frame_id()};
+  EXPECT_NE(new_frame_id, id1);
+  EXPECT_NE(new_frame_id, id2);
+  EXPECT_TRUE(new_frame_id.valid());
+
+  HloStackFrame new_frame =
+      m.module->stack_frames().GetStackFrame(new_frame_id);
+  EXPECT_EQ(new_frame.file_name, "file2.py");
+  EXPECT_EQ(new_frame.function_name, "func2");
+  EXPECT_EQ(new_frame.parent_frame_id, id1);
 }
 
-TEST_F(CallInlinerTest, ChannelIdsAreGlovallyUniquified) {
-  const char* hlo = R"(
-ag {
-  input = f32[128,32] parameter(0)
-  ROOT ag = f32[128,128] all-gather(input), replica_groups={}, dimensions={1}, channel_id=27
-}
+TEST_F(CallInlinerTest, InlinedStackFrameRedundantPrefixSkipsConcatenation) {
+  ModuleWithCall m = CreateModuleWithCall(TestName());
 
-branch_0 {
-  input = f32[128,32] parameter(0)
-  ROOT ag = f32[128,128] call(input), to_apply=ag
-}
+  HloStackFrame frame1;
+  frame1.file_name = "file1.py";
+  frame1.function_name = "func1";
+  frame1.line = 10;
+  frame1.parent_frame_id = StackFrameId{0};
+  StackFrameId id1 = m.module->mutable_stack_frames().AddStackFrame(frame1);
 
-branch_1 {
-  input = f32[128,32] parameter(0)
-  ROOT ag = f32[128,128] call(input), to_apply=ag
-}
+  HloStackFrame frame2;
+  frame2.file_name = "file2.py";
+  frame2.function_name = "func2";
+  frame2.line = 20;
+  frame2.parent_frame_id = id1;
+  StackFrameId id2 = m.module->mutable_stack_frames().AddStackFrame(frame2);
 
-ENTRY main {
-  input.0 = f32[128,32] parameter(0)
-  input.1 = f32[128,32] parameter(1)
-  input.2 = f32[128,32] parameter(2)
-  p = s32[] parameter(3)
-  conditional = f32[128,128] conditional(p, input.0, input.1), branch_computations={branch_0, branch_1}
-  ag = f32[128,128] all-gather(input.2), replica_groups={}, dimensions={1}, channel_id=42
-  ROOT add = f32[128,128] add(conditional, ag)
-})";
+  OpMetadata call_metadata;
+  call_metadata.set_stack_frame_id(id1.value);
+  m.call->set_metadata(call_metadata);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
-                          ParseAndReturnVerifiedModule(hlo));
-  CallInliner call_inliner(
-      /*single_call_site=*/false, /*update_domain=*/false,
-      /*composites_to_preserve=*/{}, /*uniquify_channel_ids=*/true);
-  ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
+  OpMetadata neg_metadata;
+  neg_metadata.set_stack_frame_id(id2.value);
+  m.neg->set_metadata(neg_metadata);
 
-  absl::flat_hash_set<int64_t> channel_ids;
-  for (HloComputation* comp : m->computations()) {
-    for (HloInstruction* inst : comp->instructions()) {
-      HloChannelInstruction* channel = DynCast<HloChannelInstruction>(inst);
-      if (channel && channel->channel_id().has_value()) {
-        channel_ids.insert(channel->channel_id().value());
-      }
+  TF_ASSERT_OK(CallInliner::Inline(m.call).status());
+
+  HloInstruction* inlined_neg = nullptr;
+  for (auto* inst : m.module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kNegate) {
+      inlined_neg = inst;
+      break;
     }
   }
-  EXPECT_THAT(channel_ids, ::testing::UnorderedElementsAre(42, 43, 44));
+  ASSERT_NE(inlined_neg, nullptr);
+  EXPECT_EQ(inlined_neg->metadata().stack_frame_id(), id2.value);
 }
 
 }  // namespace

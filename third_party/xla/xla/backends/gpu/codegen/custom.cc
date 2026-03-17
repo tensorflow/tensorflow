@@ -36,6 +36,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel_fusion.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_target.h"
@@ -70,8 +72,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/hlo.pb.h"
@@ -1237,16 +1237,6 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     IrEmitterContext& ir_emitter_context, const HloFusionAdaptor& adaptor,
     const HloFusionInstruction& fusion_instr, const HloInstType* instr,
     bool use_global_device_ids, const CallGraph& call_graph) {
-  Thunk::Kind collective_done_thunk_kind;
-  switch (instr->opcode()) {
-    case HloOpcode::kReduceScatter:
-      collective_done_thunk_kind = Thunk::kReduceScatterDone;
-      break;
-    default:
-      return absl::InternalError(
-          "Unexpected operation in dynamic slice fusion");
-  }
-
   const BufferAssignment& buffer_assignment =
       ir_emitter_context.buffer_assignment();
 
@@ -1315,27 +1305,12 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
           /*source_memory_space=*/src_shape.layout().memory_space(),
           /*destination_memory_space=*/dst_shape.layout().memory_space()});
     }
-    auto collective_start_thunk =
+    auto collective_thunk =
         std::make_unique<NcclThunkType>(thunk_info, instr, buffers);
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events =
-        collective_start_thunk->async_events();
-    seq.emplace_back(std::move(collective_start_thunk));
-    // If the fusion is async, we do not emit the done thunk at the end.
-    if (fusion_instr.parent()->IsAsyncComputation()) {
-      auto async_start =
-          fusion_instr.parent()->GetUniqueCaller(HloOpcode::kAsyncStart);
-      CHECK(async_start) << "Async computations should have a unique caller.";
-      ir_emitter_context.collectives_async_events().insert(
-          {*async_start, async_events});
-    } else {
-      auto collective_done_thunk = std::make_unique<CollectiveDoneThunk>(
-          /*kind=*/collective_done_thunk_kind,
-          /*thunk_info=*/
-          Thunk::ThunkInfo::WithProfileAnnotation(
-              instr, ir_emitter_context.GetNextThunkId()),
-          /*async_events=*/async_events);
-      seq.emplace_back(std::move(collective_done_thunk));
-    }
+    // Force synchronous execution: the collective runs on the main stream
+    // and completes before returning, so no async events or done thunk needed.
+    collective_thunk->set_async_events(nullptr);
+    seq.emplace_back(std::move(collective_thunk));
   } else {
     return implementable_status;
   }

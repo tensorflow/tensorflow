@@ -17,8 +17,12 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <vector>
+
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
@@ -92,10 +96,17 @@ absl::Status ReadStringFromEnvVar(absl::string_view env_var_name,
 
 absl::Status ReadStringsFromEnvVar(absl::string_view env_var_name,
                                    absl::string_view default_val,
-                                   std::vector<std::string>* value) {
+                                   std::vector<std::string>* value,
+                                   absl::string_view delimiters) {
   std::string str_val;
   TF_RETURN_IF_ERROR(ReadStringFromEnvVar(env_var_name, default_val, &str_val));
-  *value = str_util::Split(str_val, ',');
+  std::vector<absl::string_view> parts = absl::StrSplit(
+      str_val, absl::ByAnyChar(delimiters), absl::SkipWhitespace());
+  value->clear();
+  value->reserve(parts.size());
+  for (absl::string_view p : parts) {
+    value->emplace_back(std::string(absl::StripAsciiWhitespace(p)));
+  }
   return absl::OkStatus();
 }
 

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/tsl/framework/allocator.h"
+#include "tsl/platform/numa.h"
 
 namespace xla {
 
@@ -38,6 +39,12 @@ class HostMemoryAllocator {
     // Functions for mapping and unmapping the allocated memory.
     absl::AnyInvocable<absl::Status(void*, size_t)> map_fn;
     absl::AnyInvocable<absl::Status(void*)> unmap_fn;
+  };
+
+  struct AllocateOptions {
+    // The NUMA node hint for memory allocation. If set to
+    // `tsl::port::kNUMANoAffinity`, the behavior is implementation defined.
+    int numa_node = tsl::port::kNUMANoAffinity;
   };
 
   using Factory =
@@ -55,7 +62,9 @@ class HostMemoryAllocator {
 
   // Allocates `size` bytes of memory. The returned pointer is guaranteed to be
   // aligned to `options_.alignment`.
-  virtual OwnedPtr Allocate(size_t size) = 0;
+  virtual OwnedPtr Allocate(size_t size, const AllocateOptions& options) = 0;
+
+  OwnedPtr Allocate(size_t size) { return Allocate(size, {}); }
 };
 
 // `HostMemoryAllocator` implementation that uses a `tsl::Allocator` to back
@@ -66,7 +75,7 @@ class BasicHostMemoryAllocator : public HostMemoryAllocator {
       std::unique_ptr<tsl::Allocator> allocator,
       size_t alignment = tsl::Allocator::kAllocatorAlignment);
 
-  OwnedPtr Allocate(size_t size) override;
+  OwnedPtr Allocate(size_t size, const AllocateOptions& options) override;
 
  private:
   const std::unique_ptr<tsl::Allocator> allocator_;

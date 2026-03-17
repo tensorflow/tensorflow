@@ -417,8 +417,8 @@ LayoutRef BasicStringArray::layout() const { return nullptr; }
 std::string BasicStringArray::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "BasicStringArray(shape=%s; sharding=%s; layout=major-to-minor-dense)",
-      shape_.DebugString(), sharding_->DebugString());
+      "BasicStringArray(shape=%v; sharding=%v; layout=major-to-minor-dense)",
+      shape_, sharding_);
 }
 
 }  // namespace ifrt

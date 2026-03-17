@@ -155,6 +155,11 @@ class RewriteClusterToIfrtCallPass
           builder, cluster_func->getLoc(), cluster_func.getResultTypes(),
           cluster_func->getOperands());
 
+      ifrt_call_op->setAttr(
+          "operandSegmentSizes",
+          builder.getDenseI32ArrayAttr(
+              {static_cast<int32_t>(cluster_func.getNumOperands()), 0}));
+
       int64_t program_id;
       if (auto attr = ifrt_program->getAttrOfType<mlir::IntegerAttr>(
               "tfrt_ifrt_serving.program_id")) {
@@ -229,6 +234,11 @@ class RewriteClusterToIfrtCallPass
     mlir::TF::IfrtCallOp ifrt_call_op = mlir::TF::IfrtCallOp::create(
         builder, cluster_func->getLoc(), cluster_func.getResultTypes(),
         cluster_func->getOperands());
+
+    ifrt_call_op->setAttr(
+        "operandSegmentSizes",
+        builder.getDenseI32ArrayAttr(
+            {static_cast<int32_t>(cluster_func.getNumOperands()), 0}));
 
     // TODO(b/304839793): populate variable names after adding a variable
     // hoisting pass.

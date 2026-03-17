@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -82,7 +81,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
 
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    auto debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     return debug_options;
   }
 
@@ -814,7 +813,7 @@ class FlashAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
 class FlashAttentionBMMScaleSoftmaxBMM : public MultiHeadedAttentionTest {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    auto debug_options = MultiHeadedAttentionTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_exclude_nondeterministic_ops(true);
     return debug_options;
   }

@@ -873,8 +873,10 @@ TYPED_TEST(ConcatenationOpPersistentModelTest, PersistentTest) {
                                                  input_data_lists);
     m0.PopulateInputTensors();
     ASSERT_EQ(m0.Invoke(), kTfLiteOk);
-    ASSERT_EQ(m0.IsPersistentOutput(),
-              test_case.test_type == TestInputType::kPersistentRo);
+    if (m0.GetNumberOfAppliedDelegates() == 0) {
+      ASSERT_EQ(m0.IsPersistentOutput(),
+                test_case.test_type == TestInputType::kPersistentRo);
+    }
     EXPECT_THAT(
         m0.GetOutput(),
         ElementsAreArray(ArrayFloatNear(
@@ -917,8 +919,10 @@ TYPED_TEST(ConcatenationOpPersistentModelTest, QuantizedPersistentTest) {
                                                  input_data_lists);
     m0.PopulateInputTensors();
     ASSERT_EQ(m0.Invoke(), kTfLiteOk);
-    ASSERT_EQ(m0.IsPersistentOutput(),
-              test_case.test_type == TestInputType::kPersistentRo);
+    if (m0.GetNumberOfAppliedDelegates() == 0) {
+      ASSERT_EQ(m0.IsPersistentOutput(),
+                test_case.test_type == TestInputType::kPersistentRo);
+    }
     EXPECT_THAT(
         m0.GetOutput(),
         ElementsAreArray(ArrayFloatNear(

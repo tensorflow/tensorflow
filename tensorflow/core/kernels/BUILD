@@ -3319,6 +3319,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:regexp",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -8105,7 +8106,6 @@ tf_cc_shared_library(
         "@local_config_nccl//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@net_zstd//:__subpackages__",
         "@onednn//:__subpackages__",

@@ -64,8 +64,13 @@ namespace {
 using ::xla::host_offload_utils::InstructionAndShapeIndex;
 
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
-  CHECK(shape->has_layout());
-  shape->mutable_layout()->set_memory_space(memory_space_color);
+  ShapeUtil::ForEachMutableLeafShape(
+      shape, [memory_space_color](Shape* subshape, const ShapeIndex& index) {
+        if (subshape->IsArray()) {
+          CHECK(subshape->has_layout());
+          subshape->mutable_layout()->set_memory_space(memory_space_color);
+        }
+      });
 }
 
 bool SetBuffersToMemorySpaceColor(
@@ -79,12 +84,7 @@ bool SetBuffersToMemorySpaceColor(
     Shape* shape = ShapeUtil::GetMutableSubshape(
         instr_and_shape.instruction->mutable_shape(),
         instr_and_shape.shape_index);
-    CHECK(shape->has_layout()) << "Instruction's shape has no layout: "
-                               << instr_and_shape.instruction->ToString();
-    SetMemorySpace(ShapeUtil::GetMutableSubshape(
-                       instr_and_shape.instruction->mutable_shape(),
-                       instr_and_shape.shape_index),
-                   memory_space_color);
+    SetMemorySpace(shape, memory_space_color);
     changed = true;
   }
   return changed;
@@ -664,7 +664,7 @@ HostOffloader::GetStartingInstructions(
 absl::StatusOr<bool> HostOffloader::SliceLeadsToMoveToDeviceCustomCall(
     HloInstruction* slice) {
   // Every host-to-device DynamicSlice/Slice must be followed by a MoveToDevice
-  // custom call. This function verifiest that.
+  // custom call. This function verifies that.
   CHECK(slice->opcode() == HloOpcode::kDynamicSlice ||
         slice->opcode() == HloOpcode::kSlice)
       << "This function must only be called with a slice or dynamic slice.";
@@ -900,7 +900,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // not know via which use we arrived here and setting all uses as host
           // memory space could be incorrect.
           CHECK_EQ(operand_indices.size(), 1)
-              << "Only a single use it currently supported";
+              << "Only a single use is currently supported";
           TF_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
               operand_indices[0], allocate_buffer));
         }
@@ -1146,6 +1146,9 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableLeafShapeWithStatus(
       done_shape, [&](Shape* subshape, const ShapeIndex& output_shape_index) {
+        if (subshape->IsToken()) {
+          return absl::OkStatus();
+        }
         std::queue<InstructionAndShapeIndex> queue;
         queue.push(InstructionAndShapeIndex(call_done, output_shape_index));
 
@@ -1392,7 +1395,7 @@ absl::StatusOr<bool> HostOffloader::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Start by removing all host memory space from all shapes. Host memory space
   // might have been set by other passes, however, this pass is the one which is
-  // soley responsible for the propagation of host memory space throughout the
+  // solely responsible for the propagation of host memory space throughout the
   // entire program.
   bool changed = RemoveHostMemorySpaceFromAllShapes(module);
 

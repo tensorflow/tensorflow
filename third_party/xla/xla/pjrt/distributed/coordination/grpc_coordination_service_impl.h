@@ -24,15 +24,15 @@ limitations under the License.
 #include "grpcpp/alarm.h"
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/server_builder.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.grpc.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_rpc_handler.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/protobuf/coordination_service.grpc.pb.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 
 namespace xla {
 
@@ -41,7 +41,7 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
   template <class RequestMessage, class ResponseMessage>
   using CoordCall =
       tsl::Call<GrpcCoordinationServiceImpl,
-                tensorflow::grpc::CoordinationService::AsyncService,
+                xla::coordination::grpc::CoordinationService::AsyncService,
                 RequestMessage, ResponseMessage>;
 
   GrpcCoordinationServiceImpl(tsl::thread::ThreadPool* compute_pool,
@@ -59,30 +59,31 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
   CoordinationServiceRpcHandler* GetRpcHandler() { return &rpc_handler_; }
 
  private:
-#define HANDLER(method)                                                       \
-  void method##Handler(CoordCall<tensorflow::method##Request,                 \
-                                 tensorflow::method##Response>* call) {       \
-    absl::ReaderMutexLock l(&shutdown_mu_);                                   \
-    if (shutdown_) {                                                          \
-      call->SendResponse(tsl::ToGrpcStatus(                                   \
-          absl::InternalError("Coordination service has been shut down.")));  \
-      return;                                                                 \
-    }                                                                         \
-    compute_pool_.Schedule([this, call]() {                                   \
-      rpc_handler_.method##Async(&call->request, &call->response,             \
-                                 [call](const absl::Status& s) {              \
-                                   call->ClearCancelCallback();               \
-                                   call->SendResponse(tsl::ToGrpcStatus(s));  \
-                                 });                                          \
-    });                                                                       \
-    tsl::Call<GrpcCoordinationServiceImpl,                                    \
-              tensorflow::grpc::CoordinationService::AsyncService,            \
-              tensorflow::method##Request, tensorflow::method##Response>::    \
-        EnqueueRequest(&service_, cq_.get(),                                  \
-                       &tensorflow::grpc::CoordinationService::AsyncService:: \
-                           Request##method,                                   \
-                       &GrpcCoordinationServiceImpl::method##Handler,         \
-                       /*supports_cancel=*/false);                            \
+#define HANDLER(method)                                                        \
+  void method##Handler(CoordCall<xla::coordination::method##Request,           \
+                                 xla::coordination::method##Response>* call) { \
+    absl::ReaderMutexLock l(&shutdown_mu_);                                    \
+    if (shutdown_) {                                                           \
+      call->SendResponse(tsl::ToGrpcStatus(                                    \
+          absl::InternalError("Coordination service has been shut down.")));   \
+      return;                                                                  \
+    }                                                                          \
+    compute_pool_.Schedule([this, call]() {                                    \
+      rpc_handler_.method##Async(&call->request, &call->response,              \
+                                 [call](const absl::Status& s) {               \
+                                   call->ClearCancelCallback();                \
+                                   call->SendResponse(tsl::ToGrpcStatus(s));   \
+                                 });                                           \
+    });                                                                        \
+    tsl::Call<GrpcCoordinationServiceImpl,                                     \
+              xla::coordination::grpc::CoordinationService::AsyncService,      \
+              xla::coordination::method##Request,                              \
+              xla::coordination::method##Response>::                           \
+        EnqueueRequest(&service_, cq_.get(),                                   \
+                       &xla::coordination::grpc::CoordinationService::         \
+                           AsyncService::Request##method,                      \
+                       &GrpcCoordinationServiceImpl::method##Handler,          \
+                       /*supports_cancel=*/false);                             \
   }
   HANDLER(RegisterTask);
   HANDLER(ShutdownTask);
@@ -109,7 +110,7 @@ class GrpcCoordinationServiceImpl : public tsl::AsyncServiceInterface {
   std::unique_ptr<::grpc::Alarm> shutdown_alarm_;
 
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
-  tensorflow::grpc::CoordinationService::AsyncService service_;
+  xla::coordination::grpc::CoordinationService::AsyncService service_;
 
   GrpcCoordinationServiceImpl(const GrpcCoordinationServiceImpl&) = delete;
   void operator=(const GrpcCoordinationServiceImpl&) = delete;

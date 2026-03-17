@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace xla {
 
-class MultithreadedCompilation : public HloTestBase {};
+using MultithreadedCompilation = HloTestBase;
 
 //  In this test, we are taking the same module and compiling it `num_threads`
 //  times in parallel and are making it dump hlo files for layout assignment.

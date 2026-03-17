@@ -350,5 +350,39 @@ ENTRY main {
       hlo, HostOffloadingPrepare(Rewrite::kConvertToCustomCall), expected);
 }
 
+TEST_F(HostOffloadingPrepareTest, ConvertToCustomCallWithAttributes) {
+  const char* hlo = R"(
+HloModule my_module
+
+host_computation {
+  Arg_0.0 = s32[32] parameter(0)
+  ROOT custom-call = s32[32] custom-call(Arg_0.0), custom_call_target="some_target", frontend_attributes={latency_metadata="1000"}
+}, execution_thread="host"
+
+async_computation {
+  param_0 = s32[32] parameter(0)
+  ROOT call = s32[32] call(param_0), to_apply=host_computation
+}, execution_thread="host"
+
+ENTRY main {
+  Arg_0.1 = s32[32] parameter(0)
+  start = ((s32[32]), s32[32], u32[]) async-start(Arg_0.1),
+          async_execution_thread="host", calls=async_computation
+  ROOT done = s32[32] async-done(start)
+}
+)";
+
+  const char* expected = R"(
+// CHECK:      custom-call-start(%Arg_0.1),
+// CHECK-SAME:   async_execution_thread="host",
+// CHECK-SAME:   custom_call_target="HostExecute",
+// CHECK-SAME:   called_computations={%host_computation},
+// CHECK-SAME:   frontend_attributes={latency_metadata="1000"}
+)";
+
+  RunAndFilecheckHloRewrite(
+      hlo, HostOffloadingPrepare(Rewrite::kConvertToCustomCall), expected);
+}
+
 }  // namespace
 }  // namespace xla

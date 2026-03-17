@@ -37,8 +37,8 @@ REGISTER_KERNEL_BUILDER(Name("Square")
                             .Device(DEVICE_GPU)
                             .HostMemory("x")
                             .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::square<int32>>);
+                            .TypeConstraint<int32_t>("T"),
+                        UnaryOp<CPUDevice, functor::square<int32_t>>);
 #endif
 
 REGISTER_KERNEL_BUILDER(Name("Square")

@@ -24,14 +24,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/optimization.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -54,12 +55,9 @@ limitations under the License.
 namespace xla {
 using CycleType = collective_permute_cycle::CycleType;
 
-// Match the instruction to a reduction kind. We can represent and/or of pred as
-// min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
-std::optional<ReductionKind> MatchReductionInstruction(
-    const HloInstruction* hlo) {
-  PrimitiveType type = hlo->shape().element_type();
-  switch (hlo->opcode()) {
+std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
+                                                   PrimitiveType type) {
+  switch (hlo_opcode) {
     case HloOpcode::kAdd:
       return ReductionKind::SUM;
     case HloOpcode::kMultiply:
@@ -77,6 +75,14 @@ std::optional<ReductionKind> MatchReductionInstruction(
     default:
       return std::nullopt;
   }
+}
+
+// Match the instruction to a reduction kind. We can represent and/or of pred as
+// min/max. This works because pred is stored as an 8-bit int of value 0 or 1.
+std::optional<ReductionKind> MatchReductionInstruction(
+    const HloInstruction* hlo) {
+  PrimitiveType type = hlo->shape().element_type();
+  return OpcodeToReductionKind(hlo->opcode(), type);
 }
 
 std::optional<ReductionKind> MatchReductionComputation(
@@ -101,23 +107,24 @@ std::unique_ptr<HloComputation> MakeReductionComputation(
   auto rhs = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(element_type, {}), "rhs"));
   builder.AddInstruction(HloInstruction::CreateBinary(
-      lhs->shape(), *ReductionKindToOpcode(reduction_kind), lhs, rhs));
+      lhs->shape(), ReductionKindToOpcode(reduction_kind, element_type), lhs,
+      rhs));
   return builder.Build();
 }
 
-std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind) {
+HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
+                                PrimitiveType element_type) {
   switch (reduction_kind) {
     case ReductionKind::SUM:
       return HloOpcode::kAdd;
     case ReductionKind::PRODUCT:
       return HloOpcode::kMultiply;
     case ReductionKind::MIN:
-      return HloOpcode::kMinimum;
+      return element_type == PRED ? HloOpcode::kAnd : HloOpcode::kMinimum;
     case ReductionKind::MAX:
-      return HloOpcode::kMaximum;
-    default:
-      return std::nullopt;
+      return element_type == PRED ? HloOpcode::kOr : HloOpcode::kMaximum;
   }
+  ABSL_UNREACHABLE();
 }
 
 std::optional<Literal> GetReductionIdentity(ReductionKind kind,
@@ -236,16 +243,6 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
                                     std::nullopt);
   }
   return Internal("Unexpected instruction type.");
-}
-
-const CollectiveDeviceListBase& GetCollectiveDeviceList(
-    const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->device_list();
-}
-
-const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
-    const HloInstruction* hlo) {
-  return Cast<HloCollectiveInstruction>(hlo)->replica_groups();
 }
 
 absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>>
@@ -372,8 +369,8 @@ GetParticipatingDevicesGroups(const HloInstruction* collective) {
       collective->GetModule()->config().static_device_assignment();
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode mode,
                       GetCollectiveOpGroupMode(collective));
-  return GetParticipatingDevicesGroups(
-      device_assignment, GetCollectiveReplicaGroups(collective), mode);
+  return GetParticipatingDevicesGroups(device_assignment,
+                                       collective->replica_groups(), mode);
 }
 
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
@@ -469,8 +466,8 @@ GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<CollectiveDeviceListBase> collective_device_list,
-      GetParticipatingFlattenedIdGroups(device_assignment,
-                                        GetCollectiveDeviceList(hlo), mode));
+      GetParticipatingFlattenedIdGroups(device_assignment, *hlo->device_list(),
+                                        mode));
   return collective_device_list;
 }
 
@@ -656,19 +653,19 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
 
 absl::StatusOr<std::optional<std::pair<int64_t, int64_t>>>
 GetReplicaGroupCountAndSize(const HloInstruction* hlo) {
-  const CollectiveDeviceListBase& device_list = GetCollectiveDeviceList(hlo);
+  std::shared_ptr<CollectiveDeviceListBase> device_list = hlo->device_list();
   auto config = hlo->GetModule()->config();
 
-  if (device_list.version() == CollectiveDeviceListVersion::kIota) {
-    return std::make_pair(device_list.num_replica_groups(),
-                          device_list.num_devices_per_group());
+  if (device_list->version() == CollectiveDeviceListVersion::kIota) {
+    return std::make_pair(device_list->num_replica_groups(),
+                          device_list->num_devices_per_group());
   }
   TF_ASSIGN_OR_RETURN(CollectiveOpGroupMode group_mode,
                       GetCollectiveOpGroupMode(hlo));
   TF_ASSIGN_OR_RETURN(std::vector<int64_t> participant_counts,
                       GetPariticipantCountsForReplicaGroups(
                           config.replica_count(), config.num_partitions(),
-                          device_list.replica_groups(), group_mode));
+                          device_list->replica_groups(), group_mode));
   int64_t replica_group_size = participant_counts[0];
   for (int64_t participant_count : participant_counts) {
     if (participant_count != replica_group_size) {
@@ -896,22 +893,6 @@ bool HasDuplicateSourcesOrTargets(const SourceTargetPairs& pairs) {
     return true;
   }
   return false;
-}
-
-std::optional<double> GetCustomCallLatencyMetadata(
-    const HloInstruction* instr) {
-  if (instr->opcode() == HloOpcode::kCustomCall &&
-      instr->has_frontend_attributes()) {
-    auto it = instr->frontend_attributes().map().find("latency_metadata");
-    if (it != instr->frontend_attributes().map().end()) {
-      int64_t latency_metadata_ns = 0;
-      CHECK(absl::SimpleAtoi(it->second, &latency_metadata_ns))
-          << "Failed to parse latency from custom call for " << instr->name()
-          << " from latency_metadata:" << it->second;
-      return static_cast<double>(latency_metadata_ns) / 1000.0;
-    }
-  }
-  return std::nullopt;
 }
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,

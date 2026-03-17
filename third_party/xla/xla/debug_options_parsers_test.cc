@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/repeated_field.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/dump.h"
@@ -512,30 +513,21 @@ TEST(ParseRepeatedEnumFlagsTest, AutotuneBackend) {
       debug_options.xla_gpu_experimental_autotune_backends();
 
   // Check that the default setting is populated.
-  ASSERT_THAT(enabled_backends,
-              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_TRITON,
-                          DebugOptions::AUTOTUNE_BACKEND_CUBLAS,
-                          DebugOptions::AUTOTUNE_BACKEND_CUBLASLT,
-                          DebugOptions::AUTOTUNE_BACKEND_CUDNN,
-                          DebugOptions::AUTOTUNE_BACKEND_ROCBLAS,
-                          DebugOptions::AUTOTUNE_BACKEND_HIPBLASLT,
-                          DebugOptions::AUTOTUNE_BACKEND_MIOPEN));
+  ASSERT_THAT(enabled_backends, IsEmpty());
 
   // Overwriting the default setting.
   SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=cudnn,triton");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(enabled_backends.size(), 2);
-  EXPECT_THAT(enabled_backends,
-              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_CUDNN,
-                          DebugOptions::AUTOTUNE_BACKEND_TRITON));
+  EXPECT_THAT(enabled_backends, ElementsAre(autotuner::Backend::CUDNN,
+                                            autotuner::Backend::TRITON));
 
   // Adding / removing options from the existing setting.
   SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=+cublas,-triton");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(enabled_backends.size(), 2);
-  EXPECT_THAT(enabled_backends,
-              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_CUDNN,
-                          DebugOptions::AUTOTUNE_BACKEND_CUBLAS));
+  EXPECT_THAT(enabled_backends, ElementsAre(autotuner::Backend::CUDNN,
+                                            autotuner::Backend::CUBLAS));
 }
 
 TEST(ParseIntRangeInclusiveTest, SingleInteger) {

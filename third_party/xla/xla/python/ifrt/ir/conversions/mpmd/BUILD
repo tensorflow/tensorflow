@@ -47,6 +47,7 @@ cc_library(
     visibility = internal_visibility(["//xla/python/ifrt:users"]),
     deps = [
         ":utils",
+        "//xla:debug_options_flags",
         "//xla/client:executable_build_options",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt/ir",

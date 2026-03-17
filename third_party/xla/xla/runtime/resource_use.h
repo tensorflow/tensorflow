@@ -67,6 +67,14 @@ class Resource {
 // For consistency with BufferUse, we model resource uses as writes or reads
 // to and from resource. Resources have referential equality: we rely on
 // comparing pointers to check if resource is the same or not.
+//
+// Examples of using resources in XLA:
+//
+//   - HLO control dependencies that are not representable as buffers also
+//     modeled as resource writes and reads.
+//   - in XLA:CPU all collective operations must be ordered at run time. We use
+//     a global "collective communication" resource to model this constraint.
+//
 class ResourceUse {
  public:
   enum class ResourceAccess { kRead, kWrite };

@@ -472,9 +472,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
     MemorySpace memory_space;
     int64_t time;
     AliasedOffset* offset = nullptr;
+    // The source of the required memory assignment. Required memory assignments
+    // are created for various reasons, this field is used to identify the
+    // reason for the required memory assignment. It improves logging and helps
+    // debugging.
+    std::string required_assignment_source;
 
-    bool equals_ignoring_time(const RequiredMemoryAssignment& other) const {
-      return memory_space == other.memory_space && offset == other.offset;
+    bool memory_space_and_offset_equal(
+        const RequiredMemoryAssignment& other) const {
+      return std::forward_as_tuple(memory_space,
+                                   offset ? offset->offset : -1) ==
+             std::forward_as_tuple(other.memory_space,
+                                   other.offset ? other.offset->offset : -1);
     }
 
     bool operator==(const RequiredMemoryAssignment& other) const {
@@ -730,7 +739,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // constraints into account. If the use already has a preferred offset in the
   // alternate memory space (e.g., due to prior allocations), the offset derived
   // from aliasing considerations must match the existing preferred offset.
-  AliasedOffset* UpdatePreferredOffsetForUse(
+  AliasedOffset* CheckOrUpdatePreferredOffsetForUse(
       const AllocationValue::Use& use, AliasedOffset* preferred_offset) const;
 
   // Propagate the allocation at the use time to any aliases that this use might
@@ -940,24 +949,29 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Propagates aliased required assignment for a given position.
   void AddAliasedRequiredAssignment(const HloInstruction* instruction,
                                     ShapeIndex index,
-                                    const Allocation* aliased_allocation);
+                                    const Allocation* aliased_allocation,
+                                    std::string required_assignment_source);
 
   // This sets a required assignment. CHECK fails if there is a conflicting
   // required assignment at the same time.
   void AddRequiredAssignment(const HloValue* value,
                              const HloInstruction* instruction,
                              MemorySpace memory_space, int64_t time,
+                             std::string required_assignment_source,
                              AliasedOffset* offset = nullptr,
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloInstruction* instruction,
                              ShapeIndex index, MemorySpace memory_space,
+                             std::string required_assignment_source,
                              AliasedOffset* offset = nullptr,
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloPosition& position,
                              MemorySpace memory_space,
+                             std::string required_assignment_source,
                              AliasedOffset* offset = nullptr,
                              bool add_to_pending = true);
   void AddRequiredAssignment(const HloUse& use, MemorySpace memory_space,
+                             std::string required_assignment_source,
                              AliasedOffset* offset = nullptr,
                              bool add_to_pending = true);
 
@@ -1177,6 +1191,11 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   const std::vector<const HloInstruction*>* GetRepeatedInstructionList(
       const HloInstruction* instruction) const;
 
+  // Adds an operand to the alternate memory map.
+  void AddOperandToAlternateMemoryMap(const HloInstruction* instruction,
+                                      int operand_number,
+                                      const ShapeIndex& index);
+
   // Returns true if the interval is pinned in the alternate memory. Buffers are
   // pinned when their layout has the alternate memory space before MSA runs.
   bool IsIntervalPinnedToAlternateMemory(
@@ -1353,7 +1372,10 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       default_memory_coloring_requirements_;
 
   // Set of HloUses that are in the default memory.
-  absl::flat_hash_set<HloUse> uses_in_default_memory_;
+  absl::flat_hash_set<HloUse> uses_in_default_memory_set_;
+  // Vector to preserve insertion order for deterministic window prefetching
+  // results.
+  std::vector<HloUse> uses_in_default_memory_;
 };
 
 }  // namespace memory_space_assignment

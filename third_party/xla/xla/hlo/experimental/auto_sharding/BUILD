@@ -3,7 +3,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "tsl_pybind_extension")
@@ -633,10 +633,11 @@ tsl_pybind_extension(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "auto_sharding_python_extension_test",
     size = "small",
     srcs = ["auto_sharding_python_extension_test.py"],
+    strict_deps = True,
     deps = [
         ":auto_sharding_python_extension",
         "@absl_py//absl/testing:absltest",

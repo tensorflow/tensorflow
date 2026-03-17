@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -17,9 +17,10 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-py_strict_binary(
+py_binary(
     name = "gen_checkpoint",
     srcs = ["gen_checkpoint.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager/polymorphic_function",

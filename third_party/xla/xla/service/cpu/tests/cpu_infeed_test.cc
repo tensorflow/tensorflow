@@ -13,54 +13,67 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
+#include <utility>
+#include <vector>
 
-#include "xla/error_spec.h"
-#include "xla/layout.h"
-#include "xla/layout_util.h"
-#include "xla/literal_util.h"
-#include "xla/service/service.h"
-#include "xla/shape.h"
+#include "absl/log/check.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/hlo_runner_interface.h"
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
+#include <cstdint>
 #include <memory>
 
-#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/testlib/test_helpers.h"
-#include "xla/literal.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-class InfeedTest : public ClientLibraryTestBase {
+class InfeedTest : public ClientLibraryTestRunnerMixin<
+                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   // Transfers the given literal to the infeed interface of the device, and
   // check if the returned data from Infeed HLO is same as the literal.
   void TestInfeedRoundTrip(const Literal& literal) {
-    // TODO(b/31037751) Explicitly reset the Infeed state so that the
-    // test is not affected by the state from the previous tests by
-    // adding ClearInfeed if necessary when it is implemented. For now
-    // don't use ResetDevice since it is not implemented on CPU.
-    ASSERT_IS_OK(client_->TransferToInfeed(literal));
     XlaBuilder builder(TestName());
     Infeed(&builder, literal.shape());
-    if (literal.shape().IsTuple()) {
-      // TODO(b/30609564): Use ComputeAndCompareLiteral instead.
-      ComputeAndCompareTuple(&builder, literal, {});
-    } else {
-      ComputeAndCompareLiteral(&builder, literal, {});
-    }
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<HloModule> module,
+        HloModuleFromXlaBuilder(&builder, execution_options()));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<OpaqueExecutable> executable,
+        CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+
+    HloRunnerInterface::ReplicatedExecuteOptions options;
+    options.num_devices = 1;
+    options.infeed_steps = 1;
+    options.infeed_values = {&literal};
+    ASSERT_OK_AND_ASSIGN(
+        std::vector<Literal> result,
+        test_runner().ExecuteReplicated(
+            [executable = executable.get()](int64_t) { return executable; },
+            [](int64_t) { return 0; }, [](int64_t, int64_t) { return nullptr; },
+            options, nullptr));
+    CHECK_EQ(result.size(), 1);
+
+    EXPECT_TRUE(LiteralTestUtil::Near(literal, result[0], kDefaultErrorSpec));
   }
 };
 
@@ -86,10 +99,10 @@ TEST_F(InfeedTest, SingleInfeedR3F32DifferentLayout) {
   const Layout r3_dim0minor = LayoutUtil::MakeLayout({0, 1, 2});
   const Layout r3_dim0major = LayoutUtil::MakeLayout({2, 1, 0});
 
-  TestInfeedRoundTrip(LiteralUtil::CreateR3WithLayout(
+  ASSERT_NO_FATAL_FAILURE(TestInfeedRoundTrip(LiteralUtil::CreateR3WithLayout(
       {{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
        {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}},
-      r3_dim0minor));
+      r3_dim0minor)));
 
   TestInfeedRoundTrip(LiteralUtil::CreateR3WithLayout(
       {{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
@@ -121,12 +134,10 @@ TEST_F(InfeedTest, SingleInfeedEmptyTuple) {
 //   acc += reduce_add(Infeed());
 // }
 // return acc;
-// TODO(b/30671675) enable this test once asynchronous execution is
-// implemented for CPU.
-TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
+TEST_F(InfeedTest, SingleInfeedInWhile) {
   XlaBuilder builder(TestName());
-  const auto infeed_shape = ShapeUtil::MakeShape(F32, {3});
-  const auto result_shape = ShapeUtil::MakeShape(F32, {});
+  const Shape infeed_shape = ShapeUtil::MakeShape(F32, {3});
+  const Shape result_shape = ShapeUtil::MakeShape(F32, {});
 
   // Create a computation for the condition: repeat until (prev < 40.0f) holds.
   XlaComputation condition;
@@ -153,146 +164,29 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
   While(condition, body, init);
 
   // Build and asynchronously launch the computation.
-  auto computation = builder.Build().value();
-  std::unique_ptr<GlobalData> result;
-  tsl::Thread* computation_thread = tsl::Env::Default()->StartThread(
-      tsl::ThreadOptions{}, "computation_thread", [&] {
-        result = client_->Execute(computation, {}, &execution_options_).value();
-      });
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       HloModuleFromXlaBuilder(&builder, execution_options()));
 
   // Send 5 Infeed data of shape F32[3].
-  ASSERT_IS_OK(
-      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({1, 2, 3})));
-  ASSERT_IS_OK(
-      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({4, 5, 6})));
-  ASSERT_IS_OK(
-      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({7, 8, 9})));
-  ASSERT_IS_OK(
-      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({10, 11, 12})));
-  ASSERT_IS_OK(
-      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({13, 14, 15})));
+  const Literal infeed_data =
+      LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({1, 2, 3}),
+                                  LiteralUtil::CreateR1<float>({4, 5, 6}),
+                                  LiteralUtil::CreateR1<float>({7, 8, 9}),
+                                  LiteralUtil::CreateR1<float>({10, 11, 12}),
+                                  LiteralUtil::CreateR1<float>({13, 14, 15}));
 
-  delete computation_thread;  // Joins the thread.
-  auto result_literal = client_->Transfer(*result).value();
+  HloRunnerInterface::ReplicatedExecuteOptions options;
+  options.num_devices = 1;
+  options.infeed_steps = 1;
+  options.infeed_values = {&infeed_data};
+  options.run_hlo_passes = true;
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> result_literals,
+      test_runner().ExecuteReplicated(std::move(module), options));
 
   // Only the first 3 infeed data should be added.
-  LiteralTestUtil::ExpectR0Near<float>(45.0f, result_literal, ErrorSpec{1e-7});
-}
-
-// Tests two Infeed operations with a total order. The order is enforced by
-// using the result of the first while loop as the initial value of the second
-// while loop. The shapes of both Infeeds are Tuples, where the first tuple
-// element (R1F32) is for the data to reduce and accumulate, and the second
-// tuple element (PRED) to indicate whether the loop should continue. The
-// computation is launched asynchronously, and then infeed data is transferred.
-//
-// float acc = 0.0f;
-// continue = true;
-// while (!continue) {
-//   (data, continue) = Infeed(shape1);
-//   acc += reduce_add(data)
-// }
-// continue = true;
-// while(!continue) {
-//   (data, continue) = Infeed(shape2);
-//   acc += reduce_add(data)
-// }
-// return acc;
-// TODO(b/30671675) enable this test once asynchronous execution is
-// implemented for CPU.
-TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
-  XlaBuilder builder(TestName());
-  const auto infeed1_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {2}), ShapeUtil::MakeShape(PRED, {})});
-  const auto infeed2_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {3}), ShapeUtil::MakeShape(PRED, {})});
-  const auto result_shape = ShapeUtil::MakeTupleShape(
-      {ShapeUtil::MakeShape(F32, {}), ShapeUtil::MakeShape(PRED, {})});
-
-  // Create a computation for the condition: repeat until the second tuple
-  // element is false.
-  XlaComputation condition;
-  {
-    XlaBuilder builder("condition");
-    auto prev = Parameter(&builder, 0, result_shape, "prev");
-    GetTupleElement(prev, 1);
-    condition = builder.Build().value();
-  }
-
-  // A lambda that builds the body computation of a while loop with the given
-  // infeed shape, and returns the computation with the ownership.
-  //
-  // The body adds the reduced value of the Infeed data (first tuple element)
-  // to the previous accumulator, and returns the accumulator and the continue
-  // flag (second tuple element) as a tuple.
-  const auto build_body = [&result_shape](const Shape& infeed_shape) {
-    XlaComputation body;
-    XlaBuilder builder("body");
-    auto prev = Parameter(&builder, 0, result_shape, "prev");
-    auto infeed = Infeed(&builder, infeed_shape);
-    auto addend =
-        Reduce(GetTupleElement(infeed, 0), ConstantR0<float>(&builder, 0.0f),
-               CreateScalarAddComputation(F32, &builder), {0});
-    auto result = Add(GetTupleElement(prev, 0), addend);
-    Tuple(&builder, {result, GetTupleElement(infeed, 1)});
-    return builder.Build().value();
-  };
-
-  // Create the first while loop with infeed1_shape.
-  auto init = Tuple(&builder, {ConstantR0<float>(&builder, 0.0f),
-                               ConstantR0<bool>(&builder, true)});
-  auto while1 = While(condition, build_body(infeed1_shape), init);
-  auto result1 = Tuple(
-      &builder, {GetTupleElement(while1, 0), ConstantR0<bool>(&builder, true)});
-
-  // Create the second while loop with infeed2_shape. Note that the result from
-  // the first while loop is used as the initial value.
-  auto while2 = While(condition, build_body(infeed2_shape), result1);
-  GetTupleElement(while2, 0);
-
-  // Build the computation.
-  auto computation = builder.Build().value();
-
-  // Send the first 4 Infeed data of shape Tuple(F32[2], PRED).
-  ASSERT_IS_OK(client_->TransferToInfeed(
-      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({1, 2}),
-                                        LiteralUtil::CreateR0<bool>(true)})));
-  ASSERT_IS_OK(client_->TransferToInfeed(
-      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({3, 4}),
-                                        LiteralUtil::CreateR0<bool>(true)})));
-  ASSERT_IS_OK(client_->TransferToInfeed(
-      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({5, 6}),
-                                        LiteralUtil::CreateR0<bool>(true)})));
-  ASSERT_IS_OK(client_->TransferToInfeed(
-      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({7, 8}),
-                                        LiteralUtil::CreateR0<bool>(false)})));
-
-  // Asynchronously launch the execution on the device.
-  std::unique_ptr<GlobalData> result;
-  tsl::Thread* computation_thread = tsl::Env::Default()->StartThread(
-      tsl::ThreadOptions{}, "computation_thread", [&] {
-        result = client_->Execute(computation, {}, &execution_options_).value();
-      });
-
-  // Wait for a second to ensure testing that the execution is waiting on the
-  // Infeed data, and send the rest Infeed data of shape Tuple(F32[3], PRED).
-  tsl::Env::Default()->SleepForMicroseconds(1000000);
-  ASSERT_IS_OK(client_->TransferToInfeed(
-      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({1, 2, 3}),
-                                        LiteralUtil::CreateR0<bool>(true)})));
-  ASSERT_IS_OK(client_->TransferToInfeed(
-      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({7, 8, 9}),
-                                        LiteralUtil::CreateR0<bool>(false)})));
-  ASSERT_IS_OK(client_->TransferToInfeed(
-      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({4, 5, 6}),
-                                        LiteralUtil::CreateR0<bool>(true)})));
-
-  // Wait for the execution to be done, and transfer the result.
-  delete computation_thread;  // Joins the thread.
-  auto result_literal = client_->Transfer(*result).value();
-
-  // Only the first 6 infeed data should be added.
-  LiteralTestUtil::ExpectR0Near<float>(66.0f, result_literal, ErrorSpec{1e-7});
+  LiteralTestUtil::ExpectR0Near<float>(45.0f, result_literals[0],
+                                       ErrorSpec{1e-7});
 }
 
 }  // namespace

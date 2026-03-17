@@ -21,11 +21,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -106,28 +107,37 @@ TEST(CustomKernelThunkTest, ToProto) {
   emitters::KernelArguments kernel_arguments({arg0});
   CustomKernelThunk thunk(thunk_info, kernel, kernel_arguments);
 
-  EXPECT_THAT(thunk.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
-                thunk_info {
-                  profile_annotation: "profile_annotation"
-                  execution_stream_id: 7
-                  thunk_id: 42
-                }
-                custom_kernel_thunk {
-                  custom_kernel {
-                    name: "name"
-                    kernel_spec {
-                      kernel_name: "kernel_name"
-                      ptx { data: "PTX" }
-                      arity: 1
-                    }
-                    block_dims { coordinates { x: 3, y: 2, z: 1 } }
-                    thread_dims { coordinates { x: 4, y: 5, z: 6 } }
-                    shared_memory_bytes: 42
-                  }
-                  args { buffer_allocation_index: 0, offset: 0, size: 512 }
-                  written: true
-                }
-              )pb")));
+  EXPECT_THAT(
+      thunk.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
+        thunk_info {
+          profile_annotation: "profile_annotation"
+          execution_stream_id: 7
+          thunk_id: 42
+        }
+        custom_kernel_thunk {
+          custom_kernel {
+            name: "name"
+            kernel_spec {
+              kernel_name: "kernel_name"
+              ptx { data: "PTX" }
+              arity: 1
+            }
+            block_dims { coordinates { x: 3, y: 2, z: 1 } }
+            thread_dims { coordinates { x: 4, y: 5, z: 6 } }
+            shared_memory_bytes: 42
+          }
+          args {
+            slice { buffer_allocation_index: 0, offset: 0, size: 512 }
+            shape {
+              element_type: F32
+              dimensions: 512
+              layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+              is_dynamic_dimension: false
+            }
+          }
+          written: true
+        }
+      )pb")));
 }
 
 TEST(CustomKernelThunkTest, FromProto) {
@@ -143,7 +153,15 @@ TEST(CustomKernelThunkTest, FromProto) {
           thread_dims { coordinates { x: 1, y: 1, z: 1 } }
           shared_memory_bytes: 42
         }
-        args { buffer_allocation_index: 0, offset: 0, size: 1024 }
+        args {
+          slice { buffer_allocation_index: 0, offset: 0, size: 1024 }
+          shape {
+            element_type: U8,
+            dimensions: 1024,
+            layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            is_dynamic_dimension: false
+          }
+        }
         written: true
       )pb");
 
@@ -155,9 +173,11 @@ TEST(CustomKernelThunkTest, FromProto) {
                               Thunk::ThunkInfo{}, proto, buffer_allocations));
 
   EXPECT_THAT(thunk->custom_kernel().name(), "test_kernel");
-  EXPECT_THAT(thunk->arguments(), testing::ElementsAre(BufferAllocation::Slice(
-                                      &buffer_allocations[0], /*offset=*/0,
-                                      /*size=*/1024)));
+  EXPECT_THAT(thunk->arguments(),
+              testing::ElementsAre(ShapedSlice{
+                  BufferAllocation::Slice(&buffer_allocations[0], /*offset=*/0,
+                                          /*size=*/1024),
+                  ShapeUtil::MakeShape(U8, {1024})}));
   EXPECT_THAT(thunk->written(), testing::ElementsAre(true));
   EXPECT_THAT(thunk->custom_kernel().kernel_spec().cuda_ptx_in_memory(),
               Optional(Field(&se::CudaPtxInMemory::ptx, "PTX")));

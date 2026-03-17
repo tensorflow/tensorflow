@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_library")
 load(
     "//xla:xla.default.bzl",
@@ -77,10 +77,11 @@ tsl_pybind_extension(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "status_casters_test",
     srcs = ["status_casters_test.py"],
     main = "status_casters_test.py",
+    strict_deps = True,
     tags = ["no_oss"],
     deps = [
         ":status_casters_ext",
@@ -371,6 +372,8 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/synchronization",
         "@nanobind",
     ],
@@ -414,6 +417,7 @@ nanobind_pywrap_extension(
         "//xla/backends/profiler:profiler_backends",
         "//xla/backends/profiler/cpu:python_tracer",
         "//xla/backends/profiler/plugin:plugin_tracer",
+        "//xla/backends/profiler/util:metadata_registry",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:status_casters",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
@@ -422,6 +426,7 @@ nanobind_pywrap_extension(
         "//xla/tsl/profiler/rpc:profiler_server_impl",
         "//xla/tsl/profiler/rpc/client:capture_profile",
         "//xla/tsl/profiler/rpc/client:profiler_client_impl",
+        "//xla/tsl/profiler/utils:xplane_schema",
         "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/profiler/lib:profiler_session",
         "@tsl//tsl/profiler/lib:traceme",
@@ -451,10 +456,11 @@ nanobind_pywrap_extension(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "profile_data_test",
     srcs = ["profile_data_test.py"],
     main = "profile_data_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
         "optonly",
@@ -655,10 +661,11 @@ xla_cc_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "xla_compiler_test",
     srcs = ["xla_compiler_test.py"],
     main = "xla_compiler_test.py",
+    strict_deps = True,
     tags = ["no_oss"],
     deps = [
         ":xla_extension",

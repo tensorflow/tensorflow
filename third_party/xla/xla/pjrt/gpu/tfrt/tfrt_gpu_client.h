@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -46,12 +45,14 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/maybe_owning.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_allocator.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -66,7 +67,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
@@ -145,13 +145,13 @@ class TfrtGpuClient final : public PjRtClient {
   }
 
   absl::StatusOr<PjRtDevice*> LookupDevice(
-      PjRtGlobalDeviceId global_device_id) const override;
+      GlobalDeviceId global_device_id) const override;
 
   absl::StatusOr<PjRtDevice*> LookupAddressableDevice(
-      PjRtLocalDeviceId local_device_id) const override;
+      LocalDeviceId local_device_id) const override;
 
   void UpdateGlobalProcessInfo(
-      absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) override;
+      absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -168,7 +168,7 @@ class TfrtGpuClient final : public PjRtClient {
            size < (int64_t{1} << 30) && !IsDmaMapped(data, size);
   }
 
-  HostMemoryAllocator* host_memory_allocator() const {
+  HostMemoryAllocator* GetHostMemoryAllocator() const override {
     return host_memory_allocator_.get();
   }
 
@@ -203,9 +203,9 @@ class TfrtGpuClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp mlir_module, CompileOptions options) override;
+      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp mlir_module, CompileOptions options) override;
+      MaybeOwningMlirModule mlir_module, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtMemorySpace* memory_space) override;
@@ -224,7 +224,7 @@ class TfrtGpuClient final : public PjRtClient {
                            const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable,
+      std::shared_ptr<PjRtExecutable> executable,
       const LoadOptions& load_options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
@@ -307,7 +307,7 @@ class TfrtGpuClient final : public PjRtClient {
       const XlaComputation& computation, CompileOptions options,
       bool lookup_addressable_devices);
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp mlir_module, CompileOptions options,
+      MaybeOwningMlirModule mlir_module, CompileOptions options,
       bool lookup_addressable_devices);
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> CompileInternal(
@@ -350,7 +350,7 @@ class TfrtGpuClient final : public PjRtClient {
   // Pointers to `owned_devices_`.
   std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
-  absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> id_to_device_;
+  absl::flat_hash_map<GlobalDeviceId, TfrtGpuDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
   std::vector<PjRtDevice*> addressable_devices_;
   std::unique_ptr<ComputationPlacer> computation_placer_;

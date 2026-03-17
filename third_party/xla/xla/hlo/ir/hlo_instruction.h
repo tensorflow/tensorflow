@@ -419,7 +419,8 @@ class HloInstruction {
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      const PrecisionConfig& precision_config);
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config = {});
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -494,7 +495,8 @@ class HloInstruction {
   // order of inputs from different participants.
   static std::unique_ptr<HloInstruction> CreateAllGather(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64_t all_gather_dimension, const CollectiveDeviceListBase& device_list,
+      int64_t all_gather_dimension,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       bool constrain_layout, const std::optional<int64_t>& channel_id,
       bool use_global_device_ids);
 
@@ -514,7 +516,8 @@ class HloInstruction {
   // conjunction of a AllGatherDone op that synchronizes and returns the result.
   static std::unique_ptr<HloInstruction> CreateAllGatherStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64_t all_gather_dimension, const CollectiveDeviceListBase& device_list,
+      int64_t all_gather_dimension,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       bool constrain_layout, const std::optional<int64_t>& channel_id,
       bool use_global_device_ids);
 
@@ -541,8 +544,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateAllReduce(
@@ -557,9 +561,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReduceScatter(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-      int64_t scatter_dimension);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids, int64_t scatter_dimension);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateReduceScatter(
@@ -585,8 +589,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduceStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateAllReduceStart(
@@ -623,8 +628,8 @@ class HloInstruction {
   // performs AllToAll and then concatenates the results into a single array.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension = std::nullopt);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -731,7 +736,7 @@ class HloInstruction {
   //
   static std::unique_ptr<HloInstruction> CreateRaggedAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& device_list,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -746,8 +751,8 @@ class HloInstruction {
   // on that replica is a tensor consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
@@ -1725,7 +1730,7 @@ class HloInstruction {
   void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.
   void set_device_sharding(int64_t device) {
-    set_single_sharding(HloSharding::AssignDevice(device));
+    set_single_sharding(HloSharding::SingleDevice(device));
   }
   // Remove any sharding from this operator.
   void clear_sharding() { sharding_ = nullptr; }
@@ -2165,6 +2170,13 @@ class HloInstruction {
       const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
       const HloInstruction& sorted_instruction);
 
+  // Sorts the users of this instruction using the given comparison function.
+  void SortUsers(
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+          compare) {
+    users_.SortInstructionUsers(compare);
+  }
+
   // Old methods kept for smooth subclassing transition BEGIN.
   // NOTE: Refrain from adding more delegates, prefer down casting to subclasses
   // rather than using these methods.
@@ -2338,9 +2350,9 @@ class HloInstruction {
   const std::vector<ReplicaGroup>& replica_groups() const;
 
   // Delegates to HloCollectiveInstruction::device_list.
-  const CollectiveDeviceListBase& device_list() const;
+  const std::shared_ptr<CollectiveDeviceListBase>& device_list() const;
 
-  // Returns true if device_list().num_replica_groups() > 0.
+  // Returns true if device_list()->num_replica_groups() > 0.
   bool has_replica_groups() const;
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
@@ -2433,6 +2445,10 @@ class HloInstruction {
 
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
+
+  // Delegates to HloConvolutionInstruction::sparsity_config.
+  const SparsityConfig& sparsity_config() const;
+  void set_sparsity_config(const SparsityConfig& config);
 
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
@@ -2699,6 +2715,9 @@ class HloInstruction {
     void RemoveUser(HloInstruction* user);       // REQUIRES: Contains(user)
     int64_t UserId(HloInstruction* user);
     void SortInstructionUsers(
+        absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+            compare);
+    void SortInstructionUsers(
         const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
         const Users& sorted_instruction_users);
     bool CheckInvariants();
@@ -2819,6 +2838,7 @@ std::string RaggedDotDimensionNumbersToString(
     const RaggedDotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
+std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);

@@ -145,6 +145,7 @@ package_group(
         "//perftools/accelerators/xprof/...",
         "//quality/webanswers/brain/tokenization/custom_tf_ops/kernels/...",
         "//smartass/brain/server/...",
+        "//third_party/neptune/...",
         "//waymo/ml/deploy/benchmark/...",
     ],
 )
@@ -1735,6 +1736,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -2024,6 +2026,36 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_ops",
     ]),
+)
+
+tf_cc_test(
+    name = "local_rendezvous_test",
+    srcs = [
+        "local_rendezvous_test.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/activity_watcher:activity_watcher_impl",
+        "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:notification",
+        "//tensorflow/core/lib/gtl:manual_constructor",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/strings:numbers",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/platform:refcount",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@tsl//tsl/platform:refcount",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:logging",
+    ],
 )
 
 # Test data

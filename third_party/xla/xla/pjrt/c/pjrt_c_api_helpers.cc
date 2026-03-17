@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -138,6 +140,22 @@ absl::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   if (error != nullptr) {
     status = absl::Status(PjrtErrorToStatusCode(error, api),
                           GetPjrtErrorMessage(error, api));
+    if (api->struct_size >=
+        PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Error_ForEachPayload)) {
+      PJRT_Error_ForEachPayload_Args args{};
+      args.struct_size = PJRT_Error_ForEachPayload_Args_STRUCT_SIZE;
+      args.extension_start = nullptr;
+      args.error = error;
+      args.visitor = [](const char* key, size_t key_size, const char* value,
+                        size_t value_size, void* user_arg) {
+        absl::string_view key_str(key, key_size);
+        absl::Cord value_cord(absl::string_view(value, value_size));
+        static_cast<absl::Status*>(user_arg)->SetPayload(key_str,
+                                                         std::move(value_cord));
+      };
+      args.user_arg = &status;
+      pjrt::LogFatalIfPjrtError(api->PJRT_Error_ForEachPayload(&args), api);
+    }
   }
   return status;
 }
@@ -278,6 +296,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_PRED;
     case xla::PrimitiveType::TOKEN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN;
+    case xla::PrimitiveType::S1:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_S1;
     case xla::PrimitiveType::S2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S2;
     case xla::PrimitiveType::S4:
@@ -290,6 +310,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S32;
     case xla::PrimitiveType::S64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S64;
+    case xla::PrimitiveType::U1:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_U1;
     case xla::PrimitiveType::U2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_U2;
     case xla::PrimitiveType::U4:
@@ -345,6 +367,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::PRED;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN:
       return xla::PrimitiveType::TOKEN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_S1:
+      return xla::PrimitiveType::S1;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S2:
       return xla::PrimitiveType::S2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S4:
@@ -357,6 +381,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::S32;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S64:
       return xla::PrimitiveType::S64;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_U1:
+      return xla::PrimitiveType::U1;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U2:
       return xla::PrimitiveType::U2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U4:

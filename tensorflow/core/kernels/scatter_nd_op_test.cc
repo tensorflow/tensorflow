@@ -61,7 +61,7 @@ TEST_F(TensorScatterUpdateOpTest, Simple_TwoD32) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   TF_ASSERT_OK(RunOpKernel());
@@ -97,7 +97,7 @@ TEST_F(TensorScatterUpdateOpTest, Simple_ZeroD) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 1}), {0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({1, 1}), {3});
+  AddInputFromArray<int32_t>(TensorShape({1, 1}), {3});
   AddInputFromArray<float>(TensorShape({1, 1}), {101});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -112,7 +112,7 @@ TEST_F(TensorScatterUpdateOpTest, Simple_OneD) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 1}), {0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -127,7 +127,7 @@ TEST_F(TensorScatterUpdateOpTest, HigherRank) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({8}), {0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({2, 3, 1}), {0, 4, 2, 1, 3, 6});
+  AddInputFromArray<int32_t>(TensorShape({2, 3, 1}), {0, 4, 2, 1, 3, 6});
   AddInputFromArray<float>(TensorShape({2, 3}), {10, 20, 30, 40, 50, 60});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -143,7 +143,7 @@ TEST_F(TensorScatterUpdateOpTest, Error_IndexOutOfRange) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   absl::Status s = RunOpKernel();
@@ -171,7 +171,7 @@ TEST_F(TensorScatterUpdateOpErrorOnBadIndicesTest, Error_IndexOutOfRange) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   absl::Status s = RunOpKernel();
@@ -201,7 +201,7 @@ TEST_F(TensorScatterUpdateOpIgnoreBadIndicesTest, DropOutOfRangeIndices) {
   AddInputFromArray<float>(TensorShape({5, 1}), {0, 0, 0, 0, 0});
   // Put the bad index in the middle to make sure the others are still updated.
   // Index: [[0], [5], [2]].
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 5, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 5, 2});
   // Updates: [100, 101, 102].
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   TF_ASSERT_OK(RunOpKernel());
@@ -259,7 +259,7 @@ TEST_F(ScatterNdUpdateOpTest, Simple_TwoD32) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   TF_ASSERT_OK(RunOpKernel());
@@ -309,7 +309,7 @@ TEST_F(ScatterNdUpdateOpTest, Simple_ZeroD) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({1}), {3});
+  AddInputFromArray<int32_t>(TensorShape({1}), {3});
   AddInputFromArray<float>(TensorShape({1}), {101});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -325,7 +325,7 @@ TEST_F(ScatterNdUpdateOpTest, Simple_OneD) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({5}), {0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3}), {100, 101, 102});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -341,7 +341,7 @@ TEST_F(ScatterNdUpdateOpTest, HigherRank) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({8}), {0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({2, 3, 1}), {0, 4, 2, 1, 3, 6});
+  AddInputFromArray<int32_t>(TensorShape({2, 3, 1}), {0, 4, 2, 1, 3, 6});
   AddInputFromArray<float>(TensorShape({2, 3}), {10, 20, 30, 40, 50, 60});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -358,7 +358,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_IndexOutOfRange) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   absl::Status s = RunOpKernel();
@@ -372,7 +372,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_WrongDimsIndices) {
 
   // Feed and run
   AddInputFromArray<float>(TensorShape({2, 3}), {0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({1, 3, 1}), {0, 4, 99});
+  AddInputFromArray<int32_t>(TensorShape({1, 3, 1}), {0, 4, 99});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   absl::Status s = RunOpKernel();
@@ -389,7 +389,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 4, 2});
   AddInputFromArray<float>(
       TensorShape({3, 4}),
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
@@ -407,7 +407,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({2, 3}),
                            {100, 101, 102, 10000, 10001, 10002});
   absl::Status s = RunOpKernel();
@@ -437,7 +437,7 @@ TEST_F(ScatterNdUpdateOpErrorOnBadIndicesTest, Error_IndexOutOfRange) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 99, 4});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 99, 4});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   absl::Status s = RunOpKernel();
@@ -467,7 +467,7 @@ TEST_F(ScatterNdUpdateOpIgnoreBadIndicesTest, DropOutOfRangeIndices) {
   // ref: output tensor of 5x1 shape, initialized to 0.
   AddInputFromArray<float>(TensorShape({5, 1}), {0, 0, 0, 0, 0});
   // Index: [[0], [5], [2]].
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 5, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 5, 2});
   // Updates: [100, 101, 102].
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   TF_ASSERT_OK(RunOpKernel());
@@ -509,11 +509,11 @@ TEST_F(ScatterNdOpTest, Simple_OneD) {
 
   // Feed and run
   // Index: [[0], [4], [2]].
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 4, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 4, 2});
   // Updates: [100, 101, 102].
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   // Shape: output tensor of 5x1 shape.
-  AddInputFromArray<int32>(TensorShape({2}), {5, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {5, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -528,11 +528,11 @@ TEST_F(ScatterNdOpTest, Error_IndexOutOfRange) {
   // Feed and run
   // Put the bad index in the middle to make sure the others are still updated.
   // Index: [[0], [5], [2]].
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 5, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 5, 2});
   // Updates: [100, 101, 102].
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   // Shape: output tensor of 5x1 shape.
-  AddInputFromArray<int32>(TensorShape({2}), {5, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {5, 1});
   absl::Status s = RunOpKernel();
   // The valid index range is [0,5). Expect "5" to raise error.
   EXPECT_TRUE(absl::StrContains(
@@ -559,11 +559,11 @@ TEST_F(ScatterNdOpErrorOnBadIndicesTest, Error_IndexOutOfRange) {
   // Feed and run
   // Put the bad index in the middle to make sure the others are still updated.
   // Index: [[0], [5], [2]].
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 5, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 5, 2});
   // Updates: [100, 101, 102].
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   // Shape: output tensor of 5x1 shape.
-  AddInputFromArray<int32>(TensorShape({2}), {5, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {5, 1});
   absl::Status s = RunOpKernel();
   // The valid index range is [0,5). Expect "5" to raise error.
   EXPECT_TRUE(absl::StrContains(
@@ -590,11 +590,11 @@ TEST_F(ScatterNdOpIgnoreBadIndicesTest, DropOutOfRangeIndices) {
   // Feed and run
   // Put the bad index in the middle to make sure the others are still updated.
   // Index: [[0], [5], [2]].
-  AddInputFromArray<int32>(TensorShape({3, 1}), {0, 5, 2});
+  AddInputFromArray<int32_t>(TensorShape({3, 1}), {0, 5, 2});
   // Updates: [100, 101, 102].
   AddInputFromArray<float>(TensorShape({3, 1}), {100, 101, 102});
   // Shape: output tensor of 5x1 shape.
-  AddInputFromArray<int32>(TensorShape({2}), {5, 1});
+  AddInputFromArray<int32_t>(TensorShape({2}), {5, 1});
   TF_ASSERT_OK(RunOpKernel());
 
   // Check the output.
@@ -667,7 +667,7 @@ void BM_ScatterNdHelper(::testing::benchmark::State& state, int embedding_size,
 void BM_ScatterNdUpdateInt32(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterNdHelper<int32>(state, embedding_size, "ScatterNdUpdate");
+  BM_ScatterNdHelper<int32_t>(state, embedding_size, "ScatterNdUpdate");
 }
 void BM_ScatterNdUpdateInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
@@ -678,7 +678,7 @@ void BM_ScatterNdUpdateInt64(::testing::benchmark::State& state) {
 void BM_ScatterNdAddInt32(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterNdHelper<int32>(state, embedding_size, "ScatterNdAdd");
+  BM_ScatterNdHelper<int32_t>(state, embedding_size, "ScatterNdAdd");
 }
 void BM_ScatterNdAddInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);

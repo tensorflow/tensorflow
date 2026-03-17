@@ -85,8 +85,13 @@ class MIOpenBackendTest : public HloHardwareIndependentTestBase {
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
-        backend_(stream_executor_, &debug_options_, &compiler_,
-                 &target_config_) {}
+        backend_(
+            stream_executor_,
+            [](auto& opts) {
+              opts.set_xla_gpu_autotune_level(1);
+              return &opts;
+            }(debug_options_),
+            &compiler_, &target_config_) {}
 
   bool IsRocm() {
     return stream_executor_->GetPlatform()->id() == se::rocm::kROCmPlatformId;

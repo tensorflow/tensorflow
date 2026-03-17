@@ -28,7 +28,7 @@ static Graph* ConstructSpaceToBatchGraph(
   CHECK_EQ(num_block_dims, paddings.size());
   Graph* g = new Graph(OpRegistry::Global());
   Tensor paddings_tensor(DT_INT32, TensorShape({num_block_dims, 2}));
-  auto paddings_eigen_tensor = paddings_tensor.matrix<int32>();
+  auto paddings_eigen_tensor = paddings_tensor.matrix<int32_t>();
   for (int block_dim = 0; block_dim < num_block_dims; ++block_dim) {
     paddings_eigen_tensor(block_dim, 0) = paddings[block_dim].first;
     paddings_eigen_tensor(block_dim, 1) = paddings[block_dim].second;

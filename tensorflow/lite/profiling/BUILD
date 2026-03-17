@@ -11,7 +11,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined
 # copybara:uncomment_end
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -175,6 +175,7 @@ cc_library(
     deps = [
         ":memory_info",
         "//tensorflow/lite:minimal_logging",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
     ],

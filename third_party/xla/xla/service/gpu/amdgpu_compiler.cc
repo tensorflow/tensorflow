@@ -21,25 +21,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/autotuner/block_level_emitter.h"
-#include "xla/backends/gpu/autotuner/hipblaslt.h"
-#include "xla/backends/gpu/autotuner/miopen.h"
-#include "xla/backends/gpu/autotuner/native_emitter.h"
-#include "xla/backends/gpu/autotuner/rocblas.h"
-#include "xla/backends/gpu/autotuner/triton.h"
-#include "xla/hlo/analysis/alias_info.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/backends/gpu/transforms/algebraic_simplifier.h"
+#include "xla/backends/gpu/transforms/conv_padding_legalization.h"
+#include "xla/backends/gpu/transforms/conv_rewriter.h"
+#include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
+#include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
+#include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
@@ -51,25 +46,15 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/compilation_stats.h"
 #include "xla/service/compiler.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_pass.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/target_constants.h"
-#include "xla/service/gpu/transforms/algebraic_simplifier.h"
-#include "xla/service/gpu/transforms/conv_padding_legalization.h"
-#include "xla/service/gpu/transforms/conv_rewriter.h"
-#include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
-#include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
-#include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/stream_executor/device_description.h"
@@ -120,10 +105,11 @@ class ConvBfloat16Support : public FloatSupport {
 absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
     HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
     se::dnn::VersionInfo dnn_version,
-    const se::SemanticVersion& toolkit_version) {
+    const se::SemanticVersion& toolkit_version,
+    CompilationStats* compilation_stats) {
   // Convert convolutions into CustomCalls to MIOpen, then canonicalize them
   // (PadInsertion).
-  HloPassPipeline pipeline("conv_canonicalization");
+  HloPassPipeline pipeline("conv_canonicalization", compilation_stats);
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
@@ -132,10 +118,15 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   ConvBfloat16Support conv_bf16_support(*gpu_version.rocm_compute_capability());
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
-  pipeline.AddPass<ConvRewriter>(gpu_version);
-  pipeline.AddPass<ConvPaddingLegalization>();
-  auto rcc = gpu_version.rocm_compute_capability();
-  pipeline.AddPass<CudnnFusedConvRewriter>(*rcc, dnn_version, toolkit_version);
+  if (!hlo_module->config()
+           .debug_options()
+           .xla_gpu_experimental_disable_binary_libraries()) {
+    pipeline.AddPass<ConvRewriter>(gpu_version);
+    pipeline.AddPass<ConvPaddingLegalization>();
+    auto rcc = gpu_version.rocm_compute_capability();
+    pipeline.AddPass<CudnnFusedConvRewriter>(*rcc, dnn_version,
+                                             toolkit_version);
+  }
 
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
@@ -191,8 +182,10 @@ absl::Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
 absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
-  HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1");
+    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+    CompilationStats* compilation_stats) {
+  HloPassPipeline pre_pipeline("AMDGPU post-layout_assignment part 1",
+                               compilation_stats);
 
   pre_pipeline.AddPass<DotDimensionMerger>();
 
@@ -212,9 +205,10 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool));
+      thread_pool, compilation_stats));
 
-  HloPassPipeline post_pipeline("AMDGPU post-layout_assignment part 2");
+  HloPassPipeline post_pipeline("AMDGPU post-layout_assignment part 2",
+                                compilation_stats);
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
@@ -227,58 +221,6 @@ absl::Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
           .status());
 
   return absl::OkStatus();
-}
-
-absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
-AMDGPUCompiler::GetCodegenBackends(
-    se::StreamExecutor* stream_exec,
-    const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
-    const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-
-  const auto& enabled_backends =
-      debug_options.xla_gpu_experimental_autotune_backends();
-
-  auto is_backend_enabled = [&](DebugOptions::AutotuneBackend backend) {
-    if (enabled_backends.empty()) {
-      return true;
-    }
-    for (const auto& enabled_backend : enabled_backends) {
-      if (enabled_backend == DebugOptions::AUTOTUNE_BACKEND_ALL) {
-        return true;
-      }
-      if (enabled_backend == backend) {
-        return true;
-      }
-    }
-    return false;
-  };
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_TRITON)) {
-    backends.push_back(std::make_unique<TritonBackend>(
-        &debug_options, this, target_config, alias_info, mlir_context));
-  }
-
-  if (debug_options.xla_gpu_experimental_disable_binary_libraries()) {
-    return backends;
-  }
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_MIOPEN)) {
-    backends.push_back(std::make_unique<MIOpenBackend>(
-        stream_exec, &debug_options, this, target_config));
-  }
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_ROCBLAS)) {
-    backends.push_back(std::make_unique<RocblasBackend>(
-        stream_exec, &debug_options, this, target_config));
-  }
-
-  if (is_backend_enabled(DebugOptions::AUTOTUNE_BACKEND_HIPBLASLT)) {
-    backends.push_back(std::make_unique<HipblasLtBackend>(
-        stream_exec, &debug_options, this, target_config));
-  }
-
-  return backends;
 }
 
 AMDGPUCompiler::AMDGPUCompiler()
@@ -295,7 +237,7 @@ AMDGPUCompiler::CompileTargetBinary(
     return Unimplemented("relocatable target binary is not implemented");
   }
 
-  std::vector<uint8_t> hsaco;
+  amdgpu::HsacoResult hsaco_result;
   {
     // This may print multiple lines per HLO compilation because of the
     // parallelized compilation of LLVM modules.
@@ -303,78 +245,16 @@ AMDGPUCompiler::CompileTargetBinary(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco",
         module_config.debug_options().xla_enable_scoped_logging_timers());
     TF_ASSIGN_OR_RETURN(
-        hsaco, amdgpu::CompileToHsaco(
-                   llvm_module, device_description.gpu_compute_capability(),
-                   module_config.debug_options(),
-                   module_config.compilation_cache_key()));
+        hsaco_result,
+        amdgpu::CompileToHsaco(llvm_module,
+                               device_description.gpu_compute_capability(),
+                               module_config.debug_options(),
+                               module_config.compilation_cache_key()));
   }
 
-  return BackendCompileResult{"", std::move(hsaco)};
-}
-
-namespace {
-
-// Returns true if the instruction is a fusion that would go through the native
-// emitter, but may benefit from going through the block-level emitter.
-// Currently, we only do this for reductions and transposes.
-bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
-  if (instruction.opcode() != HloOpcode::kFusion) {
-    return false;
-  }
-  auto fusion = Cast<const HloFusionInstruction>(&instruction);
-  // kCustom fusions have already been assigned to a backend and we don't want
-  // to override it.
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-    return false;
-  }
-  // Scatter can't go through the block-level emitter and runs into comparator
-  // issues in the autotuner as different runs can produce different results.
-  if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
-                     HloPredicateIsOp<HloOpcode::kScatter>)) {
-    return false;
-  }
-  return absl::c_any_of(
-      fusion->fused_instructions_computation()->instructions(),
-      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
-}
-
-}  // namespace
-
-absl::Status AMDGPUCompiler::AddFusionAutotuningPass(
-    HloPassPipeline* pipeline, HloModule* hlo_module,
-    const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
-    stream_executor::StreamExecutor* stream_executor,
-    const Compiler::GpuTargetConfig* target_config,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-    const MultiProcessKeyValueStore& key_value_store) {
-  if (stream_executor == nullptr) {
-    return absl::OkStatus();
-  }
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  if (debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
-    return absl::OkStatus();
-  }
-
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  auto native_backend = std::make_unique<NativeEmitterBackend>(
-      &debug_options, this, target_config);
-  backends.push_back(std::move(native_backend));
-  auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
-      &debug_options, this, shape_size_fn, target_config,
-      /*use_default_config=*/true);
-  backends.push_back(std::move(ble_backend));
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
-                            thread_pool, ShouldAutotuneBetweenFusionEmitters,
-                            target_config, options.device_allocator,
-                            /*optimize_scratch_bytes=*/false, key_value_store,
-                            /*allow_reg_spills=*/true));
-  pipeline->AddPass(std::move(autotuner_pass));
-  return absl::OkStatus();
+  return BackendCompileResult{"", std::move(hsaco_result.hsaco),
+                              /*dnn_compiled_graphs=*/{},
+                              std::move(hsaco_result.module_stats)};
 }
 
 std::vector<std::string> AMDGPUCompiler::GetLLVMCommandLineOptions(

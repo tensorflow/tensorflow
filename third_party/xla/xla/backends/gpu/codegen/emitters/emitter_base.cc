@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -131,6 +133,14 @@ using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::FuncOp;
 
+bool EnablePDL(const HloModule& module, const se::DeviceDescription& device) {
+  return module.config().debug_options().xla_gpu_enable_pdl() &&
+         device.gpu_compute_capability().IsCuda() &&
+         device.gpu_compute_capability()
+             .cuda_compute_capability()
+             ->IsAtLeastHopper();
+}
+
 void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
                llvm::Module* module) {
   for (auto& block : *func) {
@@ -223,9 +233,44 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
 
 }  // namespace
 
+/* static */ std::array<uint64_t, 2> EmitterBase::MaybeSplitGridDimensionX(
+    uint64_t num_threads_x, uint64_t num_blocks_x,
+    const se::DeviceDescription& info) {
+  const se::BlockDim& limit = info.block_dim_limit();
+  constexpr uint64_t rocm_limit = std::numeric_limits<uint32_t>::max();
+
+  bool is_rocm = info.gpu_compute_capability().IsRocm();
+  // Add an extra condition for ROCM backend
+  if (num_blocks_x <= limit.x &&
+      (!is_rocm || num_blocks_x * num_threads_x <= rocm_limit)) {
+    return {num_blocks_x, 1};
+  }
+
+  uint64_t dimx = 0, dimy = 0;
+  // We assume that num_blocks_x is most likely of the form: 2^N * K
+  for (uint64_t nzeros = 1; nzeros < 64u; nzeros++) {
+    dimy = 1ULL << nzeros;
+    if (dimy > limit.y) {
+      // We could not find the proper power-of-two dim Y => use max gridY
+      dimy = limit.y;
+      dimx = CeilOfRatio(num_blocks_x, dimy);
+      break;
+    }
+    // num_blocks_x might not be divided evenly by dimy, so we round up.
+    dimx = (num_blocks_x + dimy - 1) >> nzeros;
+    if (dimx <= limit.x) {
+      // We have an extra requirement on ROCM to check
+      if (!is_rocm || dimx * num_threads_x <= rocm_limit) break;
+    }
+  }
+  VLOG(1) << num_blocks_x << " splitting as: " << dimx << "x" << dimy
+          << " wasted blocks: " << (dimx * dimy - num_blocks_x);
+  return {dimx, dimy};
+}
+
 Value EmitterBase::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
                                    WorkGroupDimension dim) const {
-  const auto& counts = launch_dimensions().block_counts();
+  const auto counts = launch_dimensions().block_counts();
   int64_t count = dim == WorkGroupDimension::x   ? counts.x
                   : dim == WorkGroupDimension::y ? counts.y
                                                  : counts.z;
@@ -236,7 +281,7 @@ Value EmitterBase::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
 
 Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
                                int dim) const {
-  const auto& counts = launch_dimensions().block_counts();
+  const auto counts = launch_dimensions().block_counts();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto block_id = mlir::gpu::BlockIdOp::create(
       builder, static_cast<mlir::gpu::Dimension>(dim));
@@ -246,7 +291,7 @@ Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
 
 Value EmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
                                 int dim) const {
-  const auto& counts = launch_dimensions().thread_counts_per_block();
+  const auto counts = launch_dimensions().thread_counts_per_block();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
   auto thread_id = mlir::gpu::ThreadIdOp::create(
       builder, static_cast<mlir::gpu::Dimension>(dim));
@@ -303,9 +348,12 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
               VLOG(3) << "Skipped kernel compilation.";
             }
 
-            return KernelReuseCache::Entry{kernel_name, launch_dims,
-                                           std::nullopt,
-                                           /*shmem_bytes=*/0};
+            KernelReuseCache::Entry entry{kernel_name, launch_dims,
+                                          std::nullopt,
+                                          /*shmem_bytes=*/0};
+            entry.use_pdl = EnablePDL(*fusion.GetModule(),
+                                      ir_emitter_context.gpu_device_info());
+            return entry;
           });
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
@@ -320,7 +368,8 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
           &fusion, ir_emitter_context.GetNextThunkId()),
       entry->kernel_name, args, launch_dims, entry->cluster_dim,
       entry->shmem_bytes,
-      /*tma_metadata=*/se::gpu::TmaMetadata()));
+      /*tma_metadata=*/se::gpu::TmaMetadata(),
+      /*zeroed_output_buffer_indices=*/std::vector<int64_t>{}, entry->use_pdl));
   return result;
 }
 
@@ -335,7 +384,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 
   mlir::PassManager pm(&mlir_context);
   emitters::RegisterOptimizationPasses(pm);
-  AddLoopTransformationPasses(pm, device);
+  AddLoopTransformationPasses(pm, device, unroll_factor());
+  if (EnablePDL(*fusion.GetModule(), device)) {
+    pm.addPass(CreateInsertPDLPass());
+  }
   AddLoweringPasses(pm, device);
 
   TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), *fusion.GetModule(), pm,
@@ -444,7 +496,8 @@ absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
 }
 
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
-                                 const se::DeviceDescription& device) {
+                                 const se::DeviceDescription& device,
+                                 int max_unroll_factor) {
   pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<FuncOp>(
       emitters::CreateLowerXlaToScfPass(device.threads_per_warp()));
@@ -468,7 +521,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(emitters::CreateVectorizeLoadsAndStoresPass(device));
-  pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass());
+  pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass(max_unroll_factor));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
@@ -477,6 +530,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
                        const se::DeviceDescription& device) {
   pm.addNestedPass<FuncOp>(emitters::CreateConvertPureCallOpsPass());
   pm.addPass(emitters::CreateLowerTensorsPass(device));
+  pm.addPass(emitters::CreateLowerPdlWaitPass());
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(emitters::CreateMergePointersToSameSlicePass());
 

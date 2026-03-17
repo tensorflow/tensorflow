@@ -23,9 +23,12 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "riegeli/bytes/string_reader.h"
 #include "riegeli/bytes/string_writer.h"
+#include "xla/service/gpu/gpu_executable.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util/split_proto/split_proto_reader.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace {
@@ -36,7 +39,7 @@ using ::xla::gpu::GpuExecutableProto;
 
 TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutable) {
   auto initialExecutable = ParseTextProtoOrDie<GpuExecutableProto>(R"pb(
-    hlo_module_with_config { hlo_module { name: "test_module" } }
+    hlo_module_with_config { hlo_module { id: 1 name: "test_module" } }
     buffer_allocations { values { index: 0 size: 2 } }
     asm_text: "asm_text"
     binary: "binary_data"
@@ -44,7 +47,7 @@ TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutable) {
     gpu_compute_capability {
       cuda_compute_capability { major: 9 minor: 0 feature_extension: NONE }
     }
-    thunk { thunk_info { thunk_id: 1 } }
+    thunks { thunk_info { thunk_id: 1 } }
     module_name: "test_module"
     program_shape { parameter_names: [ "name1", "name2" ] }
     output_info_map {
@@ -71,7 +74,50 @@ TEST(SplitGpuExecutableWriterTest, WriteSplitGpuExecutable) {
   auto reader = std::make_unique<riegeli::StringReader<>>(serialized);
   ASSERT_OK(ReadSplitProto(std::move(reader), deserializedExecutable));
 
+  // The module ID shouldn't be serialized.
+  initialExecutable.mutable_hlo_module_with_config()
+      ->mutable_hlo_module()
+      ->clear_id();
   EXPECT_THAT(deserializedExecutable, EqualsProto(initialExecutable));
+}
+
+TEST(SplitGpuExecutableWriterTest, JsonBackendConfigIsNormalized) {
+  GpuExecutableProto proto1;
+  *proto1.mutable_hlo_module_with_config()
+       ->mutable_hlo_module()
+       ->add_computations()
+       ->add_instructions()
+       ->mutable_backend_config() = R"json({"a": 1, "b": 2, "c": 3})json";
+
+  GpuExecutableProto proto2;
+  *proto2.mutable_hlo_module_with_config()
+       ->mutable_hlo_module()
+       ->add_computations()
+       ->add_instructions()
+       ->mutable_backend_config() = R"json({"c": 3, "b": 2, "a": 1})json";
+
+  std::string serialized1;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      proto1, std::make_unique<riegeli::StringWriter<>>(&serialized1)));
+
+  std::string serialized2;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      proto2, std::make_unique<riegeli::StringWriter<>>(&serialized2)));
+
+  EXPECT_EQ(serialized1, serialized2);
+}
+
+TEST(SplitGpuExecutableWriterTest, NonJsonBackendConfigIsAccepted) {
+  GpuExecutableProto proto1;
+  *proto1.mutable_hlo_module_with_config()
+       ->mutable_hlo_module()
+       ->add_computations()
+       ->add_instructions()
+       ->mutable_backend_config() = "not-json";
+
+  std::string serialized1;
+  ASSERT_OK(WriteSplitGpuExecutable(
+      proto1, std::make_unique<riegeli::StringWriter<>>(&serialized1)));
 }
 
 }  // namespace

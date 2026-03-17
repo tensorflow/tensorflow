@@ -2769,6 +2769,10 @@ int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).size_bytes_dense();
 }
 
+int64_t LiteralBase::total_size_bytes(const ShapeIndex& shape_index) const {
+  return piece(shape_index).total_bytes_dense();
+}
+
 std::string LiteralBase::GetR1U8AsString() const {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().dimensions().size(), 1);

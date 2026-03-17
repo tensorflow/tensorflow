@@ -162,9 +162,32 @@ absl::Status HloSchedule::UpdateComputationSchedule(
     InsertOrDie(&id_to_instruction, instruction->unique_id(), instruction);
   }
 
+  // Invalidate the schedule of instructions that conflict with control
+  // dependencies.
+  auto sched_sequence = sequence(computation).instructions();
+  absl::flat_hash_set<HloInstruction*> invalid_instructions;
+  for (HloInstruction* inst : sched_sequence) {
+    auto inst_it = absl::c_find(sched_sequence, inst);
+    for (HloInstruction* pred : inst->control_predecessors()) {
+      // Found a pair of instructions whose schedule order is inconsistent with
+      // their control dependencies.
+      if (pred == inst) {
+        TF_RETURN_IF_ERROR(pred->RemoveControlDependencyTo(inst));
+      }
+      auto pred_it = absl::c_find(sched_sequence, pred);
+      if (pred_it != sched_sequence.end() && pred_it >= inst_it) {
+        invalid_instructions.insert(inst);
+        invalid_instructions.insert(pred);
+      }
+    }
+  }
+  for (HloInstruction* inst : invalid_instructions) {
+    sequences_.at(computation->unique_id()).remove_instruction(inst);
+  }
+
   // Set of all HloInstructions in the schedule.
   absl::flat_hash_set<int64_t> ids_in_schedule;
-  for (int64_t id : sequences_.at(computation->unique_id()).ids()) {
+  for (int64_t id : sequence(computation).ids()) {
     InsertOrDie(&ids_in_schedule, id);
   }
 

@@ -88,5 +88,63 @@ INSTANTIATE_TEST_SUITE_P(YnnFusionTestInstantiation, YnnFusionTest,
                          ::testing::ValuesIn(GetSameTypeTestCases()),
                          YnnFusionTest::Name);
 
+using YnnFusionReduceWindowTest = YnnFusionTest;
+
+TEST_P(YnnFusionReduceWindowTest, ReduceWindow) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule reduce_window
+
+    %add {
+      %lhs = $dtype[] parameter(0)
+      %rhs = $dtype[] parameter(1)
+      ROOT %add = $dtype[] add(%lhs, %rhs)
+    }
+
+    ynn_fusion {
+      %input = $dtype[4] parameter(0)
+      %zero = $dtype[] constant(0)
+      ROOT %reduce_window = $dtype[2] reduce-window(%input, %zero), window={size=3 stride=3 pad=1_1}, to_apply=%add
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[4] parameter(0)
+      ROOT %fusion = $dtype[2] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionReduceWindowTest, ReduceWindowAndReduce) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule reduce_window_and_reduce
+
+    %add {
+      %lhs = $dtype[] parameter(0)
+      %rhs = $dtype[] parameter(1)
+      ROOT %add = $dtype[] add(%lhs, %rhs)
+    }
+
+    ynn_fusion {
+      %input = $dtype[4] parameter(0)
+      %zero = $dtype[] constant(0)
+      %rw = $dtype[2] reduce-window(%input, %zero), window={size=3 stride=3 pad=1_1}, to_apply=%add
+      ROOT %reduce = $dtype[] reduce(%rw, %zero), dimensions={0}, to_apply=%add
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[4] parameter(0)
+      ROOT %fusion = $dtype[] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+INSTANTIATE_TEST_SUITE_P(YnnFusionReduceWindowTestInstantiation,
+                         YnnFusionReduceWindowTest,
+                         ::testing::Values(YnnFusionTestParams{"f32", "f32"}),
+                         YnnFusionTest::Name);
+
 }  // namespace
 }  // namespace xla::cpu

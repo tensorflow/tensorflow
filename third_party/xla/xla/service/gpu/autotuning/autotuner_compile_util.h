@@ -16,13 +16,12 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_COMPILE_UTIL_H_
 #define XLA_SERVICE_GPU_AUTOTUNING_AUTOTUNER_COMPILE_UTIL_H_
 
-#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
-#include "absl/status/status.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -32,24 +31,28 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
-#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+
 
 namespace xla {
 namespace gpu {
 
 // Autotuning utils which require compiling fusions separately. Requires a
 // separate target, as runtime autotuning cannot perform compilation.
+// TODO(b/489788600): Remove this class once the users are migrated.
 class AutotunerCompileUtil {
  public:
+  static absl::StatusOr<std::unique_ptr<AutotunerCompileUtil>> Create(
+      se::StreamExecutor& stream_executor,
+      se::DeviceAddressAllocator& allocator, const DebugOptions& opts);
+
   // The GenerateModuleFn must generate/extract a module using the provided
   // debug options. Typically it should set the debug options of the extracted
   // module before it would transform it, to ensure that the transforms can use
@@ -58,10 +61,6 @@ class AutotunerCompileUtil {
   using GenerateModuleFn =
       absl::AnyInvocable<absl::StatusOr<std::unique_ptr<HloModule>>(
           const DebugOptions&)>;
-
-  // Generates a compile util for a platform associated with the `stream`.
-  static absl::StatusOr<AutotunerCompileUtil> Create(
-      const DeviceOrDevicelessConfig& config, const DebugOptions& opts);
 
   struct ProfilingOutput {
     ProfilingOutput(absl::Duration duration, ScopedShapedBuffer&& buffer)
@@ -77,7 +76,7 @@ class AutotunerCompileUtil {
   // Runs the resulting executable with the given extractor, cached with
   // `(cache_key, config)`.
   absl::StatusOr<ProfilingOutput> ProfileExecutable(
-      Executable* executable, se::Stream* stream,
+      Executable* executable,
       absl::Span<se::DeviceAddressBase const> input_buffers,
       absl::Span<Shape const> input_shapes);
 
@@ -97,20 +96,21 @@ class AutotunerCompileUtil {
   absl::StatusOr<std::unique_ptr<HloModule>> ExtractModule(
       GenerateModuleFn extractor);
 
+  se::Stream& stream() const { return stream_; }
+
  private:
   AutotunerCompileUtil(std::unique_ptr<Compiler> compiler,
-                       se::StreamExecutor& stream_executor, se::Stream& stream,
+                       se::StreamExecutor& stream_executor,
                        se::DeviceAddressAllocator& allocator,
-                       const DebugOptions& opts);
-
+                       se::Stream& stream, const DebugOptions& opts);
   absl::StatusOr<ExecutionOutput> Execute(Executable& executable,
                                           std::vector<ExecutionInput> arguments,
                                           ExecutionProfile* profile = nullptr);
 
   std::unique_ptr<Compiler> compiler_;
   se::StreamExecutor& stream_executor_;
-  se::Stream& stream_;
   se::DeviceAddressAllocator& allocator_;
+  se::Stream& stream_;
   DebugOptions opts_;
 };
 

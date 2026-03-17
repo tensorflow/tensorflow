@@ -38,17 +38,23 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/literal.h"
 #include "xla/runtime/device_id.h"
-#include "xla/service/collective_permute_cycle.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);
 
-// Attempts to match instruction to one of the possible cases for ReductionKind.
+// Returns the ReductionKind corresponding to the given HloOpcode and
+// PrimitiveType.
+// Returns std::nullopt if the HloOpcode cannot be mapped to a ReductionKind.
+std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
+                                                   PrimitiveType type);
+
+// Attempts to match instruction to one of the possible cases for
+// ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
 
@@ -61,7 +67,11 @@ std::unique_ptr<HloComputation> MakeReductionComputation(
     ReductionKind reduction_kind, PrimitiveType element_type);
 
 // Returns the HloOpcode corresponding to the given ReductionKind.
-std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
+// Certain reduction kinds can map to different opcodes depending on the
+// element type (e.g. ReductionKind::MIN maps to kMinimum for numeric types and
+// kAnd for PRED).
+HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
+                                PrimitiveType element_type);
 
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.
@@ -80,12 +90,6 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 // Returns the replica groups for the given async collective instruction.
 absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
-
-const CollectiveDeviceListBase& GetCollectiveDeviceList(
-    const HloInstruction* hlo);
-
-const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
-    const HloInstruction* hlo);
 
 // Returns the group formation mode of instr, assuming that instr is, or is
 // derived from on the following instructions:
@@ -295,7 +299,7 @@ inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
 // When a Send or Recv is annotated with frontend attribute
 // _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
 // Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
-constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
+inline constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 
 // Attribute to indicate that collective operations should be issued on a
 // dedicated p2p stream. This is a hint and there is no guarantee that this will
@@ -303,11 +307,6 @@ constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 inline constexpr absl::string_view kCollectiveStreamAttrName =
     "_xla_gpu_collective_stream";
 inline constexpr absl::string_view kCollectiveStreamP2P = "p2p";
-
-// Returns latency metadata in microseconds(us) if the instruction is a custom
-// call with latency metadata. Returns `std::nullopt` if the instruction is not
-// a custom call with latency metadata or invalid latency metadata is provided.
-std::optional<double> GetCustomCallLatencyMetadata(const HloInstruction* instr);
 
 int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode);

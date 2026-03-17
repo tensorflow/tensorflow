@@ -151,15 +151,20 @@ using ContextGroupMap = absl::flat_hash_map<
 // events specified in root_event_types or marked by the semantic argument.
 class EventForest {
  public:
-  void AddSpace(
-      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
-          visitor_factory,
-      tensorflow::profiler::XSpace* space);
+  using OldXPlaneVisitorFactory =
+      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>;
+  using XPlaneVisitorFactory = std::function<std::unique_ptr<XPlaneVisitor>(
+      const tensorflow::profiler::XPlane*)>;
 
-  void AddPlanes(
-      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
-          visitor_factory,
-      const std::vector<tensorflow::profiler::XPlane*>& planes);
+  void AddSpace(OldXPlaneVisitorFactory visitor_factory,
+                tensorflow::profiler::XSpace* space);
+  void AddPlanes(OldXPlaneVisitorFactory visitor_factory,
+                 const std::vector<tensorflow::profiler::XPlane*>& planes);
+
+  void AddSpace(XPlaneVisitorFactory visitor_factory,
+                tensorflow::profiler::XSpace* space);
+  void AddPlanes(XPlaneVisitorFactory visitor_factory,
+                 const std::vector<tensorflow::profiler::XPlane*>& planes);
 
   void ConnectEvents(
       const std::vector<InterThreadConnectInfo>& connect_info_list = {});
@@ -175,10 +180,16 @@ class EventForest {
   }
 
  private:
-  void AddPlane(
-      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
-          visitor_factory,
-      tensorflow::profiler::XPlane* plane);
+  template <typename Factory>
+  void AddPlane(Factory visitor_factory, tensorflow::profiler::XPlane* plane);
+
+  // Creates, stores and returns an XPlaneVisitor reference for the given
+  // XPlane.
+  XPlaneVisitor& AddVisitor(OldXPlaneVisitorFactory visitor_factory,
+                            tensorflow::profiler::XPlane* plane);
+  XPlaneVisitor& AddVisitor(XPlaneVisitorFactory visitor_factory,
+                            tensorflow::profiler::XPlane* plane);
+
   void ConnectIntraThreadTPU(tensorflow::profiler::XPlane* plane,
                              XPlaneVisitor* visitor,
                              ContextGroupMap* context_groups);
@@ -224,10 +235,11 @@ class EventForest {
       const std::function<void(EventNode&, const std::vector<uint64_t>&)>& cb);
 
   EventNodeMap event_node_map_;
-  std::vector<XPlaneVisitor> visitors_;
   absl::flat_hash_set<XPlane*> registered_planes_;
   // std::deque for pointer stability.
-  std::deque<std::pair<tensorflow::profiler::XPlane*, XPlaneVisitor>> planes_;
+  std::deque<std::unique_ptr<XPlaneVisitor>> unique_visitors_;
+  std::deque<XPlaneVisitor> visitors_;
+  std::deque<std::pair<tensorflow::profiler::XPlane*, XPlaneVisitor&>> planes_;
   // The "step" id (actually it is "function" id that are associated with
   // the tf.data pipeline.
   absl::flat_hash_set<int64_t> tf_data_step_ids_;

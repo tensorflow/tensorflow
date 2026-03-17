@@ -48,8 +48,7 @@ struct PJRT_Transfers_PJRT_Client_CrossHostSendBuffers_Args {
   PJRT_Client* client;
   size_t num_buffers;
   PJRT_Buffer** buffers;
-  const xla::PjRtGlobalDeviceId*
-      dst_global_device_ids;                       // Has size num_buffers.
+  const xla::GlobalDeviceId* dst_global_device_ids;  // Has size num_buffers.
   const xla::CrossHostTransferKey* transfer_keys;  // Has size num_buffers.
   PJRT_Event** send_events;  // Output; has size num_buffers.
 };
@@ -70,7 +69,7 @@ struct PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers_Args {
   PJRT_Buffer_Type* element_types;
   PJRT_Buffer_MemoryLayout** layouts;
   PJRT_Device* device;
-  const xla::PjRtGlobalDeviceId* src_global_device_ids;  // Has size num_shapes.
+  const xla::GlobalDeviceId* src_global_device_ids;      // Has size num_shapes.
   const xla::CrossHostTransferKey* transfer_keys;        // Has size num_shapes.
   PJRT_Buffer** buffers;  // Output; has size num_shapes.
 };

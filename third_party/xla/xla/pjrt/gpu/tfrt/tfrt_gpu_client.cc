@@ -71,6 +71,7 @@ limitations under the License.
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/host_memory_spaces.h"
 #include "xla/pjrt/layout_mode.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -83,6 +84,7 @@ limitations under the License.
 #include "xla/pjrt/transpose.h"
 #include "xla/pjrt/utils.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/compiler.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
@@ -285,7 +287,7 @@ absl::string_view TfrtGpuClient::platform_version() const {
 }
 
 absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupDevice(
-    PjRtGlobalDeviceId global_device_id) const {
+    GlobalDeviceId global_device_id) const {
   auto it = id_to_device_.find(global_device_id);
   if (it != id_to_device_.end()) {
     return it->second;
@@ -295,7 +297,7 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupDevice(
 }
 
 absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
-    PjRtLocalDeviceId local_device_id) const {
+    LocalDeviceId local_device_id) const {
   for (auto* device : addressable_devices_) {
     if (local_device_id == device->local_device_id()) {
       return device;
@@ -306,7 +308,7 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
 }
 
 void TfrtGpuClient::UpdateGlobalProcessInfo(
-    absl::Span<tensorflow::CoordinatedTaskStateInfo> infos) {
+    absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) {
   if (!abort_collectives_on_failure_) {
     // If we're not aborting collectives, we don't need to track information
     // about other processes. We only track global process info to know when to
@@ -422,18 +424,20 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
-    mlir::ModuleOp module, CompileOptions options) {
-  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module, topology_));
-  return Compile(module, options, /*lookup_addressable_devices=*/false);
+    MaybeOwningMlirModule module, CompileOptions options) {
+  TF_RETURN_IF_ERROR(
+      pjrt::MaybeDumpCompileInputs(options, module.mlir_module(), topology_));
+  return Compile(std::move(module), options,
+                 /*lookup_addressable_devices=*/false);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
-    mlir::ModuleOp module, CompileOptions options,
+    MaybeOwningMlirModule module, CompileOptions options,
     bool lookup_addressable_devices) {
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
-      module, xla_computation,
+      module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options,
       mlir::mhlo::getGpuChloToHighLevelMhloOptions()));
@@ -445,13 +449,16 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                      GetArgLayoutModes(module));
+                      GetArgLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                      GetOutputLayoutModes(module));
+                      GetOutputLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                      GetArgMemoryKinds(module));
+                      GetArgMemoryKinds(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                      GetOutputMemoryKinds(module));
+                      GetOutputMemoryKinds(module.mlir_module()));
+
+  // MLIR module no longer required - release any memory if owned.
+  module = MaybeOwningMlirModule();
 
   // If auto-sharding modifies shapes of arguments and/or result,
   // we get a callback to restore the layouts. Let us restore the layouts
@@ -496,9 +503,10 @@ TfrtGpuClient::CompileAndLoad(const XlaComputation& computation,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-TfrtGpuClient::CompileAndLoad(mlir::ModuleOp module, CompileOptions options) {
+TfrtGpuClient::CompileAndLoad(MaybeOwningMlirModule module,
+                              CompileOptions options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                      Compile(module, options,
+                      Compile(std::move(module), options,
                               /*lookup_addressable_devices=*/true));
   return Load(std::move(executable), LoadOptions());
 }
@@ -637,9 +645,10 @@ TfrtGpuClient::BuildPjRtExecutable(
   }
 
   return std::make_unique<StreamExecutorExecutable>(
-      std::move(compile_options), std::move(unoptimized_hlo_module_proto),
-      std::move(local_executables), xla_client_, num_replicas, num_partitions,
-      name, fingerprint, memory_spaces()[0]->kind());
+      platform_id(), std::move(compile_options),
+      std::move(unoptimized_hlo_module_proto), std::move(local_executables),
+      xla_client_, num_replicas, num_partitions, name, fingerprint,
+      memory_spaces()[0]->kind());
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
@@ -744,6 +753,12 @@ TfrtGpuClient::LoadInternal(
       addressable_device_logical_ids = extras.addressable_device_logical_ids;
   std::vector<PjRtDevice*>& addressable_devices = extras.addressable_devices;
 
+  if (IsEarlyExitCompilation(compile_options)) {
+    return InvalidArgument(
+        "Executable compiled with xla_early_exit_with_layouts cannot be "
+        "loaded.");
+  }
+
   const auto& ex_options = compile_options.executable_build_options;
   const bool xla_dump_hlo_unoptimized_snapshots =
       ex_options.has_debug_options() &&
@@ -771,10 +786,10 @@ TfrtGpuClient::LoadInternal(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtGpuClient::Load(
-    std::unique_ptr<PjRtExecutable> executable,
+    std::shared_ptr<PjRtExecutable> executable,
     const LoadOptions& load_options) {
-  auto se_executable = absl::WrapUnique(
-      tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
+  auto se_executable =
+      std::static_pointer_cast<StreamExecutorExecutable>(executable);
   CompileOptions compile_options = se_executable->compile_options();
 
   tsl::profiler::TraceMe traceme("TfrtGpuClient::Load");
@@ -909,7 +924,7 @@ absl::Status TfrtGpuClient::UpdateCompileOptionsInternal(
     for (int replica = 0; replica < num_replicas; ++replica) {
       for (int partition = 0; partition < num_partitions; ++partition) {
         int64_t device_id = (*device_assignment)(replica, partition);
-        PjRtGlobalDeviceId global_device_id(device_id);
+        GlobalDeviceId global_device_id(device_id);
 
         TF_ASSIGN_OR_RETURN(PjRtDevice * device,
                             LookupDevice(global_device_id));
@@ -1034,8 +1049,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuClient::BufferFromHostBuffer(
   bool use_staging_buffer = must_use_staging_buffer ||
                             ShouldStageHostToDeviceTransfers(data, packed_size);
 
-  auto copy_to_staging_buffer = [allocator = host_memory_allocator(), byte_size,
-                                 type, packed_size,
+  auto copy_to_staging_buffer = [allocator = GetHostMemoryAllocator(),
+                                 byte_size, type, packed_size,
                                  transpose{std::move(transpose)},
                                  should_pack](const void* src_buf) mutable {
     tsl::profiler::TraceMe traceme("BufferFromHostBuffer::H2D_staging_copy");

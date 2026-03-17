@@ -1325,8 +1325,8 @@ TEST_P(CollectivePipelineParallelismTest,
     // Shift data to the next stage in the pipeline.
     after_all_fwd = token[] after-all()
     fwd_send = (f32[16], u32[], token[]) send(next_stage_slice, after_all_fwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
-    fwd_send_done = token[] send-done(fwd_send)
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_send_recv_pipeline="1"}
+    fwd_send_done = token[] send-done(fwd_send), frontend_attributes={_xla_send_recv_pipeline="1"}
 
     // Select compute argument from previous stage or from input and perform
     // compute.
@@ -1350,20 +1350,20 @@ TEST_P(CollectivePipelineParallelismTest,
 
     after_all_bwd = token[] after-all()
     bwd_recv = (f32[16], u32[], token[]) recv(after_all_bwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}},
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}},_xla_send_recv_pipeline="0"},
       control-predecessors={fwd_send_done, fwd_send}
     bwd_recv_done = (f32[16], token[]) recv-done(bwd_recv),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}},_xla_send_recv_pipeline="0"}
     bwd_send = (f32[16], u32[], token[]) send(next_stage_slice, after_all_bwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}},
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}},_xla_send_recv_pipeline="0"},
       control-predecessors={bwd_recv_done, bwd_recv}
-    bwd_send_done = token[] send-done(bwd_send)
+    bwd_send_done = token[] send-done(bwd_send), frontend_attributes={_xla_send_recv_pipeline="0"}
 
     fwd_recv = (f32[16], u32[], token[]) recv(after_all_fwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_send_recv_pipeline="1"},
       control-predecessors={bwd_send_done, bwd_send}
     fwd_recv_done = (f32[16], token[]) recv-done(fwd_recv),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_send_recv_pipeline="1"}
 
     i_ = add(i, c1)
 
@@ -1386,19 +1386,19 @@ TEST_P(CollectivePipelineParallelismTest,
 
     after_all_bwd = token[] after-all()
     bwd_recv = (f32[16], u32[], token[]) recv(after_all_bwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}}
-    bwd_recv_done = (f32[16], token[]) recv-done(bwd_recv)
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}},_xla_send_recv_pipeline="0"}
+    bwd_recv_done = (f32[16], token[]) recv-done(bwd_recv), frontend_attributes={_xla_send_recv_pipeline="0"}
     bwd_send = (f32[16], u32[], token[]) send(input_slice, after_all_bwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}}},
+      frontend_attributes={_xla_send_recv_source_target_pairs={{3,0}},_xla_send_recv_pipeline="0"},
       control-predecessors={bwd_recv_done, bwd_recv}
-    bwd_send_done = token[] send-done(bwd_send)
+    bwd_send_done = token[] send-done(bwd_send), frontend_attributes={_xla_send_recv_pipeline="0"}
 
     after_all_fwd = token[] after-all()
     fwd_recv = (f32[16], u32[], token[]) recv(after_all_fwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}},
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_send_recv_pipeline="1"},
       control-predecessors={bwd_send_done, bwd_send}
     fwd_recv_done = (f32[16], token[]) recv-done(fwd_recv),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_send_recv_pipeline="1"}
 
     // Iterate through pipeline stages.
     tuple = (f32[16,16], f32[5,16], f32[5,16], f32[5,16], f32[16], u32[],
@@ -1440,8 +1440,8 @@ TEST_P(CollectivePipelineParallelismTest,
         prev_iteration_compute_res_)
 
     fwd_send = (f32[16], u32[], token[]) send(next_stage_slice_, after_all_fwd),
-      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}}}
-    fwd_send_done = token[] send-done(fwd_send)
+      frontend_attributes={_xla_send_recv_source_target_pairs={{0,1},{1,2},{2,3}},_xla_send_recv_pipeline="1"}
+    fwd_send_done = token[] send-done(fwd_send), frontend_attributes={_xla_send_recv_pipeline="1"}
 
 
     // Select compute argument from previous stage or from input and perform

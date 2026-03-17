@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/examples/speech_commands/accuracy_utils.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 

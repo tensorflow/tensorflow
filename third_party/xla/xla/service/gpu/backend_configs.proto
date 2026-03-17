@@ -112,6 +112,18 @@ message GemmBackendConfig {
 
   // The workspace size used during autotuning when the algorithm was selected.
   int64 autotune_workspace_size = 20;
+
+  // Scale mode: 0=none, 1=tensor_scaling (fp8), 2=block_scaling (MX).
+  int32 scale_mode = 21;
+}
+
+// Backend config for the GEMM operation running through cuBLASLt.
+message GroupedGemmBackendConfig {
+  oneof gemm_config {
+    GemmBackendConfig gemm_backend_config = 1;
+  }
+
+  xla.RaggedDotDimensionNumbers ragged_dot_dimension_numbers = 2;
 }
 
 // Backend config for bitcast operation generated from MLIR MHLO dialect.
@@ -369,7 +381,7 @@ enum DeviceType {
 }
 
 // Generic backend config for XLA:GPU
-// Next-Id: 17
+// Next-Id: 18
 message GpuBackendConfig {
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
@@ -405,6 +417,8 @@ message GpuBackendConfig {
     NativeEmitterBackendConfig native_emitter_backend_config = 15;
 
     CollectiveMetadataBackendConfig collective_metadata_backend_config = 16;
+
+    GroupedGemmBackendConfig grouped_gemm_backend_config = 17;
   }
 
   // This attribute instructs the latency-hiding scheduler to

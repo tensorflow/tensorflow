@@ -1,14 +1,15 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "test_util",
     srcs = ["test_util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/lite/python:interpreter",
         "//tensorflow/lite/python:lite",

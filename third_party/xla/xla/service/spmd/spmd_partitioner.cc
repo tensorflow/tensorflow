@@ -49,6 +49,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -570,17 +572,15 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
     return PartitionedHlo(partitioned, base_shape_, state_);
   }
 
-  if (state_.module->config().debug_options().xla_enable_enzyme_comms_opt()) {
-    if (hlo_->opcode() == HloOpcode::kBroadcast &&
-        hlo_->operand(0)->shape().dimensions().empty()) {
-      const Shape sharded_broadcast_shape =
-          MakePartitionedShape(base_shape_, target);
-      HloInstruction* new_broadcast =
-          state_.b->AddInstruction(HloInstruction::CreateBroadcast(
-              sharded_broadcast_shape, hlo_->mutable_operand(0), {}));
-      new_broadcast->set_sharding(target);
-      return PartitionedHlo(new_broadcast, base_shape_, state_);
-    }
+  if (hlo_->opcode() == HloOpcode::kBroadcast &&
+      hlo_->operand(0)->shape().dimensions().empty()) {
+    const Shape sharded_broadcast_shape =
+        MakePartitionedShape(base_shape_, target);
+    HloInstruction* new_broadcast =
+        state_.b->AddInstruction(HloInstruction::CreateBroadcast(
+            sharded_broadcast_shape, hlo_->mutable_operand(0), {}));
+    new_broadcast->set_sharding(target);
+    return PartitionedHlo(new_broadcast, base_shape_, state_);
   }
 
   if (CanReshardWithCollectivePermute(sharding(), target)) {
@@ -592,7 +592,8 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
     return ReshardWithAllToAll(target, *src_tgt_dims);
   }
 
-  if (!target.IsTileMaximal() && sharding().ReplicateOnLastTileDim()) {
+  if (!target.IsReplicatedOrSingleDevice() &&
+      sharding().ReplicateOnLastTileDim()) {
     auto try_reshard = ReshardFromPartialReplicateWithDynamicSlice(target);
     if (try_reshard.has_value()) {
       return try_reshard.value();
@@ -603,7 +604,8 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
     }
   }
 
-  if (!sharding().IsTileMaximal() && target.ReplicateOnLastTileDim()) {
+  if (!sharding().IsReplicatedOrSingleDevice() &&
+      target.ReplicateOnLastTileDim()) {
     auto try_reshard = ReshardToPartialReplicateWithAllGather(target);
     if (try_reshard.has_value()) {
       return try_reshard.value();
@@ -677,7 +679,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   // 'Replicated' to 'SingleDevice'.
-  if (target.IsTileMaximal()) {
+  if (target.IsReplicatedOrSingleDevice()) {
     auto copy = state_.b->AddInstruction(
         HloInstruction::CreateUnary(hlo_->shape(), HloOpcode::kCopy, hlo_));
     copy->set_sharding(target);
@@ -729,7 +731,7 @@ HloInstruction* PartitionedHlo::PadWithValueHlo(
   if (sharding.IsReplicated() || EvenlyPartitions(base_shape_, sharding)) {
     return hlo_;
   }
-  CHECK(!sharding.IsTileMaximal());
+  CHECK(!sharding.IsReplicatedOrSingleDevice());
   auto index_shape = ShapeUtil::ChangeElementType(shape, S32);
   auto mask_shape = ShapeUtil::ChangeElementType(index_shape, PRED);
   auto get_mask_for_dim = [&](int64_t dim, HloInstruction* start_index) {
@@ -825,7 +827,7 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
           << "\twindow:" << window_util::ToString(window)
           << "\ttarget sharding:" << target.ToString();
 
-  CHECK(!target.IsTileMaximal());
+  CHECK(!target.IsReplicatedOrSingleDevice());
   auto partition_ordinals =
       MakeTiledPartitionOrdinals(target, state_.partition_id, state_.b);
   auto shard_shape = base_shape_;
@@ -1342,7 +1344,7 @@ PartitionedHlo PartitionedHlo::Replicate() const {
     return resharded;
   };
   // 'Single Device' to 'Repliated'.
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return update_cache(Broadcast());
   }
 
@@ -1356,7 +1358,7 @@ PartitionedHlo PartitionedHlo::Replicate() const {
 
 HloInstruction* PartitionedHlo::ReplicatePartial(
     absl::Span<const int64_t> dims) const {
-  CHECK(!sharding().IsTileMaximal());
+  CHECK(!sharding().IsReplicatedOrSingleDevice());
   const Shape& shard_shape = hlo()->shape();
   Shape final_result_shape = shard_shape;
   Shape ag_result_shape = shard_shape;
@@ -1397,7 +1399,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
     std::vector<int64_t> dev_indices(grouped.sharding.num_dimensions(), 0);
     // TODO(b/476984041): Update tile_assignment() use case once GroupedSharding
     // supports HloShardingV3
-    hlo_->set_sharding(HloSharding::AssignDevice(
+    hlo_->set_sharding(HloSharding::SingleDevice(
         grouped.sharding.tile_assignment()(dev_indices)));
     auto per_group_partitioner_state = CreatePerGroupPartitioningState(
         state(), grouped.device_groups, state().b);
@@ -1603,7 +1605,7 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
 PartitionedHlo PartitionedHlo::Broadcast() const {
   const Shape& shape = hlo_->shape();
   const HloSharding& sharding = hlo_->sharding();
-  CHECK(sharding.HasUniqueDevice());
+  CHECK(sharding.IsSingleDevice());
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
 
   auto src_core_id = state_.b->AddInstruction(HloInstruction::CreateConstant(
@@ -1637,6 +1639,38 @@ HloSharding GetAllToAllSharding(const HloSharding& source_sharding,
                                 absl::Span<const int64_t> source_dims,
                                 absl::Span<const int64_t> target_dims) {
   CHECK_EQ(source_dims.size(), target_dims.size());
+  if (source_sharding.UseNamedShardingLeaf()) {
+    const NamedSharding& old_named_sharding = source_sharding.named_sharding();
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings(
+        old_named_sharding.dim_shardings().begin(),
+        old_named_sharding.dim_shardings().end());
+    for (int64_t i = 0; i < source_dims.size(); ++i) {
+      const int64_t source_dim = source_dims[i];
+      const int64_t target_dim = target_dims[i];
+      CHECK_NE(source_dim, target_dim);
+      int64_t target_size = old_named_sharding.dimension(target_dim);
+      CHECK_EQ(old_named_sharding.dimension(source_dim) % target_size, 0);
+
+      NamedSharding::DimensionSharding& src_sharding =
+          new_dim_shardings[source_dim];
+      NamedSharding::DimensionSharding& tgt_sharding =
+          new_dim_shardings[target_dim];
+
+      NamedSharding::DimensionSharding to_move = src_sharding;
+      std::optional<NamedSharding::DimensionSharding> keep =
+          to_move.Slice(old_named_sharding.mesh(), target_size);
+      CHECK(keep.has_value());
+
+      src_sharding = *keep;
+      tgt_sharding.Append(to_move, old_named_sharding.mesh());
+    }
+    return HloSharding(NamedSharding(
+        old_named_sharding.mesh(), new_dim_shardings,
+        old_named_sharding.replicated_axes(),
+        old_named_sharding.unreduced_axes(), old_named_sharding.manual_axes(),
+        old_named_sharding.metadata()));
+  }
+
   TileAssignment result = source_sharding.tile_assignment();
 
   for (int64_t i = 0; i < source_dims.size(); ++i) {
@@ -1750,25 +1784,11 @@ PartitionedHlo PartitionedHlo::ReshardWithAllToAll(
   VLOG(5) << "Target ata shape: " << reshape->shape().ToString();
 
   HloInstruction* all_to_all = nullptr;
-  // Try to generate replica groups in compressed format.
-  std::optional<IotaReplicaGroupList> groups =
-      GetIotaPartitionGroupsAcrossTargetDims(temp_target, {target_dim},
-                                             {group_size});
-  if (groups.has_value()) {
-    // After the reshape, it is guaranteed to have at least 3 dimensions.
-    all_to_all = state_.collective_ops_creator.create_all_to_all(
-        state_.b, {reshape}, groups.value(), (*state_.next_channel_id)++,
-        target_dim);
-  } else {
-    VLOG(5) << "Falling back to creating all-to-all with replica groups V1 "
-               "(list of vectors).";
-    // The order of ids in the group must follow the temp_target sharding.
-    CollectiveDeviceList groups = GetPartitionGroupsAcrossTargetDims(
-        temp_target, {target_dim}, {group_size});
-    // After the reshape, it is guaranteed to have at least 3 dimensions.
-    all_to_all = state_.collective_ops_creator.create_all_to_all(
-        state_.b, {reshape}, groups, (*state_.next_channel_id)++, target_dim);
-  }
+  std::unique_ptr<CollectiveDeviceListBase> groups =
+      GetPartitionGroupsAcrossTargetDims(temp_target, {target_dim},
+                                         {group_size});
+  all_to_all = state_.collective_ops_creator.create_all_to_all(
+      state_.b, {reshape}, *groups, (*state_.next_channel_id)++, target_dim);
   CHECK_NE(all_to_all, nullptr);
 
   // Reorder the split dimension of the reshape to be located in front of the
@@ -1935,21 +1955,12 @@ PartitionedHlo PartitionedHlo::TryMultipleSourceTargetDims(
       sharding(), eligible_source_dims, eligible_target_dims);
 
   HloInstruction* all_to_all = nullptr;
-  // Try to generate replica groups in compressed format.
-  std::optional<IotaReplicaGroupList> groups =
-      GetIotaPartitionGroupsAcrossTargetDims(temp_target, eligible_target_dims,
-                                             group_sizes);
-  if (groups.has_value()) {
-    all_to_all = state_.collective_ops_creator.create_all_to_all(
-        state_.b, {reshape_1}, *groups, (*state_.next_channel_id)++, 0);
-  } else {
-    VLOG(5) << "Falling back to creating all-to-all with replica groups V1 "
-               "(list of vectors).";
-    CollectiveDeviceList groups = GetPartitionGroupsAcrossTargetDims(
-        temp_target, eligible_target_dims, group_sizes);
-    all_to_all = state_.collective_ops_creator.create_all_to_all(
-        state_.b, {reshape_1}, groups, (*state_.next_channel_id)++, 0);
-  }
+  std::unique_ptr<CollectiveDeviceListBase> groups =
+      GetPartitionGroupsAcrossTargetDims(temp_target, eligible_target_dims,
+                                         group_sizes);
+  all_to_all = state_.collective_ops_creator.create_all_to_all(
+      state_.b, {reshape_1}, *groups, (*state_.next_channel_id)++, 0);
+
   // Step 3. Split sharding axes to multiple dimensions
   // 1. reshape_2 (8,16,8,16,8) -> (2,4,16,8,16,8)
   // 2. transpose_1 (2,4,16,8,16,8) -> (16,4,8,2,16,8) with permutation_1
@@ -2002,7 +2013,7 @@ std::tuple<HloSharding, HloSharding, int64_t> CreateSplitShardingTuple(
       hlo_sharding_util::SplitShardingDimension(source, dim, new_dim_size);
   HloSharding split_target =
       hlo_sharding_util::SplitShardingDimension(target, dim, new_dim_size);
-  return std::make_tuple(std::move(split_source), std::move(split_target), dim);
+  return {std::move(split_source), std::move(split_target), dim};
 }
 
 // Matching the following patterns, where X and Y cannot be 1.
@@ -2254,7 +2265,8 @@ PartitionedHlo::ReshardPartialReplicateWithAllToAll(
   const auto& tile_sharding = source_is_partial_replicate ? target : sharding();
   // If both source and target are partial replicate, should be supported in
   // Reshard with AllToAll already.
-  if (tile_sharding.ReplicateOnLastTileDim() || tile_sharding.IsTileMaximal()) {
+  if (tile_sharding.ReplicateOnLastTileDim() ||
+      tile_sharding.IsReplicatedOrSingleDevice()) {
     return std::nullopt;
   }
 
@@ -2470,13 +2482,14 @@ absl::Status SpmdPartitioningVisitor::HandleCall(HloInstruction* hlo) {
         MakePartitionedShape(hlo->shape(), hlo->sharding()), call_args,
         hlo->to_apply()));
     call->set_raw_backend_config_string(hlo->raw_backend_config_string());
+    call->set_frontend_attributes(hlo->frontend_attributes());
     return call;
   });
   return absl::OkStatus();
 }
 
 absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
-  if (hlo->HasSideEffect() && !hlo->sharding().HasUniqueDevice()) {
+  if (hlo->HasSideEffect() && !hlo->sharding().IsSingleDevice()) {
     return Unimplemented("Side-effect ops cannot be replicated: %s",
                          hlo->ToString());
   }
@@ -2488,8 +2501,8 @@ absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   // The base sharding is a non-tuple sharding that is either assigned to a
   // specific device or replicated.
   const HloSharding base_sharding = [&]() {
-    if (hlo->sharding().HasUniqueDevice()) {
-      return HloSharding::AssignDevice(hlo->sharding().GetUniqueDevice());
+    if (hlo->sharding().IsSingleDevice()) {
+      return HloSharding::SingleDevice(hlo->sharding().GetUniqueDevice());
     }
     return HloSharding::Replicate();
   }();
@@ -2504,6 +2517,7 @@ absl::Status SpmdPartitioningVisitor::DefaultAction(HloInstruction* hlo) {
   }
   auto clone =
       b_.AddInstruction(hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+  clone->set_frontend_attributes(hlo->frontend_attributes());
   clone->set_sharding(base_sharding.NormalizeTupleSharding(clone->shape()));
   SetPartitionedHlo(hlo,
                     PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
@@ -2537,7 +2551,7 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       for (HloSharding& subsharding : subshardings) {
         // Delay manual sharding substitution for CustomCalls.
         if (subsharding.IsManual() && opcode != HloOpcode::kCustomCall) {
-          subsharding = HloSharding::AssignDevice(0);
+          subsharding = HloSharding::SingleDevice(0);
         }
       }
       return HloSharding::Tuple(shape, subshardings);
@@ -2545,7 +2559,7 @@ absl::Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
     // Delay manual sharding substitution for CustomCalls and PartitionIds.
     if (sharding.IsManual() && opcode != HloOpcode::kCustomCall &&
         opcode != HloOpcode::kPartitionId) {
-      return HloSharding::AssignDevice(0);
+      return HloSharding::SingleDevice(0);
     }
     return sharding;
   };
@@ -2755,7 +2769,7 @@ absl::Status SpmdPartitioningVisitor::HandleCollectivePermute(
 absl::Status SpmdPartitioningVisitor::HandleElementwiseWithDimsToReplicate(
     HloInstruction* hlo, absl::Span<const int64_t> dims_to_replicate) {
   const HloSharding& sharding = hlo->sharding();
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
 
@@ -2822,19 +2836,19 @@ absl::StatusOr<std::pair<HloInstruction*, PartitionedHlo>> HandleSliceHelper(
     absl::Span<const int64_t> slice_strides, const HloSharding& result_sharding,
     const PartitionedHlo& poperand, const HloSharding& sharding,
     SpmdBuilder* b) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     // As the return type is a StatusOr<pair>, the pair type is not
     // autodeduced without the explicit pair
-    return std::make_pair(nullptr,
-                          PartitionedHlo(nullptr, shape, poperand.state()));
+    return std::pair<HloInstruction*, PartitionedHlo>(
+        nullptr, PartitionedHlo(nullptr, shape, poperand.state()));
   }
 
   auto reshard_operand =
       ReshardDataForSlicing(slice_strides, slice_starts, slice_limits,
                             poperand.Reshard(sharding), sharding, b);
   if (!reshard_operand.has_value()) {
-    return std::make_pair(nullptr,
-                          PartitionedHlo(nullptr, shape, poperand.state()));
+    return std::pair<HloInstruction*, PartitionedHlo>(
+        nullptr, PartitionedHlo(nullptr, shape, poperand.state()));
   }
   TF_RET_CHECK(!reshard_operand->dynamic_slice_index_on_output.has_value());
 
@@ -2843,9 +2857,9 @@ absl::StatusOr<std::pair<HloInstruction*, PartitionedHlo>> HandleSliceHelper(
   final_operand->set_sharding(sharding);
 
   CHECK_NE(reshard_operand->sharded_input, nullptr);
-  return std::make_pair(reshard_operand->sharded_input,
-                        PartitionedHlo(final_operand, shape, poperand.state())
-                            .Reshard(result_sharding));
+  return std::pair(reshard_operand->sharded_input,
+                   PartitionedHlo(final_operand, shape, poperand.state())
+                       .Reshard(result_sharding));
 }
 
 absl::StatusOr<HloInstruction*> HandleSliceHelper(
@@ -2899,7 +2913,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     input_count = hlo->shape().tuple_shapes().size();
     CHECK_GT(input_count, 0);
   }
-  if (sharding.HasUniqueDevice()) {
+  if (sharding.IsSingleDevice()) {
     std::vector<HloInstruction*> new_operands(input_count, nullptr);
     for (int64_t i = 0; i != input_count; ++i) {
       // Handle variadic sort sharding.
@@ -2907,7 +2921,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
           hlo->sharding().IsTuple()
               ? hlo->sharding().GetSubSharding(hlo->shape(), {i})
               : hlo->sharding();
-      CHECK(!subsharding.IsTuple() && subsharding.HasUniqueDevice());
+      CHECK(!subsharding.IsTuple() && subsharding.IsSingleDevice());
       new_operands[i] =
           GetPartitionedHlo(hlo->operand(i)).Reshard(subsharding).hlo();
     }
@@ -3089,7 +3103,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
       }
     }
   }
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
   for (int64_t dim : hlo->dimensions()) {
@@ -3111,7 +3125,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleTranspose(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
 
@@ -3134,7 +3148,7 @@ absl::Status SpmdPartitioningVisitor::HandleTranspose(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
 
@@ -3433,7 +3447,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
   const HloSharding& sharding = hlo->sharding();
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
 
@@ -3468,9 +3482,8 @@ absl::Status SpmdPartitioningVisitor::HandleIota(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleSingleDevice(
     const HloInstruction* hlo) {
-  TF_RET_CHECK(hlo->sharding().HasUniqueDevice());
   int64_t device = hlo->sharding().GetUniqueDevice();
-  const HloSharding sharding = HloSharding::AssignDevice(device);
+  const HloSharding sharding = HloSharding::SingleDevice(device);
 
   std::vector<HloInstruction*> operands;
   std::vector<const Shape*> operand_shapes;
@@ -3579,7 +3592,7 @@ absl::Status SpmdPartitioningVisitor::HandleBitcastConvert(
     return HandleElementwise(hlo);
   }
 
-  if (hlo->sharding().IsTileMaximal()) {
+  if (hlo->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
   PartitionedHlo& operand = GetPartitionedHlo(hlo->operand(0));
@@ -3614,7 +3627,7 @@ absl::Status SpmdPartitioningVisitor::HandleBitcastConvert(
 }
 
 absl::Status SpmdPartitioningVisitor::HandleBroadcast(HloInstruction* hlo) {
-  if (hlo->sharding().IsTileMaximal()) {
+  if (hlo->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
 
@@ -3641,7 +3654,7 @@ absl::Status SpmdPartitioningVisitor::HandleBroadcast(HloInstruction* hlo) {
 absl::Status SpmdPartitioningVisitor::HandleConstant(HloInstruction* hlo) {
   const Literal& literal = hlo->literal();
   if (literal.shape().IsTuple() ||
-      (!hlo->sharding().IsTileMaximal() &&
+      (!hlo->sharding().IsReplicatedOrSingleDevice() &&
        (!EvenlyPartitions(hlo->shape(), hlo->sharding()) ||
         !literal.IsAllFirst()))) {
     return DefaultAction(hlo);
@@ -3659,7 +3672,7 @@ absl::Status SpmdPartitioningVisitor::HandleConstant(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleDynamicSlice(HloInstruction* hlo) {
-  if (hlo->sharding().IsTileMaximal()) {
+  if (hlo->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
@@ -3699,7 +3712,7 @@ HloInstruction* PadHelper(SpmdPartitioningVisitor& visitor,
                           const PaddingConfig& padding_config,
                           const Shape& base_shape,
                           const HloSharding& sharding) {
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return nullptr;
   }
 
@@ -3918,7 +3931,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       newOperand->set_sharding(hlo->sharding());
     }
   } else if (update_tensor->opcode() == HloOpcode::kSlice) {
-    bool slice_expand_ellgible = true;
+    bool slice_expand_eligible = true;
     const xla::HloSliceInstruction* slice =
         DynCast<HloSliceInstruction>(update_tensor);
     const xla::HloDynamicUpdateSliceInstruction* dus =
@@ -3945,7 +3958,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       int64_t dus_limit = dus->operand(0)->shape().dimensions(i);
 
       if (slice_stride != 1) {
-        slice_expand_ellgible = false;
+        slice_expand_eligible = false;
         break;
       }
 
@@ -3980,53 +3993,167 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
         padding_dim->set_edge_padding_high(dus_limit - new_ending);
       }
     }
-    if (slice_expand_ellgible) {
+    if (slice_expand_eligible) {
       PartitionedHlo replacement = GetPartitionedHlo(slice->operand(0));
-      if (needs_slice) {
-        TF_ASSIGN_OR_RETURN(Shape new_shape,
-                            ShapeInference::InferSliceShape(
-                                slice->operand(0)->shape(), new_slice_starts,
-                                new_slice_limits, new_slice_strides));
 
-        const HloSharding& operand_sharding = slice->operand(0)->sharding();
-        const HloSharding& result_sharding = slice->sharding();
-        std::pair<HloInstruction*, PartitionedHlo> final_operand{nullptr,
-                                                                 replacement};
-        if (operand_sharding.NumTiles() > result_sharding.NumTiles()) {
-          TF_ASSIGN_OR_RETURN(
-              final_operand,
-              HandleSliceHelper(new_shape, new_slice_starts, new_slice_limits,
-                                new_slice_strides, result_sharding, replacement,
-                                operand_sharding, &b_));
-          // Note: The original slice handler would make a copy here if
-          // final_operand.second.hlo() == final_operand.first and is non-null,
-          // justified by "so that it will not share the resharding cache".
-          // However, here as we are creating a new slice to begin with, there
-          // should be no sharing of cache entries.
-        }
-        if (final_operand.first == nullptr) {
-          TF_ASSIGN_OR_RETURN(
-              final_operand,
-              HandleSliceHelper(new_shape, new_slice_starts, new_slice_limits,
-                                new_slice_strides, result_sharding, replacement,
-                                result_sharding, &b_));
-          // Note: The original slice handler would make a copy here if
-          // final_operand.second.hlo() == final_operand.first and is non-null,
-          // justified by "so that it will not share the resharding cache".
-          // However, here as we are creating a new slice to begin with, there
-          // should be no sharing of cache entries.
-        }
+      bool is_communication_free = replacement.sharding() == hlo->sharding();
+      std::vector<int64_t> local_starts_comms_free = new_slice_starts;
+      std::vector<int64_t> local_limits_comms_free = new_slice_limits;
+      PaddingConfig local_pc_comms_free = padding_config2;
 
-        CHECK_NE(final_operand.first, nullptr);
-        replacement = final_operand.second;
+      for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
+        if (!is_communication_free) {
+          break;
+        }
+        if (ShardCountAtDim(hlo->sharding(), i) > 1) {
+          int64_t dus_start =
+              dus->operand(i + 2)->literal().GetIntegralAsS64({}).value();
+          int64_t slice_start = slice->slice_starts(i);
+          int64_t slice_size = update_tensor->shape().dimensions(i);
+
+          bool perfectly_aligned = (slice_start == dus_start) &&
+                                   (slice->operand(0)->shape().dimensions(i) ==
+                                    hlo->shape().dimensions(i));
+
+          int64_t operand_shard_size =
+              MakePartitionedShape(slice->operand(0)->shape(), hlo->sharding())
+                  .dimensions(i);
+          int64_t input_shard_size =
+              MakePartitionedShape(hlo->shape(), hlo->sharding()).dimensions(i);
+
+          bool single_matching_shard = false;
+          int64_t local_slice_start_val = 0;
+          int64_t local_slice_limit_val = operand_shard_size;
+          int64_t local_pad_low_val = 0;
+          int64_t local_pad_high_val = 0;
+
+          if (!perfectly_aligned && operand_shard_size > 0 &&
+              input_shard_size > 0) {
+            int64_t S_other_start = slice_start / operand_shard_size;
+            int64_t S_other_end =
+                (slice_start + slice_size - 1) / operand_shard_size;
+            int64_t S_input_start = dus_start / input_shard_size;
+            int64_t S_input_end =
+                (dus_start + slice_size - 1) / input_shard_size;
+
+            if (S_other_start == S_other_end && S_input_start == S_input_end &&
+                S_other_start == S_input_start) {
+              single_matching_shard = true;
+              local_slice_start_val = slice_start % operand_shard_size;
+              local_slice_limit_val = local_slice_start_val + slice_size;
+              local_pad_low_val = dus_start % input_shard_size;
+              local_pad_high_val =
+                  input_shard_size - (local_pad_low_val + slice_size);
+            }
+          }
+
+          if (perfectly_aligned) {
+            local_starts_comms_free[i] = 0;
+            local_limits_comms_free[i] = operand_shard_size;
+            auto* dims = local_pc_comms_free.mutable_dimensions(i);
+            dims->set_edge_padding_low(0);
+            dims->set_edge_padding_high(0);
+            dims->set_interior_padding(0);
+          } else if (single_matching_shard) {
+            local_starts_comms_free[i] = local_slice_start_val;
+            local_limits_comms_free[i] = local_slice_limit_val;
+            auto* dims = local_pc_comms_free.mutable_dimensions(i);
+            dims->set_edge_padding_low(local_pad_low_val);
+            dims->set_edge_padding_high(local_pad_high_val);
+            dims->set_interior_padding(0);
+          } else {
+            is_communication_free = false;
+          }
+        }
       }
 
-      if (needs_pad) {
-        newOperand = PadHelper(*this, replacement, zeroElemOp, padding_config2,
-                               hlo->shape(), hlo->sharding());
-        CHECK_NE(newOperand, nullptr);
-      } else {
+      if (is_communication_free) {
         newOperand = replacement.hlo();
+
+        bool local_needs_slice = false;
+        for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
+          if (local_starts_comms_free[i] > 0 ||
+              local_limits_comms_free[i] < newOperand->shape().dimensions(i)) {
+            local_needs_slice = true;
+            break;
+          }
+        }
+
+        if (local_needs_slice) {
+          TF_ASSIGN_OR_RETURN(Shape local_shape,
+                              ShapeInference::InferSliceShape(
+                                  newOperand->shape(), local_starts_comms_free,
+                                  local_limits_comms_free, new_slice_strides));
+          newOperand = add_hlo(HloInstruction::CreateSlice(
+              local_shape, newOperand, local_starts_comms_free,
+              local_limits_comms_free, new_slice_strides));
+        }
+
+        bool local_needs_pad = false;
+        for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
+          if (local_pc_comms_free.dimensions(i).edge_padding_low() > 0 ||
+              local_pc_comms_free.dimensions(i).edge_padding_high() > 0) {
+            local_needs_pad = true;
+            break;
+          }
+        }
+
+        if (local_needs_pad || needs_pad) {
+          // If unpartitioned dims needed padding, needs_pad is true.
+          // local_pc_comms_free has the unpartitioned pad configs from
+          // padding_config2.
+          newOperand = add_hlo(HloInstruction::CreatePad(
+              MakePartitionedShape(hlo->shape(), hlo->sharding()), newOperand,
+              zeroElemOp, local_pc_comms_free));
+        }
+      } else {
+        if (needs_slice) {
+          TF_ASSIGN_OR_RETURN(Shape new_shape,
+                              ShapeInference::InferSliceShape(
+                                  slice->operand(0)->shape(), new_slice_starts,
+                                  new_slice_limits, new_slice_strides));
+
+          const HloSharding& operand_sharding = slice->operand(0)->sharding();
+          const HloSharding& result_sharding = slice->sharding();
+          std::pair<HloInstruction*, PartitionedHlo> final_operand{nullptr,
+                                                                   replacement};
+          if (operand_sharding.NumTiles() > result_sharding.NumTiles()) {
+            TF_ASSIGN_OR_RETURN(
+                final_operand,
+                HandleSliceHelper(new_shape, new_slice_starts, new_slice_limits,
+                                  new_slice_strides, result_sharding,
+                                  replacement, operand_sharding, &b_));
+            // Note: The original slice handler would make a copy here if
+            // final_operand.second.hlo() == final_operand.first and is
+            // non-null, justified by "so that it will not share the resharding
+            // cache". However, here as we are creating a new slice to begin
+            // with, there should be no sharing of cache entries.
+          }
+          if (final_operand.first == nullptr) {
+            TF_ASSIGN_OR_RETURN(
+                final_operand,
+                HandleSliceHelper(new_shape, new_slice_starts, new_slice_limits,
+                                  new_slice_strides, result_sharding,
+                                  replacement, result_sharding, &b_));
+            // Note: The original slice handler would make a copy here if
+            // final_operand.second.hlo() == final_operand.first and is
+            // non-null, justified by "so that it will not share the resharding
+            // cache". However, here as we are creating a new slice to begin
+            // with, there should be no sharing of cache entries.
+          }
+
+          CHECK_NE(final_operand.first, nullptr);
+          replacement = final_operand.second;
+        }
+
+        if (needs_pad) {
+          newOperand =
+              PadHelper(*this, replacement, zeroElemOp, padding_config2,
+                        hlo->shape(), hlo->sharding());
+          CHECK_NE(newOperand, nullptr);
+        } else {
+          newOperand = replacement.hlo();
+        }
       }
       CHECK_EQ(newOperand->shape(),
                GetPartitionedHlo(input_tensor).hlo()->shape());
@@ -4055,7 +4182,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
 
 absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
     HloInstruction* hlo) {
-  if (hlo->sharding().IsTileMaximal()) {
+  if (hlo->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
   const HloInstruction* input_tensor = hlo->operand(0);
@@ -4076,14 +4203,6 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
   // Refer to go/dus-spmd for more details.
   DynamicUpdateSliceAnalysis analysis = AnalyzeDynamicUpdateSlice(hlo);
 
-  // Keep the sharding for input and output since the update is fully contained
-  // in a single partition.
-  if (analysis.method == DynamicUpdateSliceMethod::kUpdateOnASinglePartition) {
-    return HandleDUSSinglePartitionUpdate(hlo, input_tensor, update_tensor,
-                                          new_indices, analysis.slice_dims,
-                                          analysis.partitioned_slice_dims);
-  }
-
   // All partitioned slice dimensions have compile-time constant indices. It is
   // currently enabled for enzyme only.
   if (analysis.method == DynamicUpdateSliceMethod::
@@ -4091,6 +4210,14 @@ absl::Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(
       module_->config().debug_options().xla_enable_enzyme_comms_opt()) {
     return HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
         hlo, input_tensor, update_tensor);
+  }
+
+  // Keep the sharding for input and output since the update is fully contained
+  // in a single partition.
+  if (analysis.method == DynamicUpdateSliceMethod::kUpdateOnASinglePartition) {
+    return HandleDUSSinglePartitionUpdate(hlo, input_tensor, update_tensor,
+                                          new_indices, analysis.slice_dims,
+                                          analysis.partitioned_slice_dims);
   }
 
   // The default method is to replicate the slice dimensions for all involved
@@ -4139,7 +4266,7 @@ absl::Status SpmdPartitioningVisitor::HandleInfeed(HloInstruction* hlo) {
     return absl::OkStatus();
   }
 
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().UniqueDevice()) {
     return HandleSingleDevice(hlo);
   }
 
@@ -4278,7 +4405,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
     input_count = hlo->shape().tuple_shapes().size();
     CHECK_GT(input_count, 0);
   }
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     std::vector<HloInstruction*> new_operands(input_count * 2, nullptr);
     for (auto i = 0; i != input_count; ++i) {
       // Handle variadic reduce sharding.
@@ -4286,7 +4413,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
           hlo->sharding().IsTuple()
               ? hlo->sharding().GetSubSharding(hlo->shape(), {i})
               : hlo->sharding();
-      CHECK(!subsharding.IsTuple() && subsharding.HasUniqueDevice());
+      CHECK(!subsharding.IsTuple() && subsharding.IsSingleDevice());
       // Partition reduce operands and init values.
       new_operands[i] =
           GetPartitionedHlo(hlo->operand(i)).Reshard(subsharding).hlo();
@@ -4322,7 +4449,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
       // Make sure all operands are sharded in the same way.
       inputs.back() = inputs.back().Reshard(inputs[0].sharding());
     }
-    if (!inputs[0].sharding().IsTileMaximal()) {
+    if (!inputs[0].sharding().IsReplicatedOrSingleDevice()) {
       inputs.back() =
           inputs.back().PadWithValue(inits[operand_id], /*left_padded_dims=*/{},
                                      /*skipped_dims=*/preserved_dims);
@@ -4350,7 +4477,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
     const bool reduce_sharded_dimension =
-        !inputs[0].sharding().IsTileMaximal() &&
+        !inputs[0].sharding().IsReplicatedOrSingleDevice() &&
         absl::c_any_of(hlo->dimensions(), [&](int64_t i) {
           return inputs[0].sharding().dimension(i) > 1;
         });
@@ -4412,7 +4539,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleReverse(HloInstruction* hlo) {
   auto reverse = Cast<HloReverseInstruction>(hlo);
-  if (reverse->sharding().IsTileMaximal()) {
+  if (reverse->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
   auto operand = GetPartitionedHlo(reverse->operand(0))
@@ -4477,7 +4604,7 @@ absl::Status SpmdPartitioningVisitor::HandleOptimizationBarrier(
 }
 
 absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return HandleSingleDevice(hlo);
   }
   if (hlo->sharding().IsManual()) {
@@ -4656,7 +4783,7 @@ absl::Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return HandleSingleDevice(hlo);
   }
   auto clone_from_original = [&](const HloSharding& shared_sharding) {
@@ -4680,7 +4807,7 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   if (hlo->sharding().IsReplicated()) {
     SetPartitionedHlo(hlo, [&] {
       // Run on a single device (0) and distribute the data to all other cores.
-      auto clone = clone_from_original(HloSharding::AssignDevice(0));
+      auto clone = clone_from_original(HloSharding::SingleDevice(0));
       return PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
           .Replicate()
           .hlo();
@@ -4688,7 +4815,7 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
     return absl::OkStatus();
   }
 
-  TF_RET_CHECK(!hlo->sharding().IsTileMaximal());
+  TF_RET_CHECK(!hlo->sharding().IsReplicatedOrSingleDevice());
   // Replicate the operands and run partitioned Rng on all devices.
   std::vector<HloInstruction*> new_operands;
   new_operands.reserve(hlo->operand_count());
@@ -4697,14 +4824,17 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
         GetPartitionedHlo(hlo->operand(i)).Replicate().hlo());
   }
 
-  if (!hlo->sharding().ReplicateOnLastTileDim()) {
+  if (!hlo->sharding().HasPartialReplication()) {
     SetPartitionedHlo(hlo,
                       b_.AddInstruction(HloInstruction::CreateRng(
                           MakePartitionedShape(hlo->shape(), hlo->sharding()),
                           hlo->random_distribution(), new_operands)));
   } else {
-    std::vector<int64_t> group_dims(hlo->sharding().num_dimensions() - 1);
+    std::vector<int64_t> group_dims(hlo->sharding().num_dimensions());
     absl::c_iota(group_dims, 0);
+    int64_t replication_dim = hlo->sharding().SubgroupReplicationDim();
+    group_dims.erase(group_dims.begin() + replication_dim);
+
     auto sharding_grouped =
         hlo_sharding_util::GroupShardingOnDims(hlo->sharding(), group_dims);
     auto per_group_state = CreatePerGroupPartitioningState(
@@ -4712,7 +4842,7 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
     auto rng = b_.AddInstruction(HloInstruction::CreateRng(
         MakePartitionedShape(hlo->shape(), hlo->sharding()),
         hlo->random_distribution(), new_operands));
-    rng->set_sharding(HloSharding::AssignDevice(0));
+    rng->set_sharding(HloSharding::SingleDevice(0));
     SetPartitionedHlo(hlo, [&]() {
       return PartitionedHlo(rng, rng->shape(), per_group_state)
           .Replicate()
@@ -4723,7 +4853,7 @@ absl::Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
-  if (hlo->sharding().IsTileMaximal()) {
+  if (hlo->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
   auto* reduce_window = Cast<HloReduceWindowInstruction>(hlo);
@@ -4786,7 +4916,7 @@ absl::Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
 
 absl::Status SpmdPartitioningVisitor::HandleSelectAndScatter(
     HloInstruction* hlo) {
-  if (hlo->sharding().IsTileMaximal()) {
+  if (hlo->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
   auto operand = GetPartitionedHlo(hlo->operand(0));
@@ -5047,7 +5177,7 @@ absl::StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
 
 absl::Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
   if (hlo->has_sharding() && hlo->sharding().IsManual()) {
-    hlo->set_sharding(HloSharding::AssignDevice(0));
+    hlo->set_sharding(HloSharding::SingleDevice(0));
     return DefaultAction(hlo);
   }
 
@@ -5148,14 +5278,13 @@ HloInstruction* CreateAllReduceListsOfLists(
                                                              false);
   return b->AddInstruction(HloInstruction::CreateAllReduce(
       operand->shape(), {operand}, reduction_clone,
-      CollectiveDeviceList(device_groups),
+      std::make_shared<CollectiveDeviceList>(device_groups),
       /*constrain_layout=*/false, channel_id,
       /*use_global_device_ids=*/true));
 }
 
 HloInstruction* CreateAllToAllListsOfLists(
-    int64_t num_replicas, int64_t num_partitions, SpmdBuilder* b,
-    absl::Span<HloInstruction* const> operands,
+    SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
     const CollectiveDeviceListBase& device_list, int64_t channel_id,
     std::optional<int64_t> split_dimension) {
   const std::vector<std::vector<int64_t>>& partition_subgroups =
@@ -5171,7 +5300,7 @@ HloInstruction* CreateAllToAllListsOfLists(
     }
   }
   return b->AddInstruction(HloInstruction::CreateAllToAll(
-      output_shape, operands, CollectiveDeviceList(groups),
+      output_shape, operands, std::make_shared<CollectiveDeviceList>(groups),
       /*constrain_layout=*/false, channel_id, split_dimension));
 }
 
@@ -5192,14 +5321,14 @@ HloInstruction* CreateAllGatherListsOfLists(
       }
     }
   }
-  return b->AddInstruction(
-      HloInstruction::CreateAllGather(ag_shape, {operand}, all_gather_dimension,
-                                      CollectiveDeviceList(device_groups),
-                                      /*constrain_layout=*/false, channel_id,
-                                      /*use_global_device_ids=*/true));
+  return b->AddInstruction(HloInstruction::CreateAllGather(
+      ag_shape, {operand}, all_gather_dimension,
+      std::make_shared<CollectiveDeviceList>(device_groups),
+      /*constrain_layout=*/false, channel_id,
+      /*use_global_device_ids=*/true));
 }
 
-std::optional<CollectiveDeviceList> TryExpandingPartitionGroupList(
+std::optional<IotaReplicaGroupList> TryExpandingPartitionGroupList(
     const CollectiveDeviceListBase& device_list, int64_t num_replicas,
     int64_t num_partitions) {
   std::optional<IotaReplicaGroupList> iota_list =
@@ -5224,14 +5353,15 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, HloInstruction* operand,
               HloComputation* reduction,
               const CollectiveDeviceListBase& device_list, int64_t channel_id) {
-            if (std::optional<CollectiveDeviceList> expanded =
+            if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
               HloComputation* reduction_clone =
                   reduction->parent()->AddComputationAndUnifyNamesAndIds(
                       reduction->Clone(), false);
               return b->AddInstruction(HloInstruction::CreateAllReduce(
-                  operand->shape(), {operand}, reduction_clone, *expanded,
+                  operand->shape(), {operand}, reduction_clone,
+                  std::make_shared<IotaReplicaGroupList>(*expanded),
                   /*constrain_layout=*/false, channel_id,
                   /*use_global_device_ids=*/true));
             }
@@ -5269,7 +5399,7 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
               std::optional<int64_t> split_dimension) {
-            if (std::optional<CollectiveDeviceList> expanded =
+            if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
               std::vector<Shape> shapes(operands.size(), operands[0]->shape());
@@ -5277,23 +5407,24 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                        ? operands[0]->shape()
                                        : ShapeUtil::MakeTupleShape(shapes);
               return b->AddInstruction(HloInstruction::CreateAllToAll(
-                  output_shape, operands, *expanded,
+                  output_shape, operands,
+                  std::make_shared<IotaReplicaGroupList>(*expanded),
                   /*constrain_layout=*/false, channel_id, split_dimension));
             }
-            return CreateAllToAllListsOfLists(num_replicas, num_partitions, b,
-                                              operands, device_list, channel_id,
-                                              split_dimension);
+            return CreateAllToAllListsOfLists(b, operands, device_list,
+                                              channel_id, split_dimension);
           },
       .create_all_gather =
           [num_replicas, num_partitions](
               SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
               int64_t all_gather_dimension) {
-            if (std::optional<CollectiveDeviceList> expanded =
+            if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
               return b->AddInstruction(HloInstruction::CreateAllGather(
-                  ag_shape, {operand}, all_gather_dimension, *expanded,
+                  ag_shape, {operand}, all_gather_dimension,
+                  std::make_shared<IotaReplicaGroupList>(*expanded),
                   /*constrain_layout=*/false, channel_id,
                   /*use_global_device_ids=*/true));
             }
@@ -5329,7 +5460,7 @@ SpmdPartitioner::AllGatherShardsInternal(
   if (selected_dims.empty()) {
     return {operand, nullptr};
   }
-  CHECK(!sharding.IsTileMaximal());
+  CHECK(!sharding.IsReplicatedOrSingleDevice());
   if (per_dim_ag || selected_dims.size() == 1) {
     HloInstruction* result = operand;
     Shape result_shape = operand->shape();
@@ -5519,7 +5650,7 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
     case HloOpcode::kAllToAll: {
       int64_t group_size;
       if (hlo->has_replica_groups()) {
-        group_size = hlo->device_list().num_devices_per_group();
+        group_size = hlo->device_list()->num_devices_per_group();
       } else {
         group_size = hlo->channel_id() ? num_partitions_ : num_replicas_;
       }
@@ -5546,26 +5677,6 @@ int64_t SpmdPartitioner::CommunicationCostInBytes(HloInstruction* hlo) {
   CHECK(entry_root->has_sharding()) << "Missing sharding in entry root.";
   module->set_spmd_output_sharding(entry_root->sharding());
 }
-
-namespace {
-
-// Returns true if the old and the new entry layout shapes differ.
-// NOTE: that we explicitly ignore the layout, since it is either defined
-// beforehand or during layout assignment.
-bool ShapeChangesBetween(const ComputationLayout& old_entry_layout,
-                         const ProgramShape& new_program_shape) {
-  for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
-    if (!Shape::Equal().IgnoreLayout()(old_entry_layout.parameter_shape(i),
-                                       new_program_shape.parameters(i))) {
-      return true;
-    }
-  }
-
-  return !Shape::Equal().IgnoreLayout()(old_entry_layout.result_shape(),
-                                        new_program_shape.result());
-}
-
-}  // namespace
 
 absl::StatusOr<bool> SpmdPartitioner::RunImpl(
     HloModule* module,
@@ -5662,62 +5773,60 @@ absl::StatusOr<bool> SpmdPartitioner::RunImpl(
 
   // For the entry computation, make sure that the root instruction and the
   // parameters preserve their signatures if there are any partitioning changes.
-  auto new_program_shape = module->entry_computation()->ComputeProgramShape();
-  const ComputationLayout& old_entry_layout =
-      module->entry_computation_layout();
-  if (ShapeChangesBetween(old_entry_layout, new_program_shape)) {
-    if (!options_.allow_module_signature_change) {
-      if (!Shape::Equal()(program_shape.result(), new_program_shape.result())) {
-        return absl::InvalidArgumentError(
-            "Result shape changed for the entry computation from: " +
-            program_shape.result().ToString() +
-            " to: " + new_program_shape.result().ToString());
-      }
-      if (program_shape.parameters_size() !=
-          new_program_shape.parameters_size()) {
-        return absl::InvalidArgumentError(
-            "Parameter count changed for the entry computation from: " +
-            std::to_string(program_shape.parameters_size()) +
-            " to: " + std::to_string(new_program_shape.parameters_size()));
-      }
-      for (int64_t i = 0; i < program_shape.parameters_size(); ++i) {
-        if (!Shape::Equal()(program_shape.parameters(i),
-                            new_program_shape.parameters(i))) {
-          return absl::InvalidArgumentError(
-              "Parameter shape changed for the entry computation parameter " +
-              std::to_string(i) +
-              " from: " + program_shape.parameters(i).ToString() +
-              " to: " + new_program_shape.parameters(i).ToString());
-        }
-      }
-    } else {
-      // For the cases where we update the shape, also fix up some bad tiling in
-      // entry computation layout.
-      auto update_shape = [this](Shape* subshape,
-                                 const xla::ShapeIndex& index) {
-        if (subshape->IsArray() && subshape->has_layout()) {
-          UpdateLayout(subshape);
-        }
-      };
-      // Shapes can change but the layout should still remain the same.
-      // If the shapes do not change, we shouldn't change the layout if pre-set.
-      for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
-        TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-            old_entry_layout.parameter_shape(i),
-            new_program_shape.mutable_parameters(i)));
-        ShapeUtil::ForEachMutableSubshape(
-            new_program_shape.mutable_parameters(i), update_shape);
-      }
+  ProgramShape new_program_shape =
+      module->entry_computation()->ComputeProgramShape();
+  if (program_shape.parameters_size() != new_program_shape.parameters_size()) {
+    return absl::InvalidArgumentError(
+        "Parameter count changed for the entry computation from: " +
+        std::to_string(program_shape.parameters_size()) +
+        " to: " + std::to_string(new_program_shape.parameters_size()));
+  }
 
+  if (options_.allow_module_signature_change) {
+    const ComputationLayout& old_entry_layout =
+        module->entry_computation_layout();
+    // For the cases where we update the shape, also fix up some bad tiling in
+    // entry computation layout.
+    auto update_shape = [this](Shape* subshape, const xla::ShapeIndex&) {
+      if (subshape->IsArray() && subshape->has_layout()) {
+        UpdateLayout(subshape);
+      }
+    };
+    // Shapes can change but the layout should still remain the same.
+    // If the shapes do not change, we shouldn't change the layout if pre-set.
+    for (int64_t i = 0; i < new_program_shape.parameters_size(); ++i) {
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
-          old_entry_layout.result_shape(), new_program_shape.mutable_result()));
-      ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
+          old_entry_layout.parameter_shape(i),
+          new_program_shape.mutable_parameters(i)));
+      ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_parameters(i),
                                         update_shape);
+    }
 
-      HloModuleConfig config = module->config();
-      *config.mutable_entry_computation_layout() =
-          ComputationLayout(new_program_shape, /*ignore_layouts=*/false);
-      module->set_config(config);
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        old_entry_layout.result_shape(), new_program_shape.mutable_result()));
+    ShapeUtil::ForEachMutableSubshape(new_program_shape.mutable_result(),
+                                      update_shape);
+
+    HloModuleConfig config = module->config();
+    *config.mutable_entry_computation_layout() =
+        ComputationLayout(new_program_shape, /*ignore_layouts=*/false);
+    module->set_config(config);
+  } else {
+    if (!Shape::Equal()(program_shape.result(), new_program_shape.result())) {
+      return absl::InvalidArgumentError(
+          "Result shape changed for the entry computation from: " +
+          program_shape.result().ToString() +
+          " to: " + new_program_shape.result().ToString());
+    }
+    for (int64_t i = 0; i < program_shape.parameters_size(); ++i) {
+      if (!Shape::Equal()(program_shape.parameters(i),
+                          new_program_shape.parameters(i))) {
+        return absl::InvalidArgumentError(
+            "Parameter shape changed for the entry computation parameter " +
+            std::to_string(i) +
+            " from: " + program_shape.parameters(i).ToString() +
+            " to: " + new_program_shape.parameters(i).ToString());
+      }
     }
   }
 
@@ -5775,11 +5884,17 @@ absl::Status SpmdPartitioner::PreprocessSharding(
       // TODO(hyouklee): Should we also convert single-device shardings (without
       // side-effects) into replicated?
       if (!hlo->has_sharding()) {
+        bool enable_hlo_sharding_v3 =
+            module->config().debug_options().xla_enable_hlo_sharding_v3();
         if (hlo->opcode() == HloOpcode::kRng) {
-          hlo->set_sharding(HloSharding::AssignDevice(0));
+          hlo->set_sharding(enable_hlo_sharding_v3
+                                ? HloSharding(NamedSharding::SingleDevice(0))
+                                : HloSharding::SingleDevice(0));
         } else {
-          hlo->set_sharding(
-              HloSharding::Single(hlo->shape(), HloSharding::Replicate()));
+          hlo->set_sharding(HloSharding::Single(
+              hlo->shape(), enable_hlo_sharding_v3
+                                ? HloSharding(NamedSharding::Replicate())
+                                : HloSharding::Replicate()));
         }
       }
     }
@@ -5794,8 +5909,7 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       const HloSharding& sharding = hlo->sharding();
-      auto convert_unreduced_sharding =
-          [](HloInstruction* hlo, const HloSharding& sharding) -> HloSharding {
+      auto convert_unreduced_sharding = [](HloInstruction* hlo) -> HloSharding {
         hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
         return HloSharding::Replicate();
       };
@@ -5821,17 +5935,47 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
         }
         return HloSharding::PartialTile(tile_assignment, sharding.metadata());
       };
+      auto convert_unreduced_named_sharding =
+          [](HloInstruction* hlo,
+             const HloSharding& sharding) -> absl::StatusOr<HloSharding> {
+        const NamedSharding& named_sharding = sharding.named_sharding();
+        // TODO(b/438306205): Remove this check once the unreduced named
+        // sharding is compatible with manual.
+        if (!named_sharding.manual_axes().empty()) {
+          return absl::UnimplementedError(
+              "NamedSharding with both unreduced and manual axes is not "
+              "supported.");
+        }
+        hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
+        std::vector<AxisRef> new_replicated_axes(
+            named_sharding.replicated_axes().begin(),
+            named_sharding.replicated_axes().end());
+        new_replicated_axes.insert(new_replicated_axes.end(),
+                                   named_sharding.unreduced_axes().begin(),
+                                   named_sharding.unreduced_axes().end());
+        SortAndMergeAxes(new_replicated_axes, named_sharding.mesh());
+        return HloSharding(NamedSharding(
+            named_sharding.mesh(), named_sharding.dim_shardings(),
+            new_replicated_axes, /*unreduced_axes=*/{},
+            named_sharding.manual_axes(), named_sharding.metadata()));
+      };
+
       if (sharding.IsTuple()) {
         std::vector<HloSharding> subshardings = sharding.tuple_elements();
         bool should_convert = false;
         for (HloSharding& subsharding : subshardings) {
-          if (subsharding.IsUnreduced()) {
-            subsharding = convert_unreduced_sharding(hlo, subsharding);
+          if (subsharding.UseNamedShardingLeaf() &&
+              !subsharding.named_sharding().unreduced_axes().empty()) {
+            TF_ASSIGN_OR_RETURN(subsharding, convert_unreduced_named_sharding(
+                                                 hlo, subsharding));
             should_convert = true;
           } else if (subsharding.IsUnreducedSubgroup()) {
             TF_ASSIGN_OR_RETURN(
                 subsharding,
                 convert_unreduced_subgroup_sharding(hlo, subsharding));
+            should_convert = true;
+          } else if (subsharding.IsUnreduced()) {
+            subsharding = convert_unreduced_sharding(hlo);
             should_convert = true;
           }
         }
@@ -5839,13 +5983,18 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
           hlo->set_sharding(HloSharding::Tuple(hlo->shape(), subshardings));
         }
       } else {
-        if (sharding.IsUnreduced()) {
-          hlo->set_sharding(convert_unreduced_sharding(hlo, sharding));
+        if (sharding.UseNamedShardingLeaf() &&
+            !sharding.named_sharding().unreduced_axes().empty()) {
+          TF_ASSIGN_OR_RETURN(HloSharding new_sharding,
+                              convert_unreduced_named_sharding(hlo, sharding));
+          hlo->set_sharding(new_sharding);
         } else if (sharding.IsUnreducedSubgroup()) {
           TF_ASSIGN_OR_RETURN(
               HloSharding new_sharding,
               convert_unreduced_subgroup_sharding(hlo, sharding));
           hlo->set_sharding(new_sharding);
+        } else if (sharding.IsUnreduced()) {
+          hlo->set_sharding(convert_unreduced_sharding(hlo));
         }
       }
     }
@@ -5873,8 +6022,7 @@ absl::Status SpmdPartitioner::PreprocessHlos(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->MakeInstructionPostOrder()) {
-      if (hlo->sharding().IsTileMaximal() || hlo->sharding().IsManual()) {
-        // No need to optimize for tile-maximal or manual sharding.
+      if (!hlo->sharding().IsTiled()) {
         continue;
       }
 
@@ -6309,7 +6457,7 @@ void SpmdPartitioningVisitor::SetPartitionedHlo(
     // Adds recovery computation to the original value recovery table.
     auto* module = const_cast<HloModule*>(hlo->parent()->parent());
     auto build_recovery_computation =
-        [&](const ShapeIndex& index, const OriginalArray& old_original_array,
+        [&](const ShapeIndex& index, const OriginalArray&,
             const xla::Shape& old_shape, const xla::Shape& new_shape)
         -> std::optional<std::unique_ptr<HloModule>> {
       SpmdBuilder builder("recovery_computation", nullptr);

@@ -63,43 +63,6 @@ using ::mlir::sdy::NamedComputationOp;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
-// Returns the first non-maximal mesh on the argument shardings, if there is
-// one. Otherwise returns `std::nullopt`.
-// TODO(enver): Move to utils and potentially with a common helper that takes an
-// std::function to get the sharding given an index.
-std::optional<mlir::Attribute> getMeshOrRefOnArguments(
-    FuncOp funcOp, const SymbolTable& symbolTable) {
-  for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
-    if (TensorShardingAttr sdySharding =
-            funcOp.getArgAttrOfType<TensorShardingAttr>(argNum, kShardingAttr);
-        sdySharding && !sdySharding.getMesh(symbolTable).isMaximal()) {
-      return std::make_optional(sdySharding.getMeshOrRef());
-    }
-  }
-  return std::nullopt;
-}
-
-TensorShardingPerValueAttr getFuncArgShardings(CallOp callOp, FuncOp funcOp,
-                                               const SymbolTable& symbolTable) {
-  std::optional<mlir::Attribute> meshOrRef =
-      getMeshOrRefOnArguments(funcOp, symbolTable);
-  if (!meshOrRef) {
-    return nullptr;
-  }
-  mlir::SmallVector<TensorShardingAttr> argShardings;
-  argShardings.reserve(funcOp.getNumArguments());
-  for (int64_t argNum = 0; argNum < funcOp.getNumArguments(); ++argNum) {
-    TensorShardingAttr sdySharding =
-        funcOp.getArgAttrOfType<TensorShardingAttr>(argNum, kShardingAttr);
-    argShardings.push_back(sdySharding
-                               ? sdySharding
-                               : TensorShardingAttr::getFullyOpen(
-                                     funcOp.getContext(),
-                                     getTensorRank(callOp.getOperand(argNum)),
-                                     *meshOrRef));
-  }
-  return TensorShardingPerValueAttr::get(funcOp.getContext(), argShardings);
-}
 
 void importCallOp(
     CallOp callOp,
@@ -120,15 +83,14 @@ void importCallOp(
   TensorShardingPerValueAttr callOpResultShardings =
       mlir::sdy::getShardingPerValue(callOp);
   auto namedCompOp = NamedComputationOp::create(
-      rewriter, callOp->getLoc(), callOp->getResultTypes(), calleeName,
-      callOp.getOperands(),
-      /*inShardings=*/getFuncArgShardings(callOp, funcOp, symbolTable),
+      rewriter, callOp->getLoc(), callOp->getResultTypes(),
+      getOriginalFuncName(funcOp), callOp.getOperands(),
+      /*inShardings=*/getFuncArgShardings(funcOp, symbolTable),
       // TODO(b/439018088): Take func result shardings if call op result
       // shardings are empty.
       /*outShardings=*/
-      callOpResultShardings
-          ? callOpResultShardings
-          : getFuncResultShardings(callOp, funcOp, symbolTable));
+      callOpResultShardings ? callOpResultShardings
+                            : getFuncResultShardings(funcOp, symbolTable));
   namedCompOp->setAttrs(namedCompAttrs);
 
   mlir::Region& namedCompRegion = namedCompOp.getRegion();

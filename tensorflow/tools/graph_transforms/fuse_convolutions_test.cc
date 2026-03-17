@@ -57,7 +57,7 @@ class FuseConvolutionsTest : public ::testing::Test {
                                       ResizeBilinear::AlignCorners(false));
 
     Tensor pad_dims_data(DT_INT32, TensorShape({4, 2}));
-    test::FillValues<int32>(&pad_dims_data, {0, 0, 1, 1, 2, 2, 0, 0});
+    test::FillValues<int32_t>(&pad_dims_data, {0, 0, 1, 1, 2, 2, 0, 0});
     Output pad_dims_op = Const(root.WithOpName("pad_dims_op"),
                                Input::Initializer(pad_dims_data));
     Output pad_op =
@@ -159,7 +159,7 @@ class FuseConvolutionsTest : public ::testing::Test {
         Const(root.WithOpName("input_op"), Input::Initializer(input_data));
 
     Tensor pad_dims_data(DT_INT32, TensorShape({4, 2}));
-    test::FillValues<int32>(&pad_dims_data, {0, 0, 1, 1, 2, 2, 0, 0});
+    test::FillValues<int32_t>(&pad_dims_data, {0, 0, 1, 1, 2, 2, 0, 0});
     Output pad_dims_op = Const(root.WithOpName("pad_dims_op"),
                                Input::Initializer(pad_dims_data));
     Output pad_op =

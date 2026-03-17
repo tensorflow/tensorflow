@@ -56,7 +56,7 @@ class ArgOp : public OpKernel {
                     "dim must be a scalar, but received tensor of shape: ",
                     dimension.shape().DebugString()));
 
-    const int32_t dim = internal::SubtleMustCopy(dimension.scalar<int32>()());
+    const int32_t dim = internal::SubtleMustCopy(dimension.scalar<int32_t>()());
     const int input_dims = input.dims();
 
     int axis = dim < 0 ? dim + input_dims : dim;

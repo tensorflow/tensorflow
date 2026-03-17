@@ -13,11 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-load("//tensorflow:py.default.bzl", "py_library")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 load("//tensorflow/compiler/mlir/lite:symlink_files.bzl", "symlink_inputs")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
     features = [
         # Cannot use header_modules (parse_headers feature fails).
@@ -36,6 +36,7 @@ symlink_inputs(
 
 py_library(
     name = "mlir",
+    strict_deps = False,
     deps = [
         ":mlir_libs",
         "//tensorflow/compiler/mlir/lite/integrations/python/mlir/_mlir_libs:_mlir",

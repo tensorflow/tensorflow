@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -175,8 +176,12 @@ absl::Status SerializeIfrtIrAtomExecutables(
 absl::StatusOr<std::unique_ptr<xla::ifrt::XlaDeserializeExecutableOptions>>
 CreateXlaDeserializeExecutableOptions(
     xla::ifrt::Client* client,
-    absl::Span<const xla::ifrt::DeviceId> device_assignments,
+    absl::Span<xla::ifrt::Device* const> device_assignments,
     const SerializedIfrtIrAtomExecutableMetadata& metadata) {
+  if (device_assignments.empty()) {
+    return absl::InvalidArgumentError(
+        "Device list is empty in deserialize options");
+  }
   std::vector<Device*> atom_devices;
   for (auto logical_device_id : metadata.logical_device_ids()) {
     if (logical_device_id >= device_assignments.size()) {
@@ -185,9 +190,8 @@ CreateXlaDeserializeExecutableOptions(
                        " is out of range. Device assignments size: ",
                        device_assignments.size()));
     }
-    TF_ASSIGN_OR_RETURN(
-        Device * device,
-        client->LookupDevice(device_assignments[logical_device_id]));
+    // Remap the atom's logical device id to the incoming device list.
+    xla::ifrt::Device* device = device_assignments[logical_device_id];
     atom_devices.push_back(device);
   }
   TF_ASSIGN_OR_RETURN(DeviceListRef atom_device_list,
@@ -201,12 +205,13 @@ absl::Status DeserializeAndRegisterAtomPrograms(
     xla::ifrt::Client* client,
     const SerializedIfrtIrExecutableMetadata& metadata,
     absl::string_view serialized_executable_payload,
+    absl::Span<xla::ifrt::Device* const> device_assignments,
     xla::ifrt::IfrtIRCompileOptions* compile_options) {
   for (const auto& atom_meta : metadata.atom_program_executables()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<xla::ifrt::XlaDeserializeExecutableOptions> options,
-        CreateXlaDeserializeExecutableOptions(
-            client, compile_options->device_assignments, atom_meta));
+        CreateXlaDeserializeExecutableOptions(client, device_assignments,
+                                              atom_meta));
 
     absl::string_view serialized_atom_program =
         serialized_executable_payload.substr(
@@ -286,6 +291,10 @@ absl::StatusOr<DeserializedIfrtIRProgram> DeserializeIfrtIrExecutable(
         "Failed to parse SerializedIfrtIrExecutableMetadata");
   }
 
+  // Extract device_assignments from the deserialize options before the options
+  // unique_ptr is moved into the IfrtIRProgram
+  std::vector<xla::ifrt::Device*> device_assignments(
+      std::move(options->device_assignments));
   absl::string_view serialized_executable_payload =
       serialized.substr(input_stream.ByteCount());
 
@@ -297,8 +306,17 @@ absl::StatusOr<DeserializedIfrtIRProgram> DeserializeIfrtIrExecutable(
       std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
       xla::ifrt::IfrtIRCompileOptions::FromProto(metadata.compile_options()));
 
+  // Remap the de-serialized device assignments to the incoming deserialize
+  // options.
+  compile_options->device_assignments.clear();
+  compile_options->device_assignments.reserve(device_assignments.size());
+  for (auto device : device_assignments) {
+    compile_options->device_assignments.push_back(device->Id());
+  }
+
   TF_RETURN_IF_ERROR(DeserializeAndRegisterAtomPrograms(
-      client, metadata, serialized_executable_payload, compile_options.get()));
+      client, metadata, serialized_executable_payload, device_assignments,
+      compile_options.get()));
 
   return DeserializedIfrtIRProgram{std::move(program),
                                    std::move(compile_options)};

@@ -176,7 +176,8 @@ TEST_F(BuffersDebugChecksumThunkTest, CalculatesChecksums) {
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
       ServiceExecutableRunOptions(), allocations, stream_.get(),
       /*command_buffer_trace_stream=*/stream_.get(),
-      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr);
+      /*collective_params=*/nullptr, /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
   auto metadata_store = std::make_shared<BufferDebugLogEntryMetadataStore>();
 
   BuffersDebugChecksumThunk thunk(
@@ -272,7 +273,7 @@ TEST_F(BuffersDebugChecksumThunkTest,
       ServiceExecutableRunOptions(), device0.allocations, device0.stream.get(),
       /*command_buffer_trace_stream=*/device0.stream.get(),
       /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr)));
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr)));
   TF_ASSERT_OK(device0.stream->BlockHostUntilDone());
 
   TF_ASSERT_OK(
@@ -281,7 +282,7 @@ TEST_F(BuffersDebugChecksumThunkTest,
       ServiceExecutableRunOptions(), device1.allocations, device1.stream.get(),
       /*command_buffer_trace_stream=*/device1.stream.get(),
       /*collective_params=*/nullptr,
-      /*collective_cliques=*/nullptr)));
+      /*collective_cliques=*/nullptr, /*collective_memory=*/nullptr)));
   TF_ASSERT_OK(device1.stream->BlockHostUntilDone());
 }
 

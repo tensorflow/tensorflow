@@ -170,6 +170,9 @@ TEST_F(ConvertTensorTest, Simple) {
       {1, -1}, DT_INT32, mlir::IntegerType::get(&context, 32)));
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<int64_t>(
       {1, -1}, DT_INT64, mlir::IntegerType::get(&context, 64)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::int2>(
+      {static_cast<tsl::int2>(1), static_cast<tsl::int2>(0)}, DT_INT2,
+      mlir::IntegerType::get(&context, 2)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::uint4>(
       {static_cast<tsl::uint4>(1), static_cast<tsl::uint4>(2)}, DT_UINT4,
@@ -191,6 +194,10 @@ TEST_F(ConvertTensorTest, Simple) {
       {1, 2}, DT_UINT64,
       mlir::IntegerType::get(
           &context, 64, mlir::IntegerType::SignednessSemantics::Unsigned)));
+  ASSERT_NO_FATAL_FAILURE(VerifyConversion<tsl::uint2>(
+      {static_cast<tsl::uint2>(1), static_cast<tsl::uint2>(2)}, DT_UINT2,
+      mlir::IntegerType::get(
+          &context, 2, mlir::IntegerType::SignednessSemantics::Unsigned)));
 
   ASSERT_NO_FATAL_FAILURE(VerifyConversion<std::complex<float>>(
       {{0.0, 1.0}, {1.0, 0.0}}, DT_COMPLEX64,

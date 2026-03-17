@@ -689,6 +689,7 @@ struct WhileMoveInfo {
   int64_t sliced_idx;
   std::vector<int64_t> output_indices;
   HloInstruction* sink_instruction;
+  bool invalidated = false;
 };
 
 std::string ToString(const WhileMoveInfo& move_info) {
@@ -1289,7 +1290,7 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
         move_infos_[idx].collectives_to_move, move_infos_[idx].formatting_ops,
         move_infos_[idx].dynamic_update_slices, move_infos_[idx].sliced_idx,
         move_infos_[idx].output_indices);
-    move_infos_.erase(move_infos_.begin() + idx);
+    move_infos_[idx].invalidated = true;
   }
 
   // Now merge the current entry into the existing target entry.
@@ -1537,6 +1538,17 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
       break;
     }
   }
+  if (direction ==
+      collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
+    int64_t last_index = move_infos_.size() - 1;
+    for (int64_t i = move_infos_.size() - 1; i >= 0; --i) {
+      if (move_infos_[i].invalidated) {
+        move_infos_[i] = std::move(move_infos_[last_index]);
+        move_infos_.pop_back();
+        last_index--;
+      }
+    }
+  }
   if (direction != collective_pipeliner_utils::PipeliningDirection::kForward) {
     return;
   }
@@ -1728,7 +1740,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   InstructionMap while_body_to_peeled;
   absl::flat_hash_set<HloInstruction*> to_skip_set;
   absl::flat_hash_map<HloInstruction*, HloInstruction*> formatting_map;
-  absl::flat_hash_map<HloInstruction*, int64_t> is_output_instruction;
+  absl::flat_hash_map<HloInstruction*, absl::InlinedVector<int64_t, 1>>
+      is_output_instruction;
   std::vector<int64_t> moves_requiring_special_output;
   int64_t count = 0;
   // Add all-reduces to duplicate into a set.
@@ -1777,8 +1790,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   }
   CHECK_EQ(while_body->root_instruction()->opcode(), HloOpcode::kTuple);
   for (int i = 0; i < while_body->root_instruction()->operand_count(); ++i) {
-    is_output_instruction[while_body->root_instruction()->mutable_operand(i)] =
-        i;
+    is_output_instruction[while_body->root_instruction()->mutable_operand(i)]
+        .push_back(i);
   }
 
   // Collect the new parameter shapes with the additional state for the indices
@@ -1853,7 +1866,9 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
     while_body_to_peeled[instr] = cloned_instr;
     auto output_it = is_output_instruction.find(instr);
     if (output_it != is_output_instruction.end()) {
-      new_init_operands[output_it->second] = cloned_instr;
+      for (int64_t i : output_it->second) {
+        new_init_operands[i] = cloned_instr;
+      }
     }
   }
 
@@ -1886,7 +1901,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
         absl::MakeConstSpan(move_info.collectives_to_move),
         absl::MakeSpan(move_info.formatting_ops));
     for (auto* pipelined : pipelined_instrs) {
-      is_output_instruction[pipelined] = new_init_operands.size();
+      is_output_instruction[pipelined].push_back(new_init_operands.size());
       new_parameter_shapes.push_back(pipelined->shape());
       new_root_operands.push_back(pipelined);
       new_init_operands.push_back(while_body_to_peeled[pipelined]);
@@ -2508,6 +2523,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForwardSink(
       collective_to_new_tuple_index[collective] = new_root_operands.size();
       indices_to_insert.insert(new_root_operands.size());
       new_root_operands.push_back(collective->mutable_operand(0));
+      invariant_cache[collective] = false;
     }
     CHECK_EQ(to_move.dynamic_update_slices.size(),
              to_move.output_indices.size());

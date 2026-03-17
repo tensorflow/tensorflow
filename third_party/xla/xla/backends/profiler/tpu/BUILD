@@ -11,7 +11,10 @@ cc_library(
     name = "tpu_tracer",
     srcs = if_with_tpu_support(["tpu_tracer.cc"]),
     copts = tf_profiler_copts(),
-    visibility = ["//xla:internal"],
+    visibility = [
+        "//xla:internal",
+        "//xla/tsl/profiler:friends",
+    ],
     deps = [
         "//xla/stream_executor/tpu:tpu_api",
         "//xla/stream_executor/tpu:tpu_api_dlsym_set_fn",

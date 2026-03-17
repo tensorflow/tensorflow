@@ -1,7 +1,7 @@
 # Tests of tf.io.*proto.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "if_oss", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.default.bzl", "stripped_cc_info", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
@@ -51,10 +51,11 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "proto_op_test_base",
     testonly = 1,
     srcs = ["proto_op_test_base.py"],
+    strict_deps = True,
     deps = [
         ":test_example_proto_py",
         "//tensorflow/core:protos_all_py",
@@ -62,10 +63,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "decode_proto_op_test_base",
     testonly = 1,
     srcs = ["decode_proto_op_test_base.py"],
+    strict_deps = True,
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
@@ -76,10 +78,11 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "encode_proto_op_test_base",
     testonly = 1,
     srcs = ["encode_proto_op_test_base.py"],
+    strict_deps = True,
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
@@ -92,7 +95,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(name = "py_test_deps")
+py_library(
+    name = "py_test_deps",
+    strict_deps = True,
+)
 
 tf_proto_library(
     name = "test_example_proto",
@@ -119,10 +125,11 @@ stripped_cc_info(
     deps = [":test_example_proto_cc"],
 )
 
-py_strict_library(
+py_library(
     name = "descriptor_source_test_base",
     testonly = 1,
     srcs = ["descriptor_source_test_base.py"],
+    strict_deps = True,
     deps = [
         ":proto_op_test_base",
         "//tensorflow/python/framework:dtypes",

@@ -78,6 +78,7 @@ cc_library(
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "@xla//xla/python:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
+        "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
     ]),
     deps = [
         ":profiler_interface",
@@ -133,6 +134,7 @@ cc_library(
         "@xla//xla/tsl:internal",
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
+        "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -150,6 +152,7 @@ cc_library(
         "@xla//xla/tsl/profiler:xla_internal",
     ]),
     deps = [
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/platform:errors",
@@ -176,6 +179,7 @@ cc_library(
     visibility = internal_visibility([
         "@xla//xla/tsl:internal",
         "//third_party/py/jax:__subpackages__",
+        "@xla//xla/tsl/profiler:friends",
     ]),
     deps = [
         "//tsl/platform",

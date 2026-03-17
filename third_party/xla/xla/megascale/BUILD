@@ -7,7 +7,10 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([":internal"]),
+    default_visibility = internal_visibility([
+        ":internal",
+        ":__subpackages__",
+    ]),
     licenses = ["notice"],
 )
 
@@ -23,6 +26,13 @@ tf_proto_library(
 tf_proto_library(
     name = "addresses_proto",
     srcs = ["addresses.proto"],
+    create_grpc_library = True,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
+    name = "megascale_runtime_error_overlay_proto",
+    srcs = ["megascale_runtime_error_overlay.proto"],
     create_grpc_library = True,
     make_default_target_header_only = True,
 )

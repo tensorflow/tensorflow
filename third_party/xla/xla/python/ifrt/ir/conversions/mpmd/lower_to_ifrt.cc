@@ -57,6 +57,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/debug_options_flags.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/utils.h"
@@ -618,7 +619,10 @@ absl::Status LowerToIfrt(mlir::ModuleOp module, bool add_control_dependencies) {
 
   // If we are lowered with SDY, we need to run the SDY round trip pipeline.
   if (mlir::mpmd::IsLoweredWithSdy(module)) {
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
+    bool enable_hlo_sharding_v3 =
+        GetDebugOptionsFromFlags().xla_enable_hlo_sharding_v3();
+    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
+                                            enable_hlo_sharding_v3);
   }
   AddLowerToIfrtPasses(pm, add_control_dependencies);
   StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());

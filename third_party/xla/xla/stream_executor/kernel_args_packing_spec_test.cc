@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_args_packing_spec.pb.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
 #include "xla/tsl/util/proto/proto_matchers.h"

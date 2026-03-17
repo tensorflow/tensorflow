@@ -94,10 +94,6 @@ struct SpmdPartitionerOptions {
   // prefer the former if true.
   bool choose_faster_windowed_einsum_over_mem = false;
 
-  // Whether doing bidirectional communication when decomposing independent
-  // all-gathers.
-  bool bidirectional_decomposed_all_gather = false;
-
   // Whether to skip checking the numbers and shardings of windowed einsum's
   // users.
   bool skip_checking_windowed_einsum_users = false;
@@ -134,13 +130,17 @@ struct SpmdPartitionerOptions {
 
   // The maximum number of iterations for windowed einsum.
   int64_t max_windowed_einsum_iteration = 32;
+
+  // If true, the partitioner resolves conflicts for instructions. If false, the
+  // instructions have compatible sharding across all operands and results.
+  bool need_resolve_conflicts = true;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
 // transformation.
 class SpmdBuilder : public HloComputation::Builder {
  public:
-  SpmdBuilder(const std::string& name, HloInstruction* hlo)
+  SpmdBuilder(absl::string_view name, HloInstruction* hlo)
       : HloComputation::Builder(name) {
     visiting_hlo_ = hlo;
   }
@@ -746,11 +746,6 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // Common handle for HLOs that runs on a single device.
   absl::Status HandleSingleDevice(const HloInstruction* hlo);
 
-  // CustomCall handlers per call target.
-  absl::Status HandleCustomCallTopK(HloInstruction* hlo);
-  // Convenient custom ops defined by the partitioner itself.
-  absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
-
   virtual std::unique_ptr<SpmdPartitioningVisitor> Clone() const;
 
   // Returns the PartitionedHlo that corresponds to the original hlo.
@@ -905,6 +900,27 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   absl::Status HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);
+
+  // Handler for dot instructions with no conflicts.
+  absl::Status HandleDotWithoutConflicts(HloInstruction* hlo);
+
+  // Handlers for specific custom call targets.
+  // go/keep-sorted start
+  // multi_rotate(x, dim, L, R) = (rotate_left(x, L), ..., rotate_left(x, -R))
+  absl::Status HandleCustomCallSPMDInternal_MultiRotate(HloInstruction* hlo);
+  // mult_slice(x[idxs...], dim, amt) = (x[idxs...], ..., x[idx+amt...])
+  absl::Status HandleCustomCallSPMDInternal_MultiSlice(HloInstruction* hlo);
+  absl::Status HandleCustomCallSPMDInternal_RotateRight(HloInstruction* hlo);
+  // wrap(x, L, R) = (x[-L:], x, x[0:R])
+  absl::Status HandleCustomCallSPMDInternal_Wrap(HloInstruction* hlo);
+  absl::Status HandleCustomCallTopK(HloInstruction* hlo);
+  // go/keep-sorted end
+
+  absl::StatusOr<std::pair<HloInstruction*, HloInstruction*>>
+  ConstructHaloExchangeSuperShard(const HloInstruction* input_operand,
+                                  int64_t dim, int64_t left_amount,
+                                  int64_t right_amount, bool handle_last_shard,
+                                  int64_t post_halo_shard_size);
 };
 
 }  // namespace spmd

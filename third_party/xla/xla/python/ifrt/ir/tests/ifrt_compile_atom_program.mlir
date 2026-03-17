@@ -16,7 +16,7 @@ module @call_hlo {
   // CHECK: (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>)
   // CHECK-SAME: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
   module @add_one attributes {sym_visibility = "private"} {
-    func.func private @main(
+    func.func @main(
         %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
         -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
       %0 = mhlo.constant dense<1> : tensor<2x2xi32>
@@ -36,7 +36,7 @@ module @call_hlo_sdy_lowered attributes {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
     // CHECK: ifrt.CallLoadedExecutable @{{.*}}(%arg0)
     %0, %ctrl_0 = ifrt.Call @add_one::@main(%arg0) on devices [0,1]
-        {ifrt.module_type = "xla", ifrt.is_sdy_partitioned} : (!array) -> !array
+        {ifrt.module_type = "xla"} : (!array) -> !array
     return %0 : !array
   }
 
@@ -46,7 +46,7 @@ module @call_hlo_sdy_lowered attributes {
   // CHECK: (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>)
   // CHECK-SAME: -> !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
   module @add_one attributes {sym_visibility = "private"} {
-    func.func private @main(
+    func.func @main(
         %arg0: tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"})
         -> (tensor<2x2xi32> {mhlo.sharding = "{devices=[2,1]<=[2]}"}) {
       %0 = mhlo.constant dense<1> : tensor<2x2xi32>

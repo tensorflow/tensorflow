@@ -97,6 +97,10 @@ class EmitterBase : public KernelFusionInterface {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const = 0;
 
+  static std::array<uint64_t, 2> MaybeSplitGridDimensionX(
+      uint64_t num_threads_x, uint64_t num_blocks_x,
+      const se::DeviceDescription& info);
+
   mlir::Value EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
                               WorkGroupDimension dim) const;
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
@@ -117,7 +121,8 @@ class EmitterBase : public KernelFusionInterface {
 // Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
 // vectorize.
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
-                                 const se::DeviceDescription& device);
+                                 const se::DeviceDescription& device,
+                                 int max_unroll_factor = 0);
 
 // Adds passes that lower transformed loops to LLVM.
 void AddLoweringPasses(mlir::OpPassManager& pm,

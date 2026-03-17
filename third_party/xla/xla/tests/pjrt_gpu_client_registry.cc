@@ -29,13 +29,11 @@ const bool kUnused =
     (RegisterPjRtClientTestFactory([]() {
        GpuAllocatorConfig gpu_config;
        gpu_config.kind = GpuAllocatorConfig::Kind::kDefault;
-       gpu_config.preallocate = true;
-       gpu_config.memory_fraction = 0.08;
+       gpu_config.preallocate = false;
        gpu_config.collective_memory_size = 0;
        GpuClientOptions options;
        options.allocator_config = std::move(gpu_config);
-       options.use_tfrt_gpu_client =
-           std::getenv("XLA_TEST_USE_STREAM_EXECUTOR_GPU_CLIENT") == nullptr;
+       options.use_tfrt_gpu_client = true;
        return GetXlaPjrtGpuClient(options);
      }),
      true);

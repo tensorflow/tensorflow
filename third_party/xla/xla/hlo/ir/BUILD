@@ -35,6 +35,7 @@ cc_library(
         "hlo_schedule.cc",
         "hlo_sharding_metadata.cc",
         "replica_group.cc",
+        "stack_frames.cc",
     ],
     hdrs = [
         "dfs_hlo_visitor.h",
@@ -58,6 +59,7 @@ cc_library(
         "hlo_sharding.h",
         "hlo_sharding_metadata.h",
         "replica_group.h",
+        "stack_frames.h",
     ],
     deps = [
         ":backend_config",
@@ -145,6 +147,17 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "stack_frames_test",
+    srcs = ["stack_frames_test.cc"],
+    deps = [
+        ":hlo",
+        "//xla/service:hlo_proto_cc",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
     name = "hlo_computation_test",
     srcs = ["hlo_computation_test.cc"],
     deps = [
@@ -192,6 +205,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -214,7 +228,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -268,6 +281,7 @@ xla_cc_test(
     srcs = ["hlo_module_test.cc"],
     deps = [
         ":hlo",
+        "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -295,6 +309,7 @@ xla_cc_test(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -392,8 +407,11 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
     ],
@@ -408,6 +426,7 @@ xla_cc_test(
         "//xla:array2d",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],

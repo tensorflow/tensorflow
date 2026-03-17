@@ -1,5 +1,52 @@
 # PJRT C API changelog
 
+## 0.100
+
+* Added `payload` and `num_payload` to `PJRT_Device_PoisonExecution_Args` to support passing status payloads during execution poisoning.
+
+## 0.99
+
+* Added `PJRT_Error_ForEachPayload`.
+
+## 0.98
+
+* Added `PJRT_Buffer_Bitcast`.
+
+## 0.97
+
+* Add `multi_slice_config` field to `PJRT_ExecuteOptions`.
+
+## 0.96
+
+* Added `PJRT_LoadedExecutable_AddressableDeviceLogicalIds`.
+
+## 0.95
+
+* Added `PJRT_Client_Load`.
+
+## 0.94
+
+* Added types S1 and U1.
+
+## 0.93
+
+* Added `PJRT_Layouts_PJRT_Executable_GetParameterLayouts`. This extension API
+  complements `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.
+
+## 0.92
+
+* Added `PJRT_Device_GetAttributes`.
+
+## 0.91
+
+* Added `PJRT_Extension_Type::PJRT_Extension_Type_Shardings`. This extension
+  defines `PJRT_Executable_ParameterShardings` and
+  `PJRT_Executable_OutputShardings`. They are currently optional API; if the
+  plugin does not support shardings, they can be `nullptr`, or set the
+  `shardings` and `sharding_sizes` fields of
+  `PJRT_Executable_ParameterShardings_Args` and
+  `PJRT_Executable_OutputShardings_Args` to `nullptr`.
+
 ## 0.90
 
 * Added `total_size_in_bytes` field to `PJRT_Executable_GetCompiledMemoryStats_Args`.

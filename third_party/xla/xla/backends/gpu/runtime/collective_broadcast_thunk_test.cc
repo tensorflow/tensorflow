@@ -27,9 +27,9 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -61,7 +61,7 @@ using ::testing::ElementsAre;
 using Kind = Thunk::Kind;
 using ::tsl::proto_testing::EqualsProto;
 
-class GpuCollectiveBroadcastTest : public HloTestBase {};
+using GpuCollectiveBroadcastTest = HloTestBase;
 
 TEST_F(GpuCollectiveBroadcastTest, TestConvertToCommands) {
   // Generate HLO text with parameters substituted.
@@ -144,8 +144,8 @@ ENTRY test_computation {
   ConvertToCommandsOptions conv_options;
   // Use LHS synchronization mode to append Done command
   conv_options.synchronization_mode =
-      CommandBufferCmdExecutor::SynchronizationMode::kLHS;
-  TF_ASSERT_OK_AND_ASSIGN(CommandBufferCmdExecutor cb_cmd_executor,
+      CommandExecutor::SynchronizationMode::kLHS;
+  TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
                           ConvertToCommands(thunk_sequence, conv_options));
 
   // Check that we have two commands: start and done.
@@ -192,7 +192,7 @@ ENTRY test_computation {
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
-  const SequentialThunk& seq_thunk = gpu_executable->GetThunk();
+  const ThunkExecutor& seq_thunk = gpu_executable->thunk_executor();
   ASSERT_EQ(seq_thunk.thunks().size(), 1);
 
   const std::unique_ptr<Thunk>& thunk = seq_thunk.thunks().front();

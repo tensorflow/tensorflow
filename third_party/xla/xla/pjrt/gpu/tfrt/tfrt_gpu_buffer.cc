@@ -295,12 +295,11 @@ TfrtGpuBuffer::AcquireExternalReference() {
         tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   }
 
-  ++external_reference_counter_;
-
   tsl::BlockUntilReady(tracked_device_buffer_->definition_event());
   if (tracked_device_buffer_->definition_event().IsError()) {
     return tracked_device_buffer_->definition_event().GetError();
   }
+  ++external_reference_counter_;
   return {std::make_unique<ScopedExternalReference>(
       this, tracked_device_buffer_->buffer())};
 }
@@ -413,7 +412,8 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
         buffer_ptr = literal->untyped_data();
         if (should_unpack || transpose != nullptr ||
             client->ShouldStageHostToDeviceTransfers(buffer_ptr, byte_size)) {
-          staging_buffer = client->host_memory_allocator()->Allocate(byte_size);
+          staging_buffer =
+              client->GetHostMemoryAllocator()->Allocate(byte_size);
           buffer_ptr = staging_buffer.get();
         }
       } else {
@@ -593,7 +593,8 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
         client->ShouldStageHostToDeviceTransfers(dst, transfer_size);
 
     if (use_staging) {
-      staging_buffer = client->host_memory_allocator()->Allocate(transfer_size);
+      staging_buffer =
+          client->GetHostMemoryAllocator()->Allocate(transfer_size);
     }
 
     void* host_ptr = use_staging ? staging_buffer.get() : dst;
@@ -834,6 +835,55 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
   client_->blocking_thread_pool()->ScheduleWhenReady(
       {src_device_buffer->ready_event().CopyRCRef()}, std::move(transfer_d2d));
   return output_buffer;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::Bitcast(
+    PrimitiveType element_type, absl::Span<const int64_t> dims,
+    const Layout* device_layout) {
+  if (!primitive_util::IsArrayType(on_device_shape_.element_type()) ||
+      !primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Bitcast can only be used on array types.");
+  }
+  TF_ASSIGN_OR_RETURN(Shape new_on_device_shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dims));
+  if (device_layout == nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        *new_on_device_shape.mutable_layout(),
+        client()->GetDefaultLayout(new_on_device_shape.element_type(),
+                                   new_on_device_shape.dimensions()));
+  } else {
+    *new_on_device_shape.mutable_layout() = *device_layout;
+  }
+  if (ShapeUtil::ArraySize(on_device_shape_) !=
+      ShapeUtil::ArraySize(new_on_device_shape)) {
+    return InvalidArgument(
+        "Bitcast requires a new on-device shape to have the same size of %d "
+        "bytes, but got %d bytes.",
+        ShapeUtil::ArraySize(on_device_shape_),
+        ShapeUtil::ArraySize(new_on_device_shape));
+  }
+
+  std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(mu_);
+
+    if (tracked_device_buffer_ == nullptr) {
+      return InvalidArgument("Donation requested for invalid buffer");
+    }
+
+    if (external_reference_counter_ > 0) {
+      return InvalidArgument(
+          "Donation requested for buffer with external reference");
+    }
+
+    CHECK(donation_event_.IsAvailable());
+    CHECK(!donation_event_.get());
+
+    device_buffer = ReleaseBufferLocked();
+  }
+  return std::make_unique<TfrtGpuBuffer>(new_on_device_shape,
+                                         std::move(device_buffer), client_,
+                                         device_, memory_space_);
 }
 
 void TfrtGpuBuffer::DropExternalReference() {

@@ -16,26 +16,33 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -43,6 +50,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/util.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -55,15 +63,17 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     const BufferAllocations& buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
     CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
-    ExecutionStreamIdMap additional_compute_streams) {
+    CollectiveMemory* collective_memory,
+    ExecutionStreamIdMap additional_compute_streams,
+    ExecutionScopedState* execution_scoped_state) {
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
-                       collective_params, collective_cliques,
+                       collective_params, collective_cliques, collective_memory,
                        run_options.run_options().device_to_host_stream(),
                        run_options.run_options().host_to_device_stream(),
                        run_options.run_options().send_device_memory_function(),
                        run_options.run_options().recv_device_memory_function(),
                        run_options.run_options().ffi_execution_context(),
-                       additional_compute_streams,
+                       additional_compute_streams, execution_scoped_state,
                        run_options.run_options().gpu_executable_run_options()
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
@@ -78,32 +88,47 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
   return ExecuteParams(
       &buffer_allocations, params.stream, params.command_buffer_trace_stream,
       params.collective_params, params.collective_cliques,
-      params.device_to_host_stream, params.host_to_device_stream,
-      params.send_device_memory_function, params.recv_device_memory_function,
-      params.ffi_execution_context, params.additional_compute_streams);
+      params.collective_memory, params.device_to_host_stream,
+      params.host_to_device_stream, params.send_device_memory_function,
+      params.recv_device_memory_function, params.ffi_execution_context,
+      params.additional_compute_streams);
+}
+
+Thunk::ExecuteParams Thunk::ExecuteParams::WithComputeStream(
+    se::Stream* stream) const {
+  return ExecuteParams(buffer_allocations, stream, command_buffer_trace_stream,
+                       collective_params, collective_cliques, collective_memory,
+                       device_to_host_stream, host_to_device_stream,
+                       send_device_memory_function, recv_device_memory_function,
+                       ffi_execution_context, additional_compute_streams,
+                       execution_scoped_state, mock_collectives, execution_id);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
     const BufferAllocations* buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
     CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
-    se::Stream* device_to_host_stream, se::Stream* host_to_device_stream,
+    CollectiveMemory* collective_memory, se::Stream* device_to_host_stream,
+    se::Stream* host_to_device_stream,
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives,
+    ExecutionStreamIdMap additional_compute_streams,
+    ExecutionScopedState* execution_scoped_state, bool mock_collectives,
     int64_t execution_id)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
       collective_params(collective_params),
       collective_cliques(collective_cliques),
+      collective_memory(collective_memory),
       device_to_host_stream(device_to_host_stream),
       host_to_device_stream(host_to_device_stream),
       send_device_memory_function(send_device_memory_function),
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
+      execution_scoped_state(execution_scoped_state),
       mock_collectives(mock_collectives),
       execution_id(execution_id) {}
 
@@ -129,6 +154,10 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_ALL_TO_ALL_DONE;
     case kAllToAllStart:
       return THUNK_KIND_ALL_TO_ALL_START;
+    case kAsyncDone:
+      return THUNK_KIND_ASYNC_DONE;
+    case kAsyncStart:
+      return THUNK_KIND_ASYNC_START;
     case kBuffersDebugChecksum:
       return THUNK_KIND_BUFFERS_DEBUG_CHECKSUM;
     case kBuffersDebugFloatCheck:
@@ -163,8 +192,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_COPY_DONE;
     case kCuDnn:
       return THUNK_KIND_CU_DNN;
-    case kCubSort:
-      return THUNK_KIND_CUB_SORT;
     case kCublasLtMatmul:
       return THUNK_KIND_CUBLAS_LT_MATMUL;
     case kCustomCall:
@@ -280,6 +307,10 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kAllToAllDone;
     case THUNK_KIND_ALL_TO_ALL_START:
       return kAllToAllStart;
+    case THUNK_KIND_ASYNC_DONE:
+      return kAsyncDone;
+    case THUNK_KIND_ASYNC_START:
+      return kAsyncStart;
     case THUNK_KIND_BUFFERS_DEBUG_CHECKSUM:
       return kBuffersDebugChecksum;
     case THUNK_KIND_BUFFERS_DEBUG_FLOAT_CHECK:
@@ -314,8 +345,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kCopyDone;
     case THUNK_KIND_CU_DNN:
       return kCuDnn;
-    case THUNK_KIND_CUB_SORT:
-      return kCubSort;
     case THUNK_KIND_CUBLAS_LT_MATMUL:
       return kCublasLtMatmul;
     case THUNK_KIND_CUSTOM_CALL:
@@ -428,6 +457,8 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kAllToAll);
     CASE(kAllToAllDone);
     CASE(kAllToAllStart);
+    CASE(kAsyncDone);
+    CASE(kAsyncStart);
     CASE(kBuffersDebugChecksum);
     CASE(kBuffersDebugFloatCheck);
     CASE(kCollectiveBroadcast);
@@ -445,7 +476,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kCopy);
     CASE(kCopyDone);
     CASE(kCuDnn);
-    CASE(kCubSort);
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
     CASE(kCustomKernel);
@@ -496,7 +526,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
   }
 }
 
-/*static*/
 absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
     ExecutionStreamId stream_id, const ExecuteParams& params) {
   if (stream_id == kDefaultExecutionStreamId) {
@@ -504,7 +533,12 @@ absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
   }
   auto iter = params.additional_compute_streams.find(stream_id);
   if (iter == params.additional_compute_streams.end()) {
-    return absl::InvalidArgumentError("Invalid execution stream id.");
+    return InvalidArgument(
+        "Invalid execution stream id: %v; available streams: [%s]", stream_id,
+        absl::StrJoin(params.additional_compute_streams, ",",
+                      [](std::string* out, auto pair) {
+                        absl::StrAppendFormat(out, "%v", pair.first);
+                      }));
   }
   return iter->second;
 }
@@ -583,14 +617,6 @@ bool Thunk::IsCollective() const {
   }
 }
 
-void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
-}
-
-void Thunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-}
-
 absl::StatusOr<ThunkProto> Thunk::ToProto() const {
   return absl::UnimplementedError(absl::StrFormat(
       "Proto serialization for thunk of type %s is not implemented",
@@ -605,11 +631,13 @@ ThunkMetadataProto Thunk::ToMetadataProto() const {
 }
 
 ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
-    const Thunk& root_thunk) {
+    const ThunkSequence& thunk_sequence) {
   ThunkMetadataListProto metadata_list_proto;
-  root_thunk.ForAllThunks([&metadata_list_proto](const Thunk* thunk) {
-    *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
-  });
+  for (auto& thunk : thunk_sequence) {
+    thunk->Walk([&metadata_list_proto](const Thunk* thunk) {
+      *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
+    });
+  }
   return metadata_list_proto;
 }
 
@@ -619,6 +647,118 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   proto.set_execution_stream_id(execution_stream_id.value());
   proto.set_thunk_id(thunk_id.value());
   return proto;
+}
+
+//===----------------------------------------------------------------------===//
+// ThunkSequence implementation.
+//===----------------------------------------------------------------------===//
+
+// Returns index of the nearest thunk before `i` that conflicts on buffers.
+static std::optional<int64_t> PrevDep(
+    absl::Span<const BufferUse::ReadWriteSet> rw_sets, int64_t i) {
+  for (int64_t j = i - 1; j >= 0; --j) {
+    if (rw_sets[j].HasConflicts(rw_sets[i])) {
+      return j;
+    }
+  }
+  return std::nullopt;
+}
+
+// Returns index of the nearest thunk after `i` that conflicts on buffers.
+static std::optional<int64_t> NextDep(
+    absl::Span<const BufferUse::ReadWriteSet> rw_sets, int64_t i) {
+  for (int64_t j = i + 1; j < rw_sets.size(); ++j) {
+    if (rw_sets[j].HasConflicts(rw_sets[i])) {
+      return j;
+    }
+  }
+  return std::nullopt;
+}
+
+absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
+  for (auto& thunk : *this) {
+    RETURN_IF_ERROR(thunk->Walk(callback));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::TransformNested(Thunk::Transformer callback) {
+  for (std::unique_ptr<Thunk>& thunk : *this) {
+    RETURN_IF_ERROR(thunk->TransformNested(callback));
+    ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
+  }
+  return absl::OkStatus();
+}
+
+// Format: one line per thunk, columns aligned:
+//
+//   ID:  KIND [prev=PPP (D) | next=NNN (D)] DESCRIPTION
+//
+//   ID:   three-digit thunk id
+//   KIND: thunk kind, padded to the width of the longest kind
+//   PPP:  thunk id of the nearest preceding thunk with a buffer conflict,
+//         or "source" if there is no preceding conflict
+//   NNN:  thunk id of the nearest following thunk with a buffer conflict,
+//         or "sink" if there is no following conflict
+//   D:    distance (in thunks) to that conflict
+//
+// Example:
+//   001: kReplicaId      [source       | next=002 (1)] ...
+//   002: kAllReduceStart [prev=001 (1) | next=003 (1)] ...
+//   003: kAllReduceDone  [prev=002 (1) | sink        ] ...
+std::string ThunkSequence::ToString(int indent) const {
+  std::string indent_str(indent * 2, ' ');
+
+  if (empty()) {
+    return absl::StrCat(indent_str, "No thunks.");
+  }
+
+  // Pre-compute buffer read-write sets for all thunks in this sequence.
+  std::vector<BufferUse::ReadWriteSet> rw_sets(size());
+  for (size_t i = 0; i < size(); ++i) {
+    at(i)->Walk([&](auto* thunk) { rw_sets[i].AddAll(thunk->buffer_uses()); });
+  }
+
+  // Find a thunk with a longest kind string representation.
+  size_t max_thunk_kind_len = 0;
+  for (const auto& thunk : *this) {
+    max_thunk_kind_len = std::max(max_thunk_kind_len,
+                                  Thunk::KindToString(thunk->kind()).length());
+  }
+
+  // Pre-compute prev/next dependency strings and find max column widths.
+  std::vector<std::string> prev_strs(size()), next_strs(size());
+  size_t max_prev_len = 0, max_next_len = 0;
+  for (int64_t i = 0; i < size(); ++i) {
+    std::optional<int64_t> prev = PrevDep(rw_sets, i);
+    std::optional<int64_t> next = NextDep(rw_sets, i);
+    prev_strs[i] =
+        prev.has_value()
+            ? absl::StrFormat("prev=%03d (%d)",
+                              at(*prev)->thunk_info().thunk_id.value(),
+                              i - *prev)
+            : "source";
+    next_strs[i] =
+        next.has_value()
+            ? absl::StrFormat("next=%03d (%d)",
+                              at(*next)->thunk_info().thunk_id.value(),
+                              *next - i)
+            : "sink";
+    max_prev_len = std::max(max_prev_len, prev_strs[i].size());
+    max_next_len = std::max(max_next_len, next_strs[i].size());
+  }
+
+  std::string result;
+  for (int64_t i = 0; i < size(); ++i) {
+    const std::unique_ptr<Thunk>& thunk = at(i);
+    absl::StrAppendFormat(
+        &result, "%s%03d: %-*s [%-*s | %-*s] %s\n", indent_str,
+        thunk->thunk_info().thunk_id.value(), max_thunk_kind_len,
+        Thunk::KindToString(thunk->kind()), max_prev_len, prev_strs[i],
+        max_next_len, next_strs[i], thunk->ToString(indent + 1));
+  }
+
+  return result;
 }
 
 }  // namespace xla::gpu

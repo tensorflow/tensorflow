@@ -7,7 +7,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -2743,6 +2743,7 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -3446,20 +3447,46 @@ tflite_portable_test_suite_combined(
     # TODO(b/229985981) : Remove `nnapi_args` after adding Relu0To1 is completed.
     nnapi_args = ["--gunit_filter=*Reshape*"],
     #nnapi_args = ["--gunit_filter=-*QuantizedActivationsOpTest.Relu0To1*"],
+    shard_count = 50,
 )
 
 # Note this is created mainly for validating external delegates in OSS.
 tflite_combine_cc_tests(
     name = "combined_all_kernel_tests",
+    build_test_tags = [
+        "manual",
+        "tflite_portable_build_test",
+    ],
     deps_conditions = [":test_main"],
     generate_cc_library = True,
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 # This test uses SimpleAllocator and works nicely with ASAN.
 tflite_combine_cc_tests(
     name = "combined_all_kernel_with_simple_allocator_tests",
     args = ["--use_simple_allocator=true"],
+    build_test_tags = [
+        "manual",
+        "tflite_portable_build_test",
+    ],
     deps_conditions = [":test_main"],
+    shard_count = 50,
+    tags = [
+        "manual",
+        "notap",
+    ],
+)
+
+# Test the XNNPACK delegate
+tflite_combine_cc_tests(
+    name = "combined_all_kernel_with_xnnpack_tests",
+    args = ["--use_xnnpack=true"],
+    deps_conditions = [":test_main"],
+    shard_count = 50,
 )
 
 tflite_self_contained_libs_test_suite(name = "self_contained_libs_tests")

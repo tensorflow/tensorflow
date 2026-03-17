@@ -99,22 +99,36 @@ bool IsCublasLtMatmul(const HloInstruction& hlo);
 // Scaled matrix multiplication in FP8. Calls into cublasLt.
 bool IsCublasLtMatmulF8(const HloInstruction& hlo);
 
+// Block-scaled matrix multiplication in MX formats. Calls into hipBLASLt.
+bool IsCublasLtMatmulMx(const HloInstruction& hlo);
+
 // Triangular solve that calls into legacy cublas.
 bool IsTriangularSolve(const HloInstruction& hlo);
 
 // A call to cuBLAS general matrix multiplication API.
-extern const absl::string_view kGemmCallTarget;
+inline constexpr absl::string_view kGemmCallTarget = "__cublas$gemm";
 
 // A call to cuBLAS Lt API matrix multiplication.
-extern const absl::string_view kCublasLtMatmulCallTarget;
+inline constexpr absl::string_view kCublasLtMatmulCallTarget =
+    "__cublas$lt$matmul";
 
 // A call to cuBLASLt for scaled matrix multiplication in FP8.
-extern const absl::string_view kCublasLtMatmulF8CallTarget;
+inline constexpr absl::string_view kCublasLtMatmulF8CallTarget =
+    "__cublas$lt$matmul$f8";
+
+// A call to hipBLASLt for block-scaled matrix multiplication in MX formats.
+inline constexpr absl::string_view kCublasLtMatmulMxCallTarget =
+    "__cublas$lt$matmul$mx";
+
+// A call to cuBLAS Lt Ext API Grouped matrix multiplication.
+inline constexpr absl::string_view kCublasLtGroupedMatmulCallTarget =
+    "__cublas$lt$groupedMatmul";
 
 // A call to cuBLAS for a triangular solve.
 //
 // Like cudnn convolutions, this op returns a tuple (result, scratch_memory).
-extern const absl::string_view kTriangularSolveCallTarget;
+inline constexpr absl::string_view kTriangularSolveCallTarget =
+    "__cublas$triangularSolve";
 
 // A call to cuDNN for convolution (forward, backward filter, or backward input)
 // is represented as a CustomCall HLO with a call target equal to one of these
@@ -142,16 +156,23 @@ extern const absl::string_view kTriangularSolveCallTarget;
 // location in memory that the conv can write into, but which it can't legally
 // read from, at least until it's written something first.  But that's exactly
 // the definition of an output buffer.)
-extern const absl::string_view kCudnnConvForwardCallTarget;
-extern const absl::string_view kCudnnConvBackwardInputCallTarget;
-extern const absl::string_view kCudnnConvBackwardFilterCallTarget;
-extern const absl::string_view kCudnnConvBiasActivationForwardCallTarget;
-extern const absl::string_view kCudnnConvForwardGraphCallTarget;
+inline constexpr absl::string_view kCudnnConvForwardCallTarget =
+    "__cudnn$convForward";
+inline constexpr absl::string_view kCudnnConvBackwardInputCallTarget =
+    "__cudnn$convBackwardInput";
+inline constexpr absl::string_view kCudnnConvBackwardFilterCallTarget =
+    "__cudnn$convBackwardFilter";
+inline constexpr absl::string_view kCudnnConvBiasActivationForwardCallTarget =
+    "__cudnn$convBiasActivationForward";
+inline constexpr absl::string_view kCudnnConvForwardGraphCallTarget =
+    "__cudnn$convForwardGraph";
 
 // cuDNN specific convolution helper (emitted together with a int8x32
 // convolution, if reordering is required).
-extern const absl::string_view kCudnnConvReorderFilterCallTarget;
-extern const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget;
+inline constexpr absl::string_view kCudnnConvReorderFilterCallTarget =
+    "__cudnn$convReorderFilter";
+inline constexpr absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
+    "__cudnn$convReorderFilterAndBias";
 
 // Returns true if `hlo` will be implemented as a call to a cuDNN convolution
 // routine.
@@ -166,7 +187,7 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 
 // A call to cuDNN for a fused norm.
-extern const absl::string_view kCudnnNormCallTarget;
+inline constexpr absl::string_view kCudnnNormCallTarget = "__cudnn$norm";
 
 // Returns true if `hlo` will be implemented as a call to a cuDNN norm kernel.
 bool IsCustomCallToDnnNorm(const HloInstruction& hlo);
@@ -182,18 +203,29 @@ bool IsCustomCallToDnnNorm(const HloInstruction& hlo);
 // 3. BMM1 - scale - Bias - Softmax - BMM2
 // 4. BMM1 - scale - Bias - Softmax - Dropout - BMM2
 // Forward calls
-extern const absl::string_view kCudnnfMHASoftmaxF8CallTarget;
-extern const absl::string_view kCudnnfMHASoftmaxCallTarget;
-extern const absl::string_view kCudnnfMHASoftmaxDropoutCallTarget;
-extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget;
-extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget;
+inline constexpr absl::string_view kCudnnfMHASoftmaxF8CallTarget =
+    "__cudnn$fmhaSoftmaxF8";
+inline constexpr absl::string_view kCudnnfMHASoftmaxCallTarget =
+    "__cudnn$fmhaSoftmax";
+inline constexpr absl::string_view kCudnnfMHASoftmaxDropoutCallTarget =
+    "__cudnn$fmhaSoftmaxDropout";
+inline constexpr absl::string_view kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget =
+    "__cudnn$fmhaScaleBiasSoftmaxDropout";
+inline constexpr absl::string_view kCudnnfMHAScaleBiasSoftmaxCallTarget =
+    "__cudnn$fmhaScaleBiasSoftmax";
 // Backward calls
-extern const absl::string_view kCudnnfMHASoftmaxBackwardF8CallTarget;
-extern const absl::string_view kCudnnfMHASoftmaxBackwardCallTarget;
-extern const absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget;
-extern const absl::string_view
-    kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget;
-extern const absl::string_view kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget;
+inline constexpr absl::string_view kCudnnfMHASoftmaxBackwardF8CallTarget =
+    "__cudnn$fmhaSoftmaxBackwardF8";
+inline constexpr absl::string_view kCudnnfMHASoftmaxBackwardCallTarget =
+    "__cudnn$fmhaSoftmaxBackward";
+inline constexpr absl::string_view kCudnnfMHASoftmaxDropoutBackwardCallTarget =
+    "__cudnn$fmhaSoftmaxDropoutBackward";
+inline constexpr absl::string_view
+    kCudnnfMHAScaleBiasSoftmaxDropoutBackwardCallTarget =
+        "__cudnn$fmhaScaleBiasSoftmaxDropoutBackward";
+inline constexpr absl::string_view
+    kCudnnfMHAScaleBiasSoftmaxBackwardCallTarget =
+        "__cudnn$fmhaScaleBiasSoftmaxBackward";
 
 bool IsFwdCustomCallTofMHAF8(const HloInstruction& hlo);
 bool IsBwdCustomCallTofMHAF8(const HloInstruction& hlo);
@@ -211,20 +243,32 @@ absl::Status SetFMHAInstructionName(HloModule* module, HloInstruction* fmha);
 bool MHACallHasDropout(absl::string_view fmha_call_name);
 
 // A call to cuDNN for a block scaled dot.
-extern const absl::string_view kCudnnBlockScaledDotCallTarget;
+inline constexpr absl::string_view kCudnnBlockScaledDotCallTarget =
+    "__cudnn$blockScaledDot";
 
 bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo);
 
 // CUB library calls.
 // Reference: https://nvlabs.github.io/cub/
-extern const absl::string_view kCubDeviceRadixSortTarget;
+inline constexpr absl::string_view kCubDeviceRadixSortTarget =
+    "__cub$DeviceRadixSort";
 
 // CUB library call that allows to not specify the scratch size.
 // EstimateCubScratchSizePass will assign the correct scratch size.
-extern const absl::string_view kCubDeviceRadixSortUnassignedScratchSizeTarget;
+inline constexpr absl::string_view
+    kCubDeviceRadixSortUnassignedScratchSizeTarget =
+        "__cub$DeviceRadixSortUnassignedScratchSize";
 
 bool IsCubDeviceRadixSort(const HloInstruction& hlo);
 bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo);
+
+inline constexpr absl::string_view kCubDeviceScanTarget = "__cub$DeviceScan";
+
+inline constexpr absl::string_view kCubDeviceScanUnassignedScratchSizeTarget =
+    "__cub$DeviceScanUnassignedScratchSize";
+
+bool IsCubDeviceScan(const HloInstruction& hlo);
+bool IsCubDeviceScanNoScratchSize(const HloInstruction& hlo);
 
 }  // namespace gpu
 }  // namespace xla

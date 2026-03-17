@@ -177,7 +177,10 @@ tf_cuda_library(
             "//tensorflow/core/framework:full_type_proto_cc",
             "//tensorflow/core/lib/core:status",
         ],
-    }),
+    }) + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_cc_test(
@@ -433,6 +436,7 @@ tf_cuda_library(
         ":eager_executor",
         ":kernel_and_device",
         ":tensor_handle_data",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/synchronization",
     ] + select({
         "//tensorflow:android": [

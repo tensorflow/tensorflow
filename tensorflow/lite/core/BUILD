@@ -7,7 +7,7 @@ load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tf
 load("//tensorflow/lite/core:special_rules.bzl", "core_cc_api_stable_visibility_allowlist", "macros_visibility_allowlist")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 
@@ -180,10 +180,9 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
-        # copybara:uncomment "//third_party/odml/litert/litert:__subpackages__",
-        # "//third_party/odml/litert:__subpackages__",  # copybara:uncomment
         "//tensorflow/lite:__subpackages__",
+        "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
+        "//third_party/odml/litert:__subpackages__",
     ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",

@@ -35,8 +35,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/annotation.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -47,10 +48,12 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/logical_buffer.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
@@ -58,6 +61,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -110,7 +114,7 @@ class GpuExecutable : public Executable {
     std::string asm_text;
     std::vector<uint8_t> binary;
     BinaryMap dnn_compiled_graphs;
-    std::unique_ptr<SequentialThunk> executable;
+    std::unique_ptr<ThunkExecutor> executable;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
     std::string module_name;
@@ -123,6 +127,7 @@ class GpuExecutable : public Executable {
     std::unique_ptr<HloModule> debug_module = nullptr;
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
+    stream_executor::ExecutableAbiVersion executable_abi_version;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -197,7 +202,7 @@ class GpuExecutable : public Executable {
 
   const GpuAliasInfo* alias_info() const { return alias_info_.get(); }
 
-  const SequentialThunk& GetThunk() const { return *thunks_; }
+  const ThunkExecutor& thunk_executor() const { return *thunk_executor_; }
 
   absl::Status ExecuteThunks(const BufferAllocations& buffer_allocations,
                              const ServiceExecutableRunOptions* run_options);
@@ -233,13 +238,18 @@ class GpuExecutable : public Executable {
       const ExecutableBuildOptions& options,
       const DebugOptions& debug_options) const final;
 
+  absl::StatusOr<stream_executor::ExecutableAbiVersion>
+  GetExecutableAbiVersion() const override {
+    return executable_abi_version_;
+  }
+
  private:
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(
       std::unique_ptr<HloModule> debug_module, std::string asm_text,
       std::vector<uint8_t> binary, BinaryMap dnn_compiled_graphs,
       se::DeviceDescription device_description,
-      std::unique_ptr<SequentialThunk> executable, std::string module_name,
+      std::unique_ptr<ThunkExecutor> executable, std::string module_name,
       ProgramShape program_shape,
       std::optional<std::vector<BufferAllocation>> mlir_allocations,
       std::unique_ptr<const BufferAssignment> buffer_assignment,
@@ -248,7 +258,8 @@ class GpuExecutable : public Executable {
       std::vector<ConstantInfo> constants,
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
       bool enable_debug_info_manager, ModuleStats module_stats,
-      absl::StatusOr<ThunkProto> thunk_proto);
+      absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
+      stream_executor::ExecutableAbiVersion executable_abi_version);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -256,6 +267,7 @@ class GpuExecutable : public Executable {
       const ServiceExecutableRunOptions* run_options);
 
   absl::StatusOr<BufferAllocations> GenerateBufferAllocations(
+      const ServiceExecutableRunOptions* run_options,
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       se::DeviceAddressAllocator* memory_allocator, int device_ordinal);
@@ -265,7 +277,9 @@ class GpuExecutable : public Executable {
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       const BufferAllocation& allocation,
       se::DeviceAddressAllocator* memory_allocator, int device_ordinal,
-      int64_t arg_idx);
+      int64_t arg_idx,
+      const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
+          allocate_granularity);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because
@@ -290,8 +304,8 @@ class GpuExecutable : public Executable {
   se::GpuComputeCapability gpu_version_;
 
   // The thunks to be invoked by this GpuExecutable. They are generated by the
-  // IrEmitter (null if XLA:GPU runtime is enabled).
-  std::unique_ptr<SequentialThunk> thunks_;
+  // ThunkEmitter.
+  std::unique_ptr<ThunkExecutor> thunk_executor_;
 
   // Additional execution streams requested by `thunks_`.
   absl::flat_hash_set<ExecutionStreamId> execution_stream_ids_;
@@ -363,17 +377,16 @@ class GpuExecutable : public Executable {
 
   std::vector<ConstantInfo> constants_;
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
-  // Retains shared ownership of on-device constants that are managed by XLA and
-  // potentially shared with other executables.
-  std::vector<std::shared_ptr<se::DeviceAddressBase>> shared_constants_;
   bool enable_debug_info_manager_;
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
 
-  // Stores the thunk graph as a proto from before running the thunk pass.
+  // Stores the thunk sequence as a proto from before running the thunk pass.
   // Might contain an error if the given thunk graph is not serializable.
-  absl::StatusOr<ThunkProto> thunk_proto_;
+  absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto_;
+
+  stream_executor::ExecutableAbiVersion executable_abi_version_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

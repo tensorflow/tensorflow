@@ -19,31 +19,25 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class TritonGemmTest : public GpuCodegenTest {
+class TritonGemmTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
-  se::GpuComputeCapability GetGpuComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
-
   void SetUp() override {
-    if (GetGpuComputeCapability().IsRocm()) {
+    if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
       GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
     }
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
@@ -66,23 +60,12 @@ ENTRY e {
   const char* kHloTextTest = R"(
 HloModule t
 
-lhs {
-  ROOT p0 = f16[65536,32800] parameter(0)
-}
-
-rhs {
-  ROOT p1 = f16[32800,32] parameter(0)
-}
-
 triton_dot_computation {
   p0 = f16[65536,32800] parameter(0)
   p1 = f16[32800,32] parameter(1)
-  lhs = f16[65536,32800] fusion(p0), kind=kCustom, calls=lhs,
-    backend_config="{\"fusion_backend_config\":{\"kind\":\"__triton_nested_gemm_fusion\",\"block_level_fusion_config\":{\"output_tiles\":[{\"sizes\":[\"32\",\"32\"]}]}}}"
-  rhs = f16[32800,32] fusion(p1), kind=kCustom, calls=rhs,
-    backend_config="{\"fusion_backend_config\":{\"kind\":\"__triton_nested_gemm_fusion\",\"block_level_fusion_config\":{\"output_tiles\":[{\"sizes\":[\"32\",\"32\"]}]}}}"
-  ROOT dot = f16[65536,32] dot(lhs, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot = f16[65536,32] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -145,7 +128,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
-using TritonNormalizationTest = GpuCodegenTest;
+using TritonNormalizationTest =
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(TritonNormalizationTest,
        CanEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
@@ -171,7 +155,7 @@ ENTRY main {
   ROOT fusion = f16[65538,32768]{1,0} fusion(param_0), kind=kCustom,
     calls=triton_fusion_computation, backend_config={
       "fusion_backend_config":{
-        "kind":"__triton", 
+        "kind":"__triton",
         "block_level_fusion_config":{
           "output_tiles":[{"sizes":["1","32768"]}],
           "num_warps":"1",

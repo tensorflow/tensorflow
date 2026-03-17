@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "xla/service/collective_permute_key.h"
 
+#include <cstdint>
 #include <optional>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -34,7 +38,17 @@ std::optional<CollectivePermuteKey> GetCollectivePermuteKey(
   }
 
   const auto* cp = Cast<HloCollectivePermuteInstruction>(instruction);
-  return CollectivePermuteKey{cp->source_target_pairs()};
+  std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
+      cp->source_target_pairs();
+  if (instruction->parent()
+          ->parent()
+          ->config()
+          .debug_options()
+          .xla_enable_enzyme_comms_opt()) {
+    // Canonicalize the source-target pairs so that the order does not matter.
+    absl::c_sort(source_target_pairs);
+  }
+  return CollectivePermuteKey{source_target_pairs};
 }
 
 }  // namespace xla

@@ -94,11 +94,16 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
   TF_ASSERT_OK(restored_tensor_registry.TryRegister("var_x_wrong",
                                                     restored_tensor_info));
   promise.Set(input_tensor);
-  EXPECT_THAT(AsyncLoadRestoredTensorAsIfrtLoadedVariable(
-                  "var_x", client, thread_pool, restored_tensor_registry,
-                  loaded_variable_registry, restore_work_queue.get(),
-                  sharding_config, /*xla_input_layout=*/nullptr),
-              absl_testing::StatusIs(absl::StatusCode::kNotFound));
+  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device * device,
+                          client->LookupDevice(xla::ifrt::DeviceId(0)));
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list, client->MakeDeviceList({device}));
+  EXPECT_THAT(
+      AsyncLoadRestoredTensorAsIfrtLoadedVariable(
+          "var_x", client, thread_pool, restored_tensor_registry,
+          loaded_variable_registry, restore_work_queue.get(), sharding_config,
+          /*xla_input_layout=*/nullptr, /*shape_on_device=*/nullptr,
+          device_list),
+      absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
 TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
@@ -139,10 +144,13 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
 
   TF_ASSERT_OK(
       restored_tensor_registry.TryRegister("var_x", restored_tensor_info));
+  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device * device,
+                          client->LookupDevice(xla::ifrt::DeviceId(0)));
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list, client->MakeDeviceList({device}));
   TF_ASSERT_OK(AsyncLoadRestoredTensorAsIfrtLoadedVariable(
       "var_x", client, thread_pool, restored_tensor_registry,
       loaded_variable_registry, restore_work_queue.get(), sharding_config,
-      /*xla_input_layout=*/nullptr));
+      /*xla_input_layout=*/nullptr, /*shape_on_device=*/nullptr, device_list));
   promise.Set(input_tensor);
   IfrtLoadedVariableRegistry::Key key{
       .device_ids = {0},

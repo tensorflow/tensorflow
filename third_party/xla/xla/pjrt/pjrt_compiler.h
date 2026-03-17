@@ -24,13 +24,17 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/layout.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -86,19 +90,96 @@ inline PjRtPlatformId TpuId() {
 }
 
 class PjRtCompiler;
-// A compiler variant is a string used to distinguish between different
-// compiler implementations registered for the same platform, such as a remote
-// compiler service vs in-process compilation.
+
+// A factory that creates a PjRtCompiler. Creation is deferred to avoid
+// violations during program initialization (e.g., RPC or file access during
+// global init).
+using PjRtCompilerFactory =
+    std::function<absl::StatusOr<std::unique_ptr<PjRtCompiler>>()>;
+
+// PjRtCompilerRegistry manages the registration and lifecycle of PjRtCompilers.
+// It supports both direct registration of compiler instances and registration
+// of factories for deferred initialization.
+class PjRtCompilerRegistry {
+ public:
+  PjRtCompilerRegistry() = default;
+  ~PjRtCompilerRegistry() = default;
+
+  // Not copyable or movable.
+  PjRtCompilerRegistry(const PjRtCompilerRegistry&) = delete;
+  PjRtCompilerRegistry& operator=(const PjRtCompilerRegistry&) = delete;
+
+  // Returns the global singleton instance.
+  static PjRtCompilerRegistry& Global();
+
+  // Registers a compiler factory for a specific platform and variant.
+  absl::Status RegisterFactory(absl::string_view platform_name,
+                               absl::string_view variant_name,
+                               PjRtCompilerFactory factory);
+
+  // Registers a compiler instance for a specific platform and variant.
+  absl::Status RegisterCompiler(absl::string_view platform_name,
+                                absl::string_view variant_name,
+                                std::unique_ptr<PjRtCompiler> compiler);
+
+  // Returns the registered compiler for the given platform and variant.
+  // Initializes the compiler using the factory if necessary.
+  absl::StatusOr<PjRtCompiler*> GetCompiler(absl::string_view platform_name,
+                                            absl::string_view variant_name);
+
+  // Explicitly initializes a compiler with a given variant.
+  absl::Status InitializeVariant(absl::string_view platform_name,
+                                 absl::string_view variant_name);
+
+  // Initializes all registered compiler variants.
+  absl::Status InitializeAllVariants();
+
+ private:
+  absl::StatusOr<PjRtCompiler*> GetOrCreateCompiler(
+      absl::string_view platform_name, absl::string_view variant_name)
+      ABSL_LOCKS_EXCLUDED(compiler_mutex_, factory_mutex_);
+
+  absl::Mutex compiler_mutex_;
+
+  absl::Mutex factory_mutex_;
+
+  absl::flat_hash_map<std::pair<std::string, std::string>,
+                      std::unique_ptr<PjRtCompiler>>
+      compilers_ ABSL_GUARDED_BY(compiler_mutex_);
+
+  absl::flat_hash_map<std::pair<std::string, std::string>, PjRtCompilerFactory>
+      factories_ ABSL_GUARDED_BY(factory_mutex_);
+};
 
 // Thread-safe. Returns a pointer to the registered compiler for the given
 // platform and a default compiler variant.
+// Initializes the compiler using the factory if necessary.
 absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
     absl::string_view platform_name);
 
 // Thread-safe. Returns a pointer to the registered compiler for the given
 // platform and compiler variant.
+// Initializes the compiler using the factory if necessary.
 absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
     absl::string_view platform_name, absl::string_view compiler_variant);
+
+// Registers a compiler factory for a specific platform and variant.
+void PjRtRegisterCompilerFactory(absl::string_view platform_name,
+                                 absl::string_view variant_name,
+                                 PjRtCompilerFactory factory);
+
+// A compiler variant is a string used to distinguish between different
+// compiler implementations registered for the same platform, such as a remote
+// compiler service vs in-process compilation.
+//
+// Explicitly initializes a compiler with a given variant. The corresponding
+// factory must have been registered.
+// If the compiler is already initialized, this is a no-op.
+absl::Status PjRtInitializeCompilerVariant(absl::string_view platform_name,
+                                           absl::string_view variant_name);
+
+// Initializes all compiler variants.
+absl::Status PjRtInitializeCompilerVariants();
 
 class PjRtClient;
 
@@ -190,29 +271,29 @@ class PjRtTopologyDescription {
   }
 
   // Returns the ids for all processes.
-  virtual absl::StatusOr<PjRtIdContainer<PjRtProcessId>> ProcessIds() const {
+  virtual absl::StatusOr<PjRtIdContainer<ProcessId>> ProcessIds() const {
     return absl::UnimplementedError("ProcessIds is unsupported.");
   }
 
   // Returns the ids for all the logical devices on a specific process.
-  virtual absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
-  LogicalDeviceOfDefaultTypeIdsOnProcess(PjRtProcessId process_id) const {
+  virtual absl::StatusOr<PjRtIdContainer<GlobalDeviceId>>
+  LogicalDeviceOfDefaultTypeIdsOnProcess(ProcessId process_id) const {
     return absl::UnimplementedError(
         "LogicalDeviceOfDefaultTypeIdsOnProcess is unsupported.");
   }
 
   // Returns the process ID and the index of the chip within that process for a
   // given chip.
-  virtual absl::StatusOr<std::pair<PjRtProcessId, int>>
-  ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId chip_id) const {
+  virtual absl::StatusOr<std::pair<ProcessId, int>>
+  ProcessIdAndIndexOnProcessForChip(GlobalChipId chip_id) const {
     return absl::UnimplementedError(
         "ProcessIdAndIndexOnProcessForChip is unsupported.");
   }
 
   // Returns the process ID and the index on process for a logical device.
-  virtual absl::StatusOr<std::pair<PjRtProcessId, int>>
+  virtual absl::StatusOr<std::pair<ProcessId, int>>
   ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const {
+      GlobalDeviceId device_id) const {
     return absl::UnimplementedError(
         "ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType is "
         "unsupported.");
@@ -220,19 +301,19 @@ class PjRtTopologyDescription {
 
   // Returns the coordinates of a process given its ID.
   virtual absl::StatusOr<PjRtDeviceDimensions> ProcessCoordFromId(
-      PjRtProcessId process_id) const {
+      ProcessId process_id) const {
     return absl::UnimplementedError("ProcessCoordForId is unsupported.");
   }
 
   // Returns the chip ID for a given chip coordinate.
-  virtual absl::StatusOr<PjRtGlobalChipId> ChipIdFromCoord(
+  virtual absl::StatusOr<GlobalChipId> ChipIdFromCoord(
       const PjRtDeviceDimensions& chip) const {
     return absl::UnimplementedError("IdForChip is unsupported.");
   }
 
   // Returns a unique integer ID for the logical device of the default type on
   // the chip at the given coordinates and with the given core index.
-  virtual absl::StatusOr<xla::PjRtGlobalDeviceId>
+  virtual absl::StatusOr<GlobalDeviceId>
   LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
       const PjRtDeviceDimensions& chip, int core_index) const {
     return absl::UnimplementedError(
@@ -244,7 +325,7 @@ class PjRtTopologyDescription {
   // default type for the given unique device ID.
   virtual absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const {
+      GlobalDeviceId device_id) const {
     return absl::UnimplementedError(
         "LogicalDeviceCoordsOfDefaultTypeForId is unsupported.");
   }
@@ -271,7 +352,16 @@ class PjRtTopologyDescription {
   // stability).
   virtual absl::StatusOr<std::string> Serialize() const = 0;
 
+  // Returns a fingerprint of the topology for use in cache keys. (No guarantees
+  // on stability).
+  virtual absl::StatusOr<uint64_t> Fingerprint() const {
+    TF_ASSIGN_OR_RETURN(std::string serialized_topology, Serialize());
+    return tsl::Fingerprint64(serialized_topology);
+  }
+
   // Returns vendor specific attributes about the topology.
+  // This map should only include static information available at cross-compile
+  // time.
   virtual const absl::flat_hash_map<std::string, PjRtDeviceAttribute>&
   Attributes() const = 0;
 
@@ -304,7 +394,8 @@ inline bool IsTpuId(PjRtPlatformId platform_id) {
 
 // Returns true if it's GPU id.
 inline bool IsGpuId(PjRtPlatformId platform_id) {
-  return platform_id == xla::CudaId() || platform_id == xla::RocmId();
+  return platform_id == xla::CudaId() || platform_id == xla::RocmId() ||
+         platform_id == xla::SyclId();
 }
 
 // Returns true if it's CPU id.
@@ -325,7 +416,7 @@ class PjRtCompiler {
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
+      CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
@@ -374,7 +465,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 
 // Variant of `PjRtCompile` that accepts an MLIR module.
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
-    CompileOptions options, mlir::ModuleOp module,
+    CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 // Stores a compilation phase's compiler and validator functions.

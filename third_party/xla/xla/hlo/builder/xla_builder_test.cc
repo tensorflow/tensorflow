@@ -2174,9 +2174,9 @@ TEST(XlaBuilderTest, OutfeedTokenSharding) {
   EXPECT_EQ(outfeed->sharding().tuple_elements().size(), 2);
   EXPECT_TRUE(outfeed->operand(1)->has_sharding());
   EXPECT_EQ(outfeed->sharding().tuple_elements().back(),
-            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+            HloSharding::FromProto(sharding_builder::SingleDevice(0)).value());
   EXPECT_EQ(outfeed->operand(1)->sharding(),
-            HloSharding::FromProto(sharding_builder::AssignDevice(0)).value());
+            HloSharding::FromProto(sharding_builder::SingleDevice(0)).value());
 }
 
 TEST(XlaBuilderTest, NormalizeTupleSharding) {
@@ -3996,7 +3996,7 @@ TEST(XlaBuilderTest, InfeedTokenSharding) {
   TF_ASSERT_OK_AND_ASSIGN(const auto module, BuildHloModule(b));
   TF_ASSERT_OK_AND_ASSIGN(
       const auto token_sharding,
-      HloSharding::FromProto(sharding_builder::AssignDevice(0)));
+      HloSharding::FromProto(sharding_builder::SingleDevice(0)));
   for (const HloInstruction* instruction :
        module->entry_computation()->instructions()) {
     if (instruction->shape().IsToken()) {

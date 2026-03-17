@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
 #include "absl/strings/str_cat.h"
+#include "xla/debug_options_flags.h"
 #include "xla/xla.pb.h"
 
 namespace stream_executor::cuda {
@@ -35,7 +36,7 @@ TEST(CompilationProviderOptionsTest, Default) {
 }
 
 TEST(CompilationProviderOptionsTest, FromDebugOptions) {
-  xla::DebugOptions debug_options;
+  xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_libnvjitlink_mode(
       xla::DebugOptions::LIB_NV_JIT_LINK_MODE_ENABLED);
   debug_options.set_xla_gpu_enable_libnvptxcompiler(true);

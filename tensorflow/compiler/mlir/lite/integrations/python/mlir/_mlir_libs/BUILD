@@ -17,7 +17,7 @@ load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow/compiler/mlir/lite:symlink_files.bzl", "symlink_files")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/compiler/mlir/lite:__subpackages__"],
     features = [
         # Cannot use header_modules (parse_headers feature fails).

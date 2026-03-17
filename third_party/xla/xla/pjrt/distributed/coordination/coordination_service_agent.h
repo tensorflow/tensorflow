@@ -35,12 +35,12 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/framework/cancellation.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/random.h"
 
 namespace xla {
@@ -69,9 +69,6 @@ namespace xla {
 class CoordinationServiceAgent {
  public:
   struct Config {
-    // Address where the coordination service instance is hosted.
-    std::string service_leader;
-
     // Maximum wait time for all members in the cluster to be registered.
     absl::Duration cluster_register_timeout = absl::Hours(1);
 
@@ -102,14 +99,14 @@ class CoordinationServiceAgent {
       std::function<void(const absl::StatusOr<std::string>&)>;
   // Collection of key-value pairs in the same directory.
   using StatusOrValueDirCallback = std::function<void(
-      const absl::StatusOr<std::vector<tensorflow::KeyValueEntry>>&)>;
+      const absl::StatusOr<std::vector<xla::coordination::KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
   static absl::StatusOr<std::unique_ptr<CoordinationServiceAgent>> Create(
-      tsl::Env* env, absl::string_view job_name, int task_id,
-      const Config& config, std::unique_ptr<CoordinationClient> leader_client,
-      tsl::StatusCallback error_fn, bool recoverable = false);
+      tsl::Env* env, int task_id, const Config& config,
+      std::unique_ptr<CoordinationClient> leader_client,
+      tsl::StatusCallback error_fn);
 
   virtual ~CoordinationServiceAgent() {
     absl::Status s = Shutdown();
@@ -136,7 +133,7 @@ class CoordinationServiceAgent {
   absl::Status Connect();
 
   // Get the device attributes of tasks from remote tasks in the cluster.
-  const tensorflow::DeviceInfo& GetClusterDeviceInfo();
+  const xla::coordination::DeviceInfo& GetClusterDeviceInfo();
 
   // State transition in coordination service agent:
   //
@@ -146,18 +143,18 @@ class CoordinationServiceAgent {
   //       |__________________________________|
   //                     Reset
 
-  // Get task associated with this agent.
-  absl::StatusOr<tensorflow::CoordinatedTask> GetOwnTask();
+  CoordinationService::TaskId task_id() const { return task_id_; }
 
   // Watches the status of a remote job.
-  absl::StatusOr<tensorflow::WatchJobStateResponse> WatchJobState(
-      absl::string_view job_name, std::optional<int64_t> version_number);
+  absl::StatusOr<xla::coordination::WatchJobStateResponse> WatchJobState(
+      std::optional<int64_t> version_number);
 
   // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
   // `call_opts->ClearCancelCallback()`.
   std::shared_ptr<tsl::CallOptions> WatchJobStateAsync(
-      absl::string_view job_name, std::optional<int64_t> version_number,
-      std::function<void(absl::StatusOr<tensorflow::WatchJobStateResponse>)>
+      std::optional<int64_t> version_number,
+      std::function<
+          void(absl::StatusOr<xla::coordination::WatchJobStateResponse>)>
           callback);
 
   // Report error to coordination service. This will invoke the error callback.
@@ -222,7 +219,7 @@ class CoordinationServiceAgent {
   // the directory.
   // This is not a blocking call. If no keys are found, an empty vector is
   // returned immediately.
-  absl::StatusOr<std::vector<tensorflow::KeyValueEntry>> GetKeyValueDir(
+  absl::StatusOr<std::vector<xla::coordination::KeyValueEntry>> GetKeyValueDir(
       absl::string_view key);
   void GetKeyValueDirAsync(absl::string_view key,
                            StatusOrValueDirCallback done);
@@ -280,10 +277,10 @@ class CoordinationServiceAgent {
   //       still being invoked.
   virtual absl::Status WaitAtBarrier(
       absl::string_view barrier_id, absl::Duration timeout,
-      const std::vector<tensorflow::CoordinatedTask>& tasks);
+      const std::vector<CoordinationService::TaskId>& tasks);
 
   void WaitAtBarrierAsync(absl::string_view barrier_id, absl::Duration timeout,
-                          const std::vector<tensorflow::CoordinatedTask>& tasks,
+                          const std::vector<CoordinationService::TaskId>& tasks,
                           tsl::StatusCallback done);
 
   // Aborts the barrier if it is ongoing.
@@ -329,7 +326,7 @@ class CoordinationServiceAgent {
     IncarnationId incarnation_id;
   };
   absl::StatusOr<std::vector<AliveTask>> GetAliveTasks(
-      const std::vector<tensorflow::CoordinatedTask>& tasks);
+      const std::vector<CoordinationService::TaskId>& tasks);
 
   // Returns the latest known set of incarnation ids for every task. Incarnation
   // ids can be refreshed by calling GetAliveTasks.
@@ -365,11 +362,11 @@ class CoordinationServiceAgent {
   friend class CoordinationServiceRpcHandler;
 
   explicit CoordinationServiceAgent(
-      tsl::Env* env, const tensorflow::CoordinatedTask& task,
-      const Config& config, tsl::StatusCallback error_fn,
+      tsl::Env* env, CoordinationService::TaskId task, const Config& config,
+      tsl::StatusCallback error_fn,
       std::unique_ptr<CoordinationClient> leader_client)
       : env_(env),
-        task_(task),
+        task_id_(task),
         config_(config),
         error_fn_(error_fn),
         leader_client_(std::move(leader_client)) {}
@@ -388,13 +385,13 @@ class CoordinationServiceAgent {
 
   tsl::Env* env_ = nullptr;  // Not owned.
   const IncarnationId incarnation_id_{tsl::random::New64()};
-  tensorflow::CoordinatedTask task_;
+  CoordinationService::TaskId task_id_;
   Config config_;
   tsl::StatusCallback error_fn_;
 
   mutable absl::Mutex state_mu_;
-  tensorflow::CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
-      tensorflow::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+  xla::coordination::CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
+      xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
   // Tracks the number of times a barrier has been used, keyed by id.
   absl::flat_hash_map<std::string, int64_t> barrier_counter_
@@ -402,7 +399,7 @@ class CoordinationServiceAgent {
   absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
   IncarnationId leader_incarnation_{0};
-  tensorflow::DeviceInfo cluster_devices_;
+  xla::coordination::DeviceInfo cluster_devices_;
 
   absl::Mutex shutdown_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutdown_mu_) = false;

@@ -67,15 +67,15 @@ class ProgramInterpreter {
  public:
   using ExecuteFn = absl::AnyInvocable<
       absl::StatusOr<xla::ifrt::LoadedExecutable::ExecuteResult>(
-          absl::Span<xla::ifrt::ArrayRef> arrays,
+          absl::Span<ArrayRef> arrays,
           const xla::ifrt::LoadedExecutable::ExecuteOptions& options,
-          std::optional<xla::ifrt::DeviceListRef> devices)>;
+          std::optional<DeviceListRef> devices)>;
 
   static absl::StatusOr<std::unique_ptr<ProgramInterpreter>> Create(
-      xla::ifrt::Client* client, absl::string_view program_name,
+      Client* client, absl::string_view program_name,
       mlir::ModuleOp mlir_module,
-      std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables,
-      xla::ifrt::DeviceListRef devices);
+      std::shared_ptr<AtomExecutableMap> atom_program_executables,
+      DeviceListRef devices);
 
   absl::StatusOr<ExecuteFn> BuildExecuteFn();
 
@@ -83,10 +83,10 @@ class ProgramInterpreter {
   using OpFn = absl::AnyInvocable<absl::Status(Environment& env) const>;
 
   ProgramInterpreter(
-      xla::ifrt::Client* client, absl::string_view program_name,
+      Client* client, absl::string_view program_name,
       mlir::ModuleOp mlir_module,
-      std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables,
-      xla::ifrt::DeviceListRef devices, mlir::Liveness liveness)
+      std::shared_ptr<AtomExecutableMap> atom_program_executables,
+      DeviceListRef devices, mlir::Liveness liveness)
       : client_(client),
         program_name_(program_name),
         mlir_module_(mlir_module),
@@ -94,23 +94,23 @@ class ProgramInterpreter {
         devices_(std::move(devices)),
         liveness_(std::move(liveness)) {}
 
-  absl::StatusOr<OpFn> HandleOp(
-      xla::ifrt::CallLoadedExecutableOp call_loaded_op);
-  absl::StatusOr<OpFn> HandleOp(xla::ifrt::RemapArraysOp remap_op);
-  absl::StatusOr<OpFn> HandleOp(xla::ifrt::CopyArraysOp copy_arrays_op);
+  absl::StatusOr<OpFn> HandleOp(CallLoadedExecutableOp call_loaded_op);
+  absl::StatusOr<OpFn> HandleOp(RemapArraysOp remap_op);
+  absl::StatusOr<OpFn> HandleOp(BitcastArraysOp bitcast_op);
+  absl::StatusOr<OpFn> HandleOp(CopyArraysOp copy_arrays_op);
   absl::StatusOr<OpFn> HandleOp(mlir::func::ReturnOp return_op);
 
   // Returns a pretty string representation of the op.
   std::string PrettyPrint(mlir::Operation* op);
 
-  xla::ifrt::Client* client_;
+  Client* client_;
   mlir::SymbolTableCollection symbol_table_;
   std::string program_name_;
   mlir::ModuleOp mlir_module_;
-  std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables_;
+  std::shared_ptr<AtomExecutableMap> atom_program_executables_;
 
   // All the devices the program uses.
-  xla::ifrt::DeviceListRef devices_;
+  DeviceListRef devices_;
 
   // Cached liveness analysis of the IFRT IR program.
   mlir::Liveness liveness_;

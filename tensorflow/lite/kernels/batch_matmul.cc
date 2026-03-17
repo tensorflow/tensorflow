@@ -345,9 +345,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                               rhs_data->type == kTfLiteInt16);
   // Either we have a hybrid quantization with a float32 and an int8 input,
   // otherwise both inputs should be of the same type.
-  TF_LITE_ENSURE(context, (lhs_data->type == kTfLiteFloat32 &&
-                           rhs_data->type == kTfLiteInt8) ||
-                              lhs_data->type == rhs_data->type);
+  TF_LITE_ENSURE(
+      context,
+      (lhs_data->type == kTfLiteFloat32 && rhs_data->type == kTfLiteInt8) ||
+          lhs_data->type == rhs_data->type ||
+          (lhs_data->type == kTfLiteInt16 && rhs_data->type == kTfLiteInt8));
   // Support dimensions between 2 and 5, inclusive.
   TF_LITE_ENSURE(context, NumDimensions(lhs_data) >= 2);
   TF_LITE_ENSURE(context, NumDimensions(lhs_data) <= 5);
@@ -592,6 +594,31 @@ TfLiteStatus EvalInt16(TfLiteContext* context, const OpData* data,
   return kTfLiteOk;
 }
 
+TfLiteStatus EvalInt16Int8(TfLiteContext* context, const OpData* data,
+                           const RuntimeShape& lhs_shape,
+                           const TfLiteTensor* lhs,
+                           const RuntimeShape& rhs_shape,
+                           const TfLiteTensor* rhs,
+                           const RuntimeShape& output_shape,
+                           TfLiteTensor* output) {
+  // Reuse params struct from FullyConnected Op.
+  FullyConnectedParams op_params;
+  op_params.input_offset = -lhs->params.zero_point;
+  op_params.weights_offset = -rhs->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  reference_ops::BatchMatMul<int8_t, int64_t, int16_t, int16_t>(
+      op_params, rhs_shape, GetTensorData<int8_t>(rhs), lhs_shape,
+      GetTensorData<int16_t>(lhs), GetTensorShape(output),
+      GetTensorData<int16_t>(output));
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            OpData* data, const RuntimeShape& lhs_shape,
                            const TfLiteTensor* lhs,
@@ -627,6 +654,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   } else if (lhs->type == kTfLiteInt16 && rhs->type == kTfLiteInt16) {
     return EvalInt16(context, data, lhs_shape, lhs, rhs_shape, rhs,
                      GetTensorShape(output), output);
+  } else if (lhs->type == kTfLiteInt16 && rhs->type == kTfLiteInt8) {
+    return EvalInt16Int8(context, data, lhs_shape, lhs, rhs_shape, rhs,
+                         GetTensorShape(output), output);
   } else {
     TF_LITE_KERNEL_LOG(
         context,

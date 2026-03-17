@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -47,6 +49,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -63,6 +66,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -180,9 +184,9 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
   return result;
 }
 
-absl::StatusOr<Type> PrimitiveTypeToMlirType(mlir::ImplicitLocOpBuilder& b,
-
-                                             PrimitiveType t) {
+absl::StatusOr<Type> PrimitiveTypeToMlirType(
+    mlir::ImplicitLocOpBuilder& b, PrimitiveType t,
+    const std::optional<se::GpuComputeCapability>& gpu_cc) {
   switch (t) {
     case F64:
       return b.getF64Type();
@@ -222,6 +226,18 @@ absl::StatusOr<Type> PrimitiveTypeToMlirType(mlir::ImplicitLocOpBuilder& b,
       return b.getType<mlir::Float8E8M0FNUType>();
     case F4E2M1FN:
       return b.getType<mlir::Float4E2M1FNType>();
+    case F8E5M2FNUZ:
+      if (gpu_cc.has_value() && !gpu_cc.value().IsRocm()) {
+        return absl::UnimplementedError(
+            "F8E5M2FNUZ is not supported on this GPU.");
+      }
+      return b.getType<mlir::Float8E5M2FNUZType>();
+    case F8E4M3FNUZ:
+      if (gpu_cc.has_value() && !gpu_cc.value().IsRocm()) {
+        return absl::UnimplementedError(
+            "F8E4M3FNUZ is not supported on this GPU.");
+      }
+      return b.getType<mlir::Float8E4M3FNUZType>();
     default:
       return absl::UnimplementedError(
           absl::StrCat("This type is not supported yet: ",
@@ -244,6 +260,8 @@ absl::StatusOr<PrimitiveType> GetPrimitiveType(Type t) {
   if (mlir::isa<mlir::Float8E5M2Type>(t)) return F8E5M2;
   if (mlir::isa<mlir::Float8E4M3FNType>(t)) return F8E4M3FN;
   if (mlir::isa<mlir::Float8E8M0FNUType>(t)) return F8E8M0FNU;
+  if (mlir::isa<mlir::Float8E5M2FNUZType>(t)) return F8E5M2FNUZ;
+  if (mlir::isa<mlir::Float8E4M3FNUZType>(t)) return F8E4M3FNUZ;
   // NOLINTEND(google-readability-braces-around-statements)
   return absl::UnimplementedError("Unsupported type in getPrimitiveType.\n");
 }
@@ -590,6 +608,68 @@ Value UnsignedIntegerToSignlessInteger(mlir::OpBuilder& builder, Value value) {
   return mlir::UnrealizedConversionCastOp::create(
              builder, value.getLoc(), signless_integer_type_type, value)
       .getResult(0);
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
+    mlir::MemRefType memref) {
+  llvm::SmallVector<int64_t> strides;
+  int64_t offset;
+  if (memref.getStridesAndOffset(strides, offset).failed()) {
+    // This can fail if the layout is not strided (e.g., has dynamic strides).
+    return absl::InvalidArgumentError("Failed to get strides and offset");
+  }
+
+  llvm::SmallVector<int64_t> permutation;
+  permutation.resize(strides.size());
+  absl::c_iota(permutation, 0);
+
+  absl::c_sort(permutation, [&](int64_t lhs_dim, int64_t rhs_dim) {
+    int64_t lhs_stride = strides[lhs_dim];
+    int64_t rhs_stride = strides[rhs_dim];
+    if (lhs_stride != rhs_stride) {
+      return lhs_stride < rhs_stride;
+    }
+
+    // If the strides are the same, we need to ensure that the unit dimension is
+    // the more minor.
+    int64_t lhs_size = memref.getDimSize(lhs_dim);
+    int64_t rhs_size = memref.getDimSize(rhs_dim);
+    if (lhs_size != rhs_size) {
+      return lhs_size < rhs_size;
+    }
+
+    // If all else fails just sort in the canonical order.
+    return lhs_dim > rhs_dim;
+  });
+
+  // Check that the strides actually represent a permutation,
+  // this could happen for example with padded buffers.
+  int64_t size_product = 1;
+  for (int64_t dim : permutation) {
+    if (strides[dim] != size_product) {
+      return absl::InvalidArgumentError("Layout is not a valid permutation");
+    }
+    size_product *= memref.getDimSize(dim);
+  }
+
+  return permutation;
+}
+
+mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
+  mlir::MLIRContext* context = element_type.getContext();
+  mlir::Type storage_type = StorageType(element_type);
+
+  // Don't add any attribute for default layouts as it adds a lot of noise to
+  // the printed IR.
+  if (LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return mlir::MemRefType::get(shape.dimensions(), storage_type);
+  }
+
+  auto minor_to_major_attr =
+      mlir::DenseI64ArrayAttr::get(context, shape.layout().minor_to_major());
+  auto layout = xtile::LayoutAttr::get(context, minor_to_major_attr);
+
+  return mlir::MemRefType::get(shape.dimensions(), storage_type, layout);
 }
 
 }  // namespace xla::xtile

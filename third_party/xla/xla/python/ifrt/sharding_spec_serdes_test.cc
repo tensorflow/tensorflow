@@ -157,6 +157,27 @@ TEST_P(ShardingSpecSerDesTest, ShardingParamShardingSpecRoundTrip) {
               sharding_spec->sharding_param());
 }
 
+TEST_P(ShardingSpecSerDesTest,
+       ShardingParamShardingSpecWithUnreducedDimsRoundTrip) {
+  if (version().version_number() < SerDesVersionNumber(1)) {
+    GTEST_SKIP() << "Unreduced dims not supported before version 1.";
+  }
+  auto sharding_spec = ShardingParamShardingSpec::Create(
+      ShardingParam({1, 1}, {{0}, {num_shards()}},
+                    /*unreduced_axes=*/{0}));
+
+  auto options = std::make_unique<SerializeOptions>(version());
+  TF_ASSERT_OK_AND_ASSIGN(Serialized serialized,
+                          Serialize(*sharding_spec, std::move(options)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto out_sharding_spec,
+      Deserialize<ShardingParamShardingSpec>(serialized, /*options=*/nullptr));
+
+  EXPECT_THAT(out_sharding_spec->num_shards(), sharding_spec->num_shards());
+  EXPECT_THAT(out_sharding_spec->sharding_param(),
+              sharding_spec->sharding_param());
+}
+
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion_NumShards, ShardingSpecSerDesTest,
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),

@@ -21,6 +21,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -111,14 +113,16 @@ TiledHloInstruction::Create(
     llvm::SmallVector<const TiledHloInstruction*> runtime_variables,
     llvm::SmallVector<int64_t> tile_sizes,
     llvm::SmallVector<int64_t> tile_strides,
-    std::optional<IndexingMap> tile_offsets_indexing) {
+    std::optional<IndexingMap> tile_offsets_indexing,
+    llvm::SmallVector<std::vector<std::unique_ptr<TiledHloInstruction>>>
+        regions) {
   TF_RETURN_IF_ERROR(VerifyTiledHloInstructionConstructorPreconditions(
       hlo, tile_sizes, tile_strides, tile_offsets_indexing, runtime_variables));
 
   return absl::WrapUnique(new TiledHloInstruction(
       hlo, std::move(operands), std::move(runtime_variables),
       std::move(tile_sizes), std::move(tile_strides),
-      std::move(tile_offsets_indexing)));
+      std::move(tile_offsets_indexing), std::move(regions)));
 }
 
 std::string TiledHloInstruction::ToString() const {
@@ -140,8 +144,15 @@ std::string TiledHloInstruction::ToString() const {
   if (!runtime_variables_.empty()) {
     ss << "\truntime variables:\n";
     for (const auto* x : runtime_variables_) {
-      ss << x->ToString() << "\n";
+      ss << "\t\t" << x->ToString() << "\n";
     }
+  }
+  if (!regions_.empty()) {
+    ss << "\tregions: (";
+    for (int i = 0; i < regions_.size(); ++i) {
+      ss << "\n\t\t#" << i << " size " << regions_[i].size();
+    }
+    ss << ")\n";
   }
   return ss.str();
 }

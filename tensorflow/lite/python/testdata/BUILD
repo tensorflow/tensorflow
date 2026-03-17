@@ -12,7 +12,7 @@ load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )

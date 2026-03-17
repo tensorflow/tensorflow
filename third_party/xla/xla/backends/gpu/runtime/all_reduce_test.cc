@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -28,7 +29,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/core/collectives/rank_id.h"
@@ -38,7 +41,6 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/hlo_runner.h"
@@ -79,6 +81,12 @@ struct TestParams {
   int64_t num_elements;
 };
 
+struct PtrFormatter {
+  void operator()(std::string* out, const void* ptr) const {
+    absl::StrAppend(out, absl::StrFormat("%p", ptr));
+  }
+};
+
 class AllReduceKernelTest : public ::testing::Test,
                             public ::testing::WithParamInterface<TestParams> {
  public:
@@ -111,8 +119,9 @@ class AllReduceKernelTest : public ::testing::Test,
 
     std::vector<std::unique_ptr<se::Stream>> streams;
     std::vector<se::DeviceAddressBase> allocated_buffers;
-    std::vector<se::DeviceAddressBase> local_input_buffers;
-    std::vector<se::DeviceAddressBase> data_buffers;
+    std::vector<se::DeviceAddressBase> input_buffers;
+    std::vector<se::DeviceAddressBase> output_buffers;
+    std::vector<se::DeviceAddressBase> symmetric_input_buffers;
     std::vector<se::DeviceAddressBase> signal_flags_buffers;
 
     uint64_t input_size = num_elements * sizeof(T);
@@ -127,74 +136,125 @@ class AllReduceKernelTest : public ::testing::Test,
       streams.push_back(executor->CreateStream().value());
 
       uint64_t total_size =
-          /*local_input_buffer_size=*/aligned_input_size +
-          /*data_buffer_size=*/aligned_input_size +
+          /*input_buffer_size=*/aligned_input_size +
+          /*symmetric_input_buffer_size=*/aligned_input_size +
+          /*output_buffer_size=*/aligned_input_size +
           /*signal_buffer_size=*/aligned_signal_size;
       allocated_buffers.emplace_back(executor->AllocateArray<T>(
           total_size,
           static_cast<int64_t>(stream_executor::MemorySpace::kP2P)));
-      local_input_buffers.emplace_back(
+      input_buffers.emplace_back(
           allocated_buffers[i].GetByteSlice(0, aligned_input_size));
-      TF_RET_CHECK(!local_input_buffers[i].is_null());
+      TF_RET_CHECK(!input_buffers[i].is_null());
 
-      data_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
+      symmetric_input_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
           aligned_input_size, aligned_input_size));
-      TF_RET_CHECK(!data_buffers[i].is_null());
+      TF_RET_CHECK(!symmetric_input_buffers[i].is_null());
+
+      output_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
+          2 * aligned_input_size, aligned_input_size));
+      TF_RET_CHECK(!output_buffers[i].is_null());
+      TF_RETURN_IF_ERROR(
+          executor->SynchronousMemZero(&output_buffers[i], aligned_input_size));
 
       signal_flags_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
-          2 * aligned_input_size, aligned_signal_size));
+          3 * aligned_input_size, aligned_signal_size));
       TF_RET_CHECK(!signal_flags_buffers[i].is_null());
       TF_RETURN_IF_ERROR(executor->SynchronousMemZero(&signal_flags_buffers[i],
                                                       aligned_signal_size));
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&local_input_buffers[i],
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&input_buffers[i],
                                             input_data[i].data(), input_size));
+      XLA_VLOG_DEVICE(1, i)
+          << "Allocated buffer: " << allocated_buffers[i].opaque()
+          << ", Input buffer: " << input_buffers[i].opaque()
+          << ", Symmetric input buffer: " << symmetric_input_buffers[i].opaque()
+          << ", Output buffer: " << output_buffers[i].opaque()
+          << ", Signal buffer: " << signal_flags_buffers[i].opaque();
     }
 
     std::vector<se::DeviceAddressBase> metadata_buffers;
-    // One for signal and one for input parameters.
-    constexpr int kNumPeerParameters = 2;
-    size_t param_to_peers_size = sizeof(void*) * kNumPeerParameters * num_ranks;
-    std::vector<void*> param_to_peers_ptrs;
-    for (const se::DeviceAddressBase& local_input_buffer :
-         local_input_buffers) {
-      param_to_peers_ptrs.push_back(local_input_buffer.opaque());
-    }
-    for (const se::DeviceAddressBase& signal_flags_buffer :
-         signal_flags_buffers) {
-      param_to_peers_ptrs.push_back(signal_flags_buffer.opaque());
-    }
-
     for (int i = 0; i < num_ranks; ++i) {
       CollectiveKernelMetadata metadata;
       metadata.rank = i;
+      std::vector<void*> param_to_peers_ptrs;
 
       if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
+        // Multimem also need to have an output buffer.
+        constexpr int kNumPeerParameters = 3;
+        // Multimem needs to address input and output buffers on the peer
+        // devices. Also an offset between the root exchanged pointer and
+        // the multimem address space should be the same.
+        for (int buffer_id = 0; buffer_id < kNumPeerParameters; ++buffer_id) {
+          for (int rank = 0; rank < num_ranks; ++rank) {
+            param_to_peers_ptrs.push_back(allocated_buffers[rank].opaque());
+          }
+        }
+
         se::gpu::GpuExecutor* gpu_executor =
             dynamic_cast<se::gpu::GpuExecutor*>(executors[i]);
         TF_RET_CHECK(gpu_executor != nullptr);
         TF_ASSIGN_OR_RETURN(
             void* mapped_memory,
             multicast_memory->MapMemory(allocated_buffers[i], gpu_executor));
-        metadata.multicast_buffer_ptr = mapped_memory;
+        std::vector<void*> param_to_multimem_addresses =
+            std::vector<void*>(kNumPeerParameters, mapped_memory);
+
+        const size_t param_to_peers_size =
+            sizeof(void*) * param_to_peers_ptrs.size();
+        const size_t param_to_multimem_addresses_byte_size =
+            sizeof(void*) * param_to_multimem_addresses.size();
+        // First map from parameter to peer ptrs and then metadata.
+        metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
+            sizeof(CollectiveKernelMetadata) + param_to_peers_size +
+            param_to_multimem_addresses_byte_size));
+
+        se::DeviceAddressBase param_to_multimem_addresses_buffer =
+            metadata_buffers[i].GetByteSlice(
+                sizeof(CollectiveKernelMetadata) + param_to_peers_size,
+                param_to_multimem_addresses_byte_size);
+        metadata.param_to_multimem_addresses = reinterpret_cast<void**>(
+            param_to_multimem_addresses_buffer.opaque());
+        TF_RETURN_IF_ERROR(
+            streams[i]->Memcpy(&param_to_multimem_addresses_buffer,
+                               param_to_multimem_addresses.data(),
+                               param_to_multimem_addresses_byte_size));
+        XLA_VLOG_DEVICE(1, i)
+            << "Constructed device state {"
+            << " metadata rank: " << metadata.rank << ", param_to_peers: ("
+            << absl::StrJoin(param_to_peers_ptrs, ", ", PtrFormatter{})
+            << "), multimem_addresses: ("
+            << absl::StrJoin(param_to_multimem_addresses, ", ", PtrFormatter{})
+            << ")}";
       } else {
-        metadata.multicast_buffer_ptr = nullptr;
+        for (const se::DeviceAddressBase& input_buffer : input_buffers) {
+          param_to_peers_ptrs.push_back(input_buffer.opaque());
+        }
+        for (const se::DeviceAddressBase& signal_flags_buffer :
+             signal_flags_buffers) {
+          param_to_peers_ptrs.push_back(signal_flags_buffer.opaque());
+        }
+        metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
+            sizeof(CollectiveKernelMetadata) +
+            param_to_peers_ptrs.size() * sizeof(void*)));
+
+        XLA_VLOG_DEVICE(1, executors[i]->device_ordinal())
+            << "Constructed device state {"
+            << " metadata rank: " << metadata.rank << ", param_to_peers: ("
+            << absl::StrJoin(param_to_peers_ptrs, ", ", PtrFormatter{}) << ")}";
       }
 
-      // First map from parameter to peer ptrs and then metadata.
-      metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
-          sizeof(CollectiveKernelMetadata) + param_to_peers_size));
-
+      const size_t param_to_peers_size_bytes =
+          param_to_peers_ptrs.size() * sizeof(void*);
       se::DeviceAddressBase param_to_peers_ptrs_buffer =
           metadata_buffers[i].GetByteSlice(sizeof(CollectiveKernelMetadata),
-                                           param_to_peers_size);
+                                           param_to_peers_size_bytes);
       metadata.param_to_peers =
           reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
-
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
-                                            sizeof(CollectiveKernelMetadata)));
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(&param_to_peers_ptrs_buffer,
                                             param_to_peers_ptrs.data(),
-                                            param_to_peers_size));
+                                            param_to_peers_size_bytes));
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
+                                            sizeof(CollectiveKernelMetadata)));
     }
 
     for (int i = 0; i < num_ranks; ++i) {
@@ -208,11 +268,11 @@ class AllReduceKernelTest : public ::testing::Test,
           primitive_util::NativeToPrimitiveType<T>(),
           /*reduction_kind=*/reduction_kind,
           /*all_reduce_strategy=*/params_.all_reduce_strategy,
-          /*symmetric_input_buffer=*/data_buffers[i],
+          /*symmetric_input_buffer=*/symmetric_input_buffers[i],
           // Memory is aliased for both input and output (similar to what nccl
           // would do).
-          /*local_input_buffer=*/local_input_buffers[i],
-          /*output_buffer=*/local_input_buffers[i],
+          /*local_input_buffer=*/input_buffers[i],
+          /*output_buffer=*/output_buffers[i],
           /*rank=*/RankId(i), /*num_ranks=*/num_ranks,
           /*num_elements=*/num_elements,
           /*symmetric_signal_buffer=*/signal_flags_buffers[i],
@@ -225,12 +285,10 @@ class AllReduceKernelTest : public ::testing::Test,
     }
 
     std::vector<Array<T>> results;
-
     for (int i = 0; i < num_ranks; ++i) {
       Array<T> output_results({num_elements});
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(output_results.data(),
-                                            local_input_buffers[i],
-                                            num_elements * sizeof(T)));
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(
+          output_results.data(), output_buffers[i], num_elements * sizeof(T)));
 
       results.push_back(std::move(output_results));
     }
@@ -426,9 +484,9 @@ TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
   EXPECT_THAT(
       runner.Execute(std::move(module), {std::move(input)}),
       absl_testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          HasSubstr("Device assignment is null, but must be specified when "
-                    "running a collective thunk.")));
+          absl::StatusCode::kInternal,
+          HasSubstr(
+              "Collective parameters and device assignment are required")));
 }
 
 }  // namespace

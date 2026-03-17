@@ -1,0 +1,150 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+name: "XLA HLO Workload Executor"
+description: "Executes HLO benchmarks"
+
+inputs:
+  hlo_path:
+    description: |
+      Path to the HLO artifact. Can be a GCS URI (https://...) or a local path.
+      For local paths, prefix with the appropriate source directory:
+      * Use 'user_repo/...' if calling from within the openxla/xla repository.
+      * Use 'xla_src/...' if calling from an external repository.
+    required: true
+  backend_flags:
+    description: "Space-separated list of flags to pass to the XLA compiler (e.g., '--xla_gpu_enable_cudnn_fusion=false')."
+    required: false
+    default: ""
+  runtime_flags:
+    description: "Space-separated list of flags to pass to the multihost_hlo_runner."
+    required: false
+    default: ""
+  hardware_category:
+    description: "Target hardware for the benchmark execution (e.g., CPU_X86, GPU_L4, GPU_H100)."
+    required: true
+  xla_ref:
+    description: "The openxla/xla repository branch, tag, or commit SHA to build from. This is only used when the action is called from an external repository."
+    required: false
+    default: "main"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve xla source path
+      id: resolve_xla_source_path
+      env:
+        USER_REPO: ${{ github.repository }}
+      shell: bash
+      run: |
+        echo "::group::Resolve xla source path" 
+        if [[ "$USER_REPO" == "openxla/xla" ]]; then
+          # Caller is OpenXLA, so use BAP's existing user_repo.
+          echo "xla_src_path=user_repo" >> "$GITHUB_OUTPUT"
+        else
+          # Caller is external, so check out xla source using supplied ref.
+          echo "xla_src_path=xla_src" >> "$GITHUB_OUTPUT"
+        fi
+        echo "::endgroup::"
+
+    - name: Check out XLA repo
+      if: ${{ github.repository != 'openxla/xla' }}
+      uses: actions/checkout@v4
+      with:
+        repository: openxla/xla
+        ref: ${{ inputs.xla_ref }}
+        path: ${{ steps.resolve_xla_source_path.outputs.xla_src_path }}
+
+    - name: Build binaries
+      id: build_binaries
+      shell: bash
+      working-directory: ${{ steps.resolve_xla_source_path.outputs.xla_src_path }}
+      env:
+        HARDWARE_CATEGORY: ${{ inputs.hardware_category }}
+        OUTPUT_DIR: ${{ runner.temp }}/bin
+      run: |
+        echo "::group::Build binaries"
+        set -euo pipefail 
+        mkdir -p "$OUTPUT_DIR"
+        bash .github/workflows/benchmarks/build_binaries.sh
+        echo "::endgroup::"
+
+    - name: Prepare artifact
+      id: prepare_artifact
+      shell: bash
+      working-directory: ${{ steps.resolve_xla_source_path.outputs.xla_src_path }}
+      env:
+        ARTIFACT_LOCATION: ${{ inputs.hlo_path }}
+        OUTPUT_DIR: ${{ runner.temp }}/artifacts
+        IS_GCS_ARTIFACT: ${{ startsWith(inputs.hlo_path, 'https://') && 'true' || 'false' }}
+      run: |
+        echo "::group::Prepare artifact"
+        set -euo pipefail
+        mkdir -p "$OUTPUT_DIR"
+        bash .github/workflows/benchmarks/prepare_artifact.sh
+        echo "::endgroup::"
+
+    - name: Run benchmark
+      shell: bash
+      working-directory: ${{ steps.resolve_xla_source_path.outputs.xla_src_path }}
+      env:
+        RUNNER_BINARY: ${{ steps.build_binaries.outputs.runner_binary }}
+        STATS_BINARY: ${{ steps.build_binaries.outputs.stats_binary }}
+        DEVICE_TYPE_FLAG: ${{ steps.build_binaries.outputs.device_type_flag }}
+        LOCAL_ARTIFACT_PATH: ${{ steps.prepare_artifact.outputs.artifact_local_path }}
+        HARDWARE_CATEGORY: ${{ inputs.hardware_category }}
+        INPUT_BACKEND_FLAGS: ${{ inputs.backend_flags }}
+        INPUT_RUNTIME_FLAGS: ${{ inputs.runtime_flags }}
+        OUTPUT_DIR: ${{ env.WORKLOAD_ARTIFACTS_DIR }}
+        # Unused metadata variables (required by set -u in run_benchmark.sh).
+        # We need results.json generated, so we leave these as empty strings.
+        COMMIT_SHA: ""
+        WORKFLOW_RUN_ID: ""
+        INPUT_FORMAT: "" 
+        BENCHMARK_NAME: ""
+        CONFIG_ID: ""
+      run: |
+        echo "::group::Run benchmark"
+        set -euo pipefail
+        # 1. Take raw space-separated string from input vars.
+        # 2. Use jq to split by spaces into a list.
+        # 3. Filter out empty strings to avoid [""] for empty inputs.
+        # Result: "--a --b" -> ["--a", "--b"]
+        export XLA_FLAGS_JSON=$(echo "$INPUT_BACKEND_FLAGS" | jq -R 'split(" ") | map(select(length > 0))')
+        export RUNTIME_FLAGS_JSON=$(echo "$INPUT_RUNTIME_FLAGS" | jq -R 'split(" ") | map(select(length > 0))')
+        bash .github/workflows/benchmarks/run_benchmark.sh
+        echo "::endgroup::"
+
+    - name: Convert results to TB event files
+      shell: bash
+      working-directory: ${{ steps.resolve_xla_source_path.outputs.xla_src_path }}
+      env:
+        OUTPUT_DIR: ${{ env.WORKLOAD_ARTIFACTS_DIR }}
+      run: |
+        echo "::group::Convert results to TB event files"
+        set -euo pipefail
+
+        # Install tensorboard pypi package.
+        # Temporary fix until Bazel BUILD is added.
+        python3 -m pip install \
+          -q \
+          --root-user-action=ignore \
+          tensorboard==2.18.0
+
+        python3 xla/tools/benchmarks/json_to_tensorboard.py \
+          --results-json="${OUTPUT_DIR}/results.json" \
+          --step=0
+
+        echo "::endgroup::"

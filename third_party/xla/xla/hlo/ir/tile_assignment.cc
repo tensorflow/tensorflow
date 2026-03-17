@@ -15,17 +15,25 @@ limitations under the License.
 
 #include "xla/hlo/ir/tile_assignment.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
@@ -687,6 +695,137 @@ void TileAssignment::MaybeMaterializeFullArray() const {
     shared_array_ = std::move(full);
     array_ = shared_array_.get();
   }
+}
+
+std::vector<int64_t> ExtractCommonFactorSequence(
+    absl::Span<const int64_t> array1, absl::Span<const int64_t> array2) {
+  std::vector<int64_t> result;
+  int64_t index1 = 0;
+  int64_t index2 = 0;
+  int64_t val1 = 1;
+  int64_t val2 = 1;
+
+  while (index1 < array1.size() || index2 < array2.size() || val1 > 1 ||
+         val2 > 1) {
+    while (val1 == 1 && index1 < array1.size()) {
+      val1 = array1[index1++];
+    }
+    while (val2 == 1 && index2 < array2.size()) {
+      val2 = array2[index2++];
+    }
+
+    if (val1 == 1 && val2 == 1) {
+      break;
+    }
+    if (val1 == 1 || val2 == 1) {
+      return {};
+    }
+
+    const int64_t common = std::min(val1, val2);
+    if (val1 % common != 0 || val2 % common != 0) {
+      return {};
+    }
+    result.push_back(common);
+    val1 /= common;
+    val2 /= common;
+  }
+
+  return result;
+}
+
+std::optional<std::vector<SubDimInfo>> GetOrderedSubDimsFromIotaTileAssignment(
+    const IotaTileAssignment& iota) {
+  auto result = GetOrderedSubDims(iota.dims(), iota.reshape_dims(),
+                                  iota.transpose_perm());
+  if (!result.ok()) {
+    return std::nullopt;
+  }
+  return *std::move(result);
+}
+
+absl::StatusOr<std::vector<SubDimInfo>> GetOrderedSubDims(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm) {
+  std::vector<int64_t> device_shape;
+  device_shape.reserve(transpose_perm.size());
+  for (const int perm_index : transpose_perm) {
+    device_shape.push_back(reshape_dims[perm_index]);
+  }
+
+  const std::vector<int64_t> axis_sizes =
+      ExtractCommonFactorSequence(dims, device_shape);
+  if (axis_sizes.empty()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to extract common factor sequence: dims: [",
+                     absl::StrJoin(dims, ","), "] reshape_dims: [",
+                     absl::StrJoin(reshape_dims, ","), "] transpose_perm: T(",
+                     absl::StrJoin(transpose_perm, ","), ")"));
+  }
+
+  std::vector<SubDimInfo> sub_dims;
+  sub_dims.reserve(axis_sizes.size());
+
+  int64_t tile_dim_index = dims.size() - 1;
+  int64_t trans_perm_index = transpose_perm.size() - 1;
+  int64_t acc_tile_size = 1;
+  int64_t acc_device_size = 1;
+  int64_t sub_dim = 0;
+
+  for (auto it = axis_sizes.rbegin(); it != axis_sizes.rend(); ++it) {
+    int64_t axis_size = *it;
+    while (dims[tile_dim_index] == 1) {
+      tile_dim_index--;
+    }
+    sub_dims.push_back(SubDimInfo{
+        /* .tile_dim_index = */ tile_dim_index,
+        /* .tile_sub_dim_index = */ sub_dim++,
+        /* .reshape_dim_index = */ transpose_perm[trans_perm_index],
+        /* .size = */ axis_size,
+    });
+    acc_tile_size *= axis_size;
+    acc_device_size *= axis_size;
+    if (dims[tile_dim_index] == acc_tile_size) {
+      tile_dim_index--;
+      acc_tile_size = 1;
+      sub_dim = 0;
+    }
+    if (device_shape[trans_perm_index] == acc_device_size) {
+      acc_device_size = 1;
+      trans_perm_index--;
+    }
+  }
+
+  absl::c_sort(sub_dims, [](const SubDimInfo& a, const SubDimInfo& b) {
+    return std::forward_as_tuple(a.reshape_dim_index, a.tile_dim_index) <
+           std::forward_as_tuple(b.reshape_dim_index, b.tile_dim_index);
+  });
+  return sub_dims;
+}
+
+std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
+    const TileAssignment& tile_assignment) {
+  // If the input has iota tile assignment (the corresponding HloSharding is in
+  // V2 format), we use GetOrderedSubDimsFromIotaTileAssignment.
+  if (tile_assignment.iota()) {
+    std::optional<std::vector<SubDimInfo>> sub_dims =
+        GetOrderedSubDimsFromIotaTileAssignment(*tile_assignment.iota());
+    // TODO(b/489003790): Some V2 sharding cannot be converted to V3 with
+    // an iota mesh.
+    CHECK(sub_dims.has_value())
+        << "tile assignment: " << tile_assignment.ToString();
+
+    std::vector<int64_t> mesh;
+    mesh.reserve(sub_dims->size());
+    for (const SubDimInfo& sub_dim_info : *sub_dims) {
+      mesh.push_back(sub_dim_info.size);
+    }
+    return AnalyzeTileAssignmentResult{
+        /* .sub_dims = */ std::move(*sub_dims),
+        /* .local_mesh = */ std::move(mesh),
+    };
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace xla

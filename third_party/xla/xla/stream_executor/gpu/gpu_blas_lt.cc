@@ -343,6 +343,7 @@ absl::StatusOr<GemmConfig> GemmConfig::FromProto(
       proto.has_algorithm() ? std::optional(proto.algorithm()) : std::nullopt,
       proto.grad_x(),
       proto.grad_y(),
+      static_cast<ScaleMode>(proto.scale_mode()),
       compute_type};
 }
 
@@ -362,6 +363,7 @@ xla::GemmConfigProto GemmConfig::ToProto() const {
   }
   proto.set_grad_x(grad_x);
   proto.set_grad_y(grad_y);
+  proto.set_scale_mode(static_cast<int32_t>(scale_mode));
   if (compute_type.has_value()) {
     proto.set_compute_type(blas::ToProto(*compute_type));
   }

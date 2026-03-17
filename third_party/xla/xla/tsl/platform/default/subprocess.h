@@ -17,11 +17,14 @@ limitations under the License.
 #define XLA_TSL_PLATFORM_DEFAULT_SUBPROCESS_H_
 
 #include <errno.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
+#include <functional>
 #include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
@@ -61,6 +64,17 @@ class SubProcess {
   //    argv: The argument list.
   virtual void SetProgram(const string& file, const std::vector<string>& argv);
 
+  // SetDirectory()
+  //    In the child process, chdir() to this directory before
+  //    exec-ing.
+  //    Returns false if this is not supported on the current platform.
+  ABSL_MUST_USE_RESULT virtual bool SetDirectory(const string& dir);
+
+  // SetExitCallback()
+  //    Set a callback to be run when the process exits.
+  //    It is illegal to delete the SubProcess within its exit callback.
+  virtual void SetExitCallback(std::function<void(SubProcess*)> cb);
+
   // Start()
   //    Run the command that was previously set up with SetProgram().
   //    The following are fatal programming errors:
@@ -82,10 +96,54 @@ class SubProcess {
   //    because the process doesn't exist.
   virtual bool Kill(int signal);
 
+  // running()
+  //    Return true if the process is currently running. This just checks the
+  //    most-recently-known status.
+  virtual bool running() const;
+
+  // CheckRunning()
+  //    Check to see if the process is still running.
+  //    @return false, if the process has exited;
+  //            true, if the process is still running.
+  virtual bool CheckRunning();
+
   // Wait()
   //    Block until the process exits.
-  //    Return true normally, or false if the process wasn't running.
+  //    Return true normally, or false if the process wasn't running or the
+  //    process had already exited and this fact had been reported in the return
+  //    value of another call of Wait() or CheckRunning().
   virtual bool Wait();
+
+  // pid()
+  //    Return the process ID of the child process.
+  virtual inline pid_t pid() const {
+    absl::MutexLock lock(&proc_mu_);
+    return pid_;
+  }
+
+  //  Return the raw exit status of the process.
+  virtual inline int exit_status() const {
+    absl::MutexLock lock(wait_mu_);
+    return exit_status_;
+  }
+
+  //  Return a useful string describing why the child failed
+  virtual std::string error_text() const {
+    absl::MutexLock lock(&data_mu_);
+    return error_text_;
+  }
+
+  //  Return true if the process exited successfully
+  //  (zero return code, no signal).
+  virtual inline bool exit_normal() const { return exit_status() == 0; }
+
+  //  Return the exit code, assuming that the process wasn't killed by
+  //  a signal.
+  virtual inline int exit_code() const {
+    int status = exit_status();
+    return WIFEXITED(status) ? WEXITSTATUS(status)
+                             : static_cast<int>(WaitStatus::kWasKilled);
+  }
 
   // Communicate()
   //    Read from stdout and stderr and writes to stdin until all pipes have
@@ -111,15 +169,35 @@ class SubProcess {
   void ClosePipes() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
   bool WaitInternal(int* status);
 
+  // Returns kStillRunning if still running, kExited if exited, kNotRunning if
+  // not running. If returns kExited, *status is filled with the exit status.
+  // Will not block if flags is WNOHANG.
+  enum class WaitStatus {
+    kStillRunning = 0,
+    kExited = 1,
+    kNotRunning = 2,
+    // "exit code" if the process was killed.
+    // This is returned if you ask for exit_code(), and the process was
+    // actually killed (in which case there isn't really an exit code).
+    kWasKilled = -256,
+  };
+  WaitStatus WaitOrCheckRunningInternal(int flags, int* status);
+
   // The separation between proc_mu_ and data_mu_ mutexes allows Kill() to be
   // called by a thread while another thread is inside Wait() or Communicate().
   mutable absl::Mutex proc_mu_;
   bool running_ TF_GUARDED_BY(proc_mu_);
   pid_t pid_ TF_GUARDED_BY(proc_mu_);
+  std::function<void(SubProcess*)> exit_cb_ ABSL_GUARDED_BY(proc_mu_);
+  int64_t exit_cb_tid_ ABSL_GUARDED_BY(proc_mu_);
 
+  mutable absl::Mutex wait_mu_ ABSL_ACQUIRED_AFTER(proc_mu_, data_mu_);
+  int exit_status_ ABSL_GUARDED_BY(wait_mu_);
   mutable absl::Mutex data_mu_ TF_ACQUIRED_AFTER(proc_mu_);
   char* exec_path_ TF_GUARDED_BY(data_mu_);
   char** exec_argv_ TF_GUARDED_BY(data_mu_);
+  std::string chdir_ ABSL_GUARDED_BY(data_mu_);
+  std::string error_text_ ABSL_GUARDED_BY(data_mu_);
   ChannelAction action_[kNFds] TF_GUARDED_BY(data_mu_);
   int parent_pipe_[kNFds] TF_GUARDED_BY(data_mu_);
   int child_pipe_[kNFds] TF_GUARDED_BY(data_mu_);

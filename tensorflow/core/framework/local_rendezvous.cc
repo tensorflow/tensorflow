@@ -163,11 +163,14 @@ absl::Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
         ->IncrementBy(1);
   }
 
-  TF_RETURN_IF_ERROR(status());
-
   int bucket_index = key_hash % num_buckets_;
   auto& bucket = table_buckets_[bucket_index];
   bucket.mu.lock();
+
+  if (auto s = status(); !s.ok()) {
+    bucket.mu.unlock();
+    return s;
+  }
 
   auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
   ItemQueue* queue = &it->second;
@@ -234,16 +237,16 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   DVLOG(2) << "Recv " << this << " " << key_hash << " " << key.FullKey();
   tsl::core::RefCountPtr<Rendezvous> rc_keep_alive;
 
-  auto s = status();
-  if (!s.ok()) {
+  int bucket_index = key_hash % num_buckets_;
+  auto& bucket = table_buckets_[bucket_index];
+  bucket.mu.lock();
+
+  if (auto s = status(); !s.ok()) {
+    bucket.mu.unlock();
     // Rendezvous has been aborted.
     done(s, Rendezvous::Args(), recv_args, Tensor(), false);
     return;
   }
-
-  int bucket_index = key_hash % num_buckets_;
-  auto& bucket = table_buckets_[bucket_index];
-  bucket.mu.lock();
 
   auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
   ItemQueue* queue = &it->second;
@@ -254,39 +257,50 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
     CancellationToken token = CancellationManager::kInvalidToken;
     bool already_cancelled = false;
     if (cm != nullptr) {
+      // Take a reference for the cancellation callback so that it does not
+      // access LocalRendezvous after it is destroyed. It's dropped either
+      // at the end of the callback, or when callback registration fails,
+      // or when the cancellation callback is cancelled.
+      if (rc_owner_) {
+        rc_owner_->Ref();
+      }
       token = cm->get_cancellation_token();
       already_cancelled = !cm->RegisterCallback(token, [this, token, key_hash,
                                                         &bucket] {
+        tsl::core::RefCountPtr<Rendezvous> rc_owner(rc_owner_);
         Item* item = nullptr;
         {
           mutex_lock l(bucket.mu);
-          auto it = bucket.table.insert({key_hash, ItemQueue()}).first;
-          ItemQueue* queue = &it->second;
-          // Find an item in the queue with a cancellation token that matches
-          // `token`, and remove it.
-          if (queue->head != nullptr && queue->head->type == Item::kRecv) {
-            for (Item *prev = nullptr, *curr = queue->head; curr != nullptr;
-                 prev = curr, curr = curr->next) {
-              if (curr->recv_state.cancellation_token == token) {
-                item = curr;
-                if (queue->head->next == nullptr) {
-                  // We have a single-element queue, so we can erase it from
-                  // the table.
-                  bucket.table.erase(it);
-                } else {
-                  // Remove the current item from the queue.
-                  if (curr == queue->head) {
-                    DCHECK_EQ(prev, nullptr);
-                    queue->head = curr->next;
+
+          auto it = bucket.table.find(key_hash);
+          if (it != bucket.table.end()) {
+            ItemQueue* queue = &it->second;
+            // Find an item in the queue with a cancellation token that matches
+            // `token`, and remove it.
+            if (queue->head != nullptr && queue->head->type == Item::kRecv) {
+              for (Item *prev = nullptr, *curr = queue->head; curr != nullptr;
+                   prev = curr, curr = curr->next) {
+                if (curr->recv_state.cancellation_token == token) {
+                  item = curr;
+                  if (queue->head->next == nullptr) {
+                    // We have a single-element queue, so we can erase it from
+                    // the table.
+                    bucket.table.erase(it);
                   } else {
-                    DCHECK_NE(prev, nullptr);
-                    prev->next = curr->next;
+                    // Remove the current item from the queue.
+                    if (curr == queue->head) {
+                      DCHECK_EQ(prev, nullptr);
+                      queue->head = curr->next;
+                    } else {
+                      DCHECK_NE(prev, nullptr);
+                      prev->next = curr->next;
+                    }
+                    if (queue->tail == curr) {
+                      queue->tail = prev;
+                    }
                   }
-                  if (queue->tail == curr) {
-                    queue->tail = prev;
-                  }
+                  break;
                 }
-                break;
               }
             }
           }
@@ -302,10 +316,16 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
       });
     }
     if (already_cancelled) {
+      if (queue->head == nullptr) {
+        bucket.table.erase(it);
+      }
       bucket.mu.unlock();
       done(StatusGroup::MakeDerived(
                errors::Cancelled("RecvAsync is cancelled.")),
            Rendezvous::Args(), recv_args, Tensor(), /*is_dead=*/false);
+      if (rc_owner_) {
+        rc_owner_->Unref();
+      }
       return;
     }
 
@@ -340,7 +360,9 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
             // StartAbort, Unref will happen inside the cancellation callback
             // when called by the CM.
             if (cm->TryDeregisterCallback(token)) {
-              // Ignore the return value.
+              if (rc_owner_) {
+                rc_owner_->Unref();
+              }
             }
             done(s, send_args, recv_args, v, dead);
           },
@@ -424,6 +446,7 @@ void LocalRendezvous::DoAbort(const absl::Status& status) {
     }
     for (auto& p : table) {
       Item* item = p.second.head;
+      DCHECK(item);  // we delete all empty lists from the table
       while (item != nullptr) {
         switch (item->type) {
           case Item::kRecv:

@@ -46,21 +46,23 @@ class CopyThunk : public Thunk {
   class AsyncEvents {
    public:
     // Add a new copy-start completion event.
-    absl::Status Emplace(se::StreamExecutor* executor,
-                         const HloInstruction* instr,
+    absl::Status Emplace(se::StreamExecutor* executor, int64_t instr_id,
                          std::unique_ptr<se::Event> event);
 
     // Retrieve a completion event started by copy-start instruction
     // `instr`, and remove the event from the collection.
     absl::StatusOr<std::unique_ptr<se::Event>> Extract(
-        se::StreamExecutor* executor, const HloInstruction* instr);
+        se::StreamExecutor* executor, int64_t instr_id);
 
    private:
-    using Key = std::pair<se::StreamExecutor*, const HloInstruction*>;
+    using Key = std::pair<se::StreamExecutor*, int64_t>;
     absl::Mutex mutex_;
     absl::flat_hash_map<Key, std::unique_ptr<se::Event>> events_
         ABSL_GUARDED_BY(mutex_);
   };
+
+  using AsyncEventsMap =
+      absl::flat_hash_map<AsyncEventsUniqueId, std::shared_ptr<AsyncEvents>>;
 
   CopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
             const ShapedSlice& destination_buffer, int64_t mem_size);

@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // A thunk that wraps a list of sub-thunks. Executing this thunk executes all
 // the sub-thunks sequentially. This is useful to implement instructions that
@@ -37,22 +37,20 @@ class SequentialThunk : public Thunk {
   SequentialThunk(const SequentialThunk&) = delete;
   SequentialThunk& operator=(const SequentialThunk&) = delete;
 
-  ThunkSequence& thunks() { return thunks_; }
-  const ThunkSequence& thunks() const { return thunks_; }
+  ThunkSequence& thunks() { return executor_.thunks(); }
+  const ThunkSequence& thunks() const { return executor_.thunks(); }
   std::string ToString(int indent) const override;
 
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  void ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const override;
-  void ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) override;
-  absl::Status TransformAllNestedThunks(
-      absl::FunctionRef<
-          absl::StatusOr<std::unique_ptr<Thunk>>(std::unique_ptr<Thunk>)>
-          fn) override;
+  absl::Status WalkNested(Walker callback) override;
+  absl::Status TransformNested(Transformer callback) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  ThunkExecutor& executor() { return executor_; }
 
   static absl::StatusOr<std::unique_ptr<SequentialThunk>> FromProto(
       ThunkInfo thunk_info, const SequentialThunkProto& thunk_proto,
@@ -66,11 +64,9 @@ class SequentialThunk : public Thunk {
       std::unique_ptr<Thunk> thunk);
 
  private:
-  // The list of sub-thunks.
-  ThunkSequence thunks_;
+  ThunkExecutor executor_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_SEQUENTIAL_THUNK_H_

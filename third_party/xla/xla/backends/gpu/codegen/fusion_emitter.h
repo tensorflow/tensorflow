@@ -46,7 +46,7 @@ namespace gpu {
 
 struct FusionEmissionResult {
   std::unique_ptr<llvm::Module> module;
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
 };
 
 class FusionInterface {
@@ -65,6 +65,7 @@ class KernelFusionInterface : public FusionInterface {
 
   // Returns the fusion's launch dimensions.
   virtual LaunchDimensions launch_dimensions() const = 0;
+  virtual int unroll_factor() const { return 0; }
 
   // Computes an indexing map from thread to output element(s) of the **hero**.
   //
@@ -97,7 +98,7 @@ class KernelFusionInterface : public FusionInterface {
   // block sizes in the given launch dimensions.
   static IndexingMap GetDefaultThreadIdIndexingMap(
       const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& shape, mlir::MLIRContext* ctx);
+      const Shape& shape, mlir::MLIRContext* mlir_context);
 };
 
 void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst);
@@ -112,7 +113,7 @@ absl::StatusOr<llvm::Function*> BuildKernelPrototype(
 
 absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
     llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
-    const std::string& sanitized_kernel_name);
+    const std::string& sanitized_kernel_name, bool keep_scratch = false);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

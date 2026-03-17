@@ -84,6 +84,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   virtual std::unique_ptr<HloEvaluator> CreateEmbedded(
       int64_t max_loop_iterations) {
     auto result = std::make_unique<HloEvaluator>(max_loop_iterations);
+    result->set_use_fast_path(use_fast_path_);
     result->set_custom_call_handler(custom_call_handler_);
     return result;
   }

@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -938,7 +939,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
-  EXPECT_TRUE(module->get_stack_frame(1).empty());
+  EXPECT_TRUE(module->get_stack_frame(StackFrameId{1}).empty());
 
   auto module_proto = module->ToProto();
   auto index = module_proto.mutable_stack_frame_index();
@@ -962,10 +963,12 @@ ENTRY main {
       auto module_with_stack_frames,
       HloModule::CreateFromProto(module_proto, module->config()));
 
-  EXPECT_TRUE(module_with_stack_frames->get_stack_frame(0).empty());
-  EXPECT_TRUE(module_with_stack_frames->get_stack_frame(2).empty());
+  EXPECT_TRUE(
+      module_with_stack_frames->get_stack_frame(StackFrameId{0}).empty());
+  EXPECT_TRUE(
+      module_with_stack_frames->get_stack_frame(StackFrameId{2}).empty());
 
-  auto stack_frame = module_with_stack_frames->get_stack_frame(1);
+  auto stack_frame = module_with_stack_frames->get_stack_frame(StackFrameId{1});
   EXPECT_EQ(stack_frame.file_name, index->file_names(0));
   EXPECT_EQ(stack_frame.function_name, index->function_names(0));
   EXPECT_EQ(stack_frame.line, location->line());

@@ -2057,7 +2057,7 @@ absl::Status GcsFileSystem::CreateDir(const std::string& dirname,
   }
   VLOG(3) << "Ignoring directory already exists on object "
           << dirname_with_slash;
-  return errors::AlreadyExists(dirname);
+  return absl::AlreadyExistsError(dirname);
 }
 
 // Checks that the directory is empty (i.e no objects with this prefix exist).
@@ -2074,7 +2074,8 @@ absl::Status GcsFileSystem::DeleteDir(const std::string& dirname,
                          true /* include_self_directory_marker */));
 
   if (children.size() > 1 || (children.size() == 1 && !children[0].empty())) {
-    return errors::FailedPrecondition("Cannot delete a non-empty directory.");
+    return absl::FailedPreconditionError(
+        "Cannot delete a non-empty directory.");
   }
   if (children.size() == 1 && children[0].empty()) {
     // This is the directory marker object. Delete it.
@@ -2208,8 +2209,8 @@ absl::Status GcsFileSystem::IsDirectory(const std::string& fname,
   bool is_object;
   TF_RETURN_IF_ERROR(ObjectExists(fname, bucket, object, &is_object));
   if (is_object) {
-    return errors::FailedPrecondition("The specified path ", fname,
-                                      " is not a directory.");
+    return absl::FailedPreconditionError(
+        absl::StrCat("The specified path ", fname, " is not a directory."));
   }
   return absl::NotFoundError(
       absl::StrCat("The specified path ", fname, " was not found."));
@@ -2418,7 +2419,7 @@ absl::Status GcsFileSystem::CreateHttpRequest(
   }
 
   if (!throttle_.AdmitRequest()) {
-    return errors::Unavailable("Request throttled");
+    return absl::UnavailableError("Request throttled");
   }
 
   *request = std::move(new_request);

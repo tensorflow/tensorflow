@@ -32,10 +32,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
 
 namespace xla {
 namespace sdy {
@@ -146,14 +149,6 @@ std::string duplicateShardingsAtIndices(
     mlir::StringRef shardingsFrontendAttr,
     const llvm::BitVector& indicesToDuplicate);
 
-// Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
-// from `shardingOrAxisList` (including unreduced axes but not replicated)
-// and sorted by their order in the mesh. For example, given mesh <"x"=2,
-// "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we would return ["x",
-// "y":1(2), "y":2(2), "y":4(4), "z"].
-mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
-    mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
-
 // Returns true if the module has at least one GSPMD attribute or op, like an
 // `mhlo.sharding` attribute or `Sharding` custom call.
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
@@ -166,11 +161,53 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
 
-// Returns the func result shardings of `funcOp`, with fully-replicated
-// shardings for empty shardings on `funcOp`, by using the ranks from `callOp`.
+// Returns the shardings for the results of `funcOp`, with fully replicated
+// shardings for empty shardings on `funcOp`.
 mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
-    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
-    const mlir::SymbolTable& symbolTable);
+    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable);
+
+// Returns the shardings for the arguments of `funcOp`, with fully replicated
+// shardings for empty shardings on `funcOp`.
+mlir::sdy::TensorShardingPerValueAttr getFuncArgShardings(
+    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable);
+
+// Converts an XLA Mesh to an SDY MeshAttr.
+mlir::sdy::MeshAttr toSdyMeshAttr(const Mesh& mesh, mlir::MLIRContext* context);
+
+// Converts an XLA AxisRef to an SDY AxisRefAttr.
+mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
+                                        const Mesh& mesh,
+                                        mlir::MLIRContext* context);
+
+// Converts a non-tuple XLA HloSharding to an SDY TensorShardingAttr.
+mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
+    const HloSharding& hloSharding, mlir::MLIRContext* context);
+
+// Converts a tuple XLA HloSharding to an SDY TensorShardingPerValueAttr.
+mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
+    const HloSharding& hloSharding, mlir::MLIRContext* context);
+
+// TODO(enver): Add a parameter on how to handle 'inlineable' manual
+// computations func names, that is, either hard-fail, or accept as a manual
+// computation.
+// Returns whether the call is on a manual computation. Returns false for
+// an 'inlineable' manual computation.
+bool isManualComputation(mlir::func::CallOp callOp);
+// Returns whether the func is a manual computation. Returns false for
+// an 'inlineable' manual computation.
+bool isManualComputation(mlir::func::FuncOp funcOp);
+
+// Gets `kOriginalFuncName` attribute attached to `funcOp`. In
+// case there is no such attribute attached, create one on the name of `funcOp`.
+mlir::StringAttr getOriginalFuncName(mlir::func::FuncOp funcOp);
+
+// Clones given `funcOp` recursively and returns the (top) cloned funcOp.
+// Overrides the func result sharding as `callOpResultShardings` in case
+// `callOpResultShardings` is non-null.
+mlir::func::FuncOp cloneFuncRecursively(
+    mlir::func::FuncOp funcOp,
+    mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
+    mlir::SymbolTable& symbolTable);
 
 }  // namespace sdy
 }  // namespace xla

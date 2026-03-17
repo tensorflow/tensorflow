@@ -86,6 +86,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -394,8 +395,7 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   }
 
   std::string DebugString() const override {
-    return absl::StrCat("NanoArray(", dtype_.DebugString(), ", ",
-                        shape_.DebugString(), ", @",
+    return absl::StrCat("NanoArray(", dtype_, ", ", shape_, ", @",
                         reinterpret_cast<uintptr_t>(data_), ")");
   }
 
@@ -634,9 +634,8 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   bool IsDeleted() const override { return shards_.empty(); }
 
   std::string DebugString() const override {
-    auto result =
-        absl::StrCat("ShardedNanoArray(", dtype_.DebugString(), ", ",
-                     shape_.DebugString(), ", ", sharding_->DebugString());
+    auto result = absl::StrCat("ShardedNanoArray(", dtype_, ", ", shape_, ", ",
+                               sharding_);
     for (const auto& shard : shards_) {
       absl::StrAppend(&result, ", ", shard->DebugString());
     }
@@ -708,9 +707,9 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
     for (int i = 0; i < index_domains.size(); ++i) {
       if (ABSL_PREDICT_FALSE(index_domains[i].shape() != shards_[i]->shape())) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Index domain ", index_domains[i].shape().DebugString(),
-            " not equal to array shape ", shards_[i]->shape().DebugString()));
+        return absl::FailedPreconditionError(
+            absl::StrCat("Index domain ", index_domains[i].shape(),
+                         " not equal to array shape ", shards_[i]->shape()));
       }
     }
 
@@ -1026,6 +1025,8 @@ class NanoExecutable final
   std::optional<ifrt::DeviceListRef> devices() const override {
     return devices_;
   }
+
+  void SetDeleteOptions(const DeleteOptions& options) override {}
 
   static char ID;  // NOLINT
 
@@ -1452,6 +1453,13 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
     const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {
   return absl::UnimplementedError("RemapArrays is not implemented.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::BitcastArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    xla::ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError("BitcastArrays is not implemented.");
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(

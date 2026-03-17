@@ -50,6 +50,8 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
       return get_b200();
     case GpuModel::B300:
       return get_b300();
+    case GpuModel::BMG_G21:
+      return get_bmg_g21();
     case GpuModel::H100_PCIE:
       return get_h100_pcie();
     case GpuModel::H100_SXM:
@@ -60,6 +62,8 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
       return get_p100();
     case GpuModel::V100:
       return get_v100();
+    case GpuModel::GB200:
+      return get_gb200();
     default:
       return absl::NotFoundError(
           absl::StrCat("Embedded file not found: ", gpu_model, ".txtpb"));
@@ -112,6 +116,10 @@ absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
   target_config.dnn_version_info =
       se::dnn::VersionInfo(proto.dnn_version_info());
   target_config.device_description_str = proto.device_description_str();
+  if (!target_config.device_description_str.empty()) {
+    target_config.device_description.set_name(
+        target_config.device_description_str);
+  }
   se::SemanticVersion runtime_version(proto.runtime_version().major(),
                                       proto.runtime_version().minor(),
                                       proto.runtime_version().patch());

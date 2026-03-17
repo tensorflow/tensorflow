@@ -44,11 +44,13 @@ default_visibility = [
     #internal headless cuj tests library,
     #internal nexus library tests,
     "//tensorflow/compiler/jit:__subpackages__",
-    #internal library,
+    #internal library 0,
     # TODO(matthurd): to be removed when summary.proto.h deps moves to TSL
     "@org_xprof//xprof:__subpackages__",
     "//tensorflow/cc/experimental/tfa:__subpackages__",
     "//tensorflow/compiler/mlir/utils:__subpackages__",
+    #internal library 2,
+    #internal library 1,
 ]
 
 package(
@@ -740,6 +742,7 @@ cc_library(
         "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
         "//waymo/ml/data/ops:__pkg__",
         "//waymo/ml/woodshed/ops:__pkg__",
+        "//waymo/sim/simulator/sensor/rendering_engine:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -1132,6 +1135,8 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1702,7 +1707,7 @@ tf_proto_library(
     srcs = ["attr_value.proto"],
     make_default_target_header_only = True,
     visibility = [
-        #internal library,
+        #internal library 0,
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
@@ -1967,5 +1972,26 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "op_kernel_benchmark",
+    srcs = ["op_kernel_benchmark.cc"],
+    tags = ["benchmark"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
+        "@com_google_absl//absl/log:check",
+        "@com_google_benchmark//:benchmark",
+    ],
+)
+
+filegroup(
+    name = "local_rendezvous_test_srcs",
+    srcs = [
+        "local_rendezvous.cc",
     ],
 )

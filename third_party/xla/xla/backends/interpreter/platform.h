@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/interpreter/platform_id.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"

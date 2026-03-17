@@ -2,14 +2,16 @@
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_tools",
     "if_not_windows",
     "if_oss",
     "if_xla_available",
+    "py_test",
     "tf_cc_binary",
     "tf_cc_shared_object",
     "tf_cc_test",
@@ -258,8 +260,9 @@ tf_cc_test(
 )
 
 # Do not depend on this rule! Depend on the fine-grained sub-targets instead.
-py_strict_library(
+py_library(
     name = "for_generated_wrappers",
+    strict_deps = True,
     tags = ["avoid_dep"],
     visibility = ["//visibility:public"],
     deps = [
@@ -282,8 +285,9 @@ py_strict_library(
 # Do not depend on this rule! Depend on the fine-grained sub-targets instead.
 # This is the same as "for_generated_wrappers" minus the "function" dep.
 # This is to avoid circular dependencies, as "function" uses generated op wrappers.
-py_strict_library(
+py_library(
     name = "for_generated_wrappers_v2",
+    strict_deps = True,
     tags = ["avoid_dep"],
     visibility = ["//visibility:public"],
     deps = [
@@ -307,9 +311,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "subscribe",
     srcs = ["subscribe.py"],
+    strict_deps = True,
     deps = [
         ":ops",
         ":tensor",
@@ -319,9 +324,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "byte_swap_tensor",
     srcs = ["byte_swap_tensor.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":dtypes",
@@ -329,9 +335,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "c_api_util",
     srcs = ["c_api_util.py"],
+    strict_deps = True,
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -341,20 +348,22 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "common_shapes",
     srcs = ["common_shapes.py"],
+    strict_deps = True,
     deps = [
         ":tensor_shape",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "constant_op",
     srcs = [
         "constant_op.py",
         "constant_tensor_conversion.py",
     ],
+    strict_deps = True,
     visibility = visibility + [
         "//smartass:__subpackages__",
         "//tensorflow:internal",
@@ -377,9 +386,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "device_spec",
     srcs = ["device_spec.py"],
+    strict_deps = True,
     visibility = visibility + ["//third_party/py/tf_slim:__subpackages__"],
     deps = [
         "//tensorflow/python:pywrap_tfe",
@@ -387,9 +397,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "device",
     srcs = ["device.py"],
+    strict_deps = True,
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":device_spec",
@@ -413,9 +424,10 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "dtypes",
     srcs = ["dtypes.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//ads/adsml/ab:atls_configs",
@@ -448,12 +460,13 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "errors",
     srcs = [
         "errors.py",
         "errors_impl.py",
     ],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//smartass/brain/ops:__subpackages__",
@@ -478,11 +491,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "error_interpolation",
     srcs = [
         "error_interpolation.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -496,10 +510,11 @@ tf_cc_binary(
     deps = ["@pybind11_protobuf//pybind11_protobuf:native_proto_caster"],
 )
 
-py_strict_library(
+py_library(
     name = "function",
     srcs = ["function.py"],
     data = [":_native_proto_caster"],  # copybara:comment
+    strict_deps = True,
     visibility = visibility + [
         "//smartass/brain:__subpackages__",
         "//tensorflow:internal",
@@ -527,18 +542,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "graph_to_function_def",
     srcs = ["graph_to_function_def.py"],
+    strict_deps = True,
     deps = [
         ":op_def_registry",
         "//tensorflow/core:protos_all_py",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "function_def_to_graph",
     srcs = ["function_def_to_graph.py"],
+    strict_deps = True,
     visibility = visibility,
     deps = [
         ":cpp_shape_inference_proto_py",
@@ -584,12 +601,13 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "graph_util",
     srcs = [
         "graph_util.py",
         "graph_util_impl.py",
     ],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + ["//tensorflow:internal"],
     # copybara:uncomment_end_and_comment_begin
@@ -607,11 +625,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "convert_to_constants",
     srcs = [
         "convert_to_constants.py",
     ],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//learning/deepmind/deepfunc:__subpackages__",
@@ -644,11 +663,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "kernels",
     srcs = [
         "kernels.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",
@@ -656,9 +676,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "op_def_library",
     srcs = ["op_def_library.py"],
+    strict_deps = True,
     deps = [
         ":dtypes",
         ":op_callbacks",
@@ -727,9 +748,10 @@ tf_python_pybind_extension(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "op_def_registry",
     srcs = ["op_def_registry.py"],
+    strict_deps = True,
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":_op_def_registry",
@@ -738,9 +760,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "override_binary_operator",
     srcs = ["override_binary_operator.py"],
+    strict_deps = True,
     deps = [
         ":dtypes",
         ":ops",
@@ -1284,9 +1307,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "op_callbacks",
     srcs = ["op_callbacks.py"],
+    strict_deps = True,
     visibility = visibility + ["//third_party/cloud_tpu/convergence_tools:__subpackages__"],
     deps = [
         "//tensorflow/python/eager:context",
@@ -1320,9 +1344,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "indexed_slices",
     srcs = ["indexed_slices.py"],
+    strict_deps = True,
     visibility = visibility + [
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
@@ -1372,9 +1397,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tensor_conversion_registry",
     srcs = ["tensor_conversion_registry.py"],
+    strict_deps = True,
     # TODO(b/266747022): remove extra visibility
     visibility = visibility + ["//learning/brain/experimental:__subpackages__"],
     deps = [
@@ -1385,9 +1411,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "func_graph",
     srcs = ["func_graph.py"],
+    strict_deps = True,
     deps = [
         ":auto_control_deps",
         ":composite_tensor",
@@ -1420,9 +1447,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "auto_control_deps",
     srcs = ["auto_control_deps.py"],
+    strict_deps = True,
     deps = [
         ":auto_control_deps_utils",
         ":dtypes",
@@ -1443,9 +1471,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "auto_control_deps_utils",
     srcs = ["auto_control_deps_utils.py"],
+    strict_deps = True,
     deps = [
         ":dtypes",
         "//tensorflow/python/util:object_identity",
@@ -1482,9 +1511,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "config",
     srcs = ["config.py"],
+    strict_deps = True,
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":errors",
@@ -1575,9 +1605,10 @@ tpu_py_strict_test(
     ] + tf_additional_xla_deps_py(),
 )
 
-py_strict_library(
+py_library(
     name = "random_seed",
     srcs = ["random_seed.py"],
+    strict_deps = True,
     visibility = visibility + [
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
@@ -1591,18 +1622,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "registry",
     srcs = ["registry.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "smart_cond",
     srcs = ["smart_cond.py"],
+    strict_deps = True,
     visibility = visibility + ["//tensorflow_model_optimization:__subpackages__"],
     deps = [
         ":tensor",
@@ -1631,9 +1664,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "sparse_tensor",
     srcs = ["sparse_tensor.py"],
+    strict_deps = True,
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -1707,9 +1741,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "composite_tensor",
     srcs = ["composite_tensor.py"],
+    strict_deps = True,
     visibility = visibility,
     deps = [
         "//tensorflow/python:pywrap_tensorflow",
@@ -1718,9 +1753,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "none_tensor",
     srcs = ["none_tensor.py"],
+    strict_deps = True,
     visibility = visibility + [
         "//learning/deepmind:__subpackages__",
         "//third_party/py/tf_keras:__subpackages__",
@@ -1733,10 +1769,11 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "composite_tensor_test",
     srcs = ["composite_tensor_test.py"],
     main = "composite_tensor_test.py",
+    strict_deps = True,
     deps = [
         ":composite_tensor",
         ":constant_op",
@@ -1753,9 +1790,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "composite_tensor_gradient",
     srcs = ["composite_tensor_gradient.py"],
+    strict_deps = True,
     deps = [
         ":composite_tensor",
         "//tensorflow/python/util:nest",
@@ -1763,9 +1801,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "extension_type",
     srcs = ["extension_type.py"],
+    strict_deps = True,
     visibility = visibility,
     deps = [
         ":composite_tensor",
@@ -1791,9 +1830,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "extension_type_field",
     srcs = ["extension_type_field.py"],
+    strict_deps = True,
     deps = [
         ":composite_tensor",
         ":dtypes",
@@ -1806,15 +1846,17 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "immutable_dict",
     srcs = ["immutable_dict.py"],
+    strict_deps = True,
     deps = [],
 )
 
-py_strict_library(
+py_library(
     name = "tensor_shape",
     srcs = ["tensor_shape.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
     # "//smartass/brain/configure/python:__pkg__",
@@ -2027,9 +2069,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tensor",
     srcs = ["tensor.py"],
+    strict_deps = True,
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -2066,9 +2109,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tensor_spec",
     srcs = ["tensor_spec.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//third_party/py/reverb:__subpackages__",
@@ -2085,9 +2129,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tensor_util",
     srcs = ["tensor_util.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = visibility + [
     # "//third_party/py/tf_slim:__subpackages__",
@@ -2123,9 +2168,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "versions",
     srcs = ["versions.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/client:pywrap_tf_session",
@@ -2133,9 +2179,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gpu_util",
     srcs = ["gpu_util.py"],
+    strict_deps = True,
     deps = [],
 )
 
@@ -2220,9 +2267,10 @@ pytype_strict_library(
 
 # Including this as a dependency will result in tests using
 # :test_lib to use XLA.
-py_strict_library(
+py_library(
     name = "is_xla_test_true",
     srcs = ["is_xla_test_true.py"],
+    strict_deps = True,
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -2233,28 +2281,32 @@ py_strict_library(
 
 # Including this as a dependency will result in tests using
 # :test_lib to use MLIR.
-py_strict_library(
+py_library(
     name = "is_mlir_bridge_test_true",
     srcs = ["is_mlir_bridge_test_true.py"],
+    strict_deps = True,
     visibility = visibility + ["//tensorflow:internal"],
 )
 
 # Including this as a dependency will result in tests using
 # :test_lib to NOT use MLIR.
-py_strict_library(
+py_library(
     name = "is_mlir_bridge_test_false",
     srcs = ["is_mlir_bridge_test_false.py"],
+    strict_deps = True,
     visibility = visibility,
 )
 
-py_strict_library(
+py_library(
     name = "tfrt_utils",
     srcs = ["tfrt_utils.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "combinations",
     srcs = ["combinations.py"],
+    strict_deps = True,
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":ops",
@@ -2265,9 +2317,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_combinations_lib",
     srcs = ["test_combinations.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
@@ -2275,9 +2328,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "test_combinations_test",
     srcs = ["test_combinations_test.py"],
+    strict_deps = True,
     deps = [
         ":test_combinations_lib",
         "//tensorflow/python/eager:test",
@@ -2285,12 +2339,13 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "memory_checker",
     srcs = [
         "memory_checker.py",
         "python_memory_checker.py",
     ],
+    strict_deps = True,
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":_python_memory_checker_helper",
@@ -3252,9 +3307,10 @@ pyx_library(
     py_deps = ["//tensorflow/python/util:compat"],
 )
 
-py_strict_test(
+py_test(
     name = "tf2_test",
     srcs = ["tf2_test.py"],
+    strict_deps = True,
     deps = [
         ":combinations",
         "//tensorflow/python:tf2",
@@ -3266,9 +3322,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "flexible_dtypes_test",
     srcs = ["flexible_dtypes_test.py"],
+    strict_deps = True,
     tags = [
         "no_windows",  # TODO(b/286939592): Enable this test on Windows.
     ],
@@ -3310,10 +3367,11 @@ tf_python_pybind_extension(
 # )
 # copybara:uncomment_end
 
-py_strict_library(
+py_library(
     name = "summary_test_util",
     testonly = True,
     srcs = ["summary_test_util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/lib/io:tf_record",

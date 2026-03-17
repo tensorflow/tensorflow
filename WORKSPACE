@@ -21,10 +21,10 @@ tf_http_archive(
 # Details: https://github.com/google-ml-infra/rules_ml_toolchain
 tf_http_archive(
     name = "rules_ml_toolchain",
-    sha256 = "54c1a357f71f611efdb4891ebd4bcbe4aeb6dfa7e473f14fd7ecad5062096616",
-    strip_prefix = "rules_ml_toolchain-d8cb9c2c168cd64000eaa6eda0781a9615a26ffe",
+    sha256 = "0b96db08ccca76f8232de2418498b9b54addf807b5990dd2c23029c8b9f77a65",
+    strip_prefix = "rules_ml_toolchain-cae0cbffdc37d6570c974f6c53f447eba60af2b3",
     urls = tf_mirror_urls(
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/d8cb9c2c168cd64000eaa6eda0781a9615a26ffe.tar.gz",
+        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/cae0cbffdc37d6570c974f6c53f447eba60af2b3.tar.gz",
     ),
 )
 
@@ -79,6 +79,7 @@ python_init_repositories(
         "3.11": "//:requirements_lock_3_11.txt",
         "3.12": "//:requirements_lock_3_12.txt",
         "3.13": "//:requirements_lock_3_13.txt",
+        "3.14": "//:requirements_lock_3_14.txt",
     },
 )
 
@@ -141,10 +142,10 @@ load(
     "@rules_ml_toolchain//gpu/cuda:cuda_redist_versions.bzl",
     "REDIST_VERSIONS_TO_BUILD_TEMPLATES",
 )
-load("@xla//third_party/cccl:workspace.bzl", "CCCL_DIST_DICT", "CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES")
+load("@xla//third_party/cccl:workspace.bzl", "CCCL_2_8_5_DIST_DICT", "CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES")
 
 cuda_redist_init_repositories(
-    cuda_redistributions = CUDA_REDISTRIBUTIONS | CCCL_DIST_DICT,
+    cuda_redistributions = CUDA_REDISTRIBUTIONS | CCCL_2_8_5_DIST_DICT,
     redist_versions_to_build_templates = REDIST_VERSIONS_TO_BUILD_TEMPLATES | CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES,
 )
 

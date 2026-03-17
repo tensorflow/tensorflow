@@ -21,13 +21,14 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 #include "absl/status/status.h"
-#include "tsl/platform/platform.h"
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
 // clang-format on
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
 
+#include "absl/base/no_destructor.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/types.h"
@@ -60,14 +61,22 @@ class Counter {
     return new Counter<NumLabels>();
   }
 
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<Counter> MakeStatic(
+      MetricDefArgs&&... metric_def_args) {
+    return absl::NoDestructor<Counter<NumLabels>>();
+  }
+
   template <typename... Labels>
   CounterCell* GetCell(const Labels&... labels) {
     return &default_counter_cell_;
   }
 
-  Status GetStatus() { return OkStatus(); }
+  absl::Status GetStatus() { return absl::OkStatus(); }
 
  private:
+  friend class absl::NoDestructor<Counter<NumLabels>>;
+
   Counter() {}
 
   CounterCell default_counter_cell_;
@@ -83,17 +92,18 @@ class Counter {
 
 #include <array>
 #include <atomic>
-#include <map>
 #include <memory>
+#include <string>
 #include <tuple>
 
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/label_array_utils.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace monitoring {
@@ -148,20 +158,35 @@ class Counter {
 
   // Creates the metric based on the metric-definition arguments.
   //
-  // Example;
-  // auto* counter_with_label = Counter<1>::New("/tensorflow/counter",
-  //   "Tensorflow counter", "MyLabelName");
+  // Example:
+  // auto* counter_with_label =
+  //     Counter<1>::New("/tensorflow/counter", "Tensorflow counter",
+  //                     "MyLabelName");
   template <typename... MetricDefArgs>
   static Counter* New(MetricDefArgs&&... metric_def_args);
+
+  // Creates the metric based on the metric-definition arguments. Doesn't use
+  // the heap; instead, allocates a static stack object whose destructor will
+  // never be called. (See `absl::NoDestructor` documentation.)
+  //
+  // Example:
+  // auto counter_with_label =
+  //     Counter<1>::MakeStatic("/tensorflow/counter", "Tensorflow counter",
+  //                            "MyLabelName");
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<Counter> MakeStatic(
+      MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
   template <typename... Labels>
-  CounterCell* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
+  CounterCell* GetCell(const Labels&... labels) ABSL_LOCKS_EXCLUDED(mu_);
 
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<Counter<NumLabels>>;
+
   explicit Counter(
       const MetricDef<MetricKind::kCumulative, int64_t, NumLabels>& metric_def)
       : metric_def_(metric_def),
@@ -171,7 +196,7 @@ class Counter {
 
               absl::MutexLock l(mu_);
               for (const auto& cell : cells_) {
-                metric_collector.CollectValue(cell.first, cell.second.value());
+                metric_collector.CollectValue(cell.first, cell.second->value());
               }
             })) {
     if (registration_handle_) {
@@ -188,7 +213,9 @@ class Counter {
   absl::Status status_;
 
   using LabelArray = std::array<std::string, NumLabels>;
-  std::map<LabelArray, CounterCell> cells_ TF_GUARDED_BY(mu_);
+  using LabelViewArray = std::array<absl::string_view, NumLabels>;
+
+  LabelArrayMap<CounterCell, NumLabels> cells_ ABSL_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
@@ -221,26 +248,35 @@ Counter<NumLabels>* Counter<NumLabels>::New(
 }
 
 template <int NumLabels>
+template <typename... MetricDefArgs>
+absl::NoDestructor<Counter<NumLabels>> Counter<NumLabels>::MakeStatic(
+    MetricDefArgs&&... metric_def_args) {
+  return absl::NoDestructor<Counter<NumLabels>>(
+      MetricDef<MetricKind::kCumulative, int64_t, NumLabels>(
+          std::forward<MetricDefArgs>(metric_def_args)...));
+}
+
+template <int NumLabels>
 template <typename... Labels>
 CounterCell* Counter<NumLabels>::GetCell(const Labels&... labels)
-    TF_LOCKS_EXCLUDED(mu_) {
+    ABSL_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(sizeof...(Labels) == NumLabels,
                 "Mismatch between Counter<NumLabels> and number of labels "
                 "provided in GetCell(...).");
 
-  const LabelArray& label_array = {{labels...}};
+  LabelViewArray label_view_array = {{labels...}};
   absl::MutexLock l(mu_);
-  const auto found_it = cells_.find(label_array);
+  const auto found_it = cells_.find(label_view_array);
   if (found_it != cells_.end()) {
-    return &(found_it->second);
+    return found_it->second.get();
   }
-  return &(cells_
-               .emplace(std::piecewise_construct,
-                        std::forward_as_tuple(label_array),
-                        std::forward_as_tuple(0))
-               .first->second);
+  return cells_
+      .emplace(std::piecewise_construct,
+               std::forward_as_tuple(LabelArray{std::string(labels)...}),
+               std::forward_as_tuple(std::make_unique<CounterCell>(0)))
+      .first->second.get();
 }
 
 }  // namespace monitoring

@@ -5,6 +5,7 @@ This rule is critical for generating LLVM IR bitcode that is embedded into the X
 It uses standard cc_library with clang flags to generate IR, then extracts it.
 """
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -94,6 +95,7 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
 
     # Define intermediate targets
     lib_name = name + "_lib"
+    out_o = name + ".o"
     out_header = name + ".h"
 
     compile_flags = [
@@ -151,13 +153,11 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         **common_attrs
     )
 
-    # Generate the header file from the IR (Bitcode).
-    # TODO(talts): In the next version, I will update this to store the bitcode in a shared object
-    # file so that we aren't using LLVM's text format.
+    # Generate the header and object file storing the embedded bitcode.
     variable_name = "k{}Ir".format(to_camel_case(base_name))
-    ir_to_string_tool = "//xla/codegen/intrinsic/cpp:ir_to_string"
+    embed_bitcode_tool = "//xla/codegen/intrinsic/cpp:embed_bitcode"
 
-    # Generate an empty bitcode file for MacOS.
+    # Generate an empty bitcode file for MacOS and Windows.
     native.genrule(
         name = name + "_empty_bc",
         outs = [name + "_empty.bc"],
@@ -166,15 +166,33 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
         **common_attrs
     )
 
+    if "empty_bitcode" not in native.existing_rules():
+        selects.config_setting_group(
+            name = "empty_bitcode",
+            match_any = [
+                "//xla/tsl:macos",
+                "//xla/tsl:windows",
+            ],
+        )
+
     native.genrule(
-        name = name + "_gen_header",
+        name = name + "_gen_object_and_header",
         srcs = select({
-            "//xla/tsl:macos": [":" + name + "_empty_bc"],
+            "empty_bitcode": [":" + name + "_empty_bc"],
             "//conditions:default": [":" + name + "_extract_bc"],
         }),
-        outs = [out_header],
-        tools = [ir_to_string_tool],
-        cmd = "$(location {}) $< $@ {} {}".format(ir_to_string_tool, variable_name, namespace),
+        outs = [out_o, out_header],
+        tools = [embed_bitcode_tool],
+        cmd = "$(location {}) $< $(location {}) $(location {}) {} {}".format(
+            embed_bitcode_tool,
+            out_o,
+            out_header,
+            variable_name,
+            namespace,
+        ) + select({
+            "empty_bitcode": "",
+            "//conditions:default": " --fail_if_no_bitcode",
+        }),
         tags = ["manual"],
         **common_attrs
     )
@@ -182,7 +200,14 @@ def cc_ir_header(name, src, deps = [], copts = [], **kwargs):
     # Exposed library
     cc_library(
         name = name,
+        srcs = select({
+            "empty_bitcode": [],
+            "//conditions:default": [":" + out_o],
+        }),
         hdrs = [":" + out_header],
-        deps = deps,
+        deps = deps + [
+            "//xla/util:embedded_constant_buffers",
+            "@com_google_absl//absl/strings:string_view",
+        ],
         **kwargs
     )

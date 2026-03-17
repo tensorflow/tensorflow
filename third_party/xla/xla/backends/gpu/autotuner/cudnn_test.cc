@@ -65,6 +65,27 @@ const char kCudnnFusionHlo[] = R"(
       backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
   })";
 
+const char kCudnnConvolutionFusionHlo[] = R"(
+  fusion1 {
+    p0 = f32[16,56,56,16] parameter(0)
+    p1 = f32[16,3,3,16] parameter(1)
+    ROOT c = f32[16,54,54,16] convolution(p0, p1),
+      window={size=3x3},
+      dim_labels=f01b_i01o->f01b
+  }
+
+  ENTRY e {
+    p0 = f32[16,56,56,16] parameter(0)
+    p1 = f32[16,3,3,16] parameter(1)
+    ROOT _ = f32[16,54,54,16] fusion(p0, p1), kind=kCustom, calls=fusion1,
+      backend_config={
+        "fusion_backend_config": {
+          "kind": "__cudnn$fusion",
+          "cudnn_fusion_config": {"kind": "CONV_FPROP"}
+        }
+      }
+  })";
+
 const char kCudnnCustomCallHlo[] = R"(
   HloModule module
 
@@ -108,36 +129,45 @@ const char kUnsupportedHlo[] = R"(
 
 class CudnnBackendTest : public HloHardwareIndependentTestBase {
  protected:
-  DebugOptions debug_options_;
-  NVPTXCompiler compiler_;
-  se::StreamExecutor* stream_executor_;
-  Compiler::GpuTargetConfig target_config_;
-  CudnnBackend backend_;
-
   CudnnBackendTest()
-      : debug_options_([]() {
-          DebugOptions debug_options;
-          debug_options.set_xla_gpu_cudnn_gemm_fusion_level(2);
-          return debug_options;
-        }()),
-        stream_executor_(PlatformUtil::GetDefaultPlatform()
+      : stream_executor_(PlatformUtil::GetDefaultPlatform()
                              .value()
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
-        backend_(stream_executor_, &debug_options_, &compiler_,
-                 &target_config_) {}
+        debug_options_(
+            HloHardwareIndependentTestBase::GetDebugOptionsForTest()) {
+    debug_options_.set_xla_gpu_cudnn_gemm_fusion_level(2);
+    backend_ = std::make_unique<CudnnBackend>(stream_executor_, &debug_options_,
+                                              &compiler_, &target_config_);
+  }
+
+  NVPTXCompiler compiler_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::GpuTargetConfig target_config_;
+  DebugOptions debug_options_;
+  std::unique_ptr<CudnnBackend> backend_;
 };
 
 TEST_F(CudnnBackendTest, CanCreateCublasBackend) {
-  ASSERT_NE(nullptr, &backend_);
+  ASSERT_NE(nullptr, backend_);
 }
 
 TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnFusionHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
-      backend_.GetSupportedConfigs(
+      backend_->GetSupportedConfigs(
+          (*hlo_module->entry_computation()->root_instruction()));
+  EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
+}
+
+TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnConvolutionFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> hlo_module,
+      ParseAndReturnVerifiedModule(kCudnnConvolutionFusionHlo));
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
+      backend_->GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
 }
@@ -146,7 +176,7 @@ TEST_F(CudnnBackendTest, GetSupportedConfigsFromCudnnCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
-      backend_.GetSupportedConfigs(
+      backend_->GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
   EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(Gt(0))));
 }
@@ -156,32 +186,47 @@ TEST_F(CudnnBackendTest,
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kUnsupportedHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
-      backend_.GetSupportedConfigs(
+      backend_->GetSupportedConfigs(
           (*hlo_module->entry_computation()->root_instruction()));
   EXPECT_THAT(configs, absl_testing::IsOkAndHolds(SizeIs(0)));
 }
 
-TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusionFails) {
+TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnFusion) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnFusionHlo));
 
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_.GetDefaultConfig(
+      backend_->GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()));
-  EXPECT_THAT(config,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
+  TF_ASSERT_OK(config);
+  CudnnBackendConfig algorithm_config;
+  ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
+  EXPECT_GE(algorithm_config.algo_id(), 0);
 }
 
 TEST_F(CudnnBackendTest, GetDefaultConfigFromCudnnCustomCall) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kCudnnCustomCallHlo));
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
-      backend_.GetDefaultConfig(
+      backend_->GetDefaultConfig(
           (*hlo_module->entry_computation()->root_instruction()->operand(0)));
   TF_ASSERT_OK(config);
   CudnnBackendConfig algorithm_config;
   ASSERT_TRUE(config->get()->UnpackTo(&algorithm_config));
   EXPECT_EQ(algorithm_config.algo_id(), -1);
+}
+
+TEST_F(CudnnBackendTest, GetDefaultConfigFailsWithNullStreamExecutor) {
+  CudnnBackend backend_without_stream_executor(nullptr, &debug_options_,
+                                               &compiler_, &target_config_);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kCudnnFusionHlo));
+
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      backend_without_stream_executor.GetDefaultConfig(
+          (*hlo_module->entry_computation()->root_instruction()));
+  EXPECT_THAT(config,
+              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
@@ -193,7 +238,7 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnFusion) {
       hlo_module->entry_computation()->root_instruction();
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*fusion_instr, any));
+  TF_ASSERT_OK(backend_->ApplyConfig(*fusion_instr, any));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           fusion_instr->backend_config<GpuBackendConfig>());
   EXPECT_EQ(gpu_config.fusion_backend_config().cudnn_fusion_config().plan_id(),
@@ -209,7 +254,7 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCall) {
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*instr, any));
+  TF_ASSERT_OK(backend_->ApplyConfig(*instr, any));
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_config,
                           instr->backend_config<GpuBackendConfig>());
   EXPECT_THAT(gpu_config.cudnn_conv_backend_config().algorithm(),
@@ -226,7 +271,7 @@ TEST_F(CudnnBackendTest, ApplyConfigToCudnnCustomCallWithWorkspace) {
       hlo_module->entry_computation()->root_instruction()->mutable_operand(0);
   google::protobuf::Any any;
   any.PackFrom(config);
-  TF_ASSERT_OK(backend_.ApplyConfig(*instr, any));
+  TF_ASSERT_OK(backend_->ApplyConfig(*instr, any));
 
   auto* replaced_instr =
       hlo_module->entry_computation()->GetInstructionWithName("cudnn-conv");

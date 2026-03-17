@@ -358,10 +358,10 @@ cc_library(
     ],
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
+        ":hlo_host_device_type_call_wrapper",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
-        "//xla/core/host_offloading:hlo_host_device_type_call_wrapper",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/transforms/simplifiers:hlo_dce",

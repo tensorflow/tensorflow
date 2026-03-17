@@ -37,7 +37,8 @@ xla_cc_test(
         "//xla/service:compiler",
         "//xla/service/cpu:cpu_aot_compilation_result",
         "//xla/service/cpu:test_header_helper",
-        "@com_google_googletest//:gtest_main",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
     ],
 )
 
@@ -96,7 +97,6 @@ xla_cc_test(
         "//xla/tsl/platform:test_benchmark",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:stacktrace_handler",
     ],
 )
@@ -137,11 +137,11 @@ xla_cc_test(
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:stacktrace_handler",
     ],
 )
@@ -309,26 +309,38 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
-    name = "convolution_benchmark_test",
-    srcs = ["convolution_benchmark_test.cc"],
-    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
-    fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
-    deps = [
-        ":hlo_benchmark_runner",
-        ":multi_benchmark_config",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:test_main",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-    ],
-)
+[
+    xla_cc_test(
+        name = "convolution_%s_benchmark_test" % name,
+        srcs = ["convolution_benchmark_test.cc"],
+        fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+        fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+        local_defines = [
+            "XLA_CPU_CONVOLUTION_BENCHMARK_INPUT=%s" % input,
+            "XLA_CPU_CONVOLUTION_BENCHMARK_KERNEL=%s" % kernel,
+            "XLA_CPU_CONVOLUTION_BENCHMARK_OUTPUT=%s" % output,
+        ] + (["XLA_CPU_CONVOLUTION_BENCHMARK_IS_F32"] if name == "f32" else []),
+        deps = [
+            ":hlo_benchmark_runner",
+            ":multi_benchmark_config",
+            "//xla:literal",
+            "//xla:literal_util",
+            "//xla:shape_util",
+            "//xla:xla_data_proto_cc",
+            "//xla/tsl/platform:logging",
+            "//xla/tsl/platform:test_benchmark",
+            "//xla/tsl/platform:test_main",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/strings:str_format",
+        ],
+    )
+    for name, input, kernel, output in [
+        ("f64", "F64", "F64", "F64"),
+        ("f32", "F32", "F32", "F32"),
+        ("bf16", "BF16", "BF16", "F32"),
+        ("s8", "S8", "S8", "S32"),
+    ]
+]
 
 xla_cc_test(
     name = "custom_call_benchmark_test",
@@ -492,12 +504,12 @@ onednn_cc_test(
         "//xla/service/cpu:onednn_util",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:test",
     ],
@@ -626,7 +638,30 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "many_small_ops_benchmark_test",
+    srcs = ["many_small_ops_benchmark_test.cc"],
+    fail_if_no_test_linked = False,  # NOLINT=This contains benchmarks only, no tests.
+    fail_if_no_test_selected = False,  # NOLINT=This contains benchmarks only, no tests.
+    deps = [
+        ":hlo_benchmark_runner",
+        ":multi_benchmark_config",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/ffi",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )

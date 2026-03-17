@@ -35,7 +35,8 @@ namespace sdy {
 //
 // If `keepMeshesInlined` is true, the pipeline will not lift inlined meshes.
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
-                                   bool keepMeshesInlined = false);
+                                   bool keepMeshesInlined = false,
+                                   bool enableHloShardingV3 = false);
 
 // Add the xla-sdy-round-trip-import-pipeline in `pm`. The pipeline,
 // including a sequence of passes, imports an StableHLO module into the
@@ -45,8 +46,9 @@ void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
 // `kMeshesRoundTripAttr`.
 void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool enableConstantImport = true,
-                                   bool importFuncCalls = false,
-                                   bool liftAndDedupMeshes = false);
+                                   bool liftAndDedupMeshes = false,
+                                   bool enableHloShardingV3 = false,
+                                   bool enableNativeNonFlatSupport = false);
 
 // Register the xla-sdy-round-trip-export-pipeline.
 void registerSdyRoundTripExportPipeline();

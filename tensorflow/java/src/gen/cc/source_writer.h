@@ -71,7 +71,8 @@ class SourceWriter {
   // All lines of the file at the provided path will be read and written back
   // to the output of this writer in regard of its current attributes (e.g.
   // the indentation, prefix, etc.)
-  SourceWriter& WriteFromFile(const string& fname, Env* env = Env::Default());
+  SourceWriter& WriteFromFile(const std::string& fname,
+                              Env* env = Env::Default());
 
   // Appends a piece of source code.
   //
@@ -96,7 +97,7 @@ class SourceWriter {
   // This method appends a new opening brace to the current data and indent the
   // next lines according to Google Java Style Guide. The block can optionally
   // be preceded by an expression (e.g. Append("if(true)").BeginBlock();)
-  SourceWriter& BeginBlock(const string& expression = "");
+  SourceWriter& BeginBlock(const std::string& expression = "");
 
   // Ends the current block of source code.
   //
@@ -183,28 +184,27 @@ class SourceWriter {
 
    private:
     std::list<const Type*> declared_types_;
-    std::set<string> generic_names_;
+    std::set<std::string> generic_names_;
   };
 
   // A utility class for collecting a list of import statements to declare.
   class TypeImporter : public TypeVisitor {
    public:
-    explicit TypeImporter(const string& current_package)
-      : current_package_(current_package) {}
+    explicit TypeImporter(const std::string& current_package)
+        : current_package_(current_package) {}
     virtual ~TypeImporter() = default;
-    const std::set<string> imports() {
-      return imports_;
-    }
+    const std::set<std::string> imports() { return imports_; }
+
    protected:
     virtual void DoVisit(const Type& type);
 
    private:
-    string current_package_;
-    std::set<string> imports_;
+    std::string current_package_;
+    std::set<std::string> imports_;
   };
 
-  string left_margin_;
-  string line_prefix_;
+  std::string left_margin_;
+  std::string line_prefix_;
   bool newline_ = true;
   std::stack<GenericNamespace*> generic_namespaces_;
 
@@ -237,13 +237,13 @@ class SourceFileWriter : public SourceWriter {
 // A writer that outputs source code into a string buffer.
 class SourceBufferWriter : public SourceWriter {
  public:
-  SourceBufferWriter() : owns_buffer_(true), buffer_(new string()) {}
-  explicit SourceBufferWriter(string* buffer)
+  SourceBufferWriter() : owns_buffer_(true), buffer_(new std::string()) {}
+  explicit SourceBufferWriter(std::string* buffer)
       : owns_buffer_(false), buffer_(buffer) {}
   virtual ~SourceBufferWriter() {
     if (owns_buffer_) delete buffer_;
   }
-  const string& str() { return *buffer_; }
+  const std::string& str() { return *buffer_; }
 
  protected:
   void DoAppend(const absl::string_view& str) override {
@@ -252,7 +252,7 @@ class SourceBufferWriter : public SourceWriter {
 
  private:
   bool owns_buffer_;
-  string* buffer_;
+  std::string* buffer_;
 };
 
 }  // namespace java

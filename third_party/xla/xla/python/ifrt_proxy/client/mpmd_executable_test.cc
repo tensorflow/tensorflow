@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/protobuf.h"
 
 using ::testing::_;
 using ::testing::ElementsAre;

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
@@ -99,8 +99,6 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   }
   TF_RETURN_IF_ERROR(supported_instr.status());
   return codegen_backend_->GetSupportedConfigs(**supported_instr);
-
-  return std::vector<std::unique_ptr<BackendConfig>>();
 }
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(

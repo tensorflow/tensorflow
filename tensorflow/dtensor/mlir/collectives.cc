@@ -421,14 +421,14 @@ mlir::Operation* EmitTransposeOp(mlir::OpBuilder& builder,
 StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
                                                      mlir::Location loc,
                                                      const Mesh& mesh,
-                                                     int32 value) {
+                                                     int32_t value) {
   absl::flat_hash_set<std::string> reduce_dims;
   for (const MeshDimension& mesh_dim : mesh.dims()) {
     reduce_dims.insert(mesh_dim.name);
   }
   return EmitAllReduce(
       builder, Layout::ReplicatedOnMesh(mesh, /*rank=*/1), reduce_dims,
-      IntConst(builder, loc, std::vector<int32>{value}).getDefiningOp(),
+      IntConst(builder, loc, std::vector<int32_t>{value}).getDefiningOp(),
       kReduceOpAdd);
 }
 
@@ -438,7 +438,7 @@ StatusOr<mlir::Operation*> EmitAllReduce(
     mlir::Operation* input, absl::string_view reduce_op) {
   TF_ASSIGN_OR_RETURN(auto partitions, GetAllReducePartitionsFromReducedDims(
                                            output_layout, reduced_dims));
-  const int32 num_partitions = partitions.size();
+  const int32_t num_partitions = partitions.size();
 
   // If every device lives in its own partition, we don't need to emit a
   // collective.
@@ -448,7 +448,7 @@ StatusOr<mlir::Operation*> EmitAllReduce(
 
   // Construct a flattened list of reduce partitions. This will be converted
   // into a 2-D const tensor for the DTensorAllReduce op.
-  std::vector<int32> partitions_flat;
+  std::vector<int32_t> partitions_flat;
   for (auto& p : partitions) {
     if (p.second.size() != partitions.begin()->second.size()) {
       return errors::InvalidArgument(
@@ -459,7 +459,7 @@ StatusOr<mlir::Operation*> EmitAllReduce(
                            p.second.end());
   }
 
-  int32 partition_size = partitions.begin()->second.size();
+  int32_t partition_size = partitions.begin()->second.size();
   auto shaped_type = mlir::RankedTensorType::get(
       {num_partitions, partition_size},
       mlir::IntegerType::get(builder.getContext(), 32));

@@ -18,14 +18,23 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "google/protobuf/text_format.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/autotuner/triton/dot_search_space.h"
+#include "xla/backends/gpu/autotuner/triton/triton_configs.h"
+#include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
+#include "xla/backends/gpu/transforms/fusion_wrapper.h"
+#include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
+#include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -34,21 +43,15 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/autotuning/dot_search_space.h"
-#include "xla/service/gpu/autotuning/triton_configs.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
-#include "xla/service/gpu/transforms/convert_triton_gemm_config.h"
-#include "xla/service/gpu/transforms/fusion_wrapper.h"
-#include "xla/service/gpu/transforms/hoist_fused_bitcasts.h"
-#include "xla/service/gpu/transforms/nest_gemm_fusion.h"
-#include "xla/service/gpu/transforms/priority_fusion.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -82,6 +85,12 @@ std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
   return configs;
 }
 
+bool IsWarpSpecializationAvailable(
+    se::GpuComputeCapability compute_capability) {
+  return compute_capability.IsCuda() &&
+         compute_capability.cuda_compute_capability()->IsAtLeastBlackwell();
+}
+
 }  // namespace
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -89,6 +98,13 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
   if (!IsSupported(instr)) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<BackendConfig>> overridden_configs,
+      GetOverriddenConfigs(&instr));
+  if (!overridden_configs.empty()) {
+    return overridden_configs;
+  }
+
   const HloInstruction* dot_instr = hlo_query::GetFirstInstructionWithOpcode(
       *instr.fused_instructions_computation(), HloOpcode::kDot);
   if (dot_instr != nullptr) {
@@ -98,6 +114,13 @@ TritonBackend::GetSupportedConfigs(const HloInstruction& instr) {
       hlo_query::GetFirstInstructionWithOpcode(
           *instr.fused_instructions_computation(), HloOpcode::kScaledDot);
   if (scaled_dot_instr != nullptr) {
+    // Triton scaled dot emitter is not supported on ROCm; skip to allow
+    // other backends (e.g. HipblasLtBackend) to handle kScaledDot.
+    const auto& gpu_cc =
+        target_config().device_description.gpu_compute_capability();
+    if (gpu_cc.IsRocm()) {
+      return std::vector<std::unique_ptr<BackendConfig>>();
+    }
     return GetSupportedConfigsForScaledDot(scaled_dot_instr);
   }
   return std::vector<std::unique_ptr<BackendConfig>>();
@@ -115,6 +138,11 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
   bool autotune_contracting_split =
       supports_contracting_split &&
       debug_options().xla_gpu_enable_split_k_autotuning();
+  bool autotune_warp_specialization =
+      debug_options()
+          .xla_gpu_experimental_enable_triton_warp_specialization() &&
+      IsWarpSpecializationAvailable(
+          target_config().device_description.gpu_compute_capability());
 
   std::vector<std::unique_ptr<BackendConfig>> configs;
   VLOG(1) << "Generating configs from search space: "
@@ -124,7 +152,8 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
   std::vector<TritonGemmConfig> gemm_configs = search_space.GenerateConfigs(
       /*force_contracting_split=*/autotune_contracting_split
           ? std::nullopt
-          : std::make_optional(1));
+          : std::make_optional(1),
+      /*autotune_warp_specialization=*/autotune_warp_specialization);
 
   if (!debug_options().xla_gpu_exhaustive_tiling_search()) {
     VLOG(1) << "Restricting configs to the default set.";
@@ -160,6 +189,39 @@ TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
         configs.push_back(std::move(any));
       }
     }
+  }
+  return configs;
+}
+
+absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+TritonBackend::GetOverriddenConfigs(const HloInstruction* instr) {
+  std::vector<std::unique_ptr<BackendConfig>> configs;
+  const std::string& override_file =
+      debug_options().xla_gpu_gemm_autotuner_override_file();
+  if (!override_file.empty()) {
+    std::string file_content;
+    TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), override_file,
+                                             &file_content));
+    TritonGemmConfigsProto gemm_configs;
+    if (!tsl::protobuf::TextFormat::ParseFromString(file_content,
+                                                    &gemm_configs)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not parse override file: ", override_file));
+    }
+    configs.reserve(gemm_configs.config_size());
+    for (const auto& gemm_config : gemm_configs.config()) {
+      auto any = std::make_unique<google::protobuf::Any>();
+      any->PackFrom(gemm_config);
+      configs.push_back(std::move(any));
+    }
+  }
+  if (!debug_options().xla_gpu_override_gemm_autotuner().empty()) {
+    AutotuneResult::TritonGemmKey gemm_config;
+    CHECK(tsl::protobuf::TextFormat::ParseFromString(
+        debug_options().xla_gpu_override_gemm_autotuner(), &gemm_config));
+    auto any = std::make_unique<google::protobuf::Any>();
+    any->PackFrom(gemm_config);
+    configs.push_back(std::move(any));
   }
   return configs;
 }
@@ -219,7 +281,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   auto gpu_device_info = target_config().device_description;
   for (PrimitiveType type :
        {BF16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ, F8E5M2FNUZ, F8E4M3FNUZ}) {
-    GpuFloatSupport float_support(gpu_device_info.cuda_compute_capability(),
+    GpuFloatSupport float_support(gpu_device_info.gpu_compute_capability(),
                                   type);
     FloatNormalization float_normalization(&float_support);
     TF_RETURN_IF_ERROR(float_normalization.Run(hlo_module.get()).status());
@@ -236,15 +298,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   // into fusions.
   FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
+  // TODO: b/487920266 - remove once microbenchmarks have been regenerated to
+  // include this pass (it now runs before the autotuner).
   TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(hlo_module.get()).status());
-  if (debug_options().xla_gpu_unsupported_disable_nested_gemm_fusions()) {
-    ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
-                                                       mlir_context_);
-    RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
-  } else {
-    NestGemmFusion nest_gemm_fusion(gpu_device_info, mlir_context_);
-    RETURN_IF_ERROR(nest_gemm_fusion.Run(hlo_module.get()).status());
-  }
+  ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
+                                                     mlir_context_);
+  RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
   return hlo_module;
 }
 

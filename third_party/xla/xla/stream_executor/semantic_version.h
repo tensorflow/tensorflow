@@ -50,6 +50,7 @@ class SemanticVersion {
   unsigned& patch() { return patch_; }
   unsigned patch() const { return patch_; }
 
+  bool IsValid() const { return major_ != 0 || minor_ != 0 || patch_ != 0; }
   std::string ToString() const;
 
   friend bool operator==(const SemanticVersion& lhs,

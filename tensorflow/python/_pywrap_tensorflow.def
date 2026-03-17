@@ -516,8 +516,8 @@ EXPORTS
   ?MatchSignature@OpKernelContext@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$Span@$$CBW4DataType@tensorflow@@@45@0@Z
   ?Matrix@InferenceContext@shape_inference@tensorflow@@QEAA?AVShapeHandle@23@UDimensionOrConstant@23@0@Z
   ?MaybeRaiseExceptionFromTFStatus@tensorflow@@YAHPEAUTSL_Status@@PEAU_object@@@Z
-  ?MemoryTypesForNode@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEBVOpRegistryInterface@1@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAV?$InlinedVector@W4MemoryType@tensorflow@@$03V?$allocator@W4MemoryType@tensorflow@@@std@@@34@3@Z
   ?MemoryTypeForOutput@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVDeviceType@tsl@@PEBVGraph@1@PEBVNode@1@HPEAW4MemoryType@1@@Z
+  ?MemoryTypesForNode@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEBVOpRegistryInterface@1@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAV?$InlinedVector@W4MemoryType@tensorflow@@$03V?$allocator@W4MemoryType@tensorflow@@@std@@@34@3@Z
   ?Merge@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VDimensionHandle@23@0PEAV723@@Z
   ?Merge@InferenceContext@shape_inference@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@VShapeHandle@23@0PEAV723@@Z
   ?MeshDimNames@Mesh@dtensor@tensorflow@@QEBA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ

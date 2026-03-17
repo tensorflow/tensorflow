@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/primitive_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/numbers.h"
 
 namespace xla {
@@ -236,6 +237,7 @@ TokKind HloLexer::LexToken(uint64_t skip_mask) {
         }
         return TokKind::kError;
       case '"':
+      case '\'':
         return LexString();
     }
   }
@@ -596,8 +598,14 @@ absl::string_view HloLexer::GetLine(LocTy loc) const {
 TokKind HloLexer::LexString() {
   absl::string_view consumable = StringViewFromPointers(
       token_state_.token_start, buf_.data() + buf_.size());
-  static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
-  if (RE2::Consume(&consumable, *escaping_pattern)) {
+  static LazyRE2 double_quote_pattern = {R"("([^"\\]|\\.)*")"};
+  static LazyRE2 single_quote_pattern = {R"('([^'\\]|\\.)*')"};
+
+  const RE2& pattern = (*token_state_.token_start == '"')
+                           ? *double_quote_pattern
+                           : *single_quote_pattern;
+
+  if (RE2::Consume(&consumable, pattern)) {
     current_ptr_ = consumable.data();
     absl::string_view raw =
         StringViewFromPointers(token_state_.token_start + 1, current_ptr_ - 1);

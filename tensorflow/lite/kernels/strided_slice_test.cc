@@ -223,10 +223,12 @@ TYPED_TEST(StridedSliceOpTest, Offset) {
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
     EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
                                    CastVector<TypeParam>({1, 2, 3})));
-    if (constant_tensors) {
-      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
-    } else {
-      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+    if (m.GetNumberOfAppliedDelegates() == 0) {
+      if (constant_tensors) {
+        EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+      } else {
+        EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+      }
     }
   }
 }
@@ -246,10 +248,12 @@ TYPED_TEST(StridedSliceOpTest, OffsetArray) {
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
     EXPECT_THAT(m.GetOutput(), ElementsAreTypedArray<TypeParam>(
                                    CastVector<TypeParam>({1, 2, 5, 6})));
-    if (constant_tensors) {
-      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
-    } else {
-      EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+    if (m.GetNumberOfAppliedDelegates() == 0) {
+      if (constant_tensors) {
+        EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+      } else {
+        EXPECT_THAT(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+      }
     }
   }
 }

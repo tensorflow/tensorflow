@@ -328,7 +328,7 @@ cc_library(
     name = "rocm_platform_id",
     srcs = ["rocm_platform_id.cc"],
     hdrs = ["rocm_platform_id.h"],
-    deps = ["//xla/stream_executor:platform"],
+    deps = ["//xla/stream_executor:platform_id"],
 )
 
 cc_library(
@@ -829,6 +829,7 @@ cc_library(
         ":hipfft_plugin",
         ":make_batch_pointers_kernel_rocm",
         ":miopen_plugin",
+        ":multi_gpu_barrier_kernel_rocm",
         ":ragged_all_to_all_kernel_rocm",
         ":redzone_allocator_kernel_rocm",
         ":repeat_buffer_kernel_rocm",
@@ -1140,9 +1141,24 @@ rocm_library(
     alwayslink = 1,
 )
 
+# CUB sort kernel header
+cc_library(
+    name = "cub_sort_kernel_rocm_header",
+    hdrs = ["cub_sort_kernel_rocm.h"],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        "@com_google_absl//absl/status",
+        "@local_config_rocm//rocm:rocm_headers",
+    ],
+)
+
+# CUB sort kernel implementation (hipCUB/rocPRIM) - compiled with hipcc
 [rocm_library(
-    name = "cub_sort_kernel_rocm_{}".format(typename),
-    srcs = ["cub_sort_kernel_rocm.cu.cc"],
+    name = "cub_sort_kernel_rocm_impl_{}".format(typename),
+    srcs = ["cub_sort_kernel_rocm_impl.cu.cc"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     local_defines = ["CUB_TYPE_" + typename.upper()],
     tags = [
@@ -1150,15 +1166,34 @@ rocm_library(
         "rocm-only",
     ],
     deps = [
+        ":cub_sort_kernel_rocm_header",
+        ":rocm_status",
+        "@com_google_absl//absl/status",
+        "@eigen_archive//:eigen3",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_rocm//rocm:rocprim",
+        "@tsl//tsl/platform:bfloat16",
+    ],
+    alwayslink = 1,
+) for typename in get_cub_sort_kernel_types()]
+
+# CUB sort kernel FFI registration - compiled with regular C++ compiler
+[cc_library(
+    name = "cub_sort_kernel_rocm_{}".format(typename),
+    srcs = ["cub_sort_kernel_rocm.cc"],
+    local_defines = ["CUB_TYPE_" + typename.upper()],
+    tags = [
+        "gpu",
+        "rocm-only",
+    ],
+    deps = [
+        ":cub_sort_kernel_rocm_header",
+        ":cub_sort_kernel_rocm_impl_{}".format(typename),
         "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
-        "//xla/stream_executor/rocm:rocm_status",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
-        "@eigen_archive//:eigen3",
-        "@local_config_rocm//rocm:rocprim",
-        "@tsl//tsl/platform:bfloat16",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = 1,
 ) for typename in get_cub_sort_kernel_types()]

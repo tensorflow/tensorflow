@@ -29,12 +29,15 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tsl/platform/numa.h"
+
 #ifdef __FreeBSD__
 #include <pthread_np.h>
 #endif
 
 #include <map>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -70,7 +73,11 @@ class PThread : public Thread {
       : detached_(detached) {
     ThreadParams* params = new ThreadParams;
     params->name = name;
-    params->fn = std::move(fn);
+    params->fn = [fn = std::move(fn),
+                  numa_node = thread_options.numa_node]() mutable {
+      tsl::port::NUMASetThreadNodeAffinity(numa_node);
+      std::move(fn)();
+    };
     pthread_attr_t attributes;
     pthread_attr_init(&attributes);
     if (thread_options.stack_size != 0) {

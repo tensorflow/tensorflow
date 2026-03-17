@@ -1005,6 +1005,19 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
          ByteSizeOfPrimitiveType(shape.element_type());
 }
 
+/* static */ int64_t ShapeUtil::ByteSizeOfElementsRecursive(
+    const Shape& shape) {
+  CHECK(shape.IsArray() || shape.IsTuple());
+  if (shape.IsArray()) {
+    return ByteSizeOfElements(shape);
+  }
+  int64_t size = 0;
+  for (const Shape& element_shape : shape.tuple_shapes()) {
+    size += ByteSizeOfElementsRecursive(element_shape);
+  }
+  return size;
+}
+
 /* static */ absl::StatusOr<int64_t> ShapeUtil::SerializedSize(
     const Shape& shape) {
   return SerializedSizeWithProto(shape, shape.ToProto());

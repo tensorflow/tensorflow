@@ -364,6 +364,21 @@ static std::vector<std::string> DumpHloModuleImpl(
     file_paths.push_back(DumpToFileInDirImpl(
         StrCat(filename, opts.dump_compress_protos ? ".hlo.pb.gz" : ".hlo.pb"),
         pb, opts, opts.dump_compress_protos));
+
+    if (buffer_assn) {
+      MemoryUsageReportProto memory_report_proto =
+          buffer_assn->GetMemoryUsageReportProto();
+      std::string memory_report_pb;
+      if (!tsl::SerializeToStringDeterministic(memory_report_proto,
+                                               &memory_report_pb)) {
+        memory_report_pb = "Failed to serialize memory usage report proto.";
+      }
+      file_paths.push_back(DumpToFileInDirImpl(
+          StrCat(filename, opts.dump_compress_protos
+                               ? "-memory-usage-report.pb.gz"
+                               : "-memory-usage-report.pb"),
+          memory_report_pb, opts, opts.dump_compress_protos));
+    }
   }
 
   if (opts.dump_as_dot) {
@@ -1070,12 +1085,12 @@ void DumpHloModuleMetadataIfEnabled(HloModule* module) {
 
 absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   const std::string& directory,
-                                  const std::string& file_name,
+                                  absl::string_view file_name,
                                   std::string* full_path) {
   tsl::Env* env = tsl::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
   TF_RETURN_IF_ERROR(CreateDirIfNeeded(directory, env));
-  std::string safe_file_name = SanitizeFileName(file_name) + ".pb";
+  std::string safe_file_name = SanitizeFileName(std::string(file_name)) + ".pb";
   std::string full_path_impl;
   if (!full_path) {
     full_path = &full_path_impl;

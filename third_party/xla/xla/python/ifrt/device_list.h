@@ -107,9 +107,6 @@ class DeviceList : public tsl::ReferenceCounted<DeviceList>,
   // process and across processes.
   virtual uint64_t fingerprint() const;
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  std::string DebugString() const { return ToString(); }
-
   static char ID;  // NOLINT
 
  protected:

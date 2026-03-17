@@ -103,6 +103,7 @@ common --action_env=PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=upb
 # conflict when precompiling. Disable to avoid that problem.
 # See https://github.com/bazel-contrib/rules_python/issues/2445
 common --@rules_python//python/config_settings:precompile=force_disabled
+common --@rules_python//python/config_settings:bootstrap_impl=script --repo_env=RULES_PYTHON_ENABLE_PIPSTAR=0
 
 # Do not do this. If enabled protobuf's core internal target 
 # @com_google_protobuf//python:protobuf_python will start depending on a bunch
@@ -180,6 +181,9 @@ test --test_env="GTEST_INSTALL_FAILURE_SIGNAL_HANDLER=1"
 
 
 # Default options should come above this line.
+
+# Enable bzlmod
+common:bzlmod --enable_bzlmod --noenable_workspace
 
 # Android configs. Bazel needs to have --cpu and --fat_apk_cpu both set to the
 # target CPU to build transient dependencies correctly. See
@@ -664,7 +668,7 @@ common:rbe_linux_cuda --config=rbe_linux_cpu
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 # Update UMD version when RBE CUDA driver is updated.
-common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.1"
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.2"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc

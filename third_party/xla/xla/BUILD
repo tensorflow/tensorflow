@@ -78,6 +78,7 @@ tf_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         ":xla_data_proto",
+        "//xla/backends/autotuner:backends_proto",
         "//xla/service:hlo_proto",
         "@com_google_protobuf//:any_proto",
     ],
@@ -509,6 +510,7 @@ xla_cc_test(
     deps = [
         ":shape_pool",
         ":shape_util",
+        ":xla_data_proto_cc",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
@@ -562,7 +564,6 @@ xla_cc_test(
         ":xla_data_proto_cc",
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/algorithm:container",
@@ -1096,7 +1097,6 @@ cc_library(
         ":shape_util",
         ":util",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
     ],
@@ -1212,6 +1212,7 @@ xla_cc_test(
             "//xla/tsl/platform:subprocess",
             "//xla/tsl/platform:test",
             "//xla/tsl/util:command_line_flags",
+            "//xla/tsl/util:env_var",
             "@com_google_absl//absl/log:check",
             "@com_google_absl//absl/strings:str_format",
             "@com_google_googletest//:gtest",
@@ -1237,6 +1238,7 @@ cc_library(
         [
             ":parse_flags_from_env",
             ":xla_proto_cc",
+            "//xla/backends/autotuner:backends_proto_cc",
             "//xla/service:collective_utils",
             "//xla/stream_executor/cuda:nvjitlink_support",
             "//xla/stream_executor/cuda:ptx_compiler_support",
@@ -1254,6 +1256,7 @@ cc_library(
             "@com_google_absl//absl/status:statusor",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
+            "@com_google_absl//absl/time",
             "@com_google_protobuf//:protobuf",
             "@tsl//tsl/platform:platform_port",
         ],
@@ -1284,6 +1287,7 @@ xla_cc_test(
             ":debug_options_flags",
             ":parse_flags_from_env",
             ":xla_proto_cc",
+            "//xla/backends/autotuner:backends_proto_cc",
             "//xla/service:dump",
             "//xla/tsl/platform:env",
             "//xla/tsl/platform:test",
@@ -1314,6 +1318,18 @@ cc_library(
     name = "lazy",
     hdrs = ["lazy.h"],
     deps = ["@com_google_absl//absl/functional:any_invocable"],
+)
+
+xla_cc_test(
+    name = "lazy_test",
+    srcs = ["lazy_test.cc"],
+    deps = [
+        ":lazy",
+        "//xla/tsl/platform:test_benchmark",
+        "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 tf_proto_library(

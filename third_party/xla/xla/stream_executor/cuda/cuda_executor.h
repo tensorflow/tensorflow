@@ -73,6 +73,7 @@ class CudaExecutor : public GpuExecutor {
   ~CudaExecutor() override;
   std::unique_ptr<ActivateContext> Activate() override;
   absl::Status Init() override;
+  int numa_node() const override { return numa_node_; }
   bool SynchronizeAllActivity() override;
   absl::StatusOr<DeviceAddressBase> GetMemoryRange(
       const DeviceAddressBase& location) const override;

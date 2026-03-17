@@ -2,8 +2,13 @@
 #   Tools for manipulating TensorFlow graphs.
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "tf_cc_test", "tf_py_test")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load(
+    "//tensorflow:strict.default.bzl",
+    "py_strict_binary",  # @unused
+)
+load("//tensorflow:tensorflow.bzl", "if_google", "if_xla_available", "py_test", "tf_cc_test", "tf_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
@@ -14,12 +19,13 @@ package(
 )
 
 # Transitive dependencies of this target will be included in the pip package.
-py_strict_library(
+py_library(
     name = "tools_pip",
     data = [
         # Include the TF upgrade script to users can run it directly after install TF
         "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
+    strict_deps = True,
     deps = [
         ":saved_model_aot_compile",
         ":saved_model_utils",
@@ -40,9 +46,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/lib/io:file_io",
@@ -51,10 +58,11 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "saved_model_utils_test",
     size = "small",
     srcs = ["saved_model_utils_test.py"],
+    strict_deps = True,
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
     deps = [
@@ -70,9 +78,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "freeze_graph_lib",
     srcs = ["freeze_graph.py"],
+    strict_deps = True,
     deps = [
         ":saved_model_utils",
         "//tensorflow/core:protos_all_py",
@@ -89,23 +98,26 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "freeze_graph",
     srcs = ["freeze_graph.py"],
+    strict_deps = True,
     deps = [":freeze_graph_lib"] + if_pywrap(
         if_true = ["//tensorflow/python:_pywrap_tensorflow"],
     ),
 )
 
-py_strict_binary(
+py_binary(
     name = "import_pb_to_tensorboard",
     srcs = ["import_pb_to_tensorboard.py"],
+    strict_deps = True,
     deps = [":import_pb_to_tensorboard_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "import_pb_to_tensorboard_lib",
     srcs = ["import_pb_to_tensorboard.py"],
+    strict_deps = True,
     deps = [
         ":saved_model_utils",
         "//tensorflow/python/client:session",
@@ -116,16 +128,18 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "tf_import_time",
     srcs = ["tf_import_time.py"],
+    strict_deps = True,
     deps = ["//tensorflow:tensorflow_py"],
 )
 
-py_strict_test(
+py_test(
     name = "freeze_graph_test",
     size = "small",
     srcs = ["freeze_graph_test.py"],
+    strict_deps = True,
     deps = [
         ":freeze_graph_lib",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -154,15 +168,17 @@ py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.py"],
+    strict_deps = True,
     deps = [":inspect_checkpoint_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "inspect_checkpoint_lib",
     srcs = ["inspect_checkpoint.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:flags",
@@ -172,9 +188,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "strip_unused_lib",
     srcs = ["strip_unused_lib.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:graph_util",
@@ -182,14 +199,16 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "module_util",
     srcs = ["module_util.py"],
+    strict_deps = True,
 )
 
-py_strict_binary(
+py_binary(
     name = "strip_unused",
     srcs = ["strip_unused.py"],
+    strict_deps = True,
     deps = [
         ":strip_unused_lib",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -197,10 +216,11 @@ py_strict_binary(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "strip_unused_test",
     size = "small",
     srcs = ["strip_unused_test.py"],
+    strict_deps = True,
     tags = ["notap"],
     deps = [
         ":strip_unused_lib",
@@ -218,9 +238,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "optimize_for_inference_lib",
     srcs = ["optimize_for_inference_lib.py"],
+    strict_deps = True,
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
@@ -234,15 +255,17 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "optimize_for_inference",
     srcs = ["optimize_for_inference.py"],
+    strict_deps = True,
     deps = [":optimize_for_inference_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "optimize_for_inference_main_lib",
     srcs = ["optimize_for_inference.py"],
+    strict_deps = True,
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
@@ -253,10 +276,11 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "optimize_for_inference_test",
     size = "small",
     srcs = ["optimize_for_inference_test.py"],
+    strict_deps = True,
     deps = [
         ":optimize_for_inference_lib",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -278,9 +302,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "selective_registration_header_lib",
     srcs = ["selective_registration_header_lib.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         # copybara:comment_begin(oss-only)
@@ -293,16 +318,18 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "print_selective_registration_header",
     srcs = ["print_selective_registration_header.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [":print_selective_registration_header_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "print_selective_registration_header_lib",
     srcs = ["print_selective_registration_header.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":selective_registration_header_lib",
@@ -310,9 +337,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "print_selective_registration_header_test",
     srcs = ["print_selective_registration_header_test.py"],
+    strict_deps = True,
     deps = [
         ":selective_registration_header_lib",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -322,17 +350,19 @@ py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "saved_model_cli",
     srcs = ["saved_model_cli.py"],
+    strict_deps = True,
     deps = [":saved_model_cli_lib"] + if_pywrap(
         if_true = ["//tensorflow/python:_pywrap_tensorflow"],
     ),
 )
 
-py_strict_library(
+py_library(
     name = "saved_model_cli_lib",
     srcs = ["saved_model_cli.py"],
+    strict_deps = True,
     deps = [
         # Note: if you make any changes here, make corresponding changes to the
         # deps of the "tools_pip" target in this file.  Otherwise release builds
@@ -369,9 +399,10 @@ py_strict_library(
     ]),
 )
 
-py_strict_library(
+py_library(
     name = "saved_model_aot_compile",
     srcs = ["saved_model_aot_compile.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/compiler/tf2xla:tf2xla_proto_py",
         "//tensorflow/core:protos_all_py",
@@ -391,12 +422,13 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "saved_model_cli_test",
     srcs = ["saved_model_cli_test.py"],
     data = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
+    strict_deps = True,
     tags = [
         "noasan",  # TODO(b/222716501)
         "notap",  # b/456542868
@@ -424,9 +456,10 @@ py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "make_aot_compile_models",
     srcs = ["make_aot_compile_models.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",

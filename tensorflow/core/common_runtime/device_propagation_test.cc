@@ -55,9 +55,9 @@ absl::flat_hash_map<std::string, std::string> GetNodeNameDevices(
     if (node->IsSource() || node->IsSink()) {
       continue;
     }
-    const string& device = node->assigned_device_name().empty()
-                               ? node->requested_device()
-                               : node->assigned_device_name();
+    const std::string& device = node->assigned_device_name().empty()
+                                    ? node->requested_device()
+                                    : node->assigned_device_name();
     node_name_devices[node->name()] = device;
   }
   return node_name_devices;

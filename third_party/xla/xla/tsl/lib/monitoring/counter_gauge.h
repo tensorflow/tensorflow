@@ -21,13 +21,16 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 
+#include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/label_array_utils.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -83,11 +86,22 @@ class CounterGauge {
 
   // Creates the metric based on the metric-definition arguments.
   //
-  // Example;
-  // auto* counter_with_label = CounterGauge<1>::New("/tensorflow/counter",
-  //   "Tensorflow counter", "MyLabelName");
+  // Example:
+  // auto* counter_with_label = CounterGauge<1>::New(
+  //     "/tensorflow/counter", "Tensorflow counter", "MyLabelName");
   template <typename... MetricDefArgs>
   static CounterGauge* New(MetricDefArgs&&... metric_def_args);
+
+  // Creates the metric based on the metric-definition arguments. Doesn't use
+  // the heap; instead, allocates a static stack object whose destructor will
+  // never be called. (See `absl::NoDestructor` documentation.)
+  //
+  // Example:
+  // auto counter_with_label = CounterGauge<1>::MakeStatic(
+  //     "/tensorflow/counter", "Tensorflow counter", "MyLabelName");
+  template <typename... MetricDefArgs>
+  static absl::NoDestructor<CounterGauge> MakeStatic(
+      MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
@@ -97,6 +111,8 @@ class CounterGauge {
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<CounterGauge<NumLabels>>;
+
   explicit CounterGauge(
       const MetricDef<MetricKind::kGauge, int64_t, NumLabels>& metric_def)
       : metric_def_(metric_def),
@@ -123,8 +139,9 @@ class CounterGauge {
   absl::Status status_;
 
   using LabelArray = std::array<std::string, NumLabels>;
-  absl::flat_hash_map<LabelArray, std::unique_ptr<CounterGaugeCell> > cells_
-      ABSL_GUARDED_BY(mu_);
+  using LabelViewArray = std::array<absl::string_view, NumLabels>;
+
+  LabelArrayMap<CounterGaugeCell, NumLabels> cells_ ABSL_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
@@ -158,6 +175,15 @@ CounterGauge<NumLabels>* CounterGauge<NumLabels>::New(
 }
 
 template <int NumLabels>
+template <typename... MetricDefArgs>
+absl::NoDestructor<CounterGauge<NumLabels>> CounterGauge<NumLabels>::MakeStatic(
+    MetricDefArgs&&... metric_def_args) {
+  return absl::NoDestructor<CounterGauge<NumLabels>>(
+      MetricDef<MetricKind::kGauge, int64_t, NumLabels>(
+          std::forward<MetricDefArgs>(metric_def_args)...));
+}
+
+template <int NumLabels>
 template <typename... Labels>
 CounterGaugeCell* CounterGauge<NumLabels>::GetCell(const Labels&... labels)
     ABSL_LOCKS_EXCLUDED(mu_) {
@@ -167,11 +193,17 @@ CounterGaugeCell* CounterGauge<NumLabels>::GetCell(const Labels&... labels)
                 "Mismatch between CounterGauge<NumLabels> and number of labels "
                 "provided in GetCell(...).");
 
-  const LabelArray& label_array = {{labels...}};
+  LabelViewArray label_view_array = {{labels...}};
   absl::MutexLock l(mu_);
-  auto [it, unused_inserted] =
-      cells_.try_emplace(label_array, std::make_unique<CounterGaugeCell>());
-  return it->second.get();
+  const auto found_it = cells_.find(label_view_array);
+  if (found_it != cells_.end()) {
+    return found_it->second.get();
+  }
+  return cells_
+      .emplace(std::piecewise_construct,
+               std::forward_as_tuple(LabelArray{std::string(labels)...}),
+               std::forward_as_tuple(std::make_unique<CounterGaugeCell>()))
+      .first->second.get();
 }
 
 }  // namespace monitoring

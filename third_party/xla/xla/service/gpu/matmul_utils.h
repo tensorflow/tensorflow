@@ -124,7 +124,8 @@ struct GemmConfig : public se::gpu::GemmConfig {
       double alpha_real, double alpha_imag, double beta,
       PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-      bool grad_y, const se::GpuComputeCapability& gpu_version);
+      bool grad_y, se::gpu::ScaleMode scale_mode,
+      const se::GpuComputeCapability& gpu_version);
 
   // As above with additional `c_shape` and `bias_shape_ptr` parameter, both
   // which are only necessarily for F8 gemms.
@@ -137,7 +138,8 @@ struct GemmConfig : public se::gpu::GemmConfig {
       double alpha_imag, double beta,
       PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-      bool grad_y, const se::GpuComputeCapability& gpu_version);
+      bool grad_y, se::gpu::ScaleMode scale_mode,
+      const se::GpuComputeCapability& gpu_version);
 
   struct DescriptorsTuple {
     se::gpu::MatrixDescriptor lhs;
@@ -150,6 +152,14 @@ struct GemmConfig : public se::gpu::GemmConfig {
       se::DeviceAddressBase out_buf,
       const se::GpuComputeCapability& gpu_version) const;
 };
+
+/* Temporary code due to split PRs */
+struct GroupedGemmConfig {
+  // For legacy Gemm operations XLA:GPU allocates its own workspace and passes
+  // it to all BLAS API calls.
+  static constexpr int64_t kUserArgsSizeBytes = 196;
+};
+/* End of temporary code due to split PRs */
 
 // Run the given GEMM instruction `gemm` subject to the configuration
 // in `gemm_config` and the passed buffers.

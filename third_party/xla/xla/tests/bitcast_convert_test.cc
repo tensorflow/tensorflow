@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "xla/tests/xla_test_backend_predicates.h"
 #include "absl/strings/string_view.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
@@ -197,6 +198,36 @@ ENTRY main {
   ROOT out = f32[10] bitcast-convert(p)
 }
 )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(BitcastConvertHloTest, FourPredToF32) {
+  if (test::DeviceTypeIs({test::kTpu})) {
+    GTEST_SKIP();
+  }
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_smaller
+
+ENTRY main {
+  p = pred[10,4] parameter(0)
+  ROOT out = f32[10] bitcast-convert(p)
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(BitcastConvertHloTest, S8ToPred) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_smaller
+
+ENTRY main {
+  p = s8[10] parameter(0)
+  ROOT out = pred[10] bitcast-convert(p)
+}
+)";
+  if (test::DeviceTypeIs({test::kTpu})) {
+    GTEST_SKIP();
+  }
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 

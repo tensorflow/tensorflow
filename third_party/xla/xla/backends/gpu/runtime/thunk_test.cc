@@ -59,13 +59,7 @@ TEST(ThunkTest, GetMetadataListProtoFromThunkGraph) {
   ThunkSequence thunks;
   thunks.push_back(std::move(test_thunk));
 
-  SequentialThunk sequential_thunk(thunk_info, std::move(thunks));
-  EXPECT_THAT(GetMetadataListProtoFromThunkGraph(sequential_thunk),
-              EqualsProto(R"pb(
-                thunk_metadata {
-                  thunk_info { thunk_id: 456 }
-                  thunk_kind: "kSequential"
-                }
+  EXPECT_THAT(GetMetadataListProtoFromThunkGraph(thunks), EqualsProto(R"pb(
                 thunk_metadata {
                   thunk_info { thunk_id: 123 profile_annotation: "test_kernel" }
                   thunk_kind: "kKernel"

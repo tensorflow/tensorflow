@@ -126,7 +126,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 98
+// Next ID: 99
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -424,6 +424,9 @@ message HloInstructionProto {
 
   // Conv type (fprop, dgrad, wgrad)
   ConvolutionKind conv_kind = 97;
+
+  // Convolution sparsity config.
+  SparsityConfig sparsity_config = 98;
 }
 
 // Serialization of HloComputation.
@@ -579,6 +582,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
+// Next ID: 22
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -661,6 +665,9 @@ message HloModuleProto {
   xla.FrontendAttributes frontend_attributes = 19;
 
   xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
+
+  // The type of the device that the module is targeted for.
+  string device_type = 21;
 
   reserved 9;
   reserved "dynamic_parameter_binding";
@@ -754,6 +761,31 @@ message HeapSimulatorTrace {
 message HloModuleGroupProto {
   string name = 1;
   repeated HloModuleProto hlo_modules = 2;
+}
+
+// Serialization of memory usage report.
+message MemoryUsageReportProto {
+  // Individual allocation.
+  message AllocationEntry {
+    // BufferAllocation::Index (allocation ID, not sort position).
+    int64 index = 1;
+    int64 size = 2;
+    // Running sum as entries traverse largest→smallest within the memory space.
+    int64 cumulative_size = 3;
+    double cumulative_percentage = 4;
+    // Defining position(s) of HLO value(s) assigned to this allocation.
+    repeated string defining_positions = 5;
+    string hlo_text = 6;
+  }
+
+  // Allocations grouped by memory space (color).
+  message AllocationEntryInMemorySpace {
+    int64 total_bytes = 1;
+    optional int32 memory_space_color = 2;
+    repeated AllocationEntry allocation_entries = 3;
+  }
+
+  repeated AllocationEntryInMemorySpace memory_space_allocation_entries = 1;
 }
 
 // Serialization of BufferAssignment.

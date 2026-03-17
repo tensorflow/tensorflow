@@ -218,12 +218,7 @@ TEST_F(ParamsTest, HundredLargeR1Parameters) {
 // Timeout last observed on 2017-11-20.
 #ifdef NDEBUG
 
-// TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
-// compilation.
 TEST_F(ParamsTest, ThreeThousandParameters) {
-  if (test::DeviceIs(test::kCpu)) {
-    GTEST_SKIP();
-  }
   XlaBuilder builder(TestName());
 
   std::vector<Literal> param_data_owner;
@@ -247,9 +242,9 @@ TEST_F(ParamsTest, ThreeThousandParameters) {
   ComputeAndCompareR0<float>(&builder, target, param_data, ErrorSpec(0.0001f));
 }
 
-// TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
-// compilation.
 TEST_F(ParamsTest, ThreeThousandParametersAndOutputElements) {
+  // TODO(b/488995691): Triggers O(n^2 log n) behavior in InstructionFusion on
+  // CPU.
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }

@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -46,7 +47,6 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/WalkResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/extract_callback.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/translate/stablehlo.h"
+#include "xla/layout.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -70,8 +71,8 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/program.h"
-#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
@@ -100,6 +101,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/ifrt_tensor_utils.h"
 #include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tsl/platform/tstring.h"
@@ -246,7 +248,11 @@ IfrtServingExecutable::Create(
                  xla::CompileOptions::EnvironmentOptionOverrides>
         compilation_env_or_overrides,
     TfToHloCompiler* tf_to_hlo_compiler,
-    IfrtPersistentCompilationCache* persistent_compilation_cache) {
+    IfrtPersistentCompilationCache* persistent_compilation_cache,
+    H2DTransferExecutorFactory* h2d_transfer_executor_factory) {
+  if (h2d_transfer_executor_factory == nullptr) {
+    return absl::InvalidArgumentError("H2DTransferExecutorFactory is null.");
+  }
   TF_ASSIGN_OR_RETURN(
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       GetCompileMetadata(*module, *client));
@@ -265,7 +271,7 @@ IfrtServingExecutable::Create(
       checkpoint_loader_queue, device_mgr, std::move(shape_representation_fn),
       ifrt_serving_core_selector, std::move(original_compile_metadata),
       std::move(device_list), compilation_env_or_overrides, tf_to_hlo_compiler,
-      persistent_compilation_cache));
+      persistent_compilation_cache, h2d_transfer_executor_factory));
 
   return executable;
 }
@@ -406,6 +412,30 @@ absl::StatusOr<std::vector<xla::HostCallback>> BuildHostCallbacks(
   return host_callbacks;
 }
 
+absl::Status EncodeLayout(absl::Span<const xla::Shape> xla_input_shapes,
+                          mlir::ModuleOp module) {
+  auto op = module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
+  if (!op) {
+    return absl::InternalError("Could not find entry function in MLIR Module.");
+  }
+
+  if (op.getNumArguments() != xla_input_shapes.size()) {
+    return absl::InternalError(
+        absl::StrCat("Argument count mismatch: ", op.getNumArguments(), " vs ",
+                     xla_input_shapes.size()));
+  }
+
+  mlir::OpBuilder builder(op.getContext());
+  for (int i = 0; i < xla_input_shapes.size(); ++i) {
+    const auto& shape = xla_input_shapes[i];
+    if (shape.has_layout()) {
+      auto attr = builder.getStringAttr(shape.layout().ToString());
+      op.setArgAttr(i, "mhlo.layout_mode", attr);
+    }
+  }
+  return absl::OkStatus();
+}
+
 absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
 IfrtServingExecutable::CreateExecutableSynchronously(
     mlir::OwningOpRef<mlir::ModuleOp> module_copy,
@@ -456,6 +486,16 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                                  mlir_hlo_module.get());
   }
 
+  if (!tf2hlo_result.xla_input_shapes.empty()) {
+    TF_RETURN_IF_ERROR(
+        EncodeLayout(tf2hlo_result.xla_input_shapes, mlir_hlo_module.get()));
+  }
+
+  if (VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile("ifrt_after_layout_encoding_layout_mode",
+                                 mlir_hlo_module.get());
+  }
+
   const int num_replicas = tf2hlo_result.compile_metadata.num_replicas();
   const int num_partitions =
       tf2hlo_result.compile_metadata.num_cores_per_replica();
@@ -470,6 +510,7 @@ IfrtServingExecutable::CreateExecutableSynchronously(
   }
 
   xla::CompileOptions xla_compile_options;
+
   if (std::holds_alternative<tsl::protobuf::Message*>(
           compilation_env_or_overrides_)) {
     tsl::protobuf::Message* compilation_environment_proto_ =
@@ -548,10 +589,34 @@ IfrtServingExecutable::CreateExecutableSynchronously(
                 ->CompileAndLoad(std::move(program), std::move(options))
                 .Await();
           }));
+
+  executable_bundle->ifrt_input_dtypes.reserve(
+      tf2hlo_result.compile_metadata.args().size());
+  executable_bundle->reshaped_input_tensors.reserve(
+      tf2hlo_result.compile_metadata.args().size());
+  executable_bundle->ifrt_input_shapes.reserve(
+      tf2hlo_result.compile_metadata.args().size());
+  for (const auto& arg : tf2hlo_result.compile_metadata.args()) {
+    TF_ASSIGN_OR_RETURN(auto ifrt_dtype, ToIfrtDType(arg.dtype()));
+    executable_bundle->ifrt_input_dtypes.push_back(ifrt_dtype);
+    TF_ASSIGN_OR_RETURN(auto reshaped_tensor,
+                        tensorflow::TensorShape::BuildTensorShape(arg.shape()));
+    executable_bundle->reshaped_input_tensors.push_back(
+        std::move(reshaped_tensor));
+    xla::ifrt::Shape ifrt_shape =
+        ToIfrtShape(executable_bundle->reshaped_input_tensors.back());
+    executable_bundle->ifrt_input_shapes.push_back(
+        std::make_shared<xla::ifrt::Shape>(std::move(ifrt_shape)));
+  }
   if (!tf2hlo_result.xla_input_shapes.empty()) {
+    std::vector<std::shared_ptr<xla::Shape>> xla_input_shapes;
+    xla_input_shapes.reserve(tf2hlo_result.xla_input_shapes.size());
     std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
     xla_input_layouts.reserve(tf2hlo_result.xla_input_shapes.size());
     for (const auto& shape : tf2hlo_result.xla_input_shapes) {
+      // Make a copy the xla::Shape and store it in the executable bundle as a
+      // shared_ptr.
+      xla_input_shapes.push_back(std::make_shared<xla::Shape>(shape));
       if (!shape.has_layout()) {
         xla_input_layouts.push_back(nullptr);
       } else {
@@ -559,9 +624,8 @@ IfrtServingExecutable::CreateExecutableSynchronously(
             std::make_shared<xla::PjRtLayout>(shape.layout())));
       }
     }
-    executable_bundle->xla_input_shapes =
-        std::move(tf2hlo_result.xla_input_shapes);
     executable_bundle->xla_input_layouts = std::move(xla_input_layouts);
+    executable_bundle->xla_input_shapes = std::move(xla_input_shapes);
   }
 
   executable_bundle->ifrt_executable = std::move(ifrt_executable);
@@ -569,26 +633,97 @@ IfrtServingExecutable::CreateExecutableSynchronously(
       std::move(tf2hlo_result.compile_metadata);
   executable_bundle->host_callbacks = std::move(tf_host_callbacks);
 
+  executable_bundle->arg_hlo_shardings.reserve(
+      executable_bundle->compile_metadata.args().size());
+
+  for (const auto& arg : executable_bundle->compile_metadata.args()) {
+    TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
+                        xla::HloSharding::FromProto(arg.sharding()));
+    executable_bundle->arg_hlo_shardings.push_back(hlo_sharding);
+    TF_ASSIGN_OR_RETURN(
+        auto ifrt_sharding,
+        ToIfrtSharding(*ifrt_client_, hlo_sharding, assigned_device_list_));
+    executable_bundle->arg_ifrt_shardings.push_back(std::move(ifrt_sharding));
+  }
+
+  if (UsePortableExecution()) {
+    // For core selection, the device is selected at runtime. We pre-calculate
+    // the sharding for each addressable device to avoid doing it on the
+    // critical path. The map is keyed by device ID.
+    for (xla::ifrt::Device* device : ifrt_client_->addressable_devices()) {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef device_list,
+                          ifrt_client_->MakeDeviceList({device}));
+      executable_bundle->portable_single_device_shardings.emplace(
+          device->Id(), xla::ifrt::SingleDeviceSharding::Create(
+                            device, xla::ifrt::MemoryKind()));
+    }
+  }
+
+  executable_bundle->retval_hlo_shardings.reserve(
+      executable_bundle->compile_metadata.retvals().size());
+  for (const auto& retvals : executable_bundle->compile_metadata.retvals()) {
+    TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
+                        xla::HloSharding::FromProto(retvals.sharding()));
+    executable_bundle->retval_hlo_shardings.push_back(hlo_sharding);
+  }
+
   return executable_bundle;
+}
+
+absl::Status IfrtServingExecutable::LoadAndRegisterVariableOnExecutable(
+    absl::Span<const tensorflow::Tensor> inputs,
+    absl::Span<const int> variable_arg_indices,
+    const xla::ifrt::DeviceListRef& device_list,
+    IfrtServingExecutable::CachedExecutableBundle* executable_bundle) {
+  TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
+                                        *executable_bundle, device_list));
+
+  std::vector<int> device_ids;
+  device_ids.reserve(device_list->size());
+  for (xla::ifrt::Device* device : device_list->devices()) {
+    device_ids.push_back(device->Id().value());
+  }
+
+  for (const int i : variable_arg_indices) {
+    if (inputs[i].dtype() != tensorflow::DT_STRING ||
+        !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Expected a scalar tensor as loaded variable array key, "
+                       "but got type ",
+                       inputs[i].dtype(), " and shape ",
+                       inputs[i].shape().DebugString(), " at index ", i));
+    }
+    std::string tensor_name = inputs[i].scalar<tsl::tstring>()();
+    IfrtLoadedVariableRegistry::Key key{
+        .device_ids = device_ids,
+        .input_name = tensor_name,
+        .hlo_sharding = executable_bundle->arg_hlo_shardings[i],
+        .shape_on_device = executable_bundle->xla_input_shapes.has_value()
+                               ? executable_bundle->xla_input_shapes->at(i)
+                               : nullptr,
+    };
+    TF_ASSIGN_OR_RETURN(auto loaded_variable,
+                        ifrt_loaded_variable_registry_.GetLoadedVariable(key));
+    executable_bundle->variable_arrays.emplace(key, std::move(loaded_variable));
+  }
+  return absl::OkStatus();
 }
 
 absl::StatusOr<tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>>
 IfrtServingExecutable::LookUpOrCreateExecutable(
+    absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const DtypeAndShape> dtypes_and_shapes,
-    absl::Span<const int> variable_arg_indices) {
-  std::vector<tensorflow::TensorShape> input_shapes;
-  for (const auto& dtype_and_shape : dtypes_and_shapes) {
-    input_shapes.push_back(dtype_and_shape.shape);
-  }
-  Key key = {.input_shapes = std::move(input_shapes)};
+    absl::Span<const int> variable_arg_indices,
+    const xla::ifrt::DeviceListRef& device_list) {
 
   tsl::Promise<SharedCachedExecutableBundle> promise;
   tsl::Future<SharedCachedExecutableBundle> future;
   mlir::OwningOpRef<mlir::ModuleOp> module_copy;
+  tsl::Future<SharedCachedExecutableBundle> existing_bundle_future;
   {
     absl::MutexLock lock(mutex_);
 
-    const auto it = executable_bundles_.find(key);
+    const auto it = executable_bundles_.find(KeyView{dtypes_and_shapes});
     if (it != executable_bundles_.end()) {
       return it->second;
     }
@@ -608,11 +743,21 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     std::tie(promise, future) =
         tsl::MakePromise<SharedCachedExecutableBundle>();
 
-    executable_bundles_.emplace(key, future);
+    std::vector<tensorflow::TensorShape> input_shapes;
+    input_shapes.reserve(dtypes_and_shapes.size());
+    for (const auto& dtype_and_shape : dtypes_and_shapes) {
+      input_shapes.push_back(dtype_and_shape.shape);
+    }
+    Key key = {.input_shapes = std::move(input_shapes)};
+
+    executable_bundles_.emplace(std::move(key), future);
     // Clone the module to avoid race condition between Freeze() and
     // compilation.
     module_copy = mlir::OwningOpRef<mlir::ModuleOp>(module_->clone());
   }
+
+  LOG(INFO) << "Cache missed. Building executable";
+
   tensorflow::tpu::TPUCompileMetadataProto compile_metadata =
       original_compile_metadata_;
 
@@ -625,11 +770,33 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
 
   TF_RETURN_IF_ERROR(
       UpdateCompileMetadata(compile_metadata, dtypes_and_shapes));
-  LOG(INFO) << "Cache missed. Building executable";
+
   absl::StatusOr<SharedCachedExecutableBundle> executable_bundle =
       CreateExecutableSynchronously(std::move(module_copy), compile_metadata,
                                     dtypes_and_shapes, variable_arg_indices);
+
+  if (!executable_bundle.ok()) {
+    promise.Set(executable_bundle.status());
+    return executable_bundle.status();
+  }
+
+  if (UsePortableExecution()) {
+    // If core selector is enabled, we load variables on all cores.
+    for (const auto& device : ifrt_client_->addressable_devices()) {
+      TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef selected_device_list,
+                          ifrt_client_->MakeDeviceList({device}));
+      TF_RETURN_IF_ERROR(LoadAndRegisterVariableOnExecutable(
+          inputs, variable_arg_indices, selected_device_list,
+          (*executable_bundle).get()));
+    }
+  } else {
+    TF_RETURN_IF_ERROR(LoadAndRegisterVariableOnExecutable(
+        inputs, variable_arg_indices, device_list, (*executable_bundle).get()));
+  }
+
   promise.Set(std::move(executable_bundle));
+
+  // Here is a immediate return as promise is already set.
   return future;
 }
 
@@ -699,7 +866,8 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   }
   TF_ASSIGN_OR_RETURN(
       tsl::Future<SharedCachedExecutableBundle> executable_bundle_future,
-      LookUpOrCreateExecutable(dtypes_and_shapes, variable_arg_indices));
+      LookUpOrCreateExecutable(inputs, dtypes_and_shapes, variable_arg_indices,
+                               device_list));
   TF_ASSIGN_OR_RETURN(SharedCachedExecutableBundle executable_bundle,
                       executable_bundle_future.Await());
 
@@ -710,86 +878,130 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         " but got ", dtypes_and_shapes.size(), " arguments"));
   }
 
-  {
-    tsl::profiler::TraceMe traceme("AsyncRestoreVariables");
-    absl::ReaderMutexLock lock(mutex_);
-    if (!is_frozen_ && !tf_to_hlo_compiler_->IsXlaCompilationDisabled()) {
-      // Asynchronously load the restored variable tensors to Ifrt array.
-      TF_RETURN_IF_ERROR(AsyncLoadIfrtArray(inputs, variable_arg_indices,
-                                            *executable_bundle, device_list));
-    }
-  }
-
-  VLOG(2) << "Completed AsyncLoadIfrtArray";
-
   std::vector<int> device_ids;
   device_ids.reserve(device_list->size());
   for (xla::ifrt::Device* device : device_list->devices()) {
     device_ids.push_back(device->Id().value());
   }
-  std::vector<tsl::Future<xla::ifrt::ArrayRef>> args;
-  args.reserve(inputs.size());
   int variable_arg_index = 0;
-  // TODO(b/445201291): Plumb the H2DTransferExecutorFactory from the
-  // IfrtServingExecutable constructor.
-  absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
-      user_inputs_h2d_transfer_executor =
-          h2d_transfer_executor_factory_ != nullptr
-              ? h2d_transfer_executor_factory_->CreateH2DTransferExecutor(
-                    *ifrt_client_)
-              : std::make_unique<H2DTransferExecutor>(*ifrt_client_);
-  TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor.status());
+  std::vector<tsl::Future<xla::ifrt::ArrayRef>> variable_args;
+  variable_args.reserve(variable_arg_indices.size());
 
+  std::vector<InputHandle> input_handles;
+  std::vector<int> input_handle_result_indices;
+  input_handles.reserve(inputs.size() - variable_arg_indices.size());
+  input_handle_result_indices.reserve(inputs.size() -
+                                      variable_arg_indices.size());
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<H2DTransferExecutor> user_inputs_h2d_transfer_executor,
+      h2d_transfer_executor_factory_->CreateH2DTransferExecutor(*ifrt_client_));
+
+  std::vector<std::shared_ptr<xla::Shape>>* xla_input_shapes = nullptr;
+  if (executable_bundle->xla_input_shapes.has_value()) {
+    xla_input_shapes = &(*executable_bundle->xla_input_shapes);
+  }
+
+  // Sanity check that the number of XLA input shapes and arguments matches
+  // the number of inputs.
+  if (xla_input_shapes != nullptr &&
+      xla_input_shapes->size() != inputs.size()) {
+    return absl::InternalError(absl::StrCat("Expected ", inputs.size(),
+                                            " XLA input shapes but got ",
+                                            xla_input_shapes->size()));
+  }
+  if (inputs.size() != executable_bundle->compile_metadata.args().size()) {
+    return absl::InternalError(absl::StrCat(
+        "Expected ", inputs.size(), " arguments but got ",
+        executable_bundle->compile_metadata.args().size(), " args"));
+  }
   for (int i = 0; i < inputs.size(); i++) {
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
-      TF_ASSIGN_OR_RETURN(
-          xla::HloSharding hlo_sharding,
-          xla::HloSharding::FromProto(
-              executable_bundle->compile_metadata.args()[i].sharding()));
-      IfrtLoadedVariableRegistry::Key key{
-          .device_ids = device_ids,
-          .input_name = inputs[i].scalar<tsl::tstring>()(),
-          .hlo_sharding = std::move(hlo_sharding),
-      };
-      TF_ASSIGN_OR_RETURN(
-          auto loaded_variable,
-          ifrt_loaded_variable_registry_.GetLoadedVariable(key));
-      args.push_back(std::move(loaded_variable.array));
+      std::shared_ptr<xla::Shape> shape_ptr = nullptr;
+      if (executable_bundle->xla_input_shapes.has_value()) {
+        shape_ptr = (*executable_bundle->xla_input_shapes)[i];
+      }
+      IfrtLoadedVariableRegistry::KeyView key_view(
+          device_ids, inputs[i].scalar<tsl::tstring>()(),
+          executable_bundle->arg_hlo_shardings[i], std::move(shape_ptr));
+      auto it = executable_bundle->variable_arrays.find(key_view);
+      if (it == executable_bundle->variable_arrays.end()) {
+        return absl::InternalError(absl::StrCat(
+            "Variable array not found for key: ", key_view.input_name));
+      }
+      variable_args.push_back((*it).second.array);
       variable_arg_index++;
     } else {
       // If the input shape is not the same as the shape after Tf2Hlo
       // compilation, reshape the input tensor to the expected shape. Note that
       // the tensor assignment here won't create a copy.
       tensorflow::Tensor reshaped = inputs[i];
-      TF_ASSIGN_OR_RETURN(
-          tensorflow::TensorShape reshaped_shape,
-          tensorflow::TensorShape::BuildTensorShape(
-              executable_bundle->compile_metadata.args()[i].shape()));
+      const tensorflow::TensorShape& reshaped_shape =
+          executable_bundle->reshaped_input_tensors[i];
+
       if (reshaped.shape() != reshaped_shape &&
           !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
         return absl::InternalError("Failed to reshape tensor");
       }
-      // TODO(b/477700609): Support custom layout
-      TF_ASSIGN_OR_RETURN(
-          tsl::Future<xla::ifrt::ArrayRef> array_ref,
-          (*user_inputs_h2d_transfer_executor)
-              ->ScheduledH2DTransfer(
-                  reshaped, device_list,
-                  executable_bundle->compile_metadata.args()[i].sharding(),
-                  thread_pool_, /*xla_input_layout=*/nullptr));
-      args.push_back(std::move(array_ref));
+      xla::ifrt::LayoutRef layout_ref =
+          executable_bundle->xla_input_layouts.has_value()
+              ? (*executable_bundle->xla_input_layouts)[i]
+              : nullptr;
+      const xla::Shape* xla_input_shape =
+          xla_input_shapes != nullptr ? (*xla_input_shapes)[i].get() : nullptr;
+
+      xla::ifrt::ShardingRef ifrt_sharding =
+          executable_bundle->arg_ifrt_shardings[i];
+      if (UsePortableExecution()) {
+        // Portable execution is only supported for single-device programs.
+        auto sharding_it =
+            executable_bundle->portable_single_device_shardings.find(
+                device_list->devices().front()->Id());
+        if (sharding_it ==
+            executable_bundle->portable_single_device_shardings.end()) {
+          return absl::InternalError(absl::StrCat(
+              "Portable single device sharding not found for device id: ",
+              device_list->devices().front()->Id()));
+        }
+        ifrt_sharding = sharding_it->second;
+      }
+      input_handles.push_back({
+          .tensor = reshaped,
+          .ifrt_dtype = executable_bundle->ifrt_input_dtypes[i],
+          .ifrt_shape = executable_bundle->ifrt_input_shapes[i],
+          .input_xla_shape = xla_input_shape,
+          .device_list = device_list,
+          .ifrt_sharding = std::move(ifrt_sharding),
+          .xla_input_layout = std::move(layout_ref),
+      });
+      input_handle_result_indices.push_back(i);
     }
   }
-  DCHECK_EQ(args.size(), executable_bundle->compile_metadata.args().size());
 
-  TF_RETURN_IF_ERROR((*user_inputs_h2d_transfer_executor)->RunH2DTransfers());
+  TF_ASSIGN_OR_RETURN(auto input_futures,
+                      user_inputs_h2d_transfer_executor->ScheduledH2DTransfers(
+                          absl::MakeSpan(input_handles), thread_pool_));
+  TF_RETURN_IF_ERROR(user_inputs_h2d_transfer_executor->RunH2DTransfers());
 
   std::vector<xla::ifrt::ArrayRef> transfer_result;
-  transfer_result.reserve(args.size());
-  for (auto& arg : args) {
-    TF_ASSIGN_OR_RETURN(auto array_ref, arg.Await());
-    transfer_result.push_back(std::move(array_ref));
+  transfer_result.resize(inputs.size());
+
+  for (int i = 0; i < variable_args.size(); ++i) {
+    TF_ASSIGN_OR_RETURN(auto array_ref, variable_args[i].Await());
+    transfer_result[variable_arg_indices[i]] = std::move(array_ref);
+  }
+
+  TF_ASSIGN_OR_RETURN(auto input_arrays, input_futures.Await());
+  if (input_arrays.size() != input_handles.size()) {
+    return absl::InternalError(absl::StrCat("Expected ", input_handles.size(),
+                                            " input arrays but got ",
+                                            input_arrays.size()));
+  }
+
+  for (int i = 0; i < input_arrays.size(); ++i) {
+    transfer_result[input_handle_result_indices[i]] =
+        std::move(input_arrays[i]);
   }
 
   VLOG(2) << "Start Execution";
@@ -823,18 +1035,13 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   for (int i = 0; i < execution_result->outputs.size(); ++i) {
     tensorflow::TensorShape tensor_shape;
     const xla::ifrt::ArrayRef& array_for_copy = execution_result->outputs[i];
-    const tpu::TPUCompileMetadataProto::Retval& metadata_retval =
-        executable_bundle->compile_metadata.retvals()[i];
-
     // IFRT's return does not contain sufficient information; so we use
     // sharding spec from metadata.
-    VLOG(2) << "Output sharding: " << array_for_copy->sharding().DebugString();
+    VLOG(2) << "Output sharding: " << array_for_copy->sharding();
 
-    TF_ASSIGN_OR_RETURN(auto hlo_sharding, xla::HloSharding::FromProto(
-                                               metadata_retval.sharding()));
-    output_futures.push_back(MakeTensorFromArray(*ifrt_client_, *array_for_copy,
-                                                 hlo_sharding, device_list,
-                                                 thread_pool_));
+    output_futures.push_back(MakeTensorFromArray(
+        *ifrt_client_, *array_for_copy,
+        executable_bundle->retval_hlo_shardings[i], device_list, thread_pool_));
   }
 
   std::vector<tensorflow::Tensor> outputs;
@@ -851,6 +1058,13 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     absl::Span<const int> variable_arg_indices,
     const CachedExecutableBundle& executable_bundle,
     const xla::ifrt::DeviceListRef& devices) {
+  if (executable_bundle.xla_input_shapes.has_value() &&
+      !(*executable_bundle.xla_input_shapes).empty() &&
+      (*executable_bundle.xla_input_shapes).size() != inputs.size()) {
+    return absl::FailedPreconditionError(
+        absl::StrCat("Expected ", (*executable_bundle.xla_input_shapes).size(),
+                     " input shapes, but got ", inputs.size(), " inputs"));
+  }
   for (const int i : variable_arg_indices) {
     if (inputs[i].dtype() != tensorflow::DT_STRING ||
         !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
@@ -862,23 +1076,30 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
     }
     std::string tensor_name = inputs[i].scalar<tsl::tstring>()();
     // TODO(b/339521818): Add test cases for OpSharding on variables.
-    TF_ASSIGN_OR_RETURN(
-        xla::HloSharding hlo_sharding,
-        xla::HloSharding::FromProto(
-            executable_bundle.compile_metadata.args()[i].sharding()));
+    std::shared_ptr<xla::Shape> shape_ptr = nullptr;
+    if (executable_bundle.xla_input_shapes.has_value()) {
+      shape_ptr = (*executable_bundle.xla_input_shapes)[i];
+    }
     VariableDeviceShardingConfig sharding_config{
-        .hlo_sharding = std::move(hlo_sharding),
+        .hlo_sharding = executable_bundle.arg_hlo_shardings[i],
     };
     for (xla::ifrt::Device* device : devices->devices()) {
       sharding_config.device_ids.push_back(device->Id().value());
     }
-    // TODO(b/477700609): Support custom layout.
+    xla::ifrt::LayoutRef layout_ref =
+        executable_bundle.xla_input_layouts.has_value()
+            ? (*executable_bundle.xla_input_layouts)[i]
+            : nullptr;
+    std::shared_ptr<xla::Shape> shape_on_device =
+        executable_bundle.xla_input_shapes.has_value()
+            ? (*executable_bundle.xla_input_shapes)[i]
+            : nullptr;
     TF_RETURN_IF_ERROR(
         ifrt_serving::AsyncLoadRestoredTensorAsIfrtLoadedVariable(
             tensor_name, ifrt_client_, thread_pool_,
             ifrt_restore_tensor_registry_, ifrt_loaded_variable_registry_,
-            checkpoint_loader_queue_, sharding_config,
-            /*xla_input_layout=*/nullptr));
+            checkpoint_loader_queue_, sharding_config, std::move(layout_ref),
+            std::move(shape_on_device), devices));
   }
   return absl::OkStatus();
 }

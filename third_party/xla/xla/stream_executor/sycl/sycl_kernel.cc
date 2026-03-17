@@ -80,9 +80,9 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
     // If there are no arguments to pass (e.g., when using shared memory),
     // we can skip packing the kernel arguments.
     if (arg_addrs.empty() && packed.number_of_arguments() == 0) {
-      return stream->LaunchKernel(thread_dims, block_dims, cluster_dims,
-                                  function, name(), nullptr,
-                                  packed.number_of_shared_bytes());
+      return stream->LaunchKernel(
+          thread_dims, block_dims, cluster_dims, function, name(), nullptr,
+          packed.number_of_shared_bytes(), /*use_pdl=*/false);
     } else {
       kernel_args.reserve(arg_addrs.size());
       for (const void* const arg : arg_addrs) {
@@ -91,10 +91,10 @@ absl::Status SyclKernel::Launch(const ThreadDim& thread_dims,
       }
       size_t kernel_args_size = kernel_args.size();
       std::array<void*, 2> config = {kernel_args.data(), &kernel_args_size};
-      return stream->LaunchKernel(thread_dims, block_dims, cluster_dims,
-                                  function, name(),
-                                  reinterpret_cast<void**>(config.data()),
-                                  packed.number_of_shared_bytes());
+      return stream->LaunchKernel(
+          thread_dims, block_dims, cluster_dims, function, name(),
+          reinterpret_cast<void**>(config.data()),
+          packed.number_of_shared_bytes(), /*use_pdl=*/false);
     }
   };
 

@@ -548,7 +548,7 @@ template <typename Format>
 mlir::NamedAttribute GetNamesAttr(mlir::OpBuilder& builder, const char* name,
                                   llvm::ArrayRef<mlir::Type> types,
                                   const Format& fmt) {
-  llvm::SmallVector<string, 8> names;
+  llvm::SmallVector<std::string, 8> names;
   for (int i = 0; i < types.size(); ++i) {
     names.push_back(fmt(i));
   }

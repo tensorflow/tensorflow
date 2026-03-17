@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
+#include "xla/backends/gpu/transforms/algebraic_simplifier.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -39,7 +40,6 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/conditional_simplifier.h"
 #include "xla/service/gather_expander.h"
-#include "xla/service/gpu/transforms/algebraic_simplifier.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/sharding_propagation.h"
@@ -142,7 +142,6 @@ void AddSPMDPasses(
       /*single_call_site=*/false,
       /*update_domain=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>{},
-      /*uniquify_channel_ids=*/false,
       /*override_policy=*/
       [](const xla::CallGraph& call_graph,
          const xla::HloInstruction* instruction) {

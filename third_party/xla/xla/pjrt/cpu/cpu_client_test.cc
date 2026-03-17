@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_memory.h"
 #ifndef _WIN32
 #include <unistd.h>
@@ -317,13 +318,16 @@ TEST(PjRtCpuClientTest, UnoptimizedHloSnapshot) {
   debug_opts->set_xla_dump_hlo_snapshots(true);
   debug_opts->set_xla_dump_hlo_unoptimized_snapshots(true);
 
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
   auto mlir_module =
-      mlir::parseSourceString<mlir::ModuleOp>(kProgram, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(kProgram, context.get());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
-                          client->CompileAndLoad(mlir_module.get(), options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto pjrt_executable,
+      client->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(mlir_module)),
+          options));
 
   std::vector<float> data1{1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
   std::vector<float> data2{10.0, 20.0, 30.0, 40.0, 50.0, 60.0};

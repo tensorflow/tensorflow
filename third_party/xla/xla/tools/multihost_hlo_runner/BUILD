@@ -99,15 +99,17 @@ xla_cc_binary(
     name = "hlo_runner_main_gpu",
     testonly = True,
     tags = [
-        "cuda-only",
         "gpu",
         "no_mac",
     ] + tf_gpu_tests_tags(),
     deps = [
         ":hlo_runner_main_lib",
         "//xla/service:gpu_plugin",
+    ] + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ] + if_google([
+    ]) + if_rocm([
+        "//xla/stream_executor:rocm_platform",
+    ]) + if_google([
         "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
     ]),
 )
@@ -181,6 +183,7 @@ cc_library(
         "//xla/hlo/translate:stablehlo",
         "//xla/hlo/translate/hlo_to_mhlo:translate",
         "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
@@ -203,6 +206,7 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -228,6 +232,12 @@ xla_test(
     name = "functional_hlo_runner_test",
     srcs = ["functional_hlo_runner_test.cc"],
     backend_tags = {
+        "h100": [
+            "full",
+            "multi_gpu",
+            "no_oss",
+            "nomsan",
+        ],
         "gpu": [
             "multi_gpu",
             "no_oss",

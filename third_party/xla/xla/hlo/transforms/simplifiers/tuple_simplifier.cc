@@ -25,8 +25,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -70,7 +70,6 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
   // Initially add all GTE and Tuple instructions to the worklist.
   bool changed = false;
   for (auto* computation : module->computations(execution_threads)) {
-    std::vector<HloInstruction*> replaced_instrs;
     if (exclude_entry_computation_ &&
         computation == module->entry_computation()) {
       continue;
@@ -80,7 +79,6 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
         TF_ASSIGN_OR_RETURN(HloInstruction * instr,
                             RemoveWholeTuple(instruction));
         if (instr != nullptr) {
-          replaced_instrs.push_back(instr);
           changed = true;
         }
       } else {
@@ -122,20 +120,7 @@ absl::StatusOr<bool> TupleSimplifier::RunImpl(
                                   instruction, replacement,
                                   /*preserve_sharding=*/true,
                                   /*relay_control_dependency=*/true));
-          if (replaced) {
-            replaced_instrs.push_back(replacement);
-            changed = true;
-          }
-        }
-      }
-    }
-    if (module->has_schedule()) {
-      for (HloInstruction* instr : replaced_instrs) {
-        // Remove the replaced instructions from the schedule since we did not
-        // create new instructions for them, but their properties such as their
-        // control predecessors may have changed, so we want to reschedule them.
-        if (instr->HasControlDependencies()) {
-          module->schedule().remove_instruction(computation, instr);
+          changed |= replaced;
         }
       }
     }

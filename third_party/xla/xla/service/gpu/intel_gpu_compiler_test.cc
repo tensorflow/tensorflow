@@ -21,7 +21,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class IntelGpuCompilerTest : public HloTestBase {};
+using IntelGpuCompilerTest = HloTestBase;
 
 TEST_F(IntelGpuCompilerTest, CheckCompiler) {
   auto compiler = backend().compiler();

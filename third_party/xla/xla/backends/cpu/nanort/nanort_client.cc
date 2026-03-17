@@ -44,6 +44,7 @@ using ::tsl::profiler::TraceMeEncode;
 
 absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
     const XlaComputation& computation,
+    const Compiler::CompileOptions& compile_options,
     const ExecutableBuildOptions& executable_build_options) {
   TraceMe trace([&] {
     return TraceMeEncode("NanoRtClient::Compile",
@@ -62,8 +63,6 @@ absl::StatusOr<std::unique_ptr<NanoRtExecutable>> NanoRtClient::Compile(
 
   static constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
   DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
-
-  Compiler::CompileOptions compile_options;
 
   // Run high-level XLA CPU compiler passes.
   cpu::CpuCompiler compiler;

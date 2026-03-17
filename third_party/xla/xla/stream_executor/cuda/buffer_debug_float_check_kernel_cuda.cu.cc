@@ -19,10 +19,12 @@ limitations under the License.
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <tuple>
 
 #include "absl/base/casts.h"
+#include "Eigen/Core"
 #include "third_party/gpus/cuda/include/cuda/atomic"
 #include "xla/backends/gpu/runtime/buffer_debug_log_structs.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -52,6 +54,25 @@ static constexpr uint64_t kElementsPerMemoryAccess =
 template <typename T>
 using Chunk = std::array<T, kElementsPerMemoryAccess<T>>;
 
+template <typename T>
+__host__ __device__ static constexpr T kInfinity =
+    std::numeric_limits<T>::infinity();
+
+// __nv_bfloat16 is a distinct type different from Eigen::bfloat16.
+// CUDA doesn't provide std::numeric_limits<__nv_bfloat16>::infinity(), which
+// makes it default to returning 0. This is suboptimal and results in a lot of
+// fun when debugging.
+//
+// Neither the constructor of __nv_bfloat16 nor the CUDART_INF_BF16 constants
+// are constexpr, so we can't use them directly. However:
+// - Eigen::bfloat16 *does* have a valid numeric_limits::infinity(),
+// - absl::bit_cast is constexpr,
+// - __nv_bfloat16 and Eigen::bfloat16 are bitwise identical
+// So we can get a constant this way.
+template <>
+__host__ __device__ constexpr __nv_bfloat16 kInfinity<__nv_bfloat16> =
+    absl::bit_cast<__nv_bfloat16>(kInfinity<Eigen::bfloat16>);
+
 __device__ unsigned int ThreadIdx() {
   return threadIdx.z * blockDim.y * blockDim.x + threadIdx.y * blockDim.x +
          threadIdx.x;
@@ -60,6 +81,18 @@ __device__ unsigned int ThreadIdx() {
 __device__ unsigned int BlockIdx() {
   return blockIdx.z * gridDim.y * gridDim.x + blockIdx.y * gridDim.x +
          blockIdx.x;
+}
+
+__device__ inline bool IsNan(float v) { return isnan(v); }
+__device__ inline bool IsNan(double v) { return isnan(v); }
+__device__ inline bool IsNan(__nv_bfloat16 v) { return __isnan(v); }
+__device__ inline bool IsInf(float v) { return isinf(v); }
+__device__ inline bool IsInf(double v) { return isinf(v); }
+__device__ inline bool IsInf(__nv_bfloat16 v) { return __isinf(v); }
+__device__ inline bool IsZero(float v) { return v == 0.0f; }
+__device__ inline bool IsZero(double v) { return v == 0.0; }
+__device__ inline bool IsZero(__nv_bfloat16 v) {
+  return v == __nv_bfloat16(0.0f);
 }
 
 // Reduce a warp worth of values into a single one and have the 0th thread in
@@ -72,10 +105,40 @@ __device__ uint32_t WarpReduceSum(uint32_t value) {
   return value;
 }
 
+template <typename T>
+__device__ T FiniteOr(T val, T fallback) {
+  if (IsNan(val) || IsInf(val)) {
+    return fallback;
+  }
+  return val;
+}
+
+template <typename T>
+__device__ T WarpReduceMin(T value) {
+  value = FiniteOr(value, kInfinity<T>);
+
+  static constexpr uint32_t kFullMask = ~0;
+  for (unsigned int offset = 1; offset < kWarpSize; offset <<= 1) {
+    value = std::min(value, __shfl_down_sync(kFullMask, value, offset));
+  }
+  return value;
+}
+
+template <typename T>
+__device__ T WarpReduceMax(T value) {
+  value = FiniteOr(value, -kInfinity<T>);
+
+  static constexpr uint32_t kFullMask = ~0;
+  for (unsigned int offset = 1; offset < kWarpSize; offset <<= 1) {
+    value = std::max(value, __shfl_down_sync(kFullMask, value, offset));
+  }
+  return value;
+}
+
 // Sum up a block worth of FloatCheckResults into a single one and have the 0th
 // thread in the block return it.
-__device__ FloatCheckResult BlockReduceSum(uint32_t tid,
-                                           FloatCheckResult value) {
+__device__ FloatCheckResult BlockReduceResults(uint32_t tid,
+                                               FloatCheckResult value) {
   assert(kWarpSize == warpSize);
   static_assert(kBlockSize == kWarpSize * kMaxWarpsPerBlock);
   // Required to do the second warp reduction.
@@ -87,14 +150,20 @@ __device__ FloatCheckResult BlockReduceSum(uint32_t tid,
   value.nan_count = WarpReduceSum(value.nan_count);
   value.inf_count = WarpReduceSum(value.inf_count);
   value.zero_count = WarpReduceSum(value.zero_count);
+  value.min_value = WarpReduceMin(value.min_value);
+  value.max_value = WarpReduceMax(value.max_value);
 
   __shared__ uint32_t scratch_nan[kMaxWarpsPerBlock];
   __shared__ uint32_t scratch_inf[kMaxWarpsPerBlock];
   __shared__ uint32_t scratch_zero[kMaxWarpsPerBlock];
+  __shared__ double scratch_min[kMaxWarpsPerBlock];
+  __shared__ double scratch_max[kMaxWarpsPerBlock];
   if (lane_idx == 0) {
     scratch_nan[warp_idx] = value.nan_count;
     scratch_inf[warp_idx] = value.inf_count;
     scratch_zero[warp_idx] = value.zero_count;
+    scratch_min[warp_idx] = value.min_value;
+    scratch_max[warp_idx] = value.max_value;
   }
 
   __syncthreads();
@@ -103,25 +172,23 @@ __device__ FloatCheckResult BlockReduceSum(uint32_t tid,
     value.nan_count = scratch_nan[lane_idx];
     value.inf_count = scratch_inf[lane_idx];
     value.zero_count = scratch_zero[lane_idx];
+    value.min_value = scratch_min[lane_idx];
+    value.max_value = scratch_max[lane_idx];
+
     value.nan_count = WarpReduceSum(value.nan_count);
     value.inf_count = WarpReduceSum(value.inf_count);
     value.zero_count = WarpReduceSum(value.zero_count);
+    value.min_value = WarpReduceMin(value.min_value);
+    value.max_value = WarpReduceMax(value.max_value);
   } else {
     value.nan_count = 0;
     value.inf_count = 0;
     value.zero_count = 0;
+    value.min_value = kInfinity<double>;
+    value.max_value = -kInfinity<double>;
   }
 
   return value;
-}
-
-__device__ inline bool IsNan(float v) { return isnan(v); }
-__device__ inline bool IsNan(__nv_bfloat16 v) { return __isnan(v); }
-__device__ inline bool IsInf(float v) { return isinf(v); }
-__device__ inline bool IsInf(__nv_bfloat16 v) { return __isinf(v); }
-__device__ inline bool IsZero(float v) { return v == 0.0f; }
-__device__ inline bool IsZero(__nv_bfloat16 v) {
-  return v == __nv_bfloat16(0.0f);
 }
 
 // Get a part of the input buffer current thread block is responsible for
@@ -160,26 +227,39 @@ __device__ FloatCheckResult CheckFloats(const T* input, uint64_t input_size,
       xla::RoundDownTo(block_input_size, kElementsPerMemoryAccess<T>);
 
   FloatCheckResult result{};
+  result.min_value = kInfinity<double>;
+  result.max_value = -kInfinity<double>;
+
   for (uint64_t i = tid; i < input_chunks; i += kBlockSize) {
     Chunk<T> values = chunked_input[i];
     for (const T value : values) {
       result.nan_count += IsNan(value);
       result.inf_count += IsInf(value);
       result.zero_count += IsZero(value);
+      result.min_value = std::min(
+          result.min_value, static_cast<double>(FiniteOr(value, kInfinity<T>)));
+      result.max_value =
+          std::max(result.max_value,
+                   static_cast<double>(FiniteOr(value, -kInfinity<T>)));
     }
   }
 
   if (tid == 0 && chunked_input_size < block_input_size) {
     const size_t rest = block_input_size - chunked_input_size;
     for (uint64_t j = 0; j < rest; ++j) {
-      const T value = block_input[input_chunks + j];
+      const T value = block_input[chunked_input_size + j];
       result.nan_count += IsNan(value);
       result.inf_count += IsInf(value);
       result.zero_count += IsZero(value);
+      result.min_value = std::min(
+          result.min_value, static_cast<double>(FiniteOr(value, kInfinity<T>)));
+      result.max_value =
+          std::max(result.max_value,
+                   static_cast<double>(FiniteOr(value, -kInfinity<T>)));
     }
   }
 
-  return BlockReduceSum(tid, result);
+  return BlockReduceResults(tid, result);
 }
 
 __device__ FloatCheckResult ReduceResults(const FloatCheckResult* input,
@@ -188,15 +268,20 @@ __device__ FloatCheckResult ReduceResults(const FloatCheckResult* input,
   const auto [block_input, block_input_size] = GetBlockInput(input, input_size);
 
   FloatCheckResult result{};
+  result.min_value = kInfinity<double>;
+  result.max_value = -kInfinity<double>;
+
   for (uint64_t i = tid; i < input_size; i += kBlockSize) {
     const FloatCheckResult value = block_input[i];
     result.nan_count += value.nan_count;
     result.inf_count += value.inf_count;
     result.zero_count += value.zero_count;
+    result.min_value = std::min(result.min_value, value.min_value);
+    result.max_value = std::max(result.max_value, value.max_value);
   }
 
   // Now reduce a block worth of values into a single one.
-  return BlockReduceSum(tid, result);
+  return BlockReduceResults(tid, result);
 }
 
 // Count the number of floats for NaNs, Infs and zeros in input buffer and store
@@ -210,7 +295,7 @@ __global__ void FloatCheck(const T* input, uint64_t input_size,
     return;
   }
 
-  const FloatCheckResult result = CheckFloats(input, input_size, tmp_size);
+  FloatCheckResult result = CheckFloats(input, input_size, tmp_size);
   if (ThreadIdx() == 0) {
     tmp[BlockIdx()] = result;
   }
@@ -238,8 +323,8 @@ __global__ void ReduceFloatCheckResults(
 #if __CUDA_ARCH__ >= 600
     const uint32_t write_idx = log_write_idx.fetch_add(1);
     if (write_idx < log_header->capacity) {
-      log_entries[write_idx] = xla::gpu::BufferDebugFloatCheckEntry{
-          entry_id, total.nan_count, total.inf_count, total.zero_count};
+      log_entries[write_idx] =
+          xla::gpu::BufferDebugFloatCheckEntry{entry_id, total};
     }
 #else
     // Our toolchains generate a fetch_add PTX instructions with system scope,
@@ -262,6 +347,12 @@ se::KernelLoaderSpec GetFloatCheckBf16KernelSpec(int arity) {
       "BufferDebugFloatCheckBf16Kernel", arity);
 }
 
+se::KernelLoaderSpec GetFloatCheckF64KernelSpec(int arity) {
+  return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
+      absl::bit_cast<void*>(&FloatCheck<double>),
+      "BufferDebugFloatCheckF64Kernel", arity);
+}
+
 se::KernelLoaderSpec GetReduceFloatCheckResultsKernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
       absl::bit_cast<void*>(&ReduceFloatCheckResults),
@@ -277,6 +368,10 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugFloatCheckBf16Kernel, se::gpu::BufferDebugFloatCheckBf16Kernel,
     se::cuda::kCudaPlatformId, GetFloatCheckBf16KernelSpec);
+
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    BufferDebugFloatCheckF64Kernel, se::gpu::BufferDebugFloatCheckF64Kernel,
+    se::cuda::kCudaPlatformId, GetFloatCheckF64KernelSpec);
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugReduceFloatCheckResultsKernel,

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/functional/function_ref.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -689,7 +690,10 @@ class HloCollectiveInstruction : public HloChannelInstruction {
     return device_list_->replica_groups();
   }
 
-  const CollectiveDeviceListBase& device_list() const { return *device_list_; }
+  const std::shared_ptr<CollectiveDeviceListBase>& device_list() const {
+    return device_list_;
+  }
+  void set_device_list(std::shared_ptr<CollectiveDeviceListBase> device_list);
 
   // Returns true if the layout of the AllReduce is enforced by XLA client (as
   // the layout set in the shape). The only reason for the client to set the
@@ -708,11 +712,21 @@ class HloCollectiveInstruction : public HloChannelInstruction {
 
   static bool ClassOf(const HloInstruction* hlo);
 
+  // TODO(b/462498901): We are trending towards removing channel IDs for
+  // collectives - or, rather, turning it into a boolean field indicating
+  // whether the collective is cross-replica or cross-partition. This method is
+  // a temporary crutch to be consistent without generating unique channel IDs
+  // whenever a new collective is created.
+  static int64_t GetDefaultChannelId() {
+    constexpr int64_t kDefaultCollectiveChannelId = 1;
+    return kDefaultCollectiveChannelId;
+  }
+
  protected:
   explicit HloCollectiveInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& collective_device_list,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       bool constrain_layout, const std::optional<int64_t>& channel_id);
 
   void ToProto(HloInstructionProto* proto) const override;
@@ -730,13 +744,12 @@ class HloCollectiveInstruction : public HloChannelInstruction {
 
 class HloAllGatherInstruction : public HloCollectiveInstruction {
  public:
-  explicit HloAllGatherInstruction(HloOpcode opcode, const Shape& shape,
-                                   absl::Span<HloInstruction* const> operands,
-                                   int64_t all_gather_dimension,
-                                   const CollectiveDeviceListBase& device_list,
-                                   bool constrain_layout,
-                                   const std::optional<int64_t>& channel_id,
-                                   bool use_global_device_ids);
+  explicit HloAllGatherInstruction(
+      HloOpcode opcode, const Shape& shape,
+      absl::Span<HloInstruction* const> operands, int64_t all_gather_dimension,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloAllGatherInstruction(
@@ -789,8 +802,9 @@ class HloAllReduceInstructionBase : public HloCollectiveInstruction {
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
 
   // Returns true if the ids in the ReplicaGroup config represent a global id of
   // (replica_id * partition_count + partition_id) instead of a replica id.
@@ -846,9 +860,9 @@ class HloReduceScatterInstruction : public HloAllReduceInstructionBase {
   explicit HloReduceScatterInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-      int64_t scatter_dimension);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids, int64_t scatter_dimension);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloReduceScatterInstruction(
@@ -891,8 +905,8 @@ class HloAllToAllInstruction : public HloCollectiveInstruction {
  public:
   explicit HloAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -939,7 +953,7 @@ class HloRaggedAllToAllInstruction : public HloCollectiveInstruction {
  public:
   explicit HloRaggedAllToAllInstruction(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& device_list,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -970,8 +984,8 @@ class HloCollectiveBroadcastInstruction : public HloCollectiveInstruction {
   explicit HloCollectiveBroadcastInstruction(
       HloOpcode opcode, const Shape& shape,
       absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceListBase& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   explicit HloCollectiveBroadcastInstruction(
@@ -1146,6 +1160,9 @@ class HloScanInstruction : public HloDimensionsInstruction {
 
   // Returns the dimension along which to scan.
   int64_t scan_dimension() const { return HloInstruction::dimensions(0); }
+
+  // Returns the size of the dimension along which to scan.
+  absl::StatusOr<int64_t> GetScanDimSize() const;
 
   // Returns whether the scan is in reverse order.
   bool is_reverse() const { return is_reverse_; }
@@ -1955,7 +1972,8 @@ class HloConvolutionInstruction : public HloInstruction {
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      const PrecisionConfig& precision_config);
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config);
   enum class ConvKind { UNSET, FPROP, WGRAD, DGRAD };
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
@@ -1991,6 +2009,11 @@ class HloConvolutionInstruction : public HloInstruction {
   const PrecisionConfig& precision_config() const { return precision_config_; }
   PrecisionConfig* mutable_precision_config() { return &precision_config_; }
 
+  const SparsityConfig& sparsity_config() const { return sparsity_config_; }
+  void set_sparsity_config(const SparsityConfig& sparsity_config) {
+    sparsity_config_ = sparsity_config;
+  }
+
   std::string ToCategory() const override;
   void ToProto(HloInstructionProto* proto) const override;
 
@@ -2021,6 +2044,8 @@ class HloConvolutionInstruction : public HloInstruction {
   // Information used to communicate to the implementation about the algorithm
   // used to produce results. See the documentation on precision_config().
   PrecisionConfig precision_config_;
+  // The sparsity configuration used for the convolution.
+  SparsityConfig sparsity_config_;
   // Conv type (fprop, dgrad, wgrad)
   ConvKind conv_kind_ = ConvKind::UNSET;
 };
@@ -2975,8 +3000,6 @@ inline constexpr absl::string_view kPinCustomCallTarget = "Pin";
 inline constexpr absl::string_view kUnpinCustomCallTarget = "Unpin";
 inline constexpr absl::string_view kCreateBufferCustomCallTarget =
     "CreateBuffer";
-inline constexpr absl::string_view kCollectiveMetadataCustomCallTarget =
-    "CollectiveMetadata";
 
 }  // namespace xla
 

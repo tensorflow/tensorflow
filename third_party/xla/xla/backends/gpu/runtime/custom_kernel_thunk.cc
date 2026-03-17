@@ -28,19 +28,21 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/print_buffer_contents.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -49,8 +51,7 @@ CustomKernelThunk::CustomKernelThunk(
     Thunk::ThunkInfo thunk_info, CustomKernel custom_kernel,
     const emitters::KernelArguments& kernel_arguments)
     : Thunk(Kind::kCustomKernel, std::move(thunk_info)),
-      args_(kernel_arguments.GetArgumentBufferSlices()),
-      args_shape_(kernel_arguments.GetArgumentBufferShapes()),
+      args_(kernel_arguments.GetArgumentShapedSlices()),
       written_(kernel_arguments.GetArgumentOutputFlags()),
       custom_kernel_(std::move(custom_kernel)) {}
 
@@ -85,12 +86,12 @@ absl::Status CustomKernelThunk::ExecuteOnStream(const ExecuteParams& params) {
           << kernel->name();
 
   absl::InlinedVector<se::DeviceAddressBase, 4> buffer_args;
-  for (const BufferAllocation::Slice& arg : args_) {
+  for (const ShapedSlice& arg : args_) {
     se::DeviceAddressBase buf =
-        params.buffer_allocations->GetDeviceAddress(arg);
-    VLOG(3) << "[" << device_ordinal << "]  Arg: alloc #" << arg.index()
-            << ", offset: " << arg.offset() << ": " << buf.opaque() << " ("
-            << buf.size() << "B)";
+        params.buffer_allocations->GetDeviceAddress(arg.slice);
+    VLOG(3) << "[" << device_ordinal << "]  Arg: alloc #" << arg.slice.index()
+            << ", offset: " << arg.slice.offset() << ": " << buf.opaque()
+            << " (" << buf.size() << "B)";
     buffer_args.push_back(buf);
   }
 
@@ -117,9 +118,9 @@ Thunk::BufferUses CustomKernelThunk::buffer_uses() const {
     // We assume that any buffer is either an input or an output of the
     // kernel, and inout buffers are represented as 2 separate arguments.
     if (written_[i]) {
-      buffers.push_back(BufferUse::Write(args_[i], args_shape_[i]));
+      buffers.push_back(BufferUse::Write(args_[i].slice, args_[i].shape));
     } else {
-      buffers.push_back(BufferUse::Read(args_[i], args_shape_[i]));
+      buffers.push_back(BufferUse::Read(args_[i].slice, args_[i].shape));
     }
   }
   return buffers;
@@ -127,7 +128,7 @@ Thunk::BufferUses CustomKernelThunk::buffer_uses() const {
 
 CustomKernelThunk::CustomKernelThunk(Thunk::ThunkInfo thunk_info,
                                      CustomKernel custom_kernel,
-                                     std::vector<BufferAllocation::Slice> args,
+                                     std::vector<ShapedSlice> args,
                                      std::vector<bool> written)
     : Thunk(Kind::kCustomKernel, std::move(thunk_info)),
       args_(std::move(args)),
@@ -140,14 +141,14 @@ absl::StatusOr<ThunkProto> CustomKernelThunk::ToProto() const {
 
   CustomKernelThunkProto* custom_kernel_thunk_proto =
       thunk_proto.mutable_custom_kernel_thunk();
-  for (const BufferAllocation::Slice& arg : args_) {
-    TF_ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->add_args(), arg.ToProto());
+  for (const ShapedSlice& arg : args_) {
+    ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->add_args(), arg.ToProto());
   }
   for (bool written : written_) {
     custom_kernel_thunk_proto->add_written(written);
   }
-  TF_ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->mutable_custom_kernel(),
-                      custom_kernel_.ToProto());
+  ASSIGN_OR_RETURN(*custom_kernel_thunk_proto->mutable_custom_kernel(),
+                   custom_kernel_.ToProto());
   return thunk_proto;
 }
 
@@ -156,16 +157,14 @@ absl::StatusOr<std::unique_ptr<CustomKernelThunk>> CustomKernelThunk::FromProto(
     absl::Span<const BufferAllocation> buffer_allocations,
     const std::optional<se::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver) {
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(
       CustomKernel custom_kernel,
       CustomKernel::FromProto(proto.custom_kernel(), symbol_resolver));
-  std::vector<BufferAllocation::Slice> args;
+  std::vector<ShapedSlice> args;
   args.reserve(proto.args_size());
-  for (const buffer_assignment::BufferAllocationSliceProto& arg_proto :
-       proto.args()) {
-    TF_ASSIGN_OR_RETURN(
-        args.emplace_back(),
-        BufferAllocation::Slice::FromProto(arg_proto, buffer_allocations));
+  for (const ShapedSliceProto& arg_proto : proto.args()) {
+    ASSIGN_OR_RETURN(args.emplace_back(),
+                     ShapedSlice::FromProto(arg_proto, buffer_allocations));
   }
   std::vector<bool> written{proto.written().begin(), proto.written().end()};
   return absl::WrapUnique(new CustomKernelThunk(std::move(thunk_info),

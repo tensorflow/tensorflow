@@ -117,14 +117,14 @@ TEST_P(HloShardingTest, IsFullyReplicated) {
   {
     // Maximal HloSharding with a single device is fully replicated.
     auto device_list = GetDevices({0});  // This sharding uses 1 device.
-    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    auto xla_hlo_sharding = xla::HloSharding::SingleDevice(/*device_id=*/0);
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_TRUE(sharding->IsFullyReplicated());
   }
   {
     // Maximal HloSharding with more than one device is not fully replicated.
-    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    auto xla_hlo_sharding = xla::HloSharding::SingleDevice(/*device_id=*/0);
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_FALSE(sharding->IsFullyReplicated());
@@ -842,7 +842,7 @@ TEST_P(HloShardingTest, Hash) {
       HloSharding::Create(GetDevices({0}), MemoryKind("pinned_host"),
                           xla::HloSharding::Replicate()),
       HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
-                          xla::HloSharding::AssignDevice(/*device_id=*/0)),
+                          xla::HloSharding::SingleDevice(/*device_id=*/0)),
       HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
                           xla::HloSharding::PartialTile(xla::TileAssignment(
                               xla::IotaTileAssignment::Create({2, 3})))),

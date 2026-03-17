@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/service/gpu/model/matmul_interpolator_utils.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -194,7 +193,7 @@ std::unique_ptr<HloModule> GetModule(absl::string_view lhs_dtype,
   return *std::move(parsed);
 }
 
-void Measure(HloRunner& runner, OpaqueExecutable* executable,
+void Measure(HloRunnerInterface& runner, OpaqueExecutable* executable,
              const std::vector<Literal>& args_small,
              const std::vector<Literal>& args_large) {
   CHECK_OK(runner.ExecuteWithExecutable(executable, args_small).status());
@@ -531,9 +530,6 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
   std::minstd_rand0 engine;
   std::shuffle(specs.begin(), specs.end(), engine);
 
-  auto& device_info =
-      runner_.backend().stream_executors()[0]->GetDeviceDescription();
-
   for (int i = 0; i < specs.size(); i++) {
     ExplicitSpec& spec = specs[i];
 
@@ -555,7 +551,7 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
     HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
     int64_t fmas = GetFlops(*dot);
     absl::Duration time = Profile(std::move(module));
-    entry.set_clock_cycles(device_info.clock_rate_ghz() *
+    entry.set_clock_cycles(device_description_.clock_rate_ghz() *
                            absl::ToInt64Nanoseconds(time));
     entry.set_flops(fmas * 1e9 / absl::ToInt64Nanoseconds(time));
 
@@ -563,7 +559,8 @@ DeviceHloInstructionProfiles MatmulPerfTableGen::ComputeTable() {
 
     ReportProgress("Profiling progress", i + 1, specs.size());
   }
-  std::string device_key = gpu::HloOpProfiles::GetProfileName(device_info);
+  std::string device_key =
+      gpu::HloOpProfiles::GetProfileName(device_description_);
   device_profiles.mutable_entries()->insert({device_key, profile_list});
   return device_profiles;
 }

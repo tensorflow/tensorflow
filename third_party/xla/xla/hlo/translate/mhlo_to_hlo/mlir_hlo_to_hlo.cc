@@ -3954,8 +3954,23 @@ LogicalResult ExportXlaOp(ScanOp op, OpLoweringContext ctx) {
     is_associative = op.getIsAssociative().value() ? xla::TRI_STATE_TRUE
                                                    : xla::TRI_STATE_FALSE;
   }
-  xla::XlaOp result = xla::Scan(inputs, inits, body, op.getDimension(),
-                                op.getIsReverse(), is_associative);
+
+  // Extract scan dimension size from an input or output tensor.
+  auto scan_dimension_size = [&]() -> std::optional<int64_t> {
+    if (!op.getInputs().empty()) {
+      return cast<TensorType>(op.getInputs().front().getType())
+          .getDimSize(op.getDimension());
+    }
+    if (!op.getOutputs().empty()) {
+      return cast<TensorType>(op.getOutputs().front().getType())
+          .getDimSize(op.getDimension());
+    }
+    return std::nullopt;
+  }();
+
+  xla::XlaOp result =
+      xla::Scan(inputs, inits, body, op.getDimension(), scan_dimension_size,
+                op.getIsReverse(), is_associative);
 
   for (int i = 0; i < op.getNumResults(); ++i) {
     value_map[op.getResult(i)] = xla::GetTupleElement(result, i);
@@ -4335,6 +4350,13 @@ LogicalResult ConvertToHloModule::LowerStablehloCompositeCall(
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
+  auto composite_op = cast<stablehlo::CompositeOp>(inst);
+  if (!composite_op.getCompositeRegions().empty()) {
+    return inst->emitOpError()
+           << "CompositeOp with regions not supported in StableHLO -> HLO "
+              "conversion.";
+  }
+
   auto& value_map = *value_lowering;
   SmallVector<xla::XlaOp, 1> operands;
   for (const Value& val : inst->getOperands()) {
@@ -4345,7 +4367,6 @@ LogicalResult ConvertToHloModule::LowerStablehloCompositeCall(
     operands.push_back(operand);
   }
 
-  auto composite_op = cast<stablehlo::CompositeOp>(inst);
   xla::XlaComputationId computation;
   if (failed(LowerBasicBlockAsFunction(
           /*block=*/&module_
@@ -4394,6 +4415,13 @@ LogicalResult ConvertToHloModule::LowerCompositeCall(
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaOp* return_value) {
+  auto composite_op = cast<mhlo::CompositeOp>(inst);
+  if (!composite_op.getCompositeRegions().empty()) {
+    return inst->emitOpError()
+           << "CompositeOp with regions not supported in MHLO -> HLO "
+              "conversion.";
+  }
+
   auto& value_map = *value_lowering;
   SmallVector<xla::XlaOp, 1> operands;
   for (const Value& val : inst->getOperands()) {
@@ -4404,7 +4432,6 @@ LogicalResult ConvertToHloModule::LowerCompositeCall(
     operands.push_back(operand);
   }
 
-  auto composite_op = cast<mhlo::CompositeOp>(inst);
   xla::XlaComputationId computation;
   Block& block =
       module_.lookupSymbol<mlir::func::FuncOp>(composite_op.getDecomposition())

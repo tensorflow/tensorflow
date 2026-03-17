@@ -1,4 +1,4 @@
-keras==3.13.1
+keras==3.13.2
 keras_nlp==0.18.1
 tensorflow==2.18.0
 jax==0.4.38

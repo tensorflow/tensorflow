@@ -50,7 +50,7 @@ namespace xla {
     PjRtStreamExecutorDeviceDescription& description,
     const std::string& device_vendor, const std::string& compute_capability,
     int core_count, int64_t shared_memory_per_block_optin, int partition_index,
-    int numa_node) {
+    const std::string& fabric_uuid) {
   std::vector<int64_t> v_coords(description.coords().begin(),
                                 description.coords().end());
 
@@ -64,10 +64,8 @@ namespace xla {
       {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
       {"shared_memory_per_block_optin", shared_memory_per_block_optin},
       {"core_count", static_cast<int64_t>(core_count)},
+      {"fabric_uuid", fabric_uuid},
   };
-  if (numa_node != tsl::port::kNUMANoAffinity) {
-    attributes["numa_node"] = static_cast<int64_t>(numa_node);
-  }
   description.SetAttributes(std::move(attributes));
   description.SetToString(absl::StrFormat(
       "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
@@ -143,7 +141,7 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
         *description, gpu_vendor, compute_capability,
         target_config_->gpu_device_info().core_count(),
         target_config_->gpu_device_info().shared_memory_per_block_optin(),
-        /*partition_index=*/0, /*numa_node=*/tsl::port::kNUMANoAffinity);
+        /*partition_index=*/0, /*fabric_uuid=*/"");
   }
   return description;
 }
@@ -160,7 +158,7 @@ absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
 absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
 StreamExecutorGpuTopologyDescription::
     ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-        xla::PjRtGlobalDeviceId device_id) const {
+        GlobalDeviceId device_id) const {
   if (device_id.value() < 0 ||
       device_id.value() >= gpu_topology_->number_of_devices()) {
     return absl::InvalidArgumentError(
@@ -189,6 +187,13 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
     layout.set_element_size_in_bits(primitive_util::BitWidth(element_type));
   }
   return layout;
+}
+
+absl::StatusOr<PjRtDeviceDimensions>
+StreamExecutorGpuTopologyDescription::ChipBounds() const {
+  return PjRtDeviceDimensions{gpu_topology_->num_partitions(),
+                              gpu_topology_->num_hosts_per_partition(),
+                              gpu_topology_->num_devices_per_host()};
 }
 
 absl::StatusOr<xla::PjRtTopologyDescriptionProto>

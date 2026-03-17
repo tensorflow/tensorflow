@@ -109,6 +109,9 @@ class LiteralBase {
   // the given ShapeIndex is not array.
   const void* untyped_data(const ShapeIndex& shape_index = {}) const;
   int64_t size_bytes(const ShapeIndex& shape_index = {}) const;
+  // total size in bytes of the literal (including pre-allocated dynamic
+  // metadata)
+  int64_t total_size_bytes(const ShapeIndex& shape_index = {}) const;
 
   // Computes the size in bytes of the output of the Serialize method.
   absl::StatusOr<int64_t> SerializedSize() const {
@@ -1882,6 +1885,9 @@ NativeT LiteralBase::Piece::GetLinear(int64_t linear_index) const {
   DCHECK(subshape().IsArray())
       << __func__ << " is only supported for dense arrays: " << subshape();
   DCHECK_LT(linear_index, element_count()) << "linear_index out of bounds";
+  if (subshape().element_type() == PRED) {
+    return static_cast<NativeT>(buffer()[linear_index] ? true : false);
+  }
   return data<NativeT>().data()[linear_index];
 }
 

@@ -35,6 +35,7 @@ struct BlockLevelParameters {
   int64_t num_warps = 1;
   int num_ctas = 1;
   int num_stages = 1;
+  int64_t global_scratch_memory_size = 0;
   bool is_tma_allowed = false;
   bool is_warp_specialization_allowed = false;
 

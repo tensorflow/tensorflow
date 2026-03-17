@@ -15,7 +15,6 @@
 #
 # ==============================================================================
 
-
 TAG_FILTERS=(
     -no_gpu
     -requires-gpu-intel
@@ -34,6 +33,10 @@ TAG_FILTERS=(
     -requires-gpu-sm89-only
     -requires-gpu-sm90
     -requires-gpu-sm90-only
+    -skip_rocprofiler_sdk
+    -no_oss
+    -oss_excluded
+    -oss_serial
 )
 
 echo $(IFS=, ; echo "${TAG_FILTERS[*]}")

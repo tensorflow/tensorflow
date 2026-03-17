@@ -40,7 +40,7 @@ namespace tensorflow {
 namespace {
 
 struct OutputHash {
-  uint64 operator()(const Output& x) const { return x.hash(); }
+  uint64_t operator()(const Output& x) const { return x.hash(); }
 };
 
 struct OutputEq {
@@ -77,7 +77,7 @@ class SymbolicGradientBuilder {
 
   // Returns true if `opname` is registered in `registry_` with no gradient
   // function, false otherwise.
-  bool IsPrimitiveOpWithNoGrad(const string& opname);
+  bool IsPrimitiveOpWithNoGrad(const std::string& opname);
 
   // Call the gradient function for `op`, storing the result in `grad_outputs`.
   absl::Status CallGradFunction(const Operation& op,
@@ -376,7 +376,8 @@ absl::Status SymbolicGradientBuilder::SumGradients(const Output& src,
   return absl::OkStatus();
 }
 
-bool SymbolicGradientBuilder::IsPrimitiveOpWithNoGrad(const string& opname) {
+bool SymbolicGradientBuilder::IsPrimitiveOpWithNoGrad(
+    const std::string& opname) {
   ops::GradFunc grad_fn;
   absl::Status s = registry_->Lookup(opname, &grad_fn);
   return s.ok() && (grad_fn == nullptr);

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/graph_rewrite/update_tpu_embedding_ops_passes.h"
 
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>

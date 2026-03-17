@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
 #include "xla/service/gpu/llvm_gpu_backend/load_ir_module.h"
 #include "xla/tsl/platform/rocm_rocdl_path.h"
@@ -44,7 +45,7 @@ bool HasUndefinedFunctions(const llvm::Module& M) {
 
 TEST(BitcodeLinkTest, TestLinkEmbeded) {
   llvm::LLVMContext llvm_context;
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_use_embeded_device_lib(true);
   auto module = LoadIRModule(TestIRFile(), &llvm_context);
   ASSERT_TRUE(HasUndefinedFunctions(*module));
@@ -56,7 +57,7 @@ TEST(BitcodeLinkTest, TestLinkEmbeded) {
 
 TEST(BitcodeLinkTest, TestLinkFromInstallation) {
   llvm::LLVMContext llvm_context;
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_use_embeded_device_lib(false);
   auto module = LoadIRModule(TestIRFile(), &llvm_context);
   ASSERT_TRUE(HasUndefinedFunctions(*module));

@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/AsmParser/AsmParser.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -139,15 +138,6 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
     indexing.indexing_maps[output_id] = operand_indexing_maps;
   }
   return indexing;
-}
-
-AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                         mlir::MLIRContext* mlir_context) {
-  std::string full_affine_map_string =
-      absl::StrCat("affine_map<", serialized_affine_map, ">");
-  return mlir::cast<mlir::AffineMapAttr>(
-             mlir::parseAttribute(full_affine_map_string, mlir_context))
-      .getValue();
 }
 
 // Since MLIR does not have AffineExprAttr, we construct an AffineMap and then

@@ -636,9 +636,13 @@ absl::StatusOr<HloInstruction*> AddImplicitDimensionsToIndices(
   Shape expanded_shape = ShapeUtil::MakeShape(indices_shape.element_type(),
                                               {batch_size, operand_rank});
 
-  HloInstruction* zero_filled_tensor = computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR2FromArray2D<int32_t>(
-          Array2D<int32_t>(batch_size, operand_rank - num_indices_dims, 0))));
+  HloInstruction* zero_filled_tensor =
+      computation->AddInstruction(HloInstruction::CreateConstant(
+          indices->shape().element_type() == S64
+              ? LiteralUtil::CreateR2FromArray2D<int64_t>(Array2D<int64_t>(
+                    batch_size, operand_rank - num_indices_dims, 0))
+              : LiteralUtil::CreateR2FromArray2D<int32_t>(Array2D<int32_t>(
+                    batch_size, operand_rank - num_indices_dims, 0))));
   // Concatenate the zero-filled tensor with the index_vector
   HloInstruction* expanded_indices =
       computation->AddInstruction(HloInstruction::CreateConcatenate(

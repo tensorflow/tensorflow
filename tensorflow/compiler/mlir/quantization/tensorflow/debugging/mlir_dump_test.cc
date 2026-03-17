@@ -157,11 +157,11 @@ module{
                         "dump_0001_tensorflow::quantization::mlir_dump_test"
                         "::NoOpPass_before.mlir")));
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
-      tsl::io::JoinPath(test_dir_, "dump_0002_Canonicalizer_before.mlir")));
+      tsl::io::JoinPath(test_dir_, "dump_0002_CanonicalizerPass_before.mlir")));
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
-      tsl::io::JoinPath(test_dir_, "dump_0002_Canonicalizer_after.mlir")));
+      tsl::io::JoinPath(test_dir_, "dump_0002_CanonicalizerPass_after.mlir")));
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(
-      tsl::io::JoinPath(test_dir_, "dump_0003_Canonicalizer_before.mlir")));
+      tsl::io::JoinPath(test_dir_, "dump_0003_CanonicalizerPass_before.mlir")));
 }
 
 TEST_F(EnableIrPrintingTest, NestedPassSuccessfullyRuns) {

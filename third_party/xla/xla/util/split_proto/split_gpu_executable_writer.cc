@@ -17,13 +17,21 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "google/protobuf/message.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/sort_json.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util/split_proto/split_proto.pb.h"
+#include "xla/util/split_proto/split_proto_riegeli_options.h"
+#include "xla/util/split_proto/split_proto_write_record.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 
@@ -56,21 +64,34 @@ SplitProtoManifest BuildManifest(int32_t num_of_contants) {
   return manifest;
 }
 
-template <typename T, typename Src>
-absl::Status WriteRecord(riegeli::RecordWriter<Src>& record_writer, T& record) {
-  if (!record_writer.WriteRecord(record)) {
-    return record_writer.status().ok()
-               ? absl::InternalError("Failed to write record")
-               : record_writer.status();
+// If the backend config is a json string, sort the keys to ensure that the
+// serialized form is consistent. This is needed to make the output
+// deterministic because the order of keys in json is not guaranteed.
+//
+// If the backend config is not a json string, it is not modified.
+void NormalizeBackendConfig(gpu::GpuExecutableProto& executable) {
+  for (HloComputationProto& computation :
+       *executable.mutable_hlo_module_with_config()
+            ->mutable_hlo_module()
+            ->mutable_computations()) {
+    for (HloInstructionProto& instruction :
+         *computation.mutable_instructions()) {
+      absl::StatusOr<std::string> normalized_backend_config =
+          SortJson(instruction.backend_config());
+      if (normalized_backend_config.ok()) {
+        instruction.set_backend_config(*normalized_backend_config);
+      }
+      // If the backend config is not a json string, then do nothing.
+    }
   }
-  return absl::OkStatus();
 }
 
 }  // namespace
 
 absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
                                      std::unique_ptr<riegeli::Writer> writer) {
-  riegeli::RecordWriter record_writer(std::move(writer));
+  riegeli::RecordWriter record_writer(std::move(writer),
+                                      GetSplitProtoRiegeliOptions());
   SplitProtoManifest manifest = BuildManifest(executable.constants_size());
   TF_RETURN_IF_ERROR(WriteRecord(record_writer, manifest));
 
@@ -94,6 +115,10 @@ absl::Status WriteSplitGpuExecutable(gpu::GpuExecutableProto executable,
   executable.clear_constants();
 
   // The rest of the fields (i.e. the non-offloaded fields)
+  NormalizeBackendConfig(executable);
+  // Module IDs are created via a static counter when deserializing, and they
+  // can cause non-determinism, so we don't preserve them.
+  executable.mutable_hlo_module_with_config()->mutable_hlo_module()->clear_id();
   TF_RETURN_IF_ERROR(WriteRecord(record_writer, executable));
 
   if (!record_writer.Close()) {

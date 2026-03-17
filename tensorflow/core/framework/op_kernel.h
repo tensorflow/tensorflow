@@ -84,6 +84,7 @@ namespace checkpoint {
 class TensorSliceReaderCacheWrapper;
 }  // namespace checkpoint
 
+struct KernelRegistry;
 class AsyncOpKernel;
 class CallFrameInterface;
 class DeviceMgr;
@@ -1523,12 +1524,25 @@ absl::Status FindKernelDef(
     AttrSlice node_attrs, const KernelDef** def,
     std::string* kernel_class_name);
 
+absl::Status FindKernelDef(
+    const DeviceType& device_type, absl::string_view node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs, const KernelDef** def, std::string* kernel_class_name,
+    const KernelRegistry* registry);
+
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.
 absl::Status FindKernelDef(const DeviceType& device_type,
                            const NodeDef& node_def, const KernelDef** def,
                            std::string* kernel_class_name);
+
+absl::Status FindKernelDef(const DeviceType& device_type,
+                           const NodeDef& node_def, const KernelDef** def,
+                           std::string* kernel_class_name,
+                           const KernelRegistry* registry);
 
 // Writes a list of all registered kernels to LOG(INFO), to help users debug
 // missing kernel errors.

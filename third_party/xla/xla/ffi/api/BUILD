@@ -89,7 +89,8 @@ xla_cc_test(
         "//xla/ffi:call_frame",
         "//xla/ffi:execution_context",
         "//xla/ffi:execution_state",
-        "//xla/ffi:ffi_api",
+        "//xla/ffi:ffi_api",  # buildcleaner: keep
+        "//xla/ffi:invoke",
         "//xla/ffi:type_registry",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",

@@ -43,12 +43,14 @@ namespace xla::gpu {
 GpuClique::GpuClique(
     GpuCliqueKey key, std::optional<CliqueIds> ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-    bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel)
+    bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
+    const GpuClique* parent)
     : Clique(std::move(communicators)),
       key_(key),
       ids_(ids),
       peer_access_enabled_(peer_access_enabled),
-      cancel_(std::move(cancel)) {}
+      cancel_(std::move(cancel)),
+      parent_(parent) {}
 
 std::optional<GpuDeviceCommunicator*> GpuClique::device_comm(
     RankId rank, const GpuDeviceCommunicator::Requirements& reqs) const {
@@ -127,9 +129,10 @@ std::string GpuClique::LockableName::ToString(const GpuClique& clique) {
 LockableGpuClique::LockableGpuClique(
     GpuCliqueKey clique_key, std::optional<CliqueIds> clique_ids,
     absl::btree_map<RankId, std::unique_ptr<Communicator>> communicators,
-    bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel)
+    bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
+    const GpuClique* parent)
     : Lockable(std::move(clique_key), clique_ids, std::move(communicators),
-               peer_access_enabled, std::move(cancel)) {}
+               peer_access_enabled, std::move(cancel), parent) {}
 
 absl::Status LockableGpuClique::HealthCheck() const {
   return value().HealthCheck();
@@ -138,6 +141,10 @@ absl::Status LockableGpuClique::HealthCheck() const {
 absl::Status LockableGpuClique::Abort() { return mutable_value().Abort(); }
 
 void LockableGpuClique::Cancel() { mutable_value().Cancel(); }
+
+bool LockableGpuClique::HasParent(const GpuClique* parent) const {
+  return this->value().parent() == parent;
+}
 
 std::string LockableGpuClique::DebugString() const {
   return absl::StrFormat("LockableGpuClique: %s", value().DebugString());

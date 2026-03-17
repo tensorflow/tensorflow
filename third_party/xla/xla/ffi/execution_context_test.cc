@@ -62,9 +62,9 @@ TEST(ExecutionContextTest, InsertUserOwned) {
 }
 
 TEST(ExecutionContextTest, InsertUserOwnedWithTypeId) {
-  TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeId type_id,
-                          TypeRegistry::AssignExternalTypeId(
-                              "I32UserData", TypeRegistry::TypeInfo{}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      TypeRegistry::TypeId type_id,
+      TypeRegistry::AssignTypeId("I32UserData", TypeRegistry::TypeInfo{}));
 
   I32UserData user_data(42);
 

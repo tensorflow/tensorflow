@@ -1459,7 +1459,7 @@ absl::Status ParseAndValidateSharding(const NodeAndSharding& node_and_sharding,
       // assigning to core 0 (maximal).
       if (result_value_serialized != sharding_serialized) {
         // We see different shardings, assign to core 0.
-        auto core_zero_sharding = xla::sharding_builder::AssignDevice(0);
+        auto core_zero_sharding = xla::sharding_builder::SingleDevice(0);
         DCHECK_NE(node_and_sharding.node, nullptr);
         *core_zero_sharding.add_metadata() =
             CreateOpMetadataFromNode(*node_and_sharding.node);
@@ -2301,7 +2301,7 @@ absl::Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
         }
         node_and_sharding = NodeAndSharding(
             /*node=*/nullptr,
-            xla::sharding_builder::AssignDevice(*assigned_core));
+            xla::sharding_builder::SingleDevice(*assigned_core));
       }
       *node_and_sharding->sharding.add_metadata() =
           CreateOpMetadataFromNode(*replicate_node);
@@ -2428,7 +2428,7 @@ absl::Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
         }
         node_and_sharding = NodeAndSharding(
             /*node=*/nullptr,
-            xla::sharding_builder::AssignDevice(*assigned_core));
+            xla::sharding_builder::SingleDevice(*assigned_core));
       }
       *node_and_sharding->sharding.add_metadata() =
           CreateOpMetadataFromNode(*replicate_node);

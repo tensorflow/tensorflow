@@ -58,6 +58,8 @@ struct GpuClientOptions {
 
   bool use_tfrt_gpu_client = false;
 
+  std::optional<bool> use_async_dispatch;
+
   int max_inflight_computations = 8;
 };
 

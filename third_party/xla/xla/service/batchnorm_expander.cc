@@ -282,7 +282,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     optional<int64_t> unique_device = batch_norm->sharding_unique_device();
     HloSharding default_sharding =
         unique_device.has_value()
-            ? HloSharding::AssignDevice(unique_device.value())
+            ? HloSharding::SingleDevice(unique_device.value())
             : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
@@ -374,7 +374,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
     optional<int64_t> unique_device = batch_norm->sharding_unique_device();
     HloSharding default_sharding =
         unique_device.has_value()
-            ? HloSharding::AssignDevice(unique_device.value())
+            ? HloSharding::SingleDevice(unique_device.value())
             : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
@@ -563,7 +563,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
     auto unique_device = batch_norm->sharding_unique_device();
     HloSharding default_sharding =
         unique_device.has_value()
-            ? HloSharding::AssignDevice(unique_device.value())
+            ? HloSharding::SingleDevice(unique_device.value())
             : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), activation_shape)) {

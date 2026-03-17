@@ -13,32 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <variant>
-
-#include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_module.h"
+#include <gtest/gtest.h>
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class ConvolutionLayoutNormalizationTest : public HloTestBase {
+class ConvolutionLayoutNormalizationTest : public HloPjRtGpuTestBase {
  public:
   se::CudaComputeCapability GetCudaComputeCapability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .cuda_compute_capability();
+    return device_description().cuda_compute_capability();
   }
   bool IsRocm() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability()
-        .IsRocm();
+    return device_description().gpu_compute_capability().IsRocm();
   }
 };
 

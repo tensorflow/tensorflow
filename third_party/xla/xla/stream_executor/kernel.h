@@ -145,11 +145,16 @@ class Kernel {
                               const std::optional<ClusterDim>& cluster_dims,
                               Stream* stream, const KernelArgs& args) = 0;
 
+  void set_use_pdl(bool use_pdl) { use_pdl_ = use_pdl; }
+  bool use_pdl() const { return use_pdl_; }
+
  private:
   std::string name_;
 
   KernelMetadata metadata_;
   KernelArgsPacking args_packing_;
+  // Programmatic Dependent Launch.
+  bool use_pdl_ = false;
 };
 
 inline absl::Status Kernel::Launch(const ThreadDim& thread_dims,

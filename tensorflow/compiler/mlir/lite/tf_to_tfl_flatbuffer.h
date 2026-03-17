@@ -86,6 +86,16 @@ absl::Status ConvertTFExecutorToTFLOrFlatbuffer(
     llvm::StringRef saved_model_dir, std::string* result, bool export_to_mlir,
     const quantization::PyFunctionLibrary* quantization_py_function_lib =
         nullptr);
+
+// Runs the TF Executor to TFL passes on the given module. This is the main
+// conversion pass pipeline to convert a module of TF or StableHLO dialect to
+// TFL dialect.
+absl::Status RunConvertTFExecutorToTFLPasses(
+    mlir::ModuleOp module, tflite::ConverterFlags& converter_flags,
+    const mlir::TFL::PassConfig& pass_config, mlir::PassManager& pass_manager,
+    const std::unordered_set<std::string>& saved_model_tags,
+    absl::string_view saved_model_dir);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

@@ -190,8 +190,19 @@ GetKernelConfig<kOnednnMatmulConfig>(
 }
 
 template <>
+dnnl::memory::desc GetSrcWeightMemDesc<kOnednnMatmulConfig>(
+    HloInstruction* instr, const Shape& weights_shape) {
+  auto src_md = ShapeToMemDesc(weights_shape);
+  const auto matmul_config =
+      instr->backend_config<BackendConfig>().value().onednn_matmul_config();
+  TransposeIfNecessary(matmul_config.rhs().tensor().dimensions(),
+                       matmul_config.transpose_b(), src_md);
+  return src_md;
+}
+
+template <>
 std::unique_ptr<dnnl::matmul::primitive_desc>
-CreateOneDnnPrimDesc<dnnl::matmul::primitive_desc>(HloInstruction* instr) {
+CreateOneDnnPrimDesc<kOnednnMatmulConfig>(HloInstruction* instr) {
   if (instr->opcode() != HloOpcode::kCustomCall) {
     return nullptr;
   }

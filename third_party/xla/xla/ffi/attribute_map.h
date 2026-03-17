@@ -17,19 +17,23 @@ limitations under the License.
 #define XLA_FFI_ATTRIBUTE_MAP_H_
 
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "xla/ffi/attribute_map.pb.h"
 
 namespace xla::ffi {
 namespace internal {
-// A little bit of template metaprogramming to append type to std::variant.
+// A little bit of template metaprograming to append type to std::variant.
 template <typename V, class T>
 struct AppendType;
 
@@ -157,10 +161,35 @@ class Attribute : public AttributeBase {
 
 using AttributesMapBase = absl::flat_hash_map<std::string, Attribute>;
 
+class AttributeValue;  // Forward declaration.
+
 // AttributesMap is a map from an arbitrary name (string key) to an attribute.
+//
+// Supports construction from an initializer list of key-value pairs with
+// automatic type deduction for attribute values.
+//
+// Supported value types:
+//   - Scalars: bool, int8_t..int64_t, uint8_t..uint64_t, float, double
+//   - Strings: const char*, absl::string_view, std::string
+//   - Arrays:  brace-enclosed initializer list of scalars
+//   - Nested:  brace-enclosed key-value pairs
+//
+// Example:
+//   AttributesMap attrs = {
+//       {"i32", 42},
+//       {"f32", 42.0f},
+//       {"str", "hello"},
+//       {"arr", {1, 2, 3}},
+//       {"nested", {{"f32", 1.0f}, {"str", "foo"}}},
+//       {"deep", {{"level2", {{"value", 123}}}}},
+//   };
 class AttributesMap : public AttributesMapBase {
  public:
   using AttributesMapBase::AttributesMapBase;
+
+  // NOLINTNEXTLINE
+  AttributesMap(
+      std::initializer_list<std::pair<std::string, AttributeValue>> attrs);
 
   AttributesMapProto ToProto() const;
 
@@ -171,6 +200,49 @@ class AttributesMap : public AttributesMapBase {
 
   static absl::StatusOr<AttributesMap> FromProto(
       const AttributesMapProto& proto);
+};
+
+// A helper type that enables implicit conversion from scalar types, strings,
+// arrays, and nested AttributesMaps into an Attribute. This bridges the gap
+// where C++ would otherwise require two user-defined conversions (e.g.,
+// int -> Scalar -> Attribute).
+class AttributeValue {
+ public:
+  // Scalars.
+  AttributeValue(bool v) : value_(Scalar(v)) {}      // NOLINT
+  AttributeValue(int8_t v) : value_(Scalar(v)) {}    // NOLINT
+  AttributeValue(int16_t v) : value_(Scalar(v)) {}   // NOLINT
+  AttributeValue(int32_t v) : value_(Scalar(v)) {}   // NOLINT
+  AttributeValue(int64_t v) : value_(Scalar(v)) {}   // NOLINT
+  AttributeValue(uint8_t v) : value_(Scalar(v)) {}   // NOLINT
+  AttributeValue(uint16_t v) : value_(Scalar(v)) {}  // NOLINT
+  AttributeValue(uint32_t v) : value_(Scalar(v)) {}  // NOLINT
+  AttributeValue(uint64_t v) : value_(Scalar(v)) {}  // NOLINT
+  AttributeValue(float v) : value_(Scalar(v)) {}     // NOLINT
+  AttributeValue(double v) : value_(Scalar(v)) {}    // NOLINT
+
+  // Strings.
+  AttributeValue(const char* v) : value_(std::string(v)) {}        // NOLINT
+  AttributeValue(absl::string_view v) : value_(std::string(v)) {}  // NOLINT
+  AttributeValue(std::string v) : value_(std::move(v)) {}          // NOLINT
+
+  // Arrays from initializer list, enabling brace syntax:
+  //   {"arr", {1, 2, 3}}
+  template <typename T,
+            std::enable_if_t<std::is_constructible_v<Array, std::vector<T>>>* =
+                nullptr>
+  AttributeValue(std::initializer_list<T> v)  // NOLINT
+      : value_(Array(std::vector<T>(v))) {}
+
+  // Nested attribute maps from initializer list, enabling brace syntax:
+  //   {"nested", {{"key", value}, ...}}
+  AttributeValue(  // NOLINT
+      std::initializer_list<std::pair<std::string, AttributeValue>> attrs);
+
+  Attribute ToAttribute() && { return std::move(value_); }
+
+ private:
+  Attribute value_;
 };
 
 // Converts MLIR dictionary attribute attached to a custom call operation to a

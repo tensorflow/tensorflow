@@ -572,7 +572,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits a call to a non-variadic function `func_name` with arguments
   // `arguments` assuming C calling convention.
   llvm::Value* EmitCallToFunc(
-      std::string func_name, const std::vector<llvm::Value*>& arguments,
+      absl::string_view func_name, const std::vector<llvm::Value*>& arguments,
       llvm::Type* return_type, bool does_not_throw = true,
       bool only_accesses_arg_memory = false,
       bool only_accesses_inaccessible_mem_or_arg_mem = false);

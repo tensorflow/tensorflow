@@ -1,5 +1,5 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//xla:py_strict.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load(
     "//xla/tsl:tsl.bzl",
@@ -118,9 +118,10 @@ cc_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "generate_amdgpu_device_lib_data_tool",
     srcs = ["generate_amdgpu_device_lib_data_tool.py"],
+    strict_deps = True,
 )
 
 genrule(
@@ -183,12 +184,14 @@ cc_library(
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/service/llvm_ir:llvm_type_conversion_util",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:kernel_stats",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:env_var",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
@@ -305,6 +308,7 @@ xla_cc_test(
     deps = [
         ":amdgpu_backend",
         ":load_ir_module",
+        "//xla:debug_options_flags",
         "//xla/tsl/platform:rocm_rocdl_path",
         "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
@@ -330,8 +334,10 @@ xla_cc_test(
     deps = [
         ":amdgpu_backend",
         ":load_ir_module",
+        "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
         "//xla/stream_executor:device_description",
+        "//xla/stream_executor:kernel_stats",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
@@ -400,6 +406,7 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:SPIRVCodeGen",
         "@llvm-project//llvm:Scalar",

@@ -19,6 +19,11 @@ limitations under the License.
 #include <utility>
 
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/transforms/conv_fusion_rewriter.h"
+#include "xla/backends/gpu/transforms/multi_output_fusion.h"
+#include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/backends/gpu/transforms/sort_iota_fusion.h"
+#include "xla/backends/gpu/transforms/variadic_op_splitter.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -26,10 +31,6 @@ limitations under the License.
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/transforms/multi_output_fusion.h"
-#include "xla/service/gpu/transforms/priority_fusion.h"
-#include "xla/service/gpu/transforms/sort_iota_fusion.h"
-#include "xla/service/gpu/transforms/variadic_op_splitter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_verifier.h"
@@ -60,6 +61,13 @@ HloPassPipeline FusionPipeline(
       "hlo verifier (debug)");
 
   fusion.AddPass<SortIotaFusion>();
+
+  // Rewrite convs into conv fusions.
+  if (!debug_options.xla_gpu_experimental_disable_binary_libraries() &&
+      debug_options.xla_gpu_experimental_enable_conv_fusion()) {
+    fusion.AddPass<ConvFusionRewriter>();
+  }
+
   GpuHloCostAnalysis::Options cost_analysis_options{
       shape_size_bytes_function,
       /*per_second_rates=*/{},

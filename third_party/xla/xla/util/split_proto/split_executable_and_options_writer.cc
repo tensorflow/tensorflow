@@ -16,14 +16,18 @@ limitations under the License.
 #include "xla/util/split_proto/split_executable_and_options_writer.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
+#include "google/protobuf/message_lite.h"
 #include "google/protobuf/util/field_mask_util.h"
 #include "riegeli/bytes/writer.h"
 #include "riegeli/records/record_writer.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/util/split_proto/split_proto.pb.h"
+#include "xla/util/split_proto/split_proto_riegeli_options.h"
+#include "xla/util/split_proto/split_proto_write_record.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
@@ -52,16 +56,6 @@ SplitProtoManifest BuildManifest() {
   return manifest;
 }
 
-template <typename T, typename Src>
-absl::Status WriteRecord(riegeli::RecordWriter<Src>& record_writer, T& record) {
-  if (!record_writer.WriteRecord(record)) {
-    return record_writer.status().ok()
-               ? absl::InternalError("Failed to write record")
-               : record_writer.status();
-  }
-  return absl::OkStatus();
-}
-
 ExecutableAndOptionsProto GetProtoWithoutSerializedExecutable(
     const ExecutableAndOptionsProto& executable_and_options) {
   FieldMask serialized_executable_field;
@@ -84,7 +78,8 @@ ExecutableAndOptionsProto GetProtoWithoutSerializedExecutable(
 absl::Status WriteSplitExecutableAndOptions(
     const ExecutableAndOptionsProto& executable_and_options,
     std::unique_ptr<riegeli::Writer> writer) {
-  riegeli::RecordWriter record_writer(std::move(writer));
+  riegeli::RecordWriter record_writer(std::move(writer),
+                                      GetSplitProtoRiegeliOptions());
   SplitProtoManifest manifest = BuildManifest();
   RETURN_IF_ERROR(WriteRecord(record_writer, manifest));
 

@@ -45,13 +45,13 @@ static PJRT_Error* PJRT_FFI_Type_Register(PJRT_FFI_Type_Register_Args* args) {
     // a unique type id to it.
     PJRT_ASSIGN_OR_RETURN(
         auto assigned_type_id,
-        xla::ffi::TypeRegistry::AssignExternalTypeId(type_name, type_info));
+        xla::ffi::TypeRegistry::AssignTypeId(type_name, type_info));
     args->type_id = assigned_type_id.value();
 
   } else {
     // If type_id is set, we are relying on the caller-provided unique type id.
-    PJRT_RETURN_IF_ERROR(xla::ffi::TypeRegistry::RegisterExternalTypeId(
-        type_name, type_id, type_info));
+    PJRT_RETURN_IF_ERROR(
+        xla::ffi::TypeRegistry::RegisterTypeId(type_name, type_id, type_info));
   }
 
   return nullptr;

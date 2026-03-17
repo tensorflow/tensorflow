@@ -30,7 +30,7 @@ namespace {
 
 class AsStringGraphTest : public OpsTestBase {
  protected:
-  absl::Status Init(DataType input_type, const string& fill = "",
+  absl::Status Init(DataType input_type, const std::string& fill = "",
                     int width = -1, int precision = -1, bool scientific = false,
                     bool shortest = false) {
     TF_CHECK_OK(NodeDefBuilder("op", "AsString")
@@ -48,7 +48,7 @@ class AsStringGraphTest : public OpsTestBase {
 TEST_F(AsStringGraphTest, Int8) {
   TF_ASSERT_OK(Init(DT_INT8));
 
-  AddInputFromArray<int8>(TensorShape({3}), {-42, 0, 42});
+  AddInputFromArray<int8_t>(TensorShape({3}), {-42, 0, 42});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_STRING, TensorShape({3}));
   test::FillValues<tstring>(&expected, {"-42", "0", "42"});

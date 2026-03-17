@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "Eigen/Core"
+#include "xla/backends/gpu/transforms/sort_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,10 +37,10 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
-#include "xla/service/gpu/transforms/sort_rewriter.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -48,8 +49,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TypeSupportTest : public GpuCodegenTest,
-                        public ::testing::WithParamInterface<PrimitiveType> {};
+class TypeSupportTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+      public ::testing::WithParamInterface<PrimitiveType> {};
 
 TEST_P(TypeSupportTest, SortSupportsType) {
   constexpr char kHloTemplate[] = R"(
@@ -94,7 +96,7 @@ INSTANTIATE_TEST_SUITE_P(
       return primitive_util::LowercasePrimitiveTypeName(info.param);
     });
 
-class SortingTest : public GpuCodegenTest {
+class SortingTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   SortingTest() {}
 };
@@ -283,7 +285,7 @@ std::string GetTypeName(PrimitiveType type) {
 }
 
 // Test cub::DeviceRadixSort::SortKeys in XLA
-class CubSortKeysTest : public GpuCodegenTest,
+class CubSortKeysTest : public HloPjRtTestBase,
                         public ::testing::WithParamInterface<
                             std::tuple<std::shared_ptr<Literal>, bool>> {};
 
@@ -294,8 +296,9 @@ HloModule TestModule
 ENTRY %main {
   %input = $0[$1] parameter(0)
   %sort = ($0[$1], u8[$2]) custom-call(%input),
-      custom_call_target="__cub$$DeviceRadixSort",
-      backend_config="{\"descending\": $3}"
+      custom_call_target="xla.gpu.ext.cub_sort_keys",
+      api_version=API_VERSION_TYPED_FFI,
+      backend_config={descending = $3, batch_size = 1 : i64}
   ROOT %gte = get-tuple-element(%sort), index=0
 }
 )";
@@ -321,7 +324,7 @@ ENTRY %main {
 
 // Test cub::DeviceRadixSort::SortPairs in XLA
 class CubSortPairsTest
-    : public GpuCodegenTest,
+    : public HloPjRtTestBase,
       public ::testing::WithParamInterface<
           std::tuple<std::shared_ptr<Literal>, PrimitiveType, bool>> {};
 
@@ -333,8 +336,9 @@ ENTRY %main {
   %keys = $0[$2] parameter(0)
   %values = $1[$2] convert(%keys)
   ROOT %sort = ($0[$2], $1[$2], u8[$3]) custom-call(%keys, %values),
-      custom_call_target="__cub$$DeviceRadixSort",
-      backend_config="{\"descending\": $4}"
+      custom_call_target="xla.gpu.ext.cub_sort_pairs",
+      api_version=API_VERSION_TYPED_FFI,
+      backend_config={descending = $4, batch_size = 1 : i64}
 }
 )";
 
@@ -401,6 +405,7 @@ INSTANTIATE_TEST_SUITE_P(
     TestRadixSort, CubSortPairsTest,
     ::testing::Combine(
         ::testing::Values(CreateRandomLiteral<U16, uint16_t>(32768, 1000),
+                          CreateRandomLiteral<S32, int32_t>(32768, 1000),
                           CreateRandomLiteral<U32, uint32_t>(32768, 1000),
                           CreateRandomLiteral<U64, uint64_t>(32768, 1000)),
         ::testing::Values(F16, F32, F64), ::testing::Bool()),

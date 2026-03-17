@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/c/checkpoint_reader.h"
 
-#include <unordered_set>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -115,7 +115,7 @@ CheckpointReader::BuildV2VarMaps() {
   CHECK(v2_reader_->status().ok());
 
   // First pass: filters out the entries of the slices.
-  std::unordered_set<string> filtered_keys;
+  absl::flat_hash_set<string> filtered_keys;
   BundleEntryProto entry;
   v2_reader_->Seek(kHeaderEntryKey);
   for (v2_reader_->Next(); v2_reader_->Valid(); v2_reader_->Next()) {

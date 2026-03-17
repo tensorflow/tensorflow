@@ -53,7 +53,7 @@
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -97,55 +97,55 @@ class ClientTest : public ::testing::TestWithParam</*protocol_version=*/int> {
     rpc_helper_->set_host_buffer_store(host_buffer_store_);
 
     InitResponse response;
-      ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
-          R"pb(
-            platform_name: "ifrt-service"
-            platform_version: "n/a"
-            platform_id: 42
-            process_index: 1
-            runtime_type: "ifrt-service"
-            all_devices {
-              id: 0
-              local_hardware_id: 1234
-              device_kind: "mock"
-              default_memory_id: 0
-              memory_ids: [ 0 ]
+    ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+        R"pb(
+          platform_name: "ifrt-service"
+          platform_version: "n/a"
+          platform_id: 42
+          process_index: 1
+          runtime_type: "ifrt-service"
+          all_devices {
+            id: 0
+            local_hardware_id: 1234
+            device_kind: "mock"
+            default_memory_id: 0
+            memory_ids: [ 0 ]
+            attributes {
               attributes {
-                attributes {
-                  key: "name"
-                  value { string_value: "device0" }
-                }
+                key: "name"
+                value { string_value: "device0" }
               }
             }
-            all_devices {
-              id: 1
-              local_hardware_id: 1234
-              device_kind: "mock"
-              default_memory_id: 1
-              memory_ids: [ 1 ]
+          }
+          all_devices {
+            id: 1
+            local_hardware_id: 1234
+            device_kind: "mock"
+            default_memory_id: 1
+            memory_ids: [ 1 ]
+            attributes {
               attributes {
-                attributes {
-                  key: "name"
-                  value { string_value: "device1" }
-                }
+                key: "name"
+                value { string_value: "device1" }
               }
             }
-            primary_device_ids: [ 0, 1 ]
-            addressable_device_ids: 1
-            memories {
-              id: 0
-              memory_space_kind: "mock"
-              kind_id: 0
-              device_ids: [ 0 ]
-            }
-            memories {
-              id: 1
-              memory_space_kind: "mock"
-              kind_id: 1
-              device_ids: [ 1 ]
-            }
-          )pb",
-          &response));
+          }
+          primary_device_ids: [ 0, 1 ]
+          addressable_device_ids: 1
+          memories {
+            id: 0
+            memory_space_kind: "mock"
+            kind_id: 0
+            device_ids: [ 0 ]
+          }
+          memories {
+            id: 1
+            memory_space_kind: "mock"
+            kind_id: 1
+            device_ids: [ 1 ]
+          }
+        )pb",
+        &response));
 
     AttributeMap::Map client_attributes(
         {{"test_key", AttributeMap::StringValue("test_value")}});

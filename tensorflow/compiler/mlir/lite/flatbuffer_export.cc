@@ -62,6 +62,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/SwapByteOrder.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -104,6 +105,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 #include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
+#include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
@@ -230,12 +232,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
           return tflite::TensorType_INT2;
         }
       case 4:
-        if (itype.isUnsigned()) {
-          return Status(absl::StatusCode::kInvalidArgument,
-                        "Unsupported 4bit unsigned int type");
-        } else {
-          return tflite::TensorType_INT4;
-        }
+        return itype.isUnsigned() ? tflite::TensorType_UINT4
+                                  : tflite::TensorType_INT4;
       case 8:
         return itype.isUnsigned() ? tflite::TensorType_UINT8
                                   : tflite::TensorType_INT8;
@@ -579,15 +577,17 @@ class ExportBufferStorage {
 
   class ExportBuffer {
    public:
-    ExportBuffer(ItemT item, ApplyDataFromBufferFuncT apply, uint64_t hash)
-        : item_(std::move(item)), apply_(std::move(apply)), hash_(hash) {}
+    ExportBuffer(ItemT item, ApplyDataFromBufferFuncT apply, uint64_t hash,
+                 uint64_t byte_size_hint = 0)
+        : item_(std::move(item)),
+          apply_(std::move(apply)),
+          hash_(hash),
+          byte_size_hint_(byte_size_hint) {}
 
     inline absl::Status ApplyData(
         ExportBufferStorage::ApplyDataFuncT apply_data_func) {
       return apply_(item_, apply_data_func);
     }
-
-    inline uint64_t GetHash() { return hash_; }
 
     inline std::string GetData() {
       std::string data;
@@ -599,6 +599,9 @@ class ExportBufferStorage {
       return data;
     }
 
+    uint64_t hash() const { return hash_; }
+    uint64_t byte_size_hint() const { return byte_size_hint_; }
+
     ExportBuffer(const ExportBuffer&) = delete;
     ExportBuffer& operator=(const ExportBuffer&) = delete;
     ExportBuffer(ExportBuffer&&) noexcept = default;
@@ -608,13 +611,14 @@ class ExportBufferStorage {
     ItemT item_;
     ExportBufferStorage<KeyT, ItemT>::ApplyDataFromBufferFuncT apply_;
     uint64_t hash_;
+    uint64_t byte_size_hint_ = 0;
   };
 
   inline void Insert(KeyT key, ItemT item,
                      ExportBufferStorage::ApplyDataFromBufferFuncT apply,
-                     uint64_t hash) {
-    auto export_buffer =
-        std::make_unique<ExportBuffer>(std::move(item), std::move(apply), hash);
+                     uint64_t hash, uint64_t byte_size_hint = 0) {
+    auto export_buffer = std::make_unique<ExportBuffer>(
+        std::move(item), std::move(apply), hash, byte_size_hint);
     buffers_[key] = std::move(export_buffer);
   }
 
@@ -1154,25 +1158,34 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   if (tflite_element_type == tflite::TensorType_INT4 ||
       tflite_element_type == tflite::TensorType_UINT4 ||
       tflite_element_type == tflite::TensorType_INT2) {
-    int bit_width = tflite_element_type == tflite::TensorType_INT4 ||
-                            tflite_element_type == tflite::TensorType_UINT4
-                        ? 4
-                        : 2;
     applier =
-        [bit_width](
+        [tflite_element_type](
             const std::pair<mlir::Attribute, mlir::Operation*>& attr_and_inst,
             auto apply) {
-          auto [attr_, _] = attr_and_inst;
-          auto attr = mlir::cast<ElementsAttr>(attr_);
+          auto attr = mlir::cast<mlir::DenseElementsAttr>(attr_and_inst.first);
+          bool is_8bit_raw_data =
+              !attr.isSplat() &&
+              attr.getNumElements() == attr.getRawData().size();
+          bool is_4bit_data = tflite_element_type == tflite::TensorType_INT4 ||
+                              tflite_element_type == tflite::TensorType_UINT4;
 
-          std::vector<uint8_t> data;
-          for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
-            data.emplace_back(static_cast<uint8_t>(*(v.getRawData())));
+          if (is_8bit_raw_data) {
+            if (is_4bit_data) {
+              return tflite::StreamPackLowBitValues8Bit</*kBitWidth=*/4>(
+                  attr.getRawData(), apply);
+            } else {
+              return tflite::StreamPackLowBitValues8Bit</*kBitWidth=*/2>(
+                  attr.getRawData(), apply);
+            }
+          } else {
+            if (is_4bit_data) {
+              return tflite::StreamPackLowBitValues</*kBitWidth=*/4>(
+                  attr.getValues<mlir::APInt>(), apply);
+            } else {
+              return tflite::StreamPackLowBitValues</*kBitWidth=*/2>(
+                  attr.getValues<mlir::APInt>(), apply);
+            }
           }
-          auto packed_buffer = tflite::PackLowBitValuesDensely(data, bit_width);
-          return apply(
-              absl::string_view(reinterpret_cast<char*>(packed_buffer.data()),
-                                packed_buffer.size()));
         };
   } else {
     applier =
@@ -1180,16 +1193,45 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
            auto apply) {
           auto [attr_, inst] = attr_and_inst;
           auto attr = mlir::cast<ElementsAttr>(attr_);
+          auto shaped_type = mlir::dyn_cast<mlir::ShapedType>(attr.getType());
 
+          // Optimization Path for Numeric Dtypes (f32, i32, etc.)
+          // Flatbuffer requires little endian for numeric types. If the host
+          // is big endian, rely on the TensorFlow path below to reverse the
+          // byte order.
+          if (llvm::sys::IsLittleEndianHost && shaped_type &&
+              shaped_type.getElementType().isIntOrFloat()) {
+            int64_t expected_size = mlir::TFL::GetSizeInBytes(shaped_type);
+
+            // DenseElementsAttr
+            if (auto dense_attr =
+                    mlir::dyn_cast<mlir::DenseElementsAttr>(attr)) {
+              // Only use the optimization if it's not a single-value (Splat)
+              // and the raw memory matches the logical dimensions exactly.
+              if (!dense_attr.isSplat() &&
+                  dense_attr.getRawData().size() == expected_size) {
+                return apply(absl::string_view(dense_attr.getRawData().data(),
+                                               dense_attr.getRawData().size()));
+              }
+            }
+
+            // DenseResourceElementsAttr
+            if (auto res_attr =
+                    mlir::dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
+              if (auto blob =
+                      res_attr.getRawHandle().getResource()->getBlob()) {
+                auto data = blob->getData();
+                if (data.size() == expected_size) {
+                  return apply(absl::string_view(
+                      reinterpret_cast<const char*>(data.data()), data.size()));
+                }
+              }
+            }
+          }
+
+          // Fallback Path: use TensorFlow's conversion for compatibility.
           auto tensor = std::make_unique<tensorflow::Tensor>();
           auto status = tensorflow::ConvertToTensor(attr, tensor.get());
-
-          // Reset the attribute after copying it to a tensorflow::Tensor
-          // because the attribute is not needed anymore.
-          if (auto dense_resource_attr =
-                  dyn_cast<mlir::DenseResourceElementsAttr>(attr)) {
-            dense_resource_attr.getRawHandle().getResource()->setBlob({});
-          }
 
           if (!status.ok()) {
             std::string error_message =
@@ -1245,9 +1287,10 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     // string and computing the hash of the string, but can be reliable in some
     // cases where the MLIR attributes are not deduped properly (e.g. when two
     // consts of the same value are held in different attribute types).
-    const_buffer_storage_.Insert(index, std::make_pair(attr, inst),
-                                 std::move(applier),
-                                 /*hash=*/mlir::hash_value(attr));
+    const_buffer_storage_.Insert(
+        index, std::make_pair(attr, inst), std::move(applier),
+        /*hash=*/mlir::hash_value(attr),
+        /*byte_size_hint=*/mlir::TFL::GetSizeInBytes(type));
     return tflite::CreateBuffer(builder_, 0, 1, 1);
   } else {
     // Otherwise, creates a buffer with the flatbuffer immediately.
@@ -1697,7 +1740,8 @@ BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
           [](const mlir::TFL::ConstBytesAttr& attr, auto apply) {
             return apply(attr.getValue().str());
           },
-          /*hash=*/mlir::hash_value(op.getCustomOption()));
+          /*hash=*/mlir::hash_value(op.getCustomOption()),
+          /*byte_size_hint=*/op.getCustomOption().getValue().size());
 
   auto opcode_index =
       GetOpcodeIndex(op.getCustomCode().str(), tflite::BuiltinOperator_CUSTOM);
@@ -3401,6 +3445,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
                                      const std::string& tensor_name) {
     // NoneType represents optional and may be skipped here.
     if (mlir::isa<NoneType>(value.getType())) {
+      tensor_index_map.insert({value, kTfLiteMigrationOptionalTensor});
       return true;
     }
 
@@ -4357,10 +4402,10 @@ absl::Status Translator::TranslateInternal() {
 
   // Return serialized string for the built FlatBuffer.
   if (use_buffer_offset_) {
-    export_stream_.get().write_zeros(builder_.GetSize());
+    uint64_t padded_buffer_size = builder_.GetSize();
     // Pad to be 16 bytes aligned
-    export_stream_.get().write_zeros(kFbAlignment -
-                                     builder_.GetSize() % kFbAlignment);
+    padded_buffer_size += kFbAlignment - builder_.GetSize() % kFbAlignment;
+    export_stream_.get().write_zeros(padded_buffer_size);
 
     if (auto status = AppendBufferData(); !status.ok()) {
       return status;
@@ -4385,9 +4430,22 @@ absl::Status Translator::TranslateInternal() {
 absl::Status Translator::AppendBufferData() {
   auto offset = [this]() { return export_stream_.get().tell(); };
 
+  // Reserve extra space for the buffer data. The pessimistic estimation is to
+  // account for the worst-case padding of 32 bytes for each buffer.
+  uint64_t estimated_buffer_size = 0;
+  for (const auto& [_, buffer] : const_buffer_storage_.buffers()) {
+    estimated_buffer_size += buffer->byte_size_hint();
+    estimated_buffer_size += 32;  // worst case padding
+  }
+  for (const auto& [_, buffer] : custom_op_buffer_storage_.buffers()) {
+    estimated_buffer_size += buffer->byte_size_hint();
+    estimated_buffer_size += 32;  // worst case padding
+  }
+  export_stream_.get().reserveExtraSpace(estimated_buffer_size);
+
   std::unordered_map<uint64_t, std::pair<int64_t, int64_t>> hashcode_to_pos;
   for (const auto& [index, buffer] : const_buffer_storage_.buffers()) {
-    uint64_t hash = buffer->GetHash();
+    uint64_t hash = buffer->hash();
     if (hashcode_to_pos.find(hash) == hashcode_to_pos.end()) {
       int64_t size = 0;
       int64_t buffer_offset = offset();

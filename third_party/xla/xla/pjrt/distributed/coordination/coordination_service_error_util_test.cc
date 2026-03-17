@@ -18,13 +18,13 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 namespace xla {
 namespace {
-using ::tensorflow::BarrierError;
-using ::tensorflow::CoordinatedTask;
-using ::tensorflow::CoordinationServiceError;
+using ::xla::coordination::BarrierError;
+using ::xla::coordination::CoordinatedTask;
+using ::xla::coordination::CoordinationServiceError;
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
   absl::Status error = absl::InternalError("Test Error");
@@ -40,11 +40,8 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
   absl::Status error = absl::InternalError("Test Error");
-  CoordinatedTask source_task;
-  source_task.set_job_name("test_worker");
-  source_task.set_task_id(7);
 
-  absl::Status coordination_error = MakeCoordinationError(error, source_task);
+  absl::Status coordination_error = MakeCoordinationError(error, 7);
 
   EXPECT_EQ(coordination_error.code(), error.code());
   EXPECT_EQ(coordination_error.message(), error.message());
@@ -52,19 +49,14 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(payload.source_task().job_name(), source_task.job_name());
-  EXPECT_EQ(payload.source_task().task_id(), source_task.task_id());
+  EXPECT_EQ(payload.source_task().task_id(), 7);
   EXPECT_EQ(payload.is_reported_error(), false);
 }
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
   absl::Status error = absl::InternalError("Test Error");
-  CoordinatedTask source_task;
-  source_task.set_job_name("test_worker");
-  source_task.set_task_id(7);
-
   absl::Status coordination_error =
-      MakeCoordinationError(error, source_task,
+      MakeCoordinationError(error, 7,
                             /*is_reported_error=*/true);
 
   EXPECT_EQ(coordination_error.code(), error.code());
@@ -73,8 +65,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value()));
-  EXPECT_EQ(payload.source_task().job_name(), source_task.job_name());
-  EXPECT_EQ(payload.source_task().task_id(), source_task.task_id());
+  EXPECT_EQ(payload.source_task().task_id(), 7);
   EXPECT_EQ(payload.is_reported_error(), true);
 }
 
@@ -122,7 +113,8 @@ TEST(CoordinationServiceErrorUtil,
       "Coordination service has stopped. RecordHeartbeat() from task: "
       "/job:jax_worker/replica:0/task:2 failed. Additional GRPC error "
       "information from remote target coordination_service while calling "
-      "/tensorflow.CoordinationService/Heartbeat::UNKNOWN:Error received from "
+      "/xla.coordination.CoordinationService/Heartbeat::UNKNOWN:Error received "
+      "from "
       "peer  "
       "{file:'third_party/grpc/src/core/lib/surface/filter_stack_call.cc', "
       "file_line:464, created_time:'2024-08-05T13:57:51.331198242-07:00', "
@@ -135,7 +127,7 @@ TEST(CoordinationServiceErrorUtil,
   EXPECT_EQ(trimmed_error.message(),
             "Coordination service has stopped. RecordHeartbeat() from task: "
             "/job:jax_worker/replica:0/task:2 failed. \nRPC: "
-            "/tensorflow.CoordinationService/Heartbeat");
+            "/xla.coordination.CoordinationService/Heartbeat");
   // Payload exists but has no value.
   EXPECT_EQ(trimmed_error.GetPayload(CoordinationErrorPayloadKey()).value(),
             "");
@@ -147,7 +139,8 @@ TEST(CoordinationServiceErrorUtil, TrimCoordinationErrorMessage_NetworkError) {
       "ipv4:127.0.0.1:10001: Failed to connect to remote host: Connection "
       "refused. Additional GRPC error information from remote target "
       "coordination_service while calling "
-      "/tensorflow.CoordinationService/Heartbeat::UNKNOWN:Error received from "
+      "/xla.coordination.CoordinationService/Heartbeat::UNKNOWN:Error received "
+      "from "
       "peer "
       "{file:'third_party/grpc/src/core/lib/surface/filter_stack_call.cc', "
       "file_line:464, created_time:'2024-08-05T13:57:53.123562608-07:00', "

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_address.h"
@@ -125,15 +125,33 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
     return false;
   }
 
-  HloDotInstruction* dot =
-      Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
-          *instr.fused_instructions_computation(), HloOpcode::kDot));
-  if (dot == nullptr) {
-    VLOG(1) << "Fusion does not contain a dot.";
+  const HloComputation* computation = instr.fused_instructions_computation();
+  const HloInstruction* hero =
+      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
+  if (hero == nullptr) {
+    hero = hlo_query::GetFirstInstructionWithOpcode(*computation,
+                                                    HloOpcode::kConvolution);
+  }
+  if (hero == nullptr) {
+    hero = hlo_query::GetFirstInstructionWithOpcode(*computation,
+                                                    HloOpcode::kScaledDot);
+  }
+
+  if (hero == nullptr) {
+    VLOG(1) << "Fusion does not contain a dot or convolution.";
     return false;
   }
-  if (!algorithm_util::IsSupportedByCudnn(
-          dot->precision_config().algorithm())) {
+
+  PrecisionConfig::Algorithm algorithm = PrecisionConfig::ALG_UNSET;
+  if (auto* dot = DynCast<HloDotInstruction>(hero)) {
+    algorithm = dot->precision_config().algorithm();
+  } else if (auto* conv = DynCast<HloConvolutionInstruction>(hero)) {
+    algorithm = conv->precision_config().algorithm();
+  } else if (auto* scaled_dot = DynCast<HloScaledDotInstruction>(hero)) {
+    algorithm = scaled_dot->precision_config().algorithm();
+  }
+
+  if (!algorithm_util::IsSupportedByCudnn(algorithm)) {
     VLOG(1) << "Fusion contains a precision config not supported by cudnn.";
     return false;
   }
@@ -141,6 +159,10 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   if (GetDnnVersionInfoOrDefault(stream_executor).major_version() < 9) {
     VLOG(1) << "Cudnn version is too old.";
     return false;
+  }
+
+  if (hero->opcode() == HloOpcode::kConvolution) {
+    return true;
   }
 
   stream_executor::CudaComputeCapability compute_capability =
@@ -352,10 +374,17 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
     return any;
   }
 
-  // Default config would require stream_executor to check if the fusion is
-  // supported by Cudnn.
+  if (stream_executor() != nullptr && instr.opcode() == HloOpcode::kFusion &&
+      IsSupportedCudnnFusion(instr, stream_executor(), debug_options())) {
+    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                        GetCudnnFusionConfigs(instr, stream_executor()));
+    if (!configs.empty()) {
+      return std::move(configs[0]);
+    }
+  }
+
   return absl::InvalidArgumentError(
-      "Cudnn backend doesn't support getting a default config.");
+      "Cannot get default config for cudnn backend without device.");
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

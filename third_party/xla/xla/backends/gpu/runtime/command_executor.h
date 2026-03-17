@@ -23,10 +23,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/base/macros.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -136,7 +136,7 @@ class CommandExecutor {
                             RecordId record_id = RecordId(0)) const;
 
   // Returns buffers referenced by commands in this sequence.
-  const absl::flat_hash_set<BufferUse>& buffers() const;
+  const absl::flat_hash_set<BufferUse>& buffer_uses() const;
 
   // Returns buffer allocations indices referenced by commands in this sequence.
   absl::Span<const BufferAllocation::Index> allocs_indices() const;
@@ -145,24 +145,42 @@ class CommandExecutor {
   size_t size() const { return commands_.size(); }
 
   bool requires_initialization() const {
-    return absl::c_any_of(commands_, [](const auto& cmd) {
-      return cmd->requires_initialization();
+    bool requires_initialization = false;
+    commands_.Walk([&](const Command* command) {
+      requires_initialization |= command->requires_initialization();
     });
+    return requires_initialization;
   }
 
   bool force_update() const {
-    return absl::c_any_of(commands_,
-                          [](const auto& cmd) { return cmd->force_update(); });
+    bool force_update = false;
+    commands_.Walk([&](const Command* command) {
+      force_update |= command->force_update();
+    });
+    return force_update;
   }
 
   bool support_loop_unroll() const {
-    return absl::c_all_of(
-        commands_, [](const auto& cmd) { return cmd->support_loop_unroll(); });
+    bool support_loop_unroll = true;
+    commands_.Walk([&](const Command* command) {
+      support_loop_unroll &= command->support_loop_unroll();
+    });
+    return support_loop_unroll;
   }
 
   // Renders the execution graph using default renderer. Returns url of the
   // rendered graph, or an error if rendering failed.
   absl::StatusOr<std::string> RenderExecutionGraph();
+
+  // Recursively traverses all commands in the executor and nested executors.
+  absl::Status Walk(
+      absl::FunctionRef<absl::Status(const Command*)> callback) const {
+    return commands_.Walk(callback);
+  }
+
+  absl::Status Walk(absl::FunctionRef<absl::Status(Command*)> callback) {
+    return commands_.Walk(callback);
+  }
 
  private:
   // We use index into the `commands_` vector as a command id.
@@ -181,7 +199,7 @@ class CommandExecutor {
     // buffers are not thread safe and record at most once executor at a time.
     // However during the command buffer recording multiple nested command
     // executors can record into the same command buffer, and to keep references
-    // to values valid during the exectution we use a node hash map container.
+    // to values valid during the execution we use a node hash map container.
     using Key = std::pair<const CommandExecutor*, RecordId>;
     absl::node_hash_map<Key, RecordedCommands> recorded_commands;
   };
@@ -214,7 +232,7 @@ class CommandExecutor {
   std::optional<ExecutionGraph> execution_graph_;
 
   // Buffers referenced by commands in this sequence.
-  absl::flat_hash_set<BufferUse> buffers_;
+  absl::flat_hash_set<BufferUse> buffer_uses_;
 
   // Unique buffer allocations indices referenced by all commands in this
   // sequence (sorted by the buffer allocation index).

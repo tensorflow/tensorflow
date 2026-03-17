@@ -86,8 +86,7 @@ ENTRY e {
   Compiler* compiler = backend().compiler();
   ASSERT_NE(compiler, nullptr);
 
-  std::unique_ptr<AotCompilationOptions> aot_options = std::make_unique<
-      CpuAotCompilationOptions>(
+  auto aot_options = std::make_unique<CpuAotCompilationOptions>(
       /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,
       /*features=*/"",
       /*entry_point_name=*/"entry",

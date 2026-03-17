@@ -91,7 +91,7 @@
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/platform.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace ifrt {
@@ -916,6 +916,67 @@ TEST_P(IfrtBackendHandlerTest, CopyArrays) {
               absl_testing::IsOk());
   EXPECT_THAT(response->copy_arrays_response().array_handles(),
               SizeIs(copied_arrays.size()));
+}
+
+TEST_P(IfrtBackendHandlerTest, BitcastArrays) {
+  if (Version().protocol_version() < protocol_version::kBitcastArrays) {
+    GTEST_SKIP() << "BitcastArrays is not supported in protocol version "
+                 << Version().protocol_version();
+  }
+
+  Shape shape1({});
+  auto layout1 = std::make_shared<const xla::PjRtLayout>(
+      xla::LayoutUtil::MakeDescendingLayout(0));
+
+  Shape shape2({1});
+  auto layout2 = std::make_shared<const xla::PjRtLayout>(
+      xla::LayoutUtil::MakeDescendingLayout(1));
+
+  auto src_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  ON_CALL(*src_array, dtype()).WillByDefault(Return(DType(DType::Kind::kF32)));
+  ON_CALL(*src_array, shape()).WillByDefault(ReturnRef(shape1));
+  ON_CALL(*src_array, pjrt_layout()).WillByDefault(Return(layout1));
+  const std::vector<xla::ifrt::ArrayRef> src_arrays{{src_array}};
+
+  auto bitcast_array = tsl::MakeRef<xla::ifrt::MockArray>();
+  ON_CALL(*bitcast_array, dtype())
+      .WillByDefault(Return(DType(DType::Kind::kF32)));
+  ON_CALL(*bitcast_array, shape()).WillByDefault(ReturnRef(shape2));
+  ON_CALL(*bitcast_array, pjrt_layout()).WillByDefault(Return(layout2));
+  const std::vector<xla::ifrt::ArrayRef> result_arrays({bitcast_array});
+
+  TF_ASSERT_OK_AND_ASSIGN(Device * device,
+                          mock_client_->LookupDevice(DeviceId(0)));
+  ShardingRef sharding(SingleDeviceSharding::Create(device, MemoryKind()));
+
+  std::vector<ArraySpec> specs{
+      {DType(DType::Kind::kF32), shape2, sharding, layout2}};
+
+  EXPECT_CALL(*mock_client_, BitcastArrays(ElementsAreArray(src_arrays), _,
+                                           ArrayCopySemantics::kDonateInput))
+      .WillOnce(Return(result_arrays));
+
+  auto ifrt_request = NewIfrtRequest(NewOpId());
+  BitcastArraysRequest* bitcast_arrays_request =
+      ifrt_request->mutable_bitcast_arrays_request();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto src_array_handle, MakeTestArray(src_array));
+  bitcast_arrays_request->add_array_handles(src_array_handle);
+
+  for (const auto& spec : specs) {
+    TF_ASSERT_OK(spec.ToProto(*bitcast_arrays_request->add_array_specs(),
+                              ifrt_serdes_version()));
+  }
+  bitcast_arrays_request->set_copy_semantics(
+      proto::ARRAY_COPY_SEMANTICS_DONATE_INPUT);
+  bitcast_arrays_request->add_result_handles(1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto response, CallBackend(std::move(ifrt_request)));
+
+  ASSERT_THAT(tsl::StatusFromProto(response->response_metadata().status()),
+              absl_testing::IsOk());
+  EXPECT_THAT(response->bitcast_arrays_response().array_handles(),
+              SizeIs(result_arrays.size()));
 }
 
 TEST_P(IfrtBackendHandlerTest, ReshardArrays) {

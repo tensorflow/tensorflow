@@ -170,6 +170,7 @@ cc_library(
         ":memory",
         ":rpc_helper",
         "//xla:xla_data_proto_cc",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",

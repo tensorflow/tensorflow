@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,20 +35,18 @@ namespace gpu {
 // A codegen backend for hipBLASLt on ROCm.
 // This backend is used to autotune hipBLASLt algorithms.
 //
-// The HipblasLtBackend requires a fusion instruction with a cuBLASLt custom
-// call (__cublas$lt$matmul). cuBLASLt custom calls are represented as:
-// ```
-//   %custom-call.1 = .. custom-call(...),
-//   custom_call_target="__cublas$lt$matmul"
-// ```
+// Supports two instruction types:
+// 1. cuBLASLt custom calls (__cublas$lt$matmul, __cublas$lt$matmul$f8)
+// 2. __triton_gemm fusions containing kScaledDot, which are converted to
+// __cublas$lt$matmul$mx custom calls.
 class HipblasLtBackend : public GpuCodegenBackend {
  public:
   explicit HipblasLtBackend(stream_executor::StreamExecutor* stream_executor,
                             const DebugOptions* debug_options,
                             Compiler* compiler,
                             const Compiler::GpuTargetConfig* target_config)
-      : GpuCodegenBackend("HipblasLt", debug_options, compiler, target_config,
-                          stream_executor) {}
+      : GpuCodegenBackend(autotuner::Backend::HIPBLASLT, debug_options,
+                          compiler, target_config, stream_executor) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;

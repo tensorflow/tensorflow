@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -56,8 +58,13 @@ struct RaggedAllToAllConfig {
 struct RaggedAllToAllRendezvousValue {
   RankId rank;
   se::DeviceAddressBase output_buffer;
+  // Legacy: Event Synchronization (To be removed)
   se::Event* start_event = nullptr;
   se::Event* end_event = nullptr;
+
+  // Exchange the address of the SIGNAL BUFFER array.
+  // Peers will write to their_rank's-th cell in the signals array.
+  se::DeviceAddressBase barrier_signal_buffer;
 
   bool operator<(const RaggedAllToAllRendezvousValue& other) const {
     return rank < other.rank;
@@ -67,6 +74,7 @@ struct RaggedAllToAllRendezvousValue {
 struct RaggedAllToAllStreamState {
   int device_ordinal;
   RankId rank;
+  GpuCliqueKey clique_key;
 
   // Host memory allocations for ragged metadata.
   absl::InlinedVector<std::unique_ptr<se::MemoryAllocation>, 8>
@@ -75,6 +83,7 @@ struct RaggedAllToAllStreamState {
   // Device memory buffer for output offsets.
   se::DeviceAddressHandle output_offsets_device_buffer;
 
+  // Legacy: Event Synchronization (To be removed)
   // Event to synchronize streams on different devices at the start of the
   // kernel.
   std::unique_ptr<se::Event> start_event;
@@ -83,9 +92,28 @@ struct RaggedAllToAllStreamState {
   // kernel.
   std::unique_ptr<se::Event> end_event;
 
-  RaggedAllToAllStreamState(int device_ordinal, RankId rank)
-      : device_ordinal(device_ordinal), rank(rank) {}
+  // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
+  // Peers write specific slots in this array to signal this device.
+  se::DeviceAddressHandle barrier_signal_buffer;
+
+  // MultiGpuBarrier: Device memory for the current local step counter.
+  // This value is incremented locally by the kernel after every barrier.
+  se::DeviceAddressHandle barrier_signal_value;
+
+  // Contains the output buffer pointers and barrier signal buffers for all
+  // peers.
+  std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>> participants;
+
+  RaggedAllToAllStreamState(int device_ordinal, RankId rank,
+                            GpuCliqueKey clique_key)
+      : device_ordinal(device_ordinal),
+        rank(rank),
+        clique_key(std::move(clique_key)) {}
 };
+
+// Returns true if all replicas in every replica group of the collective
+// are located on the same host (node).
+bool IsAllReplicasLocal(int64_t device_count, const CollectiveConfig& config);
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
 // replicas.
@@ -99,7 +127,8 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
                            const RaggedAllToAllConfig& config,
                            std::shared_ptr<AsyncEvents> async_events,
                            std::vector<CollectiveThunk::Buffer> buffers,
-                           bool one_shot_kernel_enabled);
+                           bool one_shot_kernel_enabled,
+                           bool use_multi_gpu_barrier_in_one_shot_kernel);
 
   // Returns whether the given instruction can be lowered to a nccl
   // ragged-all-to-all call.
@@ -122,6 +151,15 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
 
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
+  bool is_one_shot_kernel_enabled() const { return one_shot_kernel_enabled_; }
+
+  bool use_multi_gpu_barrier_in_one_shot_kernel() const {
+    return use_multi_gpu_barrier_in_one_shot_kernel_;
+  }
+
+  // Returns true if one shot kernel is supported
+  bool IsOneShotKernelSupported() const;
+
   static absl::StatusOr<std::unique_ptr<RaggedAllToAllStartThunk>> FromProto(
       ThunkInfo thunk_info, const RaggedAllToAllStartThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations,
@@ -142,24 +180,40 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   }
 
  protected:
-  absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                     const GpuCliqueKey& clique_key,
-                                     se::Stream& stream,
-                                     Communicator& comm) override;
+  // No rendezvous needed when using one-shot kernel in local mode instead of
+  // NCCL.
+  bool RequiresRendezvous() const override { return !one_shot_kernel_enabled_; }
+
+  absl::Status RunCollective(const ExecuteParams& params,
+                             const GpuCliqueKey& clique_key, se::Stream& stream,
+                             Communicator& comm) override;
 
  private:
-  bool is_local() const;
+  bool is_local(int device_count) const {
+    return IsAllReplicasLocal(device_count, config_.config);
+  }
 
   const RaggedAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
-  int64_t device_count_ = -1;
   const bool one_shot_kernel_enabled_;
+  const bool use_multi_gpu_barrier_in_one_shot_kernel_;
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,
                       std::unique_ptr<RaggedAllToAllStreamState>>
       per_stream_states_ ABSL_GUARDED_BY(mutex_);
+
+  absl::StatusOr<RaggedAllToAllStreamState*> InitializeOnce(
+      const InitializeParams& params);
 };
+
+// Executes the rendezvous to exchange buffer addresses and barrier signal
+// buffers.
+absl::StatusOr<std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>>>
+RendezvousResources(int device_ordinal, RankId rank,
+                    const GpuCliqueKey& clique_key,
+                    const se::DeviceAddressBase& output_buffer,
+                    const se::DeviceAddressBase& barrier_signal_buffer);
 
 // Executes a generic Ragged All-to-All collective operation using the provided
 // communicator (e.g., NCCL).
@@ -191,6 +245,7 @@ absl::Status RunRaggedAllToAll(
 // custom kernel or specialized P2P sequence) to reduce host-device
 // synchronization overhead.
 //
+// Legacy: Event Synchronization (To be removed)
 // It explicitly utilizes `start_event` and `end_event` to manage
 // synchronization dependencies between the compute stream and the
 // communication/copy mechanism without stalling the host.
@@ -199,6 +254,17 @@ absl::Status RunOneShotRaggedAllToAll(
     se::Event* start_event, se::Event* end_event, int64_t num_total_updates,
     int64_t num_input_rows, int64_t num_row_elements,
     absl::Span<DeviceBufferPair const> buffers);
+
+// It utilizes `MultiGpuBarrierKernel` to enforce device-side synchronization.
+// This ensures input/output buffers are safe to access without requiring
+// Event-based coordination, enabling compatibility with CUDA Graphs.
+absl::Status RunOneShotRaggedAllToAll(
+    const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
+    const se::DeviceAddressBase& barrier_signal_buffer,
+    const se::DeviceAddressBase& barrier_signal_value,
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers,
+    const std::vector<RaggedAllToAllRendezvousValue>& participants);
 
 }  // namespace gpu
 }  // namespace xla

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/debugging/leak_check.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -244,6 +245,12 @@ CudaCommandBuffer::CreateConditionalNode(
     absl::Span<const GraphNodeHandle> dependencies,
     GraphConditionalHandle conditional, ConditionType type) {
 #if CUDA_VERSION >= 12030
+  if (stream_exec_->GetDeviceDescription().driver_version() <
+      SemanticVersion{12, 3, 0}) {
+    return absl::UnimplementedError(
+        "Conditional nodes require CUDA driver version >= 12.3");
+  }
+
   // Add conditional node to a graph.
   VLOG(2) << "Add conditional node to a graph " << graph_
           << "; type: " << ConditionalTypeToString(type)
@@ -453,6 +460,12 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateMovedChildNode(
   child_command_buffer->is_owned_graph_ = false;
 
 #if CUDA_VERSION >= 12090
+  if (stream_exec_->GetDeviceDescription().driver_version() <
+      SemanticVersion{12, 9, 0}) {
+    return absl::UnimplementedError(
+        "Moved child node require CUDA driver version >= 12.9");
+  }
+
   CUgraphNodeParams nodeParams{};
   nodeParams.type = CU_GRAPH_NODE_TYPE_GRAPH;
   nodeParams.graph.graph = child_graph;
@@ -498,20 +511,8 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
           << " bdz: " << threads.z << "; shmem: " << shared_mem_bytes
           << "; deps: " << dependencies.size();
 
-  CUDA_KERNEL_NODE_PARAMS params{};
-
+  CUgraphNode node_handle = nullptr;
   CUfunction function = static_cast<const CudaKernel&>(kernel).gpu_function();
-  params.func = function;
-  params.gridDimX = blocks.x;
-  params.gridDimY = blocks.y;
-  params.gridDimZ = blocks.z;
-  params.blockDimX = threads.x;
-  params.blockDimY = threads.y;
-  params.blockDimZ = threads.z;
-  params.sharedMemBytes = shared_mem_bytes;
-  params.kernelParams = const_cast<void**>(args.argument_addresses().data());
-  params.extra = nullptr;
-
   // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
   // should be moved one level up to se::Kernel level, and done just once (or
   // updated once we get a new larger shared memory request).
@@ -523,13 +524,73 @@ absl::StatusOr<GraphNodeHandle> CudaCommandBuffer::CreateKernelNode(
         "Failed to set shared memory size"));
   }
 
+  auto set_params = [&](auto& params) {
+    params.func = function;
+    params.gridDimX = blocks.x;
+    params.gridDimY = blocks.y;
+    params.gridDimZ = blocks.z;
+    params.blockDimX = threads.x;
+    params.blockDimY = threads.y;
+    params.blockDimZ = threads.z;
+    params.sharedMemBytes = shared_mem_bytes;
+    params.kernelParams = const_cast<void**>(args.argument_addresses().data());
+    params.extra = nullptr;
+  };
+
   std::vector<CUgraphNode> deps = ToCudaGraphHandles(dependencies);
 
-  CUgraphNode node_handle = nullptr;
+#if CUDA_VERSION >= 12030
+  if (stream_exec_->GetDeviceDescription().driver_version() >=
+      SemanticVersion{12, 3, 0}) {
+    CUgraphNodeParams cu_params;
+    std::memset(&cu_params, 0, sizeof(cu_params));
+    cu_params.type = CU_GRAPH_NODE_TYPE_KERNEL;
+    CUDA_KERNEL_NODE_PARAMS_v3& params = cu_params.kernel;
+    set_params(params);
+
+    std::vector<CUgraphEdgeData> edge_data;
+    edge_data.reserve(deps.size());
+    for (size_t i = 0; i < deps.size(); ++i) {
+      CUgraphEdgeData edge_data_item;
+      std::memset(&edge_data_item, 0, sizeof(edge_data_item));
+      CUgraphNodeType type;
+      TF_RETURN_IF_ERROR(cuda::ToStatus(
+          cuGraphNodeGetType(deps[i], &type),
+          absl::StrCat("Failed to get CUDA graph node type for dependency ",
+                       i)));
+      if (kernel.use_pdl() && type == CU_GRAPH_NODE_TYPE_KERNEL) {
+        edge_data_item.from_port = CU_GRAPH_KERNEL_NODE_PORT_PROGRAMMATIC;
+        edge_data_item.type = CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC;
+      }
+      edge_data.push_back(edge_data_item);
+    }
+    TF_RETURN_IF_ERROR(cuda::ToStatus(
+        cuGraphAddNode_v2(&node_handle, graph_, deps.data(), edge_data.data(),
+                          deps.size(), &cu_params),
+        "Failed to add kernel node to a CUDA graph"));
+  } else {
+    if (kernel.use_pdl()) {
+      LOG(WARNING)
+          << "PDL is not supported for CUDA < 12.3. Falling back to non-PDL.";
+    }
+    CUDA_KERNEL_NODE_PARAMS params{};
+    set_params(params);
+
+    TF_RETURN_IF_ERROR(
+        cuda::ToStatus(cuGraphAddKernelNode(&node_handle, graph_, deps.data(),
+                                            deps.size(), &params),
+                       "Failed to add kernel node to a CUDA graph"));
+  }
+#else
+  TF_RET_CHECK(!kernel.use_pdl()) << "PDL is not supported for CUDA < 12.3";
+  CUDA_KERNEL_NODE_PARAMS params{};
+  set_params(params);
+
   TF_RETURN_IF_ERROR(
       cuda::ToStatus(cuGraphAddKernelNode(&node_handle, graph_, deps.data(),
                                           deps.size(), &params),
                      "Failed to add kernel node to a CUDA graph"));
+#endif
 
   if (priority != StreamPriority::Default) {
     CUlaunchAttributeValue value;
@@ -640,13 +701,9 @@ absl::Status CudaCommandBuffer::Trace(
       cuda::ToStatus(cuStreamEndCapture(stream_handle, &captured_graph),
                      "Failed to end stream capture"));
   DCHECK(captured_graph == graph_) << "Stream capture should update graph_";
+  TF_RETURN_IF_ERROR(traced);
+
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
-
-  if (!traced.ok()) {
-    return absl::InternalError(
-        absl::StrCat("Failed to capture gpu graph: ", traced.message()));
-  }
-
   VLOG(5) << "Traced into the GPU command buffer graph " << graph_ << " (took "
           << (end_nanos - start_nanos) / 1000 << " μs)";
 
@@ -670,6 +727,10 @@ absl::Status CudaCommandBuffer::Trace(
 absl::Status CudaCommandBuffer::LaunchGraph(Stream* stream) {
   VLOG(3) << "Launch command buffer executable graph " << graph_exec()
           << " on a stream: " << stream;
+  // [GPU] Memory leak in Collective Ops when using Command Buffer github #36487
+  // https://github.com/openxla/xla/issues/36487
+  // Disable the leak check temporarily.
+  absl::LeakCheckDisabler disabler;
   return cuda::ToStatus(
       cuGraphLaunch(
           graph_exec(),

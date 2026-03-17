@@ -97,6 +97,12 @@ Status ConvertDataType(DataType dtype, Builder& builder, Type* type) {
     case tensorflow::DT_UINT4:
       *type = builder.getIntegerType(4, /*isSigned=*/false);
       return absl::OkStatus();
+    case tensorflow::DT_INT2:
+      *type = builder.getIntegerType(2, /*isSigned=*/true);
+      return absl::OkStatus();
+    case tensorflow::DT_UINT2:
+      *type = builder.getIntegerType(2, /*isSigned=*/false);
+      return absl::OkStatus();
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   case tensorflow::DT_##enumerant:              \
     *type = builder.getType<tftype##Type>();    \
@@ -132,6 +138,10 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
     switch (itype.getWidth()) {
       case 1:
         *dtype = tensorflow::DT_BOOL;
+        return absl::OkStatus();
+      case 2:
+        *dtype =
+            itype.isUnsigned() ? tensorflow::DT_UINT2 : tensorflow::DT_INT2;
         return absl::OkStatus();
       case 4:
         *dtype =

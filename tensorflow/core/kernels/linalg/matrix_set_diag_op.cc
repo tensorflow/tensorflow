@@ -72,7 +72,7 @@ class MatrixSetDiagOp : public OpKernel {
       OP_REQUIRES(
           context, diag_index.NumElements() > 0,
           errors::InvalidArgument("diag_index must have at least one element"));
-      lower_diag_index = diag_index.flat<int32>()(0);
+      lower_diag_index = diag_index.flat<int32_t>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
         auto diag_index_size = diag_index.dim_size(0);
@@ -82,7 +82,7 @@ class MatrixSetDiagOp : public OpKernel {
                 "diag_index must have only one or two elements, received ",
                 diag_index_size, " elements."));
         if (diag_index_size > 1) {
-          upper_diag_index = diag_index.flat<int32>()(1);
+          upper_diag_index = diag_index.flat<int32_t>()(1);
         }
       }
     }

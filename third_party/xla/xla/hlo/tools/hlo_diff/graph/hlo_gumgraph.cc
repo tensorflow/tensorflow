@@ -375,7 +375,6 @@ absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
       << "Expected a non-null entry computation";
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module);
-  precompute_instruction_dependencies = true;
   std::unique_ptr<HloValueTracing> hlo_value_tracing_ptr = nullptr;
   if (precompute_instruction_dependencies) {
     absl::StatusOr<std::unique_ptr<HloValueTracing>> hlo_value_tracing =

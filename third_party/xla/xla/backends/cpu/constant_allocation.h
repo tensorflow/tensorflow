@@ -21,6 +21,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/literal.h"

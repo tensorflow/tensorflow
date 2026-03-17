@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_FINGERPRINT_TEST_HELPERS_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_FINGERPRINT_TEST_HELPERS_H_
 
+#include <iostream>
 #include <memory>
 
 #include <gmock/gmock.h>
@@ -86,6 +87,8 @@ struct DelegateTest : public virtual testing::Test {
       xnn_set_fingerprint(new_fingerprint);
       ++modified;
     }
+    std::cerr << "Fingerprint modified. The next call to IsCompatibleCacheFile "
+                 "should fail.\n";
     return modified;
   }
 

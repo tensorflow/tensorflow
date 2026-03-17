@@ -18,6 +18,9 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/TargetParser/Host.h"
+#include "xla/debug_options_flags.h"
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -28,7 +31,7 @@ namespace cpu {
 namespace {
 
 TEST(TargetMachineOptionsTest, ToProto) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   TargetMachineOptions options(debug_options);
   TargetMachineOptionsProto proto = options.ToProto();
 
@@ -57,7 +60,7 @@ TEST(TargetMachineOptionsTest, FromProto) {
 }
 
 TEST(TargetMachineOptionsTest, ProtoRoundTrip) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   TargetMachineOptions options(debug_options);
   TargetMachineOptionsProto proto = options.ToProto();
   TF_ASSERT_OK_AND_ASSIGN(TargetMachineOptions new_options,
@@ -132,13 +135,33 @@ TEST(TargetMachineOptionsTest, SetFeatures) {
 TEST(TargetMachineOptionsTest, AVX512ImpliesNoScatterAndNoGather) {
   TargetMachineOptions options("test_triple", "test_cpu", "+avx512");
   EXPECT_EQ(options.GetTargetMachineFeatures(),
-            "+avx512,+prefer-no-scatter,+prefer-no-gather");
+            "+avx512,+prefer-no-gather,+prefer-no-scatter");
 }
 
 TEST(TargetMachineOptionsTest, GetTargetMachineFeaturesVector) {
   TargetMachineOptions options("test_triple", "test_cpu", "+avx2,-avx512");
   EXPECT_THAT(options.GetTargetMachineFeaturesVector(),
               testing::ElementsAre("+avx2", "-avx512"));
+}
+
+TEST(TargetMachineOptionsTest, TestTargetMachineOptionsEquality) {
+  TargetMachineOptions options1("test_triple", "test_cpu", "+avx2,-avx512");
+  TargetMachineOptions options2("test_triple", "test_cpu", "+avx2,-avx512");
+  EXPECT_EQ(options1, options2);
+  TargetMachineOptions options3("test_triple", "test_cpu", "+avx2");
+  EXPECT_FALSE(options1 == options3);
+}
+
+TEST(TargetMachineOptionsTest, TestTargeteMachineOptionsFeaturesAreSorted) {
+  TargetMachineOptions options("test_triple", "test_cpu", "-d,+c,-b,+a");
+  EXPECT_EQ(options.GetTargetMachineFeatures(), "+a,+c,-b,-d");
+}
+
+TEST(TargetMachineOptionsTest, TargetMachineOptionsDefaultConstructor) {
+  TargetMachineOptions options;
+  EXPECT_EQ(options.triple(), llvm::sys::getDefaultTargetTriple());
+  EXPECT_EQ(options.cpu(), llvm::sys::getHostCPUName());
+  EXPECT_EQ(options.GetTargetMachineFeatures(), "");
 }
 
 }  // namespace

@@ -434,6 +434,21 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   // Artifacts to accelerate the builders.
   int64_t last_event_metadata_id_ = 0LL;
   int64_t last_stat_metadata_id_ = 0LL;
+
+ public:
+  // Sets the last event metadata id so that the next call to
+  // CreateEventMetadata() will start from this id.
+  void SetLastEventMetadataId(int64_t last_event_metadata_id) {
+    last_event_metadata_id_ = last_event_metadata_id;
+  }
+
+  // Sets the last stat metadata id so that the next call to
+  // CreateStatMetadata() will start from this id.
+  void SetLastStatMetadataId(int64_t last_stat_metadata_id) {
+    last_stat_metadata_id_ = last_stat_metadata_id;
+  }
+
+ private:
   absl::flat_hash_map<std::string, XEventMetadata*> event_metadata_by_name_;
   absl::flat_hash_map<std::string, XStatMetadata*> stat_metadata_by_name_;
   absl::flat_hash_map<int64_t, XLine*> lines_by_id_;

@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
@@ -45,7 +47,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_layout.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -70,7 +71,16 @@ absl::Status AssignLayoutsToComputation(
   return layout_assignment.Run(m).status();
 }
 
-class LayoutAssignmentTest : public HloTestBase {
+class LayoutAssignmentTest : public HloHardwareIndependentTestBase {
+ public:
+  absl::Status RunLayoutAssignmentPass(HloModule* hlo_module) {
+    HloPassPipeline pipeline("Interpreter");
+    pipeline.AddPass<LayoutAssignment>(
+        hlo_module->mutable_entry_computation_layout());
+
+    return pipeline.Run(hlo_module).status();
+  }
+
  protected:
   void AssignLayouts(HloModule* m, ComputationLayout* entry_computation_layout,
                      ChannelLayoutConstraints* channel_constraints = nullptr) {
@@ -671,20 +681,7 @@ TEST_F(LayoutAssignmentTest, TransposeWithinFusionDoesNotCrash) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(module_str));
-  std::unique_ptr<HloModule> compiled_module =
-      backend()
-          .compiler()
-          ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
-                         /*device_allocator=*/nullptr)
-          .value();
-
-  EXPECT_EQ(absl::OkStatus(),
-            backend()
-                .compiler()
-                ->RunBackend(std::move(compiled_module),
-                             backend().default_stream_executor(),
-                             /*device_allocator=*/nullptr)
-                .status());
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
 }
 
 // A GTE inside of a fusion node inherits the layout of its operand (which
@@ -985,14 +982,8 @@ TEST_F(LayoutAssignmentTest, CopySliceOperandToAvoidImplicitLayoutChange) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(module_str));
-  auto compiled_module =
-      backend()
-          .compiler()
-          ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
-                         /*device_allocator=*/nullptr)
-          .value();
-  HloInstruction* root =
-      compiled_module->entry_computation()->root_instruction();
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloInstruction* root = m->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 5}, {1, 0});
   EXPECT_THAT(
       root,
@@ -1045,14 +1036,8 @@ TEST_F(LayoutAssignmentTest, CopyDSliceOperandToAvoidImplicitLayoutChange) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(module_str));
-  auto compiled_module =
-      backend()
-          .compiler()
-          ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
-                         /*device_allocator=*/nullptr)
-          .value();
-  HloInstruction* root =
-      compiled_module->entry_computation()->root_instruction();
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloInstruction* root = m->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 5}, {1, 0});
   EXPECT_THAT(root,
               GmockMatch(m::Add(
@@ -1078,14 +1063,8 @@ TEST_F(LayoutAssignmentTest, CopyConcatOperandToAvoidImplicitLayoutChange) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(module_str));
-  auto compiled_module =
-      backend()
-          .compiler()
-          ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
-                         /*device_allocator=*/nullptr)
-          .value();
-  HloInstruction* root =
-      compiled_module->entry_computation()->root_instruction();
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloInstruction* root = m->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithDenseLayout(F32, {3, 5}, {1, 0});
   EXPECT_THAT(
       root,
@@ -1111,14 +1090,8 @@ TEST_F(LayoutAssignmentTest,
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(module_str));
-  auto compiled_module =
-      backend()
-          .compiler()
-          ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
-                         /*device_allocator=*/nullptr)
-          .value();
-  HloInstruction* root =
-      compiled_module->entry_computation()->root_instruction();
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               GmockMatch(m::Convolution(m::Parameter(0), m::Parameter(1))));
 }
@@ -1135,14 +1108,8 @@ TEST_F(LayoutAssignmentTest, PropagatingLayoutFromResultToOperand) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
                           ParseAndReturnVerifiedModule(module_str));
-  auto compiled_module =
-      backend()
-          .compiler()
-          ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
-                         /*device_allocator=*/nullptr)
-          .value();
-  HloInstruction* root =
-      compiled_module->entry_computation()->root_instruction();
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
+  HloInstruction* root = m->entry_computation()->root_instruction();
   Shape shape_copy = ShapeUtil::MakeShapeWithDenseLayout(F32, {4, 5}, {0, 1});
   EXPECT_THAT(root,
               GmockMatch(m::Slice(
@@ -2091,11 +2058,7 @@ ENTRY main {
       std::unique_ptr<HloModule> m,
       ParseAndReturnUnverifiedModule(
           module_str, {}, HloParserOptions().set_fill_missing_layouts(false)));
-  CHECK_OK(backend()
-               .compiler()
-               ->RunHloPasses(m->Clone(), backend().default_stream_executor(),
-                              /*device_allocator=*/nullptr)
-               .status());
+  EXPECT_OK(RunLayoutAssignmentPass(m.get()));
 }
 
 TEST_F(LayoutAssignmentTest, HloBufferLayoutUnconstrained) {

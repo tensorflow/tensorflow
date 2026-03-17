@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -54,13 +55,14 @@ class FreezeTest : public ::testing::Test {
   }
 
   // Builds a SignatureDef with the provided `inputs` and `outputs`.
-  SignatureDef BuildSignatureDef(const std::unordered_set<string>& inputs,
-                                 const std::unordered_set<string>& outputs) {
+  SignatureDef BuildSignatureDef(
+      const std::unordered_set<std::string>& inputs,
+      const std::unordered_set<std::string>& outputs) {
     SignatureDef signature_def;
-    for (const string& input : inputs) {
+    for (const std::string& input : inputs) {
       (*signature_def.mutable_inputs())[input].set_name(input);
     }
-    for (const string& output : outputs) {
+    for (const std::string& output : outputs) {
       (*signature_def.mutable_outputs())[output].set_name(output);
     }
     return signature_def;
@@ -68,7 +70,7 @@ class FreezeTest : public ::testing::Test {
 
   // Adds `signature_def` to `saved_model_bundle` under `key`.
   void AddSignatureDefToSavedModelBundle(const SignatureDef& signature_def,
-                                         const string& key,
+                                         const std::string& key,
                                          SavedModelBundle* saved_model_bundle) {
     MetaGraphDef* meta_graph_def = &saved_model_bundle->meta_graph_def;
     (*meta_graph_def->mutable_signature_def())[key] = signature_def;
@@ -77,7 +79,7 @@ class FreezeTest : public ::testing::Test {
   // Adds an initialized session to `saved_model_bundle` using `graph_def` and
   // initializing with `init_node`.
   absl::Status InitializeSavedModelBundleSession(
-      const GraphDef& graph_def, const string& init_node,
+      const GraphDef& graph_def, const std::string& init_node,
       SavedModelBundle* saved_model_bundle) {
     SessionOptions session_options;
     saved_model_bundle->session.reset(NewSession(session_options));
@@ -93,7 +95,7 @@ class FreezeTest : public ::testing::Test {
   // Adds `graph_def` to `saved_model_bundle` and initializes a session with
   // `init_node`.
   absl::Status AddGraphDefToSavedModelBundle(
-      const GraphDef& graph_def, const string& init_node,
+      const GraphDef& graph_def, const std::string& init_node,
       SavedModelBundle* saved_model_bundle) {
     MetaGraphDef* meta_graph_def = &saved_model_bundle->meta_graph_def;
     *meta_graph_def->mutable_graph_def() = graph_def;
@@ -104,10 +106,10 @@ class FreezeTest : public ::testing::Test {
   // Adds `graph_def` and `outputs` as the GraphDef and SignatureDef in
   // `saved_model_bundle` and initializes a session with `init_node`.
   absl::Status AddGraphDefWithOutputsToSavedModelBundle(
-      const GraphDef& graph_def, const std::unordered_set<string>& outputs,
-      const string& init_node, SavedModelBundle* saved_model_bundle) {
+      const GraphDef& graph_def, const std::unordered_set<std::string>& outputs,
+      const std::string& init_node, SavedModelBundle* saved_model_bundle) {
     SignatureDef signature_def =
-        BuildSignatureDef(std::unordered_set<string>(), outputs);
+        BuildSignatureDef(std::unordered_set<std::string>(), outputs);
     AddSignatureDefToSavedModelBundle(signature_def, "signature_def",
                                       saved_model_bundle);
     return AddGraphDefToSavedModelBundle(graph_def, init_node,
@@ -118,7 +120,7 @@ class FreezeTest : public ::testing::Test {
   // `unfrozen_session` and the `frozen_graph_def.
   void RunAndCompareFrozenAndUnfrozenGraphs(Session* unfrozen_session,
                                             const GraphDef& frozen_graph_def,
-                                            const string& tensor_name) {
+                                            const std::string& tensor_name) {
     std::vector<Tensor> unfrozen_outputs;
     TF_ASSERT_OK(unfrozen_session->Run(/* inputs */ {}, {tensor_name},
                                        /* targets */ {}, &unfrozen_outputs));
@@ -161,8 +163,8 @@ class FreezeTest : public ::testing::Test {
         graph_def, {"c:0"}, "assign", &saved_model_bundle));
 
     GraphDef frozen_graph_def;
-    std::unordered_set<string> inputs;
-    std::unordered_set<string> outputs;
+    std::unordered_set<std::string> inputs;
+    std::unordered_set<std::string> outputs;
     TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def,
                                   &inputs, &outputs));
 
@@ -215,8 +217,8 @@ class FreezeTest : public ::testing::Test {
         graph_def, {"c:0"}, "assign", &saved_model_bundle));
 
     GraphDef frozen_graph_def;
-    std::unordered_set<string> inputs;
-    std::unordered_set<string> outputs;
+    std::unordered_set<std::string> inputs;
+    std::unordered_set<std::string> outputs;
     TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def,
                                   &inputs, &outputs));
 
@@ -277,8 +279,8 @@ class FreezeTest : public ::testing::Test {
         graph_def, {"c:0"}, "assign", &saved_model_bundle));
 
     GraphDef frozen_graph_def;
-    std::unordered_set<string> inputs;
-    std::unordered_set<string> outputs;
+    std::unordered_set<std::string> inputs;
+    std::unordered_set<std::string> outputs;
     TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def,
                                   &inputs, &outputs));
 
@@ -302,15 +304,15 @@ TEST_F(FreezeTest, InputsAndOutputsSingleSignatureDef) {
   // Test that inputs and outputs get correctly populated for a single
   // SignatureDef.
   SavedModelBundle saved_model_bundle;
-  std::unordered_set<string> expected_inputs = {"input0:0", "input1:0"};
-  std::unordered_set<string> expected_outputs = {"output0:0", "output1:0"};
+  std::unordered_set<std::string> expected_inputs = {"input0:0", "input1:0"};
+  std::unordered_set<std::string> expected_outputs = {"output0:0", "output1:0"};
   SignatureDef signature_def =
       BuildSignatureDef(expected_inputs, expected_outputs);
   AddSignatureDefToSavedModelBundle(signature_def, "signature_def",
                                     &saved_model_bundle);
   GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
   EXPECT_EQ(expected_inputs, inputs);
@@ -328,12 +330,12 @@ TEST_F(FreezeTest, InputsAndOutputsMultipleSignatureDefs) {
   AddSignatureDefToSavedModelBundle(signature_def_1, "signature_def_1",
                                     &saved_model_bundle);
   GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
-  std::unordered_set<string> expected_inputs = {"input0:0", "input1:0"};
-  std::unordered_set<string> expected_outputs = {"output0:0", "output1:0"};
+  std::unordered_set<std::string> expected_inputs = {"input0:0", "input1:0"};
+  std::unordered_set<std::string> expected_outputs = {"output0:0", "output1:0"};
   EXPECT_EQ(expected_inputs, inputs);
   EXPECT_EQ(expected_outputs, outputs);
 }
@@ -350,8 +352,8 @@ TEST_F(FreezeTest, GraphDefVersionsAndLibrary) {
       AddGraphDefToSavedModelBundle(graph_def, "", &saved_model_bundle));
 
   GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
 
@@ -371,8 +373,8 @@ TEST_F(FreezeTest, GraphDefWithNoVariables) {
                                                         &saved_model_bundle));
 
   GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
 
@@ -396,8 +398,8 @@ TEST_F(FreezeTest, GraphDefWithMultiOutputOperation) {
                                                         &saved_model_bundle));
 
   GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
 
@@ -421,8 +423,8 @@ TEST_F(FreezeTest, GraphDefWithControlDependency) {
                                                         &saved_model_bundle));
 
   GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
 
@@ -474,12 +476,12 @@ TEST_F(FreezeTest, InputsAndOutputsCompositeTensorSignatureDef) {
   AddSignatureDefToSavedModelBundle(signature_def, "signature_def",
                                     &saved_model_bundle);
   GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
-  std::unordered_set<string> expected_inputs = {"input1:0", "input2:0"};
-  std::unordered_set<string> expected_outputs = {"output1:0", "output2:0"};
+  std::unordered_set<std::string> expected_inputs = {"input1:0", "input2:0"};
+  std::unordered_set<std::string> expected_outputs = {"output1:0", "output2:0"};
   EXPECT_EQ(expected_inputs, inputs);
   EXPECT_EQ(expected_outputs, outputs);
 }
@@ -503,14 +505,14 @@ TEST_F(FreezeTest, InputsAndOutputsSparseCooSignatureDef) {
   AddSignatureDefToSavedModelBundle(signature_def, "signature_def",
                                     &saved_model_bundle);
   GraphDef frozen_graph_def;
-  std::unordered_set<string> inputs;
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> inputs;
+  std::unordered_set<std::string> outputs;
   TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
                                 &outputs));
-  std::unordered_set<string> expected_inputs = {"input1:0", "input2:0",
-                                                "input3:0"};
-  std::unordered_set<string> expected_outputs = {"output1:0", "output2:0",
-                                                 "output3:0"};
+  std::unordered_set<std::string> expected_inputs = {"input1:0", "input2:0",
+                                                     "input3:0"};
+  std::unordered_set<std::string> expected_outputs = {"output1:0", "output2:0",
+                                                      "output3:0"};
   EXPECT_EQ(expected_inputs, inputs);
   EXPECT_EQ(expected_outputs, outputs);
 }

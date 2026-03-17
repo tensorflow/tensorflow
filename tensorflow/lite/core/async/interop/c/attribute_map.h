@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_ASYNC_INTEROP_C_ATTRIBUTE_MAP_H_
 #define TENSORFLOW_LITE_CORE_ASYNC_INTEROP_C_ATTRIBUTE_MAP_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 

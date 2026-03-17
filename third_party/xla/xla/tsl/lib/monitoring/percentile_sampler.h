@@ -19,14 +19,14 @@ limitations under the License.
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include "absl/status/status.h"
-#include "tsl/platform/platform.h"
-#include "xla/tsl/platform/types.h"
+#include "tsl/platform/platform.h"  // IWYU pragma: keep
 // clang-format on
 
 // We replace this implementation with a null implementation for mobile
 // platforms.
 #ifdef IS_MOBILE_PLATFORM
 
+#include "absl/base/no_destructor.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
@@ -52,14 +52,22 @@ class PercentileSampler {
       std::vector<double> percentiles, size_t max_samples,
       UnitOfMeasure unit_of_measure);
 
+  static absl::NoDestructor<PercentileSampler> MakeStatic(
+      const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
+          metric_def,
+      std::vector<double> percentiles, size_t max_samples,
+      UnitOfMeasure unit_of_measure);
+
   template <typename... Labels>
   PercentileSamplerCell* GetCell(const Labels&... labels) {
     return &default_cell_;
   }
 
-  Status GetStatus() { return absl::OkStatus(); }
+  absl::Status GetStatus() { return absl::OkStatus(); }
 
  private:
+  friend class absl::NoDestructor<PercentileSampler<NumLabels>>;
+
   PercentileSamplerCell default_cell_;
 
   PercentileSampler() = default;
@@ -82,16 +90,24 @@ PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
 
 #else  // IS_MOBILE_PLATFORM
 
+#include <array>
 #include <cmath>
-#include <map>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/lib/monitoring/collection_registry.h"
+#include "xla/tsl/lib/monitoring/label_array_utils.h"
 #include "xla/tsl/lib/monitoring/metric_def.h"
 #include "xla/tsl/lib/monitoring/types.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 namespace monitoring {
@@ -131,11 +147,11 @@ class PercentileSamplerCell {
   mutable absl::Mutex mu_;
   UnitOfMeasure unit_of_measure_;
   const std::vector<double> percentiles_;
-  std::vector<Sample> samples_ TF_GUARDED_BY(mu_);
-  size_t num_samples_ TF_GUARDED_BY(mu_);
-  size_t next_position_ TF_GUARDED_BY(mu_);
-  size_t total_samples_ TF_GUARDED_BY(mu_);
-  long double accumulator_ TF_GUARDED_BY(mu_);
+  std::vector<Sample> samples_ ABSL_GUARDED_BY(mu_);
+  size_t num_samples_ ABSL_GUARDED_BY(mu_);
+  size_t next_position_ ABSL_GUARDED_BY(mu_);
+  size_t total_samples_ ABSL_GUARDED_BY(mu_);
+  long double accumulator_ ABSL_GUARDED_BY(mu_);
 
   PercentileSamplerCell(const PercentileSamplerCell&) = delete;
   void operator=(const PercentileSamplerCell&) = delete;
@@ -162,12 +178,25 @@ class PercentileSampler {
 
   // Creates the metric based on the metric-definition arguments and buckets.
   //
-  // Example;
-  // auto* sampler_with_label =
-  // PercentileSampler<1>::New({"/tensorflow/sampler",
-  //   "Tensorflow sampler", "MyLabelName"}, {10.0, 20.0, 30.0}, 1024,
-  //   UnitOfMeasure::kTime);
+  // Example:
+  // auto* sampler_with_label = PercentileSampler<1>::New(
+  //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
+  //     {10.0, 20.0, 30.0}, 1024, UnitOfMeasure::kTime);
   static PercentileSampler* New(
+      const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
+          metric_def,
+      std::vector<double> percentiles, size_t max_samples,
+      UnitOfMeasure unit_of_measure);
+
+  // Creates the metric based on the metric-definition arguments and buckets.
+  // Doesn't use the heap; instead, allocates a static stack object whose
+  // destructor will never be called. (See `absl::NoDestructor` documentation.)
+  //
+  // Example:
+  // auto sampler_with_label = PercentileSampler<1>::MakeStatic(
+  //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
+  //     {10.0, 20.0, 30.0}, 1024, UnitOfMeasure::kTime);
+  static absl::NoDestructor<PercentileSampler> MakeStatic(
       const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
           metric_def,
       std::vector<double> percentiles, size_t max_samples,
@@ -177,11 +206,12 @@ class PercentileSampler {
   // not already present.
   template <typename... Labels>
   PercentileSamplerCell* GetCell(const Labels&... labels)
-      TF_LOCKS_EXCLUDED(mu_);
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   absl::Status GetStatus() { return status_; }
 
  private:
+  friend class absl::NoDestructor<PercentileSampler<NumLabels>>;
   friend class PercentileSamplerCell;
 
   PercentileSampler(const MetricDef<MetricKind::kCumulative, Percentiles,
@@ -197,7 +227,7 @@ class PercentileSampler {
               auto metric_collector = getter.Get(&metric_def_);
               absl::MutexLock l(mu_);
               for (const auto& cell : cells_) {
-                metric_collector.CollectValue(cell.first, cell.second.value());
+                metric_collector.CollectValue(cell.first, cell.second->value());
               }
             })) {
     if (registration_handle_) {
@@ -228,10 +258,8 @@ class PercentileSampler {
   absl::Status status_;
 
   using LabelArray = std::array<std::string, NumLabels>;
-  // we need a container here that guarantees pointer stability of the value,
-  // namely, the pointer of the value should remain valid even after more cells
-  // are inserted.
-  std::map<LabelArray, PercentileSamplerCell> cells_ TF_GUARDED_BY(mu_);
+  using LabelViewArray = std::array<absl::string_view, NumLabels>;
+  LabelArrayMap<PercentileSamplerCell, NumLabels> cells_ ABSL_GUARDED_BY(mu_);
 
   // The metric definition. This will be used to identify the metric when we
   // register it for collection.
@@ -242,7 +270,7 @@ class PercentileSampler {
   // The percentiles samples required for this metric.
   const std::vector<double> percentiles_;
 
-  // The maximum size of the samples colected by the PercentileSamplerCell cell.
+  // The maximum size of the samples collected by the PercentileSamplerCell.
   const size_t max_samples_ = 0;
 
   // Registration handle with the CollectionRegistry.
@@ -263,9 +291,20 @@ PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
 }
 
 template <int NumLabels>
+absl::NoDestructor<PercentileSampler<NumLabels>>
+PercentileSampler<NumLabels>::MakeStatic(
+    const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
+        metric_def,
+    std::vector<double> percentiles, size_t max_samples,
+    UnitOfMeasure unit_of_measure) {
+  return absl::NoDestructor<PercentileSampler<NumLabels>>(
+      metric_def, std::move(percentiles), max_samples, unit_of_measure);
+}
+
+template <int NumLabels>
 template <typename... Labels>
 PercentileSamplerCell* PercentileSampler<NumLabels>::GetCell(
-    const Labels&... labels) TF_LOCKS_EXCLUDED(mu_) {
+    const Labels&... labels) ABSL_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(
@@ -273,18 +312,18 @@ PercentileSamplerCell* PercentileSampler<NumLabels>::GetCell(
       "Mismatch between PercentileSampler<NumLabels> and number of labels "
       "provided in GetCell(...).");
 
-  const LabelArray& label_array = {{labels...}};
+  LabelViewArray label_view_array = {{labels...}};
   absl::MutexLock l(mu_);
-  const auto found_it = cells_.find(label_array);
+  const auto found_it = cells_.find(label_view_array);
   if (found_it != cells_.end()) {
-    return &(found_it->second);
+    return found_it->second.get();
   }
-  return &(cells_
-               .emplace(std::piecewise_construct,
-                        std::forward_as_tuple(label_array),
-                        std::forward_as_tuple(unit_of_measure_, percentiles_,
-                                              max_samples_))
-               .first->second);
+  return cells_
+      .emplace(std::piecewise_construct,
+               std::forward_as_tuple(LabelArray{std::string(labels)...}),
+               std::forward_as_tuple(std::make_unique<PercentileSamplerCell>(
+                   unit_of_measure_, percentiles_, max_samples_)))
+      .first->second.get();
 }
 
 }  // namespace monitoring

@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/iterator_util.h"
 #include "xla/online_topsort.h"
 #include "xla/printer.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
@@ -708,6 +710,51 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Base class for cached backend-specific data.
+  class CacheEntry {
+   public:
+    virtual ~CacheEntry() = default;
+    virtual tsl::Fprint128 GetCacheKey() const = 0;
+  };
+
+  // Returns a shared pointer to a cached entry of type T for the given
+  // fingerprint. Returns nullptr if not found, or if a key exists but the
+  // stored entry is not of type T. T must be a subclass of CacheEntry. The
+  // object pointed to by the shared pointer remains valid as long as the caller
+  // holds a reference to it, even if the entry is removed from the cache. The
+  // entry remains in the cache until the module is destroyed or the cache entry
+  // is overwritten.
+  template <typename T>
+  std::shared_ptr<T> GetCacheEntry(tsl::Fprint128 key) const {
+    static_assert(std::is_base_of_v<CacheEntry, T>);
+    absl::MutexLock lock(cache_mutex_);
+    auto it = cache_.find(key);
+    // dynamic_pointer_cast will return nullptr if the key exists but the
+    // stored entry is of a different type than T.
+    return it == cache_.end() ? nullptr
+                              : std::dynamic_pointer_cast<T>(it->second);
+  }
+
+  // Sets a cached entry of type T for the given fingerprint. T must be a
+  // subclass of CacheEntry. If 'overwrite' is false (the default), this method
+  // will not overwrite an existing entry for the given key and will return
+  // false. If 'overwrite' is true, it will overwrite any existing entry.
+  // Returns true if the cache entry was set, false if it was not.
+  template <typename T>
+  bool SetCacheEntry(std::shared_ptr<T> entry, bool overwrite = false) {
+    static_assert(std::is_base_of_v<CacheEntry, T>);
+    if (entry == nullptr) {
+      return false;
+    }
+    tsl::Fprint128 key = entry->GetCacheKey();
+    absl::MutexLock lock(cache_mutex_);
+    if (overwrite) {
+      cache_.insert_or_assign(key, std::move(entry));
+      return true;
+    }
+    return cache_.try_emplace(key, std::move(entry)).second;
+  }
+
   // Describes a buffer to be used for cross program prefetching.
   struct CrossProgramPrefetchInfo {
     // The parameter to prefetch.
@@ -814,24 +861,28 @@ class HloModule {
   // Describes a stack frame.
   using StackFrame = HloStackFrame;
 
-  // Getter for the specific stack frame. Argument is a 1-based index.
-  HloStackFrame get_stack_frame(int id) const;
+  // Getter for the specific stack frame.
+  HloStackFrame get_stack_frame(StackFrameId id) const;
 
-  // Setter for the stack frame index.
-  void set_stack_frame_index(StackFrameIndexProto stack_frame_index) {
-    stack_frame_index_ = std::move(stack_frame_index);
+  // Setter for the stack frame DAG.
+  void set_stack_frames(StackFrames stack_frames) {
+    stack_frames_ = std::move(stack_frames);
   }
 
-  // Getter for the stack frame index.
-  const std::optional<StackFrameIndexProto>& stack_frame_index() const {
-    return stack_frame_index_;
-  }
+  // Getter for the stack frame DAG.
+  const StackFrames& stack_frames() const { return stack_frames_; }
+  StackFrames& mutable_stack_frames() { return stack_frames_; }
 
   // Finalizes this module by destroying internal data structures that might be
   // used for building or modifying the module. It is undefined behavior to
   // modify the module (add computations or instructions) after the call. Should
   // be called once, after HLO module is compiled to executable.
   void Finalize();
+
+  // Populates the stack_frames metadata from `index_proto`. Canonicalizes
+  // the stack frame IDs and remaps any stack frame IDs in the module's
+  // instructions' metadata to refer to the canonical `StackFrameId`s.
+  void CanonicalizeStackFrameIds(const StackFrameIndexProto& index_proto);
 
  private:
   friend class HloComputation;
@@ -965,8 +1016,8 @@ class HloModule {
   // environment variables).
   std::unique_ptr<CompilationEnvironments> comp_envs_;
 
-  // Stack frame indexes flat representation.
-  std::optional<StackFrameIndexProto> stack_frame_index_;
+  // Stack frame representation.
+  StackFrames stack_frames_;
 
   // Topological ordering of the computations in this module.
   // The topological order only contains computations whose parent() is this
@@ -1100,6 +1151,11 @@ class HloModule {
 
  private:
   OriginalValueRecoveryTable original_value_recovery_table_;
+
+  mutable absl::Mutex cache_mutex_;
+  absl::flat_hash_map<tsl::Fprint128, std::shared_ptr<CacheEntry>,
+                      tsl::Fprint128Hasher>
+      cache_ ABSL_GUARDED_BY(cache_mutex_);
 };
 
 using OriginalValueRecoveryTable = HloModule::OriginalValueRecoveryTable;

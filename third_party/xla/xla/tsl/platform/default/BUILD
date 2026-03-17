@@ -220,6 +220,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:load_library",
+        "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:strcat",
         "@tsl//tsl/platform:thread_annotations",
     ],
@@ -327,8 +328,8 @@ cc_library(
     deps = [
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@tsl//tsl/platform:strcat",
     ],
     alwayslink = True,
 )
@@ -373,6 +374,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@snappy",
         "@tsl//tsl/platform",
@@ -452,9 +454,12 @@ cc_library(
     ],
     textual_hdrs = ["subprocess.h"],
     deps = [
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:thread_annotations",

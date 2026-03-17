@@ -104,10 +104,13 @@ cc_library(
     name = "device_address_handle",
     srcs = ["device_address_handle.cc"],
     hdrs = ["device_address_handle.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":device_address",
         ":stream_executor_h",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
@@ -319,6 +322,33 @@ cc_library(
 )
 
 cc_library(
+    name = "vmm_device_address_allocator",
+    srcs = ["vmm_device_address_allocator.cc"],
+    hdrs = ["vmm_device_address_allocator.h"],
+    deps = [
+        ":device_address",
+        ":device_address_allocator",
+        ":memory_allocation",
+        ":memory_reservation",
+        ":platform",
+        ":stream",
+        ":stream_executor_h",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "launch_dim",
     srcs = ["launch_dim.cc"],
     hdrs = ["launch_dim.h"],
@@ -362,6 +392,23 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_reservation",
+    srcs = ["memory_reservation.cc"],
+    hdrs = ["memory_reservation.h"],
+    deps = [
+        ":device_address",
+        ":memory_allocation",
+        "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:errors",
+    ],
+)
+
+cc_library(
     name = "platform_manager",
     srcs = ["platform_manager.cc"],
     hdrs = ["platform_manager.h"],
@@ -386,12 +433,21 @@ cc_library(
 )
 
 cc_library(
+    name = "platform_id",
+    hdrs = ["platform_id.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
     name = "platform",
     srcs = ["platform.cc"],
     hdrs = ["platform.h"],
     deps = [
         ":device_description",
-        "@com_google_absl//absl/base",
+        ":platform_id",
+        "//xla/stream_executor/abi:runtime_abi_version",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -513,6 +569,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -734,6 +791,7 @@ xla_cc_test(
         ":device_address",
         ":kernel_args",
         ":kernel_args_packing_spec",
+        ":kernel_args_packing_spec_proto_cc",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:safe_reinterpret_cast",
         "//xla/tsl/util/proto:parse_text_proto",

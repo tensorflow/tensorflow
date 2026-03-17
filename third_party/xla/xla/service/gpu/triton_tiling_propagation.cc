@@ -1073,19 +1073,6 @@ bool IsOutputWorthFusing(const HloInstruction& hlo) {
          input_minus_output_bytes.value() >= -kIoToleranceBytes;
 }
 
-FusionDecision IsConversionWorthFusing(const HloInstruction& input,
-                                       se::GpuComputeCapability gpu_version) {
-  // TODO(b/266862494): Can pick up almost any
-  // convert, but if it's reducing the data volume it should rather be fused
-  // to the output of the producer kernel. However not all operations support
-  // output fusion - then it should be fused here anyway!
-  if (ShapeUtil::ByteSizeOf(input.operand(0)->shape()) >
-      ShapeUtil::ByteSizeOf(input.shape())) {
-    return FusionDecision::Forbid("Narrowing conversion.");
-  }
-  return FusionDecision::Allow();
-}
-
 }  // namespace
 
 DimOrdersAndReqsOrError GetPropagatedDimOrdersAndRequirements(

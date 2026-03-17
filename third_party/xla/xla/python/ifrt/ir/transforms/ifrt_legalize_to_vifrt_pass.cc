@@ -80,11 +80,11 @@ mlir::FailureOr<mlir::StringAttr> getAttrNameFromIfrtToVifrt(
             attr.getValue().getContext(),
             absl::StrCat(VifrtDialect::getDialectNamespace().str(), ".",
                          name_without_dialect.substr(dot_pos + 1)));
-      } else {
-        return mlir::failure();
       }
-    } else if (dialect->getNamespace() !=
-               mlir::BuiltinDialect::getDialectNamespace()) {
+      return mlir::failure();
+    }
+    if (dialect->getNamespace() !=
+        mlir::BuiltinDialect::getDialectNamespace()) {
       return mlir::failure();
     }
   }
@@ -113,7 +113,13 @@ mlir::Attribute convertGeneric(mlir::Attribute ifrt_attr,
     return VifrtDevicesV1Attr::get(attr.getContext(), attr.getIds());
   }
   if (auto attr = llvm::dyn_cast<IfrtShardingParamAttr>(ifrt_attr)) {
-    return VifrtShardingParamV1Attr::get(attr.getContext(), attr.getSharding());
+    // TODO(b/486973006): Always convert to V2 after compatibility window
+    // expires.
+    if (attr.getSharding().unreduced_axes().empty()) {
+      return VifrtShardingParamV1Attr::get(attr.getContext(),
+                                           attr.getSharding());
+    }
+    return VifrtShardingParamV2Attr::get(attr.getContext(), attr.getSharding());
   }
   if (auto attr = llvm::dyn_cast<IfrtUnspecifiedShardingAttr>(ifrt_attr)) {
     return VifrtUnspecifiedShardingV1Attr::get(attr.getContext());
@@ -185,10 +191,9 @@ mlir::Attribute convertGeneric(mlir::Attribute ifrt_attr,
     // raw data. One should use `ArrayAttr` instead for such arrays.
     if (mlir::isa<mlir::IntegerType, mlir::FloatType>(attr.getElementType())) {
       return ifrt_attr;
-    } else {
-      LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << attr << '\n');
-      return {};
     }
+    LLVM_DEBUG(llvm::dbgs() << "Failed to convert: " << attr << '\n');
+    return {};
   }
   if (auto attr = llvm::dyn_cast<mlir::DictionaryAttr>(ifrt_attr)) {
     llvm::SmallVector<mlir::NamedAttribute> vifrt_attrs;
@@ -290,7 +295,8 @@ mlir::LogicalResult addDefaultAttrs(
 
   if constexpr (std::is_same<IfrtOpTy, ReshardOp>::value ||
                 std::is_same<IfrtOpTy, CopyArraysOp>::value ||
-                std::is_same<IfrtOpTy, RemapArraysOp>::value) {
+                std::is_same<IfrtOpTy, RemapArraysOp>::value ||
+                std::is_same<IfrtOpTy, BitcastArraysOp>::value) {
     if (!ifrt_op.getDonatedAttr()) {
       add_default_attr("donated", builder.getBoolAttr(false));
     }
@@ -435,9 +441,8 @@ struct IfrtLegalizeToVifrtPass
           // legal because they will be removed by DCE.
           if (func_op->hasAttr(kIfrtFunctionAttrName)) {
             return false;
-          } else {
-            return true;
           }
+          return true;
         });
     target->addDynamicallyLegalOp<mlir::func::CallOp>(
         [](mlir::func::CallOp call_op) {
@@ -448,9 +453,8 @@ struct IfrtLegalizeToVifrtPass
                   call_op, call_op.getCalleeAttr());
           if (func_op->hasAttr(kIfrtFunctionAttrName)) {
             return false;
-          } else {
-            return true;
           }
+          return true;
         });
     target->addDynamicallyLegalOp<mlir::func::ReturnOp>(
         [](mlir::func::ReturnOp return_op) {

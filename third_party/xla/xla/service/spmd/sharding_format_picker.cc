@@ -123,7 +123,7 @@ std::unique_ptr<HloSharding> MaybeConvertToV2(const HloSharding& sharding) {
     return HloShardingTestHelper::Tuple(new_elements);
   }
   auto& tile = sharding.tile_assignment();
-  if (tile.iota() || sharding.IsReplicated() || sharding.IsTileMaximal() ||
+  if (tile.iota() || sharding.IsReplicatedOrSingleDevice() ||
       sharding.IsManual()) {
     return nullptr;
   }

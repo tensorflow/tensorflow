@@ -128,9 +128,9 @@ PartitionedHloMX ReplicatePartiallySharded(
 std::pair<Shape, Shape> GetPerGroupBaseShape(
     const hlo_sharding_util::GroupedSharding& grouped_sharding,
     const PartitionedHloMX::ShapesMX& original_base_shapes) {
-  std::pair<Shape, Shape> pair(std::move(original_base_shapes));
-  return std::make_pair(GetPerGroupBaseShape(grouped_sharding, pair.first),
-                        GetPerGroupBaseShape(grouped_sharding, pair.second));
+  std::pair<Shape, Shape> shapes(original_base_shapes);
+  return {GetPerGroupBaseShape(grouped_sharding, shapes.first),
+          GetPerGroupBaseShape(grouped_sharding, shapes.second)};
 }
 
 // Functor class for creating sharded dots with operands of type PartitionedHlo.
@@ -140,9 +140,10 @@ class CreateShardedDotFunctor final
   explicit CreateShardedDotFunctor(HloDotInstruction* dot) : dot_(dot) {}
 
   // Implements the creation of sharded dots.
-  absl::StatusOr<HloInstruction*> CreateSharded(
-      const PartitionedHlo& ll, const PartitionedHlo& rr, SpmdBuilder* b,
-      const Window& conv_window) const override {
+  absl::StatusOr<HloInstruction*> CreateSharded(const PartitionedHlo& ll,
+                                                const PartitionedHlo& rr,
+                                                SpmdBuilder* b,
+                                                const Window&) const override {
     HloInstruction* l = ll.hlo();
     HloInstruction* r = rr.hlo();
     TF_ASSIGN_OR_RETURN(
@@ -160,6 +161,12 @@ class CreateShardedDotFunctor final
 };
 
 absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
+  if (!options_.need_resolve_conflicts &&
+      !options_.enable_windowed_einsum_for_all_gather &&
+      !options_.enable_windowed_einsum_for_reduce_scatter) {
+    return HandleDotWithoutConflicts(hlo);
+  }
+
   DotConvolutionDimsInfo mapping =
       dot_as_convolution_util::ParseDotGeneralFromDot(hlo);
 
@@ -168,6 +175,46 @@ absl::Status SpmdPartitioningVisitor::HandleDot(HloInstruction* hlo) {
   CreateShardedDotFunctor create_sharded_dot_functor(dot);
   return HandleDotHelper<CreateShardedDotFunctor>(hlo, mapping,
                                                   create_sharded_dot_functor);
+}
+
+absl::Status SpmdPartitioningVisitor::HandleDotWithoutConflicts(
+    HloInstruction* hlo) {
+  PartitionedHlo& lhs = GetPartitionedHlo(hlo->operand(0));
+  PartitionedHlo& rhs = GetPartitionedHlo(hlo->operand(1));
+  if (lhs.hlo() == rhs.hlo()) {
+    rhs = MakeACopyAndReturnItsPartitionedHlo(rhs, builder());
+  }
+
+  const DotDimensionNumbers& dot_dnums = hlo->dot_dimension_numbers();
+  std::vector<int64_t> sharded_lhs_contracting_dims;
+  if (lhs.sharding().IsTiled()) {
+    for (int64_t dim : dot_dnums.lhs_contracting_dimensions()) {
+      if (lhs.sharding().dimension(dim) > 1) {
+        sharded_lhs_contracting_dims.push_back(dim);
+      }
+    }
+  }
+
+  if (!sharded_lhs_contracting_dims.empty()) {
+    lhs =
+        lhs.PadWithZeroOnSpecifiedDims(dot_dnums.lhs_contracting_dimensions());
+    rhs =
+        rhs.PadWithZeroOnSpecifiedDims(dot_dnums.rhs_contracting_dimensions());
+  }
+
+  Shape pshape = MakePartitionedShape(hlo->shape(), hlo->sharding());
+  HloInstruction* phlo = b_.AddInstruction(HloInstruction::CreateDot(
+      pshape, lhs.hlo(), rhs.hlo(), dot_dnums, hlo->precision_config()));
+
+  if (!sharded_lhs_contracting_dims.empty()) {
+    phlo = lhs.state().partitioner->AllReduceAlongShardingDims(
+        lhs.state().b, phlo, lhs.sharding(), lhs.state().next_channel_id,
+        sharded_lhs_contracting_dims, lhs.state().collective_ops_creator,
+        MakeBinaryAdd(phlo->shape().element_type(), lhs.state().module));
+  }
+
+  SetPartitionedHlo(hlo, phlo);
+  return absl::OkStatus();
 }
 
 namespace {
@@ -181,7 +228,7 @@ int64_t GetPartitionsForDims(
     absl::Span<const DotConvolutionDimsInfo::DimNums> dims,
     DotComponent component) {
   int64_t partitions = 1;
-  if (sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice()) {
     return partitions;
   }
   for (const auto& dim : dims) {
@@ -464,7 +511,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
           collective->opcode() == HloOpcode::kAllReduce) {
         communication_time_in_ms = visitor->GetCommunicationTimeInMilliSec(
             ShapeUtil::ByteSizeOf(collective->shape()),
-            collective->device_list());
+            *collective->device_list());
       }
     } else {
       auto new_lhs =
@@ -504,17 +551,18 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
         collective = collective->mutable_operand(0);
       }
       communication_time_in_ms = visitor->GetCommunicationTimeInMilliSec(
-          ShapeUtil::ByteSizeOf(dot->shape()), collective->device_list());
+          ShapeUtil::ByteSizeOf(dot->shape()), *collective->device_list());
     }
 
     double extra_collective_permute_time = 0.0;
     if (communication_time_in_ms != 0.0) {
       extra_collective_permute_time =
           communication_time_in_ms *
-          visitor->GetCommunicationMultiplier(collective->device_list()) * 2 /
+          visitor->GetCommunicationMultiplier(*collective->device_list()) * 2 /
           num_partitions;
       VLOG(2) << "GetCommunicationMultiplier: "
-              << visitor->GetCommunicationMultiplier(collective->device_list());
+              << visitor->GetCommunicationMultiplier(
+                     *collective->device_list());
     }
     VLOG(2) << "collective: " << collective->ToString() << "\n"
             << "dot: " << dot->ToString() << "\n"
@@ -529,7 +577,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
         (std::max(
              computation_time_in_ms,
              communication_time_in_ms * visitor->GetCommunicationMultiplier(
-                                            collective->device_list())) +
+                                            *collective->device_list())) +
          extra_collective_permute_time) >=
             (computation_time_in_ms + communication_time_in_ms)) {
       VLOG(2) << "Overhead outweighs benefit. Skipping windowed einsum";
@@ -2203,7 +2251,7 @@ absl::StatusOr<HloInstruction*> PartitionDotGroupOnBatchImpl(
             int64_t other_contracting_dim_partitions,
             std::vector<int64_t>* sharding_dims_adjusted_to_output)
         -> std::optional<PartitionedHloMaybeMX> {
-      if (operand.sharding().IsTileMaximal()) {
+      if (operand.sharding().IsReplicatedOrSingleDevice()) {
         return ReplicatePartiallySharded(operand, batch_dims, output_grouped, b,
                                          per_group_partitioner_state);
       }
@@ -3288,7 +3336,7 @@ bool PrioritizeContractingDimensionsPartitioning(
   }
   int64_t new_output_lhs_non_contracting_partitions = 1;
   int64_t new_output_rhs_non_contracting_partitions = 1;
-  if (!inner_output_sharding.IsTileMaximal()) {
+  if (!inner_output_sharding.IsReplicatedOrSingleDevice()) {
     for (const auto& dim : dims_mapping.lhs_non_contracting_dims) {
       new_output_lhs_non_contracting_partitions *=
           ShardCountAtDim(inner_output_sharding, dim.output);
@@ -3407,13 +3455,13 @@ bool PrioritizeContractingDimensionsPartitioning(
         lhs_matching_iterations ? *lhs_matching_iterations : INT64_MAX,
         rhs_matching_iterations ? *rhs_matching_iterations : INT64_MAX);
     return min_nc_iterations > new_num_partitions;
-  } else if ((computation_time_in_ms <= all_gather_time_in_ms) &&
-             (computation_time_in_ms <= reduce_scatter_time_in_ms)) {
+  }
+  if ((computation_time_in_ms <= all_gather_time_in_ms) &&
+      (computation_time_in_ms <= reduce_scatter_time_in_ms)) {
     return all_gather_bytes / new_num_partitions <
            reduce_scatter_bytes / num_iterations;
-  } else {
-    return all_gather_time_in_ms > reduce_scatter_time_in_ms;
   }
+  return all_gather_time_in_ms > reduce_scatter_time_in_ms;
 }
 
 // Return if it would be better to match the LHS operand or RHS operand
@@ -3644,7 +3692,7 @@ PartitionConvOnBatchOrFeatureGroupedDims(
         return try_partitioned_conv;
       }
     }
-    // For batch/feature grouped convs, we try to at least partiton them on
+    // For batch/feature grouped convs, we try to at least partition them on
     // the batch dimensions and partially replicate other dimensions, instead
     // of replicating everything.
     const int64_t max_batch_partitions =
@@ -4249,7 +4297,7 @@ template <typename CreateShardedFunctor>
 absl::Status SpmdPartitioningVisitor::HandleDotHelper(
     HloInstruction* hlo, const DotConvolutionDimsInfo& dims_mapping,
     CreateShardedFunctor& create_sharded_dot) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return DefaultAction(hlo);
   }
   HloInstruction* partitioned_dot;
@@ -4773,9 +4821,9 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
       padded_operand_shape.set_dimensions(
           i, padded_shape.dimensions(broadcast->dimensions(i)));
     }
-    auto* padded_operand =
-        PadToShape(base_motion_cluster.outside_to_inside[broadcast->operand(0)],
-                   padded_operand_shape, body);
+    auto* padded_operand = spmd::PadToShape(
+        base_motion_cluster.outside_to_inside[broadcast->operand(0)],
+        padded_operand_shape, body);
     auto* inside_broadcast =
         body->AddInstruction(broadcast->CloneWithNewOperands(
             ShapeUtil::ChangeElementType(padded_shape,
@@ -4799,10 +4847,10 @@ absl::Status MoveUsersIntoWindowedDotGeneralLoopOnNonContractingDimensions(
   auto add_constant = [&](const HloInstruction* constant) {
     auto* constant_clone = body->AddInstruction(constant->Clone());
     auto* inside_constant =
-        PadToShape(constant_clone,
-                   ShapeUtil::ChangeElementType(
-                       padded_shape, constant->shape().element_type()),
-                   body);
+        spmd::PadToShape(constant_clone,
+                         ShapeUtil::ChangeElementType(
+                             padded_shape, constant->shape().element_type()),
+                         body);
     for (MotionCluster& motion_cluster : motion_clusters) {
       motion_cluster.outside_to_inside[constant] = get_slice(
           inside_constant, motion_cluster.slice_offsets, motion_cluster.dus);

@@ -417,7 +417,7 @@ TEST_P(HostOffloadingRuntimeExecutableTest, FfiWithThreadpool) {
       auto computation,
       CompileFromString(hlo, host_offloading_executable_type));
 
-  Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {1});
+  Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::S32, {});
   auto result_literal = LiteralUtil::CreateR0<int32_t>(0);
 
   ShapeTree<HostOffloadingBuffer> result(

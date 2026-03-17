@@ -35,6 +35,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
+#include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/target_config/target_config.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/replica_group.h"
@@ -45,8 +48,8 @@ limitations under the License.
 #include "xla/service/backend.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/pjrt_gpu_utils.h"
 #include "xla/tools/multihost_hlo_runner/create_client.h"
 #include "xla/tools/multihost_hlo_runner/functional_hlo_runner.h"
 #include "xla/tsl/platform/env.h"
@@ -321,14 +324,28 @@ uint64_t GetNetworkThroughputBytesPerSec(absl::Duration runtime,
   return tensor_size_bytes * 1e9 / absl::ToInt64Nanoseconds(runtime);
 }
 
-IotaReplicaGroupList GetCollectiveDeviceList(
+IotaReplicaGroupList GetIotaReplicaGroupList(
     absl::string_view collective_device_list_unparsed) {
-  auto collective_device_list =
-      xla::ParseCollectiveDeviceListOnly(collective_device_list_unparsed);
-  CHECK_OK(collective_device_list);
-  CHECK(collective_device_list->iota_replica_group_list().has_value());
+  auto device_list_or_status =
+      xla::ParseCollectiveDeviceListBase(collective_device_list_unparsed);
+  if (device_list_or_status.ok()) {
+    std::unique_ptr<xla::CollectiveDeviceListBase> list =
+        std::move(device_list_or_status.value());
+    if (auto* iota = dynamic_cast<xla::IotaReplicaGroupList*>(list.get())) {
+      return *iota;
+    }
+    if (auto iota = list->MaybeConvertToIotaReplicaGroupList()) {
+      return *iota;
+    }
+  }
 
-  return *collective_device_list->iota_replica_group_list();
+  IotaReplicaGroupListProto proto;
+  if (tsl::protobuf::TextFormat::ParseFromString(
+          collective_device_list_unparsed, &proto)) {
+    return IotaReplicaGroupList::FromProto(proto);
+  }
+  LOG(FATAL) << "Failed to parse collective device list: "
+             << collective_device_list_unparsed;
 }
 
 }  // namespace
@@ -395,13 +412,6 @@ PjRtEnvironment& CollectivePerfTableGen::GetPjRtEnv() {
   }
   CHECK_NE(pjrt_env_, nullptr);
   return *pjrt_env_;
-}
-
-Backend& CollectivePerfTableGen::GetBackend() {
-  if (backend_ == nullptr) {
-    backend_ = Backend::CreateDefaultBackend().value();
-  }
-  return *backend_;
 }
 
 std::unique_ptr<PjRtLoadedExecutable> CollectivePerfTableGen::Compile(
@@ -474,7 +484,7 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
       for (absl::string_view replica_groups_raw : config_.replica_groups_list) {
         CHECK(collective_type != CollectiveType::UNSPECIFIED);
         IotaReplicaGroupList replica_groups =
-            GetCollectiveDeviceList(replica_groups_raw);
+            GetIotaReplicaGroupList(replica_groups_raw);
         int num_devices = replica_groups.num_devices_per_group() *
                           replica_groups.num_replica_groups();
 
@@ -545,10 +555,10 @@ DeviceHloInstructionProfiles CollectivePerfTableGen::ComputeTable() {
     return profiles;
   }
 
+  GpuTargetConfig gpu_target_config =
+      GetGpuTargetConfig(GetPjRtEnv().client.get());
   std::string device_key = HloOpProfiles::GetProfileName(
-      /*device_info=*/GetBackend()
-          .stream_executors()[0]
-          ->GetDeviceDescription());
+      /*device_info=*/gpu_target_config.device_description);
   profiles.mutable_entries()->insert({device_key, profile_list});
   return profiles;
 }

@@ -24,6 +24,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:util",
+        "//xla/backends/cpu/runtime/thunk_serdes:all_thunk_serdes",  # buildcleaner: keep
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
@@ -171,6 +172,7 @@ cc_library(
         "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",

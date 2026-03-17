@@ -45,8 +45,6 @@ namespace {
 using tensorflow::CoordinatedJob;
 using tensorflow::CoordinatedTask;
 
-constexpr char kJobName[] = "test_worker";
-
 // Send fake preemption notices at any time for testing.
 class FakePreemptionNotifier : public PreemptionNotifier {
  public:
@@ -112,11 +110,8 @@ class PreemptionSyncManagerTest : public ::testing::Test {
 
   // Report to coordination service that task two is unhealthy.
   void SimulateUnhealthyTaskTwo() {
-    CoordinatedTask task2;
-    task2.set_job_name(kJobName);
-    task2.set_task_id(1);
-    CHECK_OK(coord_service_->ReportTaskError(
-        task2, absl::InternalError("test_error")));
+    CHECK_OK(
+        coord_service_->ReportTaskError(1, absl::InternalError("test_error")));
   }
 
   // Allow access to objects under test.
@@ -145,7 +140,6 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   }
   std::unique_ptr<CoordinationService> EnableCoordinationService() {
     CoordinationService::Config config;
-    config.job_name = kJobName;
     config.num_tasks = 2;
     return std::make_unique<CoordinationService>(tsl::Env::Default(), config);
   }
@@ -160,14 +154,13 @@ class PreemptionSyncManagerTest : public ::testing::Test {
       LOG(ERROR) << "Coordination service agent in error status: " << status;
     };
     CoordinationServiceAgent::Config coord_config;
-    coord_config.service_leader = "test_leader";
     coord_agent_ =
-        CoordinationServiceAgent::Create(tsl::Env::Default(), kJobName,
+        CoordinationServiceAgent::Create(tsl::Env::Default(),
                                          /*task_id=*/0, coord_config,
                                          std::move(coord_client), error_fn)
             .value();
     coord_agent2_ =
-        CoordinationServiceAgent::Create(tsl::Env::Default(), kJobName,
+        CoordinationServiceAgent::Create(tsl::Env::Default(),
                                          /*task_id=*/1, coord_config,
                                          std::move(coord_client2), error_fn)
             .value();

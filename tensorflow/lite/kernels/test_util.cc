@@ -148,12 +148,6 @@ bool AlmostEquals(float lhs, float rhs, uint32_t max_ulps) {
          max_ulps;
 }
 
-MATCHER_P3(FloatAbsRelNear, value, max_abs_err, max_rel_err, "") {
-  auto matcher =
-      FloatNear(value, std::max(max_abs_err, std::abs(max_rel_err * value)));
-  return ::testing::ExplainMatchResult(matcher, arg, result_listener);
-}
-
 MATCHER(Fp16Eq, "") {
   // FP16 only has 10 bits precision while FP32 has 23 bits precision. Thus, to
   // check if results of FP16 are almost equal, we could check the result is
@@ -309,27 +303,6 @@ Matcher<std::tuple<float, float>> FloatingPointAlmostEq() {
   return FloatEq();
 }
 
-std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
-                                           float max_abs_err,
-                                           float fp16_max_abs_err,
-                                           float max_rel_err,
-                                           float fp16_max_rel_err) {
-  if (AllowFp16PrecisionForFp32()) {
-    if (fp16_max_abs_err == kFpErrorAuto) {
-      max_abs_err = std::max(max_abs_err, std::sqrt(max_abs_err));
-    } else {
-      max_abs_err = fp16_max_abs_err;
-    }
-    max_rel_err = fp16_max_rel_err;
-  }
-  std::vector<Matcher<float>> matchers;
-  matchers.reserve(values.size());
-  for (const float& v : values) {
-    matchers.emplace_back(FloatAbsRelNear(v, max_abs_err, max_rel_err));
-  }
-  return matchers;
-}
-
 std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
     const std::vector<std::complex<float>>& values, float max_abs_error) {
   std::vector<Matcher<std::complex<float>>> matchers;
@@ -443,23 +416,30 @@ void SingleOpModel::SetCustomOp(
       CustomOptionsFormat_FLEXBUFFERS));
 }
 
-void SingleOpModel::AllocateAndDelegate(bool apply_delegate) {
-  CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
-      << "Cannot allocate tensors";
-  interpreter_->ResetVariableTensors();
+TfLiteStatus SingleOpModel::AllocateTensors() {
+  TfLiteStatus status = interpreter_->AllocateTensors();
+  if (status == kTfLiteOk) {
+    interpreter_->ResetVariableTensors();
+  }
+  return status;
+}
 
+void SingleOpModel::AllocateAndDelegate(bool apply_delegate) {
   // In some rare cases a test may need to postpone modifying the graph with
   // a delegate, e.g. if tensors are not fully specified. In such cases the
   // test has to explicitly call ApplyDelegate() when necessary.
   if (apply_delegate) ApplyDelegate();
+
+  CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
+      << "Cannot allocate tensors";
+  interpreter_->ResetVariableTensors();
 }
 
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads,
                                      bool allow_fp32_relax_to_fp16,
                                      bool apply_delegate,
-                                     bool allocate_and_delegate,
-                                     bool use_simple_allocator) {
+                                     bool allocate_and_delegate) {
   input_shapes_ = input_shapes;
   allow_fp32_relax_to_fp16_ = allow_fp32_relax_to_fp16;
   apply_delegate_ = apply_delegate;
@@ -484,7 +464,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   uint8_t* buffer_pointer = builder_.GetBufferPointer();
   UpdateOpVersion(buffer_pointer);
 
-  use_simple_allocator |=
+  bool use_simple_allocator =
       tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
           tflite::KernelTestDelegateProviders::kUseSimpleAllocator);
 
@@ -572,12 +552,11 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
 
 TfLiteStatus SingleOpModel::Invoke() { return interpreter_->Invoke(); }
 
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     bool use_simple_allocator) {
+void SingleOpModel::BuildInterpreter(
+    std::vector<std::vector<int>> input_shapes) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
                    /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true,
-                   use_simple_allocator);
+                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true);
 }
 
 // static

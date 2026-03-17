@@ -301,7 +301,7 @@ cc_library(
     name = "tpu_platform_id",
     srcs = ["tpu_platform_id.cc"],
     hdrs = ["tpu_platform_id.h"],
-    deps = ["//xla/stream_executor:platform"],
+    deps = ["//xla/stream_executor:platform_id"],
 )
 
 cc_library(

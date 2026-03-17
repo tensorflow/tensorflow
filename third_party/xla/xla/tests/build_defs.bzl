@@ -9,6 +9,7 @@ load(
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl:tsl.bzl", "if_google")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
@@ -26,6 +27,8 @@ NVIDIA_GPU_BACKENDS = [
     "a100",
     "h100",
     "b200",
+    "gb200",
+    "gb300",
 ]
 
 # The generic "gpu" backend includes the actual backends in this list.
@@ -34,6 +37,8 @@ NVIDIA_GPU_DEFAULT_BACKENDS = [
     "a100",
     "h100",
     "b200",
+    "gb200",
+    "gb300",
 ]
 
 AMD_GPU_DEFAULT_BACKENDS = ["amdgpu_any"]
@@ -79,10 +84,16 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         "a100": (8, 0),
         "h100": (9, 0),
         "b200": (10, 0),
+        "gb200": (10, 0),
+        "gb300": (10, 3),
     }
     for gpu_backend in NVIDIA_GPU_BACKENDS:
         all_tags = new_backend_tags[gpu_backend]
         requires_gpu = [t for t in all_tags if t.startswith("requires-gpu-")]
+
+        # full tag is meaningless in OSS, when run at google, this routes tests to full GPUs
+        # instead of mig partition(s).
+        requires_full_gpu = if_google("full" in new_backend_tags[gpu_backend], False)
         requires_sm, only = None, False
         num_gpus = None
         for tag in requires_gpu:
@@ -108,7 +119,8 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
             new_disabled_backends.append(gpu_backend)
         else:
             sm_major, sm_minor = sm_requirements[gpu_backend]
-            sm_tag = "requires-gpu-nvidia" if sm_major == 0 else "requires-gpu-sm%s%s-only" % (sm_major, sm_minor)
+            full = "-full" if requires_full_gpu else ""
+            sm_tag = "requires-gpu-nvidia" if sm_major == 0 else "requires-gpu-sm%s%s%s-only" % (sm_major, sm_minor, full)
             if num_gpus:
                 sm_tag += ":%d" % num_gpus
             new_backend_tags[gpu_backend] = [t for t in all_tags if t not in requires_gpu]
@@ -416,12 +428,8 @@ def xla_test(
         # Ensure that the tags are consistent with the runtime used.
         if "pjrt_migration_candidate" in this_backend_tags and not use_legacy_runtime:
             fail("xla_tests that do not use the legacy runtime configuration should not be tagged `pjrt_migration_candidate`.")
-
-        # TODO: b/382779188 - Remove this tag once we have fully moved to tagging candidates instead.
-        if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags and use_legacy_runtime:
-            fail("xla_tests that use the legacy runtime configuration should not be tagged `test_migrated_to_hlo_runner_pjrt`.")
-        if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags and "pjrt_migration_candidate" in this_backend_tags:
-            fail("xla_tests should not be tagged both `test_migrated_to_hlo_runner_pjrt` and `pjrt_migration_candidate`. These states are mutually exclusive.")
+        if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            fail("The `test_migrated_to_hlo_runner_pjrt` tag is deprecated and should no longer be used.")
 
         modifiers = backend.split("_")
         device = modifiers.pop(0)
@@ -447,35 +455,6 @@ def xla_test(
         if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
             (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
             test_names.append(test_name)
-
-        # For coverage purposes, we want all GPU tests to also run with the PjRt
-        # StreamExecutor GPU client, unless they are incompatible or blocking
-        # the PjRt test migration. Only until the TFRT GPU client is fully
-        # supported.
-        if device_type_for_env == "gpu" and "incompatible_with_pjrt_se_gpu_client" not in this_backend_tags and not use_legacy_runtime:
-            variant_test_name = test_name + "_notfrt"
-            xla_cc_test(
-                name = variant_test_name,
-                srcs = srcs,
-                tags = this_backend_tags,
-                copts = copts + this_backend_copts,
-                args = args + this_backend_args,
-                deps = deps + backend_deps,
-                data = data + this_backend_data,
-                env = env | {
-                    "XLA_TEST_DEVICE": device,
-                    "XLA_TEST_DEVICE_TYPE": device_type_for_env,
-                    "XLA_TEST_MODIFIERS": ",".join(modifiers),
-                    "XLA_TEST_USE_STREAM_EXECUTOR_GPU_CLIENT": "",
-                },
-                linkstatic = linkstatic,
-                fail_if_no_test_linked = fail_if_no_test_linked,
-                fail_if_no_test_selected = fail_if_no_test_selected,
-                **this_backend_kwargs
-            )
-            if ((backend in NVIDIA_GPU_BACKENDS and is_cuda_configured()) or
-                (backend in AMD_GPU_DEFAULT_BACKENDS and is_rocm_configured())):
-                test_names.append(variant_test_name)
 
     # Notably, a test_suite with `tests = []` is not empty:
     # https://bazel.build/reference/be/general#test_suite_args and the default

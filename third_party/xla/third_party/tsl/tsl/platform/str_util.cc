@@ -83,9 +83,9 @@ bool ConsumeNonWhitespace(absl::string_view* s, absl::string_view* val) {
   }
 }
 
-void TitlecaseString(string* s, absl::string_view delimiters) {
+void TitlecaseString(std::string* s, absl::string_view delimiters) {
   bool upper = true;
-  for (string::iterator ss = s->begin(); ss != s->end(); ++ss) {
+  for (std::string::iterator ss = s->begin(); ss != s->end(); ++ss) {
     if (upper) {
       *ss = absl::ascii_toupper(*ss);
     }
@@ -93,13 +93,14 @@ void TitlecaseString(string* s, absl::string_view delimiters) {
   }
 }
 
-string StringReplace(absl::string_view s, absl::string_view oldsub,
-                     absl::string_view newsub, bool replace_all) {
+std::string StringReplace(absl::string_view s, absl::string_view oldsub,
+                          absl::string_view newsub, bool replace_all) {
   // TODO(jlebar): We could avoid having to shift data around in the string if
   // we had a StringPiece::find() overload that searched for a StringPiece.
-  string res(s);
+  std::string res(s);
   size_t pos = 0;
-  while ((pos = res.find(oldsub.data(), pos, oldsub.size())) != string::npos) {
+  while ((pos = res.find(oldsub.data(), pos, oldsub.size())) !=
+         std::string::npos) {
     res.replace(pos, oldsub.size(), newsub.data(), newsub.size());
     pos += newsub.size();
     if (oldsub.empty()) {
@@ -112,7 +113,7 @@ string StringReplace(absl::string_view s, absl::string_view oldsub,
   return res;
 }
 
-string ArgDefCase(absl::string_view s) {
+std::string ArgDefCase(absl::string_view s) {
   const size_t n = s.size();
 
   // Compute the size of resulting string.
@@ -139,7 +140,7 @@ string ArgDefCase(absl::string_view s) {
 
   // Initialize result with all '_'s. There is no string
   // constructor that does not initialize memory.
-  string result(n + extra_us - to_skip, '_');
+  std::string result(n + extra_us - to_skip, '_');
   // i - index into s
   // j - index into result
   for (size_t i = to_skip, j = 0; i < n; ++i, ++j) {

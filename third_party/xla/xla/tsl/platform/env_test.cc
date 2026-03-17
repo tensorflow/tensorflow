@@ -16,10 +16,13 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -58,6 +61,30 @@ TEST(EnvTest, FileOperations) {
   std::string content;
   EXPECT_THAT(ReadFileToString(env, file_path, &content), IsOk());
   EXPECT_EQ(content, "test1test2");
+}
+
+TEST(EnvTest, SimpleFileSystemConformance) {
+  std::vector<std::string> schemes;
+  Env* env = Env::Default();
+  ASSERT_OK(env->GetRegisteredFileSystemSchemes(&schemes));
+
+  ASSERT_OK_AND_ASSIGN(testing::TemporaryDirectory temp_dir,
+                       testing::TemporaryDirectory::CreateForCurrentTestcase());
+  for (const absl::string_view scheme : schemes) {
+    std::string contents = "data";
+    std::string file_path;
+    if (!scheme.empty()) {
+      file_path = io::JoinPath(
+          absl::StrCat(scheme, "://", temp_dir.path(), "data.txt"));
+    } else {
+      file_path = io::JoinPath(temp_dir.path(), "data.txt");
+    }
+    EXPECT_OK(WriteStringToFile(env, file_path, contents));
+    EXPECT_OK(WriteStringToFile(env, file_path, contents));
+    std::string content;
+    EXPECT_OK(ReadFileToString(env, file_path, &content));
+    EXPECT_EQ(content, contents) << file_path;
+  }
 }
 
 }  // namespace
