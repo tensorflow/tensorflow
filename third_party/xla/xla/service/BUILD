@@ -363,6 +363,7 @@ cc_library(
         ":hlo_domain_map",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
