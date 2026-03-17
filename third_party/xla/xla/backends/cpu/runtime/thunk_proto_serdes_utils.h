@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_THUNK_PROTO_SERDES_UTILS_H_
 #define XLA_BACKENDS_CPU_RUNTIME_THUNK_PROTO_SERDES_UTILS_H_
 
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 
@@ -40,6 +42,11 @@ DeserializeSliceShapeFromProto(
 InfoProto ThunkInfoToProto(const Thunk::Info& info);
 
 absl::StatusOr<Thunk::Info> ThunkInfoFromProto(const InfoProto& proto);
+
+absl::StatusOr<std::shared_ptr<Resource>> CreateResourceFromProto(
+    const ResourceProto& proto);
+
+absl::StatusOr<ResourceProto> ToProto(const Resource& resource);
 
 }  // namespace xla::cpu
 

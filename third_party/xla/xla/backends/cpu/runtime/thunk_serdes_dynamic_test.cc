@@ -60,5 +60,19 @@ TEST(ThunkSerDesDynamicTest, YnnFusionThunkFailsWhenNotLinked) {
       std::string(from_proto_fn_or.status().message()));
 }
 
+TEST(ThunkSerDesDynamicTest, CollectiveThunkFailsWhenNotLinked) {
+  ThunkProto proto;
+  proto.mutable_collective_thunk();
+
+  auto from_proto_fn_or =
+      ThunkSerDesRegistry::Get().GetFromProtoFn(Thunk::Kind::kCollective);
+
+  EXPECT_EQ(from_proto_fn_or.status().code(), absl::StatusCode::kNotFound);
+  EXPECT_PRED_FORMAT2(
+      testing::IsSubstring,
+      "No FromProto function registered for thunk kind: collective",
+      std::string(from_proto_fn_or.status().message()));
+}
+
 }  // namespace
 }  // namespace xla::cpu

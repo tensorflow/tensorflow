@@ -1236,6 +1236,7 @@ THUNK_SERDES_HEADER_DEPS = [
     "@com_google_absl//absl/status:statusor",
     "//xla/hlo/ir:hlo",
     "//xla/service:buffer_assignment",
+    "//xla/runtime:resource_use",
 ]
 
 cc_library(
@@ -1243,12 +1244,7 @@ cc_library(
     srcs = ["thunk_proto_serdes.cc"],
     hdrs = ["thunk_proto_serdes.h"],
     deps = [
-        ":all_gather_thunk",
-        ":all_reduce_thunk",
-        ":all_to_all_thunk",
         ":call_thunk",
-        ":collective_permute_thunk",
-        ":collective_thunk",
         ":conditional_thunk",
         ":copy_thunk",
         ":custom_call_thunk",
@@ -1257,7 +1253,6 @@ cc_library(
         ":kernel_thunk",
         ":logical_id_thunk",
         ":outfeed_thunk",
-        ":reduce_scatter_thunk",
         ":rng_state_thunk",
         ":sort_thunk",
         ":thunk_proto_serdes_utils",
@@ -1266,7 +1261,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla/backends/cpu/runtime/ynnpack:ynn_interop",
-        "//xla/runtime:resource_use",
         "//xla/runtime:work_group",
         "//xla/service:collective_ops_utils",
         "//xla/service:shaped_slice",
@@ -1306,6 +1300,7 @@ cc_library(
         ":thunk",
         ":thunk_proto_cc",
         "//xla:shape_util",
+        "//xla/runtime:resource_use",
         "//xla/service:buffer_assignment",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",

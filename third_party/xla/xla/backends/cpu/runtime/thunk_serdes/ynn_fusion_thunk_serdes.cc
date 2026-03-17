@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/errors.h"
@@ -75,7 +76,8 @@ absl::Status YnnFusionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 absl::StatusOr<std::unique_ptr<Thunk>> YnnFusionThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations,
-    const HloModule* hlo_module) {
+    const HloModule* hlo_module,
+    const std::vector<std::shared_ptr<Resource>>* resources) {
   const YnnFusionThunkProto& ynn_fusion_proto = proto.ynn_fusion_thunk();
 
   YnnFusionThunk::Options options = {

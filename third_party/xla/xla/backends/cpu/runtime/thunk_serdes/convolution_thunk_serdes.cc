@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_proto_serdes.h"
 #include "xla/backends/cpu/runtime/thunk_proto_serdes_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -82,7 +83,8 @@ absl::Status ConvolutionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
 absl::StatusOr<std::unique_ptr<Thunk>> ConvolutionThunkFromProto(
     const ThunkProto& proto,
     const std::vector<BufferAllocation>& buffer_allocations,
-    const HloModule* hlo_module) {
+    const HloModule* hlo_module,
+    const std::vector<std::shared_ptr<Resource>>* resources) {
   TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
 
   // Parse options.
