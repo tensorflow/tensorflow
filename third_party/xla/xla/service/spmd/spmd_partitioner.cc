@@ -605,7 +605,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   if (!sharding().IsReplicatedOrSingleDevice() &&
-      target.ReplicateOnLastTileDim()) {
+      target.HasPartialReplication()) {
     auto try_reshard = ReshardToPartialReplicateWithAllGather(target);
     if (try_reshard.has_value()) {
       return try_reshard.value();
