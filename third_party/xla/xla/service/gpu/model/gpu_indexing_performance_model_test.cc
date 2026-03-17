@@ -542,53 +542,22 @@ ENTRY main {
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 2);
 }
 
-// TODO(b/351342921): Remove this test once there is no special filter for
-// concatenate in Cost Model.
 TEST_F(GpuIndexingPerformanceModelTest,
-       EstimateRunTimeForTiledFusion_ConcatenateOperandIsSupported) {
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-fusion {
-  param_0 = f32[32,64] parameter(0)
-  param_1 = f32[32,64] parameter(1)
-  ROOT subtract = f32[32,64] subtract(param_0, param_1)
-}
-
-ENTRY main {
-  param_0 = f32[32,16] parameter(0)
-  param_1 = f32[32,48] parameter(1)
-  param_2 = f32[32,64] parameter(2)
-  concatenate = f32[32,64] concatenate(param_0, param_1), dimensions={1}
-  ROOT fusion = f32[32,64] fusion(concatenate, param_2), kind=kCustom, calls=fusion
-})"));
-
-  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
-      module->entry_computation()->root_instruction());
-
-  LaunchDimensions launch_dimensions{8, WarpSize()};
-
-  auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
-      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{16, 16}});
-
-  TF_EXPECT_OK(result.status());
-}
-
-TEST_F(GpuIndexingPerformanceModelTest,
-       EstimateRunTimeForTiledFusion_ConcatenateIsNotSupported) {
+       EstimateRunTimeForTiledFusion_Concatenate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
 concatenate_fusion {
-  param_0 = f32[32, 128] parameter(0)
-  param_1 = f32[64, 128] parameter(1)
-  ROOT concatenate = f32[96, 128] concatenate(param_0, param_1), dimensions={0}
+  p0 = f32[32, 128] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  exp = f32[32, 128] exponential(p0)
+  ROOT concatenate = f32[96, 128] concatenate(exp, p1), dimensions={0}
 }
 
 ENTRY main {
-  param_0 = f32[32, 128] parameter(0)
-  param_1 = f32[64, 128] parameter(1)
-  ROOT fusion = f32[96, 128] fusion(param_0, param_1), kind=kCustom, calls=concatenate_fusion
+  p0 = f32[32, 128] parameter(0)
+  p1 = f32[64, 128] parameter(1)
+  ROOT fusion = f32[96, 128] fusion(p0, p1), kind=kCustom, calls=concatenate_fusion
 })"));
 
   auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
@@ -599,12 +568,52 @@ ENTRY main {
   auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
       *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{1, 128}});
 
-  EXPECT_THAT(
-      result,
-      absl_testing::StatusIs(
-          absl::StatusCode::kFailedPrecondition,
-          HasSubstr(
-              "Concatenate is not supported by the indexing cost model")));
+  TF_ASSERT_OK(result.status());
+  //              flops_per_element * num_blocks * padded_tile_size * multiplier
+  // flops      = 6  * 96 * 128 * 1                    ==> %concatenate
+  //            + 86 * 96 * 128 * (32/96)              ==> %exp
+  EXPECT_EQ(result->flops, 425984);
+  //              element_type_size * num_blocks * padded_tile_size * multiplier
+  // bytes_read = 4  * 96 * 128 * (64/96)              ==> %p1
+  //            + 4  * 96 * 128 * (32/96)              ==> %p0
+  EXPECT_EQ(result->bytes_read, 49152);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotWithReductionLoop) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+dot_fusion {
+  p0 = f32[128, 257] parameter(0)
+  p1 = f32[257, 64] parameter(1)
+  exp = f32[128, 257] exponential(p0)
+  ROOT dot = f32[128, 64] dot(exp, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f32[128, 257] parameter(0)
+  p1 = f32[257, 64] parameter(1)
+  ROOT fusion = f32[128, 64] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  LaunchDimensions launch_dimensions{16, 1024};
+
+  auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
+      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{64, 32, 32}});
+
+  TF_ASSERT_OK(result.status());
+  //              flops_per_element * num_blocks * padded_tile_size * multiplier
+  // flops       = 514 * 16 * 1024 * 1                  ==> %dot
+  //             + 86  * 16 * 2048 * ceil(257/64)       ==> %exp
+  EXPECT_EQ(result->flops, 22511616);
+  //              element_type_size * num_blocks * padded_tile_size * multiplier
+  // bytes_read = 4 * 16 * (64*32) * ceil(257/64)       ==> %p0
+  //            + 4 * 16 * (64*32) * ceil(257/64)       ==> %p1
+  EXPECT_EQ(result->bytes_read, 1310720);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,

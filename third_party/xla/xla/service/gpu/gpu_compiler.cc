@@ -3352,7 +3352,7 @@ bool ShouldAutotuneBetweenFusionEmittersAny(const HloInstruction& instruction) {
 
 // Returns true if the instruction is a fusion that would go through the native
 // emitter, but may benefit from going through the block-level emitter.
-// Currently, we only do this for reductions and transposes.
+// Currently, we only do this for reductions, transposes and concatenates.
 bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
   if (!ShouldAutotuneBetweenFusionEmittersAny(instruction)) {
     return false;
@@ -3360,7 +3360,8 @@ bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
   auto fusion = Cast<const HloFusionInstruction>(&instruction);
   return absl::c_any_of(
       fusion->fused_instructions_computation()->instructions(),
-      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
+      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose,
+                       HloOpcode::kConcatenate>);
 }
 
 }  // namespace
