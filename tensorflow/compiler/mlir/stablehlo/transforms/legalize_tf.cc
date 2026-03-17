@@ -5346,7 +5346,7 @@ class ConvertInfeedDequeueTupleOp
       // the token to device 0.
       if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
-            ::xla::sharding_builder::AssignDevice(0);
+            ::xla::sharding_builder::SingleDevice(0);
         data_and_token->setAttr(
             kShardingAttr,
             rewriter.getStringAttr(sharding_proto.SerializeAsString()));

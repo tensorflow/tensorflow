@@ -1188,7 +1188,7 @@ absl::Status XlaCompiler::BuildArguments(
       for (int64_t parameter : *input_to_args) {
         auto it = arg_shardings.find(parameter);
         *tuple_sharding.add_tuple_shardings() =
-            it == arg_shardings.end() ? xla::sharding_builder::AssignDevice(0)
+            it == arg_shardings.end() ? xla::sharding_builder::SingleDevice(0)
                                       : it->second;
       }
       std::vector<bool> is_same_across_replicas;

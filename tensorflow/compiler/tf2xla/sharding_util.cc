@@ -93,7 +93,7 @@ absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     if (core < 0 || core >= num_cores_per_replica) {
       return CoreOutOfRangeError(core, num_cores_per_replica);
     }
-    auto sharding = xla::sharding_builder::AssignDevice(core);
+    auto sharding = xla::sharding_builder::SingleDevice(core);
     if (metadata.has_value()) {
       *sharding.add_metadata() = metadata.value();
     }

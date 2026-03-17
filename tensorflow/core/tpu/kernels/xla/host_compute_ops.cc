@@ -166,7 +166,7 @@ class HostComputeOp : public XlaOpKernel {
     std::vector<xla::XlaOp> input_handles;
     std::vector<TensorShape> input_shapes;
     auto inputs = ctx->InputList("inputs", &input_handles, &input_shapes);
-    const auto device_sharding = xla::sharding_builder::AssignDevice(tpu_core_);
+    const auto device_sharding = xla::sharding_builder::SingleDevice(tpu_core_);
     xla::XlaScopedShardingAssignment assign_sharding(b, device_sharding);
 
     std::vector<xla::XlaOp> input_tokens;

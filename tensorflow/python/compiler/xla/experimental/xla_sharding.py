@@ -55,8 +55,8 @@ class Sharding(object):
         proto=xla_data_pb2.OpSharding(type=xla_data_pb2.OpSharding.MANUAL))
 
   @classmethod
-  def assign_device(cls, core):
-    """Returns an AssignDevice sharding attribute.
+  def single_device(cls, core):
+    """Returns a SingleDevice sharding attribute.
 
     This causes an op to be computed in its entirety only on one core in
     the XLA device.
@@ -353,12 +353,12 @@ def replicate(tensor, assign_tuple_sharding=False, use_sharding_op=False):
       use_sharding_op=use_sharding_op)
 
 
-def assign_device(tensor,
+def single_device(tensor,
                   device,
                   assign_tuple_sharding=False,
                   use_sharding_op=False):
-  """Returns a tensor that has AssignDevice sharding attribute."""
-  return Sharding.assign_device(device).apply_to_tensor(
+  """Returns a tensor that has SingleDevice sharding attribute."""
+  return Sharding.single_device(device).apply_to_tensor(
       tensor,
       assign_tuple_sharding=assign_tuple_sharding,
       use_sharding_op=use_sharding_op)
