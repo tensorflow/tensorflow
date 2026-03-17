@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -30,10 +31,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MathExtras.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
+#include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -51,7 +54,6 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -128,6 +130,69 @@ bool DoesTileFitInRegisters(int64_t tile_size,
                           device_info.registers_per_block_limit();
 }
 
+// Returns a multiplier for the given region with `region_id`.
+//
+// For Dot, it represents the reduction loop trip count.
+// For Concatenate, it represents the fractional size of the branch.
+double GetRegionMultiplier(const TiledHloInstruction* tiled_hlo,
+                           int64_t region_id) {
+  double multiplier = 1.0;
+  const HloInstruction* hlo = tiled_hlo->hlo();
+  if (HloPredicateIsOp<HloOpcode::kDot, HloOpcode::kScaledDot>(hlo)) {
+    auto contracting_dimensions =
+        hlo->dot_dimension_numbers().lhs_contracting_dimensions();
+    for (int64_t dim : contracting_dimensions) {
+      multiplier *= CeilOfRatio(hlo->operand(0)->shape().dimensions(dim),
+                                tiled_hlo->operand(0)->tile_sizes()[dim]);
+    }
+  } else if (HloPredicateIsOp<HloOpcode::kConcatenate>(hlo)) {
+    int64_t concat_dim = hlo->concatenate_dimension();
+    multiplier = static_cast<double>(
+                     hlo->operand(region_id)->shape().dimensions(concat_dim)) /
+                 hlo->shape().dimensions(concat_dim);
+  }
+  return multiplier;
+}
+
+// Visits all tiled HLOs in the computation, including those within regions.
+//
+// The `visitor` function is called with each `TiledHloInstruction` and a
+// `multiplier` indicating how many times the context of this instruction is
+// executed relative to the root of the computation.
+void ForEachInstructionInTiledHloComputation(
+    const TiledHloComputation& tiled_hlo_computation,
+    absl::FunctionRef<void(const TiledHloInstruction*, double)> visitor) {
+  std::vector<std::pair<const TiledHloInstruction*, double>> worklist;
+  for (const auto* instruction : tiled_hlo_computation.instructions()) {
+    worklist.push_back({instruction, 1});
+  }
+
+  while (!worklist.empty()) {
+    auto [instruction, multiplier] = worklist.back();
+    worklist.pop_back();
+
+    visitor(instruction, multiplier);
+
+    for (const auto& [i, region] : llvm::enumerate(instruction->regions())) {
+      double sub_multiplier = multiplier * GetRegionMultiplier(instruction, i);
+      for (const auto& tiled_hlo : region) {
+        worklist.push_back({tiled_hlo.get(), sub_multiplier});
+      }
+    }
+  }
+}
+
+// The `visitor` function is called with each `TiledHloInstruction`.
+void ForEachInstructionInTiledHloComputation(
+    const TiledHloComputation& tiled_hlo_computation,
+    absl::FunctionRef<void(const TiledHloInstruction*)> visitor) {
+  ForEachInstructionInTiledHloComputation(
+      tiled_hlo_computation,
+      [&](const TiledHloInstruction* tiled_hlo, double unused_multiplier) {
+        visitor(tiled_hlo);
+      });
+}
+
 // Checks if all tiles in the computation fit in registers.
 //
 // There is no way to know for sure if emitted computation will not spill
@@ -146,20 +211,22 @@ bool DoesComputationFitInRegisters(
     }
   }
 
-  for (const TiledHloInstruction* tiled_hlo :
-       tiled_hlo_computation.instructions()) {
-    bool is_operand = !fusion_adaptor.ContainsInstruction(tiled_hlo->hlo());
-
-    // Iota is not an operand, but usually needs to be materialized in
-    // registers.
-    if ((is_operand || tiled_hlo->hlo()->opcode() == HloOpcode::kIota) &&
-        !DoesTileFitInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
-                                device_info)) {
-      return false;
-    }
-  }
-
-  return true;
+  bool fits = true;
+  ForEachInstructionInTiledHloComputation(
+      tiled_hlo_computation, [&](const TiledHloInstruction* tiled_hlo) {
+        if (!fits) {
+          return;
+        }
+        bool is_operand = !fusion_adaptor.ContainsInstruction(tiled_hlo->hlo());
+        // Iota is not an operand, but usually needs to be materialized in
+        // registers.
+        if ((is_operand || tiled_hlo->hlo()->opcode() == HloOpcode::kIota) &&
+            !DoesTileFitInRegisters(GetPaddedTileSize(tiled_hlo->tile_sizes()),
+                                    device_info)) {
+          fits = false;
+        }
+      });
+  return fits;
 }
 
 // Returns the number of warps to use based on the largest tile size in the
@@ -451,68 +518,61 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledHloComputation(
     return EstimateRunTimeData::Infinite();
   }
 
-  for (const TiledHloInstruction* tiled_hlo :
-       tiled_hlo_computation.instructions()) {
-    const HloInstruction* hlo = tiled_hlo->hlo();
+  ForEachInstructionInTiledHloComputation(
+      tiled_hlo_computation,
+      [&](const TiledHloInstruction* tiled_hlo, double multiplier) {
+        const HloInstruction* hlo = tiled_hlo->hlo();
+        if (fusion_adaptor.ContainsInstruction(hlo)) {
+          // Number of elements in the tile after padding.
+          int64_t padded_tile_size = GetPaddedTileSize(tiled_hlo->tile_sizes());
 
-    if (fusion_adaptor.ContainsInstruction(hlo)) {
-      if (hlo->opcode() == HloOpcode::kConcatenate) {
-        // TODO(b/351342921): Add propagation of the number of blocks that read
-        // or compute a tile. Concatenate is the only operation that may change
-        // that.
-        return absl::FailedPreconditionError(
-            "Concatenate is not supported by the indexing cost model.");
-      }
+          // Total number of elements computed for this tile across all blocks.
+          //
+          // Even if real `tile_size` is smaller than `padded_tile_size`, SM
+          // will still perform calculations on masked values, so they should
+          // count towards FLOPs.
+          int64_t num_elements = num_blocks * padded_tile_size * multiplier;
 
-      // Number of elements in the tile after padding.
-      int64_t padded_tile_size = GetPaddedTileSize(tiled_hlo->tile_sizes());
+          // Tiles inside the computation contribute to the total FLOPs count.
+          flops += FlopsPerElement(hlo) * num_elements;
+        } else {
+          // Number of elements in the tile.
+          int64_t tile_size = Product(tiled_hlo->tile_sizes());
 
-      // Total number of elements computed for this tile across all blocks.
-      //
-      // Even if real `tile_size` is smaller than `padded_tile_size`, SM will
-      // still perform calculations on masked values, so they should count
-      // towards FLOPs.
-      int64_t num_elements = num_blocks * padded_tile_size;
+          // Total number of elements that are read from memory across all
+          // blocks.
+          //
+          // Triton requires that all tiles have dimensions that are padded to
+          // the next power of 2. However, the load masks the padded elements,
+          // so they are not read from memory, but set directly in registers. As
+          // a result, the number of elements read from memory is equal to the
+          // size of the original tile.
+          int64_t num_elements = num_blocks * tile_size * multiplier;
 
-      // Tiles inside the computation contribute to the total FLOPs count.
-      flops += FlopsPerElement(hlo) * num_elements;
-    } else {
-      // Number of elements in the tile.
-      int64_t tile_size = Product(tiled_hlo->tile_sizes());
+          // Tiles of the operands of the fusion contribute to the total memory
+          // read time.
+          int64_t element_type_size =
+              ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type());
+          int64_t tile_bytes_read = element_type_size * num_elements;
 
-      // Total number of elements that are read from memory across all blocks.
-      //
-      // Triton requires that all tiles have dimensions that are padded to the
-      // next power of 2. However, the load masks the padded elements, so they
-      // are not read from memory, but set directly in registers. As a result,
-      // the number of elements read from memory is equal to the size of the
-      // original tile.
-      int64_t num_elements = num_blocks * tile_size;
+          bytes_read += tile_bytes_read;
 
-      // Tiles of the operands of the fusion contribute to the total memory
-      // read time.
-      int64_t element_type_size =
-          ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type());
-      int64_t tile_bytes_read = element_type_size * num_elements;
+          double effective_bandwidth_utilization_rate =
+              BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+                  *tiled_hlo, *device_info_);
 
-      bytes_read += tile_bytes_read;
-
-      double effective_bandwidth_utilization_rate =
-          BandwidthUtilizationRateHeuristicForTiledMemoryAccess(*tiled_hlo,
-                                                                *device_info_);
-
-      OperandReadInfo& operand_read_info = n_bytes_total_map[hlo];
-      operand_read_info.total_bytes_read += tile_bytes_read;
-      // TODO(b/332714755): using std::min is more pessimistic than it needs to
-      // be since it'll end up assuming that if one read is done with lower
-      // bandwidth, all other reads of the same operand will also be done with
-      // lower bandwidth. But it's a start. We should refactor this function to
-      // properly track each read independently later.
-      operand_read_info.read_bandwidth_utilization_rate =
-          std::min(operand_read_info.read_bandwidth_utilization_rate,
-                   effective_bandwidth_utilization_rate);
-    }
-  }
+          OperandReadInfo& operand_read_info = n_bytes_total_map[hlo];
+          operand_read_info.total_bytes_read += tile_bytes_read;
+          // TODO(b/332714755): using std::min is more pessimistic than it needs
+          // to be since it'll end up assuming that if one read is done with
+          // lower bandwidth, all other reads of the same operand will also be
+          // done with lower bandwidth. But it's a start. We should refactor
+          // this function to properly track each read independently later.
+          operand_read_info.read_bandwidth_utilization_rate =
+              std::min(operand_read_info.read_bandwidth_utilization_rate,
+                       effective_bandwidth_utilization_rate);
+        }
+      });
 
   absl::Duration read_time = absl::ZeroDuration();
   for (const auto& [hlo, operand_read_info] : n_bytes_total_map) {
@@ -623,10 +683,11 @@ GpuPerformanceModelWithIndexingAnalysis::GetLaunchDimensionsForTiledFusion(
   // Decide on the number of warps to use based on the largest live tile size
   // at any given point within the computation.
   int64_t largest_live_tile_size = 1;
-  for (const auto& tiled_hlo : tiled_hlo_computation.instructions()) {
-    largest_live_tile_size = std::max(
-        largest_live_tile_size, GetPaddedTileSize(tiled_hlo->tile_sizes()));
-  }
+  ForEachInstructionInTiledHloComputation(
+      tiled_hlo_computation, [&](const TiledHloInstruction* tiled_hlo) {
+        largest_live_tile_size = std::max(
+            largest_live_tile_size, GetPaddedTileSize(tiled_hlo->tile_sizes()));
+      });
   int64_t num_warps = GetNumWarps(largest_live_tile_size);
 
   return {static_cast<uint64_t>(num_blocks),
