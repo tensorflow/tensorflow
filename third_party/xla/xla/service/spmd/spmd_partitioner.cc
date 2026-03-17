@@ -687,7 +687,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   // 'Replicated' to partial replicated.
-  if (target.ReplicateOnLastTileDim()) {
+  if (target.HasPartialReplication()) {
     std::vector<int64_t> group_dims(target.num_dimensions() - 1);
     absl::c_iota(group_dims, 0);
     auto target_grouped =
