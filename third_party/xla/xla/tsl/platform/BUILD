@@ -445,14 +445,13 @@ cc_library(
     srcs = ["errors.cc"],
     hdrs = ["errors.h"],
     deps = [
-        ":logging",
         ":macros",
         ":status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
-        "@tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform",
     ],
 )
 

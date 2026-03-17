@@ -16,25 +16,20 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_STATUS_H_
 #define XLA_TSL_PLATFORM_STATUS_H_
 
+#include <cstddef>
 #include <functional>
-#include <iosfwd>
-#include <memory>
+#include <initializer_list>
 #include <set>
 #include <string>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
-#include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
-#include "absl/strings/string_view.h"
-#include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/stack_frame.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/platform.h"
 
