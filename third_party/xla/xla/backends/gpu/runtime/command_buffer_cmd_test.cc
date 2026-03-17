@@ -564,8 +564,7 @@ TEST(TracedCommandBuffer, GetOrUpdateCommandBuffer) {
                             traced_cmd_buffer.GetOrTraceCommandBuffer(
                                 &allocations, executor, stream.get(), trace));
 
-    // Check that command buffer was reused as buffer allocations didn't
-    // change.
+    // Check that command buffer was reused as buffer allocations didn't change.
     ASSERT_EQ(command_buffer0, command_buffer1);
     EXPECT_EQ(num_calls, 1);
 
