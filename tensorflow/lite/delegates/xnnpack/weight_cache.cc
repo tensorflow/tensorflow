@@ -760,6 +760,13 @@ enum xnn_status MMapWeightCacheProvider::delete_cache(void* context) {
   return xnn_status_success;
 }
 
+enum xnn_status MMapWeightCacheProvider::alias_data(void* context, void* alias,
+                                                    void* original) {
+  reinterpret_cast<MMapWeightCacheProvider*>(context)->RemapDataBuffer(
+      alias, original);
+  return xnn_status_success;
+}
+
 PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
     const xnn_weights_cache_look_up_key& key) {
   const auto get_buffer_id = [&](const void* buffer) -> size_t {
