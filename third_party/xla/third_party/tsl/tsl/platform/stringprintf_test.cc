@@ -24,7 +24,7 @@ namespace strings {
 namespace {
 
 TEST(PrintfTest, Empty) {
-  EXPECT_EQ("", absl::StrFormat("%s", string().c_str()));
+  EXPECT_EQ("", absl::StrFormat("%s", std::string().c_str()));
   EXPECT_EQ("", absl::StrFormat("%s", ""));
 }
 
