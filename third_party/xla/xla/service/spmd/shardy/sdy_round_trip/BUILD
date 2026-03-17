@@ -57,7 +57,6 @@ cc_library(
     hdrs = ["import_shardy_attrs.h"],
     visibility = internal_visibility([":friends"]),
     deps = [
-        ":dedup_meshes",
         "//xla/hlo/ir:hlo_sharding",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
@@ -74,7 +73,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@shardy//shardy/dialect/sdy/ir:dialect",
-        "@shardy//shardy/dialect/sdy/transforms/import:passes",
         "@stablehlo//:stablehlo_ops",
     ],
 )
