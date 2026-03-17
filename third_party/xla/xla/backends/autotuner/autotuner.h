@@ -210,7 +210,7 @@ class Autotuner {
   CompileAll(HloInstruction* instr, std::vector<Config>& configs);
 
   absl::StatusOr<std::vector<ConfigResult>> ProfileAll(
-      std::vector<ExecutableCandidate>& candidates);
+      std::vector<ExecutableCandidate> candidates);
   absl::StatusOr<ConfigResult> PickBestConfig(
       std::vector<ConfigResult>& results);
 

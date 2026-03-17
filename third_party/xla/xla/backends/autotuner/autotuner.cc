@@ -453,7 +453,7 @@ tsl::Future<Autotuner::Config> Autotuner::TuneBestConfig(
         }
 
         TF_ASSIGN_OR_RETURN(std::vector<ConfigResult> results,
-                            ProfileAll(executable_candidates));
+                            ProfileAll(std::move(executable_candidates)));
         LogConfigResults(*instr, results);
         absl::StatusOr<ConfigResult> best_result = PickBestConfig(results);
         if (!best_result.ok()) {
@@ -585,7 +585,7 @@ Autotuner::CompileAll(HloInstruction* instr, std::vector<Config>& configs) {
 }
 
 absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
-    std::vector<ExecutableCandidate>& candidates) {
+    std::vector<ExecutableCandidate> candidates) {
   std::vector<ConfigResult> results_vec;
   results_vec.reserve(candidates.size());
 
@@ -631,6 +631,11 @@ absl::StatusOr<std::vector<Autotuner::ConfigResult>> Autotuner::ProfileAll(
     results_vec.push_back(
         {std::move(candidates[i].config), failure, duration, scratch_bytes});
   }
+  // Clear the candidates while holding the profiler lock
+  // to unload their CUDA modules before any other thread starts profiling;
+  // not doing this for example causes timeouts of delay kernels used for
+  // precise CUDA event-based timing.
+  candidates.clear();
   return results_vec;
 }
 
