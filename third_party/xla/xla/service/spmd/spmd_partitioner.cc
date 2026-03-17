@@ -5284,8 +5284,7 @@ HloInstruction* CreateAllReduceListsOfLists(
 }
 
 HloInstruction* CreateAllToAllListsOfLists(
-    int64_t num_replicas, int64_t num_partitions, SpmdBuilder* b,
-    absl::Span<HloInstruction* const> operands,
+    SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
     const CollectiveDeviceListBase& device_list, int64_t channel_id,
     std::optional<int64_t> split_dimension) {
   const std::vector<std::vector<int64_t>>& partition_subgroups =
@@ -5412,9 +5411,8 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                   std::make_shared<IotaReplicaGroupList>(*expanded),
                   /*constrain_layout=*/false, channel_id, split_dimension));
             }
-            return CreateAllToAllListsOfLists(num_replicas, num_partitions, b,
-                                              operands, device_list, channel_id,
-                                              split_dimension);
+            return CreateAllToAllListsOfLists(b, operands, device_list,
+                                              channel_id, split_dimension);
           },
       .create_all_gather =
           [num_replicas, num_partitions](
@@ -5911,8 +5909,7 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
   for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       const HloSharding& sharding = hlo->sharding();
-      auto convert_unreduced_sharding =
-          [](HloInstruction* hlo, const HloSharding& sharding) -> HloSharding {
+      auto convert_unreduced_sharding = [](HloInstruction* hlo) -> HloSharding {
         hlo->add_frontend_attribute(sdy::kHasUnreducedAxes, "true");
         return HloSharding::Replicate();
       };
@@ -5978,7 +5975,7 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
                 convert_unreduced_subgroup_sharding(hlo, subsharding));
             should_convert = true;
           } else if (subsharding.IsUnreduced()) {
-            subsharding = convert_unreduced_sharding(hlo, subsharding);
+            subsharding = convert_unreduced_sharding(hlo);
             should_convert = true;
           }
         }
@@ -5997,7 +5994,7 @@ absl::Status SpmdPartitioner::ConvertUnreducedSharding(
               convert_unreduced_subgroup_sharding(hlo, sharding));
           hlo->set_sharding(new_sharding);
         } else if (sharding.IsUnreduced()) {
-          hlo->set_sharding(convert_unreduced_sharding(hlo, sharding));
+          hlo->set_sharding(convert_unreduced_sharding(hlo));
         }
       }
     }
@@ -6460,7 +6457,7 @@ void SpmdPartitioningVisitor::SetPartitionedHlo(
     // Adds recovery computation to the original value recovery table.
     auto* module = const_cast<HloModule*>(hlo->parent()->parent());
     auto build_recovery_computation =
-        [&](const ShapeIndex& index, const OriginalArray& old_original_array,
+        [&](const ShapeIndex& index, const OriginalArray&,
             const xla::Shape& old_shape, const xla::Shape& new_shape)
         -> std::optional<std::unique_ptr<HloModule>> {
       SpmdBuilder builder("recovery_computation", nullptr);

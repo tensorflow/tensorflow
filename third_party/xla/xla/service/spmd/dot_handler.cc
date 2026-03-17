@@ -140,9 +140,10 @@ class CreateShardedDotFunctor final
   explicit CreateShardedDotFunctor(HloDotInstruction* dot) : dot_(dot) {}
 
   // Implements the creation of sharded dots.
-  absl::StatusOr<HloInstruction*> CreateSharded(
-      const PartitionedHlo& ll, const PartitionedHlo& rr, SpmdBuilder* b,
-      const Window& conv_window) const override {
+  absl::StatusOr<HloInstruction*> CreateSharded(const PartitionedHlo& ll,
+                                                const PartitionedHlo& rr,
+                                                SpmdBuilder* b,
+                                                const Window&) const override {
     HloInstruction* l = ll.hlo();
     HloInstruction* r = rr.hlo();
     TF_ASSIGN_OR_RETURN(
@@ -3691,7 +3692,7 @@ PartitionConvOnBatchOrFeatureGroupedDims(
         return try_partitioned_conv;
       }
     }
-    // For batch/feature grouped convs, we try to at least partiton them on
+    // For batch/feature grouped convs, we try to at least partition them on
     // the batch dimensions and partially replicate other dimensions, instead
     // of replicating everything.
     const int64_t max_batch_partitions =
