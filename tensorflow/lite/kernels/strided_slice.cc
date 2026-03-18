@@ -217,8 +217,18 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
       // This is valid for both positive and negative strides
       dim_shape = end - begin;
     }
-    dim_shape = std::ceil((dim_shape) / static_cast<float>(stride));
-    dim_shape = dim_shape < 0 ? 0 : dim_shape;
+    // Ensure we can do an integer division (rounding up) even when dealing with
+    // negative numbers.
+    if (dim_shape < 0 != stride < 0) {
+      dim_shape = 0;
+    } else {
+      if (stride < 0) {
+        TFLITE_CHECK_LT(dim_shape, 0);
+        dim_shape = -dim_shape;
+        stride = -stride;
+      }
+      dim_shape = (dim_shape + stride - 1) / stride;
+    }
     output_shape_vector.push_back(dim_shape);
   }
 
