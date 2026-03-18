@@ -451,13 +451,13 @@ SymbolicExpr SymbolicExprSimplifier::RewriteSum(SymbolicExpr sum) {
       // In many cases, we could just compare the LHSes of the mod and the
       // div, but if x is a floorDiv itself, we need to check a bit more
       // carefully:
-      //    ((x // c0) % c1) * d + (x // (c0 * c1)) * (c1 * d)`
-      // `x // (c0 * c1)` will be simplified, so we we may not even have
+      //    ((x // c0) % c1) * d + (x // (c0 * c1)) * (c1 * d)
+      // `x // (c0 * c1)` will be simplified, so we may not even have
       // `c0 * c1` in the expression, if `x` contains a multiplier.
-      SymbolicExpr simplified_mod = Simplify(GetLhs(mod).floorDiv(*mod_c));
+      SymbolicExpr simplified_div = Simplify(GetLhs(mod).floorDiv(*mod_c));
       for (int div_i = 0; div_i < divs.size(); ++div_i) {
         auto [div, div_mul] = divs[div_i];
-        if (simplified_mod != div) {
+        if (simplified_div != div) {
           continue;
         }
         if ((div_mul % mod_mul) || (div_mul / mod_mul) != mod_c) {
@@ -546,9 +546,10 @@ SymbolicExpr SymbolicExprSimplifier::SimplifyOnce(SymbolicExpr expr) {
 
 SymbolicExpr SymbolicExprSimplifier::Simplify(SymbolicExpr expr) {
   while (true) {
-    auto simplified = SimplifyOnce(expr);
-    if (simplified == expr) {
-      return expr;
+    auto canonical = expr.Canonicalize();
+    auto simplified = SimplifyOnce(canonical);
+    if (simplified == canonical) {
+      return canonical;
     }
     expr = simplified;
   }

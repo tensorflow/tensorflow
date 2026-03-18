@@ -1133,6 +1133,36 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
                                                )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_ModAddDistributive) {
+  auto indexing_map = Parse(R"(
+    (d0, d1) -> ((d0 * 2 + d1) mod 2),
+    domain:
+    d0 in [0, 99],
+    d1 in [0, 99]
+  )");
+  indexing_map.Simplify();
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0, d1) -> (d1 mod 2),
+      domain:
+      d0 in [0, 99],
+      d1 in [0, 99]
+  )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivModLinear) {
+  auto indexing_map = Parse(R"(
+    (d0) -> ((d0 floordiv 16) * 16 + (d0 mod 16)),
+    domain:
+    d0 in [0, 99]
+  )");
+  indexing_map.Simplify();
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 99]
+  )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_DivDiv) {
   auto indexing_map = Parse(R"(
     ()[s0, s1] -> ((s0 * 2 + s1 floordiv 64) floordiv 3),
