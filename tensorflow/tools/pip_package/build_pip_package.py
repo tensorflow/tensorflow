@@ -52,10 +52,10 @@ def get_repo_path(repo_name: str) -> str:
   Returns:
     The path to the external repository.
   """
-  env_key = repo_name.upper().replace("/", "_").replace("-", "_").replace(":", "_")
-  canonical_name = os.environ.get(
-      f"{env_key}_CANONICAL_REPO_NAME", repo_name
+  env_key = (
+      repo_name.upper().replace("/", "_").replace("-", "_").replace(":", "_")
   )
+  canonical_name = os.environ.get(f"{env_key}_CANONICAL_REPO_NAME", repo_name)
   return f"external/{canonical_name}/"
 
 
@@ -176,28 +176,54 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
       os.path.join(srcs_dir, "external/local_config_python")
   )
 
-  cuda_src_path = os.path.join(srcs_dir, get_repo_path("local_config_cuda") + "cuda")
+  cuda_src_path = os.path.join(
+      srcs_dir, get_repo_path("local_config_cuda") + "cuda"
+  )
   if os.path.exists(cuda_src_path):
     shutil.copytree(
         cuda_src_path,
         os.path.join(srcs_dir, "third_party/gpus"),
     )
   _copy_cuda_tree(srcs_dir, get_repo_path("cuda_cccl"), "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_cublas"), "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_cudart"), "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_cudnn"), "third_party/gpus/cudnn")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_cufft"), "third_party/gpus/cuda")
   _copy_cuda_tree(
-      srcs_dir, get_repo_path("cuda_cupti"), "third_party/gpus/cuda/extras/CUPTI"
+      srcs_dir, get_repo_path("cuda_cublas"), "third_party/gpus/cuda"
   )
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_curand"), "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_cusolver"), "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_cusparse"), "third_party/gpus/cuda")
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cudart"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cudnn"), "third_party/gpus/cudnn"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cufft"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir,
+      get_repo_path("cuda_cupti"),
+      "third_party/gpus/cuda/extras/CUPTI",
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_curand"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cusolver"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cusparse"), "third_party/gpus/cuda"
+  )
   _copy_cuda_tree(srcs_dir, get_repo_path("cuda_nvcc"), "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_nvjitlink"), "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_nvml"), "third_party/gpus/cuda/nvml")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_nvrtc"), "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_nvtx"), "third_party/gpus/cuda")
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_nvjitlink"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_nvml"), "third_party/gpus/cuda/nvml"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_nvrtc"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_nvtx"), "third_party/gpus/cuda"
+  )
 
   shutil.copytree(
       os.path.join(srcs_dir, "tensorflow/compiler/xla"),
@@ -434,7 +460,10 @@ def create_local_config_python(dst_dir: str) -> None:
         break
 
   if not numpy_include_dir:
-    raise FileNotFoundError(f"Could not find numpy include directory. patterns: {numpy_search_patterns}")
+    raise FileNotFoundError(
+        "Could not find numpy include directory. "
+        f"patterns: {numpy_search_patterns}"
+    )
 
   shutil.copytree(
       numpy_include_dir,
@@ -444,7 +473,7 @@ def create_local_config_python(dst_dir: str) -> None:
   # Search for python include directory in both Bzlmod and WORKSPACE.
   python_search_patterns = [
       "external/*python_*/include/python*",
-      "external/*python_*/include", # Windows
+      "external/*python_*/include",  # Windows
   ]
   python_include_dir = ""
   for pattern in python_search_patterns:
@@ -454,7 +483,10 @@ def create_local_config_python(dst_dir: str) -> None:
       break
 
   if not python_include_dir:
-    raise FileNotFoundError(f"Could not find python include directory. patterns: {python_search_patterns}")
+    raise FileNotFoundError(
+        f"Could not find python include directory. "
+        f"patterns: {python_search_patterns}"
+    )
 
   shutil.copytree(python_include_dir, os.path.join(dst_dir, "python_include"))
 
