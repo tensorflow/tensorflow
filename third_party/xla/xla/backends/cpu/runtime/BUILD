@@ -1246,7 +1246,6 @@ cc_library(
     deps = [
         ":call_thunk",
         ":conditional_thunk",
-        ":copy_thunk",
         ":custom_call_thunk",
         ":infeed_thunk",
         ":kernel_thunk",

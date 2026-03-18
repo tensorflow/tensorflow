@@ -39,7 +39,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/call_thunk.h"
 #include "xla/backends/cpu/runtime/conditional_thunk.h"
-#include "xla/backends/cpu/runtime/copy_thunk.h"
 #include "xla/backends/cpu/runtime/custom_call_thunk.h"
 #include "xla/backends/cpu/runtime/infeed_thunk.h"
 #include "xla/backends/cpu/runtime/kernel_thunk.h"
@@ -232,18 +231,6 @@ static absl::Status ToProto(const CallThunk& thunk, ThunkProto& proto) {
   TF_ASSIGN_OR_RETURN(
       *call_thunk_proto->mutable_called_sequence(),
       thunk_sequence_serdes.ToProto(thunk.called_executor().thunk_sequence()));
-  return absl::OkStatus();
-}
-
-static absl::Status ToProto(const CopyThunk& thunk, ThunkProto& proto) {
-  CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
-
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.src_buffer(), thunk.src_shape(),
-      copy_thunk_proto->mutable_src_buffer_shape()));
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.dst_buffer(), thunk.dst_shape(),
-      copy_thunk_proto->mutable_dst_buffer_shape()));
   return absl::OkStatus();
 }
 
@@ -520,10 +507,6 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
       TF_RETURN_IF_ERROR(
           ::xla::cpu::ToProto(tsl::down_cast<const CallThunk&>(thunk), proto));
       break;
-    case Thunk::Kind::kCopy:
-      TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const CopyThunk&>(thunk), proto));
-      break;
     case Thunk::Kind::kCustomCall:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           tsl::down_cast<const CustomCallThunk&>(thunk), proto));
@@ -608,27 +591,6 @@ ConditionalThunkFromProto(
   return ConditionalThunk::Create(std::move(info),
                                   std::move(branch_index_buffer),
                                   std::move(branch_sequences));
-}
-
-static absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
-
-  TF_ASSIGN_OR_RETURN(
-      auto src_slice_shape,
-      DeserializeSliceShapeFromProto(proto.copy_thunk().src_buffer_shape(),
-                                     buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
-      auto dst_slice_shape,
-      DeserializeSliceShapeFromProto(proto.copy_thunk().dst_buffer_shape(),
-                                     buffer_allocations));
-
-  const auto& [src_buffer, src_shape] = src_slice_shape;
-  const auto& [dst_buffer, dst_shape] = dst_slice_shape;
-
-  return CopyThunk::Create(std::move(info), std::move(src_buffer), src_shape,
-                           std::move(dst_buffer), dst_shape);
 }
 
 static absl::StatusOr<std::unique_ptr<CustomCallThunk>>
@@ -955,8 +917,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       return CallThunkFromProto(proto, hlo_module_, buffer_allocations_);
     case Thunk::Kind::kConditional:
       return ConditionalThunkFromProto(proto, hlo_module_, buffer_allocations_);
-    case Thunk::Kind::kCopy:
-      return CopyThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kCustomCall:
       return CustomCallThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kInfeed:
