@@ -5,6 +5,11 @@
 !array1 = !ifrt.array<tensor<2xi32>, #sharding, [2,3]>
 !array2 = !ifrt.array<tensor<2xi32>, #sharding, [4,5]>
 !array3 = !ifrt.array<tensor<2xi32>, #sharding, [6,7]>
+!array_default_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "(default)">
+!array_pinned_host_mk = !ifrt.array<tensor<2xi32>, #sharding, [0,1], memory_kind = "pinned_host">
+!array_minor_to_major = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{0,1}">
+!array_major_to_minor = !ifrt.array<tensor<2xi32>, #sharding, [0,1], layout = "{1,0}">
+
 
 // CHECK-LABEL: @merge_reshards_of_call_results
 func.func @merge_reshards_of_call_results(%arg0: !array0, %arg1: !array0)
@@ -120,11 +125,6 @@ func.func @merge_parallel_reshards(
   func.return %2, %6#0 : !array3, !array3
 }
 
-func.func private @identity(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>)
-  -> (tensor<2xi32>, tensor<2xi32>) {
-  return %arg0, %arg1 : tensor<2xi32>, tensor<2xi32>
-}
-
 // CHECK-LABEL: @reshards_after_first_group_user_are_not_merged
 func.func @reshards_after_first_group_user_are_not_merged(
     %arg0: !array0, %arg1: !array0, %arg2: !array0)
@@ -137,4 +137,60 @@ func.func @reshards_after_first_group_user_are_not_merged(
   %2, %ctrl_2 = ifrt.CopyArrays(%1) : (!array1) -> !array1
   %3, %ctrl_3 = ifrt.Reshard(%arg2) : (!array0) -> !array1
   return %0, %1, %2, %3 : !array1, !array1, !array1, !array1
+}
+
+// CHECK-LABEL: @merge_reshards_with_default_and_no_memory_kind
+func.func @merge_reshards_with_default_and_no_memory_kind(
+    %arg0: !array_default_mk, %arg1: !array0)
+  -> (!array_default_mk, !array0) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[R1:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %arg1)
+  %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array_default_mk) -> !array_default_mk
+  %1, %ctrl_1 = ifrt.Reshard(%arg1) : (!array0) -> !array0
+  return %0, %1 : !array_default_mk, !array0
+}
+
+// CHECK-LABEL: @dont_merge_reshards_with_different_memory_kinds
+func.func @dont_merge_reshards_with_different_memory_kinds(
+    %arg0: !array_default_mk, %arg1: !array_pinned_host_mk)
+  -> (!array_default_mk, !array_pinned_host_mk) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[R1:.*]], %{{.*}} = ifrt.Reshard(%arg0)
+  // CHECK-NEXT: %[[R2:.*]], %{{.*}} = ifrt.Reshard(%arg1)
+  %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array_default_mk) -> !array_default_mk
+  %1, %ctrl_1 = ifrt.Reshard(%arg1) : (!array_pinned_host_mk) -> !array_pinned_host_mk
+  return %0, %1 : !array_default_mk, !array_pinned_host_mk
+}
+
+// CHECK-LABEL: @dont_merge_reshards_with_different_layouts
+func.func @dont_merge_reshards_with_different_layouts(
+    %arg0: !array_minor_to_major, %arg1: !array_major_to_minor)
+  -> (!array_minor_to_major, !array_major_to_minor) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[R1:.*]], %{{.*}} = ifrt.Reshard(%arg0)
+  // CHECK-NEXT: %[[R2:.*]], %{{.*}} = ifrt.Reshard(%arg1)
+  %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array_minor_to_major) -> !array_minor_to_major
+  %1, %ctrl_1 = ifrt.Reshard(%arg1) : (!array_major_to_minor) -> !array_major_to_minor
+  return %0, %1 : !array_minor_to_major, !array_major_to_minor
+}
+
+// CHECK-LABEL: @chain_of_reshards_is_sunk
+func.func @chain_of_reshards_is_sunk(%arg0: !array0, %arg1: !array0)
+  -> (!array2, !array2) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[C0:.*]]:2, %{{.*}} = ifrt.Call @identity(%arg0, %arg1) on devices [0, 1]
+  // CHECK-NEXT: %[[R0:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %[[C0]]#0)
+  // CHECK-NEXT: %[[C1:.*]]:2, %{{.*}} = ifrt.Call @identity(%[[R0]]#0, %[[R0]]#1) on devices [2, 3]
+  // CHECK-NEXT: %[[R1:.*]]:2, %{{.*}} = ifrt.Reshard(%[[R0]]#0, %[[C1]]#0)
+  // CHECK-NEXT: %[[C2:.*]]:2, %{{.*}} = ifrt.Call @identity(%[[R1]]#0, %[[R1]]#1) on devices [4, 5]
+  // CHECK-NEXT: return %[[C2]]#0, %[[C2]]#1
+  %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.Reshard(%0) : (!array1) -> !array2
+  %2:2, %ctrl_2 = ifrt.Call @identity(%arg0, %arg1) on devices [0,1] : (!array0, !array0) -> (!array0, !array0)
+  %3, %ctrl_3 = ifrt.Reshard(%2#0) : (!array0) -> !array1
+  %4:2, %ctrl_4 = ifrt.Call @identity(%0, %3) on devices [2,3] : (!array1, !array1) -> (!array1, !array1)
+  %5, %ctrl_5 = ifrt.Reshard(%4#0) : (!array1) -> !array2
+  %6:2, %ctrl_6 = ifrt.Call @identity(%1, %5) on devices [4,5] : (!array2, !array2) -> (!array2, !array2)
+  return %6#0, %6#1 : !array2, !array2
+}
+
+func.func private @identity(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>)
+  -> (tensor<2xi32>, tensor<2xi32>) {
+  return %arg0, %arg1 : tensor<2xi32>, tensor<2xi32>
 }

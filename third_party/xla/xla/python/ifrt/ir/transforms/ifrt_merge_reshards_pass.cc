@@ -17,6 +17,7 @@ limitations under the License.
 #include <tuple>
 
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -60,7 +61,9 @@ using ReshardKey = std::tuple<             //
     /*output_devices=*/IfrtDevicesAttr,    //
     /*donated=*/mlir::Attribute,           //
     /*src_memory_kind=*/mlir::StringAttr,  //
-    /*dst_memory_kind=*/mlir::StringAttr>;
+    /*dst_memory_kind=*/mlir::StringAttr,  //
+    /*src_layout_mode=*/mlir::StringAttr,  //
+    /*dst_layout_mode=*/mlir::StringAttr>;
 
 ReshardKey GetReshardKey(ReshardOp op) {
   // Only ReshardOp with one input and output are merged to other ops so its
@@ -68,7 +71,9 @@ ReshardKey GetReshardKey(ReshardOp op) {
   auto input_type = mlir::cast<IfrtArrayType>(op.getInputs().front().getType());
   auto output_type =
       mlir::cast<IfrtArrayType>(op.getOutputs().front().getType());
-
+  // TODO(icgog): A reshard with device memory kind will not be merged with a
+  // reshard with default/no memory kind because we don't have device info to
+  // canonicalize the memory kind. Fix this limitation.
   return ReshardKey{
       input_type.getDevicesAttr(),
       output_type.getDevicesAttr(),
@@ -76,8 +81,14 @@ ReshardKey GetReshardKey(ReshardOp op) {
       // false can be represented by nullptr or BoolAttr(false). So we
       // explicitly convert to BoolAttr.
       mlir::BoolAttr::get(op.getContext(), op.getDonated()),
-      input_type.getMemoryKindAttr(),
-      output_type.getMemoryKindAttr(),
+      mlir::StringAttr::get(op.getContext(),
+                            absl::StrCat(input_type.MemoryKind())),
+      mlir::StringAttr::get(op.getContext(),
+                            absl::StrCat(output_type.MemoryKind())),
+      mlir::StringAttr::get(op.getContext(),
+                            input_type.LayoutMode().ToString()),
+      mlir::StringAttr::get(op.getContext(),
+                            output_type.LayoutMode().ToString()),
   };
 }
 
