@@ -3846,7 +3846,23 @@ bool HloParserImpl::ParseCollectiveDeviceListBase(
     return true;
   }
 
-  // Otherwise, we are parsing the new version of collective device list, which
+  // If the first token is 'mesh' or 'maximal_mesh', then we are parsing a (v3)
+  // MeshAxesReplicaGroupList.
+  if (lexer_.GetKind() == TokKind::kIdent &&
+      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "maximal_mesh")) {
+    std::optional<Mesh> mesh;
+    if (!ParseMesh(mesh)) {
+      return false;
+    }
+    std::vector<AxisRef> axes;
+    if (!ParseAxisRefList(*mesh, axes)) {
+      return false;
+    }
+    *device_list = std::make_unique<MeshAxesReplicaGroupList>(*mesh, axes);
+    return true;
+  }
+
+  // Otherwise, we are parsing the an iota (v2) collective device list, which
   // is an iota tile assignment.
   std::vector<int64_t> tile_assignment_dimensions;
   std::vector<int64_t> iota_reshape_dims;

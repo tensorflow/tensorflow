@@ -2127,6 +2127,25 @@ ENTRY AllReduceWithSubgroupsIotaList {
 )",
 /*replica_count=*/20,
 },
+// all-reduce with subgroups in mesh axes replica group list format
+{
+"AllReduceWithMeshAxesReplicaGroupList",
+R"(HloModule CRS_Subgroups, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY AllReduceWithMeshAxesReplicaGroupList {
+  input = f32[128,32]{0,1} parameter(0)
+  ROOT all-reduce = f32[128,32]{0,1} all-reduce(input), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'axis_1'}, to_apply=add
+}
+
+)",
+/*replica_count=*/4,
+},
 // all-reduce with constrained layout
 {
 "AllReduceWithLayout",
