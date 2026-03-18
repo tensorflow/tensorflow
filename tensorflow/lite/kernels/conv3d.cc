@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -170,21 +171,35 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   // Allocate temporary tensors.
   size_t input_type_size;
   TF_LITE_ENSURE_STATUS(GetSizeOfType(context, input->type, &input_type_size));
-  const size_t im2col_bytes = batches * out_depth * out_height * out_width *
-                              input_channel * filter_depth * filter_height *
-                              filter_width * input_type_size;
+  // Note that we intentionally promote the first multiplicand (i.e. 'batches')
+  // to 'size_t' to avoid integer overflow here.
+  const size_t im2col_elements = static_cast<size_t>(batches) * out_depth *
+                                 out_height * out_width * input_channel *
+                                 filter_depth * filter_height * filter_width;
   TF_LITE_ENSURE_OK(context, AllocateTemporaryTensorsIfRequired(
                                  kernel_type, context, node, opdata, params,
-                                 filter, im2col_bytes));
+                                 filter,
+                                 /*im2col_bytes=*/im2col_elements *
+                                     input_type_size));
 
   if (opdata->need_im2col) {
+    // Protect downstream kernels that rely on 32-bit signed integers for their
+    // FlatSize() and pointer arithmetic.
+    if (im2col_elements > std::numeric_limits<int32_t>::max()) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Conv3D im2col elements (%zu) exceed the 32-bit integer limit.",
+          im2col_elements);
+      return kTfLiteError;
+    }
     TfLiteIntArray* im2col_size = TfLiteIntArrayCreate(5);
     im2col_size->data[0] = output_size->data[0];
     im2col_size->data[1] = output_size->data[1];
     im2col_size->data[2] = output_size->data[2];
     im2col_size->data[3] = output_size->data[3];
-    im2col_size->data[4] =
-        input_channel * filter_depth * filter_height * filter_width;
+    im2col_size->data[4] = static_cast<int>(
+        static_cast<size_t>(input_channel) * filter_depth * filter_height *
+        filter_width);
 
     TfLiteTensor* im2col;
     node->temporaries->data[opdata->im2col_index] = opdata->im2col_tensor_id;
