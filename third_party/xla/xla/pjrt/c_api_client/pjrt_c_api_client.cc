@@ -4126,6 +4126,16 @@ absl::StatusOr<std::string> PjRtCApiTopologyDescription::Serialize() const {
   return out;
 }
 
+absl::StatusOr<uint64_t> PjRtCApiTopologyDescription::Fingerprint() const {
+  PJRT_TopologyDescription_Fingerprint_Args args{};
+  args.struct_size = PJRT_TopologyDescription_Fingerprint_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.topology = c_topology_;
+  RETURN_STATUS_IF_PJRT_ERROR(
+      c_api_->PJRT_TopologyDescription_Fingerprint(&args), c_api_);
+  return args.fingerprint;
+}
+
 absl::StatusOr<Layout> PjRtCApiTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
   const PJRT_Api* c_api = c_api_;

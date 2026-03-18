@@ -3051,6 +3051,17 @@ PJRT_Error* PJRT_TopologyDescription_Serialize(
   return nullptr;
 }
 
+PJRT_Error* PJRT_TopologyDescription_Fingerprint(
+    PJRT_TopologyDescription_Fingerprint_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_Fingerprint_Args",
+      PJRT_TopologyDescription_Fingerprint_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(args->fingerprint,
+                        args->topology->topology->Fingerprint());
+  return nullptr;
+}
+
 PJRT_Error* PJRT_TopologyDescription_Attributes(
     PJRT_TopologyDescription_Attributes_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -3723,6 +3734,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Buffer_Bitcast=*/pjrt::PJRT_Buffer_Bitcast,
 
       /*PJRT_Error_ForEachPayload=*/pjrt::PJRT_Error_ForEachPayload,
+      /*PJRT_TopologyDescription_Fingerprint=*/
+      pjrt::PJRT_TopologyDescription_Fingerprint,
   };
 }
 

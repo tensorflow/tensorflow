@@ -259,6 +259,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
       const override;
 
   absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   // Returns vendor specific attributes about the topology.
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()

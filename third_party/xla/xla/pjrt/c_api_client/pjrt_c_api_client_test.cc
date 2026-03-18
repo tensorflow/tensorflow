@@ -340,6 +340,19 @@ TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
   EXPECT_EQ(layout, expected_layout);
 }
 
+TEST(PjRtCApiClientTest, TopologyFingerprint) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+
+  ASSERT_NE(topology, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(uint64_t fingerprint, topology->Fingerprint());
+  EXPECT_NE(fingerprint, 0);
+}
+
 TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {
   SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
