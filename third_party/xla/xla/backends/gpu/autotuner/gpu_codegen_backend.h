@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu_topology.h"
@@ -45,12 +46,14 @@ class GpuCodegenBackend : public CodegenBackend {
   GpuCodegenBackend(autotuner::Backend backend,
                     const DebugOptions* debug_options, Compiler* compiler,
                     const Compiler::GpuTargetConfig* target_config,
-                    stream_executor::StreamExecutor* stream_executor = nullptr)
+                    stream_executor::StreamExecutor* stream_executor = nullptr,
+                    bool uses_last_output_for_scratch = false)
       : backend_(backend),
         stream_executor_(stream_executor),
         target_config_(*target_config),
         debug_options_(*debug_options),
-        compiler_(compiler) {}
+        compiler_(compiler),
+        uses_last_output_for_scratch_(uses_last_output_for_scratch) {}
 
   absl::string_view name() const override { return Backend_Name(backend_); }
 
@@ -67,12 +70,24 @@ class GpuCodegenBackend : public CodegenBackend {
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,
       const BackendConfig& config) override {
-    std::unique_ptr<HloModule> hlo_module =
-        ExtractInstructionIntoNewModule(hlo_instruction);
+    bool extract_consumer =
+        uses_last_output_for_scratch_ && hlo_instruction.shape().IsTuple() &&
+        hlo_instruction.users().size() == 1 &&
+        hlo_instruction.users()[0]->opcode() == HloOpcode::kGetTupleElement;
 
-    HloComputation* entry_computation = hlo_module->entry_computation();
-    HloInstruction* root_instruction = entry_computation->root_instruction();
-    TF_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
+    std::unique_ptr<HloModule> hlo_module;
+    HloInstruction* instruction_to_tune = nullptr;
+    if (extract_consumer) {
+      hlo_module = ExtractProducerConsumerIntoNewModule(
+          hlo_instruction, *hlo_instruction.users()[0]);
+      instruction_to_tune =
+          hlo_module->entry_computation()->root_instruction()->mutable_operand(
+              0);
+    } else {
+      hlo_module = ExtractInstructionIntoNewModule(hlo_instruction);
+      instruction_to_tune = hlo_module->entry_computation()->root_instruction();
+    }
+    TF_RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
@@ -136,6 +151,7 @@ class GpuCodegenBackend : public CodegenBackend {
   // and the codegen backend can directly produce an executable without a
   // compiler instance.
   Compiler* compiler_;
+  bool uses_last_output_for_scratch_ = false;
 };
 
 }  // namespace gpu

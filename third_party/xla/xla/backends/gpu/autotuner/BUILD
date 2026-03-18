@@ -191,6 +191,7 @@ xla_test(
     deps = [
         ":cublas",
         "//xla:autotuning_proto_cc",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",
@@ -259,6 +260,7 @@ xla_test(
     deps = [
         ":cublaslt",
         "//xla:autotuning_proto_cc",
+        "//xla:shape_util",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/ir:hlo",

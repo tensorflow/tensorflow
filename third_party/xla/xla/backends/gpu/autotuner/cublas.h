@@ -52,7 +52,8 @@ class CublasBackend : public GpuCodegenBackend {
                          const Compiler::GpuTargetConfig* target_config,
                          bool fp8_lt_fallback = false)
       : GpuCodegenBackend(autotuner::Backend::CUBLAS, debug_options, compiler,
-                          target_config, stream_executor),
+                          target_config, stream_executor,
+                          /*uses_last_output_for_scratch=*/true),
         fp8_lt_fallback_(fp8_lt_fallback) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
