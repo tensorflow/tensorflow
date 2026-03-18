@@ -181,7 +181,7 @@ jobs:
 
           echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GCS_OBJECT_NAME"
           ls -l "$OUTPUT_FILE" # Verify the file exists
-          gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+          gcloud storage cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
         env:
           STEPS_FIND_PR_OUTPUTS_PR: ${{ steps.find_pr.outputs.pr }}
       - name: Download Gemma Hlo Files
@@ -243,7 +243,7 @@ jobs:
 
           echo "Uploading $OUTPUT_FILE to $GCS_BUCKET/$GCS_OBJECT_NAME"
           ls -l "$OUTPUT_FILE" # Verify the file exists
-          gsutil cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+          gcloud storage cp "$OUTPUT_FILE" "$GCS_BUCKET/$GCS_OBJECT_NAME"
         env:
           STEPS_FIND_PR_OUTPUTS_PR: ${{ steps.find_pr.outputs.pr }}
 

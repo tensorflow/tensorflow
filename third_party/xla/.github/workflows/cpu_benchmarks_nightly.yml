@@ -201,15 +201,15 @@ jobs:
 
           echo "Uploading $OUTPUT_DIR/$FILENAME_GEMMA to $GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
           ls -l "$OUTPUT_DIR/$FILENAME_GEMMA" # Verify the file exists
-          gsutil cp "$OUTPUT_DIR/$FILENAME_GEMMA" "$GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
+          gcloud storage cp "$OUTPUT_DIR/$FILENAME_GEMMA" "$GCS_BUCKET/$GEMMA_GCS_OBJECT_NAME"
 
           echo "Uploading $OUTPUT_DIR/$FILENAME_CPU to $GCS_BUCKET/$CPU_GCS_OBJECT_NAME"
           ls -l "$OUTPUT_DIR/$FILENAME_CPU" # Verify the file exists
-          gsutil cp "$OUTPUT_DIR/$FILENAME_CPU" "$GCS_BUCKET/$CPU_GCS_OBJECT_NAME"
+          gcloud storage cp "$OUTPUT_DIR/$FILENAME_CPU" "$GCS_BUCKET/$CPU_GCS_OBJECT_NAME"
 
           echo "Uploading $OUTPUT_DIR/$FILENAME_GEMMA3 to $GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
           ls -l "$OUTPUT_DIR/$FILENAME_GEMMA3" # Verify the file exists
-          gsutil cp "$OUTPUT_DIR/$FILENAME_GEMMA3" "$GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
+          gcloud storage cp "$OUTPUT_DIR/$FILENAME_GEMMA3" "$GCS_BUCKET/$GEMMA3_GCS_OBJECT_NAME"
         env:
           STEPS_FINDPR_OUTPUTS_PR: ${{ steps.findPr.outputs.pr }}
 
