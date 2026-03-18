@@ -235,14 +235,12 @@ bool IsDotAlgorithmSupportedByTriton(
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
-      if (cuda_compute_capability) {
+      if (cuda_compute_capability || rocm_compute_capability) {
         return true;
       }
       return false;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
       if (cuda_compute_capability) {
         return true;
       }
@@ -250,10 +248,21 @@ bool IsDotAlgorithmSupportedByTriton(
         return rocm_compute_capability->has_bf16_dtype_support();
       }
       return false;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      // X6 and X9 algorithms on ROCm often require too much shared memory.
+      if (cuda_compute_capability) {
+        return true;
+      }
+      return false;
 
     // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
     // here.
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
+      if (rocm_compute_capability) {
+        return true;
+      }
+      return false;
     default:
       return false;
   }

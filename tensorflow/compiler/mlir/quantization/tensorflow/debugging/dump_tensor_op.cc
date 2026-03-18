@@ -63,10 +63,10 @@ REGISTER_OP("DumpTensor")
 class DumpTensorOp : public OpKernel {
  public:
   explicit DumpTensorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string log_dir_path;
-    string file_name;
-    string func_name;
-    string node_name;
+    std::string log_dir_path;
+    std::string file_name;
+    std::string func_name;
+    std::string node_name;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("log_dir_path", &log_dir_path));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("enabled", &enabled_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("file_name", &file_name));
@@ -92,7 +92,7 @@ class DumpTensorOp : public OpKernel {
     quant_unit_proto.set_func_name(func_name);
     quant_unit_proto.set_node_name(node_name);
 
-    string quant_unit_path = io::JoinPath(log_dir_path, "quant_unit.pb");
+    std::string quant_unit_path = io::JoinPath(log_dir_path, "quant_unit.pb");
     OP_REQUIRES_OK(
         ctx, SaveSerializedProtoToFile(quant_unit_proto.SerializeAsString(),
                                        quant_unit_path, ctx->env()));
