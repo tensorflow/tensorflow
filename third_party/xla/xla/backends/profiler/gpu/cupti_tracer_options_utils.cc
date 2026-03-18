@@ -47,6 +47,10 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
     const tensorflow::ProfileOptions& profile_options,
     CuptiTracerOptions& tracer_options,
     CuptiTracerCollectorOptions& collector_options) {
+  if (profile_options.aggregate_working_set_profile()) {
+    collector_options.is_aggregated_tracing = true;
+  }
+
   absl::flat_hash_set<absl::string_view> input_keys;
   for (const auto& [key, _] : profile_options.advanced_configuration()) {
     input_keys.insert(key);
@@ -81,6 +85,10 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
   TF_RETURN_IF_ERROR(SetValue<bool>(
       profile_options, "gpu_enable_nvtx_tracking", input_keys,
       [&](bool value) { tracer_options.enable_nvtx_tracking = value; }));
+
+  TF_RETURN_IF_ERROR(SetValue<bool>(
+      profile_options, "gpu_is_aggregated_tracing", input_keys,
+      [&](bool value) { collector_options.is_aggregated_tracing = value; }));
 
   TF_RETURN_IF_ERROR(
       SetValue<bool>(profile_options, "gpu_enable_cupti_activity_graph_trace",

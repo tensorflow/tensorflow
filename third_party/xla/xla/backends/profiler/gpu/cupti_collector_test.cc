@@ -288,6 +288,97 @@ TEST(PmSamplesTest, PopulateCounterLineSkipsNan) {
   EXPECT_EQ(stat.double_value(), 123.0);
 }
 
+TEST(CuptiCollectorTest, AggregatedTracingStats) {
+  CuptiTracerCollectorOptions options;
+  options.num_gpus = 1;
+  options.is_aggregated_tracing = true;
+  std::unique_ptr<CuptiTraceCollector> collector =
+      CreateCuptiCollector(options, 0, 0);
+
+  collector->AddEvent(CuptiTracerEvent{
+      /*type=*/CuptiTracerEventType::Kernel,
+      /*source=*/CuptiTracerEventSource::Activity,
+      /*name=*/"kernel1",
+      /*annotation=*/"Thunk:#hlo_op=foo#",
+      /*nvtx_range=*/"",
+      /*start_time_ns=*/100,
+      /*end_time_ns=*/200,
+      /*device_id=*/0,
+      /*correlation_id=*/1,
+      /*thread_id=*/100,
+      /*context_id=*/1,
+      /*stream_id=*/2,
+      /*graph_id=*/0,
+      /*scope_range_id=*/0,
+      /*graph_node_id=*/0,
+  });
+
+  collector->AddEvent(CuptiTracerEvent{
+      /*type=*/CuptiTracerEventType::Kernel,
+      /*source=*/CuptiTracerEventSource::Activity,
+      /*name=*/"kernel1",
+      /*annotation=*/"Thunk:#hlo_op=foo#",
+      /*nvtx_range=*/"",
+      /*start_time_ns=*/300,
+      /*end_time_ns=*/450,
+      /*device_id=*/0,
+      /*correlation_id=*/2,
+      /*thread_id=*/100,
+      /*context_id=*/1,
+      /*stream_id=*/2,
+      /*graph_id=*/0,
+      /*scope_range_id=*/0,
+      /*graph_node_id=*/0,
+  });
+
+  collector->AddEvent(CuptiTracerEvent{
+      /*type=*/CuptiTracerEventType::Kernel,
+      /*source=*/CuptiTracerEventSource::Activity,
+      /*name=*/"kernel2",
+      /*annotation=*/"Thunk:#hlo_op=bar#",
+      /*nvtx_range=*/"",
+      /*start_time_ns=*/500,
+      /*end_time_ns=*/600,
+      /*device_id=*/0,
+      /*correlation_id=*/3,
+      /*thread_id=*/100,
+      /*context_id=*/1,
+      /*stream_id=*/2,
+      /*graph_id=*/0,
+      /*scope_range_id=*/0,
+      /*graph_node_id=*/0,
+  });
+
+  XSpace space;
+  collector->Export(&space, /*end_gpu_ns=*/700);
+  bool found_kernel1 = false;
+  bool found_kernel2 = false;
+  const std::string gpu_device_plane_name = ::tsl::profiler::GpuPlaneName(0);
+  for (const auto& plane : space.planes()) {
+    if (plane.name() != gpu_device_plane_name) {
+      continue;
+    }
+    for (const auto& line : plane.lines()) {
+      EXPECT_EQ(line.events_size(), 2);
+      for (const auto& event : line.events()) {
+        std::string op_name =
+            plane.event_metadata().at(event.metadata_id()).name();
+        if (op_name == "kernel1") {
+          EXPECT_EQ(event.duration_ps(), 250 * 1000);
+          EXPECT_EQ(event.num_occurrences(), 2);
+          found_kernel1 = true;
+        } else if (op_name == "kernel2") {
+          EXPECT_EQ(event.duration_ps(), 100 * 1000);
+          EXPECT_EQ(event.num_occurrences(), 1);
+          found_kernel2 = true;
+        }
+      }
+    }
+  }
+  EXPECT_TRUE(found_kernel1);
+  EXPECT_TRUE(found_kernel2);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace xla
