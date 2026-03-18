@@ -32,7 +32,7 @@ jobs:
     runs-on: linux-x64-mi210-64-2gpu-amd
     env:
       DOCKER_IMAGE: rocm/tensorflow-build@sha256:7fcfbd36b7ac8f6b0805b37c4248e929e31cf5ee3af766c8409dd70d5ab65faa
-      CONTAINER_NAME: xla-runner
+      CONTAINER_NAME: xla-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       # Pre-clean up in case a previous run crashed
       - name: Cleanup container
@@ -61,7 +61,7 @@ jobs:
             --shm-size=16G \
             --cap-add=SYS_PTRACE \
             --security-opt=seccomp=unconfined \
-            --tmpfs /root/.cache/bazel:rw,exec,size=80g \
+            --tmpfs /root/.cache/bazel:rw,exec,size=60g \
             -v ${{ github.workspace }}:/workspace \
             -v ${{ github.workspace }}/rocAutomation/resources/certificates:/tf/certificates:ro \
             -v ${{ github.workspace }}/rocAutomation/resources/upstream-xla-data/rocm_tag_filters.sh:/workspace/build_tools/rocm/rocm_tag_filters.sh:ro \
