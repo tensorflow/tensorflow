@@ -115,6 +115,20 @@ TEST_F(SymbolicMapTest, IsIdentity) {
   EXPECT_FALSE(unordered_variable_id.IsIdentity());
 }
 
+TEST_F(SymbolicMapTest, GetMultiDimIdentityMap) {
+  SymbolicMap identity_0 = SymbolicMap::GetMultiDimIdentityMap(0, &ctx);
+  EXPECT_EQ(identity_0.GetNumDims(), 0);
+  EXPECT_EQ(identity_0.GetNumSymbols(), 0);
+  EXPECT_TRUE(identity_0.IsIdentity());
+  EXPECT_EQ(identity_0.ToString(), "()[] -> ()");
+
+  SymbolicMap identity_3 = SymbolicMap::GetMultiDimIdentityMap(3, &ctx);
+  EXPECT_EQ(identity_3.GetNumDims(), 3);
+  EXPECT_EQ(identity_3.GetNumSymbols(), 0);
+  EXPECT_TRUE(identity_3.IsIdentity());
+  EXPECT_EQ(identity_3.ToString(), "(d0, d1, d2)[] -> (d0, d1, d2)");
+}
+
 TEST_F(SymbolicMapTest, GetConstantResults) {
   SymbolicMap all_constants_map = SymbolicMap::Get(
       &ctx, 0, 0,

@@ -70,6 +70,8 @@ class SymbolicMap {
   static SymbolicMap Get(mlir::MLIRContext* ctx, int64_t num_dimensions,
                          int64_t num_symbols,
                          llvm::SmallVector<SymbolicExpr> exprs);
+  static SymbolicMap GetMultiDimIdentityMap(int64_t num_dimensions,
+                                            mlir::MLIRContext* ctx);
 
   explicit operator bool() const { return ctx_ != nullptr; }
   bool operator!() const { return ctx_ == nullptr; }

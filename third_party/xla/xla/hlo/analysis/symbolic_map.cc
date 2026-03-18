@@ -74,6 +74,12 @@ SymbolicMap::SymbolicMap(mlir::MLIRContext* ctx, int64_t num_dimensions,
   return SymbolicMap(ctx, num_dimensions, num_symbols, std::move(exprs));
 }
 
+/*static*/ SymbolicMap SymbolicMap::GetMultiDimIdentityMap(
+    int64_t num_dimensions, mlir::MLIRContext* ctx) {
+  return SymbolicMap(ctx, num_dimensions, /*num_symbols=*/0,
+                     CreateVariableRange(ctx, num_dimensions));
+}
+
 std::string SymbolicMap::ToString() const {
   std::string s;
   llvm::raw_string_ostream os(s);
