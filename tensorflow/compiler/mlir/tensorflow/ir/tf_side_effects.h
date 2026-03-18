@@ -117,6 +117,11 @@ struct WriteTrainingPredictions
   StringRef getName() const final { return "WriteTrainingPredictions"; }
 };
 
+struct RecordEventMetricForTensor
+    : public ::mlir::SideEffects::Resource::Base<RecordEventMetricForTensor> {
+  StringRef getName() const final { return "RecordEventMetricForTensor"; }
+};
+
 struct _XlaRun : public ::mlir::SideEffects::Resource::Base<_XlaRun> {
   StringRef getName() const final { return "_XlaRun"; }
 };
