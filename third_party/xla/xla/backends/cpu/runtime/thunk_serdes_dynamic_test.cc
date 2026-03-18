@@ -85,6 +85,18 @@ TEST(ThunkSerDesDynamicTest, FftThunkFailsWhenNotLinked) {
                       std::string(from_proto_fn_or.status().message()));
 }
 
+TEST(ThunkSerDesDynamicTest, CustomCallThunkFailsWhenNotLinked) {
+  auto from_proto_fn_or =
+      ThunkSerDesRegistry::Get().GetFromProtoFn(Thunk::Kind::kCustomCall);
+
+  EXPECT_FALSE(from_proto_fn_or.ok());
+  EXPECT_EQ(from_proto_fn_or.status().code(), absl::StatusCode::kNotFound);
+  EXPECT_PRED_FORMAT2(
+      testing::IsSubstring,
+      "No FromProto function registered for thunk kind: custom-call",
+      std::string(from_proto_fn_or.status().message()));
+}
+
 TEST(ThunkSerDesDynamicTest, CopyThunkFailsWhenNotLinked) {
   auto from_proto_fn_or =
       ThunkSerDesRegistry::Get().GetFromProtoFn(Thunk::Kind::kCopy);
