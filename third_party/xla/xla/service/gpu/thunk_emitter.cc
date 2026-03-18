@@ -78,6 +78,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/convolution_filter_thunk.pb.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
+#include "xla/backends/gpu/runtime/copy_done_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -108,6 +109,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/topk.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
+#include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -264,6 +266,7 @@ ThunkEmitter::ThunkEmitter(
         llvm_options_lock)
     : ir_emitter_context_(ir_emitter_context),
       send_recv_events_(std::make_shared<HostSendRecvAsyncEvents>()),
+      copy_events_(std::make_shared<CopyThunk::AsyncEvents>()),
       nvshmem_buffer_addresses_(std::make_shared<NvshmemBufferAddresses>()),
       call_graph_(CallGraph::Build(&ir_emitter_context->hlo_module())),
       constants_module_(ir_emitter_context_->CreateLLVMModule(
@@ -2017,55 +2020,45 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyStartThunk(
                         copy_start_instr->ToString(),
                         static_cast<int>(stream_executor::MemorySpace::kHost)));
   }
-
-  // Create the copy thunk with ThunkInfo derived from copy-start.
-  Thunk::ThunkInfo copy_thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
-      copy_start_instr, ir_emitter_context_->GetNextThunkId());
-
-  std::unique_ptr<CopyThunk> copy_thunk;
-  if (is_dst_host_memory) {
-    copy_thunk = std::make_unique<DeviceToHostCopyThunk>(
-        copy_thunk_info,
-        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
-        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
-        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
-  } else {
-    copy_thunk = std::make_unique<HostToDeviceCopyThunk>(
-        copy_thunk_info,
-        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
-        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
-        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape));
-  }
-
   const ExecutionStreamAssignment& stream_assignment =
       ir_emitter_context_->execution_stream_assignment();
   TF_ASSIGN_OR_RETURN(
       ExecutionStreamAssignment::AsyncExecutionStreamIds streams,
       stream_assignment.GetAsyncExecutionStreamIds(copy_start_instr));
-
-  // If async and parent stream IDs are the same, the copy is synchronous.
-  if (streams.async_stream_id == streams.parent_stream_id) {
-    return GetThunkSequence(std::move(copy_thunk));
+  // Insert a waitFor() thunk for asynchronous memcpy only when the
+  // source and destination stream IDs differ. If the IDs are the
+  // same, the memcpy operation is synchronous within that stream.
+  ThunkSequence thunks;
+  if (streams.async_stream_id != streams.parent_stream_id) {
+    thunks.push_back(std::make_unique<WaitForStreamsThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(
+            copy_start_instr, ir_emitter_context_->GetNextThunkId()),
+        streams.async_stream_id, streams.parent_stream_id));
   }
-
-  // Wrap the copy thunk in an AsyncStartThunk for asynchronous execution.
-  ThunkSequence nested_thunks;
-  nested_thunks.push_back(std::move(copy_thunk));
-
-  auto start_thunk = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          copy_start_instr, ir_emitter_context_->GetNextThunkId()),
-      AsyncStartThunk::AsyncKind::kCompute, std::move(nested_thunks));
-  start_thunk->set_execution_stream_id(streams.async_stream_id);
-
-  auto [it, inserted] = hlo_async_executions_.emplace(
-      copy_start_instr, start_thunk->async_execution());
-  if (!inserted) {
-    return Internal("Async execution already exists for instruction %s",
-                    copy_start_instr->ToString());
+  if (is_dst_host_memory) {
+    auto thunk = std::make_unique<DeviceToHostCopyThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(
+            copy_start_instr, ir_emitter_context_->GetNextThunkId()),
+        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
+        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
+        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
+        /*copy_events=*/copy_events_,
+        /*copy_start_instr=*/copy_start_instr->unique_id());
+    thunk->set_execution_stream_id(streams.async_stream_id);
+    thunks.push_back(std::move(thunk));
+  } else {
+    auto thunk = std::make_unique<HostToDeviceCopyThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(
+            copy_start_instr, ir_emitter_context_->GetNextThunkId()),
+        /*source_buffer=*/ShapedSlice{src_buffer, input_shape},
+        /*destination_buffer=*/ShapedSlice{dst_buffer, input_shape},
+        /*mem_size=*/ShapeUtil::ByteSizeOf(input_shape),
+        /*copy_events=*/copy_events_,
+        /*instr_id=*/copy_start_instr->unique_id());
+    thunk->set_execution_stream_id(streams.async_stream_id);
+    thunks.push_back(std::move(thunk));
   }
-
-  return GetThunkSequence(std::move(start_thunk));
+  return thunks;
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyDoneThunk(
@@ -2073,17 +2066,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCopyDoneThunk(
   const HloInstruction* copy_start_instr = instr->operand(0);
   CHECK(copy_start_instr->opcode() == HloOpcode::kCopyStart);
 
-  // If the copy-start was asynchronous, emit an AsyncDoneThunk.
-  auto it = hlo_async_executions_.find(copy_start_instr);
-  if (it != hlo_async_executions_.end()) {
-    return GetThunkSequence(std::make_unique<AsyncDoneThunk>(
-        Thunk::ThunkInfo::WithProfileAnnotation(
-            instr, ir_emitter_context_->GetNextThunkId()),
-        it->second));
-  }
-
-  // Synchronous copy: copy-done is a no-op.
-  return ThunkSequence();
+  return GetThunkSequence(std::make_unique<CopyDoneThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          copy_start_instr, ir_emitter_context_->GetNextThunkId()),
+      /*copy_events=*/copy_events_,
+      /*instr_id=*/copy_start_instr->unique_id()));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
