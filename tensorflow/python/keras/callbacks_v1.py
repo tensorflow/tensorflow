@@ -16,22 +16,17 @@
 # pylint: disable=g-classes-have-attributes
 """Callbacks: utilities called at certain points during model training."""
 
-import os
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import summary_ops_v2
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.summary import summary as tf_summary
-from tensorflow.python.training import saver
 
 
 class TensorBoard(callbacks.TensorBoard):
@@ -141,6 +136,11 @@ class TensorBoard(callbacks.TensorBoard):
     self._total_batches_seen = 0
     self._total_val_batches_seen = 0
     self.embeddings_freq = embeddings_freq
+    if self.embeddings_freq:
+      logging.warning(
+          UserWarning('Embedding visualization is not supported without '
+                      'TensorBoard, setting `embeddings_freq` to `0`.'))
+      self.embeddings_freq = 0
     self.embeddings_layer_names = embeddings_layer_names
     self.embeddings_metadata = embeddings_metadata
     self.embeddings_data = embeddings_data
@@ -237,76 +237,6 @@ class TensorBoard(callbacks.TensorBoard):
     if not context.executing_eagerly():
       self._make_histogram_ops(model)
       self.merged = tf_summary.merge_all()
-
-    # If both embedding_freq and embeddings_data are available, we will
-    # visualize embeddings.
-    if self.embeddings_freq and self.embeddings_data is not None:
-      # Avoid circular dependency.
-      from tensorflow.python.keras.engine import training_utils_v1  # pylint: disable=g-import-not-at-top
-      self.embeddings_data = training_utils_v1.standardize_input_data(
-          self.embeddings_data, model.input_names)
-
-      # If embedding_layer_names are not provided, get all of the embedding
-      # layers from the model.
-      embeddings_layer_names = self.embeddings_layer_names
-      if not embeddings_layer_names:
-        embeddings_layer_names = [
-            layer.name
-            for layer in self.model.layers
-            if type(layer).__name__ == 'Embedding'
-        ]
-
-      self.assign_embeddings = []
-      embeddings_vars = {}
-
-      self.batch_id = batch_id = array_ops.placeholder(dtypes.int32)
-      self.step = step = array_ops.placeholder(dtypes.int32)
-
-      for layer in self.model.layers:
-        if layer.name in embeddings_layer_names:
-          embedding_input = self.model.get_layer(layer.name).output
-          embedding_size = np.prod(embedding_input.shape[1:])
-          embedding_input = array_ops.reshape(embedding_input,
-                                              (step, int(embedding_size)))
-          shape = (self.embeddings_data[0].shape[0], int(embedding_size))
-          embedding = variables.Variable(
-              array_ops.zeros(shape), name=layer.name + '_embedding')
-          embeddings_vars[layer.name] = embedding
-          batch = state_ops.assign(embedding[batch_id:batch_id + step],
-                                   embedding_input)
-          self.assign_embeddings.append(batch)
-
-      self.saver = saver.Saver(list(embeddings_vars.values()))
-
-      # Create embeddings_metadata dictionary
-      if isinstance(self.embeddings_metadata, str):
-        embeddings_metadata = {
-            layer_name: self.embeddings_metadata
-            for layer_name in embeddings_vars.keys()
-        }
-      else:
-        # If embedding_metadata is already a dictionary
-        embeddings_metadata = self.embeddings_metadata
-
-      try:
-        from tensorboard.plugins import projector
-      except ImportError:
-        raise ImportError('Failed to import TensorBoard. Please make sure that '
-                          'TensorBoard integration is complete."')
-
-      # TODO(psv): Add integration tests to test embedding visualization
-      # with TensorBoard callback. We are unable to write a unit test for this
-      # because TensorBoard dependency assumes TensorFlow package is installed.
-      config = projector.ProjectorConfig()
-      for layer_name, tensor in embeddings_vars.items():
-        embedding = config.embeddings.add()
-        embedding.tensor_name = tensor.name
-
-        if (embeddings_metadata is not None and
-            layer_name in embeddings_metadata):
-          embedding.metadata_path = embeddings_metadata[layer_name]
-
-      projector.visualize_embeddings(self.writer, config)
 
   def _fetch_callback(self, summary):
     self.writer.add_summary(summary, self._total_val_batches_seen)
@@ -411,47 +341,6 @@ class TensorBoard(callbacks.TensorBoard):
       if self.merged in self.model.test_function.fetch_callbacks:
         self.model.test_function.fetch_callbacks.pop(self.merged)
       # pylint: enable=protected-access
-
-    if self.embeddings_data is None and self.embeddings_freq:
-      raise ValueError('To visualize embeddings, embeddings_data must '
-                       'be provided.')
-
-    if self.embeddings_freq and self.embeddings_data is not None:
-      if epoch % self.embeddings_freq == 0:
-        # We need a second forward-pass here because we're passing
-        # the `embeddings_data` explicitly. This design allows to pass
-        # arbitrary data as `embeddings_data` and results from the fact
-        # that we need to know the size of the `tf.Variable`s which
-        # hold the embeddings in `set_model`. At this point, however,
-        # the `validation_data` is not yet set.
-
-        embeddings_data = self.embeddings_data
-        n_samples = embeddings_data[0].shape[0]
-        i = 0
-        sess = K.get_session()
-        while i < n_samples:
-          step = min(self.batch_size, n_samples - i)
-          batch = slice(i, i + step)
-
-          if isinstance(self.model.input, list):
-            feed_dict = {
-                model_input: embeddings_data[idx][batch]
-                for idx, model_input in enumerate(self.model.input)
-            }
-          else:
-            feed_dict = {self.model.input: embeddings_data[0][batch]}
-
-          feed_dict.update({self.batch_id: i, self.step: step})
-
-          if not isinstance(K.learning_phase(), int):
-            feed_dict[K.learning_phase()] = False
-
-          sess.run(self.assign_embeddings, feed_dict=feed_dict)
-          self.saver.save(sess,
-                          os.path.join(self.log_dir, 'keras_embedding.ckpt'),
-                          epoch)
-
-          i += self.batch_size
 
   def on_train_end(self, logs=None):
     self._stop_profiler()

@@ -41,6 +41,18 @@ bzl_library(
     srcs = ["tpu_test_wrapper.bzl"],
 )
 
+bzl_library(
+    name = "tpu_bzl",
+    srcs = ["tpu.bzl"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//devtools/build_cleaner/skylark:build_defs_lib",
+        "//third_party/bazel_rules/rules_python/python:py_test_bzl",
+        "@bazel_skylib//lib:dicts",
+        "@bazel_skylib//lib:selects",
+    ],
+)
+
 py_library(
     name = "tpu_test_wrapper",
     srcs = ["tpu_test_wrapper.py"],
@@ -959,8 +971,7 @@ tpu_py_strict_test(
         ":functional",
         ":tpu_py",
         ":tpu_replication",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/core/util:event_proto_py_proto",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:def_function",
@@ -985,6 +996,7 @@ tpu_py_strict_test(
         "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:gfile",
+        "//tensorflow/python/summary:tb_summary",
         "//tensorflow/python/tpu/ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

@@ -14,17 +14,121 @@
 # ==============================================================================
 """Re-exports the APIs of TF2 summary that live in TensorBoard."""
 
+import functools
+import threading
+
+from tensorflow.core.framework import summary_pb2
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import gen_audio_ops
+from tensorflow.python.ops import image_ops
+from tensorflow.python.ops import map_fn as map_fn_lib
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.util.tf_export import tf_export
 
-_TENSORBOARD_NOT_INSTALLED_ERROR = (
-    "TensorBoard is not installed, missing implementation for"
-)
+DEFAULT_BUCKET_COUNT = 30
 
 
-class TBNotInstalledError(Exception):
-  def __init__(self, summary_api):
-    self.error_message = f"{_TENSORBOARD_NOT_INSTALLED_ERROR} {summary_api}"
-    super().__init__(self.error_message)
+class LazyTensorCreator:
+  """Lazy auto-converting wrapper for a callable that returns a `tf.Tensor`.
+
+  This class wraps an arbitrary callable that returns a `Tensor` so that it
+  will be automatically converted to a `Tensor` by any logic that calls
+  `tf.convert_to_tensor()`. This also memoizes the callable so that it is
+  called at most once.
+
+  The intended use of this class is to defer the construction of a `Tensor`
+  (e.g. to avoid unnecessary wasted computation, or ensure any new ops are
+  created in a context only available later on in execution), while remaining
+  compatible with APIs that expect to be given an already materialized value
+  that can be converted to a `Tensor`.
+
+  This class is thread-safe.
+  """
+
+  def __init__(self, tensor_callable):
+    """Initializes a LazyTensorCreator object.
+
+    Args:
+      tensor_callable: A callable that returns a `tf.Tensor`.
+    """
+    if not callable(tensor_callable):
+      raise ValueError("Not a callable: %r" % tensor_callable)
+    self._tensor_callable = tensor_callable
+    self._tensor = None
+    self._tensor_lock = threading.RLock()
+    _register_conversion_function_once()
+
+  def __call__(self):
+    if self._tensor is None:
+      with self._tensor_lock:
+        if self._tensor is None:
+          self._tensor = self._tensor_callable()
+    return self._tensor
+
+
+def _lazy_tensor_creator_converter(value, dtype=None, name=None, as_ref=False):
+  """Converts a LazyTensorCreator to a Tensor for tf.convert_to_tensor."""
+  del name  # ignored
+  if not isinstance(value, LazyTensorCreator):
+    raise RuntimeError("Expected LazyTensorCreator, got %r" % value)
+  if as_ref:
+    raise RuntimeError("Cannot use LazyTensorCreator to create ref tensor")
+  tensor = value()
+  if dtype not in (None, tensor.dtype):
+    raise RuntimeError(
+        "Cannot convert LazyTensorCreator returning dtype %s to dtype %s"
+        % (tensor.dtype, dtype)
+    )
+  return tensor
+
+
+# Use module-level bit and lock to ensure that registration of the
+# LazyTensorCreator conversion function happens only once.
+_conversion_registered = False
+_conversion_registered_lock = threading.Lock()
+
+
+def _register_conversion_function_once():
+  """Performs one-time registration of `_lazy_tensor_creator_converter`.
+
+  This helper can be invoked multiple times but only registers the conversion
+  function on the first invocation, making it suitable for calling when
+  constructing a LazyTensorCreator.
+
+  Deferring the registration is necessary because doing it at at module import
+  time would trigger the lazy TensorFlow import to resolve, and that in turn
+  would break the delicate `tf.summary` import cycle avoidance scheme.
+  """
+  global _conversion_registered
+  if not _conversion_registered:
+    with _conversion_registered_lock:
+      if not _conversion_registered:
+        try:
+          ops.register_tensor_conversion_function(
+              base_type=LazyTensorCreator,
+              conversion_func=_lazy_tensor_creator_converter,
+              priority=0,
+          )
+        except AttributeError:
+          pass
+        _conversion_registered = True
+
+
+def _create_summary_metadata(description, plugin_name):
+  return summary_pb2.SummaryMetadata(
+      summary_description=description,
+      plugin_data=summary_pb2.SummaryMetadata.PluginData(
+          plugin_name=plugin_name, content=b""
+      ),
+  )
 
 
 @tf_export("summary.audio", v1=[])
@@ -60,26 +164,65 @@ def audio(
       if you want "wav" in particular, set this explicitly.
     description: Optional long-form description for this summary, as a constant
       `str`. Markdown is supported. Defaults to empty.
+
   Returns:
     True on success, or false if no summary was emitted because no default
     summary writer was available.
+
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import audio as audio_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.audio") from exc
-  return audio_v2(
-      name=name,
-      data=data,
-      sample_rate=sample_rate,
-      step=step,
-      max_outputs=max_outputs,
-      encoding=encoding,
-      description=description,
+  if encoding is None:
+    encoding = "wav"
+  if encoding != "wav":
+    raise ValueError("Unknown encoding: %r" % encoding)
+  summary_metadata = _create_summary_metadata(description, "audio")
+  inputs = [data, sample_rate, max_outputs, step]
+  # TODO(https://github.com/tensorflow/tensorboard/issues/2109): remove fallback
+  summary_scope = (
+      getattr(summary_ops_v2, "summary_scope", None)
   )
+  with summary_scope(name, "audio_summary", values=inputs) as (tag, _):
+    # Defer audio encoding preprocessing by passing it as a callable to write(),
+    # wrapped in a LazyTensorCreator for backwards compatibility, so that we
+    # only do this work when summaries are actually written.
+    @LazyTensorCreator
+    def lazy_tensor():
+      check_ops.assert_rank(data, 3)
+      check_ops.assert_non_negative(max_outputs)
+      limited_audio = data[:max_outputs]
+      encode_fn = functools.partial(
+          gen_audio_ops.encode_wav, sample_rate=sample_rate
+      )
+      encoded_audio = map_fn_lib.map_fn(
+          encode_fn,
+          limited_audio,
+          dtype=dtypes.string,
+          name="encode_each_audio",
+      )
+      # Workaround for map_fn returning float dtype for an empty elems input.
+      encoded_audio = cond.cond(
+          array_ops.shape(input=encoded_audio)[0] > 0,
+          lambda: encoded_audio,
+          lambda: constant_op.constant(
+              [], dtypes.string
+          ),
+      )
+      limited_labels = array_ops.tile(
+          [""], array_ops.shape(input=limited_audio)[:1]
+      )
+      return array_ops.transpose(
+          a=array_ops_stack.stack(
+              [encoded_audio, limited_labels]
+          )
+      )
+
+    # To ensure that audio encoding logic is only executed when summaries
+    # are written, we pass callable to `tensor` parameter.
+    return summary_ops_v2.write(
+        tag=tag, tensor=lazy_tensor, step=step, metadata=summary_metadata
+    )
 
 
 @tf_export("summary.histogram", v1=[])
@@ -149,13 +292,156 @@ def histogram(name, data, step=None, buckets=None, description=None):
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import histogram as histogram_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.histogram") from exc
-  return histogram_v2(
-      name=name, data=data, step=step, buckets=buckets, description=description
+  # Avoid building unused gradient graphs for conds below. This works around
+  # an error building second-order gradient graphs when XlaDynamicUpdateSlice
+  # is used, and will generally speed up graph building slightly.
+  data = array_ops.stop_gradient(data)
+  summary_metadata = _create_summary_metadata(description, "histograms")
+  # TODO(https://github.com/tensorflow/tensorboard/issues/2109): remove fallback
+  summary_scope = (
+      getattr(summary_ops_v2, "summary_scope", None)
   )
+
+  # TODO(ytjing): add special case handling.
+  with summary_scope(
+      name, "histogram_summary", values=[data, buckets, step]
+  ) as (tag, _):
+    # Defer histogram bucketing logic by passing it as a callable to
+    # write(), wrapped in a LazyTensorCreator for backwards
+    # compatibility, so that we only do this work when summaries are
+    # actually written.
+    @LazyTensorCreator
+    def lazy_tensor():
+      return _buckets(data, buckets)
+
+    return summary_ops_v2.write(
+        tag=tag,
+        tensor=lazy_tensor,
+        step=step,
+        metadata=summary_metadata,
+    )
+
+
+def _buckets(data, bucket_count=None):
+  """Create a TensorFlow op to group data into histogram buckets.
+
+  Arguments:
+    data: A `Tensor` of any shape. Must be castable to `float64`.
+    bucket_count: Optional non-negative `int` or scalar `int32` `Tensor`,
+      defaults to 30.
+
+  Returns:
+    A `Tensor` of shape `[k, 3]` and type `float64`. The `i`th row is
+    a triple `[left_edge, right_edge, count]` for a single bucket.
+    The value of `k` is either `bucket_count` or `0` (when input data
+    is empty).
+  """
+  if bucket_count is None:
+    bucket_count = DEFAULT_BUCKET_COUNT
+  with ops.name_scope("buckets"):
+    check_ops.assert_scalar(bucket_count)
+    check_ops.assert_type(
+        bucket_count, dtypes.int32
+    )
+    # Treat a negative bucket count as zero.
+    bucket_count = math_ops.maximum(
+        0, bucket_count
+    )
+    data = array_ops.reshape(data, shape=[-1])  # flatten
+    data = math_ops.cast(
+        data, dtypes.float64
+    )
+    data_size = array_ops.size(input=data)
+    is_empty = math_ops.logical_or(
+        math_ops.equal(data_size, 0),
+        math_ops.less_equal(bucket_count, 0),
+    )
+
+    def when_empty():
+      """When input data is empty or bucket_count is zero.
+
+      1. If bucket_count is specified as zero, an empty tensor of shape
+        (0, 3) will be returned.
+      2. If the input data is empty, a tensor of shape (bucket_count, 3)
+        of all zero values will be returned.
+      """
+      return array_ops.zeros(
+          (bucket_count, 3), dtype=dtypes.float64
+      )
+
+    def when_nonempty():
+      min_ = math_ops.reduce_min(input_tensor=data)
+      max_ = math_ops.reduce_max(input_tensor=data)
+      range_ = max_ - min_
+      has_single_value = math_ops.equal(range_, 0)
+
+      def when_multiple_values():
+        """When input data contains multiple values."""
+        bucket_width = range_ / math_ops.cast(
+            bucket_count, dtypes.float64
+        )
+        offsets = data - min_
+        bucket_indices = math_ops.cast(
+            math_ops.floor(offsets / bucket_width),
+            dtype=dtypes.int32,
+        )
+        clamped_indices = math_ops.minimum(
+            bucket_indices, bucket_count - 1
+        )
+        # Use float64 instead of float32 to avoid accumulating floating point
+        # error later in tf.reduce_sum when summing more than 2^24
+        # individual `1.0` values. See
+        # https://github.com/tensorflow/tensorflow/issues/51419 for details.
+        one_hots = array_ops.one_hot(
+            clamped_indices,
+            depth=bucket_count,
+            dtype=dtypes.float64,
+        )
+        bucket_counts = math_ops.cast(
+            math_ops.reduce_sum(
+                input_tensor=one_hots, axis=0
+            ),
+            dtype=dtypes.float64,
+        )
+        edges = math_ops.linspace(min_, max_, bucket_count + 1)
+        # Ensure edges[-1] == max_, which TF's linspace implementation does not
+        # do, leaving it subject to the whim of floating point rounding error.
+        edges = array_ops.concat([edges[:-1], [max_]], 0)
+        left_edges = edges[:-1]
+        right_edges = edges[1:]
+        return array_ops.transpose(
+            a=array_ops_stack.stack(
+                [left_edges, right_edges, bucket_counts]
+            )
+        )
+
+      def when_single_value():
+        """When input data contains a single unique value."""
+        # Left and right edges are the same for single value input.
+        edges = array_ops.fill([bucket_count], max_)
+        # Bucket counts are 0 except the last bucket (if bucket_count > 0),
+        # which is `data_size`. Ensure that the resulting counts vector has
+        # length `bucket_count` always, including the bucket_count==0 case.
+        zeroes = array_ops.fill([bucket_count], 0)
+        bucket_counts = math_ops.cast(
+            array_ops.concat(
+                [zeroes[:-1], [data_size]], 0
+            )[:bucket_count],
+            dtype=dtypes.float64,
+        )
+        return array_ops.transpose(
+            a=array_ops_stack.stack(
+                [edges, edges, bucket_counts]
+            )
+        )
+
+      return cond.cond(
+          has_single_value, when_single_value, when_multiple_values
+      )
+
+    return cond.cond(
+        is_empty, when_empty, when_nonempty
+    )
 
 
 @tf_export("summary.image", v1=[])
@@ -227,17 +513,51 @@ def image(name, data, step=None, max_outputs=3, description=None):
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import image as image_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.image") from exc
-  return image_v2(
-      name=name,
-      data=data,
-      step=step,
-      max_outputs=max_outputs,
-      description=description,
+  summary_metadata = _create_summary_metadata(description, "images")
+  # TODO(https://github.com/tensorflow/tensorboard/issues/2109): remove fallback
+  summary_scope = (
+      getattr(summary_ops_v2, "summary_scope", None)
   )
+  with summary_scope(
+      name, "image_summary", values=[data, max_outputs, step]
+  ) as (tag, _):
+    # Defer image encoding preprocessing by passing it as a callable to write(),
+    # wrapped in a LazyTensorCreator for backwards compatibility, so that we
+    # only do this work when summaries are actually written.
+    @LazyTensorCreator
+    def lazy_tensor():
+      check_ops.assert_rank(data, 4)
+      check_ops.assert_non_negative(
+          max_outputs
+      )
+      images = image_ops.convert_image_dtype(
+          data, dtypes.uint8, saturate=True
+      )
+      limited_images = images[:max_outputs]
+      encoded_images = image_ops.encode_png(
+          limited_images
+      )
+      image_shape = array_ops.shape(input=images)
+      dimensions = array_ops_stack.stack(
+          [
+              string_ops.as_string(
+                  image_shape[2], name="width"
+              ),
+              string_ops.as_string(
+                  image_shape[1], name="height"
+              ),
+          ],
+          name="dimensions",
+      )
+      return array_ops.concat(
+          [dimensions, encoded_images], axis=0
+      )
+
+    # To ensure that image encoding logic is only executed when summaries
+    # are written, we pass callable to `tensor` parameter.
+    return summary_ops_v2.write(
+        tag=tag, tensor=lazy_tensor, step=step, metadata=summary_metadata
+    )
 
 
 @tf_export("summary.scalar", v1=[])
@@ -292,11 +612,21 @@ def scalar(name, data, step=None, description=None):
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import scalar as scalar_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.scalar") from exc
-  return scalar_v2(name=name, data=data, step=step, description=description)
+  summary_metadata = _create_summary_metadata(description, "scalars")
+  # TODO(https://github.com/tensorflow/tensorboard/issues/2109): remove fallback
+  summary_scope = (
+      getattr(summary_ops_v2, "summary_scope", None)
+  )
+  with summary_scope(name, "scalar_summary", values=[data, step]) as (tag, _):
+    check_ops.assert_scalar(data)
+    return summary_ops_v2.write(
+        tag=tag,
+        tensor=math_ops.cast(
+            data, dtypes.float32
+        ),
+        step=step,
+        metadata=summary_metadata,
+    )
 
 
 @tf_export("summary.text", v1=[])
@@ -363,8 +693,18 @@ def text(name, data, step=None, description=None):
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
   """
-  try:
-    from tensorboard.summary.v2 import text as text_v2  # pylint: disable=g-import-not-at-top, g-importing-member
-  except ImportError as exc:
-    raise TBNotInstalledError("tf.summary.text") from exc
-  return text_v2(name=name, data=data, step=step, description=description)
+  summary_metadata = _create_summary_metadata(description, "text")
+  # TODO(https://github.com/tensorflow/tensorboard/issues/2109): remove fallback
+  summary_scope = (
+      getattr(summary_ops_v2, "summary_scope", None)
+  )
+  with summary_scope(name, "text_summary", values=[data, step]) as (tag, _):
+    check_ops.assert_type(
+        data, dtypes.string
+    )
+    return summary_ops_v2.write(
+        tag=tag, tensor=data, step=step, metadata=summary_metadata
+    )
+
+
+
