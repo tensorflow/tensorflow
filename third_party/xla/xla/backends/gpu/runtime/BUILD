@@ -1279,7 +1279,6 @@ xla_test(
     name = "gpublas_lt_matmul_thunk_test",
     srcs = ["gpublas_lt_matmul_thunk_test.cc"],
     backends = ["gpu"],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
         ":gpublas_lt_matmul_thunk",
