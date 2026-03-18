@@ -125,13 +125,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-namespace {
-
-using llvm::SmallVector;
-using mlir::MLIRContext;
-using mlir::Value;
-using mlir::ValueRange;
-using mlir::func::FuncOp;
 
 bool EnablePDL(const HloModule& module, const se::DeviceDescription& device) {
   return module.config().debug_options().xla_gpu_enable_pdl() &&
@@ -140,6 +133,15 @@ bool EnablePDL(const HloModule& module, const se::DeviceDescription& device) {
              .cuda_compute_capability()
              ->IsAtLeastHopper();
 }
+
+namespace {
+
+using llvm::SmallVector;
+using mlir::MLIRContext;
+using mlir::Value;
+using mlir::ValueRange;
+using mlir::func::FuncOp;
+
 
 void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
                llvm::Module* module) {
@@ -185,9 +187,12 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
   }
 }
 
+}  // namespace
+
 absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
                              mlir::PassManager& pm,
-                             absl::string_view entry_function_name) {
+                             absl::string_view entry_function_name,
+                             bool use_diagnostic_handler) {
   bool should_dump_mlir_passes =
       DumpingEnabledForHloModule(hlo_module) &&
       DumpingEnabledForEmitter("mlir-fusion",
@@ -215,8 +220,23 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
             trace));
   }
 
-  tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
-  (void)pm.run(module);
+  if (use_diagnostic_handler) {
+    tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
+    (void)pm.run(module);
+
+    if (should_dump_mlir_passes) {
+      DumpPerModuleProtobufToFile(
+          hlo_module, trace, hlo_module.config().debug_options(),
+          absl::StrCat(entry_function_name, ".mlir-trace"));
+
+      DumpToFileInDirOrStdout(
+          hlo_module, "", absl::StrCat(entry_function_name, ".mlir-passes.log"),
+          mlir_passes_dump_result);
+    }
+    return diagnostic_handler.consumeStatus();
+  }
+
+  mlir::LogicalResult result = pm.run(module);
 
   if (should_dump_mlir_passes) {
     DumpPerModuleProtobufToFile(
@@ -227,11 +247,10 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
         hlo_module, "", absl::StrCat(entry_function_name, ".mlir-passes.log"),
         mlir_passes_dump_result);
   }
-
-  return diagnostic_handler.consumeStatus();
+  return result.succeeded() ? absl::OkStatus()
+                            : absl::InternalError("MLIR pass pipeline failed.");
 }
 
-}  // namespace
 
 /* static */ std::array<uint64_t, 2> EmitterBase::MaybeSplitGridDimensionX(
     uint64_t num_threads_x, uint64_t num_blocks_x,
@@ -377,12 +396,13 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
     mlir::MLIRContext& mlir_context, llvm::LLVMContext& llvm_context,
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
-    const BufferAssignment* buffer_assignment) const {
+    const BufferAssignment* buffer_assignment, bool use_diagnostic_handler) const {
   TF_ASSIGN_OR_RETURN(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
+  pm.enableVerifier(false);
   emitters::RegisterOptimizationPasses(pm);
   AddLoopTransformationPasses(pm, device, unroll_factor());
   if (EnablePDL(*fusion.GetModule(), device)) {
@@ -391,7 +411,8 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
   AddLoweringPasses(pm, device);
 
   TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), *fusion.GetModule(), pm,
-                                     entry_function_name));
+                                     entry_function_name,
+                                     use_diagnostic_handler));
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)

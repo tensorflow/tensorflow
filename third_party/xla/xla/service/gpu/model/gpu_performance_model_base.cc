@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <optional>
 #include <vector>
 
@@ -27,21 +28,48 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/PostOrderIterator.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CFG.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/PassManager.h"
+#include "llvm/IR/Type.h"
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "xla/codegen/emitters/transforms/pass_pipelines.h"
+#include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 
 namespace xla {
 namespace gpu {
@@ -128,6 +156,9 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
   // producer.
   fusion_runtime_data_.erase(&instruction);
 
+  // Remove register usage for the instruction.
+  register_usage_.erase(&instruction);
+
   // Iterate through operands to find all producer-consumer pairs where
   // instruction is consumer and remove them from cache.
   for (auto* operand : instruction.operands()) {
@@ -139,6 +170,19 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
       it->second.erase(&instruction);
     }
   }
+}
+
+/*static*/ std::unique_ptr<mlir::MLIRContext>
+GpuPerformanceModelBase::CreateMlirContext() {
+  // We are already in a multi-threaded context, so we can disable MLIR threading.
+  auto mlir_context = std::make_unique<mlir::MLIRContext>(mlir::MLIRContext::Threading::DISABLED);
+  mlir::DialectRegistry registry = EmitterBase::GetDialectRegistry();
+  mlir_context->appendDialectRegistry(registry);
+  for (mlir::StringRef name : registry.getDialectNames()) {
+    mlir_context->getOrLoadDialect(name);
+  }
+  RegisterSymbolicExprStorage(mlir_context.get());
+  return mlir_context;
 }
 
 /*static*/
@@ -390,6 +434,460 @@ absl::Duration GpuPerformanceModelBase::CombineComputeAndMemoryAccessTime(
     absl::Duration compute_time, absl::Duration memory_access_time) {
   return compute_time + memory_access_time -
          std::min(compute_time, memory_access_time) * kMemoryComputeParallelism;
+}
+
+static int64_t get_safe_rank(const Shape& shape) {
+  if (shape.IsArray()) {
+    return shape.dimensions().size();
+  }
+  int64_t max_rank = 0;
+  for (const auto& subshape : shape.tuple_shapes()) {
+    max_rank = std::max<int64_t>(max_rank, get_safe_rank(subshape));
+  }
+  return max_rank;
+}
+
+namespace {
+int64_t GetRegistersPerValue(const HloInstruction* instr) {
+  // Input parameters cost 1.
+  if (instr->opcode() == HloOpcode::kParameter) {
+    return 1;
+  }
+  if (instr->shape().IsTuple()) {
+    return 1;  // Metadata/pointer
+  }
+
+  // Broadcast of a scalar just forwards the input.
+  if (instr->opcode() == HloOpcode::kBroadcast) {
+    if (instr->operand(0)->shape().dimensions().size() == 0) {
+      return GetRegistersPerValue(instr->operand(0));
+    }
+  }
+
+  // Factor in fragmentation and local temporaries missed by HLO-level sort.
+  // Using 3x factor as complex fusions tend to have high pressure, from
+  // vectorization and unrolling.
+
+  PrimitiveType type = instr->shape().element_type();
+  int64_t element_size = ShapeUtil::ByteSizeOfPrimitiveType(type);
+  // Assume 32-bit registers. f64 = 2, f32 = 1, pred = 1 (usually).
+  size_t registers = std::max<int64_t>(1, element_size / 4);
+
+  if (instr->shape().dimensions().size() == 0) {
+    // Literal constants consume no registers.
+    if (instr->opcode() == HloOpcode::kConstant) {
+      return 0;
+    }
+    return registers;
+  }
+
+  return 3 * registers;
+}
+
+int64_t AddressingOverhead(const HloInstruction* instr) {
+  switch (instr->opcode()) {
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+      return 16;
+    case HloOpcode::kGather:
+    case HloOpcode::kScatter:
+      return 32;
+    case HloOpcode::kTranspose:
+    case HloOpcode::kReverse:
+      return 8;
+    case HloOpcode::kSelect:
+      // Select often involves complex condition and multiple values live.
+      return 4;
+    case HloOpcode::kDivide:
+    case HloOpcode::kExp:
+    case HloOpcode::kLog:
+    case HloOpcode::kPower:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kRsqrt:
+      // Transcendental ops and divisions take extra registers for sequences.
+      return 4;
+    case HloOpcode::kConstant:
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+bool ProducesRegister(const HloInstruction* instr) {
+  switch (instr->opcode()) {
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kReverse:
+    case HloOpcode::kReshape:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kTuple:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kPad:
+    case HloOpcode::kConcatenate:
+      return false;
+    default:
+      return true;
+  }
+}
+}  // namespace
+
+size_t current_live_registers(
+    const llvm::SmallPtrSet<const HloInstruction*, 16>& active) {
+  size_t count = 0;
+  for (const HloInstruction* instr : active) {
+    count += GetRegistersPerValue(instr);
+  }
+  return count;
+}
+
+/*static*/ size_t simple_register_estimate(const HloInstruction* instr,
+                                           const HloFusionAnalysis* analysis) {
+  if (instr->opcode() != HloOpcode::kFusion) {
+    return 1;
+  }
+
+  // A heuristic for register pressure within a fusion.
+  // We start with a base count for thread indices, etc.
+  int64_t base_registers = 16;
+
+  // Calculate maximum number of live values using a simulated schedule
+  // (currently just the topological sort order already present in
+  // fused_instructions).
+
+  // 1. Keep track of how many times each instruction is used, to know when its
+  // value dies.
+  absl::flat_hash_map<const HloInstruction*, int64_t> use_counts;
+
+  // For each value, keep track of the operands which are required to compute
+  // it. In the case of non-producing operands, we forward to their inputs.
+  absl::flat_hash_map<const HloInstruction*, std::set<const HloInstruction*>>
+      indirect_operands;
+
+  // 2. Simulate execution and track live values
+  llvm::SmallPtrSet<const HloInstruction*, 16> active;
+
+  for (const HloInstruction* fused_instr : instr->fused_instructions()) {
+    for (const HloInstruction* operand : fused_instr->operands()) {
+      use_counts[operand]++;
+      indirect_operands[fused_instr].insert(operand);
+    }
+    if (fused_instr->opcode() == HloOpcode::kParameter) {
+      active.insert(fused_instr);
+    }
+  }
+
+  size_t max_live_registers = 0;
+
+  absl::flat_hash_map<const HloInstruction*, int64_t> indirect_users;
+
+  for (const HloInstruction* fused_instr : instr->fused_instructions()) {
+    if (fused_instr->opcode() == HloOpcode::kParameter) continue;
+
+    if (!ProducesRegister(fused_instr)) {
+      // If the instruction doesn't produce a register, any users of this value
+      // actually depend on the current indirect_operands of this instruction.
+      for (const auto& operand : indirect_operands[fused_instr]) {
+        use_counts[operand] += use_counts[fused_instr];
+      }
+      use_counts[fused_instr] = 0;
+      for (const auto& user : fused_instr->users()) {
+        auto& indirect_of_user = indirect_operands[user];
+        indirect_of_user.erase(fused_instr);
+        for (auto& operand : indirect_operands[fused_instr]) {
+          indirect_of_user.insert(operand);
+        }
+      }
+    } else {
+      max_live_registers = std::max(
+          max_live_registers,
+          current_live_registers(active) + AddressingOverhead(fused_instr));
+      for (const auto& operand : indirect_operands[fused_instr]) {
+        indirect_users[operand]++;
+        use_counts[operand]--;
+        if (use_counts[operand] == 0) {
+          active.erase(operand);
+        }
+      }
+      active.insert(fused_instr);
+    }
+  }
+
+  int64_t unroll_factor = 1;
+  //if (analysis != nullptr) {
+  //  unroll_factor = MaxUnrollFactor(analysis);
+  //}
+
+  return base_registers + max_live_registers * unroll_factor;
+}
+
+/*static*/
+absl::StatusOr<RegisterUsage>
+GpuPerformanceModelBase::EstimateRegisterUsage(
+    const HloInstruction* instr,
+    const se::DeviceDescription* device_info) {
+  auto mlir_context = CreateMlirContext();
+
+  auto fusion_analysis = HloFusionAnalysis::Create(*instr, *device_info);
+  size_t simple_estimate = simple_register_estimate(instr, nullptr);
+
+  if (simple_estimate < 255) {
+    /*
+    std::ostringstream strm;
+    strm << "EstimateRegisterUsage: " << instr->name()
+              << " operands: " << instr->operand_count()
+               << ", simple_estimate: " << simple_estimate << "\n";
+    std::cerr << strm.str();
+    */
+    RegisterUsage result = {simple_estimate, 0};
+    return result;
+  }
+
+  auto emitter = GetFusionEmitter(
+      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context.get());
+
+  const auto* kernel_emitter = dynamic_cast<const EmitterBase*>(emitter.get());
+  if (!kernel_emitter) {
+    return absl::InternalError("Failed to get kernel emitter.");
+  }
+
+  auto entry_function_name = "kernel";
+  const BufferAssignment* buffer_assignment = nullptr;
+  const auto* fusion_instr = Cast<HloFusionInstruction>(instr);
+  llvm::LLVMContext llvm_context;
+  /*
+  
+    TF_ASSIGN_OR_RETURN(
+      auto module, kernel_emitter->CreateMLIRModule(*mlir_context, *fusion_instr, entry_function_name,
+                                    buffer_assignment));
+
+  mlir::PassManager pm(mlir_context);
+  pm.enableVerifier(false);
+  emitters::RegisterOptimizationPasses(pm);
+  AddLoopTransformationPasses(pm, *device_info, kernel_emitter->unroll_factor());
+  if (EnablePDL(*fusion_instr->GetModule(), *device_info)) {
+    pm.addPass(CreateInsertPDLPass());
+  }
+  AddLoweringPasses(pm, *device_info);
+
+  TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), *fusion_instr->GetModule(), pm,
+                                     entry_function_name));
+                                     */
+
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<llvm::Module> llvm_module,
+      kernel_emitter->CreateLLVMModule(
+          *mlir_context, llvm_context, *device_info, *fusion_instr,
+          entry_function_name, buffer_assignment,
+          /*use_diagnostic_handler=*/false));
+
+  using namespace llvm;
+
+
+  PassBuilder PB;
+  LoopAnalysisManager LAM;
+  FunctionAnalysisManager FAM;
+  CGSCCAnalysisManager CGAM;
+  ModuleAnalysisManager MAM;
+  PB.registerModuleAnalyses(MAM);
+  PB.registerFunctionAnalyses(FAM);
+  PB.registerLoopAnalyses(LAM);
+  PB.registerCGSCCAnalyses(CGAM);
+  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+  auto PM = PB.buildModuleSimplificationPipeline(OptimizationLevel::O1,
+                                                 ThinOrFullLTOPhase::None);
+  PM.run(*llvm_module.get(), MAM);
+
+  auto result = EstimateRegisterUsageFromModule(llvm_module.get());
+
+  /*
+  std::ostringstream strm;
+  strm << "EstimateRegisterUsage: " << instr->name()
+            << " operands: " << instr->operand_count()
+            << ", simple_estimate: " << simple_estimate
+            << ", result: " << result.value().registers_per_thread << ", "
+            << result.value().spilled_bytes_accessed << "\n";
+  std::cerr << strm.str();
+  */
+  return result;
+}
+
+/*static*/
+absl::StatusOr<RegisterUsage>
+GpuPerformanceModelBase::EstimateRegisterUsageFromModule(
+    const llvm::Module* module) {
+  llvm::Function* func = module->getFunction("kernel");
+  if (!func || func->empty()) {
+    return absl::InternalError("Failed to get LLVM function.");
+  }
+
+  size_t max_live_values = 0;
+  size_t spilling_bytes_accessed = 0;
+
+  llvm::DenseMap<llvm::Value*, int> first_def;
+  llvm::DenseMap<llvm::Value*, int> last_use;
+  llvm::DenseMap<llvm::Value*, int64_t> bytes_accessed;
+  int current_idx = 0;
+
+  // Track interval of all instructions and arguments
+  // We must iterate basic blocks in a topological order to assign sequential
+  // indices. ReversePostOrderTraversal gives us a topological sort (ignoring
+  // backedges).
+  llvm::ReversePostOrderTraversal<llvm::Function*> rpo(func);
+  for (llvm::BasicBlock* bb : rpo) {
+    for (llvm::Instruction& inst : *bb) {
+      int idx = current_idx++;
+      first_def[&inst] = idx;
+      last_use[&inst] = idx;  // Default to def dying immediately
+
+      // Determine byte size of this instruction's type for spills
+      int64_t type_bytes = 0;
+      llvm::Type* ty = inst.getType();
+      if (ty->isSized()) {
+        type_bytes = module->getDataLayout().getTypeAllocSize(ty);
+      }
+      int num_uses = inst.getNumUses();
+      // (1 store + N loads) * type_bytes
+      if (type_bytes > 0 && num_uses > 0) {
+        bytes_accessed[&inst] = (1 + num_uses) * type_bytes;
+      }
+    }
+  }
+
+  for (llvm::Argument& arg : func->args()) {
+    first_def[&arg] = 0;
+    last_use[&arg] = 0;  // Will be extended by uses
+
+    int64_t type_bytes = 0;
+    llvm::Type* ty = arg.getType();
+    if (ty->isSized()) {
+      type_bytes = module->getDataLayout().getTypeAllocSize(ty);
+    }
+    int num_uses = arg.getNumUses();
+    if (type_bytes > 0 && num_uses > 0) {
+      bytes_accessed[&arg] = (1 + num_uses) * type_bytes;
+    }
+  }
+
+  // phi = phi %a
+  // ...
+  //. block:
+  //.   %a = foo
+  //.   ... [no other users of %a]
+  //.   br label %phi_block
+
+  for (llvm::BasicBlock* bb : rpo) {
+    for (llvm::Instruction& inst : *bb) {
+      for (llvm::Use& u : inst.operands()) {
+        llvm::Value* operand = u.get();
+        if (first_def.count(operand)) {
+          last_use[operand] =
+              std::max(last_use[operand], first_def[u.getUser()]);
+          if (auto PN = dyn_cast<llvm::PHINode>(&inst)) {
+            for (auto bb : PN->blocks()) {
+              last_use[operand] =
+                  std::max(last_use[operand], first_def[bb->getTerminator()]);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Greedy register allocator
+  std::vector<llvm::Value*> active;
+  max_live_values = 0;
+  spilling_bytes_accessed = 0;
+
+  // Values sorted by first_def
+  std::vector<llvm::Value*> values;
+  for (auto& pair : first_def) {
+    if (!pair.first->getType()->isVoidTy()) {
+      values.push_back(pair.first);
+    }
+  }
+  std::sort(values.begin(), values.end(), [&](llvm::Value* a, llvm::Value* b) {
+    return first_def[a] < first_def[b];
+  });
+
+  const int kMaxActiveValues = 255;
+  int val_idx = 0;
+  for (int i = 0; i < current_idx; ++i) {
+    // Expire values whose last use < i
+    active.erase(
+        std::remove_if(active.begin(), active.end(),
+                       [&](llvm::Value* v) { return last_use[v] < i; }),
+        active.end());
+
+    // Add values defined at i
+    while (val_idx < values.size() && first_def[values[val_idx]] == i) {
+      llvm::Value* v = values[val_idx++];
+      size_t num_registers = 1;
+
+      if (module->getDataLayout().getTypeAllocSize(v->getType()) > 0) {
+        num_registers =
+            module->getDataLayout().getTypeAllocSize(v->getType()) / 4;
+      }
+
+      for (int j = 0; j < num_registers; ++j) {
+        if (active.size() < kMaxActiveValues) {
+          active.push_back(v);
+        } else {
+          // Spill the one with the furthest last_use
+          auto furthest_it =
+              std::max_element(active.begin(), active.end(),
+                               [&](llvm::Value* a, llvm::Value* b) {
+                                 return last_use[a] < last_use[b];
+                               });
+
+          if (last_use[*furthest_it] > last_use[v]) {
+            // Spill furthest
+            llvm::Value* spilled = *furthest_it;
+            if (bytes_accessed.count(spilled)) {
+              spilling_bytes_accessed += bytes_accessed[spilled];
+            }
+            *furthest_it = v;
+          } else {
+            // Spill current
+            if (bytes_accessed.count(v)) {
+              spilling_bytes_accessed += bytes_accessed[v];
+            }
+          }
+        }
+      }
+      max_live_values = std::max<int64_t>(max_live_values, active.size());
+    }
+  }
+
+  return RegisterUsage{
+      static_cast<size_t>(std::min<int64_t>(max_live_values, 255)),
+      spilling_bytes_accessed};
+}
+
+/*static*/
+absl::Duration GpuPerformanceModelBase::CalculateSpillPenalty(
+    const se::DeviceDescription& gpu_device_info,
+    const RegisterUsage& register_usage, int64_t num_blocks,
+    int64_t num_threads_per_block) {
+  if (register_usage.spilled_bytes_accessed == 0 &&
+      register_usage.registers_per_thread <= 255) {
+    // Check occupancy based penalty even if no spills.
+    int64_t registers_per_block =
+        register_usage.registers_per_thread * num_threads_per_block;
+    if (registers_per_block <= gpu_device_info.registers_per_block_limit()) {
+      return absl::ZeroDuration();
+    }
+    return GpuPerformanceModelBase::kSpillBasePenalty;
+  }
+
+  int64_t total_threads = num_blocks * num_threads_per_block;
+  int64_t total_spill_bytes =
+      register_usage.spilled_bytes_accessed * total_threads;
+
+  absl::Duration memory_access_latency = ReadTimeWithDRAMHeuristic(
+      gpu_device_info, num_blocks, /*n_bytes_net=*/total_spill_bytes,
+      /*n_bytes_total=*/total_spill_bytes, PrimitiveType::F32,
+      /*hbm_bandwidth_utilization_rate=*/1.0);
+
+  return GpuPerformanceModelBase::kSpillBasePenalty + memory_access_latency;
 }
 
 /*static*/

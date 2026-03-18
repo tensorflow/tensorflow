@@ -90,6 +90,11 @@ struct EstimateRunTimeData {
   }
 };
 
+struct RegisterUsage {
+  size_t registers_per_thread;
+  size_t spilled_bytes_accessed;
+};
+
 class GpuPerformanceModelCache {
  public:
   // Returns cached runtime data for the instruction or producer-consumer pair.
@@ -113,7 +118,7 @@ class GpuPerformanceModelCache {
   // producer-consumer pairs in fusion_runtime_data_.
   void Invalidate(const HloInstruction& instruction);
 
- private:
+ public:
   absl::Mutex mutex_;
 
   // Stores unfused runtime data for individual instructions.
@@ -125,6 +130,10 @@ class GpuPerformanceModelCache {
       const HloInstruction*,
       absl::flat_hash_map<const HloInstruction*, absl::Duration>>
       fusion_runtime_data_;
+  
+  // Stores conservative (over)estimates for register usage if < 255, 
+  // otherwise - actual register usage.
+  absl::flat_hash_map<const HloInstruction*, RegisterUsage> register_usage_;
 };
 
 class GpuPerformanceModelBase {
@@ -138,6 +147,8 @@ class GpuPerformanceModelBase {
   static constexpr absl::Duration kKernelLaunchOverhead = absl::Microseconds(1);
   static constexpr absl::Duration kNcclKernelLaunchOverhead =
       absl::Microseconds(5);
+  // Base penalty for spilling and causing reduced blocks per SM.
+  static constexpr absl::Duration kSpillBasePenalty = absl::Microseconds(1);
   static constexpr float kL2CacheSpeedup = 2.5;
   static constexpr float kL1CacheSpeedup = 8;
   // Factor for how much parallelism between compute and memory accesses should
@@ -154,6 +165,9 @@ class GpuPerformanceModelBase {
 
   // Uses HloFusionAnalysis for computing the actual number of threads and
   // blocks that the IR emitter will use.
+  // Creates and initializes an MLIRContext with all required dialects.
+  static std::unique_ptr<mlir::MLIRContext> CreateMlirContext();
+
   static LaunchDimensions EstimateFusionLaunchDimensions(
       const HloFusionAnalysis& fusion_analysis,
       mlir::MLIRContext* mlir_context);
@@ -223,6 +237,24 @@ class GpuPerformanceModelBase {
 
   static absl::Duration CombineComputeAndMemoryAccessTime(
       absl::Duration compute_time, absl::Duration memory_access_time);
+
+  // Estimates the number of registers per thread and their use counts for a
+  // given HLO computation.
+  static absl::StatusOr<RegisterUsage> EstimateRegisterUsage(
+      const HloInstruction* instr,
+      const se::DeviceDescription* device_info);
+
+  // Estimates the number of registers per thread and their use counts for a
+  // given LLVM module.
+  static absl::StatusOr<RegisterUsage> EstimateRegisterUsageFromModule(
+      const llvm::Module* module);
+
+  // Calculates a spill penalty duration based on register usage and max
+  // threshold.
+  static absl::Duration CalculateSpillPenalty(
+      const se::DeviceDescription& gpu_device_info,
+      const RegisterUsage& register_usage, int64_t num_blocks,
+      int64_t num_threads_per_block);
 
   // Logs estimates for the operand read if VLOG is enabled.
   static void VLogOperandRead(const HloInstruction* operand,

@@ -144,6 +144,253 @@ ENTRY e {
   EXPECT_NEAR(absl::ToInt64Microseconds(indexing_t.time_unfused), 1, 1);
 }
 
+TEST_F(GpuPerformanceModelTest, RegisterSpillPenalty) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = f32[100] parameter(0)
+  exp1 = f32[100] exponential(p0)
+  log1 = f32[100] log(exp1)
+  exp2 = f32[100] exponential(log1)
+  log2 = f32[100] log(exp2)
+  exp3 = f32[100] exponential(log2)
+  log3 = f32[100] log(exp3)
+  exp4 = f32[100] exponential(log3)
+  log4 = f32[100] log(exp4)
+  exp5 = f32[100] exponential(log4)
+  log5 = f32[100] log(exp5)
+  exp6 = f32[100] exponential(log5)
+  log6 = f32[100] log(exp6)
+  exp7 = f32[100] exponential(log6)
+  log7 = f32[100] log(exp7)
+  exp8 = f32[100] exponential(log7)
+  log8 = f32[100] log(exp8)
+  exp9 = f32[100] exponential(log8)
+  log9 = f32[100] log(exp9)
+  exp10 = f32[100] exponential(log9)
+  log10 = f32[100] log(exp10)
+  exp11 = f32[100] exponential(log10)
+  log11 = f32[100] log(exp11)
+  exp12 = f32[100] exponential(log11)
+  log12 = f32[100] log(exp12)
+  exp13 = f32[100] exponential(log12)
+  log13 = f32[100] log(exp13)
+  exp14 = f32[100] exponential(log13)
+  log14 = f32[100] log(exp14)
+  exp15 = f32[100] exponential(log14)
+  log15 = f32[100] log(exp15)
+  exp16 = f32[100] exponential(log15)
+  log16 = f32[100] log(exp16)
+  exp17 = f32[100] exponential(log16)
+  log17 = f32[100] log(exp17)
+  exp18 = f32[100] exponential(log17)
+  log18 = f32[100] log(exp18)
+  exp19 = f32[100] exponential(log18)
+  log19 = f32[100] log(exp19)
+  exp20 = f32[100] exponential(log19)
+  log20 = f32[100] log(exp20)
+  
+  exp21 = f32[100] exponential(log20)
+  log21 = f32[100] log(exp21)
+  exp22 = f32[100] exponential(log21)
+  log22 = f32[100] log(exp22)
+  exp23 = f32[100] exponential(log22)
+  log23 = f32[100] log(exp23)
+  exp24 = f32[100] exponential(log23)
+  log24 = f32[100] log(exp24)
+  exp25 = f32[100] exponential(log24)
+  log25 = f32[100] log(exp25)
+  exp26 = f32[100] exponential(log25)
+  log26 = f32[100] log(exp26)
+  exp27 = f32[100] exponential(log26)
+  log27 = f32[100] log(exp27)
+  exp28 = f32[100] exponential(log27)
+  log28 = f32[100] log(exp28)
+  exp29 = f32[100] exponential(log28)
+  log29 = f32[100] log(exp29)
+  exp30 = f32[100] exponential(log29)
+  log30 = f32[100] log(exp30)
+  exp31 = f32[100] exponential(log30)
+  log31 = f32[100] log(exp31)
+  exp32 = f32[100] exponential(log31)
+  log32 = f32[100] log(exp32)
+  exp33 = f32[100] exponential(log32)
+  log33 = f32[100] log(exp33)
+  exp34 = f32[100] exponential(log33)
+  log34 = f32[100] log(exp34)
+  exp35 = f32[100] exponential(log34)
+  log35 = f32[100] log(exp35)
+  exp36 = f32[100] exponential(log35)
+  log36 = f32[100] log(exp36)
+  exp37 = f32[100] exponential(log36)
+  log37 = f32[100] log(exp37)
+  exp38 = f32[100] exponential(log37)
+  log38 = f32[100] log(exp38)
+  exp39 = f32[100] exponential(log38)
+  log39 = f32[100] log(exp39)
+  exp40 = f32[100] exponential(log39)
+  log40 = f32[100] log(exp40)
+
+  ROOT a0 = f32[100] add(log40, p0)
+}
+
+ENTRY e {
+  p0 = f32[100] parameter(0)
+  ROOT r.1 = f32[100] fusion(p0), kind=kLoop, calls=f
+}
+)";
+  HloModuleConfig config;
+  config.mutable_debug_options().set_xla_gpu_predict_fusion_spills(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(root->Accept(&analysis_));
+
+  auto t = EstimateRunTimes(root);
+  // With the new liveness analysis, this straight-line chain actually has VERY
+  // LOW register pressure because values are consumed immediately. We used to
+  // over-estimate this as spilling (>40us), but now it shouldn't spill! It
+  // should be extremely fast (unfused time around 1-5us).
+  EXPECT_LT(absl::ToInt64Microseconds(t.time_unfused), 10);
+}
+
+TEST_F(GpuPerformanceModelTest, TrueRegisterSpillPenalty) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  
+  v1 = f32[100] exponential(p0)
+  v2 = f32[100] exponential(p1)
+  v3 = f32[100] exponential(v1)
+  v4 = f32[100] exponential(v2)
+  v5 = f32[100] exponential(v3)
+  v6 = f32[100] exponential(v4)
+  v7 = f32[100] exponential(v5)
+  v8 = f32[100] exponential(v6)
+  v9 = f32[100] exponential(v7)
+  v10 = f32[100] exponential(v8)
+  v11 = f32[100] exponential(v9)
+  v12 = f32[100] exponential(v10)
+  v13 = f32[100] exponential(v11)
+  v14 = f32[100] exponential(v12)
+  v15 = f32[100] exponential(v13)
+  v16 = f32[100] exponential(v14)
+  v17 = f32[100] exponential(v15)
+  v18 = f32[100] exponential(v16)
+  v19 = f32[100] exponential(v17)
+  v20 = f32[100] exponential(v18)
+  v21 = f32[100] exponential(v19)
+  v22 = f32[100] exponential(v20)
+  v23 = f32[100] exponential(v21)
+  v24 = f32[100] exponential(v22)
+  v25 = f32[100] exponential(v23)
+  v26 = f32[100] exponential(v24)
+  v27 = f32[100] exponential(v25)
+  v28 = f32[100] exponential(v26)
+  v29 = f32[100] exponential(v27)
+  v30 = f32[100] exponential(v28)
+  v31 = f32[100] exponential(v29)
+  v32 = f32[100] exponential(v30)
+  v33 = f32[100] exponential(v31)
+  v34 = f32[100] exponential(v32)
+  v35 = f32[100] exponential(v33)
+  v36 = f32[100] exponential(v34)
+  v37 = f32[100] exponential(v35)
+  v38 = f32[100] exponential(v36)
+  v39 = f32[100] exponential(v37)
+  v40 = f32[100] exponential(v38)
+  
+  v41 = f32[100] exponential(v39)
+  v42 = f32[100] exponential(v40)
+  v43 = f32[100] exponential(v41)
+  v44 = f32[100] exponential(v42)
+  v45 = f32[100] exponential(v43)
+  v46 = f32[100] exponential(v44)
+  v47 = f32[100] exponential(v45)
+  v48 = f32[100] exponential(v46)
+  v49 = f32[100] exponential(v47)
+  v50 = f32[100] exponential(v48)
+  v51 = f32[100] exponential(v49)
+  v52 = f32[100] exponential(v50)
+  v53 = f32[100] exponential(v51)
+  v54 = f32[100] exponential(v52)
+  v55 = f32[100] exponential(v53)
+  v56 = f32[100] exponential(v54)
+  v57 = f32[100] exponential(v55)
+  v58 = f32[100] exponential(v56)
+  v59 = f32[100] exponential(v57)
+  v60 = f32[100] exponential(v58)
+  v61 = f32[100] exponential(v59)
+  v62 = f32[100] exponential(v60)
+  v63 = f32[100] exponential(v61)
+  v64 = f32[100] exponential(v62)
+  v65 = f32[100] exponential(v63)
+  v66 = f32[100] exponential(v64)
+  v67 = f32[100] exponential(v65)
+  v68 = f32[100] exponential(v66)
+  v69 = f32[100] exponential(v67)
+  v70 = f32[100] exponential(v68)
+  v71 = f32[100] exponential(v69)
+  v72 = f32[100] exponential(v70)
+  v73 = f32[100] exponential(v71)
+  v74 = f32[100] exponential(v72)
+  v75 = f32[100] exponential(v73)
+  v76 = f32[100] exponential(v74)
+  v77 = f32[100] exponential(v75)
+  v78 = f32[100] exponential(v76)
+  v79 = f32[100] exponential(v77)
+  v80 = f32[100] exponential(v78)
+
+  t1 = (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]) tuple(v1, v2, v3, v4, v5, v6, v7, v8, v9, v10)
+  t2 = (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]) tuple(v11, v12, v13, v14, v15, v16, v17, v18, v19, v20)
+  t3 = (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]) tuple(v21, v22, v23, v24, v25, v26, v27, v28, v29, v30)
+  t4 = (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]) tuple(v31, v32, v33, v34, v35, v36, v37, v38, v39, v40)
+  t5 = (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]) tuple(v41, v42, v43, v44, v45, v46, v47, v48, v49, v50)
+  t6 = (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]) tuple(v51, v52, v53, v54, v55, v56, v57, v58, v59, v60)
+  t7 = (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]) tuple(v61, v62, v63, v64, v65, v66, v67, v68, v69, v70)
+  t8 = (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]) tuple(v71, v72, v73, v74, v75, v76, v77, v78, v79, v80)
+  
+  ROOT a0 = ((f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100])) tuple(t1, t2, t3, t4, t5, t6, t7, t8)
+}
+
+ENTRY e {
+  p0 = f32[100] parameter(0)
+  p1 = f32[100] parameter(1)
+  ROOT r.1 = ((f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100]),
+             (f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100], f32[100])) fusion(p0, p1), kind=kLoop, calls=f
+}
+)";
+  HloModuleConfig config;
+  config.mutable_debug_options().set_xla_gpu_predict_fusion_spills(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  ASSERT_IS_OK(root->Accept(&analysis_));
+
+  auto t = EstimateRunTimes(root);
+  // Un-fused time due to spilling.
+  // We added ~80 registers of live values.
+  EXPECT_GT(absl::ToInt64Microseconds(t.time_unfused), 2);
+  EXPECT_LT(absl::ToInt64Microseconds(t.time_unfused), 30);
+}
+
 TEST_F(GpuPerformanceModelTest, LargeReadWrite) {
   absl::string_view hlo_string = R"(
 HloModule m
@@ -766,6 +1013,73 @@ ENTRY entry_computation.1 {
   EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_unfused), 120, 1);
   EXPECT_NEAR(absl::ToInt64Milliseconds(t.time_fused), 103, 1);
 }
+
+TEST_F(GpuPerformanceModelTest, PredictFusionSpillsPath) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f1 {
+  p0 = f32[1024] parameter(0)
+  ROOT add = f32[1024] add(p0, p0)
+}
+
+f2 {
+  p0 = f32[1024] parameter(0)
+  ROOT mul = f32[1024] multiply(p0, p0)
+}
+
+ENTRY e {
+  p = f32[1024] parameter(0)
+  c1 = f32[1024] fusion(p), kind=kLoop, calls=f1
+  ROOT c2 = f32[1024] fusion(c1), kind=kLoop, calls=f2
+}
+)";
+  HloModuleConfig config;
+  auto debug_options = config.debug_options();
+  debug_options.set_xla_gpu_predict_fusion_spills(true);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+  auto* producer = module->entry_computation()->GetInstructionWithName("c1");
+  auto* consumer = module->entry_computation()->GetInstructionWithName("c2");
+
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  // This should trigger the predict_fusion_spills logic.
+  gpu_performance_model_.EstimateRunTimeForInstruction(producer, &analysis_);
+  gpu_performance_model_.EstimateRunTimeForInstruction(consumer, &analysis_);
+  auto run_times =
+      gpu_performance_model_.EstimateRunTimes(producer, &analysis_, {consumer});
+  EXPECT_GT(run_times.time_fused, absl::ZeroDuration());
+}
+
+TEST_F(GpuPerformanceModelTest, EstimateRunTimeForFusionWithSpillPrediction) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+ENTRY e {
+  %p0 = f32[100] parameter(0)
+  %slice0 = f32[50] slice(%p0), slice={[0:50]}
+  %slice1 = f32[50] slice(%p0), slice={[50:100]}
+  ROOT %out = f32[100] concatenate(%slice0, %slice1), dimensions={0}
+}
+)";
+  HloModuleConfig config;
+  config.mutable_debug_options().set_xla_gpu_predict_fusion_spills(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  auto* producer = module->entry_computation()->GetInstructionWithName("slice0");
+  auto* consumer = module->entry_computation()->GetInstructionWithName("out");
+
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  // This should not crash.
+  auto t = EstimateRunTimes(producer, {consumer});
+  EXPECT_GT(absl::ToInt64Microseconds(t.time_fused), 0);
+}
+
 
 }  // namespace
 }  // namespace gpu

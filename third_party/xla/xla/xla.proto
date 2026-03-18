@@ -934,6 +934,9 @@ message DebugOptions {
 
   optional string xla_gpu_pgle_profile_file_or_directory_path = 210;
 
+  // Use a cost model to predict register usage and the cost of fusion spills.
+  optional bool xla_gpu_predict_fusion_spills = 512;
+
   // Prints statistics about the HLO passes: how many times each pass
   // was run, and how long it took.
   optional bool xla_gpu_print_compilation_stats = 454;

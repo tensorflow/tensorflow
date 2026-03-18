@@ -2055,6 +2055,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable communication optimization patterns specified in Enzyme. More "
       "details in http://shortn/_jXJ2VFoyMN."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_predict_fusion_spills",
+      bool_setter_for(&DebugOptions::set_xla_gpu_predict_fusion_spills),
+      debug_options->xla_gpu_predict_fusion_spills(),
+      "Utilize the custom LLVM-IR based memory allocation simulator instead of "
+      "relying on the baseline register usage heuristics."));
+  flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
           debug_options->xla_partitioning_algorithm()),
