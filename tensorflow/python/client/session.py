@@ -698,6 +698,17 @@ class BaseSession(SessionInterface):
       raise TypeError('Argument `config` must be a tf.ConfigProto, but got '
                       f'"{type(config).__name__}"')
 
+    if config.intra_op_parallelism_threads < 0:
+      raise ValueError(
+          'Argument `config.intra_op_parallelism_threads` must be >= 0, '
+          f'but got {config.intra_op_parallelism_threads}. '
+          'Use 0 to let the system pick an appropriate value.')
+    if config.inter_op_parallelism_threads < 0:
+      raise ValueError(
+          'Argument `config.inter_op_parallelism_threads` must be >= 0, '
+          f'but got {config.inter_op_parallelism_threads}. '
+          'Use 0 to let the system pick an appropriate value.')
+
     if (mixed_precision_global_state.is_mixed_precision_graph_rewrite_enabled()
         and config.graph_options.rewrite_options.auto_mixed_precision !=
         rewriter_config_pb2.RewriterConfig.OFF):
