@@ -99,7 +99,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     const std::string& data_layout, llvm::LLVMContext& llvm_context,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion,
     bool emit_kernel = true,
-    absl::AnyInvocable<void()> error_handler = nullptr);
+    absl::AnyInvocable<std::string()> error_ctx_provider = nullptr);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
