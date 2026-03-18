@@ -49,6 +49,12 @@ template <typename T>
 struct LogSumExp {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
                                                      const T& b) const {
+    // Propagate NaN: if either input is NaN, the result should be NaN
+    // to match IEEE 754 semantics and NumPy/PyTorch behavior.
+    if (Eigen::numext::isnan(a) || Eigen::numext::isnan(b)) {
+      return Eigen::NumTraits<T>::quiet_NaN();
+    }
+
     auto mi = Eigen::internal::scalar_min_op<T>()(a, b);
     auto ma = Eigen::internal::scalar_max_op<T>()(a, b);
 
@@ -64,18 +70,27 @@ struct LogSumExp {
   }
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T packetOp(const T& a,
                                                    const T& b) const {
-    auto mi = Eigen::internal::pmin(a, b);
-    auto ma = Eigen::internal::pmax(a, b);
+    using Eigen::internal::pand;
     using Eigen::internal::padd;
+    using Eigen::internal::pcmp_eq;
     using Eigen::internal::pcmp_lt;
     using Eigen::internal::pexp;
     using Eigen::internal::plog1p;
+    using Eigen::internal::pselect;
     using Eigen::internal::pset1;
     using Eigen::internal::psub;
 
+    auto mi = Eigen::internal::pmin(a, b);
+    auto ma = Eigen::internal::pmax(a, b);
+
     auto logsumexp = padd(plog1p(pexp(psub(mi, ma))), ma);
-    return pselect(pcmp_lt(ma, pset1(Eigen::NumTraits<T>::lowest())), ma,
-                   logsumexp);
+    auto result = pselect(pcmp_lt(ma, pset1(Eigen::NumTraits<T>::lowest())),
+                          ma, logsumexp);
+
+    // Propagate NaN: pcmp_eq(x, x) is false (all zeros) when x is NaN.
+    auto neither_nan = pand(pcmp_eq(a, a), pcmp_eq(b, b));
+    return pselect(neither_nan, result,
+                   pset1(Eigen::NumTraits<T>::quiet_NaN()));
   }
 };
 

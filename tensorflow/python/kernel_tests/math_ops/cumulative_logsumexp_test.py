@@ -117,5 +117,50 @@ class CumulativeLogsumexpTest(test.TestCase):
       self.assertAllClose(result_fused, result_map)
 
 
+  def testNaNPropagation(self):
+    """Tests that NaN inputs are properly propagated (not replaced by -inf)."""
+    # All-NaN input should produce all-NaN output.
+    x_all_nan = np.array([np.nan, np.nan], dtype=np.float32)
+    for use_gpu in (True, False):
+      with self.cached_session(use_gpu=use_gpu):
+        result = self.evaluate(
+            math_ops.cumulative_logsumexp(
+                ops.convert_to_tensor(x_all_nan)))
+        self.assertTrue(
+            np.all(np.isnan(result)),
+            'Expected all NaN but got {} (use_gpu={})'.format(
+                result, use_gpu))
+
+    # Mixed input: NaN should propagate once encountered.
+    x_mixed = np.array([1.0, np.nan, 2.0], dtype=np.float32)
+    for use_gpu in (True, False):
+      with self.cached_session(use_gpu=use_gpu):
+        result = self.evaluate(
+            math_ops.cumulative_logsumexp(
+                ops.convert_to_tensor(x_mixed)))
+        self.assertFalse(
+            np.isnan(result[0]),
+            'First element should not be NaN (use_gpu={})'.format(use_gpu))
+        self.assertTrue(
+            np.isnan(result[1]),
+            'Second element should be NaN (use_gpu={})'.format(use_gpu))
+        self.assertTrue(
+            np.isnan(result[2]),
+            'Third element should be NaN (use_gpu={})'.format(use_gpu))
+
+  def testNaNPropagationFloat64(self):
+    """Tests NaN propagation with float64."""
+    x = np.array([np.nan, np.nan], dtype=np.float64)
+    for use_gpu in (True, False):
+      with self.cached_session(use_gpu=use_gpu):
+        result = self.evaluate(
+            math_ops.cumulative_logsumexp(
+                ops.convert_to_tensor(x)))
+        self.assertTrue(
+            np.all(np.isnan(result)),
+            'Expected all NaN but got {} (use_gpu={})'.format(
+                result, use_gpu))
+
+
 if __name__ == '__main__':
   test.main()
