@@ -227,7 +227,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     TF_RETURN_IF_ERROR(context->allocate_temp(
         index_type, TensorShape({dense_rows}), &elements_per_row_t));
     auto elements_per_row = elements_per_row_t.flat<Tindex>();
-    se::DeviceMemoryBase elements_per_row_gpu_memory(
+    stream_executor::DeviceAddressBase elements_per_row_gpu_memory(
         elements_per_row.data(), dense_rows * sizeof(Tindex));
     TF_RETURN_IF_ERROR(stream->MemZero(&elements_per_row_gpu_memory,
                                        dense_rows * sizeof(Tindex)));
