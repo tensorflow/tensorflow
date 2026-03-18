@@ -603,9 +603,6 @@ message DebugOptions {
   // dimension.
   optional bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
 
-  // Whether reduction epilogue fusion is enabled in fusion passes.
-  optional bool xla_gpu_enable_reduction_epilogue_fusion = 243;
-
   // Makes scatter ops deterministic and enables the use of the scatter
   // determinism expander. This is an optimized pass that rewrites scatter
   // operations to ensure deterministic behavior with high performance. If the
@@ -1483,6 +1480,7 @@ message DebugOptions {
   reserved "xla_gpu_enable_persistent_temp_buffers";
   reserved "xla_gpu_enable_pgle_accuracy_checker";
   reserved "xla_gpu_enable_priority_fusion";
+  reserved "xla_gpu_enable_reduction_epilogue_fusion";
   reserved "xla_gpu_enable_softmax_fusion";
   reserved "xla_gpu_enable_triton_gemm_int4";
   reserved "xla_gpu_enable_triton_hopper";
@@ -1533,10 +1531,10 @@ message DebugOptions {
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
       158, 160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180,
       183, 184, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 204,
-      206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 249,
-      263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299, 302,
-      303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358, 361,
-      367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446;
+      206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 243,
+      249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299,
+      302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358,
+      361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446;
 }
 
 // Contains flags which affects the GPU compilation result.
