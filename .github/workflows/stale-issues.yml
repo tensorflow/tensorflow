@@ -40,7 +40,7 @@ jobs:
           #Limit the No. of API calls in one run default value is 30.
           operations-per-run: 1000
           days-before-issue-stale: 30
-          days-before-issue-close: 60
+          days-before-issue-close: 90 # Increased from 60 to 90
           stale-issue-label: "stale"
           # reason for closed the issue default value is not_planned
           close-issue-reason: completed
