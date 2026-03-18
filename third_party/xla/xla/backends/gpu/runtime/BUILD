@@ -850,7 +850,7 @@ cc_library(
         ":copy_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
-        "//xla/hlo/ir:hlo",
+        "//xla:util",
         "//xla/service:buffer_assignment",
         "//xla/service:shaped_slice",
         "//xla/stream_executor:device_address",
@@ -858,8 +858,6 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
@@ -875,7 +873,7 @@ cc_library(
         ":copy_thunk_proto_cc",
         ":thunk",
         ":thunk_proto_cc",
-        "//xla/hlo/ir:hlo",
+        "//xla:util",
         "//xla/service:buffer_assignment",
         "//xla/service:shaped_slice",
         "//xla/stream_executor:device_address",
@@ -883,45 +881,9 @@ cc_library(
         "//xla/stream_executor:stream_executor_h",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "copy_done_thunk",
-    srcs = ["copy_done_thunk.cc"],
-    hdrs = ["copy_done_thunk.h"],
-    deps = [
-        ":copy_thunk",
-        ":thunk",
-        ":thunk_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/stream_executor:event",
-        "//xla/stream_executor:stream",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-    ],
-)
-
-xla_cc_test(
-    name = "copy_done_thunk_test",
-    srcs = ["copy_done_thunk_test.cc"],
-    deps = [
-        ":copy_done_thunk",
-        ":copy_thunk",
-        ":thunk",
-        ":thunk_proto_cc",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/util/proto:parse_text_proto",
-        "@com_google_absl//absl/base",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -998,7 +960,6 @@ xla_cc_test(
     name = "device_to_host_copy_thunk_test",
     srcs = ["device_to_host_copy_thunk_test.cc"],
     deps = [
-        ":copy_thunk",
         ":device_to_host_copy_thunk",
         ":thunk",
         ":thunk_proto_cc",
@@ -1015,7 +976,6 @@ xla_cc_test(
     name = "host_to_device_copy_thunk_test",
     srcs = ["host_to_device_copy_thunk_test.cc"],
     deps = [
-        ":copy_thunk",
         ":host_to_device_copy_thunk",
         ":thunk",
         ":thunk_proto_cc",
@@ -3608,7 +3568,6 @@ cc_library(
         ":conditional_thunk",
         ":convolution_reorder_thunk",
         ":convolution_thunk",
-        ":copy_done_thunk",
         ":copy_thunk",
         ":cudnn_thunk",
         ":custom_call_thunk",
@@ -3643,6 +3602,7 @@ cc_library(
         ":triangular_solve_thunk",
         ":wait_for_streams_thunk",
         ":while_thunk",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_description",
@@ -3666,7 +3626,6 @@ xla_cc_test(
     deps = [
         ":async_thunk",
         ":conditional_thunk",
-        ":copy_done_thunk",
         ":copy_thunk",
         ":custom_kernel_thunk",
         ":device_to_device_copy_thunk",

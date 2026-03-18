@@ -29,14 +29,12 @@ message CopyThunkProto {
 
 message DeviceToHostCopyThunkProto {
   CopyThunkProto copy_thunk = 1;
-  optional uint64 async_events_unique_id = 2;
-  int64 instr_id = 3;
+  reserved 2, 3;
 }
 
 message HostToDeviceCopyThunkProto {
   CopyThunkProto copy_thunk = 1;
-  optional uint64 async_events_unique_id = 2;
-  int64 instr_id = 3;
+  reserved 2, 3;
 }
 
 message DeviceToDeviceCopyThunkProto {
