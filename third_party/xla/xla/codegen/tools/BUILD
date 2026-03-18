@@ -73,6 +73,7 @@ cc_library(
     visibility = [
         "//xla/backends/cpu/codegen/tools:__subpackages__",
         "//xla/backends/gpu/codegen/tools:__subpackages__",
+        "//xla/backends/gpu/codegen/triton/tests:__subpackages__",
     ],
     deps = [
         "//xla:status_macros",
