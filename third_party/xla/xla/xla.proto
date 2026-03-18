@@ -324,10 +324,13 @@ message DebugOptions {
 
   // Command buffer scheduling mode.
   // SERIALIZE: Serialize all commands in a command buffer.
-  // CONCURRENT: Identify concurrent across operator through data conflicts.
+  // CONCURRENT: Allow concurrent execution of ops without data dependencies.
+  //   This mode affects buffer assignment too. Independent ops will be assigned
+  //   distinct buffers to allow for concurrency. Caution: CONCURRENT mode may
+  //   lead to OOMs and less predictable performance.
   // LHS: Uses the same latency hidden scheduling results as adopted by
-  // LatencyHidingScheduler which hides latencies of operations that can run in
-  // parallel with other operations.
+  //   LatencyHidingScheduler which hides latencies of operations that can run
+  //   in parallel with other operations.
   enum CommandBufferSchedulingMode {
     SERIALIZE = 0;
     CONCURRENT = 1;
