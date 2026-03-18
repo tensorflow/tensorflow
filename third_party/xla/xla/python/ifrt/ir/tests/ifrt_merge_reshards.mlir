@@ -101,7 +101,40 @@ func.func @merge_reshards_interleaved_with_calls(
   func.return %3#1, %5#1, %7#1, %9#1 : !array0, !array1, !array2, !array3
 }
 
+// CHECK-LABEL: @merge_parallel_reshards
+func.func @merge_parallel_reshards(
+    %arg0: !array0, %arg1: !array0)
+  -> (!array3, !array3) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[R0:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %arg1)
+  // CHECK-NEXT: %[[R1:.*]]:2, %{{.*}} = ifrt.Reshard(%[[R0]]#0, %[[R0]]#1)
+  // CHECK-NEXT: %[[R2:.*]]:2, %{{.*}} = ifrt.Reshard(%[[R1]]#0, %[[R1]]#1)
+  // CHECK-NEXT: %[[CALL0:.*]]:2, %{{.*}} = ifrt.Call @identity(%[[R2]]#1, %[[R2]]#1)
+  // CHECK-NEXT: return %[[R2]]#0, %[[CALL0]]#0
+  %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.Reshard(%0) : (!array1) -> !array2
+  %2, %ctrl_2 = ifrt.Reshard(%1) : (!array2) -> !array3
+  %3, %ctrl_3 = ifrt.Reshard(%arg1) : (!array0) -> !array1
+  %4, %ctrl_4 = ifrt.Reshard(%3) : (!array1) -> !array2
+  %5, %ctrl_5 = ifrt.Reshard(%4) : (!array2) -> !array3
+  %6:2, %ctrl_6 = ifrt.Call @identity(%5, %5) on devices [6,7] : (!array3, !array3) -> (!array3, !array3)
+  func.return %2, %6#0 : !array3, !array3
+}
+
 func.func private @identity(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>)
   -> (tensor<2xi32>, tensor<2xi32>) {
   return %arg0, %arg1 : tensor<2xi32>, tensor<2xi32>
+}
+
+// CHECK-LABEL: @reshards_after_first_group_user_are_not_merged
+func.func @reshards_after_first_group_user_are_not_merged(
+    %arg0: !array0, %arg1: !array0, %arg2: !array0)
+  -> (!array1, !array1, !array1, !array1) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[R0:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %arg1)
+  // CHECK-NEXT: %[[C0:.*]], %{{.*}} = ifrt.CopyArrays(%[[R0]]#1)
+  // CHECK-NEXT: %[[R1:.*]], %{{.*}} = ifrt.Reshard(%arg2)
+  %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.Reshard(%arg1) : (!array0) -> !array1
+  %2, %ctrl_2 = ifrt.CopyArrays(%1) : (!array1) -> !array1
+  %3, %ctrl_3 = ifrt.Reshard(%arg2) : (!array0) -> !array1
+  return %0, %1, %2, %3 : !array1, !array1, !array1, !array1
 }
