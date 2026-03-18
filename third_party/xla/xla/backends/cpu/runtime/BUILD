@@ -1438,6 +1438,7 @@ xla_cc_test(
         ":thunk_proto_serdes_impl",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
