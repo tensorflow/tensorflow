@@ -42,11 +42,34 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
         HloInstruction::CreateBroadcast(gather->shape(), zero, {}));
   }
 
-  const auto& dims = gather->gather_dimension_numbers();
+  auto dims = gather->gather_dimension_numbers();
   int operand_rank =
       dims.collapsed_slice_dims().size() + dims.offset_dims().size();
   auto* operand = gather->operands()[0];
   auto* start_indices = gather->operands()[1];
+
+  std::vector<int64_t> slice_sizes;
+  absl::c_copy(gather->gather_slice_sizes(), std::back_inserter(slice_sizes));
+
+  // Pre-pack 2D gathers slicing across the minor dimension.
+  // We transpose the operand and rewrite the gather to slice along
+  // the major dimension, allowing the transpose to be folded or hoisted.
+  if (operand_rank == 2 && dims.start_index_map().size() == 1 &&
+      dims.start_index_map()[0] == 1 &&
+      dims.collapsed_slice_dims().size() == 1 &&
+      dims.collapsed_slice_dims()[0] == 1 && slice_sizes[1] == 1) {
+    auto* transpose = gather->AddInstruction(HloInstruction::CreateTranspose(
+        ShapeUtil::MakeShape(
+            operand->shape().element_type(),
+            {operand->shape().dimensions(1), operand->shape().dimensions(0)}),
+        operand, {1, 0}));
+    operand = transpose;
+    dims.set_start_index_map(0, 0);
+    dims.set_collapsed_slice_dims(0, 0);
+    int64_t tmp = slice_sizes[0];
+    slice_sizes[0] = slice_sizes[1];
+    slice_sizes[1] = tmp;
+  }
 
   // Make the start_indices a two-dimensional tensor.
   TF_ASSIGN_OR_RETURN(
@@ -55,7 +78,6 @@ absl::StatusOr<HloInstruction*> GatherSimplifier::ExpandInstruction(
 
   // Permute the slice sizes according to start_index_map and compute the new
   // output shape for the Gather op.
-  const auto slice_sizes = gather->gather_slice_sizes();
   std::vector<int64_t> output_dims = {start_indices->shape().dimensions(0)};
   absl::c_copy(slice_sizes, std::back_inserter(output_dims));
   Shape output_shape =
