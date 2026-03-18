@@ -647,6 +647,25 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
 
+    // Validate that all dimension values are non-negative. Malformed models
+    // may contain extreme values (e.g. INT_MAX) that cause integer overflow
+    // during tensor size computation, leading to undersized buffer allocation
+    // and SIGSEGV.
+    bool has_invalid_dims = false;
+    for (size_t d = 0; d < dims.size(); ++d) {
+      if (dims[d] < 0) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "Tensor %d has negative dimension %d (value: %d). "
+            "All tensor dimensions must be non-negative.\n",
+            i, static_cast<int>(d), dims[d]);
+        status = kTfLiteError;
+        has_invalid_dims = true;
+        break;
+      }
+    }
+    if (has_invalid_dims) continue;
+
     TfLiteType type;
     if (ConvertTensorType(tensor->type(), &type, error_reporter_) !=
         kTfLiteOk) {
