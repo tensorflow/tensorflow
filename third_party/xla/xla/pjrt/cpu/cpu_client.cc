@@ -281,11 +281,8 @@ PjRtCpuClient::PjRtCpuClient(
       eigen_intraop_device_(
           new Eigen::ThreadPoolDevice(eigen_intraop_pool_->AsEigenThreadPool(),
                                       eigen_intraop_pool_->NumThreads())),
-      pjrt_client_thread_pool_(
-          new tsl::thread::ThreadPool(tsl::Env::Default(), GetThreadOptions(),
-                                      "XLAPjRtCpuClient", num_threads)),
-      async_work_runner_(
-          MakeThreadPoolAsyncWorkRunner(pjrt_client_thread_pool_.get())),
+      async_work_runner_(std::make_unique<ThreadPoolAsyncWorkRunner>(
+          tsl::Env::Default(), "XLAPjRtCpuClient", num_threads)),
       max_transpose_threads_(max_transpose_threads) {
   for (const std::unique_ptr<PjRtCpuDevice>& device : owned_devices_) {
     devices_.push_back(device.get());
@@ -884,9 +881,8 @@ PjRtCpuClient::CompileInternal(
         build_options.device_allocator(), build_options.compile_thread_pool(),
         build_options.layout_canonicalization_callback()};
     if (!compile_options.thread_pool) {
-      compile_options.thread_pool = pjrt_client_thread_pool();
+      compile_options.thread_pool = async_work_runner_->thread_pool();
     }
-
     const cpu::TargetMachineOptions& target_machine_options =
         topology_->cpu_topology().target_machine_options();
 
