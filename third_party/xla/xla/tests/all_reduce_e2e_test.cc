@@ -206,12 +206,25 @@ struct AllReduceTestParams {
   }
 };
 
+/// Constexpr backport of absl::c_linear_search so that it works with array
+/// types.
+template <typename ContainerT>
+constexpr bool LinearSearch(const ContainerT& supported_types,
+                            PrimitiveType element_type) {
+  for (const PrimitiveType supported_type : supported_types) {
+    if (element_type == supported_type) {
+      return true;
+    }
+  }
+  return false;
+}
+
 constexpr bool IsFloatingPoint(PrimitiveType element_type) {
-  return absl::c_linear_search(gpu::kSupportedFloatingPointTypes, element_type);
+  return LinearSearch(gpu::kSupportedFloatingPointTypes, element_type);
 }
 
 constexpr bool IsIntegral(PrimitiveType element_type) {
-  return absl::c_linear_search(gpu::kSupportedIntegralTypes, element_type);
+  return LinearSearch(gpu::kSupportedIntegralTypes, element_type);
 }
 
 constexpr bool IsNumeric(PrimitiveType element_type) {
@@ -219,7 +232,7 @@ constexpr bool IsNumeric(PrimitiveType element_type) {
 }
 
 constexpr bool IsPredicate(PrimitiveType element_type) {
-  return absl::c_linear_search(gpu::kSupportedPredicateTypes, element_type);
+  return LinearSearch(gpu::kSupportedPredicateTypes, element_type);
 }
 
 struct AllReduceTypesTestParams : public AllReduceTestParams {
