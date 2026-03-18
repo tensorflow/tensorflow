@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <climits>
 #include <tuple>
 #include <utility>
 
@@ -41,16 +42,31 @@ struct OpData {
 };
 
 template <typename T>
-TfLiteIntArray* MultiplyShapeDims(const TfLiteIntArray& shape,
-                                  const TfLiteTensor* multipliers,
-                                  int num_dimensions) {
+TfLiteStatus MultiplyShapeDims(TfLiteContext* context,
+                               const TfLiteIntArray& shape,
+                               const TfLiteTensor* multipliers,
+                               int num_dimensions,
+                               TfLiteIntArray** output_shape) {
   const T* multipliers_v = GetTensorData<T>(multipliers);
 
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(num_dimensions);
+  *output_shape = TfLiteIntArrayCreate(num_dimensions);
   for (int i = 0; i < num_dimensions; ++i) {
-    output_shape->data[i] = shape.data[i] * multipliers_v[i];
+    // Use int64_t to detect overflow before storing into int32.
+    int64_t result = static_cast<int64_t>(shape.data[i]) *
+                     static_cast<int64_t>(multipliers_v[i]);
+    if (result < 0 || result > INT32_MAX) {
+      TfLiteIntArrayFree(*output_shape);
+      *output_shape = nullptr;
+      TF_LITE_KERNEL_LOG(context,
+                         "Tile operation would produce output dimension that "
+                         "overflows int32: shape[%d]=%d * multiplier[%d]=%lld",
+                         i, shape.data[i], i,
+                         static_cast<long long>(multipliers_v[i]));
+      return kTfLiteError;
+    }
+    (*output_shape)->data[i] = static_cast<int>(result);
   }
-  return output_shape;
+  return kTfLiteOk;
 }
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
@@ -66,17 +82,20 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   const int num_dimensions = NumDimensions(input);
   const int num_multipliers = NumElements(multipliers);
   TF_LITE_ENSURE_EQ(context, num_dimensions, num_multipliers);
+  TfLiteIntArray* output_shape = nullptr;
   switch (multipliers->type) {
     case kTfLiteInt32:
-      return context->ResizeTensor(
-          context, output,
-          MultiplyShapeDims<int32_t>(*input->dims, multipliers,
-                                     num_dimensions));
+      TF_LITE_ENSURE_OK(
+          context, MultiplyShapeDims<int32_t>(context, *input->dims,
+                                              multipliers, num_dimensions,
+                                              &output_shape));
+      return context->ResizeTensor(context, output, output_shape);
     case kTfLiteInt64:
-      return context->ResizeTensor(
-          context, output,
-          MultiplyShapeDims<int64_t>(*input->dims, multipliers,
-                                     num_dimensions));
+      TF_LITE_ENSURE_OK(
+          context, MultiplyShapeDims<int64_t>(context, *input->dims,
+                                              multipliers, num_dimensions,
+                                              &output_shape));
+      return context->ResizeTensor(context, output, output_shape);
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Multipliers of type '%s' are not supported by tile.",
