@@ -54,7 +54,6 @@ cc_library(
         "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//xla/python/ifrt/ir/transforms:debug",
         "//xla/python/ifrt/ir/transforms:passes",
-        "//xla/service:compilation_environments",
         "//xla/service:computation_placer_hdr",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",

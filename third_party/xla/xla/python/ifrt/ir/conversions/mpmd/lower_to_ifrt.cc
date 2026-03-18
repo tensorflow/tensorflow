@@ -66,7 +66,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
@@ -494,8 +493,6 @@ class BuildCompileOptionsPass
     SymbolTableCollection symbol_table;
     FuncOp func_op = GetMainFunction(module);
     int threshold_for_argument_tupling = threshold_for_argument_tupling_;
-    bool is_sdy_partitioned =
-        module->hasAttr(xla::ifrt::kIfrtSdyMeshesRoundTripAttr);
     auto walk_result = func_op.walk([&](xla::ifrt::CallOp call_op) {
       xla::CompileOptions compile_options;
       xla::ExecutableBuildOptions& exec_build_options =
@@ -510,9 +507,7 @@ class BuildCompileOptionsPass
       }
       exec_build_options.set_device_assignment(device_assignment);
       exec_build_options.set_use_spmd_partitioning(true);
-      if (is_sdy_partitioned) {
-        exec_build_options.set_use_shardy_partitioner(true);
-      }
+      exec_build_options.set_use_shardy_partitioner(true);
       FuncOp callee = call_op.getCalleeOp(symbol_table);
       if (auto reserved_hbm_bytes =
               callee->getAttrOfType<IntegerAttr>(kReservedHbmBytes)) {
@@ -584,6 +579,12 @@ std::unique_ptr<Pass> CreateBuildCompileOptionsPass(
 
 void AddLowerToIfrtPasses(mlir::OpPassManager& pm,
                           bool add_control_dependencies) {
+  // TODO(icgog): We do not enable hlo sharding v3 yet because it does not
+  // interplay well with the per-mesh compile options. These passes run at
+  // lowering time/export time, but a compile time a different value might be
+  // given to 'xla_enable_hlo_sharding_v3' is needed.
+  xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
+                                          /*enableHloShardingV3=*/false);
   pm.addPass(CreateLowerToIfrtPass());
   // IfrtMergeReshardsPass doesn't handle control dependencies, so we need to
   // run it before adding the control dependencies.
@@ -617,13 +618,7 @@ absl::Status LowerToIfrt(mlir::ModuleOp module, bool add_control_dependencies) {
   InitPassManager(pm, "mpmd-lower-to-ifrt");
   pm.enableVerifier();
 
-  // If we are lowered with SDY, we need to run the SDY round trip pipeline.
-  if (mlir::mpmd::IsLoweredWithSdy(module)) {
-    bool enable_hlo_sharding_v3 =
-        GetDebugOptionsFromFlags().xla_enable_hlo_sharding_v3();
-    xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
-                                            enable_hlo_sharding_v3);
-  }
+  CHECK(mlir::mpmd::IsLoweredWithSdy(module));
   AddLowerToIfrtPasses(pm, add_control_dependencies);
   StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
   if (mlir::failed(pm.run(module))) {
