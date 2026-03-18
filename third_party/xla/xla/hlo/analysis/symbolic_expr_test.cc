@@ -292,6 +292,9 @@ TEST_F(SymbolicExprTest, Canonicalization_Basic) {
   SymbolicExpr constants = (c2 * 3) + 5;
   EXPECT_EQ(constants.Canonicalize().ToString(), "11");
 
+  SymbolicExpr constants_div_mod = (c5 / c2) % -3;
+  EXPECT_EQ(constants_div_mod.Canonicalize().ToString(), "2");
+
   SymbolicExpr add_commutativity = c2 + v0;
   EXPECT_EQ(add_commutativity.Canonicalize().ToString(), "(v0 + 2)");
 
@@ -365,6 +368,11 @@ TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
 
   EXPECT_EQ(((v0 * 8) % 4).Canonicalize().ToString(), "0");
   EXPECT_EQ(((v0 * 8 + 3) % 4).Canonicalize().ToString(), "3");
+  EXPECT_EQ(((v0 * 2 + v1) % 2).Canonicalize().ToString(), "(v1 mod 2)");
+
+  // Pattern: (X floordiv C) * C + X mod C -> X
+  EXPECT_EQ(((v0.floorDiv(16) * 16) + (v0 % 16)).Canonicalize().ToString(),
+            "v0");
 
   // Test ceilDiv with negative divisor.
   EXPECT_EQ((v0.ceilDiv(-1)).Canonicalize().ToString(), "(v0 * -1)");
