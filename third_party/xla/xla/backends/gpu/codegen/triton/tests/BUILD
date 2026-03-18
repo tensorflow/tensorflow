@@ -67,6 +67,7 @@ lit_test_suite(
     hermetic_cuda_data_dir = "%S/../../../../../../cuda_nvcc",
     tools = [
         ":triton_test_correctness",
+        "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
         "@llvm-project//llvm:FileCheck",
     ],
 )

@@ -1,9 +1,11 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
-
 HloModule m
 
 fused_not {
   param_0 = s32[100] parameter(0)
+// CHECK: arith.constant dense<-1>
+// CHECK: arith.xori
   ROOT not = s32[100] not(param_0)
 }
 
