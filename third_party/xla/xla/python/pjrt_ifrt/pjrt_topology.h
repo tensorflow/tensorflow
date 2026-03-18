@@ -56,6 +56,7 @@ class PjRtTopology final : public llvm::RTTIExtends<PjRtTopology, Topology> {
       absl::Span<const int64_t> dims) const override;
 
   absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   const AttributeMap& Attributes() const override;
 

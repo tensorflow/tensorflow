@@ -66,6 +66,10 @@ absl::StatusOr<std::string> PjRtTopology::Serialize() const {
   return description_->Serialize();
 }
 
+absl::StatusOr<uint64_t> PjRtTopology::Fingerprint() const {
+  return description_->Fingerprint();
+}
+
 const AttributeMap& PjRtTopology::Attributes() const { return attributes_; }
 
 }  // namespace xla::ifrt

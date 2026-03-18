@@ -87,8 +87,7 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
 absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   uint64_t fingerprint = tsl::Fingerprint64(platform_name);
   if (topology) {
-    TF_ASSIGN_OR_RETURN(std::string serialized_topology, topology->Serialize());
-    fingerprint = tsl::Fingerprint64(serialized_topology);
+    TF_ASSIGN_OR_RETURN(fingerprint, topology->Fingerprint());
   }
   if (platform_name != xla::CudaName() && !topology) {
     return absl::FailedPreconditionError(
