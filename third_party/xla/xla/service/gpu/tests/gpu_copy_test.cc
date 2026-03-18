@@ -360,13 +360,13 @@ TEST_F(GpuCopyTest, UseMemcpyForDynamicUpdateSliceWithBitcasts) {
       ParseAndReturnVerifiedModule(kDynamicUpdateSliceWithBitcastModule));
 
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
-    CHECK-NOT: void @
-    CHECK: void @input
-    CHECK-NOT: void @
-    CHECK: void @cmp
-    CHECK-NOT: void @
-    CHECK: void @next_ivar
-    CHECK-NOT: void @
+    CHECK-NOT: define {{.*}}@
+    CHECK: define {{.*}}@input
+    CHECK-NOT: define {{.*}}@
+    CHECK: define {{.*}}@cmp
+    CHECK-NOT: define {{.*}}@
+    CHECK: define {{.*}}@next_ivar
+    CHECK-NOT: define {{.*}}@
   )",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/false));
@@ -432,10 +432,10 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
   // If the dynamic memcpy optimization does not trigger, there will be a third
   // fusion for the dynamic-slice.
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
-                       CHECK-NOT: void @
+                       CHECK-NOT: define {{.*}}@
 
-                       CHECK: void @
-                       CHECK-NEXT: getelementptr
+                       CHECK: define {{.*}}@
+                       CHECK: getelementptr
                        CHECK-NEXT: load
                        CHECK-NEXT: icmp
                        CHECK-NEXT: zext
@@ -443,15 +443,15 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTest) {
                        CHECK-NEXT: store
                        CHECK-NEXT: ret
 
-                       CHECK-NOT: void @
-                       CHECK: void @
-                       CHECK-NEXT: getelementptr
+                       CHECK-NOT: define {{.*}}@
+                       CHECK: define {{.*}}@
+                       CHECK: getelementptr
                        CHECK-NEXT: load
                        CHECK-NEXT: add
                        CHECK-NEXT: store
                        CHECK-NEXT: ret
 
-                       CHECK-NOT: void @)",
+                       CHECK-NOT: define {{.*}}@)",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/true));
 }
@@ -468,8 +468,8 @@ TEST_F(GpuCopyTest, UseDynamicMemcpyIntegrationTestControl) {
       std::unique_ptr<VerifiedHloModule> hlo_module,
       ParseAndReturnVerifiedModule(kSliceMemcpyModuleUnfused, config));
   ASSERT_OK(CompileAndVerifyIr(std::move(hlo_module), R"(
-                       CHECK-COUNT-3: void @
-                       CHECK-NOT: void @)",
+                       CHECK-COUNT-3: define {{.*}}@
+                       CHECK-NOT: define {{.*}}@)",
                                /*match_optimized_ir=*/false,
                                /*run_optimization_passes=*/true));
 }
