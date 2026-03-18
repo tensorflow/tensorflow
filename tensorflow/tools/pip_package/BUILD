@@ -365,6 +365,7 @@ tf_wheel(
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
         ":xla_cmake",
     ],
+    # Explicitly list all external repositories that are needed in build_pip_package.py
     external_repos = [
         "com_google_absl",
         "eigen_archive",
@@ -470,6 +471,7 @@ py_test(
     ],
     deps = [
         ":tf_py_import",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
 
