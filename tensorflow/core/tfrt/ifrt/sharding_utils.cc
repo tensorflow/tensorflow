@@ -508,9 +508,8 @@ absl::StatusOr<tsl::Future<tensorflow::Tensor>> MakeTensorFromArrayHelper(
           std::move(promise).Set(std::move(output_tensor));
         });
     return output_tensor_future;
-  } else if (hlo_sharding.IsTileMaximal()) {
-    // Maximal implies single device
-    VLOG(1) << "Fast path for maximal";
+  } else if (hlo_sharding.IsSingleDevice()) {
+    VLOG(1) << "Fast path for single device";
     TF_ASSIGN_OR_RETURN(
         std::vector<xla::ifrt::ArrayRef> disassembled_array,
         input_array.DisassembleIntoSingleDeviceArrays(
@@ -710,16 +709,14 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
   }
   const xla::HloSharding& xla_hlo_sharding =
       ifrt_hlo_sharding->xla_hlo_sharding();
-  if (!xla_hlo_sharding.IsTiled() && !xla_hlo_sharding.IsReplicated() &&
-      !xla_hlo_sharding.IsTileMaximal()) {
+  if (!xla_hlo_sharding.IsTiled() &&
+      !xla_hlo_sharding.IsReplicatedOrSingleDevice()) {
     return absl::UnimplementedError(absl::StrCat(
         "Only support MAXIMAL, OTHER or REPLICATED, but got sharding : ",
         xla_hlo_sharding.ToString()));
   }
 
-  // IsTileMaximal() also returns true for a replicate sharding created by
-  // xla::HloSharding::Replicate().
-  if (!xla_hlo_sharding.IsReplicated() && xla_hlo_sharding.IsTileMaximal()) {
+  if (xla_hlo_sharding.IsSingleDevice()) {
     return CreateArrayFromHostTensorForSingleDevice(
         ifrt_client, input_tensor, xla_input_layout, std::move(sharding));
   }
@@ -782,8 +779,7 @@ std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(
 absl::StatusOr<xla::ifrt::ShardingRef> ToIfrtSharding(
     xla::ifrt::Client& ifrt_client, const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list) {
-  if (!hlo_sharding.IsTiled() && !hlo_sharding.IsReplicated() &&
-      !hlo_sharding.IsTileMaximal()) {
+  if (!hlo_sharding.IsTiled() && !hlo_sharding.IsReplicatedOrSingleDevice()) {
     return absl::UnimplementedError(absl::StrCat(
         "Only support MAXIMAL, OTHER or REPLICATED, but got sharding : ",
         hlo_sharding.ToString()));
@@ -794,7 +790,7 @@ absl::StatusOr<xla::ifrt::ShardingRef> ToIfrtSharding(
         device_list->devices().front(), xla::ifrt::MemoryKind());
   }
 
-  if (!hlo_sharding.IsReplicated() && hlo_sharding.IsTileMaximal()) {
+  if (hlo_sharding.IsSingleDevice()) {
     VLOG(1) << "Single device fast path for Maximal tiled tensor";
     xla::ifrt::Device* device;
     int unique_device_id = hlo_sharding.GetUniqueDevice();

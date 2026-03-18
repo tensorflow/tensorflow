@@ -410,11 +410,9 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
       auto device_list,
       xla::ifrt::test_util::GetDevices(client.get(), GetParam().device_ids));
   xla::ifrt::ShardingRef sharding;
-  if (device_list->size() == 1 || (GetParam().sharding.IsTileMaximal() &&
-                                   !GetParam().sharding.IsReplicated())) {
+  if (device_list->size() == 1 || GetParam().sharding.IsSingleDevice()) {
     int unique_device_id = 0;
-    if (GetParam().sharding.IsTileMaximal() &&
-        !GetParam().sharding.IsReplicated()) {
+    if (GetParam().sharding.IsSingleDevice()) {
       unique_device_id = GetParam().sharding.GetUniqueDevice();
     }
     TF_ASSERT_OK_AND_ASSIGN(
