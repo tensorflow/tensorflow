@@ -346,33 +346,6 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
   return buffer;
 }
 
-// TODO (b/344930098): Delete this method when mixed serialization is supported
-// by all plugins in the 12w compat window (Sep 2025, StableHLO v1.11.0).
-absl::StatusOr<std::string> LegacySerialize(mlir::ModuleOp module,
-                                            mlir::vhlo::Version target,
-                                            bool inplace) {
-  if (!FindPotentiallyUnstableDialects(module).has_value()) {
-    // No unstable dialects, still need to convert SDY to custom calls.
-    return SerializeUsingVersionedStablehlo(
-        module, target.toString(), inplace,
-        /*allow_mixed_serialization=*/false);
-  }
-
-  // Use native bytecode, no stability.
-  std::string bytecode;
-  llvm::raw_string_ostream os(bytecode);
-  mlir::BytecodeWriterConfig config;
-  auto version = target.getBytecodeVersion();
-  if (mlir::failed(version)) {
-    return absl::InvalidArgumentError("Failed to get bytecode version");
-  }
-  config.setDesiredBytecodeVersion(version.value());
-  if (mlir::failed(mlir::writeBytecodeToFile(module, os, config))) {
-    return absl::InvalidArgumentError("mlir::writeBytecodeToFile failed");
-  }
-  return bytecode;
-}
-
 absl::Status UpgradeVersionedStablehlo(mlir::ModuleOp mlir_module) {
   // Upgrade if VHLO
   mlir::PassManager pm(mlir_module->getContext());
@@ -390,22 +363,7 @@ std::string GetDefaultStablehloVersion() {
 }
 
 absl::StatusOr<std::string> Serialize(mlir::ModuleOp module,
-                                      absl::string_view target,
-                                      bool inplace) {
-  // Current PJRT users expect 12 weeks forward compat, VHLO provides this
-  // compat.
-  TF_ASSIGN_OR_RETURN(
-      auto version,
-      ExpectSuccess(mlir::vhlo::Version::fromString(target),
-                    "Invalid StableHLO target version requested."));
-
-  // TODO (b/344930098): Once v1.11.0 is >=12w old, only use mixed serialization
-  // ~Sep 2025, can delete legacy path.
-  bool supports_mixed_serialization = mlir::vhlo::Version(1, 11, 0) <= version;
-  if (!supports_mixed_serialization) {
-    return LegacySerialize(module, version, inplace);
-  }
-
+                                      absl::string_view target, bool inplace) {
   return SerializeUsingVersionedStablehlo(module, target, inplace,
                                           /*allow_mixed_serialization=*/true);
 }

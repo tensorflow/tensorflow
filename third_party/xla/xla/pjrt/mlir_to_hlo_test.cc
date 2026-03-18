@@ -114,24 +114,6 @@ TEST(MlirToHloTest, ChloTanOpTest) {
   EXPECT_THAT(blob, IsVhloArtifact("1.0.0"));
 }
 
-TEST(MlirToHloTest, MhloTest) {
-  constexpr char kProgram[] =
-      R"(
-    func.func @add(%arg0: tensor<1x2xf32>) -> tensor<1x2xf32> {
-      %cst = mhlo.constant dense<1.0> : tensor<1x2xf32>
-      %0 = stablehlo.add %arg0, %cst : tensor<1x2xf32>
-      return %0 : tensor<1x2xf32>
-    }
-  )";
-  mlir::MLIRContext context;
-  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(kProgram, context));
-  TF_ASSERT_OK_AND_ASSIGN(std::string blob, Serialize(*module, "1.0.0"));
-
-  // MHLO and other dialects use native MLIR bytecode, not VHLO.
-  EXPECT_THAT(blob, Not(IsVhloArtifact("1.0.0")));
-}
-
 TEST(MlirToHloTest, MhloMixedSerializationTest) {
   constexpr char kProgram[] =
       R"(
