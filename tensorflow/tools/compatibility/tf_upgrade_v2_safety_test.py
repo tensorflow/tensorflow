@@ -15,12 +15,15 @@
 """Tests for tf 2.0 upgrader in safety mode."""
 import io
 
+import sys
+import unittest
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2_safety
 
 
+@unittest.skipIf(sys.version_info >= (3, 14), "pasta is broken on Python 3.14+")
 class TfUpgradeV2SafetyTest(test_util.TensorFlowTestCase):
 
   def _upgrade(self, old_file_text):
@@ -142,33 +145,6 @@ except AttributeError:
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(text, new_text)
 
-  def testTensorFlowDontChangeContrib(self):
-    text = "import tensorflow.contrib as foo"
-    _, _, _, new_text = self._upgrade(text)
-    self.assertEqual(text, new_text)
-
-    text = "from tensorflow import contrib"
-    _, _, _, new_text = self._upgrade(text)
-    self.assertEqual(text, new_text)
-
-  def test_contrib_to_addons_move(self):
-    small_mapping = {
-        "tf.contrib.layers.poincare_normalize":
-            "tfa.layers.PoincareNormalize",
-        "tf.contrib.layers.maxout":
-            "tfa.layers.Maxout",
-        "tf.contrib.layers.group_norm":
-            "tfa.layers.GroupNormalization",
-        "tf.contrib.layers.instance_norm":
-            "tfa.layers.InstanceNormalization",
-    }
-    for symbol, replacement in small_mapping.items():
-      text = "{}('stuff', *args, **kwargs)".format(symbol)
-      _, report, _, _ = self._upgrade(text)
-      self.assertIn(replacement, report)
-
-if __name__ == "__main__":
-  test_lib.main()
   def testTensorFlowDontChangeContrib(self):
     text = "import tensorflow.contrib as foo"
     _, _, _, new_text = self._upgrade(text)

@@ -32,6 +32,10 @@ py_test(
     name = "ast_edits_test",
     srcs = ["ast_edits_test.py"],
     strict_deps = True,
+    tags = [
+        "no_oss_py314",
+        "no_python_3_14",
+    ],
     deps = [
         ":ast_edits",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -62,7 +66,9 @@ py_test(
     srcs = ["tf_upgrade_test.py"],
     strict_deps = True,
     tags = [
+        "no_oss_py314",
         "no_pip",
+        "no_python_3_14",
     ],
     deps = [
         ":ast_edits",
@@ -100,6 +106,10 @@ py_test(
     name = "all_renames_v2_test",
     srcs = ["all_renames_v2_test.py"],
     strict_deps = True,
+    tags = [
+        "no_oss_py314",
+        "no_python_3_14",
+    ],
     deps = [
         ":all_renames_v2",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -158,6 +168,8 @@ py_test(
     shard_count = 5,
     strict_deps = True,
     tags = [
+        "no_oss_py314",
+        "no_python_3_14",
         "no_windows",
         "v1only",
     ],
@@ -184,6 +196,10 @@ py_test(
     name = "tf_upgrade_v2_safety_test",
     srcs = ["tf_upgrade_v2_safety_test.py"],
     strict_deps = True,
+    tags = [
+        "no_oss_py314",
+        "no_python_3_14",
+    ],
     deps = [
         ":ast_edits",
         ":tf_upgrade_v2_safety_lib",
@@ -216,6 +232,10 @@ genrule(
            " --infile $(location testdata/test_file_v0_11.py)" +
            " --outfile $(location test_file_v1_0.py)" +
            " --reportfile $(location report.txt)"),
+    tags = [
+        "no_oss_py314",
+        "no_python_3_14",
+    ],
     tools = [":tf_upgrade"],
 )
 
@@ -224,6 +244,10 @@ py_test(
     size = "medium",
     srcs = ["test_file_v1_0.py"],
     strict_deps = True,
+    tags = [
+        "no_oss_py314",
+        "no_python_3_14",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",
@@ -245,6 +269,10 @@ genrule(
            " --outfile $(location test_file_v2_0.py)" +
            " --reportfile $(location report_v2.txt) && " +
            "sed -i'.original' 's/_TEST_VERSION = 1/_TEST_VERSION = 2/g' $(location test_file_v2_0.py)"),
+    tags = [
+        "no_oss_py314",
+        "no_python_3_14",
+    ],
     tools = [":tf_upgrade_v2"],
 )
 
@@ -254,6 +282,8 @@ py_test(
     srcs = ["testdata/test_file_v1_12.py"],
     strict_deps = True,
     tags = [
+        "no_oss_py314",
+        "no_python_3_14",
         "no_windows",
         "v1only",
     ],
@@ -269,6 +299,10 @@ py_test(
     size = "medium",
     srcs = ["test_file_v2_0.py"],
     strict_deps = True,
+    tags = [
+        "no_oss_py314",
+        "no_python_3_14",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:test_lib",
