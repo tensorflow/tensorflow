@@ -25,6 +25,7 @@ namespace xla::gpu {
 enum class TritonConfigsPlatform {
   kAmpere,
   kBlackwell,
+  kBlackwellConsumer,  // SM 12.0 (RTX 5090, etc.)
   kDefaultCuda,
   kDefaultRocm,
   kHopper,

@@ -72,8 +72,13 @@ std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
   auto* cuda_compute_capability = compute_capability.cuda_compute_capability();
   std::vector<TritonGemmConfig> configs;
 
-  if (cuda_compute_capability->IsAtLeastBlackwell()) {
+  if (cuda_compute_capability->IsBlackwell()) {
+    // SM 10.0 (datacenter: B200, B100)
     configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);
+  } else if (cuda_compute_capability->IsAtLeastBlackwell()) {
+    // SM 11.0+ / 12.0+ (consumer: RTX 5090, etc.)
+    configs =
+        GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwellConsumer);
   } else if (cuda_compute_capability->IsHopper()) {
     configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper);
   } else if (cuda_compute_capability->IsAmpere()) {

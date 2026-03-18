@@ -54,6 +54,8 @@ const std::vector<TritonGemmConfig>& GetTritonConfigsForPlatform(
           {{TritonConfigsPlatform::kAmpere, ParseConfig(configs::get_a100())},
            {TritonConfigsPlatform::kBlackwell,
             ParseConfig(configs::get_b200())},
+           {TritonConfigsPlatform::kBlackwellConsumer,
+            ParseConfig(configs::get_sm120())},
            {TritonConfigsPlatform::kDefaultCuda,
             ParseConfig(configs::get_cuda())},
            {TritonConfigsPlatform::kDefaultRocm,
