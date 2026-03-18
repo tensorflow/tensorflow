@@ -285,6 +285,7 @@ use_repo(
     "cuda_cusparse",
     "cuda_driver",
     "cuda_nvcc",
+    "cuda_nvjitlink",
     "cuda_nvml",
     "cuda_nvrtc",
     "cuda_nvtx",

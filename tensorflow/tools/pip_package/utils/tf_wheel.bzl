@@ -23,7 +23,7 @@ Should be set via --repo_env=WHEEL_NAME=tensorflow_cpu.
 6) `--dests` - json file with source to destination mappings for files whose original
 location does not match its destination in packaged wheel; if the destination is an
 empty string the source file will be ignored.
-7) `--xla_aot` - paths to files that should be in xla_aot directory. 
+7) `--xla_aot` - paths to files that should be in xla_aot directory.
 """
 
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
@@ -39,6 +39,13 @@ load(
     "TF_VERSION",
     "TF_WHEEL_VERSION_SUFFIX",
 )
+
+def get_canonical_repo_name(apparent_repo_name):
+    """Returns the canonical repo name for the given apparent repo name seen by the module this bzl file belongs to."""
+    if not apparent_repo_name.startswith("@"):
+        apparent_repo_name = "@" + apparent_repo_name
+
+    return Label(apparent_repo_name).workspace_name
 
 def _get_wheel_platform_name(platform_name, platform_tag):
     macos_platform_version = "{}_".format(MACOSX_DEPLOYMENT_TARGET.replace(".", "_")) if MACOSX_DEPLOYMENT_TARGET else ""
@@ -125,12 +132,19 @@ def _tf_wheel_impl(ctx):
 
     args.set_param_file_format("flag_per_line")
     args.use_param_file("@%s", use_always = False)
+
+    env = {}
+    for repo in ctx.attr.external_repos:
+        env[repo.upper().replace("-", "_").replace("/", "_") + "_CANONICAL_REPO_NAME"] = get_canonical_repo_name(repo)
+
     ctx.actions.run(
+        mnemonic = "TFWheel",
         arguments = [args],
         inputs = srcs + headers + xla_aot,
         outputs = [output_file],
         executable = executable,
         use_default_shell_env = True,
+        env = env,
     )
     return [DefaultInfo(files = depset(direct = [output_file]))]
 
@@ -149,6 +163,7 @@ tf_wheel = rule(
         "override_include_cuda_libs": attr.label(default = Label("@local_config_cuda//cuda:override_include_cuda_libs")),
         "platform_tag": attr.string(mandatory = True),
         "platform_name": attr.string(mandatory = True),
+        "external_repos": attr.string_list(),
     },
     implementation = _tf_wheel_impl,
 )
