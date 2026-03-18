@@ -527,7 +527,7 @@ def dilation2d_v2(
       tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
@@ -1113,7 +1113,7 @@ def convolution(
       `"valid"` means no padding. `"same"` results in padding evenly to
       the left/right or up/down of the input such that output has the same
       height/width dimension as the input when the strides are 1. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
       Defaults to `[1]*N`.  If any value of strides is > 1, then all values of
@@ -1741,7 +1741,7 @@ def pool_v2(
       value of strides is > 1, then all values of dilation_rate must be 1.
     padding: The padding algorithm, must be "SAME" or "VALID". Defaults to
       "SAME". See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
@@ -1894,7 +1894,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       `width` dimensions. In the literature, the same parameter is sometimes
       called `input stride` or `dilation`.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     name: Optional name for the returned tensor.
 
@@ -2137,7 +2137,7 @@ def conv1d_v2(
     stride: An int or list of `ints` that has length `1` or `3`.  The number of
       entries by which the filter is moved right at each step.
     padding: 'SAME' or 'VALID'. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: An optional `string` from `"NWC", "NCW"`.  Defaults to `"NWC"`,
       the data is stored in the order of
@@ -2195,7 +2195,7 @@ def conv1d_transpose(
     strides: An int or list of `ints` that has length `1` or `3`.  The number of
       entries by which the filter is moved right at each step.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A string. `'NWC'` and `'NCW'` are supported.
     dilations: An int or list of `ints` that has length `1` or `3` which
@@ -2327,7 +2327,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information. When explicit padding is used and data_format is
       `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
@@ -2723,7 +2723,7 @@ def conv2d_transpose_v2(
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.  When explicit padding is used and data_format is
       `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
@@ -2844,7 +2844,7 @@ def atrous_conv2d_transpose(value,
       `width` dimensions. In the literature, the same parameter is sometimes
       called `input stride` or `dilation`.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     name: Optional name for the returned tensor.
 
@@ -3087,7 +3087,7 @@ def depthwise_conv2d_native_backprop_input(  # pylint: disable=redefined-builtin
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
       and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information. When explicit padding is used and data_format is
       `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
@@ -3160,7 +3160,7 @@ def depthwise_conv2d_native_backprop_filter(  # pylint: disable=redefined-builti
       be the string `"SAME"` or `"VALID"` indicating the type of padding
       algorithm to use, or a list indicating the explicit paddings at the start
       and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information. When explicit padding is used and data_format is
       `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
@@ -3375,7 +3375,7 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
       default the `N` and `C` dimensions are set to 0. The dimension order is
       determined by the value of `data_format`, see below for details.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A string. 'NDHWC' and 'NCDHW' are supported.
     dilations: An int or list of `ints` that has length `1`, `3` or `5`,
@@ -3458,7 +3458,7 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
       the `N` and `C` dimensions are set to 0. The dimension order is determined
       by the value of `data_format`, see below for details.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A string or None.  Specifies whether the channel dimension of
       the `input` and output is the last dimension (default, or if `data_format`
@@ -4483,7 +4483,7 @@ def avg_pool_v2(input, ksize, strides, padding, data_format=None, name=None):  #
     strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
       stride of the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A string. Specifies the channel dimension. For N=1 it can be
       either "NWC" (default) or "NCW", for N=2 it can be either "NHWC" (default)
@@ -4593,7 +4593,7 @@ def avg_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):  
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
       stride of the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A string. 'NHWC' and 'NCHW' are supported.
     name: Optional name for the operation.
@@ -4635,7 +4635,7 @@ def avg_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):  #
     strides: An int or list of `ints` that has length `1` or `3`. The stride of
       the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: An optional string from: "NWC", "NCW". Defaults to "NWC".
     name: A name for the operation (optional).
@@ -4681,7 +4681,7 @@ def avg_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None): 
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The
       stride of the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A string. 'NDHWC' and 'NCDHW' are supported.
     name: Optional name for the operation.
@@ -4783,7 +4783,7 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information. When explicit padding is used and data_format is
       `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
       [pad_left, pad_right], [0, 0]]`. When explicit padding used and
@@ -4929,7 +4929,7 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information. When explicit padding is used and data_format is
       `"NWC"`, this should be in the form `[[0, 0], [pad_left, pad_right], [0,
       0]]`. When explicit padding used and data_format is `"NCW"`, this should
@@ -5044,7 +5044,7 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
     padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
         for more information. When explicit padding is used and data_format is
         `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
         [pad_left, pad_right], [0, 0]]`. When explicit padding used and
@@ -5098,7 +5098,7 @@ def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
     strides: An int or list of `ints` that has length `1`, `3` or `5`. The
       stride of the sliding window for each dimension of the input tensor.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: An optional string from: "NDHWC", "NCDHW". Defaults to "NDHWC".
       The data format of the input and output data. With the default format
@@ -5167,7 +5167,7 @@ def max_pool_with_argmax_v2(
       input tensor.
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: An optional `string`, must be set to `"NHWC"`. Defaults to
       `"NHWC"`.
@@ -6501,7 +6501,7 @@ def erosion2d_v2(value,
       the input tensor. Must be: `[1, stride_height, stride_width, 1]`.
     padding: A `string` from: `"SAME", "VALID"`.
       The type of padding algorithm to use. See
-      [here](https://www.tensorflow.org/api_docs/python/tf/nn#notes_on_padding_2)
+      the `tf.nn` module documentation
       for more information.
     data_format: A `string`, only `"NHWC"` is currently supported.
     dilations: A list of `ints` that has length `>= 4`.
