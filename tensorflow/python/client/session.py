@@ -1085,6 +1085,9 @@ class BaseSession(SessionInterface):
     # Check session.
     if self._closed:
       raise RuntimeError('Attempted to use a closed Session.')
+    if self._session is None:
+      raise RuntimeError('Session is in an invalid state (underlying session '
+                         'has been closed or not yet created).')
     if self.graph.version == 0:
       raise RuntimeError('The Session graph is empty. Add operations to the '
                          'graph before calling run().')
@@ -1143,6 +1146,9 @@ class BaseSession(SessionInterface):
     # Check session.
     if self._closed:
       raise RuntimeError('Attempted to use a closed Session.')
+    if self._session is None:
+      raise RuntimeError('Session is in an invalid state (underlying session '
+                         'has been closed or not yet created).')
     if self.graph.version == 0:
       raise RuntimeError('The Session graph is empty. Add operations to the '
                          'graph before calling run().')
@@ -1480,11 +1486,17 @@ class BaseSession(SessionInterface):
 
   def _call_tf_sessionrun(self, options, feed_dict, fetch_list, target_list,
                           run_metadata):
+    if self._session is None:
+      raise RuntimeError('Session is in an invalid state (underlying session '
+                         'has been closed or not yet created).')
     return tf_session.TF_SessionRun_wrapper(self._session, options, feed_dict,
                                             fetch_list, target_list,
                                             run_metadata)
 
   def _call_tf_sessionprun(self, handle, feed_dict, fetch_list):
+    if self._session is None:
+      raise RuntimeError('Session is in an invalid state (underlying session '
+                         'has been closed or not yet created).')
     return tf_session.TF_SessionPRun_wrapper(self._session, handle, feed_dict,
                                              fetch_list)
 
