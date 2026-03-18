@@ -887,6 +887,7 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     std::unordered_map<size_t, size_t> tensor_buffer_identifiers;
     for (int i = 0; i < kBufferCount; ++i) {
       tensors[i].data.data = (void*)(fake_buffer_pointer + i);
+      tensors[i].bytes = 1;
       tensor_buffer_identifiers[i] = i;
     }
 
@@ -1091,6 +1092,7 @@ TEST_P(MMapWeightCacheProviderTest, CacheIsRebuiltOnFingerprintMismatch) {
     const char kernel[] = "Fake data.";
     TfLiteTensor tensor;
     tensor.data.data = (void*)kernel;
+    tensor.bytes = sizeof(kernel);
     cache_provider.MapTensorIdentifiers(
         &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 1}});
     ASSERT_TRUE(
@@ -1144,6 +1146,7 @@ class IsCompatibleCacheFileTest
     const char kernel[] = "Fake data.";
     TfLiteTensor tensor;
     tensor.data.data = (void*)kernel;
+    tensor.bytes = sizeof(kernel);
     cache_provider.MapTensorIdentifiers(
         &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 1}});
     ASSERT_TRUE(

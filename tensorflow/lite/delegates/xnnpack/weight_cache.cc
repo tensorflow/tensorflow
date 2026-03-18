@@ -662,7 +662,9 @@ void MMapWeightCacheProvider::MapTensorIdentifiers(
   for (const auto [index, identifier] : tensor_index_to_identifier) {
     XNNPACK_ABORT_CHECK(index < size,
                         "Tensor index corresponds to a non existing tensor.");
-    buffer_address_to_identifier_[tensors[index].data.data] = identifier;
+    const TfLiteTensor& t = tensors[index];
+    buffer_address_to_identifier_.emplace(
+        t.data.data, OriginalBufferMetadata{identifier, t.bytes});
   }
 }
 
@@ -709,6 +711,18 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
   XNNPACK_ABORT_CHECK(!location.IsInvalid(),
                       "Inserting data in the cache failed.");
   cache_key_to_offset_.emplace(pack_id, location);
+
+  // Signals the system that the original weights are not needed anymore.
+  auto SignalDataNotNeeded = [&](const void* data) {
+    if (auto it = buffer_address_to_identifier_.find(data);
+        it != buffer_address_to_identifier_.end()) {
+      MarkMemoryNotNeeded(const_cast<void*>(data), it->second.size);
+    }
+  };
+
+  SignalDataNotNeeded(cache_key->kernel);
+  SignalDataNotNeeded(cache_key->bias);
+
   return location.offset;
 }
 
@@ -766,7 +780,7 @@ PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
     if (buffer) {
       const auto identifier_it = buffer_address_to_identifier_.find(buffer);
       if (identifier_it != buffer_address_to_identifier_.end()) {
-        return identifier_it->second;
+        return identifier_it->second.identifier;
       }
       // We could have several layers of remapping. We look through
       // buffer_remaps_ until we find a valid identifier or nothing is mapped to
@@ -776,7 +790,7 @@ PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
         const auto remapped_identifier_it =
             buffer_address_to_identifier_.find(remapped_it->second);
         if (remapped_identifier_it != buffer_address_to_identifier_.end()) {
-          return remapped_identifier_it->second;
+          return remapped_identifier_it->second.identifier;
         }
         remapped_it = buffer_remaps_.find(remapped_it->second);
       }

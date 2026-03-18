@@ -150,6 +150,20 @@ class MMapHandle {
 #endif
 };
 
+// Marks a region of memory as not needed.
+//
+// That memory can be reclaimed by the system. Note that the given region will
+// be shrunk to the memory pages that fully hold a subset of it.
+//
+// ```
+//         <--  page   -->
+//         |             |
+//     [***xxxxxxxxxxxxxxx*****] <--- buffer
+//     ^^^^               ^^^^^
+//   ignored             ignored
+// ```
+bool MarkMemoryNotNeeded(void* data, size_t size);
+
 }  // namespace tflite::xnnpack
 
 #endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_MMAP_HANDLE_H_

@@ -438,6 +438,11 @@ class MMapWeightCacheProvider {
   bool WriteCacheMissFlag();
 
  private:
+  struct OriginalBufferMetadata {
+    uint64_t identifier;
+    size_t size;
+  };
+
   // Hashes a cache key to lookup in `cache_key_to_identifier_`.
   PackIdentifier BuildPackIdentifier(const xnn_weights_cache_look_up_key& key);
 
@@ -459,7 +464,8 @@ class MMapWeightCacheProvider {
   std::string file_path_;
 
   // Maps buffer addresses to buffer identifiers.
-  std::unordered_map<const void*, uint64_t> buffer_address_to_identifier_;
+  std::unordered_map<const void*, OriginalBufferMetadata>
+      buffer_address_to_identifier_;
 
   std::unordered_map<const void*, const void*> buffer_remaps_;
 
