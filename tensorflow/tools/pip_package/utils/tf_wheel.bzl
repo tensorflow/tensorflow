@@ -47,13 +47,6 @@ def get_canonical_repo_name(apparent_repo_name):
 
     return Label(apparent_repo_name).workspace_name
 
-def is_bzlmod_enabled():
-    """Determine whether bzlmod mode is enabled."""
-
-    # If bzlmod is enabled, then `str(Label(...))` returns a canonical label,
-    # these start with `@@`.
-    return str(Label("//tensorflow/tools/pip_package:wheel")).startswith("@@")
-
 def _get_wheel_platform_name(platform_name, platform_tag):
     macos_platform_version = "{}_".format(MACOSX_DEPLOYMENT_TARGET.replace(".", "_")) if MACOSX_DEPLOYMENT_TARGET else ""
     tag = platform_tag

@@ -25,7 +25,7 @@ load(
     "tf_cuda_tests_tags",
     "tf_exec_properties",
 )
-load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "is_bzlmod_enabled", "tf_wheel", "tf_wheel_dep")
+load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
 
 package(default_visibility = ["//visibility:public"])
 
