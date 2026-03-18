@@ -109,6 +109,10 @@ absl::Status MlirToXlaComputation(
           << "Module has GSPMD attrs or ops, but Shardy is enabled. Disabling "
              "Shardy and falling back to using GSPMD propagation.";
       exec_build_options->set_use_shardy_partitioner(false);
+      // HloShardingV3 is enabled with Shardy so in case of GSPMD fallback we
+      // disable it.
+      exec_build_options->mutable_debug_options()
+          ->set_xla_enable_hlo_sharding_v3(false);
       TF_RETURN_IF_ERROR(ExportShardyForGSPMD(module));
     }
 
