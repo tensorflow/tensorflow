@@ -88,11 +88,13 @@ limitations under the License.
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/ir/xla_to_llvm_ir_translation.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
@@ -476,6 +478,7 @@ mlir::DialectRegistry EmitterBase::GetDialectRegistry() {
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);
+  xla::registerXlaDialectTranslation(registry);
   return registry;
 }
 

@@ -107,6 +107,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_attrs.h.inc"
 #include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/codegen/emitters/ir/xla_to_llvm_ir_translation.h"
 #include "xla/codegen/emitters/transforms/lower_to_llvm_cpu.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
@@ -580,6 +581,7 @@ mlir::DialectRegistry FusionCompiler::CreateDialectRegistry(
 
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerBuiltinDialectTranslation(registry);
+  xla::registerXlaDialectTranslation(registry);
   mlir::registerConvertMathToLLVMInterface(registry);
   mlir::registerConvertMemRefToLLVMInterface(registry);
   mlir::ub::registerConvertUBToLLVMInterface(registry);

@@ -86,7 +86,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/lowering_util.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
-#include "xla/codegen/emitters/ir/xla_dialect.h"
+#include "xla/codegen/emitters/ir/xla_to_llvm_ir_translation.h"
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/codegen/ir_printing.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
@@ -154,6 +154,7 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context) {
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);
+  xla::registerXlaDialectTranslation(registry);
   mlir_context.appendDialectRegistry(registry);
 }
 
@@ -166,6 +167,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> TranslateLLVMToLLVMIR(
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);
+  xla::registerXlaDialectTranslation(registry);
   module->getContext()->appendDialectRegistry(registry);
 
   std::unique_ptr<llvm::Module> llvmModule =
