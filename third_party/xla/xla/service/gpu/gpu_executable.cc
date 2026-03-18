@@ -1229,10 +1229,13 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  RETURN_IF_ERROR(ExecuteThunks(buffer_allocations, run_options));
+  absl::Status execute_status = ExecuteThunks(buffer_allocations, run_options);
 
-  RETURN_IF_ERROR(
-      buffer_allocations.TearDown(buffers_in_result, GetAllocations()));
+  absl::Status teardown_status =
+      buffer_allocations.TearDown(buffers_in_result, GetAllocations());
+
+  RETURN_IF_ERROR(execute_status);
+  RETURN_IF_ERROR(teardown_status);
 
   // Free allocations for arguments.
   if (auto args = std::get_if<absl::Span<ExecutionInput>>(&arguments)) {
