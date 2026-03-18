@@ -416,17 +416,12 @@ def rename_libtensorflow(srcs_dir: str, version: str):
 def create_local_config_python(dst_dir: str) -> None:
   """Copy python and numpy header files to the destination directory."""
   # Search for numpy include directory in both Bzlmod and WORKSPACE.
-  pypi_repo_path = get_repo_path("pypi")
+  pypi_numpy_repo_path = get_repo_path("pypi_numpy")
   numpy_search_patterns = [
-      os.path.join(pypi_repo_path, "site-packages/numpy/_core/include"),
-      os.path.join(pypi_repo_path, "site-packages/numpy/core/include"),
-      os.path.join(pypi_repo_path, "numpy/_core/include"),
-      os.path.join(pypi_repo_path, "numpy/core/include"),
-      "external/pypi_numpy/site-packages/numpy/_core/include",
-      "external/pypi_numpy/site-packages/numpy/core/include",
-      "external/rules_python~~pip~tf_pypi_*numpy/site-packages/numpy/*/include",
+      os.path.join(pypi_numpy_repo_path, "site-packages/numpy/_core/include"),
+      os.path.join(pypi_numpy_repo_path, "site-packages/numpy/core/include"),
   ]
-  
+
   numpy_include_dir = ""
   for pattern in numpy_search_patterns:
     matches = glob.glob(pattern, recursive=True)

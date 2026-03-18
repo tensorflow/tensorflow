@@ -380,7 +380,7 @@ tf_wheel(
         "pthreadpool",
         "riegeli",
         "XNNPACK",
-        "pypi",
+        "pypi_numpy",
         "local_config_cuda",
         "local_config_tensorrt",
         "cuda_cccl",

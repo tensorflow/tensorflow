@@ -238,7 +238,9 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
     "3.13",
 ]]
 
-use_repo(pip, "pypi_mods", pypi = "tf_pypi")
+# tf_pypi_311_numpy should match the selected python version.
+# Change to tf_pypi_312_numpy for python 3.12, etc.
+use_repo(pip, "pypi_mods", pypi = "tf_pypi", pypi_numpy = "tf_pypi_311_numpy")
 
 python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
 use_repo(python_version_ext, "python_version_repo")
