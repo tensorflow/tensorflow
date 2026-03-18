@@ -2116,6 +2116,8 @@ absl::Status AvgPool3DGradShape(shape_inference::InferenceContext* c) {
   ShapeHandle s;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
   TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
+  ShapeHandle grad;
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &grad));
   c->set_output(0, s);
   return absl::OkStatus();
 }
