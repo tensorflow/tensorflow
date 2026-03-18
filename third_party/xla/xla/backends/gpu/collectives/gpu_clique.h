@@ -121,8 +121,11 @@ class LockableGpuClique : public Lockable<GpuClique, GpuClique::LockableName> {
       bool peer_access_enabled, std::shared_ptr<CancellationToken> cancel,
       const GpuClique* parent = nullptr);
 
-  // Returns if *this lockable clique has a given parent.
-  bool HasParent(const GpuClique* parent) const;
+  // Returns true if this clique has a parent whose key is a superset of (or
+  // equal to) `clique_key`. When the existing parent is a superset of the new
+  // split candidate, the clique was created from a bigger (or equal) split and
+  // is still valid — no need to abandon and re-split.
+  bool IsParentSupersetOf(const GpuCliqueKey& clique_key) const;
 
   std::string DebugString() const;
 
