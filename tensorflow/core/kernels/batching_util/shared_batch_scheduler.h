@@ -147,7 +147,7 @@ class SharedBatchScheduler
     // `use_global_scheduler` is enabled, a separate thread pool for warmup
     // requests is useful to decrease model warmup time and derisk starving the
     // thread pool with warmup requests while serving live traffic.
-    int num_warmup_threads = 0;
+    int num_warmup_batch_threads = 0;
 
     // The environment to use.
     // (Typically only overridden by test code.)
@@ -860,7 +860,7 @@ class Queue {
 
   // If true, queue implementation splits warmup inputs from regular inputs,
   // which will be processed by a separate pool of warmup threads.
-  // Requires: `num_warmup_threads` > 0 in the scheduler's options.
+  // Requires: `num_warmup_batch_threads` > 0 in the scheduler's options.
   bool enable_warmup_queue_ = false;
 
   // The maximum batch size to be executed by `Queue::ProcessBatch`.
@@ -1104,7 +1104,7 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
   };
   auto internal_queue =
       std::unique_ptr<internal::Queue<TaskType>>(new internal::Queue<TaskType>(
-          options, options_.env, options_.num_warmup_threads > 0,
+          options, options_.env, options_.num_warmup_batch_threads > 0,
           process_batch_callback, schedulable_batch_callback,
           schedulable_warmup_batch_callback));
   auto handle = std::unique_ptr<BatchScheduler<TaskType>>(
@@ -1137,7 +1137,9 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
     batch_threads_.push_back(std::move(thread));
   }
   // Kick off the warmup threads.
-  for (int i = 0; i < options.num_warmup_threads; ++i) {
+  int num_warmup_batch_threads =
+      std::min(options.num_warmup_batch_threads, port::MaxParallelism());
+  for (int i = 0; i < num_warmup_batch_threads; ++i) {
     auto thread = std::make_unique<PeriodicFunction>(
         [this] { this->WarmupThreadLogic(); },
         0 /* function invocation interval time */, periodic_fn_options);

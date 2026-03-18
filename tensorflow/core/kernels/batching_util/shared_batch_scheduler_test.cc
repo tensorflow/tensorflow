@@ -4090,7 +4090,7 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
   std::shared_ptr<Scheduler> shared_batch_scheduler;
   Scheduler::Options scheduler_options;
   scheduler_options.num_batch_threads = 1;
-  scheduler_options.num_warmup_threads = 1;
+  scheduler_options.num_warmup_batch_threads = 1;
   TF_ASSERT_OK(Scheduler::Create(scheduler_options, &shared_batch_scheduler));
 
   absl::Notification batch_processing_started, batch_processing_continue;
@@ -4148,7 +4148,7 @@ TEST(SharedBatchSchedulerPriorityPolicyTest,
   // Create scheduler with 1 batch thread and 1 warmup thread.
   Scheduler::Options options;
   options.num_batch_threads = 1;
-  options.num_warmup_threads = 1;
+  options.num_warmup_batch_threads = 1;
   std::shared_ptr<Scheduler> scheduler;
   TF_ASSERT_OK(Scheduler::Create(options, &scheduler));
 
@@ -4203,7 +4203,7 @@ TEST(SharedBatchSchedulerPriorityPolicyTest, WarmupQueueCapacityTest) {
   // Create scheduler with 1 batch thread and 1 warmup thread.
   Scheduler::Options options;
   options.num_batch_threads = 1;
-  options.num_warmup_threads = 1;
+  options.num_warmup_batch_threads = 1;
   std::shared_ptr<Scheduler> scheduler;
   TF_ASSERT_OK(Scheduler::Create(options, &scheduler));
 
