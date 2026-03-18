@@ -25,7 +25,6 @@ To not break the TF API, we pretend that it's still part of the it.
 """
 
 import argparse
-import glob
 import json
 import os
 import shutil
@@ -152,10 +151,6 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
         break
     else:
       copy_file(file, srcs_dir)
-
-  create_local_config_python(
-      os.path.join(srcs_dir, "external/local_config_python")
-  )
 
   shutil.copytree(
       os.path.join(srcs_dir, "external/local_config_cuda/cuda"),
@@ -390,22 +385,6 @@ def rename_libtensorflow(srcs_dir: str, version: str):
             srcs_dir, "libtensorflow_framework.so.{}".format(major_version)
         ),
     )
-
-
-def create_local_config_python(dst_dir: str) -> None:
-  """Copy python and numpy header files to the destination directory."""
-  numpy_include_dir = "external/pypi_numpy/site-packages/numpy/_core/include"
-  if not os.path.exists(numpy_include_dir):
-    numpy_include_dir = "external/pypi_numpy/site-packages/numpy/core/include"
-  shutil.copytree(
-      numpy_include_dir,
-      os.path.join(dst_dir, "numpy_include"),
-  )
-  if is_windows():
-    path = "external/python_*/include"
-  else:
-    path = "external/python_*/include/python*"
-  shutil.copytree(glob.glob(path)[0], os.path.join(dst_dir, "python_include"))
 
 
 def build_wheel(
