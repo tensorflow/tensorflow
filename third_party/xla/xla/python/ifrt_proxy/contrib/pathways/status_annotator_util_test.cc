@@ -36,12 +36,18 @@ using ::testing::HasSubstr;
 using ::testing::Not;
 using ::xla::ifrt::TrackedUserContextRef;
 
+void AnnotateWithDump(absl::Status& status,
+                      const ObjectStoreDumpProto& object_store_dump) {
+  AnnotateIfrtUserStatusWithObjectStoreDump(
+      status, object_store_dump.SerializeAsCord());
+}
+
 TEST(StatusAnnotatorUtilTest, SimpleAnnotateAndExpand) {
   ObjectStoreDumpProto object_store_dump;
   object_store_dump.set_device("tpu:0");
 
   absl::Status status = absl::InternalError("test error");
-  AnnotateIfrtUserStatusWithObjectStoreDump(status, object_store_dump);
+  AnnotateWithDump(status, object_store_dump);
 
   EXPECT_THAT(xla::ifrt::ExpandUserContexts(status).message(),
               HasSubstr("tpu:0"));
@@ -54,7 +60,7 @@ TEST(StatusAnnotatorUtilTest, ExpandFailedDump) {
   object_store_dump.set_device("tpu:0");
 
   absl::Status status = absl::InternalError("test error");
-  AnnotateIfrtUserStatusWithObjectStoreDump(status, object_store_dump);
+  AnnotateWithDump(status, object_store_dump);
 
   EXPECT_THAT(xla::ifrt::ExpandUserContexts(status).message(),
               HasSubstr("tpu:0"));
@@ -92,7 +98,7 @@ TEST(StatusAnnotatorUtilTest, DumpWithManyContentsExpandsToAllDetails) {
   }
 
   absl::Status status = absl::InternalError("test error");
-  AnnotateIfrtUserStatusWithObjectStoreDump(status, object_store_dump);
+  AnnotateWithDump(status, object_store_dump);
 
   std::string expanded(xla::ifrt::ExpandUserContexts(status).message());
 
@@ -136,7 +142,7 @@ TEST(StatusAnnotatorUtilTest, DumpWithDuplicateStackTraces) {
   }
 
   absl::Status status = absl::InternalError("test error");
-  AnnotateIfrtUserStatusWithObjectStoreDump(status, object_store_dump);
+  AnnotateWithDump(status, object_store_dump);
 
   std::string expanded(xla::ifrt::ExpandUserContexts(status).message());
 
@@ -173,7 +179,7 @@ TEST(StatusAnnotatorUtilTest, CitationsWithUnknownStackTraces) {
   }
 
   absl::Status status = absl::InternalError("test error");
-  AnnotateIfrtUserStatusWithObjectStoreDump(status, object_store_dump);
+  AnnotateWithDump(status, object_store_dump);
 
   std::string expanded(xla::ifrt::ExpandUserContexts(status).message());
   EXPECT_THAT(expanded, HasSubstr("unknown user stack"));

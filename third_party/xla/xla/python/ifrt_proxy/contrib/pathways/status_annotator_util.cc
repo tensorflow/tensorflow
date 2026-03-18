@@ -180,10 +180,9 @@ static void ExpandObjectStoreDump(absl::Status& status) {
   }
 }
 
-void AnnotateIfrtUserStatusWithObjectStoreDump(
-    absl::Status& status, const ObjectStoreDumpProto& object_store_dump) {
-  status.SetPayload(kObjectStoreDumpPayloadUrl,
-                    object_store_dump.SerializeAsCord());
+void AnnotateIfrtUserStatusWithObjectStoreDump(absl::Status& status,
+                                               absl::Cord object_store_dump) {
+  status.SetPayload(kObjectStoreDumpPayloadUrl, std::move(object_store_dump));
 }
 
 static const bool register_expanders = []() {
