@@ -61,6 +61,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/util/proto/proto_utils.h"
+#include "xla/tsl/util/sorted_range.h"
 #include "xla/util.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/fingerprint.h"
@@ -161,63 +162,30 @@ absl::StatusOr<std::unique_ptr<Autotuner>> Autotuner::Create(
 
 absl::Status Autotuner::Autotune(HloModule* module,
                                  const InstructionFilterFn& should_autotune) {
-  InstructionsByFingerprint instructions_by_fingerprint =
+  std::vector<InstructionGroup> instruction_groups =
       GetAutotuningCandidates(module, should_autotune);
-  std::vector<std::pair<tsl::Fprint128, std::vector<HloInstruction*>>>
-      all_instructions(instructions_by_fingerprint.begin(),
-                       instructions_by_fingerprint.end());
-  // Sort the instructions by fingerprint to ensure deterministic order.
-  std::sort(all_instructions.begin(), all_instructions.end(),
-            [](const auto& a, const auto& b) {
-              if (a.first.high64 != b.first.high64) {
-                return a.first.high64 < b.first.high64;
-              }
-              return a.first.low64 < b.first.low64;
-            });
-  if (instructions_by_fingerprint.empty()) {
+  if (instruction_groups.empty()) {
     VLOG(1) << "No instructions to autotune.";
     return absl::OkStatus();
   }
-  VLOG(1) << "Finding configs for " << instructions_by_fingerprint.size()
+  VLOG(1) << "Finding configs for " << instruction_groups.size()
           << " unique instructions.";
 
-  std::vector<tsl::Future<Config>> configs(all_instructions.size());
-  for (int i = 0; i < all_instructions.size(); i++) {
-    auto& instructions = all_instructions[i].second;
-    CHECK(!instructions.empty());
-    configs[i] = GetConfig(instructions[0]);
-  }
-  absl::Status combined_status = absl::OkStatus();
-  int num_failures = 0;
-  for (int i = 0; i < all_instructions.size(); i++) {
-    auto& instructions = all_instructions[i].second;
-    auto config_or = std::move(configs[i]).Await();
-    combined_status.Update(config_or.status());
-    if (!config_or.ok()) {
-      LOG(ERROR) << "Failed to autotune HLO: " << instructions[0]->ToString()
-                 << " with status: " << config_or.status();
-      num_failures++;
-      continue;  // Continue awaiting others to prevent background crash
-    }
-    Config config = std::move(*config_or);
-    CodegenBackend* codegen_backend = config.codegen_backend;
+  TF_ASSIGN_OR_RETURN(std::vector<Config> configs,
+                      GetConfigsForAll(instruction_groups));
+
+  for (int i = 0; i < instruction_groups.size(); i++) {
+    auto& instructions = instruction_groups[i];
+    CodegenBackend* codegen_backend = configs[i].codegen_backend;
     if (autotune_config_.dump_hlos) {
-      RETURN_IF_ERROR(DumpHlo(instructions[0], config));
+      RETURN_IF_ERROR(DumpHlo(instructions[0], configs[i]));
     }
     for (auto* instr : instructions) {
       RETURN_IF_ERROR(
-          codegen_backend->ApplyConfig(*instr, *config.backend_config));
+          codegen_backend->ApplyConfig(*instr, *configs[i].backend_config));
     }
   }
-  RETURN_IF_ERROR(DumpLogsToFile());
-  if (!combined_status.ok() && num_failures > 1) {
-    return tsl::errors::CreateWithUpdatedMessage(
-        combined_status, absl::StrCat("Failed to autotune: ", num_failures,
-                                      " out of ", all_instructions.size(),
-                                      " instructions. See logs for details.\n",
-                                      combined_status.message()));
-  }
-  return combined_status;
+  return DumpLogsToFile();
 }
 
 absl::Status Autotuner::Autotune(HloModule* module,
@@ -228,60 +196,36 @@ absl::Status Autotuner::Autotune(HloModule* module,
   int my_shard_index = sharding_kv_store.process_index;
 
   // 1. Get all the instructions that could be autotuned.
-  InstructionsByFingerprint all_instructions_by_fingerprint =
+  std::vector<InstructionGroup> all_instruction_groups =
       GetAutotuningCandidates(module, should_autotune);
-  if (all_instructions_by_fingerprint.empty()) {
+  if (all_instruction_groups.empty()) {
     VLOG(1) << "No instructions to autotune.";
     return absl::OkStatus();
   }
 
   // 2. Shard and get instructions to autotune for current shard.
-  // Sort the instructions by fingerprint to ensure deterministic sharding.
-  std::vector<tsl::Fprint128> sorted_fingerprints;
-  for (const auto& [fingerprint, _] : all_instructions_by_fingerprint) {
-    sorted_fingerprints.push_back(fingerprint);
-  }
-  std::sort(sorted_fingerprints.begin(), sorted_fingerprints.end(),
-            [](const tsl::Fprint128& a, const tsl::Fprint128& b) {
-              if (a.high64 != b.high64) {
-                return a.high64 < b.high64;
-              }
-              return a.low64 < b.low64;
-            });
-
   const size_t bucket_size =
-      std::ceil(static_cast<double>(sorted_fingerprints.size()) /
+      std::ceil(static_cast<double>(all_instruction_groups.size()) /
                 static_cast<double>(total_shards));
   const size_t start = bucket_size * my_shard_index;
-  const size_t end = std::min(start + bucket_size, sorted_fingerprints.size());
-
-  InstructionsByFingerprint instructions_by_fingerprint;
+  const size_t end =
+      std::min(start + bucket_size, all_instruction_groups.size());
+  std::vector<InstructionGroup> instruction_groups;
   for (size_t i = start; i < end; ++i) {
-    const tsl::Fprint128& fingerprint = sorted_fingerprints[i];
-    instructions_by_fingerprint[fingerprint] =
-        all_instructions_by_fingerprint.at(fingerprint);
+    instruction_groups.push_back(all_instruction_groups[i]);
   }
 
   // 3. Autotune instructions for this shard. Use cached configs if available,
   // otherwise autotune and cache the best config.
   VLOG(1) << "Shard " << my_shard_index << "/" << total_shards
-          << ": finding configs for " << instructions_by_fingerprint.size()
-          << "/" << all_instructions_by_fingerprint.size()
-          << " unique instructions ";
-  std::vector<std::pair<tsl::Fprint128, std::vector<HloInstruction*>>>
-      all_instructions(instructions_by_fingerprint.begin(),
-                       instructions_by_fingerprint.end());
-  std::vector<tsl::Future<Config>> configs(all_instructions.size());
-  for (int i = 0; i < all_instructions.size(); i++) {
-    auto& instructions = all_instructions[i].second;
-    CHECK(!instructions.empty());
-    configs[i] = GetConfig(instructions[0]);
-  }
+          << ": finding configs for " << instruction_groups.size() << "/"
+          << all_instruction_groups.size() << " unique instructions ";
+  TF_ASSIGN_OR_RETURN(std::vector<Config> configs,
+                      GetConfigsForAll(instruction_groups));
   std::vector<const HloInstruction*> autotuned_instructions;
-  for (int i = 0; i < all_instructions.size(); i++) {
-    auto& instructions = all_instructions[i].second;
-    ASSIGN_OR_RETURN(Config config, std::move(configs[i]).Await());
-    autotuned_instructions.push_back(instructions[0]);
+  autotuned_instructions.reserve(instruction_groups.size());
+  for (int i = 0; i < instruction_groups.size(); ++i) {
+    autotuned_instructions.push_back(instruction_groups[i][0]);
   }
   RETURN_IF_ERROR(DumpLogsToFile());
 
@@ -324,19 +268,17 @@ absl::Status Autotuner::Autotune(HloModule* module,
 
   // 6. Apply the results to all candidate instructions, must be already in
   // cache_ due to step 3 and 5 above.
-  for (tsl::Fprint128 fingerprint : sorted_fingerprints) {
-    std::vector<HloInstruction*>& instructions =
-        all_instructions_by_fingerprint[fingerprint];
-    CHECK(!instructions.empty());
-    std::optional<Config> cached_config = LookUp(instructions[0]);
+  for (auto& instruction_group : all_instruction_groups) {
+    CHECK(!instruction_group.empty());
+    std::optional<Config> cached_config = LookUp(instruction_group[0]);
     CHECK(cached_config.has_value())
         << "Sharding autotuning failed: no config found for HLO: " +
-               instructions[0]->ToString();
+               instruction_group[0]->ToString();
     if (autotune_config_.dump_hlos) {
-      TF_RETURN_IF_ERROR(DumpHlo(instructions[0], *cached_config));
+      TF_RETURN_IF_ERROR(DumpHlo(instruction_group[0], *cached_config));
     }
     CodegenBackend* codegen_backend = cached_config->codegen_backend;
-    for (auto* instr : instructions) {
+    for (auto* instr : instruction_group) {
       TF_RETURN_IF_ERROR(
           codegen_backend->ApplyConfig(*instr, *cached_config->backend_config));
     }
@@ -466,17 +408,68 @@ tsl::Future<Autotuner::Config> Autotuner::TuneBestConfig(
       });
 }
 
-Autotuner::InstructionsByFingerprint Autotuner::GetAutotuningCandidates(
+absl::StatusOr<std::vector<Autotuner::Config>> Autotuner::GetConfigsForAll(
+    const std::vector<InstructionGroup>& instruction_groups) {
+  std::vector<tsl::Future<Config>> future_configs(instruction_groups.size());
+  for (int i = 0; i < instruction_groups.size(); i++) {
+    future_configs[i] = GetConfig(instruction_groups[i][0]);
+  }
+  std::vector<absl::StatusOr<Config>> status_or_configs;
+  status_or_configs.reserve(instruction_groups.size());
+  absl::Status combined_status = absl::OkStatus();
+  int num_failures = 0;
+  for (int i = 0; i < instruction_groups.size(); i++) {
+    absl::StatusOr<Config> config_or = std::move(future_configs[i]).Await();
+    combined_status.Update(config_or.status());
+    if (!config_or.ok()) {
+      LOG(ERROR) << "Failed to autotune HLO: "
+                 << instruction_groups[i][0]->ToString()
+                 << " with status: " << config_or.status();
+      num_failures++;
+    }
+    status_or_configs.push_back(std::move(config_or));
+  }
+
+  if (!combined_status.ok() && num_failures > 1) {
+    return tsl::errors::CreateWithUpdatedMessage(
+        combined_status, absl::StrCat("Failed to autotune: ", num_failures,
+                                      " out of ", instruction_groups.size(),
+                                      " instructions. See logs for details.\n",
+                                      combined_status.message()));
+  }
+  RETURN_IF_ERROR(combined_status);
+  std::vector<Config> configs;
+  for (auto& config_or : status_or_configs) {
+    if (config_or.ok()) {
+      configs.push_back(std::move(config_or.value()));
+    }
+  }
+  return configs;
+}
+
+std::vector<Autotuner::InstructionGroup> Autotuner::GetAutotuningCandidates(
     const HloModule* module, const InstructionFilterFn& should_autotune) {
-  InstructionsByFingerprint instructions_by_fingerprint;
+  absl::flat_hash_map<tsl::Fprint128, InstructionGroup, tsl::Fprint128Hasher>
+      grouped_instructions;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
       if (should_autotune(*instr)) {
-        instructions_by_fingerprint[GetFingerprint(instr)].push_back(instr);
+        grouped_instructions[GetFingerprint(instr)].push_back(instr);
       }
     }
   }
-  return instructions_by_fingerprint;
+  // Ensures deterministic iteration using sorted range.
+  std::vector<InstructionGroup> result;
+  for (auto& [fingerprint, nodes] :
+       tsl::SortedRange(grouped_instructions, [](const auto& a, const auto& b) {
+         if (a.first.high64 != b.first.high64) {
+           return a.first.high64 < b.first.high64;
+         }
+         return a.first.low64 < b.first.low64;
+       })) {
+    result.push_back(std::move(nodes));
+  }
+  return result;
 }
 
 std::optional<Autotuner::Config> Autotuner::LookUp(
