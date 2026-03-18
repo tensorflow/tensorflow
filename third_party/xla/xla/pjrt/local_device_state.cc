@@ -86,18 +86,25 @@ LocalDeviceState::LocalDeviceState(
   int num_device_to_device_streams =
       stream_options.has_value() ? stream_options->num_device_to_device_streams
                                  : kNumDeviceToDeviceStreams;
-  auto create_stream = [executor, &stream_options](const std::string& name) {
-    std::unique_ptr<stream_executor::Stream> stream;
-    if (stream_options.has_value()) {
-      stream = executor->CreateStream(stream_options->priority).value();
-    } else {
-      stream = executor->CreateStream().value();
-    }
-    if (stream) {
-      stream->SetName(name);
-    }
-    return stream;
-  };
+
+  auto create_stream =
+      [executor, &stream_options](
+          const std::string& name,
+          std::optional<se::StreamPriority> stream_priority_override =
+              std::nullopt) {
+        std::unique_ptr<stream_executor::Stream> stream;
+        if (stream_priority_override.has_value()) {
+          stream = executor->CreateStream(*stream_priority_override).value();
+        } else if (stream_options.has_value()) {
+          stream = executor->CreateStream(stream_options->priority).value();
+        } else {
+          stream = executor->CreateStream().value();
+        }
+        if (stream) {
+          stream->SetName(name);
+        }
+        return stream;
+      };
   compute_stream_ = create_stream("Compute");
   host_to_device_stream_ = create_stream("Host-to-device");
   if (use_callback_stream) {
@@ -112,7 +119,8 @@ LocalDeviceState::LocalDeviceState(
   device_to_device_streams_.reserve(num_device_to_device_streams);
   for (int i = 0; i < num_device_to_device_streams; ++i) {
     device_to_device_streams_.emplace_back(
-        create_stream(absl::StrFormat("Device-to-device #%d", i)));
+        create_stream(absl::StrFormat("Device-to-device #%d", i),
+                      se::StreamPriority::Highest));
   }
   fixed_size_pool_usage_streams_.reserve(kNumFixedSizePoolUsageStreams);
   for (int i = 0; i < kNumFixedSizePoolUsageStreams; ++i) {
