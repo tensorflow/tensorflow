@@ -54,7 +54,15 @@ def _EuclideanNormGrad(op: ops.Operation, grad):
     output = array_ops.reshape(output, output_shape_kept_dims)
     grad = array_ops.reshape(grad, output_shape_kept_dims)
 
-  return math_ops.truediv(op.inputs[0], output / grad), None
+  # When the norm is zero, all inputs must be zero, so the gradient is zero.
+  # Use a safe denominator to avoid NaN/Inf from division by zero, then select
+  # zero for the zero-norm case via math_ops.where.
+  is_zero = math_ops.equal(output, 0)
+  safe_output = math_ops.where(is_zero, array_ops.ones_like(output), output)
+  return math_ops.where(
+      is_zero,
+      array_ops.zeros_like(op.inputs[0]),
+      math_ops.truediv(op.inputs[0], safe_output / grad)), None
 
 
 def SmartBroadcastGradientArgs(x, y, grad=None):

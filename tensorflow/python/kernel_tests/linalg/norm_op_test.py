@@ -16,10 +16,13 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test as test_lib
 
 
@@ -93,6 +96,52 @@ def _GetNormOpTest(dtype_, shape_, ord_, axis_, keep_dims_, use_static_shape_):
     _CompareNorm(self, matrix)
 
   return Test
+
+
+class NormGradientNumericalStabilityTest(test_lib.TestCase):
+  """Tests for numerical stability of tf.norm gradients (GitHub issue #12071).
+
+  The gradient of the Euclidean norm x/||x|| produces NaN at zero and Inf for
+  very small values due to division by zero or floating-point underflow.
+  """
+
+  def testNormGradientZeroVector(self):
+    """Gradient of tf.norm at the zero vector should be zero, not NaN."""
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([0.0, 0.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm(x, ord="euclidean")
+
+      dx = tape.gradient(y, x)
+      self.assertAllClose(dx, [0.0, 0.0])
+      self.assertTrue(math_ops.reduce_all(math_ops.is_finite(dx)))
+
+  def testNormGradientZeroRows(self):
+    """Gradient should be zero for zero-norm rows, finite for others."""
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[1.0, 0.0], [0.0, 0.0]], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm(x, ord="euclidean", axis=1)
+
+      dx = tape.gradient(y, x)
+      expected = constant_op.constant([[1.0, 0.0], [0.0, 0.0]], dtype=dtype)
+      self.assertAllClose(dx, expected)
+
+  def testNormGradientSmallValues(self):
+    """Very small values should not produce Inf gradients."""
+    x = constant_op.constant([1e-19, 1e-19], dtype=dtypes.float32)
+
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = linalg_ops.norm(x, ord="euclidean")
+
+    dx = tape.gradient(y, x)
+    self.assertTrue(math_ops.reduce_all(math_ops.is_finite(dx)))
+
 
 # pylint: disable=redefined-builtin
 if __name__ == "__main__":
