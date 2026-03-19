@@ -608,6 +608,43 @@ ENTRY main {
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
+       EstimateRunTimeForTiledFusion_DotWithReductionLoop) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+dot_fusion {
+  p0 = f32[128, 257] parameter(0)
+  p1 = f32[257, 64] parameter(1)
+  exp = f32[128, 257] exponential(p0)
+  ROOT dot = f32[128, 64] dot(exp, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY main {
+  p0 = f32[128, 257] parameter(0)
+  p1 = f32[257, 64] parameter(1)
+  ROOT fusion = f32[128, 64] fusion(p0, p1), kind=kCustom, calls=dot_fusion
+})"));
+
+  auto fusion_adaptor = HloFusionAdaptor::ForInstruction(
+      module->entry_computation()->root_instruction());
+
+  LaunchDimensions launch_dimensions{16, 1024};
+
+  auto result = indexing_cost_model_.EstimateRunTimeForTiledFusion(
+      *fusion_adaptor, launch_dimensions, /*output_tile_sizes=*/{{64, 32, 32}});
+
+  TF_ASSERT_OK(result.status());
+  //              flops_per_element * num_blocks * padded_tile_size * multiplier
+  // flops       = 514 * 16 * 1024 * 1                  ==> %dot
+  //             + 86  * 16 * 2048 * ceil(257/64)       ==> %exp
+  EXPECT_EQ(result->flops, 22511616);
+  //              element_type_size * num_blocks * padded_tile_size * multiplier
+  // bytes_read = 4 * 16 * (64*32) * ceil(257/64)       ==> %p0
+  //            + 4 * 16 * (64*32) * ceil(257/64)       ==> %p1
+  EXPECT_EQ(result->bytes_read, 1310720);
+}
+
+TEST_F(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_Softmax_RegisterSpill_ReturnsInfinite) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
