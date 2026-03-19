@@ -110,7 +110,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 102
+#define PJRT_API_MINOR 103
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1109,8 +1109,12 @@ struct PJRT_Client_CreateErrorBuffer_Args {
   // Output device buffer. The caller is responsible for calling
   // PJRT_Buffer_Destroy.
   PJRT_Buffer* buffer;  // out
+
+  // Status fields (continued).
+  const PJRT_NamedValue* payload;
+  size_t num_payload;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateErrorBuffer_Args, buffer);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateErrorBuffer_Args, num_payload);
 
 // Creates a buffer in the given memory space that carries an error future
 // without allocating memory. If this buffer is passed to an Execute call, the

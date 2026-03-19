@@ -874,6 +874,15 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateErrorBuffer(
 
   args.memory = tensorflow::down_cast<PjRtCApiMemorySpace*>(memory)->c_memory();
 
+  absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map;
+  error.ForEachPayload([&](absl::string_view name, const absl::Cord& payload) {
+    payload_map[name] = std::string(payload);
+  });
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_payload,
+                      pjrt::ConvertToPjRtNamedValueList(payload_map));
+  args.payload = c_payload.data();
+  args.num_payload = c_payload.size();
+
   RETURN_STATUS_IF_PJRT_ERROR(c_api_->PJRT_Client_CreateErrorBuffer(&args),
                               c_api_);
 
