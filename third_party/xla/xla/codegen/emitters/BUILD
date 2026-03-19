@@ -90,6 +90,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/transforms/simplifiers:gather_simplifier",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",

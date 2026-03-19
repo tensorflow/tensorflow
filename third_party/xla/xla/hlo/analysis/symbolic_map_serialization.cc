@@ -80,7 +80,9 @@ bool IsNegativeTerm(SymbolicExpr expr) {
 
 void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
                std::optional<int64_t> num_dims,
-               absl::Span<const std::string> var_names, int parent_prec = 0) {
+               absl::Span<const std::string> var_names,
+               std::optional<SymbolicExprType> parent_type = std::nullopt,
+               bool is_rhs = false, bool is_rhs_of_minus = false) {
   switch (expr.GetType()) {
     case SymbolicExprType::kConstant:
       os << expr.GetValue();
@@ -115,18 +117,37 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kMod: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
       int prec = GetPrecedence(expr.GetType());
-      bool needs_parens = prec < parent_prec;
+      int parent_prec = parent_type ? GetPrecedence(*parent_type) : 0;
+      bool needs_parens = false;
+      if (prec < parent_prec) {
+        needs_parens = true;
+      } else if (prec == parent_prec && parent_type.has_value()) {
+        if (*parent_type == SymbolicExprType::kAdd &&
+            expr.GetType() == SymbolicExprType::kAdd) {
+          needs_parens = is_rhs_of_minus;
+        } else if (*parent_type == SymbolicExprType::kMul &&
+                   expr.GetType() == SymbolicExprType::kMul) {
+          needs_parens = false;
+        } else if (*parent_type == expr.GetType() && !is_rhs) {
+          needs_parens = false;
+        } else {
+          needs_parens = true;
+        }
+      }
       if (needs_parens) {
         os << "(";
       }
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names, prec);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, expr.GetType(),
+                /*is_rhs=*/false, /*is_rhs_of_minus=*/false);
       if (expr.GetType() == SymbolicExprType::kAdd &&
           IsNegativeTerm(expr.GetRHS())) {
         os << " - ";
-        PrintImpl(-expr.GetRHS(), os, num_dims, var_names, prec + 1);
+        PrintImpl(-expr.GetRHS(), os, num_dims, var_names, expr.GetType(),
+                  /*is_rhs=*/true, /*is_rhs_of_minus=*/true);
       } else {
         os << " " << bin_op_str << " ";
-        PrintImpl(expr.GetRHS(), os, num_dims, var_names, prec + 1);
+        PrintImpl(expr.GetRHS(), os, num_dims, var_names, expr.GetType(),
+                  /*is_rhs=*/true, /*is_rhs_of_minus=*/false);
       }
       if (needs_parens) {
         os << ")";
@@ -137,9 +158,9 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
       os << bin_op_str << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names, 0);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, std::nullopt);
       os << ", ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names, 0);
+      PrintImpl(expr.GetRHS(), os, num_dims, var_names, std::nullopt);
       os << ")";
       return;
     }

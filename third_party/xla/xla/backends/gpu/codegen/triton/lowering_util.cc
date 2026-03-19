@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -210,11 +211,11 @@ bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor) {
     return const_op.value() % divisor == 0;
   }
   if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
-    mlir::AffineMap affine_map = apply_indexing.getIndexingMap().GetAffineMap();
-    if (affine_map.getNumResults() != 1) {
+    SymbolicMap symbolic_map = apply_indexing.getIndexingMap().GetSymbolicMap();
+    if (symbolic_map.GetNumResults() != 1) {
       return false;
     }
-    return affine_map.getResult(0).isMultipleOf(divisor);
+    return symbolic_map.GetResult(0).IsMultipleOf(divisor);
   }
   return false;
 }

@@ -21,26 +21,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
-#include "xla/codegen/tiling/affine_map_evaluator.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
-#include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -52,9 +50,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
-using ::mlir::AffineExpr;
-using ::mlir::AffineMap;
 
 // Triton enforces that all tensors in the program have less than 1048576
 // elements, otherwise it will fail to compile. (See `TRITON_MAX_TENSOR_NUMEL`
@@ -92,12 +87,12 @@ TritonEmitterConstraints::DeriveCustomConstraints(
     }
 
     if (hlo->opcode() == HloOpcode::kDot) {
-      auto ctx = instruction->symbolic_tile().size_map().getContext();
-      AffineMap identity_map = AffineMap::getMultiDimIdentityMap(
-          instruction->symbolic_tile().size_map().getNumDims(), ctx);
+      auto ctx = instruction->symbolic_tile().size_map().GetContext();
+      SymbolicMap identity_map = SymbolicMap::GetMultiDimIdentityMap(
+          instruction->symbolic_tile().size_map().GetNumDims(), ctx);
       for (const auto& operand : instruction->operands()) {
-        for (AffineExpr tile_size :
-             operand->symbolic_tile().size_map().getResults()) {
+        for (SymbolicExpr tile_size :
+             operand->symbolic_tile().size_map().GetResults()) {
           // TODO(393299275): There is also a lower bound limit for Triton
           // on what is accepted for dimension size (both contracting and free).
           ConstraintExpression dim_constraint(ConstraintExpression::Constraint{
@@ -118,7 +113,7 @@ TritonEmitterConstraints::GetBuilder(
   return [=](const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>&
                  instructions,
              const HloFusionAdaptor& fusion_adaptor) {
-    llvm::DenseSet<AffineMap> unique_tile_size_maps;
+    absl::flat_hash_set<SymbolicMap> unique_tile_size_maps;
     llvm::SmallVector<RootTileInfo, 2> root_infos;
     auto roots = fusion_adaptor.GetRoots();
     for (const auto& tiled_hlo_instruction : instructions) {
@@ -139,7 +134,7 @@ TritonEmitterConstraints::GetBuilder(
     std::vector<CustomConstraints> custom_constraints =
         DeriveCustomConstraints(instructions, fusion_adaptor);
 
-    llvm::SmallVector<AffineMap, 4> tile_size_maps(
+    llvm::SmallVector<SymbolicMap, 4> tile_size_maps(
         unique_tile_size_maps.begin(), unique_tile_size_maps.end());
 
     std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints =
@@ -159,12 +154,12 @@ namespace {
 // Returns the number of elements in the (padded) tile described by
 // tile_size_map` and `tiling_parameters`.
 int64_t NumberOfElementsInPaddedTile(
-    const AffineMap& tile_size_map,
+    const SymbolicMap& tile_size_map,
     absl::Span<const int64_t> tiling_parameters) {
   int64_t num_elements = 1;
-  for (auto expr : tile_size_map.getResults()) {
+  for (auto expr : tile_size_map.GetResults()) {
     num_elements *= llvm::PowerOf2Ceil(
-        EvaluateAffineExpr(expr, /*dim_values=*/tiling_parameters));
+        expr.Evaluate(/*variable_values=*/tiling_parameters));
   }
 
   return num_elements;
@@ -224,11 +219,10 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
           << absl::StrJoin(tile_parameters, ", ");
   for (const auto& custom_constraint : custom_constraints_) {
     VLOG(5) << "Checking custom constraint: transform  "
-            << xla::ToString(custom_constraint.tile_parameters_transform)
-            << " constraints " << custom_constraint.constraints.ToString();
+            << custom_constraint.tile_parameters_transform << " constraints "
+            << custom_constraint.constraints.ToString();
     llvm::SmallVector<int64_t> transformed_tile_parameters =
-        EvaluateAffineMap(custom_constraint.tile_parameters_transform,
-                          /*dim_values=*/tile_parameters);
+        custom_constraint.tile_parameters_transform.Evaluate(tile_parameters);
     if (!custom_constraint.constraints.IsSatisfiedBy(
             GetPaddedTileSizes(transformed_tile_parameters))) {
       return false;
@@ -236,8 +230,7 @@ absl::StatusOr<bool> TritonEmitterConstraints::ParametersSatisfyConstraints(
   }
   for (const auto& root : roots_) {
     llvm::SmallVector<int64_t> transformed_tile_parameters =
-        EvaluateAffineMap(root.size_map,
-                          /*dim_values=*/tile_parameters);
+        root.size_map.Evaluate(tile_parameters);
     // We require that the propagated tile sizes for potential root tiles are
     // either powers of 2 or are equal to the dimension size.
     // TODO(b/365727080): Technically the tile size should always be a power of

@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map_converter.h"
 
 namespace xla {
 namespace emitters {
@@ -253,7 +254,8 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
                              std::move(symbol_ranges),
                              /*rt_vars=*/{});
     indexing_map.Simplify();
-    auto result_expr = indexing_map.GetAffineMap().getResult(0);
+    auto result_expr =
+        SymbolicMapToAffineMap(indexing_map.GetSymbolicMap()).getResult(0);
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     RangeEvaluator range_evaluator = indexing_map.GetRangeEvaluator();
@@ -277,7 +279,7 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
                                 PatternRewriter& rewriter) const override {
     auto indexing_map = op.getIndexingMap();
     indexing_map.Simplify();
-    auto affine_map = indexing_map.GetAffineMap();
+    auto affine_map = SymbolicMapToAffineMap(indexing_map.GetSymbolicMap());
     int64_t dim_count = indexing_map.GetDimensionCount();
     auto operands = op->getOperands();
 

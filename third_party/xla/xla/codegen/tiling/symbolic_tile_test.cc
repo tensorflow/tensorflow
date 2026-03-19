@@ -145,25 +145,25 @@ TEST_F(SymbolicTileTest,
 
   // Capturing elements along dimensions 0, 1, and 2 makes the stride equal to
   // 1.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {4, 8, 6, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({4, 8, 6, 4}),
               ElementsAre(1, 1));
   // Capturing elements along dimension 2 makes the stride equal to 1.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 1, 6, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 1, 6, 4}),
               ElementsAre(1, 1));
   // Capturing elements only along dimension 1 makes the stride equal to
   // the length of dimension 2 (6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 8, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 8, 1, 4}),
               ElementsAre(6, 1));
   // Capturing elements only along dimension 0 makes the stride equal to the
   // product of the lengths of dimensions 1 and 2 (8 * 6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {2, 1, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({2, 1, 1, 4}),
               ElementsAre(48, 1));
   // Capturing elements along dimension 0 and dimension 1 makes the stride
   // equal to the length of dimension 2 (6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {2, 8, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({2, 8, 1, 4}),
               ElementsAre(6, 1));
   // Capturing a single element in the collapsed dimensions makes the stride 0.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 1, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 1, 1, 4}),
               ElementsAre(0, 1));
 }
 
