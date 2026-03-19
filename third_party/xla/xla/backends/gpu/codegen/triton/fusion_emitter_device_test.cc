@@ -4253,13 +4253,13 @@ TEST_F(TritonEmitterTest, ScaledDotIsSupportedByReferencePlatform) {
     HloModule ScaledDotIsSupportedByReferencePlatform
 
     ENTRY entry {
-     lhs = bf16[4,4] parameter(0)
-     rhs = bf16[4,4] parameter(1)
-     lhs_scale = bf16[1,1] parameter(2)
-     rhs_scale = bf16[1,1] parameter(3)
-     ROOT dot = bf16[4,4] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+     lhs = bf16[16,128] parameter(0)
+     rhs = bf16[128,16] parameter(1)
+     lhs_scale = bf16[1,4] parameter(2)
+     rhs_scale = bf16[4,1] parameter(3)
+     ROOT dot = bf16[16,16] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
          lhs_contracting_dims={1},
-         rhs_contracting_dims={1}
+         rhs_contracting_dims={0}
     }
   )";
 
