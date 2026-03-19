@@ -433,7 +433,10 @@ cc_library(
     name = "future",
     hdrs = ["future.h"],
     visibility = ["//visibility:public"],
-    deps = ["//xla/tsl/concurrency:future"],
+    deps = [
+        "//xla/tsl/concurrency:future",
+        "//xla/tsl/concurrency:interop",
+    ],
 )
 
 cc_library(
