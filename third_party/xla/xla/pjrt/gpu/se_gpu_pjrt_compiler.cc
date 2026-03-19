@@ -211,6 +211,23 @@ StreamExecutorGpuCompiler::Compile(
                  "a deviceless compilation.";
   }
   TF_RETURN_IF_ERROR(options.ApplyAllOptionOverrides());
+
+  if (options.compile_portable_executable) {
+    if (options.executable_build_options.has_device_assignment()) {
+      return absl::InvalidArgumentError(
+          "CompileOptions requests portable executable but "
+          "ExecutableBuildOptions includes a device assignment");
+    }
+    if (options.executable_build_options.num_replicas() != 1 ||
+        options.executable_build_options.num_partitions() != 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("CompileOptions requests portable executable but "
+                       "ExecutableBuildOptions includes num_replicas ",
+                       options.executable_build_options.num_replicas(),
+                       " and num_partitions ",
+                       options.executable_build_options.num_partitions()));
+    }
+  }
   std::vector<const Shape*> argument_layout_pointers;
   const ExecutableBuildOptions& build_options =
       options.executable_build_options;
