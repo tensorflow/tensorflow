@@ -8868,25 +8868,31 @@ ENTRY entry {
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
     slice_sizes={1,9}, sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/2));
-  VLOG(1) << module->ToString();
-  auto offset =
-      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
-  auto min = AllOf(op::Broadcast(offset), op::Shape("s32[2,3]"));
-  auto max = AllOf(op::Broadcast(op::Add(offset, op::Constant())),
-                   op::Shape("s32[2,3]"));
-  auto clamped_indices =
-      op::Clamp(op::Broadcast(op::Constant()), op::Parameter(1),
-                op::Broadcast(op::Constant()));
-  auto clamp = op::Clamp(min, clamped_indices, max);
-  auto gather = op::Gather(op::Parameter(0), op::Subtract(clamp, min));
-  auto mask =
-      op::Or(op::Lt(clamped_indices, min), op::Gt(clamped_indices, max));
-  auto masked =
-      op::Select(op::Broadcast(mask), op::Broadcast(op::Constant()), gather);
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::AllReduce(masked), op::Shape("f32[2,3,9]")));
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/2, options));
+    VLOG(1) << module->ToString();
+    auto offset =
+        op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+    auto min = AllOf(op::Broadcast(offset), op::Shape("s32[2,3]"));
+    auto max = AllOf(op::Broadcast(op::Add(offset, op::Constant())),
+                     op::Shape("s32[2,3]"));
+    auto clamped_indices =
+        op::Clamp(op::Broadcast(op::Constant()), op::Parameter(1),
+                  op::Broadcast(op::Constant()));
+    auto clamp = op::Clamp(min, clamped_indices, max);
+    auto gather = op::Gather(op::Parameter(0), op::Subtract(clamp, min));
+    auto mask =
+        op::Or(op::Lt(clamped_indices, min), op::Gt(clamped_indices, max));
+    auto masked =
+        op::Select(op::Broadcast(mask), op::Broadcast(op::Constant()), gather);
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    EXPECT_THAT(root, AllOf(op::AllReduce(masked), op::Shape("f32[2,3,9]")));
+  }
 }
 
 TEST_P(SpmdPartitioningTest,
@@ -8902,25 +8908,31 @@ ENTRY entry {
     collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
     slice_sizes={1,9}, sharding={replicated}
 })";
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/4));
-  VLOG(1) << module->ToString();
-  auto clamped_indices =
-      op::Clamp(op::Broadcast(op::Constant()), op::Parameter(1),
-                op::Broadcast(op::Constant()));
-  auto offset =
-      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
-  auto min = AllOf(op::Broadcast(offset), op::Shape("s32[2,3]"));
-  auto max = AllOf(op::Broadcast(op::Add(offset, op::Constant())),
-                   op::Shape("s32[2,3]"));
-  auto clamp = op::Clamp(min, clamped_indices, max);
-  auto gather = op::Gather(op::Parameter(0), op::Subtract(clamp, min));
-  auto mask =
-      op::Or(op::Lt(clamped_indices, min), op::Gt(clamped_indices, max));
-  auto masked =
-      op::Select(op::Broadcast(mask), op::Broadcast(op::Constant()), gather);
-  HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, AllOf(op::AllReduce(masked), op::Shape("f32[2,3,9]")));
+
+  SpmdPartitionerOptions options;
+  for (bool need_resolve_conflicts : {true, false}) {
+    options.need_resolve_conflicts = need_resolve_conflicts;
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto module,
+        PartitionComputation(hlo_string, /*num_devices=*/4, options));
+    VLOG(1) << module->ToString();
+    auto clamped_indices =
+        op::Clamp(op::Broadcast(op::Constant()), op::Parameter(1),
+                  op::Broadcast(op::Constant()));
+    auto offset =
+        op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+    auto min = AllOf(op::Broadcast(offset), op::Shape("s32[2,3]"));
+    auto max = AllOf(op::Broadcast(op::Add(offset, op::Constant())),
+                     op::Shape("s32[2,3]"));
+    auto clamp = op::Clamp(min, clamped_indices, max);
+    auto gather = op::Gather(op::Parameter(0), op::Subtract(clamp, min));
+    auto mask =
+        op::Or(op::Lt(clamped_indices, min), op::Gt(clamped_indices, max));
+    auto masked =
+        op::Select(op::Broadcast(mask), op::Broadcast(op::Constant()), gather);
+    HloInstruction* root = module->entry_computation()->root_instruction();
+    EXPECT_THAT(root, AllOf(op::AllReduce(masked), op::Shape("f32[2,3,9]")));
+  }
 }
 
 TEST_P(SpmdPartitioningTest, UnpartitionedScatter) {

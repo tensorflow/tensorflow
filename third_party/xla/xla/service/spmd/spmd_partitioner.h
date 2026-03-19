@@ -901,8 +901,11 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* hlo, const HloInstruction* input_tensor,
       const HloInstruction* update_tensor);
 
-  // Handler for dot instructions with no conflicts.
+  // Handler for operations with no conflicts.
+  // go/keep-sorted start
   absl::Status HandleDotWithoutConflicts(HloInstruction* hlo);
+  absl::Status HandleGatherWithoutConflicts(HloInstruction* hlo);
+  // go/keep-sorted end
 
   // Handlers for specific custom call targets.
   // go/keep-sorted start
