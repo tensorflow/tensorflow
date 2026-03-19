@@ -40,13 +40,11 @@ cc_library(
     srcs = ["base64.cc"],
     hdrs = ["base64.h"],
     deps = [
-        ":stringpiece",
+        ":tstring",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:macros",
-        "@xla//xla/tsl/platform:status",
-        "@xla//xla/tsl/platform:types",
     ],
 )
 
