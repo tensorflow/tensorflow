@@ -286,6 +286,12 @@ TEST_F(SymbolicExprTest, BasicSimplificationsAtCreationTime) {
   SymbolicExpr mul_2_v0 = 2 * v0;
   SymbolicExpr mul_2_v0_3 = mul_2_v0 * 3;
   EXPECT_EQ(mul_2_v0_3.ToString(), "((2 * v0) * 3)");
+
+  // x / 1 = x
+  EXPECT_EQ(v0 / c1, v0);
+
+  // Mod 1 simplification.
+  EXPECT_EQ(v0 % 1, c0);
 }
 
 TEST_F(SymbolicExprTest, Canonicalization_Basic) {
