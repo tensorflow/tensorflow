@@ -344,5 +344,100 @@ ENTRY %CombineCollectivePermutes () -> (f32[256], f32[512], f32[2560], f32[1792]
   EXPECT_TRUE(changed);
 }
 
+// Tests that independent collective permutes separated by interleaved
+// dependency chains are combined. Two chains: cp_A→cp_B and cp_C→cp_D.
+// Topological order: A, B, C, D. With the fix (continue instead of break),
+// A and C get combined, B and D get combined → 2 ops.
+// Without the fix (break), A becomes a singleton, B+C get combined, D becomes
+// a singleton → 3 ops.
+TEST_F(CollectivePermuteCombinerTest,
+       CombineAcrossInterleavedDependencyChains) {
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder b(TestName());
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs{{0, 1}};
+  Shape shape = ShapeUtil::MakeShape(F32, {256});
+
+  // Chain 1: constant1 → broadcast1 → cp_A → cp_B
+  auto constant1 = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0)));
+  auto input_a =
+      b.AddInstruction(HloInstruction::CreateBroadcast(shape, constant1, {}));
+  auto cp_a = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, input_a, source_target_pairs, /*channel_id=*/std::nullopt));
+  auto cp_b = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, cp_a, source_target_pairs, /*channel_id=*/std::nullopt));
+
+  // Chain 2: constant3 → broadcast3 → cp_C → cp_D
+  auto constant3 = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(3.0)));
+  auto input_c =
+      b.AddInstruction(HloInstruction::CreateBroadcast(shape, constant3, {}));
+  auto cp_c = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, input_c, source_target_pairs, /*channel_id=*/std::nullopt));
+  auto cp_d = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, cp_c, source_target_pairs, /*channel_id=*/std::nullopt));
+
+  b.AddInstruction(HloInstruction::CreateTuple({cp_a, cp_b, cp_c, cp_d}));
+  module->AddEntryComputation(b.Build());
+
+  ASSERT_EQ(CollectivePermuteCount(*module), 4);
+
+  // With the fix (continue instead of break), A and C get combined, B and D get
+  // combined → 2 ops.
+  // Without the fix (break), A becomes a singleton, B+C get combined, D becomes
+  // a singleton → 3 ops.
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_enable_enzyme_comms_opt(true);
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 2);
+}
+
+TEST_F(CollectivePermuteCombinerTest,
+       CombineAcrossInterleavedDependencyChainsDefault) {
+  auto module = CreateNewVerifiedModule();
+
+  HloComputation::Builder b(TestName());
+  const std::vector<std::pair<int64_t, int64_t>> source_target_pairs{{0, 1}};
+  Shape shape = ShapeUtil::MakeShape(F32, {256});
+
+  // Chain 1: constant1 → broadcast1 → cp_A → cp_B
+  auto constant1 = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(1.0)));
+  auto input_a =
+      b.AddInstruction(HloInstruction::CreateBroadcast(shape, constant1, {}));
+  auto cp_a = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, input_a, source_target_pairs, /*channel_id=*/std::nullopt));
+  auto cp_b = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, cp_a, source_target_pairs, /*channel_id=*/std::nullopt));
+
+  // Chain 2: constant3 → broadcast3 → cp_C → cp_D
+  auto constant3 = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0(3.0)));
+  auto input_c =
+      b.AddInstruction(HloInstruction::CreateBroadcast(shape, constant3, {}));
+  auto cp_c = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, input_c, source_target_pairs, /*channel_id=*/std::nullopt));
+  auto cp_d = b.AddInstruction(HloInstruction::CreateCollectivePermute(
+      shape, cp_c, source_target_pairs, /*channel_id=*/std::nullopt));
+
+  b.AddInstruction(HloInstruction::CreateTuple({cp_a, cp_b, cp_c, cp_d}));
+  module->AddEntryComputation(b.Build());
+
+  ASSERT_EQ(CollectivePermuteCount(*module), 4);
+
+  // Default behavior is break, so it should result in 3 ops.
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 3);
+}
+
 }  // namespace
 }  // namespace xla
