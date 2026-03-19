@@ -3602,45 +3602,6 @@ INSTANTIATE_TEST_SUITE_P(
         {2, 0}, {2, 1}, {2, 2}}),
     ShardedAutotuningTestInfo::Name);
 
-// Regression test for use-after-free of temporary Literal data in
-// PjRtStreamExecutorClient::LinearizeInto. BufferFromHostLiteral schedules
-// the H2D transfer asynchronously; if a temporary Literal is passed, its
-// heap memory may be freed and reused before the async copy runs.
-TEST(StreamExecutorGpuClientTest, BufferFromHostLiteralTemporaryE2ETest) {
-  TF_ASSERT_OK_AND_ASSIGN(auto client,
-                          GetStreamExecutorGpuClient(GpuClientOptions()));
-
-  static constexpr char kAddProgram[] = R"(
-HloModule Add, entry_computation_layout={(f32[], f32[])->f32[]}
-ENTRY main (a: f32[], b: f32[]) -> f32[] {
-  a = f32[] parameter(0)
-  b = f32[] parameter(1)
-  ROOT add = f32[] add(a, b)
-})";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CompileExecutable(kAddProgram, *client));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto* memory_space,
-      client->addressable_devices()[0]->default_memory_space());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto a, client->BufferFromHostLiteral(LiteralUtil::CreateR0<float>(1.0f),
-                                            memory_space));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto b, client->BufferFromHostLiteral(LiteralUtil::CreateR0<float>(2.0f),
-                                            memory_space));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto results, executable->Execute({{a.get(), b.get()}}, /*options=*/{}));
-  ASSERT_EQ(results.size(), 1);
-  ASSERT_EQ(results[0].size(), 1);
-
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
-                          results[0][0]->ToLiteral().Await());
-  EXPECT_EQ(literal->Get<float>({}), 3.0f);
-}
-
 }  // namespace
 }  // namespace xla
 

@@ -155,20 +155,11 @@ CommonPjRtClient::BufferFromHostLiteral(const LiteralSlice& literal,
                       AllocateRawBuffer(memory_space, on_device_bytes_count,
                                         /*retry_on_oom=*/true,
                                         /*allocate_after=*/{}));
-  // Clone the literal so its data remains valid until the H2D stream has
-  // processed all enqueued operations. GpuTransferManager stages the copy via
-  // DoHostCallback, which runs asynchronously on the stream, so the data must
-  // outlive the lambda in LinearizeInto. The caller may have passed a temporary
-  // whose lifetime does not extend past this function call.
-  auto literal_owner = std::make_shared<Literal>(literal.Clone());
   TF_ASSIGN_OR_RETURN(
       auto definition_event,
-      LinearizeInto(*literal_owner, device_shape,
+      LinearizeInto(literal, device_shape,
                     HostBufferSemantics::kImmutableUntilTransferCompletes,
                     raw_buffer));
-  // Keep the clone alive until the definition event fires (after the stream
-  // has completed all transfers, including DoHostCallback-based staging).
-  definition_event->AndThen([literal_owner = std::move(literal_owner)] {});
   return DefineBuffer(device_shape, memory_space, std::move(raw_buffer),
                       {std::move(definition_event)});
 }
