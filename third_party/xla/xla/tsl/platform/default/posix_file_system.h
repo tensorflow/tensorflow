@@ -64,6 +64,9 @@ class PosixFileSystem : public FileSystem {
   absl::Status CreateDir(const std::string& name,
                          TransactionToken* token) override;
 
+  absl::Status CreateDir(const std::string& name, TransactionToken* token,
+                         uint32_t mode) override;
+
   absl::Status DeleteDir(const std::string& name,
                          TransactionToken* token) override;
 
