@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "xla/hlo/testlib/test.h"
 
 namespace xla {
@@ -91,6 +92,20 @@ TEST(PermutationUtilTest, ComposeAndInversePermutations) {
   do {
     EXPECT_EQ(ComposePermutations(InversePermutation(p), p), id);
   } while (absl::c_next_permutation(p));
+}
+
+TEST(PermutationUtilTest, MoveSingleElement) {
+  std::vector<int64_t> p1 = {0, 1, 2, 3, 4};
+  MoveSingleElement(absl::MakeSpan(p1), 1, 3);
+  EXPECT_THAT(p1, ElementsAre(0, 2, 3, 1, 4));
+
+  std::vector<int64_t> p2 = {0, 1, 2, 3, 4};
+  MoveSingleElement(absl::MakeSpan(p2), 3, 1);
+  EXPECT_THAT(p2, ElementsAre(0, 3, 1, 2, 4));
+
+  std::vector<int64_t> p3 = {0, 1, 2, 3, 4};
+  MoveSingleElement(absl::MakeSpan(p3), 2, 2);
+  EXPECT_THAT(p3, ElementsAre(0, 1, 2, 3, 4));
 }
 
 }  // namespace
