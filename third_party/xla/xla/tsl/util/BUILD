@@ -413,6 +413,21 @@ tsl_cc_test(
 )
 
 cc_library(
+    name = "tied_ref",
+    hdrs = ["tied_ref.h"],
+)
+
+tsl_cc_test(
+    name = "tied_ref_test",
+    srcs = ["tied_ref_test.cc"],
+    deps = [
+        ":tied_ref",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "unique_any",
     hdrs = ["unique_any.h"],
     deps = [
