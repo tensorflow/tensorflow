@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
+        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
         "@xla//xla/service:gpu_plugin",
         "//tensorflow/core/tfrt/common:pjrt_gpu_client_registration",
     ]) + if_cuda([
