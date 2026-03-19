@@ -378,31 +378,31 @@ absl::StatusOr<size_t> NcclCommunicator::NumRanks() const {
 absl::Status NcclCommunicator::RegisterBufferOnce(
     se::DeviceAddressBase buffer_range, int device_ordinal,
     bool use_symmetric_buffer) {
-  bool need_reg = false;
   {
     absl::MutexLock lock(registered_buffers_.mu);
-    if (!registered_buffers_.range_to_handle.contains(buffer_range.opaque())) {
-      need_reg = true;
-    } else {
+    if (registered_buffers_.range_to_handle.contains(buffer_range.opaque())) {
       XLA_VLOG_DEVICE(5, device_ordinal)
           << "Buffer range: " << buffer_range.opaque()
           << " with size: " << buffer_range.size() << " is already registered.";
+      return absl::OkStatus();
     }
   }
-  if (need_reg) {
-    XLA_VLOG_DEVICE(5, device_ordinal)
-        << "Registering " << buffer_range.opaque()
-        << " with size: " << buffer_range.size()
-        << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
-    // Symmetric buffer registration is a collective operation,
-    // we need to do that before locking on a global.
-    TF_ASSIGN_OR_RETURN(
-        auto handle,
-        RegisterBuffer(buffer_range, device_ordinal, use_symmetric_buffer));
+
+  XLA_VLOG_DEVICE(5, device_ordinal)
+      << "Registering " << buffer_range.opaque()
+      << " with size: " << buffer_range.size()
+      << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
+  // Symmetric buffer registration is a collective operation,
+  // we need to do that before locking on a global.
+  TF_ASSIGN_OR_RETURN(auto handle, RegisterBuffer(buffer_range, device_ordinal,
+                                                  use_symmetric_buffer));
+
+  {
     absl::MutexLock lock(registered_buffers_.mu);
     registered_buffers_.range_to_handle[buffer_range.opaque()] =
         std::move(handle);
   }
+
   return absl::OkStatus();
 }
 
