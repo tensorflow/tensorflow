@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -85,6 +86,25 @@ TEST(EnvTest, SimpleFileSystemConformance) {
     EXPECT_OK(ReadFileToString(env, file_path, &content));
     EXPECT_EQ(content, contents) << file_path;
   }
+}
+
+TEST(EnvTest, RenameFile) {
+  Env* env = Env::Default();
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string src_path = tsl::io::JoinPath(temp_dir.path(), "src.txt");
+  std::string target_path = tsl::io::JoinPath(temp_dir.path(), "target.txt");
+  EXPECT_THAT(WriteStringToFile(env, src_path, "source content"), IsOk());
+  EXPECT_THAT(env->FileExists(src_path), IsOk());
+
+  EXPECT_THAT(WriteStringToFile(env, target_path, "target content"), IsOk());
+  EXPECT_THAT(env->RenameFile(src_path, target_path, /*overwrite=*/true),
+              IsOk());
+  EXPECT_TRUE(absl::IsNotFound(env->FileExists(src_path)));
+  std::string target_content;
+  EXPECT_THAT(ReadFileToString(env, target_path, &target_content), IsOk());
+  EXPECT_EQ(target_content, "source content");
 }
 
 }  // namespace

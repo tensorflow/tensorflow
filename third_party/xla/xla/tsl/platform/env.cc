@@ -372,6 +372,13 @@ absl::Status Env::RenameFile(const std::string& src,
   return src_fs->RenameFile(src, target);
 }
 
+absl::Status Env::RenameFile(const std::string& src, const std::string& target,
+                             bool overwrite) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &fs));
+  return fs->RenameFile(src, target, overwrite);
+}
+
 absl::Status Env::CopyFile(const std::string& src, const std::string& target) {
   FileSystem* src_fs;
   FileSystem* target_fs;

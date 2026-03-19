@@ -346,6 +346,16 @@ class FileSystem {
     return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
+  /// \brief Overwrites the target if `overwrite` is true.
+  virtual absl::Status RenameFile(const std::string& src,
+                                  const std::string& target, bool overwrite) {
+    if (overwrite) {
+      return RenameFile(src, target);
+    }
+    return absl::UnimplementedError(
+        "RenameFile with overwrite=false not implemented");
+  }
+
   /// \brief Copy the src to target.
   virtual absl::Status CopyFile(const std::string& src,
                                 const std::string& target) {

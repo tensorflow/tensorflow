@@ -423,6 +423,7 @@ tsl_cc_test(
     deps = [
         ":env",
         "//xla/tsl/testing:temporary_directory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",

@@ -360,6 +360,9 @@ class Env {
   absl::Status RenameFile(const std::string& src, const std::string& target);
 
   absl::Status RenameFile(const std::string& src, const std::string& target,
+                          bool overwrite);
+
+  absl::Status RenameFile(const std::string& src, const std::string& target,
                           TransactionToken* token) {
     return absl::OkStatus();
   }
