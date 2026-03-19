@@ -11,6 +11,7 @@ platform(
     exec_properties = {
         "container-image": "docker://gcr.io/tensorflow-testing/ml-devinfra-linux-aarch64-cross-compile@sha256:06040763c500bd2ebaaa4585d4729c88d2c8ccec94baa7fbe9bbe3dc2827d79d",
         "OSFamily": "Linux",
+        "Pool": "default",
     },
 )
 

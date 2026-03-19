@@ -566,8 +566,8 @@ common:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x
 common:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
 
 common:windows_x86_cpu_2022 --config=win_clang_base
-common:windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
-common:windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
+common:rbe_windows_x86_cpu_2022 --config=win_clang
+common:rbe_windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
 common:windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
 common:windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang"
@@ -643,6 +643,22 @@ common:rbe_linux_cpu --python_path="/usr/bin/python3"
 # These you may need to change for your own GCP project.
 common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instances/default_instance
 
+# RBE configuration for GitHub Actions (hermetic toolchains, ADC)
+common:rbe_linux_x86_64 --config=rbe_linux_cpu
+common:rbe_linux_x86_64 --google_default_credentials
+common:rbe_linux_x86_64 --repo_env=USE_HERMETIC_CC_TOOLCHAIN=1
+common:rbe_linux_x86_64 --@rules_ml_toolchain//common:enable_hermetic_cc=True
+common:rbe_linux_x86_64 --remote_instance_name=projects/tensorflow-testing/instances/default_instance
+common:rbe_linux_x86_64 --bes_instance_name="tensorflow-testing"
+
+common:rbe_linux_arm64 --config=release_arm64_linux
+common:rbe_linux_arm64 --config=rbe_base
+common:rbe_linux_arm64 --google_default_credentials
+common:rbe_linux_arm64 --remote_instance_name=projects/ml-oss-rbe-general/instances/default_instance
+common:rbe_linux_arm64 --bes_instance_name="ml-oss-rbe-general"
+common:rbe_linux_arm64 --extra_execution_platforms="//tensorflow/tools/toolchains/linux:remote_linux_aarch64"
+common:rbe_linux_arm64 --host_platform="//tensorflow/tools/toolchains/linux:remote_linux_aarch64"
+
 # Deprecated RBE config with non-hermetic toolchains.
 common:rbe_linux_cpu_clang_local --config=rbe_linux_cpu
 common:rbe_linux_cpu_clang_local --config=clang_local
@@ -695,6 +711,9 @@ common:rbe_windows_x86_cpu_2022 --bes_instance_name="ml-oss-rbe-general"
 common:rbe_windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_new"
 common:rbe_windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_new"
 common:rbe_windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_new"
+
+common:rbe_windows_x86_cpu_2022 --crosstool_top="//tensorflow/tools/toolchains/win2022/20241118:toolchain"
+common:rbe_windows_x86_cpu_2022 --extra_toolchains="//tensorflow/tools/toolchains/win2022/20241118:cc-toolchain-x64_windows-clang-cl"
 
 # END TF REMOTE BUILD EXECUTION OPTIONS
 

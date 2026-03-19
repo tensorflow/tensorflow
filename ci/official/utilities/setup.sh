@@ -126,6 +126,10 @@ if [[ $(uname -s) = MSYS_NT* ]]; then
 fi
 
 # Run all "tfrun" commands under Docker. See setup_docker.sh for details
+if [[ "$TFCI_GITHUB_ACTIONS" == "true" ]]; then
+  TFCI_DOCKER_ENABLE=0
+fi
+
 if [[ "$TFCI_DOCKER_ENABLE" == 1 ]]; then
   source ./ci/official/utilities/setup_docker.sh
 fi
