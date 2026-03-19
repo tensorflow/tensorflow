@@ -415,6 +415,13 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
       hooks_(std::move(hooks)),
       scalar_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)),
       tiled_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)) {
+  // Only enable verifier in debug builds.
+  bool should_verify = false;
+#ifndef NDEBUG
+  should_verify = true;
+#endif
+  scalar_pass_manager_.enableVerifier(should_verify);
+  tiled_pass_manager_.enableVerifier(should_verify);
   // Scalar passes.
   AddScalarOptimizationPasses(scalar_pass_manager_, options_.vector_width);
   if (hooks_.post_optimization) {

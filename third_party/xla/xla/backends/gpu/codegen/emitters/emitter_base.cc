@@ -383,6 +383,16 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
+  // Only enable verifier in debug builds.
+  bool should_verify = (fusion.GetModule()
+                            ->config()
+                            .debug_options()
+                            .xla_gpu_llvm_verification_level() >= 1);
+#ifndef NDEBUG
+  should_verify = true;
+#endif
+  pm.enableVerifier(should_verify);
+
   emitters::RegisterOptimizationPasses(pm);
   AddLoopTransformationPasses(pm, device, unroll_factor());
   if (EnablePDL(*fusion.GetModule(), device)) {
