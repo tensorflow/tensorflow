@@ -194,7 +194,7 @@ inline protobuf::RepeatedField<int32_t>* MutableTensorProtoData<Eigen::half>(
 template <>
 inline void Fill(const Eigen::half* data, size_t n, TensorProto* t) {
   typename protobuf::RepeatedField<int32_t>* val = t->mutable_half_val();
-  val->Resize(n, 0);
+  val->resize(n, 0);
   for (size_t i = 0; i < n; ++i) {
     val->Set(i, Eigen::numext::bit_cast<uint16_t>(data[i]));
   }
