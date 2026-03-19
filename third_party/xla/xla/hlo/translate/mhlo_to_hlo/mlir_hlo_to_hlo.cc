@@ -3064,6 +3064,199 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
+  // Validate arguments.
+  if (op.getNumOperands() != 1) {
+    return op.emitOpError()
+           << "async_start currently requires one argument; got "
+           << op.getNumOperands();
+  }
+
+  Block& block = op.getBody().front();
+  Operation& collective = block.front();
+
+  // Translate the operand from StableHLO to HLO.
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(0), *ctx.values, &operand, op))) {
+    return failure();
+  }
+
+  // AllGather
+  if (auto all_gather = dyn_cast<AllGatherOp>(collective)) {
+    TensorType operand_type =
+        mlir::cast<TensorType>(all_gather.getOperand(0).getType());
+    TensorType result_type = mlir::cast<TensorType>(all_gather.getType(0));
+    if (!operand_type.hasStaticShape() || !result_type.hasStaticShape()) {
+      return failure();
+    }
+    auto all_gather_dim = all_gather.getAllGatherDim();
+    int64_t shard_count = result_type.getDimSize(all_gather_dim) /
+                          operand_type.getDimSize(all_gather_dim);
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAllGatherStart(
+            ctx.builder, operand, all_gather_dim, shard_count,
+            Convert_replica_groups(all_gather.getReplicaGroups()),
+            Convert_channel_handle(all_gather.getChannelHandle()),
+            ExtractLayout(all_gather,
+                          mlir::cast<RankedTensorType>(result_type).getRank()),
+            Convert_use_global_device_ids(all_gather.getUseGlobalDeviceIds()));
+    return success();
+  }
+
+  // AllReduce
+  if (auto all_reduce = dyn_cast<AllReduceOp>(collective)) {
+    xla::XlaComputationId computation;
+    if (failed(ctx.converter->LowerRegionAsComputation(
+            &all_reduce.getComputation(), computation))) {
+      return failure();
+    }
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAllReduceStart(
+            ctx.builder, operand, computation,
+            Convert_replica_groups(all_reduce.getReplicaGroups()),
+            Convert_channel_handle(all_reduce.getChannelHandle()), std::nullopt,
+            Convert_use_global_device_ids(all_reduce.getUseGlobalDeviceIds()));
+    return success();
+  }
+
+  // CollectivePermute
+  if (auto collective_permute = dyn_cast<CollectivePermuteOp>(collective)) {
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildCollectivePermuteStart(
+            ctx.builder, operand,
+            Convert_source_target_pairs(
+                collective_permute.getSourceTargetPairs()),
+            Convert_channel_handle(collective_permute.getChannelHandle()));
+    return success();
+  }
+
+  // AllToAll
+  if (auto all_to_all = dyn_cast<AllToAllOp>(collective)) {
+    xla::XlaComputationId computation;
+    if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(),
+                                                       computation))) {
+      return failure();
+    }
+
+    xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(
+        {xla::TypeToShape(op.getOperand(0).getType())});
+    xla::Shape output_shape = xla::TypeToShape(all_to_all.getType(0));
+    xla::Shape start_shape =
+        xla::ShapeUtil::MakeTupleShape({input_shape, output_shape});
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAsyncStart(
+            ctx.builder, {operand}, xla::HloInstruction::kMainExecutionThread,
+            computation, start_shape);
+    return success();
+  }
+
+  // CollectiveBroadcast
+  if (auto collective_broadcast = dyn_cast<CollectiveBroadcastOp>(collective)) {
+    xla::XlaComputationId computation;
+    if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(),
+                                                       computation))) {
+      return failure();
+    }
+
+    xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(
+        {xla::TypeToShape(op.getOperand(0).getType())});
+    xla::Shape output_shape = xla::TypeToShape(collective_broadcast.getType());
+    xla::Shape start_shape =
+        xla::ShapeUtil::MakeTupleShape({input_shape, output_shape});
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAsyncStart(
+            ctx.builder, {operand}, xla::HloInstruction::kMainExecutionThread,
+            computation, start_shape);
+    return success();
+  }
+
+  // ReduceScatter
+  if (auto reduce_scatter = dyn_cast<ReduceScatterOp>(collective)) {
+    xla::XlaComputationId computation;
+    if (failed(ctx.converter->LowerRegionAsComputation(&op.getBody(),
+                                                       computation))) {
+      return failure();
+    }
+
+    xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(
+        {xla::TypeToShape(op.getOperand(0).getType())});
+    xla::Shape output_shape = xla::TypeToShape(reduce_scatter.getType());
+    xla::Shape start_shape =
+        xla::ShapeUtil::MakeTupleShape({input_shape, output_shape});
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAsyncStart(
+            ctx.builder, {operand}, xla::HloInstruction::kMainExecutionThread,
+            computation, start_shape);
+    return success();
+  }
+
+  return op.emitOpError() << "unsupported op in async_start: "
+                          << collective.getName();
+}
+
+LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
+  // Translate the operand from StableHLO to HLO.
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), *ctx.values, &operand, op))) {
+    return failure();
+  }
+
+  // Get the corresponding async_start op.
+  if (!isa<AsyncStartOp>(op.getOperand().getDefiningOp())) {
+    return op.emitError() << "async_done argument is not an async_start";
+  }
+  auto async_start = dyn_cast<AsyncStartOp>(op.getOperand().getDefiningOp());
+  Block& block = async_start.getBody().front();
+  Operation& collective = block.front();
+
+  if (auto all_gather = dyn_cast<AllGatherOp>(collective)) {
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAllGatherDone(
+            ctx.builder, operand, xla::TypeToShape(all_gather.getType(0)));
+    return success();
+  }
+
+  if (auto all_reduce = dyn_cast<AllReduceOp>(collective)) {
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAllReduceDone(
+            ctx.builder, operand, xla::TypeToShape(all_reduce.getType(0)));
+    return success();
+  }
+
+  if (auto collective_permute = dyn_cast<CollectivePermuteOp>(collective)) {
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildCollectivePermuteDone(
+            ctx.builder, operand,
+            xla::TypeToShape(collective_permute.getType()));
+    return success();
+  }
+
+  if (auto all_to_all = dyn_cast<AllToAllOp>(collective)) {
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAsyncDone(
+            ctx.builder, operand, xla::TypeToShape(all_to_all.getType(0)));
+    return success();
+  }
+
+  if (auto collective_broadcast = dyn_cast<CollectiveBroadcastOp>(collective)) {
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAsyncDone(
+            ctx.builder, operand,
+            xla::TypeToShape(collective_broadcast.getType()));
+    return success();
+  }
+
+  if (auto reduce_scatter = dyn_cast<ReduceScatterOp>(collective)) {
+    (*ctx.values)[op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAsyncDone(
+            ctx.builder, operand, xla::TypeToShape(reduce_scatter.getType()));
+    return success();
+  }
+
+  return op.emitOpError() << "unsupported op in async_start: "
+                          << collective.getName();
+}
+
 }  // namespace
 }  // namespace stablehlo
 
