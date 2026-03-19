@@ -85,8 +85,19 @@ class CommonPjRtClient : public PjRtClient {
   // Computes the memory requirements for storing shape on memory_space.
   // TODO(parkers): make pure virtual and update all clients.
   virtual absl::StatusOr<int64_t> GetOnDeviceBytesCount(
-      PjRtMemorySpace* memory_space, const xla::Shape& shape) const {
+      int memory_space_kind, const xla::Shape& shape) const {
     return absl::UnimplementedError("GetOnDeviceBytesCount is not supported.");
+  }
+  virtual absl::StatusOr<int64_t> GetOnDeviceBytesCount(
+      PjRtMemorySpace* memory_space, const xla::Shape& shape) const {
+    return GetOnDeviceBytesCount(memory_space->kind_id(), shape);
+  }
+
+  // Gets the memory_space_kind for a particular XLA layout.
+  virtual absl::StatusOr<int> GetMemorySpaceKindForShape(
+      const xla::Shape& shape) const {
+    return absl::UnimplementedError(
+        "GetMemorySpaceKindForShape is not supported.");
   }
 
   // Allocates a raw buffer of a particular size after an optional

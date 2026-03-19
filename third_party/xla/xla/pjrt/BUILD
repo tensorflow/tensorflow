@@ -186,6 +186,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "infer_dispatch_info",
+    srcs = ["infer_dispatch_info.cc"],
+    hdrs = ["infer_dispatch_info.h"],
+    visibility = internal_visibility([
+        ":friends",
+    ]),
+    deps = [
+        ":common_pjrt_client",
+        ":utils",
+    ],
+)
+
 xla_cc_test(
     name = "tracked_device_buffer_test",
     srcs = ["tracked_device_buffer_test.cc"],

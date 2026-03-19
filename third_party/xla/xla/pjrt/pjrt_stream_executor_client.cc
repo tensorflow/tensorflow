@@ -442,7 +442,7 @@ void MaybeWaitForEventOnStream(const BufferSequencingEventRef& event,
 }  // namespace
 
 absl::StatusOr<int64_t> PjRtStreamExecutorClient::GetOnDeviceBytesCount(
-    PjRtMemorySpace* memory_space, const xla::Shape& shape) const {
+    int memory_space_kind, const xla::Shape& shape) const {
   return client()->backend().transfer_manager()->GetByteSizeRequirement(shape);
 }
 

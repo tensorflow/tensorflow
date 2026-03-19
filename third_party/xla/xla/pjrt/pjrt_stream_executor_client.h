@@ -390,8 +390,9 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   bool allows_recursion() const override { return false; }
   bool allows_execute_recursion() const override { return true; }
 
+  using CommonPjRtClient::GetOnDeviceBytesCount;
   absl::StatusOr<int64_t> GetOnDeviceBytesCount(
-      PjRtMemorySpace* memory_space, const xla::Shape& shape) const override;
+      int memory_space_kind, const xla::Shape& shape) const override;
 
   absl::StatusOr<xla::Shape> MakeDefaultShapeForMemorySpace(
       PjRtMemorySpace* memory_space, xla::Shape shape,

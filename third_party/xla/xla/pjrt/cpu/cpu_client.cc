@@ -1117,7 +1117,7 @@ PjRtCpuClient::CreateRawBufferChannel(PjRtMemorySpace* memory_space,
 }
 
 absl::StatusOr<int64_t> PjRtCpuClient::GetOnDeviceBytesCount(
-    PjRtMemorySpace* memory_space, const xla::Shape& shape) const {
+    int memory_space_kind, const xla::Shape& shape) const {
   return xla::ShapeUtil::ByteSizeOf(shape);
 }
 

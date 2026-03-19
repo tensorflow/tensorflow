@@ -246,8 +246,9 @@ class PjRtCpuClient final : public CommonPjRtClient {
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
           definition_device_events) override;
 
+  using CommonPjRtClient::GetOnDeviceBytesCount;
   absl::StatusOr<int64_t> GetOnDeviceBytesCount(
-      PjRtMemorySpace* memory_space, const xla::Shape& shape) const override;
+      int memory_space_kind, const xla::Shape& shape) const override;
 
   absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeHostBufferInto(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
