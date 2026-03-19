@@ -26,17 +26,17 @@ limitations under the License.
 using ::testing::EndsWith;
 
 TEST(FilewrapperTest, CompareData) {
-  constexpr absl::string_view filename = "util/filewrapper_testdata.txt";
+  constexpr absl::string_view filename = "filewrapper_testdata.txt";
 
   ASSERT_EQ(filewrapper_testdata_size(), 1);
   const FileToc* file_toc = filewrapper_testdata_create();
-  EXPECT_THAT(file_toc[0].name, EndsWith(filename));
+  EXPECT_EQ(file_toc[0].name, filename);
   EXPECT_EQ(nullptr, file_toc[1].name);
 
   std::string true_contents;
   TF_ASSERT_OK(tsl::ReadFileToString(
       tsl::Env::Default(),
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tsl", filename),
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tsl", "util", filename),
       &true_contents));
 
   ASSERT_EQ(true_contents.size(), file_toc[0].size);
