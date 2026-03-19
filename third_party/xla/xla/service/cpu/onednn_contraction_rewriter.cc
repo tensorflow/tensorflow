@@ -1131,7 +1131,7 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
                             ->mutable_result()
                             ->mutable_tensor()
                             ->mutable_dimensions();
-      dimensions->Resize(transpose->dimensions().size(), 0);
+      dimensions->resize(transpose->dimensions().size(), 0);
       // Configure inverse transpose dimensions
       int counter = 1;
       for (auto x : transpose->dimensions()) {
