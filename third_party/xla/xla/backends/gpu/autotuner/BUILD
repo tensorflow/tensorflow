@@ -351,6 +351,7 @@ xla_test(
         "//xla/service:compiler",
         "//xla/service:platform_util",
         "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:stream_executor_h",
