@@ -2485,6 +2485,34 @@ PjRtCApiExecutable::GetParameterLayouts() const {
   return layouts;
 }
 
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+PjRtCApiExecutable::GetParameterMemoryKinds() const {
+  const PJRT_Api* c_api = pjrt_c_api();
+  if (c_api->pjrt_api_version.major_version == 0 &&
+      c_api->pjrt_api_version.minor_version < 102) {
+    // If the PJRT C API version is too old, fall back to the default
+    // implementation.
+    return Unimplemented(
+        "PJRT_Executable_ParameterMemoryKinds requires PJRT C API version "
+        "0.102 or higher.");
+  }
+  PJRT_Executable_ParameterMemoryKinds_Args args;
+  args.struct_size = PJRT_Executable_ParameterMemoryKinds_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.executable = c_executable();
+
+  RETURN_STATUS_IF_PJRT_ERROR(
+      c_api->PJRT_Executable_ParameterMemoryKinds(&args), c_api);
+
+  std::vector<absl::string_view> out;
+  out.reserve(args.num_parameters);
+  for (int i = 0; i < args.num_parameters; ++i) {
+    out.push_back(
+        absl::string_view(args.memory_kinds[i], args.memory_kind_sizes[i]));
+  }
+  return std::vector<std::vector<absl::string_view>>{std::move(out)};
+}
+
 absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
 PjRtCApiExecutable::GetOutputLayouts() const {
   const PJRT_Api* c_api = pjrt_c_api();

@@ -110,7 +110,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 101
+#define PJRT_API_MINOR 102
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -2128,6 +2128,23 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_OutputDimensions_Args, dim_sizes);
 typedef PJRT_Error* PJRT_Executable_OutputDimensions(
     PJRT_Executable_OutputDimensions_Args* args);
 
+struct PJRT_Executable_ParameterMemoryKinds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Executable* executable;
+  size_t num_parameters;
+  // Has length `num_parameters`.
+  const char* const* memory_kinds;  // out
+  // Has length `num_parameters`.
+  const size_t* memory_kind_sizes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_ParameterMemoryKinds_Args,
+                          memory_kind_sizes);
+
+// Returns a list of memory kind strings for parameters.
+typedef PJRT_Error* PJRT_Executable_ParameterMemoryKinds(
+    PJRT_Executable_ParameterMemoryKinds_Args* args);
+
 struct PJRT_Executable_OutputMemoryKinds_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -3039,11 +3056,12 @@ typedef struct PJRT_Api {
 
   _PJRT_API_STRUCT_FIELD(PJRT_Error_ForEachPayload);
   _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Fingerprint);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_ParameterMemoryKinds);
 } PJRT_Api;
 
 enum {
   PJRT_Api_STRUCT_SIZE =
-      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_TopologyDescription_Fingerprint)
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_ParameterMemoryKinds)
 };
 
 #undef _PJRT_API_STRUCT_FIELD

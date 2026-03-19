@@ -989,6 +989,9 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 101) {
       add_field("PJRT_TopologyDescription_Fingerprint", kFnPtrSize);
     }
+    if (minor_version >= 102) {
+      add_field("PJRT_Executable_ParameterMemoryKinds", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1432,6 +1435,9 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_TopologyDescription_Fingerprint",
            {offsetof(PJRT_Api, PJRT_TopologyDescription_Fingerprint),
             sizeof(PJRT_Api::PJRT_TopologyDescription_Fingerprint)}},
+          {"PJRT_Executable_ParameterMemoryKinds",
+           {offsetof(PJRT_Api, PJRT_Executable_ParameterMemoryKinds),
+            sizeof(PJRT_Api::PJRT_Executable_ParameterMemoryKinds)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

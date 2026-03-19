@@ -186,6 +186,9 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     absl::Duration get_local_topology_timeout,
     absl::Duration get_global_topology_timeout);
 
+absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
+    const Shape& shape, absl::string_view default_memory_kind);
+
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind);
 

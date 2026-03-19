@@ -357,6 +357,13 @@ class PjRtExecutable {
   virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const;
 
+  // Returns a list of lists of memory kind strings for parameter. The returned
+  // value is `[num_programs, num_parameters]`. The size of the outer list
+  // should be equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const = 0;
+
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be
   // equal to `GetHloModules()`. Under SPMD, one can use

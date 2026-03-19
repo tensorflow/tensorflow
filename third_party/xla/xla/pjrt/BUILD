@@ -730,6 +730,7 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
+        "//xla/service:computation_layout",
         "//xla/service:executable",
         "//xla/service:hlo_proto_cc",
         "//xla/stream_executor/abi:executable_abi_version",

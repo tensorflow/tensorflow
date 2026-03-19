@@ -1190,6 +1190,31 @@ TfrtGpuExecutable::GetHloModules() const {
 }
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+TfrtGpuExecutable::GetParameterMemoryKinds() const {
+  if (addressable_devices().empty()) {
+    return Unimplemented(
+        "GetParameterMemoryKinds is not supported when there are no "
+        "addressable devices in TfrtGpuExecutable.");
+  }
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
+                      addressable_devices()[0]->default_memory_space());
+  std::vector<std::vector<absl::string_view>> out;
+  out.reserve(on_device_executable_parameter_shapes_.size());
+  for (const std::shared_ptr<std::vector<Shape>>& shapes :
+       on_device_executable_parameter_shapes_) {
+    std::vector<absl::string_view>& memory_kinds = out.emplace_back();
+    memory_kinds.reserve(shapes->size());
+    for (const xla::Shape& shape : *shapes) {
+      TF_ASSIGN_OR_RETURN(
+          absl::string_view memory_kind,
+          MemoryKindFromSimpleShape(shape, default_memory_space->kind()));
+      memory_kinds.push_back(memory_kind);
+    }
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 TfrtGpuExecutable::GetOutputMemoryKinds() const {
   TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
   if (addressable_devices().empty()) {

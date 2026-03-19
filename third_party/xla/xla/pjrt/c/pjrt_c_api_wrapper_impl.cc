@@ -362,6 +362,39 @@ static absl::Status EnsureExecutableOutputShardingsPopulated(
   return absl::OkStatus();
 }
 
+static absl::Status PopulateExecutableParameterMemoryKinds(
+    PJRT_Executable* executable) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<absl::string_view>> parameter_memories,
+      executable->get()->GetParameterMemoryKinds());
+  if (parameter_memories.empty()) {
+    return xla::InvalidArgument(
+        "Can't get parameter memory kinds, the list is empty for executable "
+        "%s.",
+        executable->get()->name());
+  }
+  if (parameter_memories.size() != 1) {
+    return xla::Unimplemented(
+        "MPMD execution not supported by PJRT C API (in "
+        "function PJRT_Executable_ParameterMemoryKinds).");
+  }
+
+  std::vector<absl::string_view>& inner_parameter_memories =
+      parameter_memories[0];
+  std::vector<const char*>& parameter_memory_kinds =
+      executable->parameter_memory_kinds;
+  std::vector<size_t>& parameter_memory_kind_sizes =
+      executable->parameter_memory_kind_sizes;
+  parameter_memory_kinds.reserve(inner_parameter_memories.size());
+  parameter_memory_kind_sizes.reserve(inner_parameter_memories.size());
+  for (absl::string_view memory : inner_parameter_memories) {
+    parameter_memory_kinds.push_back(memory.data());
+    parameter_memory_kind_sizes.push_back(memory.size());
+  }
+
+  return absl::OkStatus();
+}
+
 static absl::Status PopulateExecutableOutputMemoryKinds(
     PJRT_Executable* executable) {
   TF_ASSIGN_OR_RETURN(
@@ -379,13 +412,15 @@ static absl::Status PopulateExecutableOutputMemoryKinds(
   }
 
   std::vector<absl::string_view>& inner_output_memories = output_memories[0];
-  std::vector<const char*>& memory_kinds = executable->memory_kinds;
-  std::vector<size_t>& memory_kind_sizes = executable->memory_kind_sizes;
-  memory_kinds.reserve(inner_output_memories.size());
-  memory_kind_sizes.reserve(inner_output_memories.size());
+  std::vector<const char*>& output_memory_kinds =
+      executable->output_memory_kinds;
+  std::vector<size_t>& output_memory_kind_sizes =
+      executable->output_memory_kind_sizes;
+  output_memory_kinds.reserve(inner_output_memories.size());
+  output_memory_kind_sizes.reserve(inner_output_memories.size());
   for (absl::string_view memory : inner_output_memories) {
-    memory_kinds.push_back(memory.data());
-    memory_kind_sizes.push_back(memory.size());
+    output_memory_kinds.push_back(memory.data());
+    output_memory_kind_sizes.push_back(memory.size());
   }
 
   return absl::OkStatus();
@@ -2051,6 +2086,29 @@ PJRT_Error* PJRT_Shardings_PJRT_Executable_OutputShardings(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_ParameterMemoryKinds(
+    PJRT_Executable_ParameterMemoryKinds_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Executable_ParameterMemoryKinds_Args",
+      PJRT_Executable_ParameterMemoryKinds_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  {
+    absl::MutexLock lock(args->executable->mutex);
+    if (!args->executable->parameter_memory_kind_ran) {
+      PJRT_RETURN_IF_ERROR(
+          PopulateExecutableParameterMemoryKinds(args->executable));
+      args->executable->parameter_memory_kind_ran = true;
+    }
+  }
+
+  args->num_parameters = args->executable->parameter_memory_kinds.size();
+  args->memory_kinds = args->executable->parameter_memory_kinds.data();
+  args->memory_kind_sizes =
+      args->executable->parameter_memory_kind_sizes.data();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_OutputMemoryKinds(
     PJRT_Executable_OutputMemoryKinds_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -2059,16 +2117,16 @@ PJRT_Error* PJRT_Executable_OutputMemoryKinds(
 
   {
     absl::MutexLock lock(args->executable->mutex);
-    if (!args->executable->memory_kind_ran) {
+    if (!args->executable->output_memory_kind_ran) {
       PJRT_RETURN_IF_ERROR(
           PopulateExecutableOutputMemoryKinds(args->executable));
-      args->executable->memory_kind_ran = true;
+      args->executable->output_memory_kind_ran = true;
     }
   }
 
-  args->num_outputs = args->executable->memory_kinds.size();
-  args->memory_kinds = args->executable->memory_kinds.data();
-  args->memory_kind_sizes = args->executable->memory_kind_sizes.data();
+  args->num_outputs = args->executable->output_memory_kinds.size();
+  args->memory_kinds = args->executable->output_memory_kinds.data();
+  args->memory_kind_sizes = args->executable->output_memory_kind_sizes.data();
   return nullptr;
 }
 
@@ -3736,6 +3794,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Error_ForEachPayload=*/pjrt::PJRT_Error_ForEachPayload,
       /*PJRT_TopologyDescription_Fingerprint=*/
       pjrt::PJRT_TopologyDescription_Fingerprint,
+      /*PJRT_Executable_ParameterMemoryKinds=*/
+      pjrt::PJRT_Executable_ParameterMemoryKinds,
   };
 }
 

@@ -433,6 +433,11 @@ class PjRtCpuExecutable final : public PjRtExecutable {
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return Unimplemented("GetParameterMemoryKinds is not supported.");
+  }
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return Unimplemented("GetOutputMemoryKinds is not supported.");
   }

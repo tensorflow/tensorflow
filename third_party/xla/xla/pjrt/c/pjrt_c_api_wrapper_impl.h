@@ -175,9 +175,13 @@ struct PJRT_Executable {
   std::vector<PJRT_Layouts_MemoryLayout> parameter_layouts;
   std::vector<PJRT_Layouts_MemoryLayout*> parameter_layouts_pointers;
 
-  bool memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
-  std::vector<const char*> memory_kinds;
-  std::vector<size_t> memory_kind_sizes;
+  bool output_memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<const char*> output_memory_kinds;
+  std::vector<size_t> output_memory_kind_sizes;
+
+  bool parameter_memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<const char*> parameter_memory_kinds;
+  std::vector<size_t> parameter_memory_kind_sizes;
 
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
   explicit PJRT_Executable(xla::PjRtExecutable* executable);
@@ -404,6 +408,8 @@ PJRT_Error* PJRT_Executable_OutputElementTypes(
     PJRT_Executable_OutputElementTypes_Args* args);
 PJRT_Error* PJRT_Executable_OutputDimensions(
     PJRT_Executable_OutputDimensions_Args* args);
+PJRT_Error* PJRT_Executable_ParameterMemoryKinds(
+    PJRT_Executable_ParameterMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OutputMemoryKinds(
     PJRT_Executable_OutputMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
