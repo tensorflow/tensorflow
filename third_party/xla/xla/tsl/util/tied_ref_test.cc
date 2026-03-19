@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 #include <vector>
 
 #include "xla/tsl/platform/test.h"
@@ -25,8 +24,28 @@ limitations under the License.
 namespace tsl {
 namespace {
 
-// Forward declare.
-class Connection;
+// A Connection tracks its own construction/destruction via an external counter,
+// so tests can verify when tied values are created and released.
+class Connection {
+ public:
+  explicit Connection(int32_t* alive_count) : alive_count_(alive_count) {
+    ++(*alive_count_);
+  }
+  ~Connection() { --(*alive_count_); }
+
+ private:
+  int32_t* alive_count_;
+};
+
+// A second tracked type used by TiedAny tests to verify that heterogeneous
+// types can be tied in a single container.
+struct Widget {
+  explicit Widget(int32_t* alive_count) : alive_count_(alive_count) {
+    ++(*alive_count_);
+  }
+  ~Widget() { --(*alive_count_); }
+  int32_t* alive_count_;
+};
 
 // A Session is a long-lived entity that creates multiple Connections during its
 // lifetime. Connections are tied to the session and expire when the session is
@@ -41,19 +60,6 @@ class Session : private Tied<Connection> {
 
  private:
   int32_t alive_connections_ = 0;
-};
-
-// A Connection tracks its own construction/destruction via an external counter,
-// so tests can verify when tied values are created and released.
-class Connection {
- public:
-  explicit Connection(int32_t* alive_count) : alive_count_(alive_count) {
-    ++(*alive_count_);
-  }
-  ~Connection() { --(*alive_count_); }
-
- private:
-  int32_t* alive_count_;
 };
 
 TEST(TiedRefTest, ConnectionLocksWhileSessionAlive) {
@@ -125,22 +131,60 @@ TEST(TiedRefTest, DefaultTiedRefIsExpired) {
   EXPECT_EQ(ref.Lock(), nullptr);
 }
 
-TEST(TiedRefTest, MoveSession) {
-  Session session;
-  TiedRef<Connection> ref = session.Connect();
-
-  Session moved_session = std::move(session);
-
-  // TiedRef is still valid because tied connections moved with the session.
-  EXPECT_FALSE(ref.Expired());
-  EXPECT_NE(ref.Lock(), nullptr);
-}
-
 TEST(TiedRefTest, TieNullptrReturnsExpiredRef) {
   Tied<Connection> tied;
   TiedRef<Connection> ref = tied.Tie(nullptr);
   EXPECT_TRUE(ref.Expired());
   EXPECT_EQ(ref.Lock(), nullptr);
+}
+
+TEST(TiedAnyTest, TieAndLockMultipleTypes) {
+  TiedAny container;
+  int32_t alive_connections = 0;
+  int32_t alive_widgets = 0;
+
+  TiedRef<Connection> conn_ref =
+      container.Tie(std::make_unique<Connection>(&alive_connections));
+  TiedRef<Widget> widget_ref =
+      container.Tie(std::make_unique<Widget>(&alive_widgets));
+
+  EXPECT_EQ(alive_connections, 1);
+  EXPECT_EQ(alive_widgets, 1);
+  EXPECT_NE(conn_ref.Lock(), nullptr);
+  EXPECT_NE(widget_ref.Lock(), nullptr);
+}
+
+TEST(TiedAnyTest, AllRefsExpireWhenContainerDestroyed) {
+  TiedRef<Connection> conn_ref;
+  TiedRef<Widget> widget_ref;
+  int32_t alive_connections = 0;
+  int32_t alive_widgets = 0;
+
+  {
+    TiedAny container;
+    conn_ref = container.Tie(std::make_unique<Connection>(&alive_connections));
+    widget_ref = container.Tie(std::make_unique<Widget>(&alive_widgets));
+    EXPECT_EQ(alive_connections, 1);
+    EXPECT_EQ(alive_widgets, 1);
+  }
+
+  EXPECT_TRUE(conn_ref.Expired());
+  EXPECT_TRUE(widget_ref.Expired());
+  EXPECT_EQ(alive_connections, 0);
+  EXPECT_EQ(alive_widgets, 0);
+}
+
+TEST(TiedAnyTest, EagerReleaseOnRefDestruction) {
+  TiedAny container;
+  int32_t alive_connections = 0;
+
+  {
+    TiedRef<Connection> ref =
+        container.Tie(std::make_unique<Connection>(&alive_connections));
+    EXPECT_EQ(alive_connections, 1);
+  }
+
+  EXPECT_EQ(alive_connections, 0);
 }
 
 }  // namespace

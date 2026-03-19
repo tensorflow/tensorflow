@@ -415,6 +415,11 @@ tsl_cc_test(
 cc_library(
     name = "tied_ref",
     hdrs = ["tied_ref.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 tsl_cc_test(

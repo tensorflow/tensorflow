@@ -21,6 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
+
 namespace tsl {
 
 template <typename T>
@@ -83,6 +87,7 @@ class TiedRef {
 
  private:
   friend class Tied<T>;
+  friend class TiedAny;
   explicit TiedRef(std::weak_ptr<std::shared_ptr<T>> ptr);
 
   std::weak_ptr<std::shared_ptr<T>> ptr_;
@@ -98,8 +103,8 @@ class Tied {
   Tied() = default;
   ~Tied() = default;
 
-  Tied(Tied&&) = default;
-  Tied& operator=(Tied&&) = default;
+  Tied(Tied&&) = delete;
+  Tied& operator=(Tied&&) = delete;
 
   // Ties ownership of `value` to *this and returns a TiedRef to it. The
   // value is released when the TiedRef is destroyed or when *this is
@@ -108,8 +113,68 @@ class Tied {
   TiedRef<T> Tie(std::unique_ptr<T> value);
 
  private:
-  std::vector<std::shared_ptr<std::shared_ptr<T>>> entries_;
+  absl::Mutex mu_;
+  std::vector<std::shared_ptr<std::shared_ptr<T>>> entries_
+      ABSL_GUARDED_BY(mu_);
 };
+
+// A type-erased container for tied values of heterogeneous types.
+//
+// TiedAny is like Tied<T>, but supports tying values of different types in a
+// single container. Internally, each type T gets its own Tied<T> instance
+// stored in a flat_hash_map keyed by a compile-time type identifier (the same
+// TypeId pattern used by UniqueAny).
+//
+// When the TiedAny container is destroyed, all tied values of all types are
+// destroyed, and all outstanding TiedRefs safely expire. When a TiedRef<T> is
+// destroyed while the container is still alive, the corresponding value is
+// eagerly released.
+//
+// Example:
+//
+//   class Server : private TiedAny {
+//    public:
+//     TiedRef<HttpConn> ConnectHttp() {
+//       return Tie(std::make_unique<HttpConn>());
+//     }
+//     TiedRef<GrpcConn> ConnectGrpc() {
+//       return Tie(std::make_unique<GrpcConn>());
+//     }
+//   };
+//
+class TiedAny {
+ public:
+  TiedAny() = default;
+  ~TiedAny() = default;
+
+  TiedAny(TiedAny&&) = delete;
+  TiedAny& operator=(TiedAny&&) = delete;
+
+  // Ties ownership of `value` to *this and returns a TiedRef<T> to it.
+  // See Tied<T>::Tie for full semantics.
+  template <typename T>
+  TiedRef<T> Tie(std::unique_ptr<T> value);
+
+ private:
+  template <typename T>
+  struct TypeId {
+    static const char kId;
+  };
+
+  struct TiedBase {
+    virtual ~TiedBase() = default;
+  };
+
+  template <typename T>
+  struct TiedTyped : TiedBase, Tied<T> {};
+
+  absl::Mutex mu_;
+  absl::flat_hash_map<const void*, std::unique_ptr<TiedBase>> entries_
+      ABSL_GUARDED_BY(mu_);
+};
+
+template <typename T>
+const char TiedAny::TypeId<T>::kId = 0;
 
 //===----------------------------------------------------------------------===//
 // TiedRef<T> and Tied<T> implementation detail.
@@ -155,6 +220,8 @@ bool TiedRef<T>::Expired() const {
 
 template <typename T>
 TiedRef<T> Tied<T>::Tie(std::unique_ptr<T> value) {
+  absl::MutexLock lock(&mu_);
+
   // Lazy garbage collection: erase entries whose inner shared_ptr was reset
   // by a TiedRef destructor.
   entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
@@ -168,6 +235,16 @@ TiedRef<T> Tied<T>::Tie(std::unique_ptr<T> value) {
   auto& entry = entries_.emplace_back(std::make_shared<std::shared_ptr<T>>(
       std::shared_ptr<T>(value.release())));
   return TiedRef<T>{std::weak_ptr<std::shared_ptr<T>>(entry)};
+}
+
+template <typename T>
+TiedRef<T> TiedAny::Tie(std::unique_ptr<T> value) {
+  absl::MutexLock lock(&mu_);
+  auto& base = entries_[&TypeId<T>::kId];
+  if (!base) {
+    base = std::make_unique<TiedTyped<T>>();
+  }
+  return static_cast<TiedTyped<T>&>(*base).Tie(std::move(value));
 }
 
 }  // namespace tsl
