@@ -78,7 +78,7 @@ class SigBaseTest : public ::testing::Test, protected TestGraphs {
   void BuildSigMap(const GraphDef& graph) {
     gen_map_.clear();
     sig_.map.clear();
-    CHECK(GenNode::BuildGraphInMap(graph, &gen_map_).ok());
+    CHECK_OK(GenNode::BuildGraphInMap(graph, &gen_map_));
     Subgraph::Identity id;
     for (const auto& entry : gen_map_) {
       id.insert(entry.second.get());
