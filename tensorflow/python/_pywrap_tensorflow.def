@@ -335,7 +335,7 @@ EXPORTS
   ?FastIntToBuffer@numbers_internal@lts_20250814@absl@@YAPEAD_JPEAD@Z
   ?FastIntToBuffer@numbers_internal@lts_20250814@absl@@YAPEAD_KPEAD@Z
   ?FetchLayout@dtensor@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUTFE_Context@@PEAUTFE_TensorHandle@@PEAXPEAUTSL_Status@@@Z
-  ?FileExists@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?FileExists@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?FileName@EventsWriter@tensorflow@@QEAA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?Find@ByChar@lts_20250814@absl@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@V45@_K@Z
   ?FindKernelDef@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAPEBVKernelDef@1@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z

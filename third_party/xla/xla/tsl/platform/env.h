@@ -80,7 +80,7 @@ class Env {
   /// for the file system related (non-virtual) functions that follow.
   /// Returned FileSystem object is still owned by the Env object and will
   // (might) be destroyed when the environment is destroyed.
-  virtual absl::Status GetFileSystemForFile(const std::string& fname,
+  virtual absl::Status GetFileSystemForFile(absl::string_view fname,
                                             FileSystem** result);
 
   /// \brief Returns the file system schemes registered for this Env.
@@ -202,9 +202,9 @@ class Env {
   }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  absl::Status FileExists(const std::string& fname);
+  absl::Status FileExists(absl::string_view fname);
 
-  absl::Status FileExists(const std::string& fname, TransactionToken* token) {
+  absl::Status FileExists(absl::string_view fname, TransactionToken* token) {
     return absl::OkStatus();
   }
 
@@ -233,8 +233,7 @@ class Env {
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
   /// allowed in pattern are described in FileSystem::GetMatchingPaths.
-  virtual bool MatchPath(const std::string& path,
-                         const std::string& pattern) = 0;
+  virtual bool MatchPath(absl::string_view path, absl::string_view pattern) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
@@ -536,7 +535,7 @@ class EnvWrapper : public Env {
   /// Returns the target to which this Env forwards all calls
   Env* target() const { return target_; }
 
-  absl::Status GetFileSystemForFile(const std::string& fname,
+  absl::Status GetFileSystemForFile(absl::string_view fname,
                                     FileSystem** result) override {
     return target_->GetFileSystemForFile(fname, result);
   }
@@ -551,7 +550,7 @@ class EnvWrapper : public Env {
     return target_->RegisterFileSystem(scheme, factory);
   }
 
-  bool MatchPath(const std::string& path, const std::string& pattern) override {
+  bool MatchPath(absl::string_view path, absl::string_view pattern) override {
     return target_->MatchPath(path, pattern);
   }
 

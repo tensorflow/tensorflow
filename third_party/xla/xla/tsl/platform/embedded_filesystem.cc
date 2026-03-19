@@ -86,7 +86,7 @@ absl::Status EmbedFileSystem::NewRandomAccessFile(
   return absl::OkStatus();
 }
 
-absl::Status EmbedFileSystem::FileExists(const std::string& fname) {
+absl::Status EmbedFileSystem::FileExists(absl::string_view fname) {
   absl::MutexLock ml(fs_lock_);
   if (!fs_.contains(fname)) {
     return absl::NotFoundError(absl::StrCat(fname, " does not exist."));

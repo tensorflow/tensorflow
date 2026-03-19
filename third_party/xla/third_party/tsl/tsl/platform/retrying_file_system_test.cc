@@ -128,7 +128,7 @@ class MockFileSystem : public FileSystem {
     return calls_.ConsumeNextCall("NewReadOnlyMemoryRegionFromFile");
   }
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override {
     return calls_.ConsumeNextCall("FileExists");
   }

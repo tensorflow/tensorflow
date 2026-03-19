@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 
@@ -47,7 +48,7 @@ class TestEnvBrokenFileSystem : public tsl::Env {
  public:
   TestEnvBrokenFileSystem() = default;
 
-  bool MatchPath(const std::string& path, const std::string& pattern) override {
+  bool MatchPath(absl::string_view path, absl::string_view pattern) override {
     return false;
   }
 
@@ -87,7 +88,7 @@ class TestEnvBrokenFileSystem : public tsl::Env {
 
   // This is the part that would break the `CreateTmpDir` function because it
   // fails to provide a valid file system.
-  absl::Status GetFileSystemForFile(const std::string& fname,
+  absl::Status GetFileSystemForFile(absl::string_view fname,
                                     tsl::FileSystem** result) override {
     return absl::InternalError("Broken file system");
   }

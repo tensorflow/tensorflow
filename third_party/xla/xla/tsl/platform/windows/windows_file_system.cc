@@ -532,7 +532,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-Status WindowsFileSystem::FileExists(const string& fname,
+Status WindowsFileSystem::FileExists(absl::string_view fname,
                                      TransactionToken* token) {
   constexpr int kOk = 0;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
@@ -710,9 +710,10 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   return absl::OkStatus();
 }
 
-bool WindowsFileSystem::Match(const string& filename, const string& pattern) {
-  std::wstring ws_path(Utf8ToWideChar(filename));
-  std::wstring ws_pattern(Utf8ToWideChar(pattern));
+bool WindowsFileSystem::Match(absl::string_view filename,
+                              absl::string_view pattern) {
+  std::wstring ws_path(Utf8ToWideChar(std::string(filename)));
+  std::wstring ws_pattern(Utf8ToWideChar(std::string(pattern)));
   return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
 }
 

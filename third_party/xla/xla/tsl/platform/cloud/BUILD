@@ -35,7 +35,9 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:thread_annotations",
     ],
@@ -381,6 +383,7 @@ tsl_cc_test(
         ":now_seconds_env",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

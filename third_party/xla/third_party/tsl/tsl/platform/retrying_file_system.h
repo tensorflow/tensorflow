@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
-#include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
@@ -57,7 +57,7 @@ class RetryingFileSystem : public FileSystem {
       const std::string& filename, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override {
     return RetryingUtils::CallWithRetries(
         [this, &fname, token]() {

@@ -50,7 +50,7 @@ class WindowsFileSystem : public FileSystem {
       const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(const string& fname, TransactionToken* token) override;
+  Status FileExists(absl::string_view fname, TransactionToken* token) override;
 
   Status GetChildren(const string& dir, TransactionToken* token,
                      std::vector<string>* result) override;
@@ -58,7 +58,7 @@ class WindowsFileSystem : public FileSystem {
   Status GetMatchingPaths(const string& pattern, TransactionToken* token,
                           std::vector<string>* result) override;
 
-  bool Match(const string& filename, const string& pattern) override;
+  bool Match(absl::string_view filename, absl::string_view pattern) override;
 
   Status Stat(const string& fname, TransactionToken* token,
               FileStatistics* stat) override;
@@ -81,14 +81,16 @@ class WindowsFileSystem : public FileSystem {
   Status RenameFile(const string& src, const string& target,
                     TransactionToken* token) override;
 
-  string TranslateName(const string& name) const override { return name; }
+  string TranslateName(absl::string_view name) const override {
+    return string(name);
+  }
 
   char Separator() const override { return '\\'; };
 };
 
 class LocalWinFileSystem : public WindowsFileSystem {
  public:
-  string TranslateName(const string& name) const override {
+  string TranslateName(absl::string_view name) const override {
     absl::string_view scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
     return string(path);

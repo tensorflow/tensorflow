@@ -305,7 +305,6 @@ tf_cc_test(
     deps = [
         ":cord",
         ":env",
-        ":env_impl",
         ":null_file_system",
         ":path",
         ":protobuf",
@@ -315,7 +314,7 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//tensorflow/core:protos_all_cc",
-        "@eigen_archive//:eigen3",
+        "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -1293,8 +1292,6 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/log",

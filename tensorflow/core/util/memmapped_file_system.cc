@@ -19,8 +19,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/memmapped_file_system.pb.h"
 
@@ -92,7 +96,7 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 MemmappedFileSystem::MemmappedFileSystem() = default;
 
-absl::Status MemmappedFileSystem::FileExists(const std::string& fname,
+absl::Status MemmappedFileSystem::FileExists(absl::string_view fname,
                                              TransactionToken* token) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
@@ -263,7 +267,7 @@ absl::Status MemmappedFileSystem::InitializeFromFile(
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(
-    const std::string& filename) {
+    absl::string_view filename) {
   return absl::StartsWith(filename, kMemmappedPackagePrefix);
 }
 
@@ -290,7 +294,7 @@ bool MemmappedFileSystem::IsWellFormedMemmappedPackageFilename(
 
 MemmappedEnv::MemmappedEnv(Env* env) : EnvWrapper(env) {}
 
-absl::Status MemmappedEnv::GetFileSystemForFile(const std::string& fname,
+absl::Status MemmappedEnv::GetFileSystemForFile(absl::string_view fname,
                                                 FileSystem** result) {
   if (MemmappedFileSystem::IsMemmappedPackageFilename(fname)) {
     if (!memmapped_file_system_) {

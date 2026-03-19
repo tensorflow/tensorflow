@@ -204,14 +204,14 @@ absl::Status GetTmpFilename(std::string* filename) {
 }
 
 /// Appends a trailing slash if the name doesn't already have one.
-std::string MaybeAppendSlash(const std::string& name) {
+std::string MaybeAppendSlash(absl::string_view name) {
   if (name.empty()) {
     return "/";
   }
   if (name.back() != '/') {
     return absl::StrCat(name, "/");
   }
-  return name;
+  return std::string(name);
 }
 
 // io::JoinPath() doesn't work in cases when we want an empty subpath
@@ -1071,7 +1071,7 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
       GcsFileStat stat;
       TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
           fname, &stat,
-          [this, bucket, object](const std::string& fname, GcsFileStat* stat) {
+          [this, bucket, object](absl::string_view fname, GcsFileStat* stat) {
             return UncachedStatForObject(fname, bucket, object, stat);
           }));
       if (!file_block_cache_->ValidateAndUpdateFileSignature(
@@ -1510,7 +1510,7 @@ absl::Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::FileExists(const std::string& fname,
+absl::Status GcsFileSystem::FileExists(absl::string_view fname,
                                        TransactionToken* token) {
   std::string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
@@ -1560,7 +1560,7 @@ absl::Status GcsFileSystem::ObjectExists(const std::string& fname,
   }
 }
 
-absl::Status GcsFileSystem::UncachedStatForObject(const std::string& fname,
+absl::Status GcsFileSystem::UncachedStatForObject(absl::string_view fname,
                                                   const std::string& bucket,
                                                   const std::string& object,
                                                   GcsFileStat* stat) {
@@ -1615,18 +1615,18 @@ absl::Status GcsFileSystem::UncachedStatForObject(const std::string& fname,
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::StatForObject(const std::string& fname,
+absl::Status GcsFileSystem::StatForObject(absl::string_view fname,
                                           const std::string& bucket,
                                           const std::string& object,
                                           GcsFileStat* stat) {
   if (object.empty()) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "'object' must be a non-empty string. (File: %s)", fname.c_str()));
+        "'object' must be a non-empty string. (File: %s)", fname));
   }
 
   TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
       fname, stat,
-      [this, &bucket, &object](const std::string& fname, GcsFileStat* stat) {
+      [this, &bucket, &object](absl::string_view fname, GcsFileStat* stat) {
         return UncachedStatForObject(fname, bucket, object, stat);
       }));
   return absl::OkStatus();
@@ -1674,7 +1674,7 @@ absl::Status GcsFileSystem::CheckBucketLocationConstraint(
 
 absl::Status GcsFileSystem::GetBucketLocation(const std::string& bucket,
                                               std::string* location) {
-  auto compute_func = [this](const std::string& bucket, std::string* location) {
+  auto compute_func = [this](absl::string_view bucket, std::string* location) {
     std::vector<char> result_buffer;
     absl::Status status = GetBucketMetadata(bucket, &result_buffer);
     Json::Value result;
@@ -1694,7 +1694,7 @@ absl::Status GcsFileSystem::GetBucketLocation(const std::string& bucket,
 }
 
 absl::Status GcsFileSystem::GetBucketMetadata(
-    const std::string& bucket, std::vector<char>* result_buffer) {
+    absl::string_view bucket, std::vector<char>* result_buffer) {
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(absl::StrCat(kGcsUriBase, "b/", bucket));
@@ -1707,7 +1707,7 @@ absl::Status GcsFileSystem::GetBucketMetadata(
   return request->Send();
 }
 
-absl::Status GcsFileSystem::GetStorageLayout(const std::string& bucket,
+absl::Status GcsFileSystem::GetStorageLayout(absl::string_view bucket,
                                              std::vector<char>* result_buffer) {
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
@@ -1743,7 +1743,7 @@ absl::Status GcsFileSystem::IsBucketHnsEnabled(const std::string& bucket,
                                                bool* is_hns) {
   Json::Value storage_layout;
 
-  auto compute_func = [this](const std::string& bucket,
+  auto compute_func = [this](absl::string_view bucket,
                              Json::Value* layout_json) {
     std::vector<char> layout_buffer;
     absl::Status layout_status = GetStorageLayout(bucket, &layout_buffer);
@@ -1760,9 +1760,9 @@ absl::Status GcsFileSystem::IsBucketHnsEnabled(const std::string& bucket,
   return ParseIsHnsEnabled(storage_layout, is_hns);
 }
 
-absl::Status GcsFileSystem::FolderExists(const std::string& dirname,
+absl::Status GcsFileSystem::FolderExists(absl::string_view dirname,
                                          bool* result) {
-  StatCache::ComputeFunc compute_func = [this](const std::string& dirname,
+  StatCache::ComputeFunc compute_func = [this](absl::string_view dirname,
                                                GcsFileStat* stat) {
     std::vector<std::string> children;
     TF_RETURN_IF_ERROR(
@@ -1801,12 +1801,12 @@ absl::Status GcsFileSystem::GetMatchingPaths(
     const std::string& pattern, TransactionToken* token,
     std::vector<std::string>* results) {
   MatchingPathsCache::ComputeFunc compute_func =
-      [this](const std::string& pattern, std::vector<std::string>* results) {
+      [this](absl::string_view pattern, std::vector<std::string>* results) {
         results->clear();
         // Find the fixed prefix by looking for the first wildcard.
-        const std::string& fixed_prefix =
+        const absl::string_view fixed_prefix =
             pattern.substr(0, pattern.find_first_of("*?[\\"));
-        const std::string dir(this->Dirname(fixed_prefix));
+        const absl::string_view dir = this->Dirname(fixed_prefix);
         if (dir.empty()) {
           return absl::InvalidArgumentError(absl::StrCat(
               "A GCS pattern doesn't have a bucket name: ", pattern));
@@ -1843,7 +1843,7 @@ absl::Status GcsFileSystem::GetMatchingPaths(
 }
 
 absl::Status GcsFileSystem::GetChildrenBounded(
-    const std::string& dirname, uint64_t max_results,
+    absl::string_view dirname, uint64_t max_results,
     std::vector<std::string>* result, bool recursive,
     bool include_self_directory_marker) {
   if (!result) {

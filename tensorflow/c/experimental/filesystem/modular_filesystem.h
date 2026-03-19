@@ -86,8 +86,9 @@ class ModularFileSystem final : public FileSystem {
   absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override;
+  absl::Status OpenTransaction(TransactionToken** token);
   bool FilesExist(const std::vector<std::string>& files,
                   TransactionToken* token,
                   std::vector<absl::Status>* status) override;
@@ -118,7 +119,7 @@ class ModularFileSystem final : public FileSystem {
                           TransactionToken* token) override;
   absl::Status CopyFile(const std::string& src, const std::string& target,
                         TransactionToken* token) override;
-  std::string TranslateName(const std::string& name) const override;
+  std::string TranslateName(absl::string_view name) const override;
   void FlushCaches(TransactionToken* token) override;
   absl::Status SetOption(const std::string& name,
                          const std::vector<std::string>& values) override;
