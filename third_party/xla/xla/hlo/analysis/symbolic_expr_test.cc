@@ -370,6 +370,10 @@ TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
   EXPECT_EQ(((v0 * 8 + 3) % 4).Canonicalize().ToString(), "3");
   EXPECT_EQ(((v0 * 2 + v1) % 2).Canonicalize().ToString(), "(v1 mod 2)");
 
+  // Mod of Mod simplification
+  EXPECT_EQ(((v0 % 21) % 7).Canonicalize().ToString(), "(v0 mod 7)");
+  EXPECT_EQ(((v0 % 20) % 7).Canonicalize().ToString(), "((v0 mod 20) mod 7)");
+
   // Pattern: (X floordiv C) * C + X mod C -> X
   EXPECT_EQ(((v0.floorDiv(16) * 16) + (v0 % 16)).Canonicalize().ToString(),
             "v0");

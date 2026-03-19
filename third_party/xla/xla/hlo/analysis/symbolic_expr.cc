@@ -485,6 +485,15 @@ SymbolicExpr CanonicalizeMod(SymbolicExpr lhs, SymbolicExpr rhs) {
       return gcd_simplified;
     }
 
+    // Rewrite `(x % a) % b` to `x % b` if `a % b == 0`.
+    if (lhs.GetType() == SymbolicExprType::kMod &&
+        lhs.GetRHS().GetType() == SymbolicExprType::kConstant) {
+      int64_t inner_divisor = lhs.GetRHS().GetValue();
+      if (inner_divisor % divisor == 0) {
+        return (lhs.GetLHS() % divisor).Canonicalize();
+      }
+    }
+
     // Distributivity for (A + C1) mod C2 where C1 % C2 == 0
     if (lhs.GetType() == SymbolicExprType::kAdd) {
       if (auto simplified =
