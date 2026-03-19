@@ -86,6 +86,13 @@ absl::Status RegisterMegascaleErrorHandler(
 
 absl::Status UnregisterMegascaleErrorHandler(absl::string_view handler_name);
 
+absl::StatusOr<std::vector<runtime::HostNetworkAddress>>
+GetInterfaceAddressesHelper(absl::string_view megascale_port_name,
+                            int32_t megascale_port,
+                            const std::vector<std::string>& interface_prefixes,
+                            bool use_all_interfaces,
+                            bool limit_to_process_numa_local_interfaces);
+
 }  // namespace c_api_client
 }  // namespace megascale
 }  // namespace xla

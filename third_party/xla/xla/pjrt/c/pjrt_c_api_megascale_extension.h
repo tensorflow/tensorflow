@@ -294,6 +294,30 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorAggregator_Active_Args, active);
 typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_Active(
     PJRT_Megascale_ErrorAggregator_Active_Args* args);
 
+typedef struct PJRT_Megascale_SerializedAddresses
+    PJRT_Megascale_SerializedAddresses;
+
+struct PJRT_Megascale_GetInterfaceAddressesHelper_Args {
+  size_t struct_size;
+  const char* megascale_port_name;
+  size_t megascale_port_name_size;
+  int32_t megascale_port;
+  const char** interface_prefixes;
+  const size_t* interface_prefixes_sizes;
+  size_t num_interface_prefixes;
+  bool use_all_interfaces;
+  bool limit_to_process_numa_local_interfaces;
+  const char** serialized_addresses;                                   // out
+  size_t* serialized_addresses_sizes;                                  // out
+  size_t num_addresses;                                                // out
+  PJRT_Megascale_SerializedAddresses* addresses;                       // out
+  void (*addresses_deleter)(PJRT_Megascale_SerializedAddresses* ptr);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_GetInterfaceAddressesHelper_Args,
+                          addresses_deleter);
+typedef PJRT_Error* PJRT_Megascale_GetInterfaceAddressesHelper(
+    PJRT_Megascale_GetInterfaceAddressesHelper_Args* args);
+
 typedef struct PJRT_Megascale_Extension {
   PJRT_Extension_Base base;
   PJRT_Megascale_CreateClientContextFromPjRtClient*
@@ -326,8 +350,10 @@ typedef struct PJRT_Megascale_Extension {
       error_aggregator_log_error_digest;
   PJRT_Megascale_ErrorAggregator_Size* error_aggregator_size;
   PJRT_Megascale_ErrorAggregator_Active* error_aggregator_active;
+  PJRT_Megascale_GetInterfaceAddressesHelper* get_interface_addresses_helper;
 } PJRT_Megascale_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension, error_aggregator_active);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension,
+                          get_interface_addresses_helper);
 
 // NOLINTEND(modernize-use-using)
 

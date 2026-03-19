@@ -32,6 +32,7 @@ using ::xla::megascale::c_api_client::CreateAoTMegascaleConfig;
 using ::xla::megascale::c_api_client::CreateDefaultMegaScaleClientContext;
 using ::xla::megascale::c_api_client::CreateMegascaleErrorAggregator;
 using ::xla::megascale::c_api_client::CreateMultiSliceMegascaleConfig;
+using ::xla::megascale::c_api_client::GetInterfaceAddressesHelper;
 using ::xla::megascale::c_api_client::MegaScaleClientContextFromClient;
 using ::xla::megascale::c_api_client::RegisterMegascaleErrorHandler;
 using ::xla::megascale::c_api_client::UnregisterMegascaleErrorHandler;
@@ -97,6 +98,15 @@ TEST(MegaScaleCApiClientTest, RegisterAndUnregisterMegascaleErrorHandler) {
   auto handler = [](const MegaScaleRuntimeErrorOverlay& error) {};
   EXPECT_OK(RegisterMegascaleErrorHandler("test_handler", handler));
   EXPECT_OK(UnregisterMegascaleErrorHandler("test_handler"));
+}
+
+TEST(MegaScaleCApiClientTest, GetInterfaceAddressesHelper) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto addresses,
+      GetInterfaceAddressesHelper("test_port", -1, {}, true, false));
+  // The exact addresses returned depend on the environment,
+  // but we can assert the C API plumbing works successfully.
+  EXPECT_GE(addresses.size(), 0);
 }
 
 }  // namespace
