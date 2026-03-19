@@ -583,7 +583,8 @@ class HloSharding {
     if (UseNamedShardingLeaf()) {
       return named_sharding_->dimension(dim_index);
     }
-    return tile_assignment().dim(dim_index);
+    // If the sharding is replicated, the tile assignment is invalid.
+    return IsReplicated() ? 1 : tile_assignment().dim(dim_index);
   }
 
   // Returns all sharding dimensions.
