@@ -77,18 +77,6 @@ enum class TargetDeviceFunctionID {
   kAtanh,
 };
 
-// HLO opcode -> TargetDeviceFunctionID mapping. Returns std::nullopt if there
-// is no TargetDeviceFunctionID for the given HloOpcode.
-std::optional<TargetDeviceFunctionID> GetTargetDeviceFunctionID(HloOpcode op);
-
-// Emits IR to call a device function named "callee_name" on the given
-// operand. Returns the IR value that represents the return value.
-llvm::CallInst* EmitDeviceFunctionCall(
-    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
-    absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
-    const llvm::AttrBuilder& attributes, llvm::IRBuilderBase* b,
-    absl::string_view name = "");
-
 // Emits a call to the specified target intrinsic with the given operands.
 // Overloaded intrinsics (for example, "minnum") must include a type
 // in overloaded_types  for each overloaded type. Typically, overloaded
