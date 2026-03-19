@@ -530,7 +530,8 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
           return false;
         }
         return !IsLoopIterator(instr, loop_iter) &&
-               !loop_invariant_params.count(instr);
+               !loop_invariant_params.count(instr) &&
+               !ShapeUtil::IsEffectiveScalar(instr->shape());
       };
 
   if (additional_chain_start_op_finder) {
@@ -1670,6 +1671,109 @@ HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
               HloInstruction::CreateConstant(LiteralUtil::Zero(ptype))),
           {}));
   return zero_constant;
+}
+
+// In a nested loop structure, this calculates the final value of the outer loop
+// induction variable without executing the inner loop. It determines the total
+// number of iterations by computing the ceiling of the distance to the bound
+// i.e.((bound - start + step - 1) / step). It guards against negative
+// iterations by forcing the count to zero if the starting value is already past
+// the bound. Finally, it projects the end state using the formula: final_value
+// = start + (iters * step).
+HloInstruction* ProjectNestedLoopCounter(
+    HloInstruction* inner_while, int64_t t_idx, HloInstruction* loop_param,
+    HloComputation::Builder& body_builder) {
+  const Shape& shape = inner_while->shape().tuple_shapes(t_idx);
+  // Only project scalar integers.
+  if (!ShapeUtil::IsEffectiveScalar(shape) ||
+      !primitive_util::IsIntegralType(shape.element_type())) {
+    return nullptr;
+  }
+
+  int64_t bound_val = 0;
+  int64_t step_val = 0;
+  bool found = false;
+  auto parsed = PatternMatchParseWhileLoop(inner_while);
+  if (parsed && parsed->static_while_loop &&
+      parsed->static_while_loop->induction_var_index == t_idx) {
+    bound_val = parsed->static_while_loop->loop_bound;
+    step_val = parsed->static_while_loop->step_size;
+    found = true;
+  } else {
+    HloInstruction* cond_root =
+        inner_while->while_condition()->root_instruction();
+    if (cond_root->opcode() == HloOpcode::kCompare &&
+        cond_root->operand(1)->opcode() == HloOpcode::kConstant) {
+      std::optional<int64_t> bound =
+          cond_root->operand(1)->literal().GetFirstInteger();
+      if (bound.has_value()) {
+        bound_val = *bound;
+        HloInstruction* update =
+            inner_while->while_body()->root_instruction()->mutable_operand(
+                t_idx);
+        // Look through GTE(Tuple) if necessary for the update
+        while (update->opcode() == HloOpcode::kGetTupleElement &&
+               update->operand(0)->opcode() == HloOpcode::kTuple) {
+          update = update->mutable_operand(0)->mutable_operand(
+              update->tuple_index());
+        }
+        if (update->opcode() == HloOpcode::kAdd &&
+            update->operand(1)->opcode() == HloOpcode::kConstant) {
+          std::optional<int64_t> step =
+              update->operand(1)->literal().GetFirstInteger();
+          if (step.has_value()) {
+            step_val = *step;
+            found = true;
+          }
+        }
+      }
+    }
+  }
+  if (!found || step_val <= 0) {
+    return nullptr;
+  }
+
+  auto bound_literal = CreateLiteralOfShape(shape, bound_val);
+  auto step_literal = CreateLiteralOfShape(shape, step_val);
+  auto step_m1_literal = CreateLiteralOfShape(shape, step_val - 1);
+  auto zero_literal = CreateLiteralOfShape(shape, 0);
+
+  if (!bound_literal.has_value() || !step_literal.has_value() ||
+      !step_m1_literal.has_value() || !zero_literal.has_value()) {
+    return nullptr;
+  }
+
+  HloInstruction* i_start = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, loop_param, t_idx));
+  HloInstruction* bound_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*bound_literal)));
+  HloInstruction* step_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*step_literal)));
+  HloInstruction* zero_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*zero_literal)));
+
+  HloInstruction* diff =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kSubtract, bound_hlo, i_start));
+  HloInstruction* dividend =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, diff,
+          body_builder.AddInstruction(
+              HloInstruction::CreateConstant(std::move(*step_m1_literal)))));
+  HloInstruction* iteration_count =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kDivide, dividend, step_hlo));
+
+  HloInstruction* past_bound = body_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), i_start,
+                                    bound_hlo, ComparisonDirection::kGe));
+  iteration_count = body_builder.AddInstruction(HloInstruction::CreateTernary(
+      shape, HloOpcode::kSelect, past_bound, zero_hlo, iteration_count));
+
+  return body_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, i_start,
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kMultiply, iteration_count, step_hlo))));
 }
 
 }  // namespace
@@ -3025,20 +3129,29 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
     } else {
       auto new_operands =
           MapNewOperands(instr->operands(), while_body_replacement_map);
-      cloned_instr = body_builder.AddInstruction(
-          instr->CloneWithNewOperands(instr->shape(), new_operands));
-      if (cloned_instr->opcode() == HloOpcode::kWhile) {
-        cloned_instr->set_while_condition(
-            while_loop->GetModule()->AddEmbeddedComputation(
-                instr->while_condition()->CloneWithReplacements(nullptr)));
-        cloned_instr->set_while_body(
-            while_loop->GetModule()->AddEmbeddedComputation(
-                instr->while_body()->CloneWithReplacements(nullptr)));
+      if (instr->opcode() == HloOpcode::kGetTupleElement &&
+          instr->operand(0)->opcode() == HloOpcode::kWhile) {
+        cloned_instr = ProjectNestedLoopCounter(instr->mutable_operand(0),
+                                                instr->tuple_index(),
+                                                new_loop_param, body_builder);
       }
-      TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
-                                                   while_body_replacement_map));
-      UpdateInstructionChannelId(cloned_instr, next_channel_id,
-                                 update_collective_channel_id);
+
+      if (cloned_instr == nullptr) {
+        cloned_instr = body_builder.AddInstruction(
+            instr->CloneWithNewOperands(instr->shape(), new_operands));
+        if (cloned_instr->opcode() == HloOpcode::kWhile) {
+          cloned_instr->set_while_condition(
+              while_loop->GetModule()->AddEmbeddedComputation(
+                  instr->while_condition()->CloneWithReplacements(nullptr)));
+          cloned_instr->set_while_body(
+              while_loop->GetModule()->AddEmbeddedComputation(
+                  instr->while_body()->CloneWithReplacements(nullptr)));
+        }
+        TF_RETURN_IF_ERROR(UpdateControlDependencies(
+            instr, cloned_instr, while_body_replacement_map));
+        UpdateInstructionChannelId(cloned_instr, next_channel_id,
+                                   update_collective_channel_id);
+      }
     }
     if (it != collective_to_move_map.end()) {
       const int64_t tuple_idx =

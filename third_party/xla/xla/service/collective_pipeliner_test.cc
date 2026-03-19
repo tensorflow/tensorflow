@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/service/legalize_scheduling_annotations.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/service/scheduling_annotations_util.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
@@ -6128,6 +6130,102 @@ ENTRY main.3813_spmd {
   ASSERT_EQ(tuple_instr->opcode(), HloOpcode::kTuple);
   ASSERT_EQ(tuple_instr->operand(3)->opcode(), HloOpcode::kAdd);
   ASSERT_EQ(tuple_instr->operand(4)->opcode(), HloOpcode::kAdd);
+}
+
+TEST_F(CollectivePipelinerTest,
+       OverlapAllGatherWithInnerWhileThroughInductionProjection) {
+  // This HLO constructs an outer while loop containing an inner while loop.
+  // The all-gather depends on the scalar index returned by the inner loop.
+  // We want to verify that the dependency on the inner kWhile is broken
+  // by projecting the induction variable math forward.
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+inner_cond {
+  p = (s32[], f32[1024], f32[1024]) parameter(0)
+  k = s32[] get-tuple-element(p), index=0
+  c10 = s32[] constant(10)
+  ROOT cmp = pred[] compare(k, c10), direction=LT
+}
+
+inner_body {
+  p = (s32[], f32[1024], f32[1024]) parameter(0)
+  k = s32[] get-tuple-element(p), index=0
+  d = f32[1024] get-tuple-element(p), index=1
+  accum = f32[1024] get-tuple-element(p), index=2
+  c1 = s32[] constant(1)
+  k_next = s32[] add(k, c1)
+  accum_next = f32[1024] add(accum, d)
+  ROOT res = (s32[], f32[1024], f32[1024]) tuple(k_next, d, accum_next)
+}
+
+while_cond {
+  p = (s32[], f32[1024], s32[], f32[1024], f32[1024]) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  c5 = s32[] constant(5)
+  ROOT cmp = pred[] compare(i, c5), direction=LT
+}
+
+while_body {
+  p = (s32[], f32[1024], s32[], f32[1024], f32[1024]) parameter(0)
+  i = s32[] get-tuple-element(p), index=0
+  data = f32[1024] get-tuple-element(p), index=1
+  j = s32[] get-tuple-element(p), index=2
+  ag_carried = f32[1024] get-tuple-element(p), index=3
+  accum_in = f32[1024] get-tuple-element(p), index=4
+
+  ag_input = f32[256] dynamic-slice(data, j), dynamic_slice_sizes={256}
+  ag = f32[1024] all-gather(ag_input), dimensions={0}, replica_groups={{0,1,2,3}}
+
+  inner_init = (s32[], f32[1024], f32[1024]) tuple(j, ag_carried, accum_in)
+  inner_while = (s32[], f32[1024], f32[1024]) while(inner_init), condition=inner_cond, body=inner_body
+  j_next = s32[] get-tuple-element(inner_while), index=0
+  accum_out = f32[1024] get-tuple-element(inner_while), index=2
+
+  i_next = s32[] add(i, s32[] constant(1))
+  ROOT res = (s32[], f32[1024], s32[], f32[1024], f32[1024]) tuple(i_next, data, j_next, ag, accum_out)
+}
+
+ENTRY entry {
+  p0 = f32[1024] parameter(0)
+  c0 = s32[] constant(0)
+  zeros = f32[1024] broadcast(f32[] constant(0.0)), dimensions={}
+  init = (s32[], f32[1024], s32[], f32[1024], f32[1024]) tuple(c0, p0, c0, zeros, zeros)
+  ROOT main_while = (s32[], f32[1024], s32[], f32[1024], f32[1024]) while(init), condition=while_cond, body=while_body
+}
+)";
+
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(
+      RunOptimizer(
+          module.get(), /*last_run=*/true, 0, /*pipeline_use_tree=*/true,
+          /*process_different_sized_ops=*/true,
+          collective_pipeliner_utils::PipeliningDirection::kBackward,
+          IsAllGather, HloPredicateTrue, HloPredicateTrue,
+          /*should_allow_loop_variant_parameter_in_chain=*/HloPredicateTrue)
+          .value());
+  XLA_VLOG_LINES(1, module->ToString());
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    if (computation->IsEntryComputation()) {
+      continue;
+    }
+    HloInstruction* ag_instr = nullptr;
+    HloInstruction* while_instr = nullptr;
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kAllGather) {
+        ag_instr = instruction;
+      }
+      if (instruction->opcode() == HloOpcode::kWhile) {
+        while_instr = instruction;
+      }
+    }
+    if (ag_instr == nullptr || while_instr == nullptr) {
+      continue;
+    }
+    auto reachability_map = HloReachabilityMap::Build(computation);
+    EXPECT_FALSE(reachability_map->IsReachable(while_instr, ag_instr));
+    EXPECT_FALSE(reachability_map->IsReachable(ag_instr, while_instr));
+  }
 }
 
 }  // namespace
