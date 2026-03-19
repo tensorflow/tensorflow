@@ -137,6 +137,25 @@ llvm::SmallVector<int64_t> SymbolicMap::GetConstantResults() const {
   return constants;
 }
 
+llvm::SmallVector<int64_t> SymbolicMap::Evaluate(
+    absl::Span<int64_t const> dim_values,
+    absl::Span<int64_t const> symbol_values) const {
+  CHECK_EQ(GetNumDims(), dim_values.size());
+  CHECK_EQ(GetNumSymbols(), symbol_values.size());
+
+  llvm::SmallVector<int64_t> variable_values;
+  variable_values.reserve(dim_values.size() + symbol_values.size());
+  variable_values.append(dim_values.begin(), dim_values.end());
+  variable_values.append(symbol_values.begin(), symbol_values.end());
+
+  llvm::SmallVector<int64_t> results;
+  results.reserve(GetNumResults());
+  for (SymbolicExpr expr : exprs_) {
+    results.push_back(expr.Evaluate(variable_values));
+  }
+  return results;
+}
+
 SymbolicMap SymbolicMap::ReplaceDimsAndSymbols(
     absl::Span<const SymbolicExpr> dim_replacements,
     absl::Span<const SymbolicExpr> sym_replacements, int64_t num_result_dims,

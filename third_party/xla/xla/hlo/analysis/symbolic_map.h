@@ -109,6 +109,11 @@ class SymbolicMap {
   // any result expression is not a constant.
   llvm::SmallVector<int64_t> GetConstantResults() const;
 
+  // Evaluates the map with the given dimension and symbol values.
+  llvm::SmallVector<int64_t> Evaluate(
+      absl::Span<int64_t const> dim_values,
+      absl::Span<int64_t const> symbol_values = {}) const;
+
   // Replaces the dimensions and symbols in the map with the given expressions.
   // The number of dimension and symbol replacements must match the number of
   // dimensions and symbols in the map. The new map will have the given number

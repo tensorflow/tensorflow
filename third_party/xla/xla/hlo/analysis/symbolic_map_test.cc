@@ -148,6 +148,19 @@ TEST_F(SymbolicMapTest, GetConstantResults) {
   EXPECT_THAT(no_results_map.GetConstantResults(), ElementsAre());
 }
 
+TEST_F(SymbolicMapTest, Evaluate) {
+  SymbolicMap map =
+      SymbolicMap::Get(&ctx, 2, 2, {d0 + d1.floorDiv(8), s0 + s1 % 16});
+  SymbolicMap map_ceil =
+      SymbolicMap::Get(&ctx, 2, 2, {d0 + d1.ceilDiv(8), s0 + s1 % 16});
+
+  auto res = map.Evaluate(/*dim_values=*/{1, 2}, /*symbol_values=*/{3, 4});
+  auto res_ceil = map_ceil.Evaluate(/*dim_values=*/{1, 2},
+                                    /*symbol_values=*/{3, 4});
+  EXPECT_THAT(res, ElementsAre(1, 7));
+  EXPECT_THAT(res_ceil, ElementsAre(2, 7));
+}
+
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
   SymbolicExpr c3 = CreateSymbolicConstant(30, &ctx);
 
