@@ -67,6 +67,10 @@ inline bool IsShardingCustomCall(const HloInstruction* ins) {
   return ins->IsCustomCall("Sharding");
 }
 
+inline bool IsShardyCustomCall(const HloInstruction* ins) {
+  return ins->IsCustomCall("xla.sdy.FuncResultSharding");
+}
+
 inline std::pair<int, int> ParseMeshDims(const std::string& strategy_name) {
   if (absl::StrContains(strategy_name, "{0,1}")) {
     return {0, 1};
