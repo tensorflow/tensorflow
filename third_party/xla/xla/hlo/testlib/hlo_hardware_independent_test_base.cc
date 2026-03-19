@@ -194,7 +194,7 @@ absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
 PrecisionConfig HloHardwareIndependentTestBase::DefaultPrecisionConfig(
     int operands) {
   PrecisionConfig precision_config;
-  precision_config.mutable_operand_precision()->Resize(
+  precision_config.mutable_operand_precision()->resize(
       operands, PrecisionConfig::DEFAULT);
   return precision_config;
 }
