@@ -101,7 +101,7 @@ inline absl::Status Concat(OpKernelContext* context,
   case DataTypeToEnum<type>::value:                        \
     concat_status = Concat<type>(context, inputs, output); \
     break;
-    TF_CALL_ALL_TYPES(CASE);
+    TF_CALL_ALL_TYPES(CASE) TF_CALL_float8_e4m3fn(CASE);
 #undef CASE
     default:
       concat_status = errors::InvalidArgument("Unsupported data type: ", type);
@@ -238,7 +238,7 @@ inline absl::Status Split(OpKernelContext* context, const Tensor& input,
   case DataTypeToEnum<type>::value:                             \
     split_status = Split<type>(context, input, sizes, outputs); \
     break;
-    TF_CALL_ALL_TYPES(CASE);
+    TF_CALL_ALL_TYPES(CASE) TF_CALL_float8_e4m3fn(CASE);
 #undef CASE
     default:
       split_status = errors::InvalidArgument("Unsupported data type: ", type);

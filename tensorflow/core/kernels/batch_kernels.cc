@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -1029,7 +1030,7 @@ class UnbatchGradResource : public ResourceBase {
     TF_RETURN_IF_ERROR(Concat<type>(context, tensors, &concatenated_tensor)); \
     context->set_output(0, concatenated_tensor);                              \
     break;
-      TF_CALL_ALL_TYPES(CASE);
+      TF_CALL_ALL_TYPES(CASE) TF_CALL_float8_e4m3fn(CASE);
 #undef CASE
       default:
         return errors::InvalidArgument("Unsupported data type: ", type);
