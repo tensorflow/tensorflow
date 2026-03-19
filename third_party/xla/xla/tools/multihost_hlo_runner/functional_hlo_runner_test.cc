@@ -671,12 +671,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   if (node_id == 0) {
     TF_ASSIGN_OR_RETURN(
         std::string results0,
-        env.kv_store->Get("autotune_results_adb7d459c2974fa512555763cba3d92a_0",
+        env.kv_store->Get("autotune_results_adb7d459c2974fa512555763cba3d92a_"
+                          "4253997026_0",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "result"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
-        env.kv_store->Get("autotune_results_adb7d459c2974fa512555763cba3d92a_1",
+        env.kv_store->Get("autotune_results_adb7d459c2974fa512555763cba3d92a_"
+                          "4253997026_1",
                           absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "result"));
     // The nodes autotune different fusions.

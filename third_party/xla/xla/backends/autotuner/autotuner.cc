@@ -118,9 +118,19 @@ std::string UnpackedAnyShortDebugString(const google::protobuf::Any& any) {
 // client, but with a different module config each time, we may hit the
 // cache the second time and recover potentially inferior, or incomplete
 // autotuning results.
-std::string GetKvStoreKey(const HloModule* module, int shard_index) {
+std::string GetKvStoreKey(
+    const HloModule* module, int shard_index,
+    const std::vector<std::unique_ptr<CodegenBackend>>& codegen_backends) {
+  std::vector<absl::string_view> names;
+  names.reserve(codegen_backends.size());
+  for (const auto& backend : codegen_backends) {
+    names.push_back(backend->name());
+  }
+  absl::c_sort(names);
+  std::string backend_names = absl::StrJoin(names, ",");
+  uint32_t backend_fingerprint = tsl::Fingerprint32(backend_names);
   return absl::StrCat("autotune_results_", module->GetFingerprint128(), "_",
-                      shard_index);
+                      backend_fingerprint, "_", shard_index);
 }
 
 }  // namespace
@@ -231,7 +241,8 @@ absl::Status Autotuner::Autotune(HloModule* module,
 
   // 4. Store the results for this shard as a serialized string to the KV store.
   KeyValueStoreInterface& kv_store = *sharding_kv_store.key_value_store;
-  const std::string local_key = GetKvStoreKey(module, my_shard_index);
+  const std::string local_key =
+      GetKvStoreKey(module, my_shard_index, codegen_backends_);
   std::string local_results;
   if (!autotuned_instructions.empty()) {
     TF_ASSIGN_OR_RETURN(local_results,
@@ -254,7 +265,7 @@ absl::Status Autotuner::Autotune(HloModule* module,
     if (i == my_shard_index) {
       continue;
     }
-    const std::string remote_key = GetKvStoreKey(module, i);
+    const std::string remote_key = GetKvStoreKey(module, i, codegen_backends_);
     VLOG(2) << "Shard " << my_shard_index << ": waiting for results from shard "
             << i << " / " << total_shards << " at " << remote_key;
     // TODO(b/361009609): reset to infinite duration once issue with MPI is
@@ -485,9 +496,11 @@ std::optional<Autotuner::Config> Autotuner::LookUp(
           return Config{codegen_backend.get(), std::move(backend_config)};
         }
       }
-      LOG(WARNING) << "Cached config for HLO: " << instr->ToString()
-                   << " has unsupported backend "
-                   << cached_config->codegen_backend;
+      LOG(WARNING) << "Ignoring cached config from backend "
+                   << Backend_Name(cached_config->codegen_backend)
+                   << " for HLO '" << instr->ToString() << "'"
+                   << ", because this backend is not registered with the "
+                      "autotuner.";
     }
   }
   return std::nullopt;
