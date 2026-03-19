@@ -127,15 +127,15 @@ DotDimensions GetDotDimensions(const HloInstruction* instr) {
 
 namespace {
 
-constexpr int64_t kMTileSize = 212;
-constexpr int64_t kNTileSize = 212;
-constexpr int64_t kKLoopStepBytes = 442;
-constexpr double kExtraFlopsPerElement = 4.73313;
-constexpr double kFlopsPerByteHbm = 2842.3;
-constexpr double kFlopsPerByteCached = 1846.31;
-constexpr double kCacheThreshold = 2.19872;
-constexpr double kReductionLaunchOverheadFlops = 2.74228e9;
-constexpr double kReductionFlopsPerByteHbm = 677.076;
+constexpr int64_t kMTileSize = 185;
+constexpr int64_t kNTileSize = 185;
+constexpr int64_t kKLoopStepBytes = 1035;
+constexpr double kExtraFlopsPerElement = 14.5585;
+constexpr double kFlopsPerByteHbm = 6257.64;
+constexpr double kFlopsPerByteCached = 333.012;
+constexpr double kCacheThreshold = 26.1216;
+constexpr double kReductionLaunchOverheadFlops = 8.96179e+09;
+constexpr double kReductionFlopsPerByteHbm = 2126.98;
 constexpr double kReductionFlopsPerByteCached = 0;
 constexpr double kReductionCacheThreshold = 0;
 
