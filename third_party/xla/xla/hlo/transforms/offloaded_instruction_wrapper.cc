@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -53,6 +54,181 @@ void ClearSideEffects(HloInstruction* instr) {
         ->set_custom_call_has_side_effect(false);
   }
 }
+
+absl::Status ClearConstantsComputeType(
+    HloComputation& computation,
+    absl::FunctionRef<bool(const HloInstruction*)> should_offload,
+    absl::FunctionRef<absl::Status(HloInstruction*)>
+        clear_backend_config_device_type) {
+  // If a constant is used on TC and offloaded, clear offload annotations and
+  // only materialize it on TC. This simplifies the dependency chain.
+  for (HloInstruction* instr : computation.instructions()) {
+    if (instr->IsConstant() && should_offload(instr)) {
+      TF_RETURN_IF_ERROR(clear_backend_config_device_type(instr));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status RemoveDeadOffloadedInstructions(HloComputation& computation) {
+  for (HloInstruction* instr : computation.instructions()) {
+    // If an offloaded instruction is a Sharding custom call or has control
+    // dependencies (such as those around elided copies), remove it
+    // explicitly since it won't be removed by HloDCE.
+    if (instr->IsDead() && (instr->IsCustomCall("Sharding") ||
+                            (instr->HasControlDependencies() &&
+                             !instr->HasSuccessorControlDependencies()))) {
+      TF_RETURN_IF_ERROR(instr->SafelyDropAllControlDependencies());
+      TF_RETURN_IF_ERROR(computation.RemoveInstruction(instr));
+    }
+  }
+  return absl::OkStatus();
+}
+
+// Stateful helper for finding and wrapping a single offloaded computation.
+class SingleOffloadedComputationWrapper {
+ public:
+  SingleOffloadedComputationWrapper(
+      HloComputation& computation,
+      absl::FunctionRef<bool(const HloInstruction*)> should_offload,
+      absl::FunctionRef<bool(const HloInstruction&, const HloInstruction&)>
+          should_fuse,
+      absl::FunctionRef<absl::Status(HloInstruction*)>
+          clear_backend_config_device_type,
+      absl::string_view new_call_name_prefix)
+      : computation_(computation),
+        should_offload_(should_offload),
+        should_fuse_(should_fuse),
+        clear_backend_config_device_type_(clear_backend_config_device_type),
+        new_call_name_prefix_(new_call_name_prefix) {}
+
+  absl::StatusOr<std::pair<HloInstruction*, HloCallInstruction*>> WrapNext() {
+    std::vector<HloInstruction*> post_order =
+        computation_.MakeInstructionPostOrder();
+    for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
+      if (absl::Status status = ProcessInstruction(*it); !status.ok()) {
+        return status;
+      }
+    }
+
+    if (offloaded_call_instr_ == nullptr) {
+      return std::pair<HloInstruction*, HloCallInstruction*>{nullptr, nullptr};
+    }
+    return std::pair(offloaded_instr_, offloaded_call_instr_);
+  }
+
+ private:
+  absl::Status ProcessInstruction(HloInstruction* instr) {
+    if (!should_offload_(instr)) {
+      if (IsAncestor(instr)) {
+        unmerged_ancestors_.insert(instr);
+      }
+      return absl::OkStatus();
+    }
+
+    VLOG(2) << "Offloading instruction: " << instr->ToString();
+
+    if (offloaded_call_instr_ == nullptr) {
+      return CreateNewOffloadedComputation(instr);
+    }
+
+    if (absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
+          return unmerged_ancestors_.contains(user);
+        })) {
+      VLOG(2) << instr->name()
+              << " is indirectly connected to the current offloaded "
+                 "computation, it must go in a separate offload computation";
+      unmerged_ancestors_.insert(instr);
+      return absl::OkStatus();
+    }
+
+    if (offloaded_call_instr_->IsUserOf(instr)) {
+      return FuseDirectlyConnectedInstruction(instr);
+    }
+
+    return FuseDisconnectedInstruction(instr);
+  }
+
+  bool IsAncestor(HloInstruction* instr) {
+    return absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
+      return user == offloaded_call_instr_ ||
+             unmerged_ancestors_.contains(user);
+    });
+  }
+
+  absl::Status CreateNewOffloadedComputation(HloInstruction* instr) {
+    VLOG(2) << instr->name() << " is the root of a new offloaded computation";
+
+    HloInstruction* call_instr;
+    if (instr->opcode() == HloOpcode::kCall) {
+      call_instr = instr;
+    } else {
+      call_instr = computation_.CreateCallInstruction({instr});
+      call_instr->SetAndSanitizeName(new_call_name_prefix_);
+      call_instr->UniquifyName(computation_.parent());
+      call_instr->set_frontend_attributes(instr->frontend_attributes());
+    }
+    offloaded_call_instr_ = tsl::down_cast<HloCallInstruction*>(call_instr);
+    CHECK_NE(offloaded_call_instr_, nullptr);
+    TF_RETURN_IF_ERROR(
+        clear_backend_config_device_type_(offloaded_call_instr_));
+    TF_RETURN_IF_ERROR(
+        ClearComputeTypeFrontendAttribute(offloaded_call_instr_));
+    ClearSideEffects(instr);
+    offloaded_instr_ = instr;
+    return absl::OkStatus();
+  }
+
+  absl::Status FuseDirectlyConnectedInstruction(HloInstruction* instr) {
+    VLOG(2) << instr->name()
+            << " is directly connected to the current offloaded computation";
+    if (should_fuse_(*offloaded_call_instr_, *instr)) {
+      bool instr_escapes_offloaded_computation =
+          absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
+            return user != offloaded_call_instr_ && !should_offload_(user);
+          });
+
+      VLOG(3) << instr->name() << " fusing into existing computation";
+      VLOG(6) << "instr_escapes_offloaded_computation: "
+              << instr_escapes_offloaded_computation;
+
+      offloaded_call_instr_->AppendInstructionIntoCalledComputation(
+          instr, /*add_output=*/instr_escapes_offloaded_computation);
+      ClearSideEffects(instr);
+      offloaded_instr_ = instr;
+    } else {
+      unmerged_ancestors_.insert(instr);
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status FuseDisconnectedInstruction(HloInstruction* instr) {
+    if (should_fuse_(*offloaded_call_instr_, *instr)) {
+      VLOG(2) << instr->ToString()
+              << " current instruction is disconnected from the current "
+                 "offload computation";
+      offloaded_call_instr_->AppendInstructionIntoCalledComputation(
+          instr, /*add_output=*/true);
+      ClearSideEffects(instr);
+      offloaded_instr_ = instr;
+    } else {
+      unmerged_ancestors_.insert(instr);
+    }
+    return absl::OkStatus();
+  }
+
+  HloComputation& computation_;
+  absl::FunctionRef<bool(const HloInstruction*)> should_offload_;
+  absl::FunctionRef<bool(const HloInstruction&, const HloInstruction&)>
+      should_fuse_;
+  absl::FunctionRef<absl::Status(HloInstruction*)>
+      clear_backend_config_device_type_;
+  absl::string_view new_call_name_prefix_;
+
+  HloInstruction* offloaded_instr_ = nullptr;
+  HloCallInstruction* offloaded_call_instr_ = nullptr;
+  absl::flat_hash_set<HloInstruction*> unmerged_ancestors_;
+};
 
 }  // namespace
 
@@ -78,139 +254,25 @@ FindAndWrapOffloadedComputations(
     absl::FunctionRef<absl::Status(HloInstruction*)>
         clear_backend_config_device_type,
     absl::string_view new_call_name_prefix) {
-  // If a constant is used on TC and offloaded, clear offload annotations and
-  // only materialize it on TC. This simplifies the dependency chain.
-  for (HloInstruction* instr : computation.instructions()) {
-    if (instr->IsConstant() && should_offload(instr)) {
-      TF_RETURN_IF_ERROR(clear_backend_config_device_type(instr));
-    }
-  }
+  TF_RETURN_IF_ERROR(ClearConstantsComputeType(
+      computation, should_offload, clear_backend_config_device_type));
 
   std::vector<std::pair<HloInstruction*, HloCallInstruction*>>
       offloaded_instructions_and_calls;
-  // On each iteration of the outer loop, try to create one offloaded
-  // computation out of a connected set of offloaded instructions.
+
   while (true) {
-    HloInstruction* offloaded_instr = nullptr;
-    HloCallInstruction* offloaded_call_instr = nullptr;
-    // Stores all the ancestor instructions of offloaded_call_instr which were
-    // not added to the current offloaded computation.
-    absl::flat_hash_set<HloInstruction*> unmerged_ancestors;
-    std::vector<HloInstruction*> post_order =
-        computation.MakeInstructionPostOrder();
-    for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
-      HloInstruction* instr = *it;
-      // The current instruction is not an offload instruction.
-      if (!should_offload(instr)) {
-        if (absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
-              return user == offloaded_call_instr ||
-                     unmerged_ancestors.contains(user);
-            })) {
-          unmerged_ancestors.insert(instr);
-        }
-        continue;
-      }
+    SingleOffloadedComputationWrapper wrapper(
+        computation, should_offload, should_fuse,
+        clear_backend_config_device_type, new_call_name_prefix);
+    TF_ASSIGN_OR_RETURN(auto instr_and_call, wrapper.WrapNext());
 
-      VLOG(2) << "Offloading instruction: " << instr->ToString();
-
-      // The current instruction is the root of a new offloaded computation.
-      if (offloaded_call_instr == nullptr) {
-        VLOG(2) << instr->name()
-                << " is the root of a new offloaded computation";
-
-        HloInstruction* call_instr;
-        if (instr->opcode() == HloOpcode::kCall) {
-          call_instr = instr;
-        } else {
-          call_instr = computation.CreateCallInstruction({instr});
-          call_instr->SetAndSanitizeName(new_call_name_prefix);
-          call_instr->UniquifyName(computation.parent());
-          call_instr->set_frontend_attributes(instr->frontend_attributes());
-        }
-        offloaded_call_instr = tsl::down_cast<HloCallInstruction*>(call_instr);
-        CHECK_NE(offloaded_call_instr, nullptr);
-        TF_RETURN_IF_ERROR(
-            clear_backend_config_device_type(offloaded_call_instr));
-        TF_RETURN_IF_ERROR(
-            ClearComputeTypeFrontendAttribute(offloaded_call_instr));
-        ClearSideEffects(instr);
-        offloaded_instr = instr;
-        continue;
-      }
-
-      // If the current instruction is indirectly connected to the current
-      // offloaded computation, it must go in a separate offload computation.
-      if (absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
-            return unmerged_ancestors.contains(user);
-          })) {
-        VLOG(2) << instr->name()
-                << " is indirectly connected to the current offloaded "
-                   "computation, it must go in a separate offload computation";
-
-        unmerged_ancestors.insert(instr);
-        continue;
-      }
-
-      // The current instruction is directly connected to the current offloaded
-      // computation.
-      if (offloaded_call_instr->IsUserOf(instr)) {
-        VLOG(2)
-            << instr->name()
-            << " is directly connected to the current offloaded computation";
-        if (should_fuse(*offloaded_call_instr, *instr)) {
-          bool instr_escapes_offloaded_computation =
-              absl::c_any_of(instr->users(), [&](const HloInstruction* user) {
-                return user != offloaded_call_instr && !should_offload(user);
-              });
-
-          VLOG(3) << instr->name() << " fusing into existing computation";
-          VLOG(6) << "instr_escapes_offloaded_computation: "
-                  << instr_escapes_offloaded_computation;
-
-          offloaded_call_instr->AppendInstructionIntoCalledComputation(
-              instr, /*add_output=*/instr_escapes_offloaded_computation);
-          ClearSideEffects(instr);
-          offloaded_instr = instr;
-        } else {
-          unmerged_ancestors.insert(instr);
-        }
-        continue;
-      }
-
-      if (should_fuse(*offloaded_call_instr, *instr)) {
-        VLOG(2) << instr->ToString()
-                << " current instruction is disconnected from the current "
-                   "offload computation";
-        // If the current instruction is disconnected from the current offload
-        // computation, include it anyway.
-        offloaded_call_instr->AppendInstructionIntoCalledComputation(
-            instr, /*add_output=*/true);
-        ClearSideEffects(instr);
-        offloaded_instr = instr;
-      } else {
-        unmerged_ancestors.insert(instr);
-      }
-    }
-
-    // If there are no offload instructions left in the computation, stop
-    // looking.
-    if (offloaded_call_instr == nullptr) {
+    if (instr_and_call.second == nullptr) {
       break;
     }
-    offloaded_instructions_and_calls.push_back(
-        std::pair(offloaded_instr, offloaded_call_instr));
 
-    for (HloInstruction* instr : computation.instructions()) {
-      // If an offloaded instruction is a Sharding custom call or has control
-      // dependencies (such as those around elided copies), remove it
-      // explicitly since it won't be removed by HloDCE.
-      if (instr->IsDead() && (instr->IsCustomCall("Sharding") ||
-                              (instr->HasControlDependencies() &&
-                               !instr->HasSuccessorControlDependencies()))) {
-        TF_RETURN_IF_ERROR(instr->SafelyDropAllControlDependencies());
-        TF_RETURN_IF_ERROR(computation.RemoveInstruction(instr));
-      }
-    }
+    offloaded_instructions_and_calls.push_back(instr_and_call);
+
+    TF_RETURN_IF_ERROR(RemoveDeadOffloadedInstructions(computation));
 
     // DCE any offloaded instructions that have no remaining un-wrapped uses.
     TF_RETURN_IF_ERROR(HloDCE().Run(computation.parent()).status());
