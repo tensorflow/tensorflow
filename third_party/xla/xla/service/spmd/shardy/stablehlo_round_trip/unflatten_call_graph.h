@@ -28,6 +28,7 @@ namespace sdy {
 // deduplicates all functions with the same origin, and otherwise, it
 // deduplicates for those with the same origin and the input/output shardings
 // are the same.
+// NOTE: The case for dedupFunctionsFully is true is not implemented yet.
 std::unique_ptr<mlir::Pass> createUnflattenCallGraphPass(
     bool dedupFunctionsFully);
 
