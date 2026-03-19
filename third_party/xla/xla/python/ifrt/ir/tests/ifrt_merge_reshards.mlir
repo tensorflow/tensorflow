@@ -34,6 +34,19 @@ func.func @merge_reshards_of_func_args(%arg0: !array0, %arg1: !array0)
   return %1, %2 : !array1, !array1
 }
 
+// CHECK-LABEL: @reshards_into_return_op_are_grouped_by_destination
+func.func @reshards_into_return_op_are_grouped_by_destination(
+    %arg0: !array0, %arg1: !array0, %arg2: !array0)
+  -> (!array1, !array1, !array2) attributes {ifrt.function} {
+  // CHECK-NEXT: %[[R0:.*]]:2, %{{.*}} = ifrt.Reshard(%arg0, %arg1)
+  // CHECK-NEXT: %[[R1:.*]], %{{.*}} = ifrt.Reshard(%arg2)
+  // CHECK-NEXT: return %[[R0]]#0, %[[R0]]#1, %[[R1]]
+  %0, %ctrl_0 = ifrt.Reshard(%arg0) : (!array0) -> !array1
+  %1, %ctrl_1 = ifrt.Reshard(%arg1) : (!array0) -> !array1
+  %2, %ctrl_2 = ifrt.Reshard(%arg2) : (!array0) -> !array2
+  return %0, %1, %2 : !array1, !array1, !array2
+}
+
 // CHECK-LABEL: @merge_reshards_for_same_devices_only
 func.func @merge_reshards_for_same_devices_only(
     %arg0: !array0, %arg1: !array0, %arg2: !array0, %arg3: !array0, %arg4: !array1, %arg5: !array1)
@@ -190,7 +203,7 @@ func.func @chain_of_reshards_is_sunk(%arg0: !array0, %arg1: !array0)
   return %6#0, %6#1 : !array2, !array2
 }
 
-func.func private @identity(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>)
+func.func @identity(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>)
   -> (tensor<2xi32>, tensor<2xi32>) {
   return %arg0, %arg1 : tensor<2xi32>, tensor<2xi32>
 }

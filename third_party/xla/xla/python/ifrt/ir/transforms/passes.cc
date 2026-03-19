@@ -79,8 +79,10 @@ void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
   pm.addPass(createIfrtOutlineAtomProgramToModulePass());
 
   pm.addPass(createIfrtVerifyShardingSpecifiedPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::ifrt::createIfrtMergeReshardsPass());
+  // IfrtMergeReshardsPass doesn't handle control dependencies, so we need to
+  // run it before adding the control dependencies.
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeReshardsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtAddCtrlDependenciesPass());
   // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
   // are specified.
   pm.addPass(createIfrtReshardToCopyArraysPass());
@@ -94,7 +96,7 @@ void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm) {
 
 void createIfrtCompileXlaPreprocessingPipeline(
     mlir::OpPassManager& pm,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options) {
+    std::shared_ptr<IfrtIRCompileOptions> compile_options) {
   pm.addPass(createIfrtLowerAtomProgramMetadataToXlaPass(
       {/*compile_options=*/compile_options}));
   pm.addPass(createIfrtRemoveIfrtAttrsPass());
@@ -103,7 +105,7 @@ void createIfrtCompileXlaPreprocessingPipeline(
 absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
     const OutlinedAtomProgramsToCompiledPipelineOptions& options,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   IfrtToDotPassOptions ifrt_to_dot_pass_options =
@@ -158,7 +160,7 @@ void createIfrtFromVersionedPipeline(
 
 void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map) {
   registerIfrtIrPasses();

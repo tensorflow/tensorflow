@@ -97,6 +97,15 @@ module attributes {ifrt.devices = #device} {
   }];
 }
 
+def IfrtAddCtrlDependenciesPass :
+    Pass<"ifrt-add-ctrl-dependencies", "mlir::func::FuncOp"> {
+  let summary = "Adds control dependencies to ifrt.CallOps.";
+  let description = [{
+Adds control dependencies to `ifrt.CallOp` based on program order.
+  }];
+}
+
+
 def IfrtOutlineAtomProgramToModulePass :
     Pass<"ifrt-outline-atom-program-to-module", "mlir::ModuleOp"> {
   let summary = "Wraps every atom function with a ModuleOp with a @main FuncOp";
