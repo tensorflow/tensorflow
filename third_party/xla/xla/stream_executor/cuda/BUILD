@@ -2810,7 +2810,7 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu:ffi",
         "//xla/ffi",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@local_config_cuda//cuda:cuda_headers",
