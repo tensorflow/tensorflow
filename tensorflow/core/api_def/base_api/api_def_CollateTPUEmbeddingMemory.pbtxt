@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "CollateTPUEmbeddingMemory"
+  in_arg {
+    name: "memory_configs"
+    description: <<END
+String-encoded memory config protos containing metadata about
+the memory allocations reserved for TPUEmbedding across all hosts.
+END
+  }
+  summary: "An op that merges the string-encoded memory config protos from all hosts."
+}

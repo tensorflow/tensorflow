@@ -1,0 +1,16 @@
+path: "tensorflow.random.Algorithm"
+tf_class {
+  is_instance: "<enum \'Algorithm\'>"
+  member {
+    name: "AUTO_SELECT"
+    mtype: "<enum \'Algorithm\'>"
+  }
+  member {
+    name: "PHILOX"
+    mtype: "<enum \'Algorithm\'>"
+  }
+  member {
+    name: "THREEFRY"
+    mtype: "<enum \'Algorithm\'>"
+  }
+}

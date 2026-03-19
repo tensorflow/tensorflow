@@ -1,0 +1,18 @@
+sharding_specs {
+  sharding_spec: "batch"
+}
+sharding_specs {
+  sharding_spec: "x"
+}
+mesh_config {
+  mesh_dimensions {
+    name: "batch"
+    size: 2
+  }
+  mesh_dimensions {
+    name: "x"
+    size: 2
+  }
+  devices: "/job:ps/device:CPU:0"
+  devices: "/job:ps/device:CPU:1"
+}

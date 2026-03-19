@@ -1,0 +1,64 @@
+op {
+  graph_op_name: "StringSplit"
+  in_arg {
+    name: "input"
+    description: <<END
+1-D. Strings to split.
+END
+  }
+  in_arg {
+    name: "delimiter"
+    description: <<END
+0-D. Delimiter characters (bytes), or empty string.
+END
+  }
+  out_arg {
+    name: "indices"
+    description: <<END
+A dense matrix of int64 representing the indices of the sparse tensor.
+END
+  }
+  out_arg {
+    name: "values"
+    description: <<END
+A vector of strings corresponding to the splited values.
+END
+  }
+  out_arg {
+    name: "shape"
+    description: <<END
+a length-2 vector of int64 representing the shape of the sparse
+tensor, where the first value is N and the second value is the maximum number
+of tokens in a single input entry.
+END
+  }
+  attr {
+    name: "skip_empty"
+    description: <<END
+A `bool`. If `True`, skip the empty strings from the result.
+END
+  }
+  summary: "Split elements of `input` based on `delimiter` into a `SparseTensor`."
+  description: <<END
+Let N be the size of source (typically N will be the batch size). Split each
+element of `input` based on `delimiter` and return a `SparseTensor`
+containing the splitted tokens. Empty tokens are ignored.
+
+`delimiter` can be empty, or a string of split characters. If `delimiter` is an
+ empty string, each element of `input` is split into individual single-byte
+ character strings, including splitting of UTF-8 multibyte sequences. Otherwise
+ every character of `delimiter` is a potential split point.
+
+For example:
+  N = 2, input[0] is 'hello world' and input[1] is 'a b c', then the output
+  will be
+
+  indices = [0, 0;
+             0, 1;
+             1, 0;
+             1, 1;
+             1, 2]
+  shape = [2, 3]
+  values = ['hello', 'world', 'a', 'b', 'c']
+END
+}

@@ -1,0 +1,23 @@
+path: "tensorflow.lookup.KeyValueTensorInitializer"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.lookup_ops.KeyValueTensorInitializer\'>"
+  is_instance: "<class \'tensorflow.python.ops.lookup_ops.TableInitializerBase\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "key_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "value_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'keys\', \'values\', \'key_dtype\', \'value_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "initialize"
+    argspec: "args=[\'self\', \'table\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,55 @@
+op {
+  name: "BoostedTreesUpdateEnsemble"
+  input_arg {
+    name: "tree_ensemble_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "feature_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "gains"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "thresholds"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "left_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "right_node_contribs"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "max_depth"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "learning_rate"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "pruning_mode"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
+}

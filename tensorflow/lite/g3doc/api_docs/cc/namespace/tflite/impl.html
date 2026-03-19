@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::impl Namespace</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body>
+<div id="top"><!-- do not remove this div --></div>
+<h1>tflite::<wbr/>impl</h1>
+<p>An RAII object that represents a read-only tflite model, copied from disk, or mmapped. </p>
+<h2>Summary</h2>
+<p>This uses flatbuffers as the serialization format.</p>
+<p>NOTE: The current API requires that a FlatBufferModel instance be kept alive by the client as long as it is in use by any dependent Interpreter instances. As the FlatBufferModel instance is effectively immutable after creation, the client may safely use a single model with multiple dependent Interpreter instances, even across multiple threads (though note that each Interpreter instance is <i>not</i> thread-safe).</p>
+<p>
+<pre class="prettyprint"><code>
+using namespace tflite;
+StderrReporter error_reporter;
+auto model = FlatBufferModel::BuildFromFile("interesting_model.tflite",
+                                            &amp;error_reporter);
+MyOpResolver resolver;  // You need to subclass <a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> to provide
+                        // implementations.
+InterpreterBuilder builder(*model, resolver);
+std::unique_ptr<interpreter> interpreter;
+if(builder(&amp;interpreter) == kTfLiteOk) {
+  .. run model inference with interpreter
+}
+</interpreter></code></pre>
+</p>
+<p><a href="/lite/api_docs/cc/class/tflite/op-resolver.html#classtflite_1_1_op_resolver">OpResolver</a> must be defined to provide your kernel implementations to the interpreter. This is environment specific and may consist of just the builtin ops, or some custom operators you defined to extend tflite. </p>
+<table class="nested-classes responsive">
+<tr>
+<th colspan="2">
+<h3>Classes</h3>
+</th>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/impl/flat-buffer-model">tflite::<wbr/>impl::<wbr/>FlatBufferModel</a>
+</td>
+<td></td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/impl/interpreter">tflite::<wbr/>impl::<wbr/>Interpreter</a>
+</td>
+<td></td>
+</tr>
+<tr>
+<td>
+<a href="/lite/api_docs/cc/class/tflite/impl/interpreter-builder">tflite::<wbr/>impl::<wbr/>InterpreterBuilder</a>
+</td>
+<td></td>
+</tr>
+</table>
+</body>
+</html>

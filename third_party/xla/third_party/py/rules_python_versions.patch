@@ -1,0 +1,36 @@
+diff --git a/python/versions.bzl b/python/versions.bzl
+index 3299a9f1..ae900149 100644
+--- a/python/versions.bzl
++++ b/python/versions.bzl
+@@ -1272,20 +1272,13 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+     for u in url:
+         p, _, _ = platform.partition(FREETHREADED)
+ 
+-        # Assume an unknown release_id is a newer url format
+-        release_id = 99999999
+-        url_parts = u.split("/")
+-        if len(url_parts) >= 2 and url_parts[-2].isdigit():
+-            maybe_release_id = url_parts[-2]
+-            release_id = int(maybe_release_id)
+-
+         if FREETHREADED.lstrip("-") in platform:
+             build = "{}+{}-full".format(
+                 FREETHREADED.lstrip("-"),
+                 {
+                     "aarch64-apple-darwin": "pgo+lto",
+                     "aarch64-pc-windows-msvc": "pgo",
+-                    "aarch64-unknown-linux-gnu": "lto" if release_id < 20250702 else "pgo+lto",
++                    "aarch64-unknown-linux-gnu": "pgo+lto",
+                     "ppc64le-unknown-linux-gnu": "lto",
+                     "riscv64-unknown-linux-gnu": "lto",
+                     "s390x-unknown-linux-gnu": "lto",
+@@ -1298,9 +1291,6 @@ def get_release_info(platform, python_version, base_url = DEFAULT_RELEASE_BASE_U
+         else:
+             build = INSTALL_ONLY
+ 
+-        if WINDOWS_NAME in platform and release_id < 20250317:
+-            build = "shared-" + build
+-
+         release_filename = u.format(
+             platform = p,
+             python_version = python_version,

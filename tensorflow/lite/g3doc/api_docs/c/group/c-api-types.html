@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>lite/c/c_api_types.h</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>lite/c/c_api_types.h</h1>
+  <p>This file declares types used by the pure C inference API defined in <a href="/lite/api_docs/c/c/api-8h-source.html#c__api_8h_source">c_api.h</a>, some of which are also used in the C++ and C kernel and interpreter APIs. </p>
+  <h2>Summary</h2>
+  <p>
+    <aside class="note"><strong>Note:</strong> Users of TensorFlow Lite should use <pre class="prettyprint">#include "tensorflow/lite/c/c_api_types.h"</pre> to access the APIs documented on this page. </aside>
+  </p>
+  <table class="constants responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Enumerations</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>{<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361ab25fe210808197f1b6601df8ccdcd699">kTfLiteOk</a> = 0,<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a0bf230cf34a88de9e37834dc127437db">kTfLiteError</a> = 1,<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a73a5cedf4e108bb964c0a24e2a4470e1">kTfLiteDelegateError</a> = 2,<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a007a36e9810b4a7ae835ffc124e0a32c">kTfLiteApplicationError</a> = 3,<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a558db700e43e10a7c451d2c1551fda98">kTfLiteDelegateDataNotFound</a> = 4,<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a45c0f5eb58b0d5696d373d81b412e49a">kTfLiteDelegateDataWriteError</a> = 5,<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361aeff408401134dd5c601de782e68d065e">kTfLiteDelegateDataReadError</a> = 6,<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361ace42b5a195672087346b67784778104d">kTfLiteUnresolvedOps</a> = 7,<br>&nbsp;&nbsp;<a href="#group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a558a51ea592f1c4ccddb3d83af6cb0e4">kTfLiteCancelled</a> = 8<br>}</code>
+      </td>
+      <td>enum<div>Note that new error status values may be added in future in order to indicate more fine-grained internal states, therefore, applications should not rely on status values being members of the enum. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a></code>
+      </td>
+      <td>enum<div>Types supported by tensor. </div></td>
+    </tr>
+  </table>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Typedefs</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1ga792f1fcdea49b08878248dd0553294c0">TfLiteDelegate</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>
+        </div><div><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a>: allows delegation of nodes to alternative backends. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a></code>
+        </div><div>TfLiteOpaqueContext is an opaque version of <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a>;. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a></code>
+      </td>
+      <td>typedef<div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>
+        </div><div>TfLiteOpaqueDelegate: conditionally opaque version of <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a>; allows delegation of nodes to alternative backends. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1gaeacdfb2509c8e128ad7814d76c841d2b">TfLiteOpaqueDelegateStruct</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaeacdfb2509c8e128ad7814d76c841d2b">TfLiteOpaqueDelegateStruct</a></code>
+        </div><div>TfLiteOpaqueDelegateStruct: unconditionally opaque version of <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a>; allows delegation of nodes to alternative backends. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a></code>
+        </div><div>TfLiteOpaqueNode is an opaque version of <a href="/lite/api_docs/c/struct/tf-lite-node.html#struct_tf_lite_node">TfLiteNode</a>;. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a></code>
+        </div><div>TfLiteOpaqueTensor is an opaque version of <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a>;. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1gaa681a1e2a35b583f6902663b77414dbc">TfLiteQuantizationParams</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a></code>
+        </div><div>Legacy. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api__types_1gacc04b4e16e98f3b2e9f8082679e597e3">TfLiteStatus</a></code>
+      </td>
+      <td>typedef<div>
+          <code>enum <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div><div>Note that new error status values may be added in future in order to indicate more fine-grained internal states, therefore, applications should not rely on status values being members of the enum. </div></td>
+    </tr>
+  </table>
+  <table class="constants responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Structs</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <a href="/lite/api_docs/c/struct/tf-lite-quantization-params">TfLiteQuantizationParams</a>
+      </td>
+      <td>
+        <p>Legacy. </p>
+      </td>
+    </tr>
+  </table>
+  <h2>Enumerations</h2>
+  <div id="group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">
+    <h3>TfLiteStatus</h3>
+    <pre class="prettyprint"> TfLiteStatus</pre>
+    <div>
+      <p>Note that new error status values may be added in future in order to indicate more fine-grained internal states, therefore, applications should not rely on status values being members of the enum. </p>
+      <table class="properties responsive">
+        <tr>
+          <th colspan="2">Properties</th>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a007a36e9810b4a7ae835ffc124e0a32c" />kTfLiteApplicationError</code>
+          </td>
+          <td>
+            <p>Generally referring to an error in applying a delegate due to incompatibility between runtime and delegate, e.g., this error is returned when trying to apply a TF Lite delegate onto a model graph that's already immutable. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a558a51ea592f1c4ccddb3d83af6cb0e4" />kTfLiteCancelled</code>
+          </td>
+          <td>
+            <p>Generally referring to invocation cancelled by the user. </p>
+            <p>See <code>interpreter::Cancel</code>. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a558db700e43e10a7c451d2c1551fda98" />kTfLiteDelegateDataNotFound</code>
+          </td>
+          <td>
+            <p>Generally referring to serialized delegate data not being found. </p>
+            <p>See tflite::delegates::Serialization. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361aeff408401134dd5c601de782e68d065e" />kTfLiteDelegateDataReadError</code>
+          </td>
+          <td>
+            <p>Generally referring to data-reading issues in delegate serialization. </p>
+            <p>See tflite::delegates::Serialization. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a45c0f5eb58b0d5696d373d81b412e49a" />kTfLiteDelegateDataWriteError</code>
+          </td>
+          <td>
+            <p>Generally referring to data-writing issues in delegate serialization. </p>
+            <p>See tflite::delegates::Serialization. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a73a5cedf4e108bb964c0a24e2a4470e1" />kTfLiteDelegateError</code>
+          </td>
+          <td>
+            <p>Generally referring to an error from a <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> itself. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361a0bf230cf34a88de9e37834dc127437db" />kTfLiteError</code>
+          </td>
+          <td>
+            <p>Generally referring to an error in the runtime (i.e. interpreter) </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361ab25fe210808197f1b6601df8ccdcd699" />kTfLiteOk</code>
+          </td>
+          <td>
+            <p>Success. </p>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <code><a id="group__c__api__types_1ggacf79d2fb5fa520303014d1303f1f6361ace42b5a195672087346b67784778104d" />kTfLiteUnresolvedOps</code>
+          </td>
+          <td>
+            <p>Generally referring to issues when the TF Lite model has ops that cannot be resolved at runtime. </p>
+            <p>This could happen when the specific op is not registered or built with the TF Lite framework. </p>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+  <div id="group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">
+    <h3>TfLiteType</h3>
+    <pre class="prettyprint"> TfLiteType</pre>
+    <div>
+      <p>Types supported by tensor. </p>
+    </div>
+  </div>
+  <h2>Typedefs</h2>
+  <div id="group__c__api__types_1ga792f1fcdea49b08878248dd0553294c0">
+    <h3>TfLiteDelegate</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> TfLiteDelegate</pre>
+    <div>
+      <p><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a>: allows delegation of nodes to alternative backends. </p>
+      <p>Forward declaration of concrete type declared in <a href="/lite/api_docs/c/common/8h-source.html#common_8h_source">common.h</a>. </p>
+    </div>
+  </div>
+  <div id="group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">
+    <h3>TfLiteOpaqueContext</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaa4ce7746ca46ee3e8021d61b30a4a278">TfLiteOpaqueContext</a> TfLiteOpaqueContext</pre>
+    <div>
+      <p>TfLiteOpaqueContext is an opaque version of <a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a>;. </p>
+    </div>
+  </div>
+  <div id="group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">
+    <h3>TfLiteOpaqueDelegate</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a> TfLiteOpaqueDelegate</pre>
+    <div>
+      <p>TfLiteOpaqueDelegate: conditionally opaque version of <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a>; allows delegation of nodes to alternative backends. </p>
+      <p>For TF Lite in Play Services, this is an opaque type, but for regular TF Lite, this is just a typedef for <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a>.</p>
+      <p>WARNING: This is an experimental type and subject to change. </p>
+    </div>
+  </div>
+  <div id="group__c__api__types_1gaeacdfb2509c8e128ad7814d76c841d2b">
+    <h3>TfLiteOpaqueDelegateStruct</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gaeacdfb2509c8e128ad7814d76c841d2b">TfLiteOpaqueDelegateStruct</a> TfLiteOpaqueDelegateStruct</pre>
+    <div>
+      <p>TfLiteOpaqueDelegateStruct: unconditionally opaque version of <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a>; allows delegation of nodes to alternative backends. </p>
+      <p>This is an abstract type that is intended to have the same role as <a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a>, but without exposing the implementation details of how delegates are implemented.</p>
+      <p>WARNING: This is an experimental type and subject to change. </p>
+    </div>
+  </div>
+  <div id="group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">
+    <h3>TfLiteOpaqueNode</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab12a07755992ecd4881d888a170c4c4b">TfLiteOpaqueNode</a> TfLiteOpaqueNode</pre>
+    <div>
+      <p>TfLiteOpaqueNode is an opaque version of <a href="/lite/api_docs/c/struct/tf-lite-node.html#struct_tf_lite_node">TfLiteNode</a>;. </p>
+    </div>
+  </div>
+  <div id="group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">
+    <h3>TfLiteOpaqueTensor</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gab8d233ce3c69ac5f291ecd5ae52b3a12">TfLiteOpaqueTensor</a> TfLiteOpaqueTensor</pre>
+    <div>
+      <p>TfLiteOpaqueTensor is an opaque version of <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a>;. </p>
+    </div>
+  </div>
+  <div id="group__c__api__types_1gaa681a1e2a35b583f6902663b77414dbc">
+    <h3>TfLiteQuantizationParams</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a> TfLiteQuantizationParams</pre>
+    <div>
+      <p>Legacy. </p>
+      <p>Will be deprecated in favor of <code><a href="/lite/api_docs/c/struct/tf-lite-affine-quantization.html#struct_tf_lite_affine_quantization">TfLiteAffineQuantization</a></code>. If per-layer quantization is specified this field will still be populated in addition to <code><a href="/lite/api_docs/c/struct/tf-lite-affine-quantization.html#struct_tf_lite_affine_quantization">TfLiteAffineQuantization</a></code>. Parameters for asymmetric quantization. Quantized values can be converted back to float using: <code>real_value = scale * (quantized_value - zero_point)</code></p>
+    </div>
+  </div>
+  <div id="group__c__api__types_1gacc04b4e16e98f3b2e9f8082679e597e3">
+    <h3>TfLiteStatus</h3>
+    <pre class="prettyprint">enum <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteStatus</pre>
+    <div>
+      <p>Note that new error status values may be added in future in order to indicate more fine-grained internal states, therefore, applications should not rely on status values being members of the enum. </p>
+    </div>
+  </div>
+</body>
+</html>

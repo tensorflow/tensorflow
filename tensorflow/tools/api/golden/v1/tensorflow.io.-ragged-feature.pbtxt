@@ -1,0 +1,59 @@
+path: "tensorflow.io.RaggedFeature"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.RaggedFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.RaggedFeature\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "RowLengths"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RowLimits"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RowSplits"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RowStarts"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UniformRowLength"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ValueRowIds"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "partitions"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "row_splits_dtype"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "validate"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "value_key"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

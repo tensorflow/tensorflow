@@ -1,0 +1,59 @@
+path: "tensorflow.data"
+tf_module {
+  member {
+    name: "AUTOTUNE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "Dataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DatasetSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FixedLengthRecordDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "INFINITE_CARDINALITY"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "Iterator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "IteratorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "NumpyIterator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Options"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TFRecordDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TextLineDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ThreadingOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UNKNOWN_CARDINALITY"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+}

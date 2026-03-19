@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "WriteFile"
+  endpoint {
+    name: "io.write_file"
+  }
+  endpoint {
+    name: "write_file"
+    deprecation_version: 2
+  }
+}

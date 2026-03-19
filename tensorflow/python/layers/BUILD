@@ -1,0 +1,77 @@
+# python/layers package
+
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+
+visibility = [
+    "//tensorflow:__subpackages__",
+]
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = visibility,
+    licenses = ["notice"],
+)
+
+py_library(
+    name = "layers_base",
+    srcs = [
+        "__init__.py",
+        "base.py",
+    ],
+    strict_deps = True,
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/mlperf:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/python/keras/legacy_tf_layers:layers_base",
+    ],
+)
+
+py_library(
+    name = "layers_util",
+    srcs = [
+        "utils.py",
+    ],
+    strict_deps = True,
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python/framework:smart_cond",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:variables",
+    ],
+)
+
+py_library(
+    name = "layers",
+    srcs = [
+        "convolutional.py",
+        "core.py",
+        "layers.py",
+        "normalization.py",
+        "pooling.py",
+    ],
+    strict_deps = True,
+    # copybara:uncomment_begin(google-only)
+    # visibility = [
+    # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+    # "//third_party/py/tf_slim:__subpackages__",
+    # "//tensorflow:internal",
+    # ],
+    # copybara:uncomment_end_and_comment_begin
+    visibility = [
+        "//visibility:public",
+    ],
+    # copybara:comment_end
+    deps = [
+        ":layers_base",
+        "//tensorflow/python/keras/legacy_tf_layers:convolutional",
+        "//tensorflow/python/keras/legacy_tf_layers:core",
+        "//tensorflow/python/keras/legacy_tf_layers:pooling",
+        "//tensorflow/python/util:lazy_loader",
+        # Normalization layer will need //third_party/py/tf_keras/legacy_tf_layers:normalization
+        # Client lib should import that, since this target can't import it due to
+        # circular dependency.
+    ],
+)

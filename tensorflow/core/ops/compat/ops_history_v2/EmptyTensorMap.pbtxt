@@ -1,0 +1,7 @@
+op {
+  name: "EmptyTensorMap"
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+}

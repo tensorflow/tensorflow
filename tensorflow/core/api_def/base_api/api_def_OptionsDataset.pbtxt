@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "OptionsDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A variant tensor representing the input dataset.
+END
+  }
+  attr {
+    name: "serialized_options"
+    description: <<END
+A `tf.string` scalar `tf.Tensor` of serialized `tf.data.Options` protocol buffer.
+END
+  }
+  summary: "Creates a dataset by attaching tf.data.Options to `input_dataset`."
+}

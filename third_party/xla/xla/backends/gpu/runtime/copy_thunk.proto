@@ -1,0 +1,57 @@
+/* Copyright 2025 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/service/shaped_slice.proto";
+
+option java_multiple_files = true;
+
+message CopyThunkProto {
+  xla.ShapedSliceProto source_buffer = 1;
+  xla.ShapedSliceProto destination_buffer = 2;
+  int64 mem_size = 3;
+}
+
+message DeviceToHostCopyThunkProto {
+  CopyThunkProto copy_thunk = 1;
+  optional uint64 async_events_unique_id = 2;
+  int64 instr_id = 3;
+}
+
+message HostToDeviceCopyThunkProto {
+  CopyThunkProto copy_thunk = 1;
+  optional uint64 async_events_unique_id = 2;
+  int64 instr_id = 3;
+}
+
+message DeviceToDeviceCopyThunkProto {
+  CopyThunkProto copy_thunk = 1;
+}
+
+message DynamicMemcpyThunkProto {
+  message Offsets {
+    bool depends_on_loop = 1;
+    repeated int64 src_offsets = 2;
+    repeated int64 dst_offsets = 3;
+  }
+
+  ShapedSliceProto source_buffer = 1;
+  ShapedSliceProto destination_buffer = 2;
+  int64 mem_size = 3;
+  Offsets offsets = 4;
+}

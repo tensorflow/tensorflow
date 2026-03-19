@@ -1,0 +1,39 @@
+path: "tensorflow.random.experimental"
+tf_module {
+  member {
+    name: "Algorithm"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "Generator"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "create_rng_state"
+    argspec: "args=[\'seed\', \'alg\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_global_generator"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "index_shuffle"
+    argspec: "args=[\'index\', \'seed\', \'max_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_global_generator"
+    argspec: "args=[\'generator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_fold_in"
+    argspec: "args=[\'seed\', \'data\', \'alg\'], varargs=None, keywords=None, defaults=[\'auto_select\'], "
+  }
+  member_method {
+    name: "stateless_shuffle"
+    argspec: "args=[\'value\', \'seed\', \'alg\', \'name\'], varargs=None, keywords=None, defaults=[\'auto_select\', \'None\'], "
+  }
+  member_method {
+    name: "stateless_split"
+    argspec: "args=[\'seed\', \'num\', \'alg\'], varargs=None, keywords=None, defaults=[\'2\', \'auto_select\'], "
+  }
+}

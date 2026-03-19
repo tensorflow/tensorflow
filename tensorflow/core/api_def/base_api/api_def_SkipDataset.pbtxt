@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "SkipDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "count"
+    description: <<END
+A scalar representing the number of elements from the `input_dataset`
+that should be skipped.  If count is -1, skips everything.
+END
+  }
+  summary: "Creates a dataset that skips `count` elements from the `input_dataset`."
+}

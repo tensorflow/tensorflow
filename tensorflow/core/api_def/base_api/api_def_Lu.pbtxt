@@ -1,0 +1,51 @@
+op {
+  graph_op_name: "Lu"
+  in_arg {
+    name: "input"
+    description: <<END
+A tensor of shape `[..., M, M]` whose inner-most 2 dimensions form matrices of
+size `[M, M]`.
+END
+  }
+  out_arg {
+    name: "lu"
+    description: <<END
+A tensor of shape `[..., M, M]` whose strictly lower triangular part denotes the
+lower triangular factor `L` with unit diagonal, and whose upper triangular part
+denotes the upper triangular factor `U`.
+END
+  }
+  out_arg {
+    name: "p"
+    description: <<END
+Permutation of the rows encoded as a list of indices in `0..M-1`. Shape is
+`[..., M]`.
+@compatibility(scipy)
+Similar to `scipy.linalg.lu`, except the triangular factors `L` and `U` are
+packed into a single tensor, the permutation is applied to `input` instead of
+the right hand side and the permutation `P` is returned as a list of indices
+instead of a permutation matrix.
+@end_compatibility
+END
+  }
+  summary: "Computes the LU decomposition of one or more square matrices."
+  description: <<END
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices.
+
+The input has to be invertible.
+
+The output consists of two tensors LU and P containing the LU decomposition
+of all input submatrices `[..., :, :]`. LU encodes the lower triangular and
+upper triangular factors.
+
+For each input submatrix of shape `[M, M]`, L is a lower triangular matrix of
+shape `[M, M]` with unit diagonal whose entries correspond to the strictly lower
+triangular part of LU. U is a upper triangular matrix of shape `[M, M]` whose
+entries correspond to the upper triangular part, including the diagonal, of LU.
+
+P represents a permutation matrix encoded as a list of indices each between `0`
+and `M-1`, inclusive. If P_mat denotes the permutation matrix corresponding to
+P, then the L, U and P satisfies P_mat * input = L * U.
+END
+}

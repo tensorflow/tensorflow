@@ -1,0 +1,18 @@
+# Where component owners are known, add them here.
+
+/tensorflow/c/eager @qqfish
+/tensorflow/core/common_runtime/eager @qqfish
+/tenosrflow/core/debug @caisq
+/tensorflow/core/kernels/mkl/ @penpornk
+/tensorflow/core/kernels/sparse/ @penpornk
+/tensorflow/core/nccl/ @azaks2 @chsigg
+/tensorflow/python/autograph/ @mdanatg
+/tensorflow/python/debug @caisq
+/tensorflow/python/eager @rohan100jain
+/tensorflow/tools/docs/ @markdaoust
+/tensorflow/compiler/mlir/ @aminim
+/tensorflow/core/ir/ @aminim
+/tensorflow/core/transforms/ @aminim
+
+
+/third_party/systemlibs/ @perfinion

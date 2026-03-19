@@ -1,0 +1,346 @@
+// RUN: json_to_flatbuffer %p/test_schema.fbs %s | flatbuffer_translate --tflite-flatbuffer-to-mlir -o - | FileCheck %s
+// RUN: json_to_flatbuffer %p/test_schema.fbs %s | flatbuffer_translate --tflite-flatbuffer-to-mlir -o - | flatbuffer_translate -mlir-to-tflite-flatbuffer - -o - | flatbuffer_to_string - | FileCheck --check-prefix=RoundTrip %s
+
+// CHECK-DAG: %[[input_18:.*]] = "quantfork.stats"({{.*}}) <{layerStats = dense<[-8.000000e-01, 1.600000e+00]> : tensor<2xf32>}> : (tensor<1x4xf32>) -> tensor<1x4xf32>
+// CHECK-DAG: %[[input_19:.*]] = "quantfork.stats"({{.*}}) <{layerStats = dense<[-2.000000e+00, 4.000000e+00]> : tensor<2xf32>}> : (tensor<1x2xf32>) -> tensor<1x2xf32>
+
+// CHECK: "tfl.unidirectional_sequence_lstm"({{.*}}, %[[input_18]], %[[input_19]], %{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}}, %{{[0-9]+}})
+// CHECK-SAME: effective_hidden_scale_intermediate = tensor<*x!quant.calibrated<f32<-5.000000e-01:5.000000e-01>>>
+// CHECK-SAME: input_to_cell_intermediate = tensor<*x!quant.calibrated<f32<-4.000000e+00:4.000000e+00>>>
+// CHECK-SAME: input_to_forget_intermediate = tensor<*x!quant.calibrated<f32<-1.600000e+01:1.600000e+01>>>
+// CHECK-SAME: input_to_input_intermediate = tensor<*x!quant.calibrated<f32<-3.200000e+01:3.200000e+01>>>
+// CHECK-SAME: input_to_output_intermediate = tensor<*x!quant.calibrated<f32<-1.000000e+00:1.000000e+00>>>
+
+// Checks if calibrated type is exported back to quantized type.
+// RoundTrip: name: "effective_hidden_scale_intermediate",
+// RoundTrip-NEXT: quantization: {
+// RoundTrip-NEXT: min: [ -0.5 ],
+// RoundTrip-NEXT: max: [ 0.5 ]
+
+{
+  "version": 3,
+  "operator_codes": [
+    {
+      "builtin_code": "UNIDIRECTIONAL_SEQUENCE_LSTM"
+    }
+  ],
+  "subgraphs": [
+    {
+      "tensors": [
+        {
+          "shape": [1, 5, 2],
+          "name": "input0"
+        },
+        {
+          "shape": [2, 5],
+          "buffer": 1,
+          "name": "input2input_weights1"
+        },
+        {
+          "shape": [2, 5],
+          "buffer": 2,
+          "name": "input2forget_weights2"
+        },
+        {
+          "shape": [2, 5],
+          "buffer": 3,
+          "name": "input2cell_weights3"
+        },
+        {
+          "shape": [2, 5],
+          "buffer": 4,
+          "name": "input2output_weights4"
+        },
+        {
+          "shape": [2, 4],
+          "buffer": 5,
+          "name": "rec2input_weights5"
+        },
+        {
+          "shape": [2, 4],
+          "buffer": 6,
+          "name": "rec2forget_weights6"
+        },
+        {
+          "shape": [2, 4],
+          "buffer": 7,
+          "name": "rec2cell_weights7"
+        },
+        {
+          "shape": [2, 4],
+          "buffer": 8,
+          "name": "rec2output_weights8"
+        },
+        {
+          "shape": [2],
+          "buffer": 9,
+          "name": "cell2input_weights9"
+        },
+        {
+          "shape": [2],
+          "buffer": 10,
+          "name": "cell2forget_weights10"
+        },
+        {
+          "shape": [2],
+          "buffer": 11,
+          "name": "cell2output_weights11"
+        },
+        {
+          "shape": [2],
+          "buffer": 12,
+          "name": "input_gate_bias12"
+        },
+        {
+          "shape": [2],
+          "buffer": 13,
+          "name": "forget_gate_bias13"
+        },
+        {
+          "shape": [2],
+          "buffer": 14,
+          "name": "cell_gate_bias14"
+        },
+        {
+          "shape": [2],
+          "buffer": 15,
+          "name": "output_gate_bias15"
+        },
+        {
+          "shape": [4, 2],
+          "buffer": 16,
+          "name": "proj_weights16"
+        },
+        {
+          "shape": [4],
+          "buffer": 17,
+          "name": "proj_bias17"
+        },
+        {
+          "shape": [1, 4],
+          "name": "input_activation_state18",
+          "is_variable": true,
+          "quantization": {
+            "min": [-0.8],
+            "max": [1.6]
+          }
+        },
+        {
+          "shape": [1, 2],
+          "name": "input_cell_state19",
+          "is_variable": true,
+          "quantization": {
+            "min": [-2.0],
+            "max": [4.0]
+          }
+        },
+        {
+          "shape": [2],
+          "buffer": 18,
+          "name": "input_norm20"
+        },
+        {
+          "shape": [2],
+          "buffer": 19,
+          "name": "forget_norm21"
+        },
+        {
+          "shape": [2],
+          "buffer": 20,
+          "name": "cell_norm22"
+        },
+        {
+          "shape": [2],
+          "buffer": 21,
+          "name": "output_norm23"
+        },
+        {
+          "shape": [],
+          "name": "output24"
+        },
+        {
+          "shape": [],
+          "name": "intermediate_0",
+          "is_variable": true,
+          "quantization": {
+            "min": [-32],
+            "max": [32]
+          }
+        },
+        {
+          "shape": [],
+          "name": "intermediate_1",
+          "is_variable": true,
+          "quantization": {
+            "min": [-16],
+            "max": [16]
+          }
+        },
+        {
+          "shape": [],
+          "name": "intermediate_2",
+          "is_variable": true,
+          "quantization": {
+            "min": [-4],
+            "max": [4]
+          }
+        },
+        {
+          "shape": [],
+          "name": "intermediate_3",
+          "is_variable": true,
+          "quantization": {
+            "min": [-1.0],
+            "max": [1.0]
+          }
+        },
+        {
+          "shape": [],
+          "name": "intermediate_4",
+          "is_variable": true,
+          "quantization": {
+            "min": [-0.5],
+            "max": [0.5]
+          }
+        }
+      ],
+      "inputs": [0],
+      "outputs": [24],
+      "operators": [
+        {
+          "inputs": [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23
+          ],
+          "outputs": [24],
+          "intermediates": [
+            25, 26, 27, 28, 29
+          ],
+          "builtin_options_type": "UnidirectionalSequenceLSTMOptions",
+          "builtin_options": {
+            "fused_activation_function": "TANH",
+            "cell_clip": 50.0
+          },
+          "mutating_variable_inputs": [
+            false,
+            false, false, false, false,
+            false, false, false, false,
+            false, false, false,
+            false, false, false, false,
+            true, true,
+            false, false, false, false
+          ]
+        }
+      ]
+    }
+  ],
+  "buffers": [
+    {
+      "data": []
+    },
+    {
+      "data": [
+        36, 167, 168, 63, 0, 140, 72, 191, 120, 20, 147, 62, 20, 152, 196, 190, 121, 98, 82, 187, 95, 128, 213, 61, 189, 3, 138, 63, 54, 103, 13, 62, 46, 224, 66, 63, 157, 204, 180, 191
+      ]
+    },
+    {
+      "data": [
+        223, 20, 21, 64, 246, 166, 31, 191, 6, 51, 157, 188, 114, 90, 167, 62, 118, 240, 59, 63, 49, 162, 255, 62, 17, 91, 160, 63, 32, 47, 26, 63, 40, 136, 178, 191, 243, 154, 236, 61
+      ]
+    },
+    {
+      "data": [
+        137, 231, 86, 63, 41, 154, 16, 63, 239, 37, 77, 191, 55, 189, 24, 189, 86, 63, 18, 63, 42, 55, 13, 191, 110, 139, 138, 191, 219, 148, 181, 63, 71, 232, 108, 191, 66, 226, 145, 191
+      ]
+    },
+    {
+      "data": [
+        245, 179, 225, 190, 51, 202, 176, 189, 132, 47, 53, 191, 155, 25, 50, 191, 197, 130, 240, 191, 98, 125, 45, 62, 243, 70, 83, 62, 85, 155, 139, 63, 113, 239, 11, 192, 35, 251, 139, 62
+      ]
+    },
+    {
+      "data": [
+        248, 188, 211, 191, 142, 11, 73, 62, 36, 8, 84, 63, 186, 208, 11, 191, 76, 208, 190, 191, 223, 200, 210, 63, 183, 170, 103, 63, 116, 129, 145, 63
+      ]
+    },
+    {
+      "data": [
+        235, 202, 222, 190, 159, 201, 112, 191, 217, 248, 166, 63, 165, 199, 131, 191, 130, 59, 47, 63, 179, 11, 186, 62, 55, 168, 18, 192, 152, 213, 26, 64
+      ]
+    },
+    {
+      "data": [
+        245, 123, 138, 62, 213, 106, 231, 59, 211, 218, 250, 62, 25, 157, 134, 63, 147, 22, 164, 63, 25, 221, 139, 62, 1, 230, 247, 62, 210, 185, 142, 63
+      ]
+    },
+    {
+      "data": [
+        197, 123, 23, 192, 45, 96, 178, 190, 174, 87, 165, 62, 213, 225, 200, 191, 119, 248, 15, 191, 128, 125, 171, 189, 90, 125, 222, 63, 4, 76, 95, 62
+      ]
+    },
+    {
+      "data": [
+        210, 73, 183, 63, 248, 177, 13, 191
+      ]
+    },
+    {
+      "data": [
+        78, 251, 212, 191, 169, 29, 147, 63
+      ]
+    },
+    {
+      "data": [
+        178, 227, 203, 191, 247, 155, 103, 63
+      ]
+    },
+    {
+      "data": [
+        206, 111, 165, 190, 153, 77, 227, 63
+      ]
+    },
+    {
+      "data": [
+        255, 114, 132, 191, 253, 202, 140, 191
+      ]
+    },
+    {
+      "data": [
+        90, 247, 1, 192, 125, 120, 209, 191
+      ]
+    },
+    {
+      "data": [
+        65, 75, 243, 191, 58, 122, 146, 190
+      ]
+    },
+    {
+      "data": [
+        40, 135, 20, 63, 109, 50, 220, 191, 56, 241, 189, 63, 65, 12, 92, 63, 61, 14, 162, 62, 157, 138, 81, 63, 125, 61, 191, 61, 102, 231, 20, 63
+      ]
+    },
+    {
+      "data": [
+        145, 79, 49, 189, 175, 235, 220, 190, 182, 111, 157, 190, 144, 236, 97, 191
+      ]
+    },
+    {
+      "data": [
+        76, 188, 109, 63, 228, 150, 201, 190
+      ]
+    },
+    {
+      "data": [
+        6, 146, 66, 191, 122, 127, 100, 191
+      ]
+    },
+    {
+      "data": [
+        216, 59, 169, 190, 161, 178, 215, 191
+      ]
+    },
+    {
+      "data": [
+        208, 144, 101, 191, 127, 233, 195, 190
+      ]
+    }
+  ]
+}

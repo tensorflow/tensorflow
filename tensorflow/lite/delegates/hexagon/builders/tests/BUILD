@@ -1,0 +1,99 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load(":tests.bzl", "hexagon_op_tests")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],
+)
+
+cc_library(
+    name = "hexagon_delegate_op_model",
+    testonly = 1,
+    hdrs = ["hexagon_delegate_op_model.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+hexagon_op_tests(
+    srcs = [
+        "activations_test.cc",
+        "arg_min_max_test.cc",
+        "arithmetic_test.cc",
+        "concat_test.cc",
+        "conv_test.cc",
+        "l2_norm_test.cc",
+        "matmul_test.cc",
+        "min_max_builder_test.cc",
+        "mirror_pad_test.cc",
+        "mul_test.cc",
+        "neg_test.cc",
+        "pack_test.cc",
+        "pad_test.cc",
+        "pool_test.cc",
+        "quantize_test.cc",
+        "reduce_test.cc",
+        "reshape_test.cc",
+        "resize_test.cc",
+        "rsqrt_test.cc",
+        "slice_test.cc",
+        "softmax_test.cc",
+        "space_to_depth_test.cc",
+        "split_test.cc",
+        "squared_difference_test.cc",
+        "strided_slice_test.cc",
+        "transpose_conv_test.cc",
+        "transpose_test.cc",
+    ],
+    deps = [
+        ":hexagon_delegate_op_model",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:reshape_test_common",
+        "//tensorflow/lite/kernels/internal:test_util",
+        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "batch_seq_config_test",
+    srcs = [
+        "batch_seq_config_test.cc",
+    ],
+    tags = [
+        "no_oss",
+        "nobuilder",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/benchmark:benchmark_utils",
+        "@com_google_googletest//:gtest",
+    ],
+)

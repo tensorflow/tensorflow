@@ -1,0 +1,127 @@
+path: "tensorflow.sparse"
+tf_module {
+  member {
+    name: "SparseTensor"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "add"
+    argspec: "args=[\'a\', \'b\', \'threshold\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "bincount"
+    argspec: "args=[\'values\', \'weights\', \'axis\', \'minlength\', \'maxlength\', \'binary_output\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "concat"
+    argspec: "args=[\'axis\', \'sp_inputs\', \'expand_nonconcat_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "cross"
+    argspec: "args=[\'inputs\', \'name\', \'separator\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "cross_hashed"
+    argspec: "args=[\'inputs\', \'num_buckets\', \'hash_key\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "expand_dims"
+    argspec: "args=[\'sp_input\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "eye"
+    argspec: "args=[\'num_rows\', \'num_columns\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "fill_empty_rows"
+    argspec: "args=[\'sp_input\', \'default_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_dense"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "map_values"
+    argspec: "args=[\'op\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "mask"
+    argspec: "args=[\'a\', \'mask_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "maximum"
+    argspec: "args=[\'sp_a\', \'sp_b\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "minimum"
+    argspec: "args=[\'sp_a\', \'sp_b\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "reduce_max"
+    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'output_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "reduce_sum"
+    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'output_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "reorder"
+    argspec: "args=[\'sp_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "reset_shape"
+    argspec: "args=[\'sp_input\', \'new_shape\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "reshape"
+    argspec: "args=[\'sp_input\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "retain"
+    argspec: "args=[\'sp_input\', \'to_retain\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sampled_addmm"
+    argspec: "args=[\'indices\', \'values\', \'dense_shape\', \'mat1\', \'mat2\', \'beta\', \'alpha\', \'output_type\'], varargs=None, keywords=None, defaults=[\'1.0\', \'1.0\', \"<dtype: \'float32\'>\"], "
+  }
+  member_method {
+    name: "segment_mean"
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\', \'sparse_gradient\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "segment_sqrt_n"
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\', \'sparse_gradient\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "segment_sum"
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\', \'sparse_gradient\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "slice"
+    argspec: "args=[\'sp_input\', \'start\', \'size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "softmax"
+    argspec: "args=[\'sp_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "sparse_dense_matmul"
+    argspec: "args=[\'sp_a\', \'b\', \'adjoint_a\', \'adjoint_b\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "split"
+    argspec: "args=[\'sp_input\', \'num_split\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "to_dense"
+    argspec: "args=[\'sp_input\', \'default_value\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "to_indicator"
+    argspec: "args=[\'sp_input\', \'vocab_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "transpose"
+    argspec: "args=[\'sp_input\', \'perm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

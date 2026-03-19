@@ -1,0 +1,6 @@
+// This proto intends to match format expected by pprof tool.
+syntax = "proto3";
+
+package tensorflow.tfprof.pprof.dummy;
+
+import public "tsl/profiler/protobuf/profile.proto";

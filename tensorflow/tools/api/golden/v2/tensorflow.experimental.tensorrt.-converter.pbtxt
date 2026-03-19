@@ -1,0 +1,25 @@
+path: "tensorflow.experimental.tensorrt.Converter"
+tf_class {
+  is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert.TrtGraphConverterV2\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'input_saved_model_dir\', \'input_saved_model_tags\', \'input_saved_model_signature_key\', \'use_dynamic_shape\', \'dynamic_shape_profile_strategy\', \'max_workspace_size_bytes\', \'precision_mode\', \'minimum_segment_size\', \'maximum_cached_engines\', \'use_calibration\', \'allow_build_at_runtime\', \'conversion_params\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'1073741824\', \'FP32\', \'3\', \'1\', \'True\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\', \'input_fn\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "convert"
+    argspec: "args=[\'self\', \'calibration_input_fn\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'self\', \'output_saved_model_dir\', \'save_gpu_specific_engines\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "summary"
+    argspec: "args=[\'self\', \'line_length\', \'detailed\', \'print_fn\'], varargs=None, keywords=None, defaults=[\'160\', \'True\', \'None\'], "
+  }
+}

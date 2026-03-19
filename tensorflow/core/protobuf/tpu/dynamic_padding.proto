@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package tensorflow.tpu;
+
+// A mapping between the dynamic shape dimension of an input and the arg that
+// represents the real shape.
+message PaddingMap {
+  // Input arg index with dynamic shapes.
+  int32 arg_index = 1;
+
+  // The dynamic shape dimension index.
+  int32 shape_index = 2;
+
+  // The arg index that dynamic dimension maps to, which represents the value
+  // of the real shape.
+  int32 padding_arg_index = 3;
+}

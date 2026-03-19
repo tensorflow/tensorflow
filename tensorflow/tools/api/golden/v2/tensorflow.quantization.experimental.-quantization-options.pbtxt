@@ -1,0 +1,135 @@
+path: "tensorflow.quantization.experimental.QuantizationOptions"
+tf_proto {
+  descriptor {
+    name: "QuantizationOptions"
+    field {
+      name: "quantization_method"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.quantization.QuantizationMethod"
+    }
+    field {
+      name: "op_set"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.quantization.OpSet"
+    }
+    field {
+      name: "unit_wise_quantization_specs"
+      number: 17
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.quantization.UnitWiseQuantizationSpec"
+    }
+    field {
+      name: "tags"
+      number: 5
+      label: LABEL_REPEATED
+      type: TYPE_STRING
+    }
+    field {
+      name: "signature_keys"
+      number: 6
+      label: LABEL_REPEATED
+      type: TYPE_STRING
+    }
+    field {
+      name: "representative_datasets"
+      number: 7
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.quantization.QuantizationOptions.RepresentativeDatasetsEntry"
+    }
+    field {
+      name: "min_num_elements_for_weights"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "freeze_all_variables"
+      number: 9
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+      oneof_index: 0
+      proto3_optional: true
+    }
+    field {
+      name: "enable_per_channel_quantization"
+      number: 10
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+      oneof_index: 1
+      proto3_optional: true
+    }
+    field {
+      name: "enable_two_input_tensors"
+      number: 11
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "experimental_enable_tpu_model_support"
+      number: 12
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "enable_legacy_weight_only"
+      number: 13
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "force_graph_mode_calibration"
+      number: 14
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "calibration_options"
+      number: 15
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".stablehlo.quantization.CalibrationOptions"
+    }
+    field {
+      name: "debugger_config"
+      number: 16
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".stablehlo.quantization.DebuggerConfig"
+    }
+    nested_type {
+      name: "RepresentativeDatasetsEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.quantization.RepresentativeDatasetFile"
+      }
+      options {
+        map_entry: true
+      }
+    }
+    oneof_decl {
+      name: "_freeze_all_variables"
+    }
+    oneof_decl {
+      name: "_enable_per_channel_quantization"
+    }
+    reserved_range {
+      start: 3
+      end: 4
+    }
+  }
+}

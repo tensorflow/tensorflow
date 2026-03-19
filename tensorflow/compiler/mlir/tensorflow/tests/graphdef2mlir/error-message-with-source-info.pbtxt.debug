@@ -1,0 +1,32 @@
+files : [ "org_tensorflow/tensorflow/compiler/mlir/tensorflow/tests/graphdef2mlir/error-message-with-source-info.pbtxt.fake_py.debug"]
+traces: {
+    key  : "x@"
+    value: {
+      file_line_cols: {
+        line      : 1
+        col       : 1
+      }
+    }
+}
+traces: {
+    key  : "x_y_sum@"
+    value: {
+      file_line_cols: {
+        line      : 3
+        col       : 1
+      }
+      file_line_cols: {
+        line      : 4
+        col       : 1
+      }
+    }
+}
+traces: {
+    key  : "y@"
+    value: {
+      file_line_cols: {
+        line      : 2
+        col       : 1
+      }
+    }
+}

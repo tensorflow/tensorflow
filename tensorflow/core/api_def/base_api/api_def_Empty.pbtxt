@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "Empty"
+  in_arg {
+    name: "shape"
+    description: "1-D. Represents the shape of the output tensor."
+  }
+  attr {
+    name: "init"
+    description:
+        "If True, initialize the returned tensor with the default value "
+        "of dtype.  Otherwise, the implementation is free not to initialize"
+        "the tensor's content."
+  }
+  out_arg {
+    name: "output"
+    description: "A `Tensor` of type `T`."
+  }
+  summary: <<END
+Creates a tensor with the given shape.
+
+This operation creates a tensor of `shape` and `dtype`.
+END
+}

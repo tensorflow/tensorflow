@@ -1,0 +1,1095 @@
+/* Copyright 2024 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include "xla/backends/gpu/collectives/gpu_cliques.h"
+
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/btree_map.h"
+#include "absl/container/btree_set.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/cancellation_token.h"
+#include "xla/backends/gpu/collectives/gpu_clique.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
+#include "xla/debug_options_flags.h"
+#include "xla/executable_run_options.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/lockable.h"
+#include "xla/service/rendezvous.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/hash.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "xla/tsl/platform/status_macros.h"
+
+namespace xla::gpu {
+
+using Device = GpuCollectives::Device;
+using DeviceRank = GpuCollectives::DeviceRank;
+
+//===----------------------------------------------------------------------===//
+// GpuClique Acquire and Initialization Timeouts
+//===----------------------------------------------------------------------===//
+
+// We rely on rendezvous (all participating threads arriving to a rendezvous
+// barrier at the same time) to guarantee that GPU communicators used in a way
+// that does not lead to a deadlock. This itself can create new deadlocks if
+// thread pools sized incorrectly. To prevent hard to debug deadlocks with WARN
+// and terminate when detect that rendezvous runs for too long.
+
+static absl::Duration WarnStuckTimeout() { return absl::Seconds(10); }
+
+static absl::Duration TerminateTimeout() {
+  static const int64_t terminate_timeout =
+      xla::GetDebugOptionsFromFlags()
+          .xla_gpu_nccl_termination_timeout_seconds();
+  return (terminate_timeout >= 0) ? absl::Seconds(terminate_timeout)
+                                  : absl::InfiniteDuration();
+}
+
+static bool TerminateOnCollectivesError() {
+  return xla::GetDebugOptionsFromFlags().xla_gpu_nccl_terminate_on_error();
+}
+
+//===----------------------------------------------------------------------===//
+// ProcessGpuCliques
+//===----------------------------------------------------------------------===//
+
+namespace {
+// Container for local (in-process) GPU cliques state.
+struct ProcessGpuCliques {
+  absl::Mutex mu;
+
+  // Constructed GPU cliques, keyed by GpuCliqueKey.
+  absl::flat_hash_map<GpuCliqueKey, std::shared_ptr<LockableGpuClique>> cliques
+      ABSL_GUARDED_BY(mu);
+
+  // Cancellation tokens for GPU cliques that are pending construction. These
+  // cancellation token allows XLA to safely cancel clique initialization if
+  // one of the participating processes dies in the middle of it. When clique
+  // construction succeeds, token removed from this map and passed to the
+  // constructed GPU clique.
+  absl::flat_hash_map<GpuCliqueKey, std::shared_ptr<CancellationToken>>
+      pending_cliques ABSL_GUARDED_BY(mu);
+
+  // The latest state of every task.
+  std::vector<coordination::CoordinatedTaskStateInfo> task_state_infos
+      ABSL_GUARDED_BY(mu);
+};
+}  // namespace
+
+// Returns process-local GPU cliques.
+static ProcessGpuCliques& GetProcessGpuCliques() {
+  static absl::NoDestructor<ProcessGpuCliques> cliques;
+  return *cliques;
+}
+
+namespace internal {
+
+void DestroyAcquiredCliques() {
+  ProcessGpuCliques& state = GetProcessGpuCliques();
+  absl::MutexLock lock(state.mu);
+
+  // Destroy cliques in a deterministic order, which guarantees that we destroy
+  // smaller cliques first, which is required for cliques that could be split
+  // from the parent clique. When process shut down we do not destroy cliques
+  // and let the operating system to collect all resources.
+  absl::btree_set<GpuCliqueKey> ordered_cliques;
+  for (auto& [key, clique] : state.cliques) {
+    ordered_cliques.insert(key);
+  }
+
+  for (const GpuCliqueKey& key : ordered_cliques) {
+    state.cliques.erase(key);
+  }
+}
+
+}  // namespace internal
+
+//===----------------------------------------------------------------------===//
+// GpuClique Heart Beat Monitor
+//===----------------------------------------------------------------------===//
+
+// Runs an async error check for a `comm` and aborts it if it is in the
+// error state. It will free resources that are allocated to a communicator
+// and abort any uncompleted operations before destroying the communicator.
+static absl::Status CheckComm(Communicator* comm) {
+  absl::Status health = comm->HealthCheck();
+  if (!health.ok()) {
+    LOG(ERROR) << "Aborting communicator: " << comm
+               << " due to error: " << health;
+    RETURN_IF_ERROR(comm->Abort());
+  }
+  return health;
+}
+
+// Runs async check on all communicators in a clique.
+static void CheckClique(const GpuCliqueKey& clique_key,
+                        LockableGpuClique& lockable_clique) {
+  if (TerminateOnCollectivesError()) {
+    absl::Status status = lockable_clique.HealthCheck();
+    if (!status.ok()) {
+      LOG(FATAL) << "Terminating process due to async GPU clique error: "
+                 << status;
+    }
+    return;
+  }
+  if (LockableGpuClique::Lock clique = lockable_clique.TryAcquire()) {
+    VLOG(5) << "Checking GPU clique " << clique_key
+            << " for async errors; num_communicators="
+            << clique->num_communicators();
+    clique->ForEachComm([](RankId rank, Communicator* comm) {
+      if (auto status = CheckComm(comm); !status.ok()) {
+        LOG(ERROR) << status;
+      }
+    });
+  } else {
+    VLOG(5) << "Skip checking in-use GPU clique " << clique_key;
+  }
+}
+
+// TODO(ezhulenev): We need a mechanism to destroy whole clique when one of the
+// communicators is aborted to be able to recover from errors.
+static void GpuCliqueHeartBeatMonitorThread() {
+  VLOG(5) << "Starting GPU cliques heart beat monitor";
+  while (true) {
+    absl::SleepFor(absl::Seconds(30));
+    ProcessGpuCliques& state = GetProcessGpuCliques();
+    absl::MutexLock lock(state.mu);
+    VLOG(5) << "Checking GPU communicators for errors"
+            << "; num_cliques=" << state.cliques.size();
+    for (auto& [clique_key, lockable_clique] : state.cliques) {
+      CheckClique(clique_key, *lockable_clique);
+    }
+  }
+}
+
+static void StartGpuCliqueHeartBeatMonitor() {
+  static auto* monitor_thread = tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "gpu_clique_heart_beat_monitor",
+      GpuCliqueHeartBeatMonitorThread);
+  (void)monitor_thread;  // suppress unused variable warning
+}
+
+//===----------------------------------------------------------------------===//
+// GpuClique Staleness Monitor
+//===----------------------------------------------------------------------===//
+
+// REQUIRES: GetProcessGpuCliques().mu held
+static absl::Status CheckCliqueIsNotStaleImpl(
+    absl::Span<const coordination::CoordinatedTaskStateInfo> task_state_infos,
+    const GpuCliqueKey& clique_key) {
+  GetProcessGpuCliques().mu.AssertHeld();
+
+  if (task_state_infos.empty()) {
+    // If we don't have any task state info, assume the clique key isn't stale.
+    return absl::OkStatus();
+  }
+
+  // Create an index from incarnation id to task state info.
+  using Info = coordination::CoordinatedTaskStateInfo;
+  absl::flat_hash_map<IncarnationId, const Info*> incarnation_to_info;
+  for (const Info& info : task_state_infos) {
+    incarnation_to_info[IncarnationId(info.incarnation())] = &info;
+  }
+
+  // Check that every incarnation is fresh.
+  for (IncarnationId id : clique_key.incarnations()) {
+    auto it = incarnation_to_info.find(id);
+    if (it == incarnation_to_info.end()) {
+      return FailedPrecondition("Incarnation id %d is stale", id.value());
+    }
+    const auto& [unused, info] = *it;
+    if (info->state() !=
+        coordination::CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      return FailedPrecondition("Task with incarnation id %d is not connected",
+                                id.value());
+    }
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status CheckCliqueIsNotStale(const GpuCliqueKey& clique_key) {
+  ProcessGpuCliques& cliques = GetProcessGpuCliques();
+  absl::MutexLock lock(cliques.mu);
+  return CheckCliqueIsNotStaleImpl(cliques.task_state_infos, clique_key);
+}
+
+//===----------------------------------------------------------------------===//
+// GpuClique Initialization
+//===----------------------------------------------------------------------===//
+
+// GpuClique initialization must be executed together by all participants, and
+// we rely on rendezvous to guarantee that all ranks are ready to initialize
+// GPU communicators. In general collective operations are expected to be
+// executed concurrently by all participating ranks, and when some ranks do not
+// join the operation it  leads to deadlocks. We use a combination of rendezvous
+// and locking to guarantee that all collective operations in XLA have a well
+// defined order and do not deadlock inside underlying collective communication
+// library.
+
+static auto DeviceOrdinalsToString(absl::Span<const DeviceRank> ranks) {
+  return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
+    auto* device = tsl::down_cast<const Device*>(rank.device);
+    absl::StrAppend(str, device->stream_executor()->device_ordinal());
+  });
+}
+
+static auto DeviceRanksToString(absl::Span<const DeviceRank> ranks) {
+  return absl::StrJoin(ranks, ",", [](std::string* str, auto& rank) {
+    absl::StrAppend(str, rank.rank.value());
+  });
+}
+
+// Returns true if peer access is possible between all devices in `ranks`. As a
+// side effect, enables peer access even if it was not enabled before.
+static absl::StatusOr<bool> EnablePeerAccess(
+    const GpuCliqueKey& key, absl::Span<const DeviceRank> ranks) {
+  // The clique is not local, so we can't enable peer access.
+  if (key.devices().size() != ranks.size()) {
+    return false;
+  }
+
+  std::vector<se::StreamExecutor*> devices;
+  devices.reserve(ranks.size());
+  for (int64_t i = 0; i < ranks.size(); ++i) {
+    auto* device = tsl::down_cast<Device*>(ranks[i].device);
+    TF_RET_CHECK(device != nullptr);
+    devices.push_back(device->stream_executor());
+  }
+
+  for (int64_t i = 0; i < devices.size(); ++i) {
+    for (int64_t j = 0; j < devices.size(); ++j) {
+      // An attempt to enable peer access to itself will fail.
+      if (i == j) {
+        continue;
+      }
+
+      // To check if peer access is possible, we need to enable it and check
+      // the result. OkStatus means that peer access is possible.
+      auto status = devices[i]->EnablePeerAccessTo(devices[j]);
+      if (!status.ok()) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+// Joins a GpuClique initialization rendezvous for a `clique_key` and returns
+// a lock that gives an access to initialized clique (access is shared between
+// all participating ranks that own a shared pointer).
+static absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>>
+InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
+                    RunId run_id, const GpuCliqueKey& clique_key,
+                    const GpuCollectives::CliqueIdCallback& clique_id_callback,
+                    int32_t num_local_participants, RankId rank,
+                    const GpuCollectives::Config& config) {
+  VLOG(3) << absl::StreamFormat("[%d] [rank=%v] Initialize GPU clique %v",
+                                device->device_ordinal(), rank, clique_key);
+
+  // Start GPU clique heart beat monitor when create a first clique.
+  StartGpuCliqueHeartBeatMonitor();
+
+  struct RendezvousArg {
+    DeviceRank device_rank;
+    bool synchronized;
+  };
+
+  // Initializes a GpuClique for given device ranks and returns a lock that
+  // gives access to clique communicators.
+  auto initialize = [&](absl::Span<const RendezvousArg* const> args)
+      -> absl::StatusOr<LockableGpuClique::Lock> {
+    tsl::profiler::TraceMe trace("InitializeGpuClique");
+    absl::Time initialize_start = absl::Now();
+
+    ASSIGN_OR_RETURN(CliqueIds clique_ids, clique_id_callback(clique_key));
+
+    // Check that all ranks successfully synchronized device activity before
+    // trying to instantiate GPU communicators.
+    for (const RendezvousArg* arg : args) {
+      if (!arg->synchronized) {
+        return Internal(
+            "Failed to synchronize device activity on rank %d. Do not attempt "
+            "to initialize GPU clique.",
+            arg->device_rank.rank.value());
+      }
+    }
+
+    std::vector<DeviceRank> ranks;
+    ranks.reserve(args.size());
+    for (const RendezvousArg* arg : args) {
+      ranks.emplace_back(arg->device_rank);
+    }
+
+    // Sort device ranks, mainly to get more readable logs below.
+    absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
+
+    // Check if peer access is possible between all devices in the clique.
+    ASSIGN_OR_RETURN(bool peer_access_enabled,
+                     EnablePeerAccess(clique_key, ranks));
+
+    VLOG(3) << absl::StreamFormat(
+        "[%s] [ranks=%s] Create GPU communicators: clique=%v; size(id)=%lld; "
+        "fingerprint(id)=%d, peer_access_enabled=%d",
+        DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), clique_key,
+        clique_ids.size(), clique_ids.fingerprint(), peer_access_enabled);
+
+    ProcessGpuCliques& state = GetProcessGpuCliques();
+
+    // Allocate a shared cancellation token that will be used by all comms. We
+    // put this token into the pending cliques map, to enable comm
+    // initialization cancellation if one of the ranks will fail. We might share
+    // cancellation token between multiple racing clique initializations, but
+    // this is ok, as they use the same set of devices and share a fate.
+    std::shared_ptr<CancellationToken> cancel = nullptr;
+    {
+      VLOG(3) << absl::StrFormat(
+          "[%s] [ranks=%s] Checking clique %v for staleness",
+          DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+          clique_key);
+      absl::MutexLock lock(state.mu);
+      RETURN_IF_ERROR(
+          CheckCliqueIsNotStaleImpl(state.task_state_infos, clique_key));
+      auto [it, _] = state.pending_cliques.emplace(
+          clique_key, std::make_shared<CancellationToken>());
+      cancel = it->second;
+    }
+
+    VLOG(5) << absl::StrFormat("[%s] [ranks=%s] Creating communicators for %v",
+                               DeviceOrdinalsToString(ranks),
+                               DeviceRanksToString(ranks), clique_key);
+
+    // Don't hold cliques.mu while creating the communicators, because creating
+    // communicators can block.
+    absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> created_comms =
+        collectives->CreateCommunicatorsWithCancel(clique_key, clique_ids,
+                                                   ranks, config, cancel);
+
+    {  // At this point clique is no longer pending, it has a definitive state.
+      absl::MutexLock lock(state.mu);
+      state.pending_cliques.erase(clique_key);
+    }
+
+    if (!created_comms.ok()) {
+      LOG(ERROR) << "Failed to initialize GPU clique " << clique_key << ": "
+                 << created_comms.status();
+      return created_comms.status();
+    }
+
+    absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
+    for (size_t i = 0; i < ranks.size(); ++i) {
+      comms[ranks[i].rank] = std::move((*created_comms)[i]);
+    }
+
+    VLOG(3) << absl::StreamFormat(
+        "[%s] [ranks=%s] Created %d GPU communicators in %s: clique=%v; "
+        "size(id)=%lld; fingerprint(id)=%d, peer_access_enabled=%d",
+        DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), comms.size(),
+        absl::FormatDuration(absl::Now() - initialize_start), clique_key,
+        clique_ids.size(), clique_ids.fingerprint(), peer_access_enabled);
+
+    // Put constructed clique into the per-process state.
+    absl::MutexLock lock(state.mu);
+    if (absl::Status s =
+            CheckCliqueIsNotStaleImpl(state.task_state_infos, clique_key);
+        !s.ok()) {
+      LOG(WARNING) << absl::StrFormat(
+          "[%s] [ranks=%s] Clique key %v is stale. Aborting recently "
+          "created communicators",
+          DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+          clique_key);
+      for (auto& [rank, comm] : comms) {
+        RETURN_IF_ERROR(comm->Abort());
+      }
+      return s;
+    }
+
+    // Create a new clique with given clique key and communicators.
+    auto emplaced = state.cliques.try_emplace(
+        clique_key, std::make_shared<LockableGpuClique>(
+                        clique_key, clique_ids, std::move(comms),
+                        peer_access_enabled, std::move(cancel)));
+
+    // We can have a race to create a clique for a given key, the winner
+    // inserts it into a map and the looser destroys all communicators.
+    if (!emplaced.second) {
+      VLOG(3) << absl::StrFormat(
+          "[%s] [ranks=%s] Clique communicators already exists %v",
+          DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+          clique_key);
+    } else {
+      VLOG(3) << absl::StrFormat("[%s] [ranks=%s] Created new clique %v",
+                                 DeviceOrdinalsToString(ranks),
+                                 DeviceRanksToString(ranks), clique_key);
+    }
+
+    return emplaced.first->second->Acquire();
+  };
+
+  // We include `run_id` to a rendezvous key to make sure that multiple
+  // concurrent initializations will not join the same rendezvous. The winner
+  // will update cliques state, and others will destroy unused communicators.
+  auto rendezvous_key = std::make_tuple(run_id, clique_key);
+  auto initialization_rendezvous_name =
+      absl::StrFormat("[%d] [rank=%v] [run_id=%v] Initialize clique: %v",
+                      device->device_ordinal(), rank, run_id, clique_key);
+
+  Device gpu_device(device);
+  DeviceRank device_rank = {&gpu_device, rank};
+  bool synchronized = device->SynchronizeAllActivity();
+
+  // We choose not to exit early on failed synchronization, because it will lead
+  // to a deadlock, as not all participants will arrive to a rendezvous point,
+  // instead we check synchronization result in the initialization callback.
+  //
+  // Unfortunately we can't share synchronization result across different
+  // processes, so we still might end up in a deadlock situation when some
+  // processes are not able to synchronize device activity.
+  RendezvousArg rendezvous_arg = {device_rank, synchronized};
+
+  return Rendezvous<LockableGpuClique::Lock>(
+      initialization_rendezvous_name, rendezvous_key, rendezvous_arg,
+      num_local_participants, initialize, WarnStuckTimeout(),
+      TerminateTimeout());
+}
+
+// Computes a unique GPU communicator split color from a clique key. We use a
+// deterministic hash function to guarantee that all participating processes get
+// the same color value for a clique.
+static int32_t GetCommSplitColor(const GpuCliqueKey& clique_key) {
+  std::vector<int64_t> global_device_ids;
+  global_device_ids.reserve(clique_key.devices().size());
+
+  for (GlobalDeviceId id : clique_key.devices()) {
+    global_device_ids.push_back(id.value());
+  }
+
+  return abs(static_cast<int32_t>(
+      tsl::Hash32(reinterpret_cast<char*>(global_device_ids.data()),
+                  sizeof(int64_t) * global_device_ids.size(), 0)));
+}
+
+// Joins a GpuClique initialization rendezvous for a `clique_key` and returns
+// a lock that gives an access to clique created by splitting already acquired
+// `parent_clique` clique (access is shared between all participating ranks that
+// own a shared pointer).
+static absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>>
+InitializeGpuClique(GpuCollectives* collectives, se::StreamExecutor* device,
+                    RunId run_id, const GpuCliqueKey& clique_key,
+                    std::shared_ptr<LockableGpuClique::Lock> parent_clique,
+                    int32_t num_local_participants, RankId rank,
+                    const GpuCollectives::Config& config) {
+  // Find our rank in the parent clique.
+  const GpuCliqueKey& parent_clique_key = (*parent_clique)->key();
+  RankId parent_rank =
+      *parent_clique_key.rank(clique_key.devices()[rank.value()]);
+
+  VLOG(3) << absl::StreamFormat(
+      "[%d] [rank=%v] Initialize GPU clique %v by splitting rank %v in "
+      "parent clique %v: local_participants=%d",
+      device->device_ordinal(), rank, clique_key, parent_rank,
+      parent_clique_key, num_local_participants);
+
+  using RankPair = std::pair<RankId, DeviceRank>;
+  Device gpu_device(device);
+  DeviceRank device_rank = {&gpu_device, rank};
+  RankPair rank_pair = {parent_rank, device_rank};
+
+  // Synchronize the device to make sure no other collectives are
+  // running before we do the split.
+  {
+    tsl::profiler::TraceMe trace("SynchronizeAllActivityBeforeSplit");
+    if (!device->SynchronizeAllActivity()) {
+      return Internal(
+          "Failed to synchronize GPU before splitting communicators.");
+    }
+    VLOG(3) << absl::StreamFormat(
+        "[%d] [rank=%v] Synchronized device before splitting",
+        device->device_ordinal(), rank);
+  }
+
+  // Current approach for communicator splitting works because of XLAs SPMD
+  // programming model where all collective operations have replica groups that
+  // include all ranks. This property guarantees that we'll split each
+  // communicator exactly once with a unique color computed from rank mapping
+  // and each communicator in the parent clique will become a member of exactly
+  // one new clique. Clique splitting happens concurrently for multiple
+  // non-overlapping clique and this guarantees forward progress even with
+  // implicit synchronization inside GPU collectives (i.e. NCCL).
+
+  // Initializes a GpuClique for given device ranks and returns a lock that
+  // gives access to clique communicators.
+  auto split = [&](absl::Span<const RankPair* const> rank_pairs)
+      -> absl::StatusOr<LockableGpuClique::Lock> {
+    tsl::profiler::TraceMe trace("SplitGpuClique");
+    absl::Time split_start = absl::Now();
+
+    // Collect mapping from ranks in parent clique to ranks in a new clique.
+    absl::btree_map<RankId, RankId> rank_mapping;
+    for (auto* rank_pair : rank_pairs) {
+      rank_mapping[rank_pair->first] = rank_pair->second.rank;
+    }
+
+    auto rank_mapping_formatter = [](std::string* str, auto mapping) {
+      absl::StrAppend(str, mapping.first.value(), "->", mapping.second.value());
+    };
+
+    // Collect parent communicators we'll be splitting from and keys for
+    // creating new communicators.
+    std::vector<Communicator*> parent_comms;
+    std::vector<RankId> keys;
+    for (auto& [parent_rank, split_rank] : rank_mapping) {
+      auto parent_comm = (*parent_clique)->comm(parent_rank);
+      if (!parent_comm.has_value()) {
+        return InvalidArgument(
+            "Parent clique %v does not have a communicator for rank %v",
+            parent_clique_key, parent_rank);
+      }
+
+      parent_comms.push_back(*parent_comm);
+      keys.push_back(split_rank);
+    }
+
+    std::vector<DeviceRank> ranks;
+    ranks.reserve(rank_pairs.size());
+    for (auto& rank_pair : rank_pairs) {
+      ranks.emplace_back(rank_pair->second);
+    }
+
+    // Sort device ranks, mainly to get more readable logs below.
+    absl::c_sort(ranks, [](auto& a, auto& b) { return a.rank < b.rank; });
+
+    // Get a globally consistent color value for newly created clique.
+    int32_t color = GetCommSplitColor(clique_key);
+
+    bool peer_access_enabled = false;
+    if ((*parent_clique)->key().is_local()) {
+      // The parent clique is local, we can be sure that peer access was already
+      // enabled.
+      peer_access_enabled = (*parent_clique)->peer_access_enabled();
+    } else {
+      // The parent clique is not local, but this clique can be local. We need
+      // to check if peer access is possible between all devices in this clique.
+      ASSIGN_OR_RETURN(peer_access_enabled,
+                       EnablePeerAccess(clique_key, ranks));
+    }
+
+    VLOG(3) << absl::StreamFormat(
+        "[%s] [ranks=%s] Create GPU communicators: clique=%v; parent=%v; "
+        "color=%d; peer_access_enabled=%d; rank_mapping=[%s]",
+        DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), clique_key,
+        parent_clique_key, color, peer_access_enabled,
+        absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
+
+    ProcessGpuCliques& state = GetProcessGpuCliques();
+
+    // Allocate a shared cancellation token that will be used by all comms. We
+    // put this token into the pending cliques map, to enable comm
+    // initialization cancellation if one of the ranks will fail. We might share
+    // cancellation token between multiple racing clique initializations, but
+    // this is ok, as they use the same set of devices and share a fate.
+    std::shared_ptr<CancellationToken> cancel = nullptr;
+
+    {
+      VLOG(3) << absl::StrFormat(
+          "[%s] [ranks=%s] Checking clique %v for staleness",
+          DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+          clique_key);
+      absl::MutexLock lock(state.mu);
+      RETURN_IF_ERROR(
+          CheckCliqueIsNotStaleImpl(state.task_state_infos, clique_key));
+      auto [it, _] = state.pending_cliques.emplace(
+          clique_key, std::make_shared<CancellationToken>());
+      cancel = it->second;
+    }
+
+    {  // At this point clique is no longer pending, it has a definitive state.
+      absl::MutexLock lock(state.mu);
+      state.pending_cliques.erase(clique_key);
+    }
+
+    // Don't hold cliques.mu while creating the communicators, because creating
+    // communicators can block.
+    VLOG(5) << absl::StrFormat("[%s] [ranks=%s] Splitting communicators for %v",
+                               DeviceOrdinalsToString(ranks),
+                               DeviceRanksToString(ranks), clique_key);
+    auto split_comms = collectives->SplitCommunicatorsWithCancel(
+        parent_comms, color, keys, config, ranks, cancel);
+
+    if (!split_comms.ok()) {
+      return split_comms.status();
+    }
+
+    absl::btree_map<RankId, std::unique_ptr<Communicator>> comms;
+    for (size_t i = 0; i < split_comms->size(); ++i) {
+      comms[keys[i]] = std::move((*split_comms)[i]);
+    }
+
+    VLOG(3) << absl::StreamFormat(
+        "[%s] [ranks=%s] Created %d GPU communicators in %s: clique=%v; "
+        "parent=%v; color=%d; peer_access_enabled=%d; rank_mapping=[%s]",
+        DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks), comms.size(),
+        absl::FormatDuration(absl::Now() - split_start), clique_key,
+        parent_clique_key, color, peer_access_enabled,
+        absl::StrJoin(rank_mapping, ",", rank_mapping_formatter));
+
+    // Put constructed clique into the per-process state.
+    absl::MutexLock lock(state.mu);
+    if (absl::Status s =
+            CheckCliqueIsNotStaleImpl(state.task_state_infos, clique_key);
+        !s.ok()) {
+      LOG(WARNING) << absl::StrFormat(
+          "[%s] [ranks=%s] Clique key %v is stale. Aborting recently "
+          "split communicators",
+          DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+          clique_key);
+      for (auto& [rank, comm] : comms) {
+        RETURN_IF_ERROR(comm->Abort());
+      }
+      return s;
+    }
+
+    // Create a new clique with given clique key and communicators.
+    auto emplaced = state.cliques.try_emplace(
+        clique_key,
+        std::make_shared<LockableGpuClique>(
+            clique_key, std::nullopt, std::move(comms), peer_access_enabled,
+            std::move(cancel), /*parent=*/&**parent_clique));
+
+    // We can have a race to create a clique for a given key, the winner
+    // inserts it into a map and the looser destroys all communicators.
+    if (!emplaced.second) {
+      VLOG(3) << absl::StrFormat(
+          "[%s] [ranks=%s] Clique communicators already exists %v",
+          DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+          clique_key);
+    } else {
+      VLOG(3) << absl::StrFormat("[%s] [ranks=%s] Created new clique %v",
+                                 DeviceOrdinalsToString(ranks),
+                                 DeviceRanksToString(ranks), clique_key);
+    }
+
+    return emplaced.first->second->Acquire();
+  };
+
+  // We include `run_id` to a rendezvous key to make sure that multiple
+  // concurrent initializations will not join the same rendezvous. The winner
+  // will update cliques state, and others will destroy unused communicators.
+  auto rendezvous_key = std::make_tuple(run_id, clique_key, parent_clique_key);
+  auto initialization_rendezvous_name = absl::StrFormat(
+      "[%d] [rank=%v] [run_id=%v] Initialize clique: %v from parent: %v",
+      device->device_ordinal(), rank, run_id, clique_key, parent_clique_key);
+
+  return Rendezvous<LockableGpuClique::Lock>(
+      initialization_rendezvous_name, rendezvous_key, rank_pair,
+      num_local_participants, split, WarnStuckTimeout(), TerminateTimeout());
+}
+
+//===----------------------------------------------------------------------===//
+
+static std::vector<GlobalDeviceId> FlattenDeviceGroups(
+    absl::Span<const std::vector<GlobalDeviceId>> device_groups) {
+  std::vector<GlobalDeviceId> devices;
+  if (!device_groups.empty()) {
+    devices.reserve(device_groups.size() * device_groups[0].size());
+  }
+  for (const std::vector<GlobalDeviceId>& group : device_groups) {
+    devices.insert(devices.end(), group.begin(), group.end());
+  }
+  absl::c_sort(devices);
+  return devices;
+}
+
+absl::StatusOr<std::shared_ptr<LockableGpuClique::Lock>> AcquireGpuClique(
+    GpuCollectives* collectives, se::StreamExecutor* device, RunId run_id,
+    const GpuCliqueKey& clique_key,
+    absl::Span<const std::vector<GlobalDeviceId>> device_groups,
+    const GpuCollectives::CliqueIdCallback& clique_id_callback, RankId rank,
+    const AcquiredCliquesMap& acquired_cliques, int64_t max_nchannels) {
+  VLOG(2) << absl::StreamFormat(
+      "[%d] [rank=%v] [run=%v] Acquire GPU clique %v; device_groups=%d:[%s]; "
+      "acquired_cliques=%d; max_channels=%d",
+      device->device_ordinal(), rank, run_id, clique_key, device_groups.size(),
+      HumanReadableDeviceGroups(device_groups), acquired_cliques.size(),
+      max_nchannels);
+
+  int64_t num_local_participants = clique_key.num_local_participants();
+  tsl::profiler::TraceMe trace([&] {
+    return tsl::profiler::TraceMeEncode(
+        "AcquireGpuClique", {{"device", device->device_ordinal()},
+                             {"rank", rank},
+                             {"num_local_participants", num_local_participants},
+                             {"clique_key", clique_key}});
+  });
+
+  // Maybe find if we acquired a clique with communicators that we can split.
+  static const int64_t enable_nccl_comm_splitting =
+      GetDebugOptionsFromFlags().xla_gpu_enable_nccl_comm_splitting();
+
+  // To be able to split from existing clique, clique key must be a subset of
+  // the already acquired clique, and device groups must cover all devices in
+  // the split-from clique, as all ranks must make a split call. XLA currently
+  // doesn't support partial splitting.
+  std::optional<GpuCliqueKey> split_from_key = std::nullopt;
+  std::shared_ptr<LockableGpuClique::Lock> split_from = nullptr;
+  if (enable_nccl_comm_splitting) {
+    for (auto& [acquired_clique_key, acquired_clique] : acquired_cliques) {
+      if (clique_key.IsSubsetOf(acquired_clique_key) &&
+          acquired_clique_key.devices() == FlattenDeviceGroups(device_groups)) {
+        VLOG(5) << absl::StreamFormat(
+            "[%d] [rank=%v] Found split candidate for %v from %v",
+            device->device_ordinal(), rank, clique_key, acquired_clique_key);
+        split_from_key = acquired_clique_key;
+        split_from = acquired_clique;
+        break;
+      }
+    }
+  }
+
+  // Get the clique lock via the rendezvous to guarantee that all clique
+  // members participate in XLA run.
+  Device gpu_device(device);
+  DeviceRank device_rank = {&gpu_device, rank};
+
+  auto rendezvous_key = std::make_tuple(run_id, clique_key);
+  auto rendezvous_name =
+      absl::StrFormat("[%d] [rank=%v] [run_id=%v] Acquire clique: %v",
+                      device->device_ordinal(), rank, run_id, clique_key);
+
+  ASSIGN_OR_RETURN(
+      std::shared_ptr<LockableGpuClique::Lock> clique,
+      Rendezvous<LockableGpuClique::Lock>(
+          rendezvous_name, rendezvous_key, device_rank, num_local_participants,
+          [&](absl::Span<const DeviceRank* const> participants) {
+            tsl::profiler::TraceMe trace("LockGpuClique");
+            ProcessGpuCliques& state = GetProcessGpuCliques();
+
+            std::vector<DeviceRank> ranks;
+            ranks.reserve(participants.size());
+            for (const DeviceRank* r : participants) {
+              ranks.emplace_back(*r);
+            }
+
+            // Returns nullptr if we do not have a clique for `clique_key`.
+            auto lockable_clique = [&]() -> LockableGpuClique* {
+              absl::MutexLock lock(state.mu);
+              auto it = state.cliques.find(clique_key);
+
+              // There is no GPU clique for a given key.
+              if (it == state.cliques.end()) {
+                return nullptr;
+              }
+
+              // We found a clique that we can potentially lock and return to
+              // the caller. Before locking we need to check if we can do it
+              // safely without deadlocks and if it isn't stale.
+              std::shared_ptr<LockableGpuClique> to_lock = it->second;
+
+              // GPU clique for a given key exists, but it was created from the
+              // other parent (or no parent at all) then the potential split
+              // candidate. We don't know the state of all other ranks, so to
+              // avoid potential deadlock we are going to erase existing clique
+              // and acquire a new one by splitting the `split_from` clique.
+              //
+              // Example: imagine 4 distributed processes
+              //
+              //   (1) [0,1] do an all-reduce (device_groups=[[0,1]])
+              //   (2) [0,1,2,3] do an all-reduce (device_groups=[[0,1,2,3]])
+              //   (3) [0,1,2,3] do an all-reduce (device_groups=[[0,1],[2,3]])
+              //
+              // When (3) will be executed, ranks [0,1] will already have a
+              // clique acquired earlier, but ranks [2,3] will try to initiate
+              // a communicator split. This will lead to deadlock.
+              //
+              // However, if the existing clique's parent is a superset of the
+              // split candidate, the clique was created from a bigger (or
+              // equal) collective split and is still valid. We only need to
+              // abandon when the new split candidate is larger than the
+              // existing parent, as that's when other ranks in the bigger
+              // group would need to split but won't agree.
+              if (split_from && !to_lock->IsParentSupersetOf(*split_from_key)) {
+                VLOG(3) << absl::StrFormat(
+                    "[%s] [ranks=%s] Abandon previously acquired clique %v to "
+                    "re-acquire it by splitting from %v",
+                    DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+                    clique_key, *split_from_key);
+
+                // First we have to acquire a lock to this clique, to make sure
+                // that all other users of this clique finished execution.
+                //
+                // `LockableGpuClique::Lock` is acquired by GPU executable
+                // before the program starts running, and automatically released
+                // when execution is done. By waiting for lock here, we are
+                // essentially waiting for completion of the other run that
+                // uses `to_lock` clique (if such run exists). We do not release
+                // `state.mu` as we don't want any concurrent modification of
+                // the per-process state.
+                auto safety_lock = to_lock->Acquire();
+
+                // Only when we know that the clique doesn't have any other
+                // users we can delete it. It will be destroyed when `to_lock`
+                // will get out of scope.
+                state.cliques.erase(clique_key);
+
+                return nullptr;
+              }
+
+              VLOG(3) << absl::StrFormat(
+                  "[%s] [ranks=%s] Lock existing clique %v with compatible "
+                  "parent (split_from=%v). Lock it for collective access.",
+                  DeviceOrdinalsToString(ranks), DeviceRanksToString(ranks),
+                  clique_key,
+                  split_from ? absl::StrCat(*split_from_key) : "none");
+
+              // If the clique is stale (one one participating processes already
+              // died), we return a nullptr, as the clique will have to be
+              // re-created.
+              absl::Status stale =
+                  CheckCliqueIsNotStaleImpl(state.task_state_infos, clique_key);
+              return stale.ok() ? to_lock.get() : nullptr;
+            }();
+
+            return lockable_clique ? lockable_clique->Acquire()
+                                   : LockableGpuClique::Lock();
+          },
+          WarnStuckTimeout(), TerminateTimeout()));
+
+  // If lock is not null return it to the caller, as it means that we already
+  // had a clique were were looking for and we were able to lock access to it.
+  if (*clique) {
+    VLOG(3) << absl::StrFormat("[%d] [rank=%v] Acquired existing clique %v",
+                               device->device_ordinal(), rank, clique_key);
+    return clique;
+  }
+
+  // We enable resource sharing between parent and split communicators by
+  // default because that's the only reason why we use comm splitting.
+  //
+  // TODO(mwhittaker): Make some of these flags.
+  GpuCollectives::Config config;
+  config.split_share = true;
+  config.max_nchannels = max_nchannels;
+  config.blocking_communicators =
+      GetDebugOptionsFromFlags().xla_gpu_nccl_blocking_communicators();
+  config.async_execution =
+      GetDebugOptionsFromFlags().xla_gpu_nccl_async_execution();
+
+  // Split from the already acquired clique.
+  if (split_from) {
+    return InitializeGpuClique(collectives, device, run_id, clique_key,
+                               split_from, num_local_participants, rank,
+                               config);
+  }
+
+  // If we can't split any of the acquired cliques, create a new one.
+  return InitializeGpuClique(collectives, device, run_id, clique_key,
+                             clique_id_callback, num_local_participants, rank,
+                             config);
+}
+
+//===----------------------------------------------------------------------===//
+// GPU cliques fault tolerance.
+//===----------------------------------------------------------------------===//
+
+// Returns true if key contains any of the provided incarnations.
+bool CliqueKeyContainsIncarnation(
+    const GpuCliqueKey& key,
+    const absl::flat_hash_set<IncarnationId>& incarnations) {
+  return absl::c_any_of(key.incarnations(), [&](IncarnationId incarnation) {
+    return incarnations.contains(incarnation);
+  });
+}
+
+// Aborts and invalidates all cliques that have been created via
+// AcquireGpuClique with any of the provided incarnations. For example, if
+// incarnations is [1, 2], then all cliques with a clique key that includes
+// incarnations 1 or 2 will be aborted.
+//
+// REQUIRES: GetProcessGpuCliques().mu held
+static absl::Status AbortCliquesWithIncarnations(
+    absl::flat_hash_map<GpuCliqueKey, std::shared_ptr<LockableGpuClique>>&
+        cliques,
+    absl::Span<const IncarnationId> incarnations) {
+  VLOG(1) << "Aborting GPU cliques for incarnations: ["
+          << absl::StrJoin(incarnations, ", ") << "]";
+  GetProcessGpuCliques().mu.AssertHeld();
+
+  absl::flat_hash_set<IncarnationId> incarnation_set(incarnations.begin(),
+                                                     incarnations.end());
+
+  // Send cancellation signal to communicators in the cliques that are about
+  // to be aborted, so that they can cancel pending collective operations.
+  for (auto& [key, lockable_clique] : cliques) {
+    if (CliqueKeyContainsIncarnation(key, incarnation_set)) {
+      VLOG(1) << "Canceling pending GPU clique " << key.ToString();
+      lockable_clique->Cancel();
+    }
+  }
+
+  // Abort cancelled cliques.
+  absl::Status result;
+  absl::Mutex result_mu;
+  {
+    // We need to abort all communicators concurrently. If we abort serially, an
+    // abort of one communicator may get blocked by a pending collective on a
+    // different communicator.
+    std::vector<std::unique_ptr<tsl::Thread>> threads;
+    for (auto& [key, lockable_clique] : cliques) {
+      if (!CliqueKeyContainsIncarnation(key, incarnation_set)) {
+        VLOG(1) << "Not aborting GPU clique " << key.ToString()
+                << " because it does not include a stale incarnation";
+        continue;
+      }
+
+      auto abort = [&result, &result_mu, key = key,
+                    lockable_clique = &lockable_clique]() {
+        VLOG(1) << "Aborting GPU clique " << key.ToString();
+        if (absl::Status s = (*lockable_clique)->Abort(); !s.ok()) {
+          LOG(ERROR) << "Error aborting GPU clique " << key << ": " << s;
+          absl::MutexLock lock(result_mu);
+          result = std::move(s);
+        } else {
+          VLOG(1) << "Aborted GPU clique " << key.ToString();
+        }
+      };
+
+      VLOG(1) << "Launching thread to abort GPU clique " << key.ToString();
+      threads.push_back(absl::WrapUnique(tsl::Env::Default()->StartThread(
+          tsl::ThreadOptions(), "abort", abort)));
+    }
+  }  // threads' destructor will block until all threads finish.
+
+  // Garbage collect aborted collectives.
+  absl::erase_if(cliques, [&](const auto& kv) {
+    auto& [key, _] = kv;
+    bool erase = CliqueKeyContainsIncarnation(key, incarnation_set);
+    if (erase) {
+      VLOG(1) << "Removing GPU clique " << key.ToString();
+    } else {
+      VLOG(1) << "Not removing GPU clique " << key.ToString()
+              << " because it does not include a stale incarnation";
+    }
+    return erase;
+  });
+
+  return result;
+}
+
+// Aborts all collectives when a task fails, as reported by the
+// UpdateGlobalProcessInfo.
+//
+// REQUIRES: GetProcessGpuCliques().mu held
+static absl::Status AbortOnFailure(
+    absl::flat_hash_map<GpuCliqueKey, std::shared_ptr<LockableGpuClique>>&
+        cliques,
+    absl::Span<const coordination::CoordinatedTaskStateInfo> previous_state,
+    absl::Span<const coordination::CoordinatedTaskStateInfo> current_state) {
+  GetProcessGpuCliques().mu.AssertHeld();
+
+  if (previous_state.empty()) {
+    // When a job first starts, there is no previous job state.
+    return absl::OkStatus();
+  }
+
+  // We expect previous_state and current_state to have the same size, and we
+  // expect for every i, previous_state[i] and current_state[i] correspond to
+  // the same task.
+  if (previous_state.size() != current_state.size()) {
+    return FailedPrecondition(
+        "Previous and current job states have different sizes: %d vs %d",
+        previous_state.size(), current_state.size());
+  }
+
+  std::vector<IncarnationId> failed_incarnations;
+  for (int i = 0; i < previous_state.size(); ++i) {
+    const coordination::CoordinatedTaskStateInfo& previous = previous_state[i];
+    const coordination::CoordinatedTaskStateInfo& current = current_state[i];
+    if (previous.task().task_id() != current.task().task_id()) {
+      return FailedPrecondition(
+          "Previous and current job states have mismatched task ids: %d vs %d",
+          previous.task().task_id(), current.task().task_id());
+    }
+    if (previous.state() !=
+        coordination::CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      // A task that was not previously connected cannot fail.
+      continue;
+    }
+    if (current.state() !=
+            coordination::CoordinatedTaskState::TASKSTATE_CONNECTED ||
+        previous.incarnation() != current.incarnation()) {
+      // The task is either failed, or restarted with a different incarnation.
+      VLOG(1) << "Task " << previous.task().task_id() << " (incarnation "
+              << previous.incarnation() << ") failed";
+      failed_incarnations.push_back(IncarnationId(previous.incarnation()));
+    }
+  }
+
+  if (!failed_incarnations.empty()) {
+    return AbortCliquesWithIncarnations(cliques, failed_incarnations);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status UpdateGlobalProcessInfo(
+    absl::Span<coordination::CoordinatedTaskStateInfo> infos) {
+  ProcessGpuCliques& state = GetProcessGpuCliques();
+  absl::MutexLock lock(state.mu);
+  absl::Status s = AbortOnFailure(state.cliques, state.task_state_infos, infos);
+  if (!s.ok()) {
+    LOG(WARNING) << s;
+  }
+  state.task_state_infos = {infos.begin(), infos.end()};
+  return s;
+}
+
+}  // namespace xla::gpu

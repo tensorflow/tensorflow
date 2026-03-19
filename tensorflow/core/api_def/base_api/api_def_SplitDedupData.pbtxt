@@ -1,0 +1,55 @@
+# proto-file: tensorflow/core/api_def/base_api/api_def_SplitDedupData.pbtxt
+# proto-message: SplitDedupData reference proto
+
+op {
+  graph_op_name: "SplitDedupData"
+  visibility: HIDDEN
+  in_arg {
+    name: "input"
+    description: <<END
+An XLA tuple including integer and float elements as deduplication data tuple.
+END
+  }
+  out_arg {
+    name: "integer_tensor"
+    description: <<END
+A 1-D integer tensor, includes integer elements of deduplication data tuple.
+END
+  }
+  out_arg {
+    name: "float_tensor"
+    description: <<END
+A 1-D float tensor, includes float elements of deduplication data tuple.
+END
+  }
+  attr {
+    name: "integer_type"
+    description: <<END
+integer_tensor type. Allowed types: int32, int64, uint32, uint64.
+END
+  }
+  attr {
+    name: "float_type"
+    description: <<END
+float_tensor type. Allowed types: half, bfloat16, float.
+END
+  }
+  attr {
+    name: "tuple_mask"
+    description: <<END
+A serialized TensorProto string of output tuple mask. This mask is a 2-D tensor,
+with first column as tuple element type, and second column as span of this type.
+For example, an output tuple of (1, 2, 0.1, 3), its mask is [[0, 2], [1, 1], [0,
+1]]. We expect only two types of elements: integer(0) and float(1).
+END
+  }
+  summary: <<END
+An op splits input deduplication data XLA tuple into integer and floating point
+tensors.
+END
+  description: <<END
+Deduplication data is an XLA tuple, which consists of integer and floating point
+values. This op is to split these values into two groups for two types, and
+construct each group as one tensor to return.
+END
+}

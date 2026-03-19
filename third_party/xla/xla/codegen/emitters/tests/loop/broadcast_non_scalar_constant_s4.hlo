@@ -1,0 +1,27 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt --xla-test-optimize \
+// RUN:   --inline="default-pipeline='cse'"  \
+// RUN:   | FileCheck %s --check-prefixes=CHECK,CHECK-GPU
+// RUN: cpu_fusion_to_mlir %s | emitters_opt --xla-test-optimize \
+// RUN:   --inline="default-pipeline='cse'" \
+// RUN:   | FileCheck %s --check-prefixes=CHECK,CHECK-CPU
+// RUN: gpu_test_correctness %s --bijection_outputs=broadcast
+// RUN: cpu_test_correctness %s
+
+bcast {
+  x = s4[3]{0} constant({-2, -3, -4})
+  ROOT broadcast = s4[3,31]{1,0} broadcast(x), dimensions={0}
+}
+
+ENTRY main {
+  ROOT res = s4[3,31]{1,0} fusion(), kind=kLoop, calls=bcast
+}
+
+// CHECK: func.func @main(%[[ARG0:.*]]: tensor<3x31xi4>
+// CHECK-GPU: scf.forall {{.*}} shared_outs(%[[FORALL_ARG0:.*]] = %[[ARG0]])
+// CHECK:   xla.loop ({{.*}})[{{.*}}] -> (%[[RA:.*]], %[[RB:.*]]) in
+// CHECK-SAME: iter_args(%[[ITER:.*]] =
+// CHECK-GPU-SAME: %[[FORALL_ARG0]])
+// CHECK-CPU-SAME: %[[ARG0]])
+// CHECK:     %[[CST:.*]] = arith.constant dense<[-2, -3, -4]>
+// CHECK:     %[[EXTRACTED:.*]] = tensor.extract %[[CST]][%[[RA]]]
+// CHECK:     %[[INSERTED:.*]] = tensor.insert %[[EXTRACTED]] into %[[ITER]][%[[RA]], %[[RB]]]

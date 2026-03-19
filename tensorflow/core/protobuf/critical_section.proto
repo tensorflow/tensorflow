@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "CriticalSectionProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// Protocol buffer representing a CriticalSection.
+message CriticalSectionDef {
+  // Name of the critical section handle.
+  string critical_section_name = 1;
+}
+
+// Protocol buffer representing a CriticalSection execution.
+message CriticalSectionExecutionDef {
+  // Name of the critical section handle.
+  string execute_in_critical_section_name = 1;
+  // Whether this operation requires exclusive access to its resources,
+  // (i.e., no other CriticalSections may request the same resources).
+  bool exclusive_resource_access = 2;
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "TensorScatterMax"
+  endpoint {
+    name: "tensor_scatter_nd_max"
+  }
+}

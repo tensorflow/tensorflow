@@ -1,0 +1,71 @@
+path: "tensorflow.tpu.experimental.embedding"
+tf_module {
+  member {
+    name: "Adagrad"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "AdagradMomentum"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Adam"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CustomCombiner"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CustomOptimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FTRL"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FeatureConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "QuantizationConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RowIdInitializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SGD"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCoreEmbeddingConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbedding"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingForServing"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingV0"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingV2"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TableConfig"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "serving_embedding_lookup"
+    argspec: "args=[\'inputs\', \'weights\', \'tables\', \'feature_config\'], varargs=None, keywords=None, defaults=None"
+  }
+}

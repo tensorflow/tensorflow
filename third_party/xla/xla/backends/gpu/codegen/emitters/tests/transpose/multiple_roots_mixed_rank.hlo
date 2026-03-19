@@ -1,0 +1,21 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+// RUN: gpu_test_correctness %s
+
+HloModule module
+
+fusion {
+  p0 = bf16[2,2048,8,16]{3,2,1,0} parameter(0)
+  t1 = bf16[2,8,16,2048]{3,2,1,0} transpose(p0), dimensions={0,2,3,1}
+
+  r1 = bf16[2,2048,128]{2,1,0} reshape(p0)
+  t2 = bf16[2,128,2048]{2,1,0} transpose(r1), dimensions={0,2,1}
+
+  ROOT tuple = (bf16[2,8,16,2048]{3,2,1,0}, bf16[2,128,2048]{2,1,0}) tuple(t1, t2)
+}
+
+ENTRY main {
+  p0 = bf16[2,2048,8,16]{3,2,1,0} parameter(0)
+  ROOT fusion = (bf16[2,8,16,2048]{3,2,1,0}, bf16[2,128,2048]{2,1,0}) fusion(p0), kind=kCustom, calls=fusion, backend_config={}
+}
+
+// CHECK: module

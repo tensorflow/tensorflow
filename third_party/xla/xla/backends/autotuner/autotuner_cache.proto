@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package xla;
+
+import "google/protobuf/any.proto";
+
+// Represents a single entry in the autotuner cache.
+message AutotunerCacheEntry {
+  // Key to identify the HLO instruction and device configuration.
+  AutotunerCacheKey key = 1;
+
+  // The name of the CodegenBackend that generated the best config.
+  string codegen_backend = 2;
+
+  // The best BackendConfig found during autotuning.
+  google.protobuf.Any backend_config = 3;
+}
+
+// Key for the autotuner cache.
+message AutotunerCacheKey {
+  // Fingerprint of the HLO instruction.
+  string hlo_fingerprint = 1;
+
+  // String identifying the device and its properties.
+  string device_str = 2;
+
+  // Version of the cache key structure. This can be a number, CL, or release
+  // version.
+  string version = 3;
+}
+
+// Container for multiple cache entries.
+message AutotunerCache {
+  repeated AutotunerCacheEntry entries = 1;
+}

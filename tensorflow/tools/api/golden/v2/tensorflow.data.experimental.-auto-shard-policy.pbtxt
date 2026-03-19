@@ -1,0 +1,65 @@
+path: "tensorflow.data.experimental.AutoShardPolicy"
+tf_class {
+  is_instance: "<enum \'AutoShardPolicy\'>"
+  member {
+    name: "AUTO"
+    mtype: "<enum \'AutoShardPolicy\'>"
+  }
+  member {
+    name: "DATA"
+    mtype: "<enum \'AutoShardPolicy\'>"
+  }
+  member {
+    name: "FILE"
+    mtype: "<enum \'AutoShardPolicy\'>"
+  }
+  member {
+    name: "HINT"
+    mtype: "<enum \'AutoShardPolicy\'>"
+  }
+  member {
+    name: "OFF"
+    mtype: "<enum \'AutoShardPolicy\'>"
+  }
+  member {
+    name: "denominator"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "imag"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "numerator"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "real"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwds, defaults=None"
+  }
+  member_method {
+    name: "as_integer_ratio"
+  }
+  member_method {
+    name: "bit_count"
+  }
+  member_method {
+    name: "bit_length"
+  }
+  member_method {
+    name: "conjugate"
+  }
+  member_method {
+    name: "from_bytes"
+  }
+  member_method {
+    name: "is_integer"
+  }
+  member_method {
+    name: "to_bytes"
+  }
+}

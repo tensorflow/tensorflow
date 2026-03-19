@@ -1,0 +1,14 @@
+path: "tensorflow.saved_model.Asset"
+tf_class {
+  is_instance: "<class \'tensorflow.python.trackable.asset.Asset\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "asset_path"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'path\'], varargs=None, keywords=None, defaults=None"
+  }
+}

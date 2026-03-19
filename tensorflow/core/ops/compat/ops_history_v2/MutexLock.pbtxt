@@ -1,0 +1,27 @@
+op {
+  name: "MutexLock"
+  input_arg {
+    name: "mutex"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "mutex_lock"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "MutexLock"
+  input_arg {
+    name: "mutex"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "mutex_lock"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_MUTEX_LOCK
+    }
+  }
+  is_stateful: true
+}

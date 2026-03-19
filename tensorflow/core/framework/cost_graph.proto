@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "CostGraphProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/cost_graph_go_proto";
+
+message CostGraphDef {
+  message Node {
+    // The name of the node. Names are globally unique.
+    string name = 1;
+
+    // The device of the node. Can be empty if the node is mapped to the
+    // default partition or partitioning hasn't been run yet.
+    string device = 2;
+
+    // The id of the node. Node ids are only unique inside a partition.
+    int32 id = 3;
+
+    // Inputs of this node. They must be executed before this node can be
+    // executed. An input is a particular output of another node, specified
+    // by the node id and the output index.
+    message InputInfo {
+      int32 preceding_node = 1;
+      int32 preceding_port = 2;
+    }
+    repeated InputInfo input_info = 4;
+
+    // Outputs of this node.
+    message OutputInfo {
+      int64 size = 1;
+      // If >= 0, the output is an alias of an input. Note that an alias input
+      // may itself be an alias. The algorithm will therefore need to follow
+      // those pointers.
+      int64 alias_input_port = 2;
+      TensorShapeProto shape = 3;
+      DataType dtype = 4;
+    }
+    repeated OutputInfo output_info = 5;
+
+    // Temporary memory used by this node.
+    int64 temporary_memory_size = 6;
+
+    // Persistent memory used by this node.
+    int64 persistent_memory_size = 12;
+
+    int64 host_temp_memory_size = 10 [deprecated = true];
+    int64 device_temp_memory_size = 11 [deprecated = true];
+    int64 device_persistent_memory_size = 16 [deprecated = true];
+
+    // Estimate of the computational cost of this node, in microseconds.
+    int64 compute_cost = 9;
+
+    // Analytical estimate of the computational cost of this node, in
+    // microseconds.
+    int64 compute_time = 14;
+
+    // Analytical estimate of the memory access cost of this node, in
+    // microseconds.
+    int64 memory_time = 15;
+
+    // If true, the output is permanent: it can't be discarded, because this
+    // node is part of the "final output". Nodes may depend on final nodes.
+    bool is_final = 7;
+
+    // Ids of the control inputs for this node.
+    repeated int32 control_input = 8;
+
+    // Are the costs inaccurate?
+    bool inaccurate = 17;
+  }
+  repeated Node node = 1;
+
+  // Total cost of this graph, typically used for balancing decisions.
+  message AggregatedCost {
+    // Aggregated cost value.
+    float cost = 1;
+
+    // Aggregated cost dimension (e.g. 'memory', 'compute', 'network').
+    string dimension = 2;
+  }
+  repeated AggregatedCost cost = 2;
+}

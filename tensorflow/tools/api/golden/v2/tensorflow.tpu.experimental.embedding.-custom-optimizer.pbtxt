@@ -1,0 +1,23 @@
+path: "tensorflow.tpu.experimental.embedding.CustomOptimizer"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils.CustomOptimizer\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils._Optimizer\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2_utils._WithSlotVariables\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "custom_computation"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "hyperparameters"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "slot_dims"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'custom_computation\', \'learning_rate\', \'slot_names\', \'slot_initializers\', \'hyperparameters\', \'slot_dims\'], varargs=None, keywords=None, defaults=[\'0.01\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+}

@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "ReciprocalGrad"
+  visibility: HIDDEN
+  summary: "Computes the gradient for the inverse of `x` wrt its input."
+  description: <<END
+Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
+is the corresponding input gradient.
+END
+}

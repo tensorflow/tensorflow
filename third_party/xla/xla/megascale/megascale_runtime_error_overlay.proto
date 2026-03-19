@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package xla.megascale.runtime;
+
+option java_multiple_files = true;
+option java_outer_classname = "Runtime";
+
+// Overlay for xla.megascale.runtime.MegaScaleRuntimeError
+message MegaScaleRuntimeErrorOverlay {
+  enum ErrorType {
+    NO_ERROR = 0;
+    HANG_DETECTED = 1;
+    UNRECOVERABLE_ERROR = 2;
+    CANCELLED = 3;
+  }
+
+  ErrorType error_type = 1;
+  string error_message = 2;
+  uint64 estimated_start_time_ms = 3;
+  int32 triggering_launch_id = 5;
+  string hostname = 6;
+}

@@ -1,0 +1,24 @@
+node {
+  name: "Ftrl/learning_rate_power"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: -0
+      }
+    }
+  }
+}
+versions {
+  producer: 727
+}

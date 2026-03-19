@@ -1,0 +1,27 @@
+path: "tensorflow.config.experimental.VirtualDeviceConfiguration"
+tf_class {
+  is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
+  is_instance: "<class \'tensorflow.python.eager.context.LogicalDeviceConfiguration\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "experimental_device_ordinal"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "experimental_priority"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "memory_limit"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

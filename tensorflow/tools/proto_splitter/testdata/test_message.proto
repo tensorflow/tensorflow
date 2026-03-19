@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package tensorflow.proto_splitter_testdata;
+
+message RepeatedString {
+  repeated string strings = 1;
+}
+
+message RepeatedRepeatedString {
+  int32 filler_field = 1;
+  repeated RepeatedString rs = 2;
+}
+
+message ManyFields {
+  ManyFields field_one = 1;
+  repeated ManyFields repeated_field = 2;
+  string string_field = 3;
+  repeated string repeated_string_field = 4;
+  map<uint32, string> map_field_uint32 = 5;
+  map<int64, string> map_field_int64 = 6;
+  map<bool, ManyFields> nested_map_bool = 7;
+}
+
+message StringNode {
+  string val = 1;
+  repeated StringNode child_nodes = 2;
+}

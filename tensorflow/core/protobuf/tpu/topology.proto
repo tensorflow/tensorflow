@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package tensorflow.tpu;
+
+option cc_enable_arenas = true;
+
+// Describes features of a tpu.
+message TPUHardwareFeature {
+  // Embedding feature of a tpu.
+  enum EmbeddingFeature {
+    // No embedding lookup accelerator available on the tpu.
+    UNSUPPORTED = 0;
+    // Embedding lookup accelerator V1. The embedding lookup operation can only
+    // be placed at the beginning of computation. Only one instance of embedding
+    // lookup layer is allowed.
+    V1 = 1;
+    // Embedding lookup accelerator V2. The embedding lookup operation can be
+    // placed anywhere of the computation. Multiple instances of embedding
+    // lookup layer is allowed.
+    V2 = 2;
+  }
+  EmbeddingFeature embedding_feature = 1;
+  // Number of embedding accelerator devices per chip.
+  int32 num_embedding_devices_per_chip = 2;
+}
+
+// Describes the geometry of a TPU mesh.
+message TopologyProto {
+  // The dimensions of the TPU topology, in cores. Typically, this is a 4D
+  // topology [x, y, z, core], where the major dimensions correspond to TPU
+  // chips, and the minor dimension describes the number of cores on a multicore
+  // chip.
+  repeated int32 mesh_shape = 1;
+
+  // Number of TensorFlow tasks in the cluster.
+  int32 num_tasks = 2;
+
+  // Number of TPU devices per task.
+  int32 num_tpu_devices_per_task = 3;
+
+  // A flattened rank 3 int32 array with shape
+  // [num_tasks, num_tpu_devices_per_task, len(mesh_shape)].
+  // `tasks` is the number of tasks in the TPU cluster, `devices` is the number
+  // of TPU devices per task, and the minor dimension corresponds to a position
+  // in the TPU mesh topology. Each entry [task, device, axis] gives the
+  // `axis`-th coordinate in the topology of a task/device pair.
+  repeated int32 device_coordinates = 4;
+
+  // TPU supported features.
+  TPUHardwareFeature tpu_hardware_feature = 5;
+}

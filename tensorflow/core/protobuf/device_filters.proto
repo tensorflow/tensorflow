@@ -1,0 +1,73 @@
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "DeviceFiltersProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.distruntime";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// This file contains protos to be used when defining a TensorFlow
+// cluster.
+//
+// Configure device filters for remote tasks in the cluster. When associated
+// with a ClusterDef in setting up the cluster, a remote task will ignore all
+// devices which do not match any of its filters. Device filters must be
+// configured at the cluster startup, and cannot be updated once the cluster is
+// up and running.
+//
+// EXAMPLES
+// --------
+//
+// A two-job cluster with the following ClusterDef:
+//
+//  Cluster:
+//    job { name: 'worker' tasks { key: 0 value: 'worker1:2222' }
+//                         tasks { key: 1 value: 'worker2:2222' } }
+//    job { name: 'ps'     tasks { key: 0 value: 'ps0:2222' }
+//                         tasks { key: 1 value: 'ps1:2222' } }
+//
+// Set device filters to isolate worker tasks:
+//
+//  ClusterDeviceFilters:
+//    job { name: 'worker' tasks { key: 0
+//                                 value: device_filter '/job:ps'
+//                                        device_filter '/job:worker/task:0' }
+//                         tasks { key: 1
+//                                 value: device_filter '/job:ps'
+//                                        device_filter '/job:worker/task:1' } }
+
+// Defines the device filters for a remote task.
+message TaskDeviceFilters {
+  repeated string device_filters = 1;
+}
+
+// Defines the device filters for tasks in a job.
+message JobDeviceFilters {
+  // The name of this job.
+  string name = 1;
+
+  // Mapping from task ID to task device filters.
+  map<int32, TaskDeviceFilters> tasks = 2;
+}
+
+// Defines the device filters for jobs in a cluster.
+message ClusterDeviceFilters {
+  repeated JobDeviceFilters jobs = 1;
+}

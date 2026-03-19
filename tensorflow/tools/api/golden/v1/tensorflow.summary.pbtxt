@@ -1,0 +1,75 @@
+path: "tensorflow.summary"
+tf_module {
+  member {
+    name: "Event"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "FileWriter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FileWriterCache"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SessionLog"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "Summary"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "SummaryDescription"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "TaggedRunMetadata"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member_method {
+    name: "all_v2_summary_ops"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "audio"
+    argspec: "args=[\'name\', \'tensor\', \'sample_rate\', \'max_outputs\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "get_summary_description"
+    argspec: "args=[\'node_def\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "histogram"
+    argspec: "args=[\'name\', \'values\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "image"
+    argspec: "args=[\'name\', \'tensor\', \'max_outputs\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "initialize"
+    argspec: "args=[\'graph\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "merge"
+    argspec: "args=[\'inputs\', \'collections\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "merge_all"
+    argspec: "args=[\'key\', \'scope\', \'name\'], varargs=None, keywords=None, defaults=[\'summaries\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "scalar"
+    argspec: "args=[\'name\', \'tensor\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "tensor_summary"
+    argspec: "args=[\'name\', \'tensor\', \'summary_description\', \'collections\', \'summary_metadata\', \'family\', \'display_name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "text"
+    argspec: "args=[\'name\', \'tensor\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

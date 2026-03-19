@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package tensorflow.tfrt_stub;
+
+message TestConfig1 {
+  string tag = 1;
+}
+
+message TestConfig2 {
+  string tag = 1;
+}

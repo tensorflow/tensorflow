@@ -1,0 +1,206 @@
+path: "tensorflow.data.TFRecordDataset"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.ops.readers.TFRecordDatasetV2\'>"
+  is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
+  is_instance: "<class \'collections.abc.Iterable\'>"
+  member {
+    name: "element_spec"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'filenames\', \'compression_type\', \'buffer_size\', \'num_parallel_reads\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "apply"
+    argspec: "args=[\'self\', \'transformation_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_numpy_iterator"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "batch"
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'num_parallel_calls\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "bucket_by_sequence_length"
+    argspec: "args=[\'self\', \'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "cache"
+    argspec: "args=[\'self\', \'filename\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
+    name: "cardinality"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "choose_from_datasets"
+    argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+  member_method {
+    name: "concatenate"
+    argspec: "args=[\'self\', \'dataset\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "counter"
+    argspec: "args=[\'start\', \'step\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
+    name: "enumerate"
+    argspec: "args=[\'self\', \'start\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
+    name: "filter"
+    argspec: "args=[\'self\', \'predicate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "fingerprint"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flat_map"
+    argspec: "args=[\'self\', \'map_func\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_generator"
+    argspec: "args=[\'generator\', \'output_types\', \'output_shapes\', \'args\', \'output_signature\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_tensor_slices"
+    argspec: "args=[\'tensors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_tensors"
+    argspec: "args=[\'tensors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_single_element"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "group_by_window"
+    argspec: "args=[\'self\', \'key_func\', \'reduce_func\', \'window_size\', \'window_size_func\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "ignore_errors"
+    argspec: "args=[\'self\', \'log_warning\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "interleave"
+    argspec: "args=[\'self\', \'map_func\', \'cycle_length\', \'block_length\', \'num_parallel_calls\', \'deterministic\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "list_files"
+    argspec: "args=[\'file_pattern\', \'shuffle\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "load"
+    argspec: "args=[\'path\', \'element_spec\', \'compression\', \'reader_func\', \'wait\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "map"
+    argspec: "args=[\'self\', \'map_func\', \'num_parallel_calls\', \'deterministic\', \'synchronous\', \'use_unbounded_threadpool\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "options"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "padded_batch"
+    argspec: "args=[\'self\', \'batch_size\', \'padded_shapes\', \'padding_values\', \'drop_remainder\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "prefetch"
+    argspec: "args=[\'self\', \'buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ragged_batch"
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'row_splits_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
+    name: "random"
+    argspec: "args=[\'seed\', \'rerandomize_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "range"
+    argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "rebatch"
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "reduce"
+    argspec: "args=[\'self\', \'initial_state\', \'reduce_func\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "rejection_resample"
+    argspec: "args=[\'self\', \'class_func\', \'target_dist\', \'initial_dist\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "repeat"
+    argspec: "args=[\'self\', \'count\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "sample_from_datasets"
+    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\', \'rerandomize_each_iteration\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'self\', \'path\', \'compression\', \'shard_func\', \'checkpoint_args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "scan"
+    argspec: "args=[\'self\', \'initial_state\', \'scan_func\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "shard"
+    argspec: "args=[\'self\', \'num_shards\', \'index\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "shuffle"
+    argspec: "args=[\'self\', \'buffer_size\', \'seed\', \'reshuffle_each_iteration\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "skip"
+    argspec: "args=[\'self\', \'count\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "snapshot"
+    argspec: "args=[\'self\', \'path\', \'compression\', \'reader_func\', \'shard_func\', \'name\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "sparse_batch"
+    argspec: "args=[\'self\', \'batch_size\', \'row_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "take"
+    argspec: "args=[\'self\', \'count\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "take_while"
+    argspec: "args=[\'self\', \'predicate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "unbatch"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "unique"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "window"
+    argspec: "args=[\'self\', \'size\', \'shift\', \'stride\', \'drop_remainder\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "with_options"
+    argspec: "args=[\'self\', \'options\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "zip"
+    argspec: "args=[\'datasets\', \'name\'], varargs=args, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

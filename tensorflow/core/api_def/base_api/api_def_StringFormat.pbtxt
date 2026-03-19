@@ -1,0 +1,38 @@
+op {
+  graph_op_name: "StringFormat"
+  in_arg {
+    name: "inputs"
+    description: <<END
+The list of tensors to format into the placeholder string.
+END
+  }
+
+  out_arg {
+    name: "output"
+    description: <<END
+= The resulting string scalar.
+END
+  }
+  attr {
+    name: "template"
+    description: <<END
+A string, the template to format tensor summaries into.
+END
+  }
+  attr {
+    name: "placeholder"
+    description: <<END
+A string, at each placeholder in the template a subsequent tensor summary will be inserted.
+END
+  }
+  attr {
+    name: "summarize"
+    description: <<END
+When formatting the tensor summaries print the first and last summarize entries of each tensor dimension.
+END
+  }
+  summary: "Formats a string template using a list of tensors."
+  description: <<END
+Formats a string template using a list of tensors, pretty-printing tensor summaries.
+END
+}

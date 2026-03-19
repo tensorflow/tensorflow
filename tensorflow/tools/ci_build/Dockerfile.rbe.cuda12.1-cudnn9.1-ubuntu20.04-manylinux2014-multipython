@@ -1,0 +1,50 @@
+# Dockerfile to build a manylinux 2010 compliant cross-compiler.
+#
+# Builds a devtoolset gcc/libstdc++ that targets manylinux 2010 compatible
+# glibc (2.12) and system libstdc++ (4.4).
+#
+# To push a new version, run:
+# $ docker build -f Dockerfile.rbe.cuda12.1-cudnn9.1-ubuntu20.04-manylinux2014-multipython \
+#  --tag "gcr.io/tensorflow-testing/nosla-cuda12.1-cudnn9.1-ubuntu20.04-manylinux2014-multipython" .
+# $ docker push gcr.io/tensorflow-testing/nosla-cuda12.1-cudnn9.1-ubuntu20.04-manylinux2014-multipython
+
+FROM gcr.io/tensorflow-sigs/build@sha256:3573cdabdea7f203b6440a93bb50a0e1a17c2c9a33f09fccdc0c97f514f9689c
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY install/install_bootstrap_deb_packages.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+
+COPY install/install_deb_packages.sh /install/
+RUN /install/install_deb_packages.sh
+
+RUN apt-get update && apt-get install -y \
+    python3.13-nogil \
+    libbz2-dev \
+    libffi-dev \
+    libgdbm-dev \
+    libncurses5-dev \
+    libnss3-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    patchelf \
+    libcudnn9-dev-cuda-12=9.1.1.17-1 \
+    libcudnn9-cuda-12=9.1.1.17-1 \
+      && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY install/build_and_install_python.sh /install/
+RUN /install/build_and_install_python.sh "3.9.18"
+RUN /install/build_and_install_python.sh "3.10.13"
+RUN /install/build_and_install_python.sh "3.11.6"
+RUN /install/build_and_install_python.sh "3.12.2"
+RUN /install/build_and_install_python.sh "3.13.0"
+
+COPY install/install_pip_packages_by_version.sh /install/
+# https://github.com/numpy/numpy/issues/22623 for `SETUPTOOLS_USE_DISTUTILS`.
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.11" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.12" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.13" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/bin/python3.13-nogil" "jax"

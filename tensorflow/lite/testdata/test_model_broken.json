@@ -1,0 +1,62 @@
+{
+  "subgraphs": [
+    {
+      "inputs": [0, 1],
+      "outputs": [2, 3],
+      "operators": [
+        {
+          "opcode_index": 0,
+          "inputs": [0,1],
+          "outputs": [2]
+        },
+        {
+          "opcode_index": 1,
+          "inputs": [2],
+          "outputs": [3]
+        }
+      ],
+      "tensors": [
+          {
+             "shape" : [
+                2
+             ],
+             "type" : "FLOAT32",
+             "name" : "input0",
+             "data_buffer" : [1,0,0,0]
+          },
+          {
+             "shape" : [
+                3
+             ],
+             "type" : "FLOAT32",
+             "name" : "input1",
+             "data_buffer" : []
+          },
+          {
+             "shape" : [
+                3
+             ],
+             "type" : "FLOAT32",
+             "name" : "out1",
+             "data_buffer" : []
+          },
+          {
+             "shape" : [
+                3
+             ],
+             "type" : "FLOAT32",
+             "name" : "out2",
+             "data_buffer" : []
+          }
+      ],
+    }
+  ],
+  "operator_codes": [
+    {
+      "builtin_code": 0
+    },
+    {
+      "custom_code": "testing_op"
+    }
+  ]
+}

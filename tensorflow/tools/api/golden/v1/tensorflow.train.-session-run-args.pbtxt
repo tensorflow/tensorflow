@@ -1,0 +1,27 @@
+path: "tensorflow.train.SessionRunArgs"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunArgs\'>"
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunArgs\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "feed_dict"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "fetches"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "options"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

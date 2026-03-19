@@ -1,0 +1,29 @@
+op {
+  name: "TPUPartitionedOutput"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+    number_attr: "num_splits"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "num_splits"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "partition_dim"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+}

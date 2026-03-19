@@ -1,0 +1,8 @@
+The CSV spectrogram files in this directory are generated from the
+matlab code in ./matlab/GenerateTestData.m
+To save space in the repo, you'll then need to convert them into a binary packed
+format using the convert_test_data.cc command line tool.
+
+
+short_test_segment.wav is approximately 1s of music audio.
+

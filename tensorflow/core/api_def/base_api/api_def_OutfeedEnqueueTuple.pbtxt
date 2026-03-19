@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "OutfeedEnqueueTuple"
+  visibility: HIDDEN
+  in_arg {
+    name: "inputs"
+    description: <<END
+A list of tensors that will be inserted into the outfeed queue as an
+XLA tuple.
+END
+  }
+  summary: "Enqueue multiple Tensor values on the computation outfeed."
+}

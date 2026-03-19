@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "RetrieveTPUEmbeddingStochasticGradientDescentParameters"
+  visibility: HIDDEN
+  out_arg {
+    name: "parameters"
+    description: <<END
+Parameter parameters updated by the stochastic gradient descent optimization algorithm.
+END
+  }
+  summary: "Retrieve SGD embedding parameters."
+  description: <<END
+An op that retrieves optimization parameters from embedding to host
+memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+the correct embedding table configuration. For example, this op is
+used to retrieve updated parameters before saving a checkpoint.
+END
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "AvgPool3D"
+  endpoint {
+    name: "nn.AvgPool3d"
+  }
+}

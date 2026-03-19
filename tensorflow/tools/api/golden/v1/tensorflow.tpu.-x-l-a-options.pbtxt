@@ -1,0 +1,27 @@
+path: "tensorflow.tpu.XLAOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu.XLAOptions\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu.XLAOptions\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "enable_xla_dynamic_padder"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "use_shardy_partitioner"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "use_spmd_for_xla_partitioning"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

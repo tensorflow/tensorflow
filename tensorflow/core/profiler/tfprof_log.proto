@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package tensorflow.tfprof;
+
+import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/step_stats.proto";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/profiler/protos_all_go_proto";
+
+// It specifies the Python callstack that creates an op.
+message CodeDef {
+  repeated Trace traces = 1;
+  message Trace {
+    reserved 1, 3, 4;
+    reserved "file", "function", "line";
+    int64 file_id = 6;
+    int32 lineno = 2;
+    int64 function_id = 7;
+    int64 line_id = 8;
+    int32 func_start_line = 5;
+  }
+}
+
+message OpLogEntry {
+  // op name.
+  string name = 1;
+  // float_ops is filled by tfprof Python API when called. It requires the
+  // op has RegisterStatistics defined. Currently, Conv2D, MatMul, etc, are
+  // implemented.
+  int64 float_ops = 2;
+  // User can define extra op type information for an op. This allows the user
+  // to select a group of ops precisely using op_type as a key.
+  repeated string types = 3;
+  // Used to support tfprof "code" view.
+  CodeDef code_def = 4;
+}
+
+message OpLogProto {
+  repeated OpLogEntry log_entries = 1;
+
+  // Maps from id of CodeDef file,function,line to its string
+  // In the future can also map other id of other fields to string.
+  map<int64, string> id_to_string = 2;
+}
+
+// A proto representation of the profiler's profile.
+// It allows serialization, shipping around and deserialization of the profiles.
+//
+// Please don't depend on the internals of the profile proto.
+message ProfileProto {
+  map<int64, ProfileNode> nodes = 1;
+  // Whether or not has code traces.
+  bool has_trace = 2;
+  // Whether or not the TF device tracer fails to return accelerator
+  // information (which could lead to 0 accelerator execution time).
+  bool miss_accelerator_stream = 5;
+  // Traced steps.
+  repeated int64 steps = 3;
+
+  // Maps from id of CodeDef file,function,line to its string
+  // In the future can also map other id of other fields to string.
+  map<int64, string> id_to_string = 4;
+}
+
+message ProfileNode {
+  // graph node name.
+  string name = 1;
+  // graph operation type.
+  string op = 9;
+  // A unique id for the node.
+  int64 id = 13;
+
+  map<int32, int64> inputs = 2;
+  map<int32, Tuple> input_shapes = 16;
+  map<int32, int64> outputs = 3;
+  map<int32, Tuple> output_shapes = 15;
+  // A map from source node id to its output index to current node.
+  map<int64, int32> src_output_index = 14;
+
+  repeated int64 shape = 4;
+  repeated string op_types = 5;
+  string canonical_device = 6;
+  string host_device = 7;
+
+  int64 float_ops = 8;
+
+  CodeDef trace = 10;
+  map<string, AttrValue> attrs = 11;
+
+  map<int64, ExecProfile> execs = 12;
+}
+
+message ExecProfile {
+  // Can be larger than 1 if run multiple times in loop.
+  int64 run_count = 1;
+  // The earliest/latest time including scheduling and execution.
+  int64 all_start_micros = 2;
+  int64 latest_end_micros = 3;
+
+  // device -> vector of {op_start_micros, op_exec_micros} pairs.
+  // accelerator_execs: gpu:id/stream:all -> {op_start_micros, op_exec_micros}
+  // For accelerator, vector size can be larger than 1, multiple kernel fires
+  // or in tf.while_loop.
+  map<string, ExecTime> accelerator_execs = 4;
+  // cpu_execs: cpu/gpu:id -> {op_start_micros, op_exec_micros}
+  // For cpu, vector size can be larger than 1 if in tf.while_loop.
+  map<string, ExecTime> cpu_execs = 5;
+
+  // Each entry to memory information of a scheduling of the node.
+  // Normally, there will be multiple entries in while_loop.
+  repeated ExecMemory memory_execs = 7;
+  // The allocation and deallocation times and sizes throughout execution.
+  repeated AllocationRecord allocations = 11;
+  // The devices related to this execution.
+  repeated string devices = 6;
+}
+
+message ExecTime {
+  repeated Tuple times = 1;
+}
+
+message ExecMemory {
+  // This is the timestamp when the memory information was tracked.
+  int64 memory_micros = 1;
+  // NOTE: Please don't depend on the following 4 fields yet. Due to
+  // TensorFlow internal tracing issues, the numbers can be quite wrong.
+  // TODO(xpan): Fix the TensorFlow internal tracing.
+  int64 host_temp_bytes = 2;
+  int64 host_persistent_bytes = 3;
+  int64 accelerator_temp_bytes = 4;
+  int64 accelerator_persistent_bytes = 5;
+
+  // Total bytes requested by the op.
+  int64 requested_bytes = 6;
+  // Total bytes requested by the op and released before op end.
+  int64 peak_bytes = 7;
+  // Total bytes requested by the op and not released after op end.
+  int64 residual_bytes = 8;
+  // Total bytes output by the op (not necessarily requested by the op).
+  int64 output_bytes = 9;
+  // The total number of bytes currently allocated by the allocator if >0.
+  int64 allocator_bytes_in_use = 10;
+  // The memory of each output of the operation.
+  map<int32, Memory> output_memory = 11;
+}
+
+message Tuple {
+  repeated int64 int64_values = 1;
+}
+
+message Memory {
+  int64 bytes = 1;
+  uint64 ptr = 2;
+}

@@ -1,0 +1,86 @@
+Pod::Spec.new do |s|
+  s.name             = '${POD_NAME}'
+  s.version          = '${TFL_BUILD_VERSION}'
+  s.authors          = 'Google Inc.'
+  s.license          = { :type => 'Apache' }
+  s.homepage         = 'https://github.com/tensorflow/tensorflow'
+  s.source           = { :git => 'https://github.com/tensorflow/tensorflow.git', :commit => '${SOURCE_COMMIT}' }
+  s.summary          = 'TensorFlow Lite for Swift'
+  s.description      = <<-DESC
+
+  TensorFlow Lite is TensorFlow's lightweight solution for Swift developers. It
+  enables low-latency inference of on-device machine learning models with a
+  small binary size and fast performance supporting hardware acceleration.
+                       DESC
+
+  s.cocoapods_version = '>= ${TFL_MIN_COCOAPODS_VERSION}'
+  s.ios.deployment_target = '12.0'
+  s.swift_version = '5.0'
+
+  s.module_name = 'TensorFlowLite'
+  s.static_framework = true
+
+  tfl_dir = 'tensorflow/lite/'
+  swift_dir = tfl_dir + 'swift/'
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.pod_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO',
+  }
+
+  # TODO: Remove this after adding support for arm64 simulator.
+  s.user_target_xcconfig = {
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'ENABLE_USER_SCRIPT_SANDBOXING' => 'NO',
+  }
+
+  s.default_subspec = 'Core'
+
+  # The privacy manifest shared by other subspecs.
+  s.subspec 'Privacy' do |ss|
+    ss.resource_bundles = {
+      s.module_name => swift_dir + 'PrivacyInfo.xcprivacy'
+    }
+  end
+
+  s.subspec 'Core' do |core|
+    core.dependency "${C_POD_NAME}", "#{s.version}"
+    core.dependency "#{s.name}/Privacy", "#{s.version}"
+    core.source_files = swift_dir + 'Sources/*.swift'
+    core.exclude_files = swift_dir + 'Sources/{CoreML,Metal}Delegate.swift'
+
+    core.test_spec 'Tests' do |ts|
+      ts.source_files = swift_dir + 'Tests/*.swift'
+      ts.exclude_files = swift_dir + 'Tests/MetalDelegateTests.swift'
+      ts.resources = [
+        tfl_dir + 'testdata/add.bin',
+        tfl_dir + 'testdata/add_quantized.bin',
+        tfl_dir + 'testdata/multi_signatures.bin',
+      ]
+    end
+  end
+
+  s.subspec 'CoreML' do |coreml|
+    coreml.source_files = swift_dir + 'Sources/CoreMLDelegate.swift'
+    coreml.dependency "${C_POD_NAME}/CoreML", "#{s.version}"
+    coreml.dependency "#{s.name}/Core", "#{s.version}"
+    coreml.dependency "#{s.name}/Privacy", "#{s.version}"
+  end
+
+  s.subspec 'Metal' do |metal|
+    metal.source_files = swift_dir + 'Sources/MetalDelegate.swift'
+    metal.dependency "${C_POD_NAME}/Metal", "#{s.version}"
+    metal.dependency "#{s.name}/Core", "#{s.version}"
+    metal.dependency "#{s.name}/Privacy", "#{s.version}"
+
+    metal.test_spec 'Tests' do |ts|
+      ts.source_files = swift_dir + 'Tests/{Interpreter,MetalDelegate}Tests.swift'
+      ts.resources = [
+        tfl_dir + 'testdata/add.bin',
+        tfl_dir + 'testdata/add_quantized.bin',
+        tfl_dir + 'testdata/multi_add.bin',
+      ]
+    end
+  end
+end

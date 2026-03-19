@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteOpaqueDelegateParams Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteOpaqueDelegateParams</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>WARNING: This is an experimental interface that is subject to change. </p>
+  <h2>Summary</h2>
+  <p>Currently, <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-params.html#struct_tf_lite_opaque_delegate_params">TfLiteOpaqueDelegateParams</a> has to be allocated in a way that it's trivially destructable. It will be stored as <code>builtin_data</code> field in <code><a href="/lite/api_docs/c/struct/tf-lite-node.html#struct_tf_lite_node">TfLiteNode</a></code> of the delegate node.</p>
+  <p>See also the <code>CreateOpaqueDelegateParams</code> function in <code>subgraph.cc</code> details. </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_params_1a4bb8eeea7b77182c934f4b073dfcf029">delegate</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_params_1a2288e943be3693269273cf2e279fe2df">delegate_data</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_params_1aa10ce130e68d235f858051c440b9e98e">input_tensors</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_params_1a53216b38bdf9a7c74461d77a8858ba90">nodes_to_replace</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_opaque_delegate_params_1a4c98e60c927df9bed5e2a19b45be7e21">output_tensors</a></code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> *</code>
+        </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_opaque_delegate_params_1a4bb8eeea7b77182c934f4b073dfcf029">
+    <h3>delegate</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> * TfLiteOpaqueDelegateParams::delegate</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_params_1a2288e943be3693269273cf2e279fe2df">
+    <h3>delegate_data</h3>
+    <pre class="prettyprint">void * TfLiteOpaqueDelegateParams::delegate_data</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_params_1aa10ce130e68d235f858051c440b9e98e">
+    <h3>input_tensors</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteOpaqueDelegateParams::input_tensors</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_params_1a53216b38bdf9a7c74461d77a8858ba90">
+    <h3>nodes_to_replace</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteOpaqueDelegateParams::nodes_to_replace</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_opaque_delegate_params_1a4c98e60c927df9bed5e2a19b45be7e21">
+    <h3>output_tensors</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/struct/tf-lite-int-array.html#struct_tf_lite_int_array">TfLiteIntArray</a> * TfLiteOpaqueDelegateParams::output_tensors</pre>
+    <div />
+  </div>
+</body>
+</html>

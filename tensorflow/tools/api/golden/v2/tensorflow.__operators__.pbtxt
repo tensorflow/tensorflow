@@ -1,0 +1,23 @@
+path: "tensorflow.__operators__"
+tf_module {
+  member_method {
+    name: "add"
+    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "eq"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "getitem"
+    argspec: "args=[\'tensor\', \'slice_spec\', \'var\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ne"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ragged_getitem"
+    argspec: "args=[\'rt_input\', \'key\'], varargs=None, keywords=None, defaults=None"
+  }
+}

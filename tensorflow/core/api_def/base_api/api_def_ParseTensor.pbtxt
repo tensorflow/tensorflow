@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "ParseTensor"
+  in_arg {
+    name: "serialized"
+    description: <<END
+A scalar string containing a serialized TensorProto proto.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A Tensor of type `out_type`.
+END
+  }
+  attr {
+    name: "out_type"
+    description: <<END
+The type of the serialized tensor.  The provided type must match the
+type of the serialized tensor and no implicit conversion will take place.
+END
+  }
+  summary: "Transforms a serialized tensorflow.TensorProto proto into a Tensor."
+}

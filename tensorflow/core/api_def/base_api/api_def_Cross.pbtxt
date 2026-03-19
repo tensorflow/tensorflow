@@ -1,0 +1,27 @@
+op {
+  graph_op_name: "Cross"
+  in_arg {
+    name: "a"
+    description: <<END
+A tensor containing 3-element vectors.
+END
+  }
+  in_arg {
+    name: "b"
+    description: <<END
+Another tensor, of same type and shape as `a`.
+END
+  }
+  out_arg {
+    name: "product"
+    description: <<END
+Pairwise cross product of the vectors in `a` and `b`.
+END
+  }
+  summary: "Compute the pairwise cross product."
+  description: <<END
+`a` and `b` must be the same shape; they can either be simple 3-element vectors,
+or any shape where the innermost dimension is 3. In the latter case, each pair
+of corresponding 3-element vectors is cross-multiplied independently.
+END
+}

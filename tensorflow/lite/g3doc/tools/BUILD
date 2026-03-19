@@ -1,0 +1,27 @@
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
+    licenses = ["notice"],
+)
+
+py_binary(
+    name = "build_py_api_docs",
+    srcs = ["build_py_api_docs.py"],
+    strict_deps = True,
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+pytype_strict_binary(
+    name = "build_java_api_docs",
+    srcs = ["build_java_api_docs.py"],
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)

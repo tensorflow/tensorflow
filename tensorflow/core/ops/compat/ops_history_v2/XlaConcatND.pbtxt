@@ -1,0 +1,34 @@
+op {
+  name: "XlaConcatND"
+  input_arg {
+    name: "inputs"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_concats"
+    type: "list(int)"
+  }
+  attr {
+    name: "paddings"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+}

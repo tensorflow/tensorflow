@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/stream_executor/launch_dim.proto";
+
+message LaunchDimensionsProto {
+  stream_executor.BlockDimProto block_counts = 1;
+  stream_executor.ThreadDimProto thread_counts_per_block = 2;
+}

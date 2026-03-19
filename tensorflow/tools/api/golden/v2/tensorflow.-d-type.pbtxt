@@ -1,0 +1,122 @@
+path: "tensorflow.DType"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  is_instance: "<class \'tensorflow.python.framework._dtypes.DType\'>"
+  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
+  member {
+    name: "as_datatype_enum"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "as_numpy_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "base_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_bool"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_complex"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_floating"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_integer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_numeric"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_numpy_compatible"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_quantized"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_unsigned"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "limits"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "max"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "min"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "real_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "size"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'type_enum\', \'handle_data\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "cast"
+    argspec: "args=[\'self\', \'value\', \'cast_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_as_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_from_proto"
+    argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_type_proto"
+    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flatten"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_tensors"
+    argspec: "args=[\'self\', \'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_subtype_of"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_common_supertype"
+    argspec: "args=[\'self\', \'types\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "placeholder_value"
+    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_tensors"
+    argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+}

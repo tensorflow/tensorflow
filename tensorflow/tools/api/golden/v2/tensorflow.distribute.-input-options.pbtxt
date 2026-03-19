@@ -1,0 +1,31 @@
+path: "tensorflow.distribute.InputOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.InputOptions\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.InputOptions\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "experimental_fetch_to_device"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "experimental_per_replica_buffer_size"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "experimental_place_dataset_on_device"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "experimental_replication_mode"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

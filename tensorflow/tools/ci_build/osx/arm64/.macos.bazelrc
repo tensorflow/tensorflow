@@ -1,0 +1,40 @@
+# This bazelrc can build a CPU-supporting TF package.
+
+# Set DEVELOPER_DIR to select a version of Xcode.
+build --action_env  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+
+# Build TensorFlow v2
+build --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
+
+# Disable nccl support for macOS.
+build --define=no_nccl_support=true
+
+# Suppress all warning messages
+build --output_filter=^$
+
+# Disable MKL
+build --define=tensorflow_mkldnn_contraction_kernel=0
+
+# Settings for MacOS on ARM CPUs.
+build --cpu=darwin_arm64
+build --macos_minimum_os=12.0
+build --action_env MACOSX_DEPLOYMENT_TARGET=12.0
+
+# Test-related settings below this point.
+test --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
+
+# Increase the test timeout as tests often take longer on mac.
+test --test_timeout=300,450,1200,3600
+test --test_size_filters=small,medium
+
+# Only build what is required to run the tests
+test --build_tests_only --keep_going
+
+# "nonpip" tests are regular py_test tests.
+# Pass --config=nonpip_filters to run the same suite of tests. If you want to run just
+# one test for investigation, you don't need --config=nonpip_filters; just run the
+# bazel test invocation as normal.
+test:nonpip_filters --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:nonpip_filters --build_tag_filters=-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_oss_py310,-nomac,-no_mac,-mac_excluded,-v1only,-gpu,-tpu,-benchmark-test,-no_mac_arm64,-no_aarch64
+test:nonpip_filters --test_lang_filters=cc,py
+test:nonpip --config=nonpip_filters -- //tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xla/service/gpu/... -//tensorflow/compiler/xla/tools/multihost_hlo_runner/... -//tensorflow/core/tpu/... -//tensorflow/go/... -//tensorflow/java/... -//tensorflow/tools/toolchains/... -//tensorflow/lite/... -//tensorflow/compiler/aot/... -//tensorflow/compiler/xla/tests:local_client_aot_test_computation -//tensorflow/compiler/xla/tests:local_client_aot_test_helper -//tensorflow/compiler/xla/tests:local_client_aot_test

@@ -1,0 +1,10 @@
+path: "tensorflow.distribute.experimental.coordinator.PerWorkerValues"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.coordinator.values.PerWorkerValues\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'values\'], varargs=None, keywords=None, defaults=None"
+  }
+}

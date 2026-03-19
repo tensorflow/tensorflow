@@ -1,0 +1,29 @@
+op {
+  name: "DecodeWav"
+  input_arg {
+    name: "contents"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "audio"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "sample_rate"
+    type: DT_INT32
+  }
+  attr {
+    name: "desired_channels"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "desired_samples"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}

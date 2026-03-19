@@ -1,0 +1,18 @@
+path: "tensorflow.optimizers.schedules.ExponentialDecay"
+tf_class {
+  is_instance: "<class \'tf_keras.optimizers.schedules.learning_rate_schedule.ExponentialDecay\'>"
+  is_instance: "<class \'tf_keras.optimizers.schedules.learning_rate_schedule.LearningRateSchedule\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'initial_learning_rate\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,44 @@
+--- /dev/null	2025-08-20 16:29:02.164000374 +0000
++++ b/select_k_smoke_test.cu.cc	2025-08-20 20:54:24.000000000 +0000
+@@ -0,0 +1,41 @@
++#include <cuda_runtime.h>
++#include <gtest/gtest.h>
++
++#include "select_k_runner.hpp"
++
++TEST(SelectKWrapperTest, BasicTopK) {
++  raft::resources res;
++
++  const uint32_t batch = 8;
++  const uint32_t n = 8192;
++  const uint32_t k = 16;
++
++  float* d_data_in = nullptr;
++  float* d_data_out = nullptr;
++  uint32_t* d_indices_out = nullptr;
++
++  ASSERT_EQ(cudaMalloc(&d_data_in, batch * n * sizeof(float)), cudaSuccess);
++  ASSERT_EQ(cudaMalloc(&d_data_out, batch * k * sizeof(float)), cudaSuccess);
++  ASSERT_EQ(cudaMalloc(&d_indices_out, batch * k * sizeof(uint32_t)),
++            cudaSuccess);
++
++  // host input: 0..n-1
++  std::vector<float> h_data_in(batch * n);
++  for (uint32_t row = 0; row < batch; ++row) {
++    for (uint32_t col = 0; col < n; ++col) {
++      h_data_in[row * n + col] = static_cast<float>(col);
++    }
++  }
++  ASSERT_EQ(
++      cudaMemcpy(d_data_in, h_data_in.data(), h_data_in.size() * sizeof(float),
++                 cudaMemcpyHostToDevice),
++      cudaSuccess);
++
++  // call wrapper
++  myraft::run_select_k(res, d_data_in, d_data_out, d_indices_out, batch, n, k,
++                       /*select_min=*/false, /*sorted=*/true);
++
++  cudaFree(d_data_in);
++  cudaFree(d_data_out);
++  cudaFree(d_indices_out);
++}

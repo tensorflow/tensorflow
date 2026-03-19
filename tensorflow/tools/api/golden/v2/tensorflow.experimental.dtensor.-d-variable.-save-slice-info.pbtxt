@@ -1,0 +1,21 @@
+path: "tensorflow.experimental.dtensor.DVariable.SaveSliceInfo"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.variables.SaveSliceInfo\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "spec"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'full_name\', \'full_shape\', \'var_offset\', \'var_shape\', \'save_slice_info_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_spec"
+    argspec: "args=[\'cls\', \'spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_proto"
+    argspec: "args=[\'self\', \'export_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

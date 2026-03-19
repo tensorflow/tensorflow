@@ -1,0 +1,8 @@
+op {
+  name: "CloseSummaryWriter"
+  input_arg {
+    name: "writer"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}

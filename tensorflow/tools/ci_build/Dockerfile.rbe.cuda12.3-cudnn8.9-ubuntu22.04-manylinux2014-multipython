@@ -1,0 +1,47 @@
+# Dockerfile to build a manylinux 2014 compliant cross-compiler.
+#
+# Builds a devtoolset gcc/libstdc++ that targets manylinux 2014 compatible
+# glibc (2.12) and system libstdc++ (4.4).
+#
+# To push a new version, run:
+# $ docker build -f Dockerfile.rbe.cuda12.3-cudnn8.9-ubuntu22.04-manylinux2014-multipython \
+#  --tag "gcr.io/tensorflow-testing/nosla-cuda12.3-cudnn8.9-ubuntu22.04-manylinux2014-multipython" .
+# $ docker push gcr.io/tensorflow-testing/nosla-cuda12.3-cudnn8.9-ubuntu22.04-manylinux2014-multipython
+
+FROM gcr.io/tensorflow-sigs/build@sha256:dddcaf30321e9007103dce75c51b83fea3c06de462fcf41e7c6ae93f37fc3545
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY install/install_bootstrap_deb_packages.sh /install/
+RUN /install/install_bootstrap_deb_packages.sh
+
+COPY install/install_deb_packages.sh /install/
+RUN /install/install_deb_packages.sh
+
+RUN apt-get update && apt-get install -y \
+    libbz2-dev \
+    libffi-dev \
+    libgdbm-dev \
+    libncurses5-dev \
+    libnss3-dev \
+    libreadline-dev \
+    libsqlite3-dev \
+    patchelf \
+      && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY install/build_and_install_python.sh /install/
+RUN /install/build_and_install_python.sh "3.9.18"
+RUN /install/build_and_install_python.sh "3.10.13"
+RUN /install/build_and_install_python.sh "3.11.6"
+RUN /install/build_and_install_python.sh "3.12.3"
+
+COPY install/install_pip_packages_by_version.sh /install/
+# https://github.com/numpy/numpy/issues/22623 for `SETUPTOOLS_USE_DISTUTILS`.
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.11" "jax"
+RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.12" "jax"
+
+COPY install/install_clang_18.sh /install/
+RUN /install/install_clang_18.sh

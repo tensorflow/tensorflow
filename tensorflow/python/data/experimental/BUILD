@@ -1,0 +1,29 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],
+)
+
+py_library(
+    name = "experimental",
+    srcs = ["__init__.py"],
+    strict_deps = True,
+    deps = [
+        "//tensorflow/python/data/experimental/ops:dataset_ops",
+        "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/experimental/ops:iterator_model_ops",
+        "//tensorflow/python/data/experimental/ops:iterator_ops",
+        "//tensorflow/python/data/experimental/ops:lookup_ops",
+        "//tensorflow/python/data/experimental/ops:parsing_ops",
+        "//tensorflow/python/data/experimental/ops:random_ops",
+        "//tensorflow/python/data/experimental/service",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/data/ops:optional_ops",
+        "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/framework:type_spec",
+        "//tensorflow/python/util:all_util",
+    ],
+)

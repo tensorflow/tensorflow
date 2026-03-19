@@ -1,0 +1,7 @@
+// This proto describes the format of the output profile file from
+// the HLO stats tool.
+syntax = "proto2";
+
+package tensorflow.profiler.hlo_stats;
+
+import public "plugin/xprof/protobuf/hlo_stats.proto";

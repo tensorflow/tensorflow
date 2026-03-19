@@ -1,0 +1,29 @@
+// RUN: gpu_test_correctness %s --bijection_inputs=scatter:2
+
+add {
+  p0 = s4[] parameter(0)
+  p1 = s4[] parameter(1)
+  ROOT sum = s4[] add(p0, p1)
+}
+
+ scatter_fusion {
+  %p0 = s4[8,128]{1,0:E(4)} parameter(0)
+
+  // Generate index values [{0, 0}, {0, 1}, ..., {0, 63}]
+  iota = s32[64]{0} iota(), iota_dimension=0
+  zero = s32[] constant(0)
+  broadcast = s32[64]{0} broadcast(zero)
+  reshape_0 = s32[64,1]{1,0} reshape(broadcast)
+  reshape_1 = s32[64,1]{1,0} reshape(iota)
+  concat = s32[64,2]{1,0} concatenate(reshape_0, reshape_1), dimensions={1}
+
+  %p1 = s4[64,4,1]{2,1,0:E(4)} parameter(1)
+
+  ROOT %scatter = s4[8,128]{1,0:E(4)} scatter(%p0, concat, %p1),
+    update_window_dims={1,2},
+    inserted_window_dims={},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=1,
+    to_apply=add,
+    unique_indices=true
+}

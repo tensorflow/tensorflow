@@ -1,0 +1,18 @@
+path: "tensorflow.train.experimental.MaxShardSizePolicy"
+tf_class {
+  is_instance: "<class \'tensorflow.python.checkpoint.sharding.sharding_policies.MaxShardSizePolicy\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.sharding.sharding_util.ShardingCallback\'>"
+  is_instance: "<class \'abc.ABC\'>"
+  member {
+    name: "MaxShardSizePartitioner"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "description"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'max_shard_size\'], varargs=None, keywords=None, defaults=None"
+  }
+}

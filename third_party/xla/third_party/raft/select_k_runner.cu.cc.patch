@@ -1,0 +1,36 @@
+--- /dev/null	2025-08-20 16:29:02.164000374 +0000
++++ b/select_k_runner.cu.cc	2025-08-20 20:47:12.000000000 +0000
+@@ -0,0 +1,33 @@
++#include <cstdint>
++#include <optional>
++
++#include "raft/core/resources.hpp"
++#include "raft/matrix/select_k.cuh"
++
++namespace myraft {
++
++// Simple wrapper around raft::matrix::select_k
++void run_select_k(raft::resources const& res, const float* d_data_in,
++                  float* d_data_out, std::uint32_t* d_indices_out,
++                  std::uint32_t batch, std::uint32_t n, std::uint32_t k,
++                  bool select_min, bool sorted) {
++  auto input_view =
++      raft::make_device_matrix_view<const float, uint32_t, raft::row_major>(
++          d_data_in, batch, n);
++
++  auto output_values_view =
++      raft::make_device_matrix_view<float, uint32_t, raft::row_major>(
++          d_data_out, batch, k);
++
++  auto output_indices_view =
++      raft::make_device_matrix_view<uint32_t, uint32_t, raft::row_major>(
++          d_indices_out, batch, k);
++
++  raft::matrix::SelectAlgo algo = raft::matrix::SelectAlgo::kWarpDistributedShm;
++
++  raft::matrix::select_k<float, uint32_t>(
++      res, input_view, std::nullopt, output_values_view, output_indices_view,
++      select_min, sorted, algo);
++}
++
++}  // namespace myraft

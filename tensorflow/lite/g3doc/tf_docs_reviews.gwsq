@@ -1,0 +1,5 @@
+send_cls_to('tf-docs-infra+config-reviews');
+
+define Main {
+  reassign_to_list(['anirudhrs', 'joefernandez', 'markdaoust']);
+}

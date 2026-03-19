@@ -1,0 +1,12 @@
+[pep8]
+
+# Skip errors and warnings
+# E111 indentation is not a multiple of four
+# E114 indentation is not a multiple of four (comment)
+ignore=E114,E111
+
+# Set maximum allowed line length (default: 79)
+max-line-length=80
+
+# Set the error format [default|pylint|<custom>]
+format=pylint

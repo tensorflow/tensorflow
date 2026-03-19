@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package mlir.kernel_gen;
+
+// Protocolbuffer representing a compilation input and output. This will be used
+// for caching JIT compiles of kernels.
+message CompilationCacheItem {
+  string original_module = 1;
+  string result_module = 2;
+}

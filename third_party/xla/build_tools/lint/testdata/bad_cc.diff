@@ -1,0 +1,24 @@
+diff --git a/src/dir/bad.cc b/src/dir/bad.cc
+new file mode 100644
+index 0000000..2508a76
+--- /dev/null
++++ b/src/dir/bad.cc
+@@ -0,0 +1,7 @@
++// This code is bad!
++
++using Make_Unique = std::make_unique; // OK
++
++std::unique_ptr<int> add(int a, int b) {
++  return Make_Unique<int>(a + b); // OK. Fixed now!
++}
+diff --git a/src/important.cc b/src/important.cc
+new file mode 100644
+index 0000000..dc06702
+--- /dev/null
++++ b/src/important.cc
+@@ -0,0 +1,5 @@
++// Here we care if we find prohibited regexes.
++
++std::unique_ptr<int> add(int a, int b) {
++  return std::make_unique<int>(a + b);
++}

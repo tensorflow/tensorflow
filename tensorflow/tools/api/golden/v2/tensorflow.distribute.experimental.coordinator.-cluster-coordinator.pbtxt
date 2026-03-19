@@ -1,0 +1,33 @@
+path: "tensorflow.distribute.experimental.coordinator.ClusterCoordinator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.coordinator.cluster_coordinator.ClusterCoordinator\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "strategy"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'strategy\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "create_per_worker_dataset"
+    argspec: "args=[\'self\', \'dataset_fn\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "done"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "fetch"
+    argspec: "args=[\'self\', \'val\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "join"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "schedule"
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

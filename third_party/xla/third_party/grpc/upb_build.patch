@@ -1,0 +1,13 @@
+diff --git a/BUILD b/BUILD
+index ad85b202..89e17443 100644
+--- a/BUILD
++++ b/BUILD
+@@ -24,7 +24,7 @@ exports_files([
+ 
+ CPPOPTS = [
+     # copybara:strip_for_google3_begin
+-    "-Werror",
++    "-w",
+     "-Wno-long-long",
+     # copybara:strip_end
+ ]

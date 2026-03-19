@@ -1,0 +1,9 @@
+path: "tensorflow.lite.TargetSpec"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.python.lite.TargetSpec\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'supported_ops\', \'supported_types\', \'experimental_select_user_tf_ops\', \'experimental_supported_backends\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+}

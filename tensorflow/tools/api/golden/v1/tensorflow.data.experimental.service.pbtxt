@@ -1,0 +1,31 @@
+path: "tensorflow.data.experimental.service"
+tf_module {
+  member {
+    name: "CrossTrainerCache"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DispatcherConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ShardingPolicy"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "WorkerConfig"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "distribute"
+    argspec: "args=[\'processing_mode\', \'service\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'data_transfer_protocol\', \'compression\', \'cross_trainer_cache\', \'target_workers\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'AUTO\', \'None\', \'AUTO\'], "
+  }
+  member_method {
+    name: "from_dataset_id"
+    argspec: "args=[\'processing_mode\', \'service\', \'dataset_id\', \'element_spec\', \'job_name\', \'consumer_index\', \'num_consumers\', \'max_outstanding_requests\', \'data_transfer_protocol\', \'cross_trainer_cache\', \'target_workers\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'AUTO\'], "
+  }
+  member_method {
+    name: "register_dataset"
+    argspec: "args=[\'service\', \'dataset\', \'compression\', \'dataset_id\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\'], "
+  }
+}

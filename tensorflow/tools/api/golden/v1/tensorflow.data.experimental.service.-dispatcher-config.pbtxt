@@ -1,0 +1,51 @@
+path: "tensorflow.data.experimental.service.DispatcherConfig"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.DispatcherConfig\'>"
+  is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.DispatcherConfig\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "fault_tolerant_mode"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "job_gc_check_interval_ms"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "job_gc_timeout_ms"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "port"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "protocol"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "work_dir"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "worker_addresses"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "worker_max_concurrent_snapshots"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "worker_timeout_ms"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

@@ -1,0 +1,21 @@
+path: "tensorflow.__internal__.saved_model.load.VersionedTypeRegistration"
+tf_class {
+  is_instance: "<class \'tensorflow.python.saved_model.revived_types.VersionedTypeRegistration\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'object_factory\', \'version\', \'min_producer_version\', \'min_consumer_version\', \'bad_consumers\', \'setter\'], varargs=None, keywords=None, defaults=[\'None\', \'<built-in function setattr>\'], "
+  }
+  member_method {
+    name: "from_proto"
+    argspec: "args=[\'self\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "should_load"
+    argspec: "args=[\'self\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

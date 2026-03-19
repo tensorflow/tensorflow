@@ -1,0 +1,20 @@
+op {
+  name: "XlaRecvFromHost"
+  output_arg {
+    name: "output"
+    type_attr: "Toutput"
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+  }
+  attr {
+    name: "key"
+    type: "string"
+  }
+  is_stateful: true
+}

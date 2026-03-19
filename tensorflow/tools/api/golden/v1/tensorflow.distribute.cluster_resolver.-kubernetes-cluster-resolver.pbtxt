@@ -1,0 +1,34 @@
+path: "tensorflow.distribute.cluster_resolver.KubernetesClusterResolver"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.kubernetes_cluster_resolver.KubernetesClusterResolver\'>"
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.cluster_resolver.ClusterResolver\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "environment"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_id"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_type"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'job_to_label_mapping\', \'tf_server_port\', \'rpc_layer\', \'override_client\', \'executable_location\'], varargs=None, keywords=None, defaults=[\'None\', \'8470\', \'grpc\', \'None\', \'ExecutableLocation.WITHIN_CLUSTER\'], "
+  }
+  member_method {
+    name: "cluster_spec"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "master"
+    argspec: "args=[\'self\', \'task_type\', \'task_id\', \'rpc_layer\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "num_accelerators"
+    argspec: "args=[\'self\', \'task_type\', \'task_id\', \'config_proto\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+}

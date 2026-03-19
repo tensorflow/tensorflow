@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "LookupTableFindV2"
+  endpoint {
+    name: "LookupTableFind"
+  }
+}

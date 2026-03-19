@@ -1,0 +1,123 @@
+path: "tensorflow.TensorShape"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.tensor_shape.TensorShape\'>"
+  is_instance: "<class \'tensorflow.python.types.trace.TraceType\'>"
+  is_instance: "<class \'tensorflow.core.function.trace_type.serialization.Serializable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dims"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ndims"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "rank"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'dims\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_list"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_has_rank"
+    argspec: "args=[\'self\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_is_fully_defined"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "assert_same_rank"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cast"
+    argspec: "args=[\'self\', \'value\', \'cast_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "concatenate"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_as_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_from_proto"
+    argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_type_proto"
+    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flatten"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_tensors"
+    argspec: "args=[\'self\', \'tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_compatible_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_fully_defined"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_subtype_of"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "merge_with"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_common_supertype"
+    argspec: "args=[\'self\', \'others\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "most_specific_compatible_shape"
+    argspec: "args=[\'self\', \'other\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "num_elements"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "placeholder_value"
+    argspec: "args=[\'self\', \'placeholder_context\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_tensors"
+    argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_rank"
+    argspec: "args=[\'self\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_rank_at_least"
+    argspec: "args=[\'self\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_rank_at_most"
+    argspec: "args=[\'self\', \'rank\'], varargs=None, keywords=None, defaults=None"
+  }
+}

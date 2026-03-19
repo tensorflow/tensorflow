@@ -1,0 +1,42 @@
+op {
+  graph_op_name: "VarHandleOp"
+  attr {
+    name: "container"
+    description: <<END
+the container this variable is placed in.
+END
+  }
+  attr {
+    name: "shared_name"
+    description: <<END
+the name by which this variable is referred to.
+END
+  }
+  attr {
+    name: "debug_name"
+    description: <<END
+the user-given name, which still applies in anonymous mode.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+the type of this variable. Must agree with the dtypes
+of all ops using this variable.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+The (possibly partially specified) shape of this variable.
+END
+  }
+  attr {
+    name: "allowed_devices"
+    description: <<END
+DEPRECATED. The allowed devices containing the resource variable. Set when the
+output ResourceHandle represents a per-replica/partitioned resource variable.
+END
+  }
+  summary: "Creates a handle to a Variable resource."
+}

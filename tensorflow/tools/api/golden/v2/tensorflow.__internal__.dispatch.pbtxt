@@ -1,0 +1,15 @@
+path: "tensorflow.__internal__.dispatch"
+tf_module {
+  member {
+    name: "GlobalOpDispatcher"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OpDispatcher"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "add_dispatch_support"
+    argspec: "args=[\'target\', \'iterable_parameters\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

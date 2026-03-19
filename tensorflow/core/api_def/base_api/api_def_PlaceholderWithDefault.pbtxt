@@ -1,0 +1,28 @@
+op {
+  graph_op_name: "PlaceholderWithDefault"
+  in_arg {
+    name: "input"
+    description: <<END
+The default value to produce when `output` is not fed.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A placeholder tensor that defaults to `input` if it is not fed.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of elements in the tensor.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+The (possibly partial) shape of the tensor.
+END
+  }
+  summary: "A placeholder op that passes through `input` when its output is not fed."
+}

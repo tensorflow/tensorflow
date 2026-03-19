@@ -1,0 +1,6 @@
+// This proto is used for analysis of TensorFlow runtime memory profile.
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import public "plugin/xprof/protobuf/memory_profile.proto";

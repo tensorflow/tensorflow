@@ -1,0 +1,39 @@
+op {
+  graph_op_name: "DecodePng"
+  in_arg {
+    name: "contents"
+    description: <<END
+0-D.  The PNG-encoded image.
+END
+  }
+  out_arg {
+    name: "image"
+    description: <<END
+3-D with shape `[height, width, channels]`.
+END
+  }
+  attr {
+    name: "channels"
+    description: <<END
+Number of color channels for the decoded image.
+END
+  }
+  summary: "Decode a PNG-encoded image to a uint8 or uint16 tensor."
+  description: <<END
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the PNG-encoded image.
+*   1: output a grayscale image.
+*   3: output an RGB image.
+*   4: output an RGBA image.
+
+If needed, the PNG-encoded image is transformed to match the requested number
+of color channels.
+
+This op also supports decoding JPEGs and non-animated GIFs since the interface
+is the same, though it is cleaner to use `tf.io.decode_image`.
+END
+}

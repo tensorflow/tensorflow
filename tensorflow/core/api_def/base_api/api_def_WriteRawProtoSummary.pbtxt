@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "WriteRawProtoSummary"
+  visibility: HIDDEN
+  summary: "Writes a serialized proto summary."
+  description: <<END
+Writes `tensor`, a serialized proto at `step` using summary `writer`.
+END
+}

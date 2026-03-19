@@ -1,0 +1,32 @@
+path: "tensorflow.lite.TFLiteConverter"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterV2\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteFrozenGraphConverterV2\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBaseV2\'>"
+  is_instance: "<class \'tensorflow.lite.python.lite.TFLiteConverterBase\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'funcs\', \'trackable_obj\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "convert"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_from_jax"
+    argspec: "args=[\'cls\', \'serving_funcs\', \'inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_concrete_functions"
+    argspec: "args=[\'cls\', \'funcs\', \'trackable_obj\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "from_keras_model"
+    argspec: "args=[\'cls\', \'model\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_saved_model"
+    argspec: "args=[\'cls\', \'saved_model_dir\', \'signature_keys\', \'tags\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

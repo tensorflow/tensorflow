@@ -1,0 +1,37 @@
+path: "tensorflow.lookup.StaticVocabularyTable"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.lookup_ops.StaticVocabularyTable\'>"
+  is_instance: "<class \'tensorflow.python.ops.lookup_ops.LookupInterface\'>"
+  is_instance: "<class \'tensorflow.python.trackable.resource.TrackableResource\'>"
+  is_instance: "<class \'tensorflow.python.trackable.resource.CapturableResource\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "key_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "resource_handle"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "value_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'initializer\', \'num_oov_buckets\', \'lookup_key_dtype\', \'name\', \'experimental_is_anonymous\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "lookup"
+    argspec: "args=[\'self\', \'keys\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "size"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

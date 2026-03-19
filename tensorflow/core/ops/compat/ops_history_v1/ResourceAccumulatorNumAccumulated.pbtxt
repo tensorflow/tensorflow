@@ -1,0 +1,12 @@
+op {
+  name: "ResourceAccumulatorNumAccumulated"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "num_accumulated"
+    type: DT_INT32
+  }
+  is_stateful: true
+}

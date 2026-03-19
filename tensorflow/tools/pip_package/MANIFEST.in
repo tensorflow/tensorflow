@@ -1,0 +1,15 @@
+include LICENSE
+include README
+recursive-include * *.py
+recursive-include * *.pyd
+recursive-include * *.pyi
+recursive-include * *.pd
+recursive-include * *.so.[0-9]
+recursive-include * *.dylib
+recursive-include * *.dll
+recursive-include * *.lib
+recursive-include * *.csv
+recursive-include tensorflow *
+recursive-exclude tensorflow *.md
+recursive-exclude tensorflow/_api/ *
+include tensorflow/_api/v2/api_packages.txt

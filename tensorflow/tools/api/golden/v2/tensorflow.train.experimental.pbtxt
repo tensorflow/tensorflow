@@ -1,0 +1,23 @@
+path: "tensorflow.train.experimental"
+tf_module {
+  member {
+    name: "MaxShardSizePolicy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PythonState"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ShardByTaskPolicy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ShardableTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ShardingCallback"
+    mtype: "<type \'type\'>"
+  }
+}

@@ -1,0 +1,22 @@
+path: "tensorflow.mixed_precision.LossScale"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.experimental.loss_scale.LossScale\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "update"
+    argspec: "args=[\'self\', \'grads\'], varargs=None, keywords=None, defaults=None"
+  }
+}

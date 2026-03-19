@@ -1,0 +1,13 @@
+path: "tensorflow.autodiff.ForwardAccumulator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.eager.forwardprop.ForwardAccumulator\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'primals\', \'tangents\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "jvp"
+    argspec: "args=[\'self\', \'primals\', \'unconnected_gradients\'], varargs=None, keywords=None, defaults=[\'UnconnectedGradients.NONE\'], "
+  }
+}

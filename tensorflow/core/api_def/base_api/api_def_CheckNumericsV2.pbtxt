@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "CheckNumericsV2"
+  visibility: HIDDEN
+  attr {
+    name: "message"
+    description: <<END
+Prefix of the error message.
+END
+  }
+  summary: "Checks a tensor for NaN, -Inf and +Inf values."
+  description: <<END
+When run, reports an `InvalidArgument` error if `tensor` has any values
+that are not a number (NaN) or infinity (Inf). Otherwise, returns the input
+tensor. Unlike CheckNumerics (V1), CheckNumericsV2 distinguishes -Inf and +Inf
+in the errors it throws.
+END
+}

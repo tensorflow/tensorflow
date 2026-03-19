@@ -1,0 +1,7 @@
+// This proto describes the types of hardware profiled by the TensorFlow
+// profiler.
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import public "plugin/xprof/protobuf/hardware_types.proto";

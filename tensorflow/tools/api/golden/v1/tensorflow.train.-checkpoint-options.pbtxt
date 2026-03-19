@@ -1,0 +1,33 @@
+path: "tensorflow.train.CheckpointOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.checkpoint.checkpoint_options.CheckpointOptions\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "enable_async"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
+    name: "experimental_enable_async_checkpoint"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
+    name: "experimental_io_device"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
+    name: "experimental_sharding_callback"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
+    name: "experimental_skip_slot_variables"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
+    name: "experimental_write_callbacks"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'experimental_io_device\', \'experimental_enable_async_checkpoint\', \'experimental_write_callbacks\', \'enable_async\', \'experimental_skip_slot_variables\', \'experimental_sharding_callback\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'False\', \'False\', \'None\'], "
+  }
+}

@@ -1,0 +1,8 @@
+path: "tensorflow.__internal__.CompositeTensor"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+}

@@ -1,0 +1,63 @@
+path: "tensorflow.distribute.experimental"
+tf_module {
+  member {
+    name: "CentralStorageStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CollectiveCommunication"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "CollectiveHints"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CommunicationImplementation"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "CommunicationOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MultiWorkerMirroredStrategy"
+    mtype: "<class \'tensorflow.python.distribute.collective_all_reduce_strategy._CollectiveAllReduceStrategyExperimentalMeta\'>"
+  }
+  member {
+    name: "ParameterServerStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PreemptionCheckpointHandler"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PreemptionWatcher"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TerminationConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ValueContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "coordinator"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "partitioners"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "rpc"
+    mtype: "<type \'module\'>"
+  }
+}

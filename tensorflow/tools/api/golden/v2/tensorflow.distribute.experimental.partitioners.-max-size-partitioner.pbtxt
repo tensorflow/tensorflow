@@ -1,0 +1,10 @@
+path: "tensorflow.distribute.experimental.partitioners.MaxSizePartitioner"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.sharded_variable.MaxSizePartitioner\'>"
+  is_instance: "<class \'tensorflow.python.distribute.sharded_variable.Partitioner\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'max_shard_bytes\', \'max_shards\', \'bytes_per_string\'], varargs=None, keywords=None, defaults=[\'None\', \'16\'], "
+  }
+}

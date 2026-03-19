@@ -1,0 +1,49 @@
+path: "tensorflow.tpu.experimental.DeviceAssignment"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.device_assignment.DeviceAssignment\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "core_assignment"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_cores_per_replica"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_replicas"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "topology"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'topology\', \'core_assignment\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'cls\', \'topology\', \'computation_shape\', \'computation_stride\', \'num_replicas\', \'device_order_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\', \'0\'], "
+  }
+  member_method {
+    name: "coordinates"
+    argspec: "args=[\'self\', \'replica\', \'logical_core\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "host_device"
+    argspec: "args=[\'self\', \'replica\', \'logical_core\', \'job\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "lookup_replicas"
+    argspec: "args=[\'self\', \'task_id\', \'logical_core\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "tpu_device"
+    argspec: "args=[\'self\', \'replica\', \'logical_core\', \'job\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "tpu_ordinal"
+    argspec: "args=[\'self\', \'replica\', \'logical_core\'], varargs=None, keywords=None, defaults=[\'0\', \'0\'], "
+  }
+}

@@ -1,0 +1,35 @@
+op {
+  graph_op_name: "DecodeWebP"
+  in_arg {
+    name: "contents"
+    description: <<END
+0-D.  The WebP-encoded image.
+END
+  }
+  out_arg {
+    name: "image"
+    description: <<END
+4-D with shape `[num_frames, height, width, channels]`.
+END
+  }
+  attr {
+    name: "channels"
+    description: <<END
+Number of color channels for the decoded image.
+END
+  }
+  summary: "Decode a WebP-encoded image to a uint8 tensor."
+  description: <<END
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the WebP-encoded image.
+*   3: output an RGB image.
+*   4: output an RGBA image.
+
+The number of channels must currently match that of the underlying file.
+For WebP animations, only 4-channel RGBA is supported.
+END
+}

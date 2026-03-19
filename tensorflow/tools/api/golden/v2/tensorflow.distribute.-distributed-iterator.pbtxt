@@ -1,0 +1,21 @@
+path: "tensorflow.distribute.DistributedIterator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.distribute.DistributedIteratorInterface\'>"
+  is_instance: "<class \'tensorflow.python.types.distribute.Iterator\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "element_spec"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "get_next"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_next_as_optional"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,100 @@
+chunk_index: 0
+chunked_fields {
+  field_tag {
+    field: 2
+  }
+  field_tag {
+    index: 0
+  }
+  message {
+    chunk_index: 1
+    chunked_fields {
+      field_tag {
+        field: 2
+      }
+      field_tag {
+        index: 0
+      }
+      message {
+        chunk_index: 2
+        chunked_fields {
+          field_tag {
+            field: 2
+          }
+          field_tag {
+            index: 0
+          }
+          message {
+            chunk_index: 4
+          }
+        }
+        chunked_fields {
+          field_tag {
+            field: 2
+          }
+          field_tag {
+            index: 1
+          }
+          message {
+            chunk_index: 5
+          }
+        }
+        chunked_fields {
+          field_tag {
+            field: 2
+          }
+          field_tag {
+            index: 2
+          }
+          message {
+            chunk_index: 6
+          }
+        }
+      }
+    }
+    chunked_fields {
+      field_tag {
+        field: 2
+      }
+      field_tag {
+        index: 1
+      }
+      message {
+        chunk_index: 3
+        chunked_fields {
+          field_tag {
+            field: 2
+          }
+          field_tag {
+            index: 0
+          }
+          message {
+            chunk_index: 7
+          }
+        }
+        chunked_fields {
+          field_tag {
+            field: 2
+          }
+          field_tag {
+            index: 1
+          }
+          message {
+            chunk_index: 8
+          }
+        }
+        chunked_fields {
+          field_tag {
+            field: 2
+          }
+          field_tag {
+            index: 2
+          }
+          message {
+            chunk_index: 9
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,7 @@
+HloModule dot_module
+
+ENTRY %main (arg0: f32[3,4], arg1: f32[4,5]) -> f32[3,5] {
+  %arg0 = f32[3,4]{0,1} parameter(0)
+  %arg1 = f32[4,5]{0,1} parameter(1)
+  ROOT %result = f32[3,5]{0,1} dot(%arg0, %arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}

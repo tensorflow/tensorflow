@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteDelegate Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteDelegate</h1>
+  <code>#include &lt;common.h&gt;</code>
+  <p>WARNING: This is an experimental interface that is subject to change. </p>
+  <h2>Summary</h2>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_delegate_1a4fee5ac7e1ba441d4c364c323930c8d3">CopyFromBufferHandle</a>)(TfLiteContext *context, struct TfLiteDelegate *delegate, TfLiteBufferHandle buffer_handle, TfLiteTensor *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Copy the data from delegate buffer handle into raw memory of the given <code>tensor</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_delegate_1a94f6b1d6e2c16a2e9944012a93f5e70d">CopyToBufferHandle</a>)(TfLiteContext *context, struct TfLiteDelegate *delegate, TfLiteBufferHandle buffer_handle, TfLiteTensor *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Copy the data from raw memory of the given <code>tensor</code> to delegate buffer handle. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_delegate_1a66da14187ba32cbfd8e65f5b06d7c0ea">FreeBufferHandle</a>)(TfLiteContext *context, struct TfLiteDelegate *delegate, TfLiteBufferHandle *handle)</code>
+      </td>
+      <td>
+        <div>
+          <code>void(*</code>
+        </div>
+        <div>Free the Delegate Buffer Handle. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_delegate_1aa5f8c5a4ceb1bfb26c4d33a33d2afd3a">Prepare</a>)(TfLiteContext *context, struct TfLiteDelegate *delegate)</code>
+      </td>
+      <td>
+        <div>
+          <code><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(*</code>
+        </div>
+        <div>Invoked by <code>ModifyGraphWithDelegate</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_delegate_1a90d8880e87c24835171a14eff0a22d98">data_</a></code>
+      </td>
+      <td>
+        <div>
+          <code>void *</code>
+        </div>
+        <div>Data that delegate needs to identify itself. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_delegate_1a4c32a68d8020c616f31338a048f055c5">flags</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int64_t</code>
+        </div>
+        <div>Bitmask flags. See the comments in <code>TfLiteDelegateFlags</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_delegate_1a5a0db5f3d47c3a069c9b1d6dc7326e0e">opaque_delegate_builder</a></code>
+      </td>
+      <td>
+        <div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a> *</code>
+        </div>
+        <div>The opaque delegate builder associated with this object. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_delegate_1a4fee5ac7e1ba441d4c364c323930c8d3">
+    <h3>CopyFromBufferHandle</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteDelegate::CopyFromBufferHandle)(TfLiteContext *context, struct TfLiteDelegate *delegate, TfLiteBufferHandle buffer_handle, TfLiteTensor *tensor)</pre>
+    <div>
+      <p>Copy the data from delegate buffer handle into raw memory of the given <code>tensor</code>. </p>
+      <p>Note that the delegate is allowed to allocate the raw bytes as long as it follows the rules for <code>kTfLiteDynamic</code> tensors, in which case this cannot be null. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_delegate_1a94f6b1d6e2c16a2e9944012a93f5e70d">
+    <h3>CopyToBufferHandle</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteDelegate::CopyToBufferHandle)(TfLiteContext *context, struct TfLiteDelegate *delegate, TfLiteBufferHandle buffer_handle, TfLiteTensor *tensor)</pre>
+    <div>
+      <p>Copy the data from raw memory of the given <code>tensor</code> to delegate buffer handle. </p>
+      <p>This can be null if the delegate doesn't use its own buffer. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_delegate_1a66da14187ba32cbfd8e65f5b06d7c0ea">
+    <h3>FreeBufferHandle</h3>
+    <pre class="prettyprint">void(* TfLiteDelegate::FreeBufferHandle)(TfLiteContext *context, struct TfLiteDelegate *delegate, TfLiteBufferHandle *handle)</pre>
+    <div>
+      <p>Free the Delegate Buffer Handle. </p>
+      <p>Note: This only frees the handle, but this doesn't release the underlying resource (e.g. textures). The resources are either owned by application layer or the delegate. This can be null if the delegate doesn't use its own buffer. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_delegate_1aa5f8c5a4ceb1bfb26c4d33a33d2afd3a">
+    <h3>Prepare</h3>
+    <pre class="prettyprint"><a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a>(* TfLiteDelegate::Prepare)(TfLiteContext *context, struct TfLiteDelegate *delegate)</pre>
+    <div>
+      <p>Invoked by <code>ModifyGraphWithDelegate</code>. </p>
+      <p>This prepare is called, giving the delegate a view of the current graph through <code>TfLiteContext*</code>. It typically will look at the nodes and call <code>ReplaceNodeSubsetsWithDelegateKernels()</code> to ask the TensorFlow lite runtime to create macro-nodes to represent delegated subgraphs of the original graph. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_delegate_1a90d8880e87c24835171a14eff0a22d98">
+    <h3>data_</h3>
+    <pre class="prettyprint">void * TfLiteDelegate::data_</pre>
+    <div>
+      <p>Data that delegate needs to identify itself. </p>
+      <p>This data is owned by the delegate. The delegate is owned in the user code, so the delegate is responsible for deallocating this when it is destroyed. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_delegate_1a4c32a68d8020c616f31338a048f055c5">
+    <h3>flags</h3>
+    <pre class="prettyprint">int64_t TfLiteDelegate::flags</pre>
+    <div>
+      <p>Bitmask flags. See the comments in <code>TfLiteDelegateFlags</code>. </p>
+    </div>
+  </div>
+  <div id="struct_tf_lite_delegate_1a5a0db5f3d47c3a069c9b1d6dc7326e0e">
+    <h3>opaque_delegate_builder</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a> * TfLiteDelegate::opaque_delegate_builder</pre>
+    <div>
+      <p>The opaque delegate builder associated with this object. </p>
+      <p>If set then the TF Lite runtime will give precedence to this field. E.g. instead of invoking <code>Prepare</code> via the function pointer inside the <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code> object, the runtime will first check if the corresponding function pointer inside <code>opaque_delegate_builder</code> is set and if so invoke that.</p>
+      <p>If this field is non-null, then the <code>Prepare</code> field (of the <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>) should be null. </p>
+    </div>
+  </div>
+</body>
+</html>

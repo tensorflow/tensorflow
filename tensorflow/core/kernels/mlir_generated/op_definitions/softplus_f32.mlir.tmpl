@@ -1,0 +1,18 @@
+func.func @Softplus_platform_elem_type_output_type(%arg0: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+  %0 = mhlo.constant dense<-15.9423847> : tensor<elem_type>
+  %1 = mhlo.constant dense<2.000000e+00> : tensor<elem_type>
+  %2 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
+  %3 = shape.num_elements %2 : tensor<?xindex> -> index
+  %from_elements = tensor.from_elements %3 : tensor<1xindex>
+  %4 = tensor.reshape %arg0(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+  %5 = mhlo.exponential %4 : tensor<?xelem_type>
+  %6 = chlo.broadcast_add %0, %1 : (tensor<elem_type>, tensor<elem_type>) -> tensor<elem_type>
+  %7 = mhlo.negate %6 : tensor<elem_type>
+  %8 = chlo.broadcast_compare %4, %7 {comparison_direction = #chlo<comparison_direction GT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+  %9 = chlo.broadcast_compare %4, %6 {comparison_direction = #chlo<comparison_direction LT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
+  %10 = mhlo.log_plus_one %5 : tensor<?xelem_type>
+  %11 = mhlo.select %9, %5, %10 : tensor<?xi1>, tensor<?xelem_type>
+  %12 = mhlo.select %8, %4, %11 : tensor<?xi1>, tensor<?xelem_type>
+  %13 = tensor.reshape %12(%2) : (tensor<?xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  return %13 : tensor<*xelem_type>
+}

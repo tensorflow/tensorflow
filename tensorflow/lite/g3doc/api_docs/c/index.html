@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TensorFlow Lite C API Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TensorFlow Lite C API Reference</h1>
+  <table class="nested-classes responsive">
+    <tbody>
+      <tr>
+        <th colspan="2">
+          <h2>Modules</h2>
+        </th>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/group/tflite.html">lite/abi/tflite.h</a>
+        </td>
+        <td>Native functions for initializing and shutting down the TensorFlow Lite (TFLite) in Google Play Services Native API. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/group/delegate-plugin.html">lite/acceleration/configuration/c/delegate_plugin.h</a>
+        </td>
+        <td>C API types for TF Lite delegate plugins. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/group/gpu-plugin.html">lite/acceleration/configuration/c/gpu_plugin.h</a>
+        </td>
+        <td>This header file is for the delegate plugin for GPU. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/group/xnnpack-plugin.html">lite/acceleration/configuration/c/xnnpack_plugin.h</a>
+        </td>
+        <td>This header file is for the delegate plugin for XNNPACK. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/group/c-api.html">lite/c/c_api.h</a>
+        </td>
+        <td>C API for TensorFlow Lite. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/group/c-api-opaque.html">lite/c/c_api_opaque.h</a>
+        </td>
+        <td>C API for TensorFlow Lite Opaque Types. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/group/c-api-types.html">lite/c/c_api_types.h</a>
+        </td>
+        <td>This file declares types used by the pure C inference API defined in <a href="/lite/api_docs/c/c/api-8h-source.html#c__api_8h_source">c_api.h</a>, some of which are also used in the C++ and C kernel and interpreter APIs. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/group/common.html">lite/c/common.h</a>
+        </td>
+        <td>This file defines common C types and APIs for implementing operations, delegates and other constructs in TensorFlow Lite. </td>
+      </tr>
+    </tbody>
+  </table>
+  <table class="constants responsive">
+    <tbody>
+      <tr>
+        <th colspan="2">
+          <h2>Structs</h2>
+        </th>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-affine-quantization.html">TfLiteAffineQuantization</a>
+        </td>
+        <td>Parameters for asymmetric quantization across a dimension (i.e per output channel quantization). </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-complex128.html">TfLiteComplex128</a>
+        </td>
+        <td>Double-precision complex data type compatible with the C99 definition. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-complex64.html">TfLiteComplex64</a>
+        </td>
+        <td>Single-precision complex data type compatible with the C99 definition. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-context.html">TfLiteContext</a>
+        </td>
+        <td><code><a href="/lite/api_docs/c/struct/tf-lite-context.html#struct_tf_lite_context">TfLiteContext</a></code> allows an op to access the tensors. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-custom-allocation.html">TfLiteCustomAllocation</a>
+        </td>
+        <td>Defines a custom memory allocation not owned by the runtime. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-delegate.html">TfLiteDelegate</a>
+        </td>
+        <td>WARNING: This is an experimental interface that is subject to change. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-delegate-params.html">TfLiteDelegateParams</a>
+        </td>
+        <td>WARNING: This is an experimental interface that is subject to change. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-delegate-plugin.html">TfLiteDelegatePlugin</a>
+        </td>
+        <td>Struct to hold all the methods for a delegate plugin. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-dimension-metadata.html">TfLiteDimensionMetadata</a>
+        </td>
+        <td>Metadata to encode each dimension in a sparse tensor. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-eval-tensor.html">TfLiteEvalTensor</a>
+        </td>
+        <td>Light-weight tensor struct for TF Micro runtime. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-external-context.html">TfLiteExternalContext</a>
+        </td>
+        <td>An external context is a collection of information unrelated to the TF Lite framework, but useful to a subset of the ops. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-float16.html">TfLiteFloat16</a>
+        </td>
+        <td>Half precision data type compatible with the C99 definition. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-float-array.html">TfLiteFloatArray</a>
+        </td>
+        <td>Fixed size list of floats. Used for per-channel quantization. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-int-array.html">TfLiteIntArray</a>
+        </td>
+        <td>Fixed size list of integers. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-node.html">TfLiteNode</a>
+        </td>
+        <td>A structure representing an instance of a node. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html">TfLiteOpaqueDelegateBuilder</a>
+        </td>
+        <td><code><a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-builder.html#struct_tf_lite_opaque_delegate_builder">TfLiteOpaqueDelegateBuilder</a></code> is used for constructing <code>TfLiteOpaqueDelegate</code>, see <code>TfLiteOpaqueDelegateCreate</code> below. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-opaque-delegate-params.html">TfLiteOpaqueDelegateParams</a>
+        </td>
+        <td>WARNING: This is an experimental interface that is subject to change. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-quantization.html">TfLiteQuantization</a>
+        </td>
+        <td>Structure specifying the quantization used by the tensor, if-any. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html">TfLiteQuantizationParams</a>
+        </td>
+        <td>Legacy. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-registration.html">TfLiteRegistration</a>
+        </td>
+        <td><code><a href="/lite/api_docs/c/struct/tf-lite-registration.html#struct_tf_lite_registration">TfLiteRegistration</a></code> defines the implementation of an operation (a built-in op, custom op, or custom delegate kernel). </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-sparsity.html">TfLiteSparsity</a>
+        </td>
+        <td>Parameters used to encode a sparse tensor. </td>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/struct/tf-lite-tensor.html">TfLiteTensor</a>
+        </td>
+        <td>A tensor in the interpreter system which is a wrapper around a buffer of data including a dimensionality (or NULL if not currently defined). </td>
+      </tr>
+    </tbody>
+  </table>
+  <table class="constants responsive">
+    <tbody>
+      <tr>
+        <th colspan="2">
+          <h2>Unions</h2>
+        </th>
+      </tr>
+      <tr>
+        <td>
+          <a href="/lite/api_docs/c/union/tf-lite-ptr-union.html">TfLitePtrUnion</a>
+        </td>
+        <td>A union of pointers that points to memory for a given tensor. </td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

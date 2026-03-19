@@ -1,0 +1,735 @@
+# proto-file: third_party/tensorflow/core/framework/graph.proto
+# proto-message: GraphDef
+node {
+  name: "unknown_2"
+  op: "_Arg"
+  device: "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_handle_dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_handle_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1024
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          unknown_rank: true
+        }
+      }
+    }
+  }
+  attr {
+    key: "_user_specified_name"
+    value {
+      s: "905"
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 4
+    }
+  }
+}
+
+node {
+  name: "unknown_17"
+  op: "_Arg"
+  device: "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_RESOURCE
+    }
+  }
+  attr {
+    key: "_handle_dtypes"
+    value {
+      list { type: DT_FLOAT }
+    }
+  }
+  attr {
+    key: "_handle_shapes"
+    value {
+      list {
+        shape {
+          dim { size: 128 }
+          dim { size: 1024 }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape { unknown_rank: true }
+      }
+    }
+  }
+  attr {
+    key: "_user_specified_name"
+    value { s: "935" }
+  }
+  attr {
+    key: "index"
+    value { i: 19 }
+  }
+}
+
+node {
+  name: "tpu_compile_mlir"
+  op: "_TPUCompileMlir"
+  device: "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "NumDynamicShapes"
+    value { i: 0 }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {}
+        shape { dim { size: 3 } }
+        shape { dim { size: 3 } }
+        shape { dim { size: 3 } }
+        shape { dim { size: 3 } }
+      }
+    }
+  }
+  attr {
+    key: "metadata"
+    value { s: "" }
+  }
+  attr {
+    key: "mlir_module"
+    value { s: "" }
+  }
+  attr {
+    key: "num_computations"
+    value { i: 4 }
+  }
+}
+
+node {
+  name: "readvariableop_1"
+  op: "ReadVariableOp"
+  input: "unknown_17"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim { size: 128 }
+          dim { size: 1024 }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value { type: DT_FLOAT }
+  }
+}
+
+node {
+  name: "identity_1"
+  op: "Identity"
+  input: "readvariableop_1"
+  device: "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim { size: 128 }
+          dim { size: 1024 }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:0"
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value { b: true }
+  }
+}
+
+node {
+  name: "const_1"
+  op: "Const"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {}
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value { s: "r0:0" }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value { b: true }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {}
+      }
+    }
+  }
+}
+
+node {
+  name: "split_1"
+  op: "Split"
+  input: "const_1"
+  input: "identity_1"
+  attr {
+    key: "T"
+    value { type: DT_FLOAT }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:0"
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value { b: true }
+  }
+  attr {
+    key: "num_split"
+    value { i: 4 }
+  }
+}
+
+node {
+  name: "readvariableop_2"
+  op: "ReadVariableOp"
+  input: "unknown_2"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape { dim { size: 1024 } }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value { type: DT_FLOAT }
+  }
+}
+
+node {
+  name: "identity_2"
+  op: "Identity"
+  input: "readvariableop_2"
+  device: "/job:tpu_host_worker/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape { dim { size: 1024 } }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:0"
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value { b: true }
+  }
+}
+
+node {
+  name: "tpu_execute_1"
+  op: "TPUExecute"
+  input: "split_1"
+  input: "identity_2"
+  input: "tpu_compile_mlir:1"
+  device: "/job:tpu_host_worker/replica:0/task:0/device:TPU:0"
+  attr {
+    key: "Targs"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "Tresults"
+    value {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {}
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:0,p0:0"
+    }
+  }
+}
+
+node {
+  name: "tpu_execute_2"
+  op: "TPUExecute"
+  input: "split_1:1"
+  input: "identity_2"
+  input: "tpu_compile_mlir:2"
+  device: "/job:tpu_host_worker/replica:0/task:0/device:TPU:1"
+  attr {
+    key: "Targs"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "Tresults"
+    value {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {}
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:0,p0:1"
+    }
+  }
+}
+
+node {
+  name: "tpu_dummy_input_1"
+  op: "TPUDummyInput"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 128
+          }
+          dim {
+            size: 1024
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value {
+      b: true
+    }
+  }
+}
+
+node {
+  name: "identity_3"
+  op: "Identity"
+  input: "tpu_dummy_input_1"
+  device: "/job:tpu_host_worker/replica:0/task:2/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 128
+          }
+          dim {
+            size: 1024
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:1"
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value {
+      b: true
+    }
+  }
+}
+
+node {
+  name: "const_2"
+  op: "Const"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:1"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+
+node {
+  name: "split_2"
+  op: "Split"
+  input: "const_2"
+  input: "identity_3"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value { s: "r0:1" }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value { b: true }
+  }
+  attr {
+    key: "num_split"
+    value { i: 4 }
+  }
+}
+
+node {
+  name: "tpu_dummy_input_2"
+  op: "TPUDummyInput"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_BFLOAT16
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1024
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value {
+      b: true
+    }
+  }
+}
+
+node {
+  name: "identity_4"
+  op: "Identity"
+  input: "tpu_dummy_input_2"
+  device: "/job:tpu_host_worker/replica:0/task:2/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_BFLOAT16
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1024
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:1"
+    }
+  }
+  attr {
+    key: "_ici_weight_distribution_mlir_bridge_marker"
+    value {
+      b: true
+    }
+  }
+}
+
+node {
+  name: "tpu_execute_3"
+  op: "TPUExecute"
+  input: "split_2"
+  input: "identity_4"
+  input: "tpu_compile_mlir:1"
+  device: "/job:tpu_host_worker/replica:0/task:2/device:TPU:0"
+  attr {
+    key: "Targs"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_BFLOAT16
+      }
+    }
+  }
+  attr {
+    key: "Tresults"
+    value {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {}
+        shape {
+          dim { size: 32 }
+          dim { size: 1024 }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:1,p0:0"
+    }
+  }
+}
+
+node {
+  name: "tpu_execute_4"
+  op: "TPUExecute"
+  input: "split_2:1"
+  input: "identity_4"
+  input: "tpu_compile_mlir:2"
+  device: "/job:tpu_host_worker/replica:0/task:2/device:TPU:1"
+  attr {
+    key: "Targs"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_BFLOAT16
+      }
+    }
+  }
+  attr {
+    key: "Tresults"
+    value {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+        shape {
+          dim {
+            size: 32
+          }
+          dim {
+            size: 1024
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "_parallel_execution_ids"
+    value {
+      s: "r0:1,p0:1"
+    }
+  }
+}

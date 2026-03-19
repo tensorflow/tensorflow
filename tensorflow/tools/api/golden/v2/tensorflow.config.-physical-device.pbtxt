@@ -1,0 +1,23 @@
+path: "tensorflow.config.PhysicalDevice"
+tf_class {
+  is_instance: "<class \'tensorflow.python.eager.context.PhysicalDevice\'>"
+  is_instance: "<class \'tensorflow.python.eager.context.PhysicalDevice\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "device_type"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<class \'collections._tuplegetter\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

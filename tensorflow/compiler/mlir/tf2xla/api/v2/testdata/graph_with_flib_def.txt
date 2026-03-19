@@ -1,0 +1,1535 @@
+node {
+  name: "Variable"
+  op: "VarHandleOp"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "debug_name"
+    value {
+      s: "Variable/"
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "Variable"
+    }
+  }
+}
+node {
+  name: "Variable/Read/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "Variable"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+node {
+  name: "NoOp"
+  op: "NoOp"
+}
+node {
+  name: "Const"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: "\n3\n\005\010\001\022\001v\n\n\010\002\022\006callee\n\n\010\003\022\006caller\n\016\010\004\022\nsignatures*\002\010\001\n>\0228\n\016VARIABLE_VALUE\022\010Variable\032\034v/.ATTRIBUTES/VARIABLE_VALUE*\002\010\001\n\017\n\013\010\005\022\007trace_0*\000\n\017\n\013\010\006\022\007trace_0*\000\n\002*\000\n\002*\000\n\002*\000"
+      }
+    }
+  }
+}
+node {
+  name: "saver_filename"
+  op: "Placeholder"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+}
+node {
+  name: "StatefulPartitionedCall"
+  op: "StatefulPartitionedCall"
+  input: "saver_filename"
+  input: "Variable"
+  input: "Const"
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_STRING
+        type: DT_RESOURCE
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    key: "_collective_manager_ids"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "_read_only_resource_inputs"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "config_proto"
+    value {
+      s: "\n\007\n\003CPU\020\001\n\007\n\003GPU\020\0002\002J\0008\001\202\001\000\222\001\002J\000"
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "__inference__traced_save_45"
+      }
+    }
+  }
+}
+node {
+  name: "StatefulPartitionedCall_1"
+  op: "StatefulPartitionedCall"
+  input: "saver_filename"
+  input: "Variable"
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_STRING
+        type: DT_RESOURCE
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    key: "_collective_manager_ids"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "_read_only_resource_inputs"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "config_proto"
+    value {
+      s: "\n\007\n\003CPU\020\001\n\007\n\003GPU\020\0002\002J\0008\001\202\001\000\222\001\002J\000"
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "__inference__traced_restore_57"
+      }
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "__inference_callee_10"
+      input_arg {
+        name: "x"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "readvariableop_resource"
+        type: DT_RESOURCE
+        handle_data {
+          dtype: DT_FLOAT
+          shape {
+          }
+        }
+      }
+      output_arg {
+        name: "identity"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "identity_1"
+        type: DT_FLOAT
+      }
+      is_stateful: true
+      control_output: "ReadVariableOp"
+    }
+    node_def {
+      name: "ReadVariableOp"
+      op: "ReadVariableOp"
+      input: "readvariableop_resource"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "x"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity_1"
+      op: "Identity"
+      input: "ReadVariableOp:value:0"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      input: "^ReadVariableOp"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    ret {
+      key: "identity"
+      value: "Identity:output:0"
+    }
+    ret {
+      key: "identity_1"
+      value: "Identity_1:output:0"
+    }
+    attr {
+      key: "_construction_context"
+      value {
+        s: "kEagerRuntime"
+      }
+    }
+    attr {
+      key: "_input_shapes"
+      value {
+        list {
+          shape {
+          }
+          shape {
+          }
+        }
+      }
+    }
+    control_ret {
+      key: "ReadVariableOp"
+      value: "ReadVariableOp"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "x"
+          }
+        }
+      }
+    }
+    arg_attr {
+      key: 1
+      value {
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "resource"
+          }
+        }
+      }
+    }
+  }
+  function {
+    signature {
+      name: "__inference__traced_save_45"
+      input_arg {
+        name: "file_prefix"
+        type: DT_STRING
+      }
+      input_arg {
+        name: "read_disablecopyonread_variable"
+        type: DT_RESOURCE
+        handle_data {
+          dtype: DT_FLOAT
+          shape {
+          }
+        }
+      }
+      input_arg {
+        name: "savev2_const"
+        type: DT_STRING
+      }
+      output_arg {
+        name: "identity_3"
+        type: DT_STRING
+      }
+      is_stateful: true
+      control_output: "MergeV2Checkpoints"
+      control_output: "Read/DisableCopyOnRead"
+      control_output: "Read/ReadVariableOp"
+    }
+    node_def {
+      name: "StaticRegexFullMatch"
+      op: "StaticRegexFullMatch"
+      input: "file_prefix"
+      device: "/device:CPU:*"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "pattern"
+        value {
+          s: "^s3://.*"
+        }
+      }
+    }
+    node_def {
+      name: "Const"
+      op: "Const"
+      device: "/device:CPU:*"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+            }
+            string_val: ".part"
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Const_1"
+      op: "Const"
+      device: "/device:CPU:*"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+            }
+            string_val: "_temp/part"
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Select"
+      op: "Select"
+      input: "StaticRegexFullMatch:output:0"
+      input: "Const:output:0"
+      input: "Const_1:output:0"
+      device: "/device:CPU:*"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "StringJoin"
+      op: "StringJoin"
+      input: "file_prefix"
+      input: "Select:output:0"
+      device: "/device:CPU:*"
+      attr {
+        key: "N"
+        value {
+          i: 2
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Read/DisableCopyOnRead"
+      op: "DisableCopyOnRead"
+      input: "read_disablecopyonread_variable"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Read/ReadVariableOp"
+      op: "ReadVariableOp"
+      input: "read_disablecopyonread_variable"
+      input: "^Read/DisableCopyOnRead"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "Read/ReadVariableOp:value:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity_1"
+      op: "Identity"
+      input: "Identity:output:0"
+      device: "/device:CPU:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "num_shards"
+      op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+    }
+    node_def {
+      name: "ShardedFilename/shard"
+      op: "Const"
+      device: "/device:CPU:0"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+    }
+    node_def {
+      name: "ShardedFilename"
+      op: "ShardedFilename"
+      input: "StringJoin:output:0"
+      input: "ShardedFilename/shard:output:0"
+      input: "num_shards:output:0"
+      device: "/device:CPU:0"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "SaveV2/tensor_names"
+      op: "Const"
+      device: "/device:CPU:0"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 2
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+              dim {
+                size: 2
+              }
+            }
+            string_val: "v/.ATTRIBUTES/VARIABLE_VALUE"
+            string_val: "_CHECKPOINTABLE_OBJECT_GRAPH"
+          }
+        }
+      }
+    }
+    node_def {
+      name: "SaveV2/shape_and_slices"
+      op: "Const"
+      device: "/device:CPU:0"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 2
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+              dim {
+                size: 2
+              }
+            }
+            string_val: ""
+            string_val: ""
+          }
+        }
+      }
+    }
+    node_def {
+      name: "SaveV2"
+      op: "SaveV2"
+      input: "ShardedFilename:filename:0"
+      input: "SaveV2/tensor_names:output:0"
+      input: "SaveV2/shape_and_slices:output:0"
+      input: "Identity_1:output:0"
+      input: "savev2_const"
+      device: "/device:CPU:0"
+      attr {
+        key: "_has_manual_control_dependencies"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+      attr {
+        key: "dtypes"
+        value {
+          list {
+            type: DT_FLOAT
+            type: DT_STRING
+          }
+        }
+      }
+    }
+    node_def {
+      name: "MergeV2Checkpoints/checkpoint_prefixes"
+      op: "Pack"
+      input: "ShardedFilename:filename:0"
+      input: "^SaveV2"
+      device: "/device:CPU:0"
+      attr {
+        key: "N"
+        value {
+          i: 1
+        }
+      }
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 1
+              }
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "MergeV2Checkpoints"
+      op: "MergeV2Checkpoints"
+      input: "MergeV2Checkpoints/checkpoint_prefixes:output:0"
+      input: "file_prefix"
+      device: "/device:CPU:0"
+      attr {
+        key: "_has_manual_control_dependencies"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity_2"
+      op: "Identity"
+      input: "file_prefix"
+      input: "^MergeV2Checkpoints"
+      device: "/device:CPU:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity_3"
+      op: "Identity"
+      input: "Identity_2:output:0"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      input: "^MergeV2Checkpoints"
+      input: "^Read/DisableCopyOnRead"
+      input: "^Read/ReadVariableOp"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    ret {
+      key: "identity_3"
+      value: "Identity_3:output:0"
+    }
+    attr {
+      key: "_construction_context"
+      value {
+        s: "kEagerRuntime"
+      }
+    }
+    attr {
+      key: "_input_shapes"
+      value {
+        list {
+          shape {
+          }
+          shape {
+          }
+          shape {
+          }
+        }
+      }
+    }
+    control_ret {
+      key: "MergeV2Checkpoints"
+      value: "MergeV2Checkpoints"
+    }
+    control_ret {
+      key: "Read/DisableCopyOnRead"
+      value: "Read/DisableCopyOnRead"
+    }
+    control_ret {
+      key: "Read/ReadVariableOp"
+      value: "Read/ReadVariableOp"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "file_prefix"
+          }
+        }
+      }
+    }
+    arg_attr {
+      key: 1
+      value {
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "Variable"
+          }
+        }
+      }
+    }
+    arg_attr {
+      key: 2
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "Const"
+          }
+        }
+      }
+    }
+  }
+  function {
+    signature {
+      name: "__inference_caller_19"
+      input_arg {
+        name: "x"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "unknown"
+        type: DT_RESOURCE
+        handle_data {
+          dtype: DT_FLOAT
+          shape {
+          }
+        }
+      }
+      output_arg {
+        name: "identity"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "identity_1"
+        type: DT_FLOAT
+      }
+      is_stateful: true
+      control_output: "StatefulPartitionedCall"
+    }
+    node_def {
+      name: "StatefulPartitionedCall"
+      op: "StatefulPartitionedCall"
+      input: "x"
+      input: "unknown"
+      attr {
+        key: "Tin"
+        value {
+          list {
+            type: DT_FLOAT
+            type: DT_RESOURCE
+          }
+        }
+      }
+      attr {
+        key: "Tout"
+        value {
+          list {
+            type: DT_FLOAT
+            type: DT_FLOAT
+          }
+        }
+      }
+      attr {
+        key: "_collective_manager_ids"
+        value {
+          list {
+          }
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+            shape {
+            }
+          }
+        }
+      }
+      attr {
+        key: "_read_only_resource_inputs"
+        value {
+          list {
+            i: 1
+          }
+        }
+      }
+      attr {
+        key: "config_proto"
+        value {
+          s: "\n\007\n\003CPU\020\001\n\007\n\003GPU\020\0002\002J\0008\001\202\001\000\222\001\002J\000"
+        }
+      }
+      attr {
+        key: "f"
+        value {
+          func {
+            name: "__inference_callee_10"
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "StatefulPartitionedCall:output:0"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity_1"
+      op: "Identity"
+      input: "StatefulPartitionedCall:output:1"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      input: "^StatefulPartitionedCall"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    ret {
+      key: "identity"
+      value: "Identity:output:0"
+    }
+    ret {
+      key: "identity_1"
+      value: "Identity_1:output:0"
+    }
+    attr {
+      key: "_construction_context"
+      value {
+        s: "kEagerRuntime"
+      }
+    }
+    attr {
+      key: "_input_shapes"
+      value {
+        list {
+          shape {
+          }
+          shape {
+          }
+        }
+      }
+    }
+    control_ret {
+      key: "StatefulPartitionedCall"
+      value: "StatefulPartitionedCall"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "x"
+          }
+        }
+      }
+    }
+    arg_attr {
+      key: 1
+      value {
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "13"
+          }
+        }
+      }
+    }
+  }
+  function {
+    signature {
+      name: "__inference__traced_restore_57"
+      input_arg {
+        name: "file_prefix"
+        type: DT_STRING
+      }
+      input_arg {
+        name: "assignvariableop_variable"
+        type: DT_RESOURCE
+        handle_data {
+          dtype: DT_FLOAT
+          shape {
+          }
+        }
+      }
+      output_arg {
+        name: "identity_2"
+        type: DT_STRING
+      }
+      is_stateful: true
+      control_output: "AssignVariableOp"
+    }
+    node_def {
+      name: "RestoreV2/tensor_names"
+      op: "Const"
+      device: "/device:CPU:0"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 2
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+              dim {
+                size: 2
+              }
+            }
+            string_val: "v/.ATTRIBUTES/VARIABLE_VALUE"
+            string_val: "_CHECKPOINTABLE_OBJECT_GRAPH"
+          }
+        }
+      }
+    }
+    node_def {
+      name: "RestoreV2/shape_and_slices"
+      op: "Const"
+      device: "/device:CPU:0"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              dim {
+                size: 2
+              }
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_STRING
+            tensor_shape {
+              dim {
+                size: 2
+              }
+            }
+            string_val: ""
+            string_val: ""
+          }
+        }
+      }
+    }
+    node_def {
+      name: "RestoreV2"
+      op: "RestoreV2"
+      input: "file_prefix"
+      input: "RestoreV2/tensor_names:output:0"
+      input: "RestoreV2/shape_and_slices:output:0"
+      device: "/device:CPU:0"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              unknown_rank: true
+            }
+            shape {
+              unknown_rank: true
+            }
+          }
+        }
+      }
+      attr {
+        key: "dtypes"
+        value {
+          list {
+            type: DT_FLOAT
+            type: DT_STRING
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "RestoreV2:tensors:0"
+      device: "/device:CPU:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+              unknown_rank: true
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "AssignVariableOp"
+      op: "AssignVariableOp"
+      input: "assignvariableop_variable"
+      input: "Identity:output:0"
+      device: "/device:CPU:0"
+      attr {
+        key: "_has_manual_control_dependencies"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      device: "/device:CPU:0"
+      attr {
+        key: "_has_manual_control_dependencies"
+        value {
+          b: true
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity_1"
+      op: "Identity"
+      input: "file_prefix"
+      input: "^AssignVariableOp"
+      input: "^NoOp"
+      device: "/device:CPU:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Identity_2"
+      op: "Identity"
+      input: "Identity_1:output:0"
+      input: "^NoOp_1"
+      attr {
+        key: "T"
+        value {
+          type: DT_STRING
+        }
+      }
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape {
+            }
+          }
+        }
+      }
+    }
+    node_def {
+      name: "NoOp_1"
+      op: "NoOp"
+      input: "^AssignVariableOp"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    ret {
+      key: "identity_2"
+      value: "Identity_2:output:0"
+    }
+    attr {
+      key: "_construction_context"
+      value {
+        s: "kEagerRuntime"
+      }
+    }
+    attr {
+      key: "_input_shapes"
+      value {
+        list {
+          shape {
+          }
+          shape {
+          }
+        }
+      }
+    }
+    control_ret {
+      key: "AssignVariableOp"
+      value: "AssignVariableOp"
+    }
+    arg_attr {
+      key: 0
+      value {
+        attr {
+          key: "_output_shapes"
+          value {
+            list {
+              shape {
+              }
+            }
+          }
+        }
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "file_prefix"
+          }
+        }
+      }
+    }
+    arg_attr {
+      key: 1
+      value {
+        attr {
+          key: "_user_specified_name"
+          value {
+            s: "Variable"
+          }
+        }
+      }
+    }
+  }
+}
+versions {
+  producer: 2009
+  min_consumer: 12
+}

@@ -1,0 +1,15 @@
+diff --git a/utils/bazel/llvm-project-overlay/llvm/lit_test.bzl b/utils/bazel/llvm-project-overlay/llvm/lit_test.bzl
+index 64528f28492f..a573750d9322 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/lit_test.bzl
++++ b/utils/bazel/llvm-project-overlay/llvm/lit_test.bzl
+@@ -34,7 +34,9 @@ def lit_test(
+     data = data or []
+     deps = deps or []
+     py_test(
+-        name = name,
++        # Prevents creation of the files with identical names located in different
++        # directories on Windows platform.
++        name = name.replace("/", "_"),
+         srcs = [Label("//llvm:lit")],
+         main = Label("//llvm:utils/lit/lit.py"),
+         args = args + ["-v"] + ["$(execpath %s)" % src for src in srcs],

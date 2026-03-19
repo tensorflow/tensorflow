@@ -1,0 +1,11 @@
+op {
+  name: "RiscLogicalNot"
+  input_arg {
+    name: "x"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+}

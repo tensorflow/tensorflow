@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "BatchToSpaceND"
+  deprecation_message: "use batch_to_space"
+  endpoint {
+    name: "batch_to_space_nd"
+    deprecation_version: 2
+  }
+  endpoint {
+    name: "manip.batch_to_space_nd"
+    deprecation_version: 2
+  }
+}

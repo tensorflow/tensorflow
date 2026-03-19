@@ -1,0 +1,123 @@
+path: "tensorflow.experimental"
+tf_module {
+  member {
+    name: "BatchableExtensionType"
+    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
+    name: "DynamicRaggedShape"
+    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
+    name: "ExtensionType"
+    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
+    name: "ExtensionTypeBatchEncoder"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ExtensionTypeSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Optional"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RowPartition"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StructuredTensor"
+    mtype: "<class \'tensorflow.python.framework.extension_type.ExtensionTypeMetaclass\'>"
+  }
+  member {
+    name: "extension_type"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "float4_e2m1fn"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e4m3b11fnuz"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e4m3fn"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e4m3fnuz"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e5m2"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e5m2fnuz"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "int2"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "int4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint2"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "uint4"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member_method {
+    name: "async_clear_error"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "async_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dispatch_for_api"
+    argspec: "args=[\'api\'], varargs=signatures, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dispatch_for_binary_elementwise_apis"
+    argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dispatch_for_binary_elementwise_assert_apis"
+    argspec: "args=[\'x_type\', \'y_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dispatch_for_unary_elementwise_apis"
+    argspec: "args=[\'x_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_strict_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "function_executor_type"
+    argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "output_all_intermediates"
+    argspec: "args=[\'state\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_filesystem_plugin"
+    argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unregister_dispatch_for"
+    argspec: "args=[\'dispatch_target\'], varargs=None, keywords=None, defaults=None"
+  }
+}

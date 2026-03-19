@@ -1,0 +1,42 @@
+op {
+  graph_op_name: "RaggedTensorToSparse"
+  visibility: HIDDEN
+  in_arg {
+    name: "rt_nested_splits"
+    description: "The `row_splits` for the `RaggedTensor`."
+  }
+  in_arg {
+    name: "rt_dense_values"
+    description: "The `flat_values` for the `RaggedTensor`."
+  }
+  out_arg {
+    name: "sparse_indices"
+    description: "The indices for the `SparseTensor`."
+  }
+  out_arg {
+    name: "sparse_values"
+    description: "The values of the `SparseTensor`."
+  }
+  out_arg {
+    name: "sparse_dense_shape"
+    description: <<END
+`sparse_dense_shape` is a tight bounding box of the input `RaggedTensor`.
+END
+  }
+  attr {
+    name: "RAGGED_RANK"
+    description: <<END
+The ragged rank of the input RaggedTensor.  `rt_nested_splits` should contain
+this number of ragged-splits tensors.  This value should equal
+`input.ragged_rank`.
+END
+  }
+  summary: <<END
+Converts a `RaggedTensor` into a `SparseTensor` with the same values.
+END
+  description: <<END
+input=ragged.from_nested_row_splits(rt_dense_values, rt_nested_splits)
+output=SparseTensor(indices=sparse_indices, values=sparse_values,
+                    dense_shape=sparse_dense_shape)
+END
+}

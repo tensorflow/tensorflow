@@ -1,0 +1,23 @@
+path: "tensorflow.losses.MeanSquaredError"
+tf_class {
+  is_instance: "<class \'tf_keras.losses.MeanSquaredError\'>"
+  is_instance: "<class \'tf_keras.losses.LossFunctionWrapper\'>"
+  is_instance: "<class \'tf_keras.losses.Loss\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'mean_squared_error\'], "
+  }
+  member_method {
+    name: "call"
+    argspec: "args=[\'self\', \'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_config"
+    argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

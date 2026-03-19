@@ -1,0 +1,30 @@
+op {
+  name: "XlaSparseGradientsStack"
+  input_arg {
+    name: "unstacked_gradients"
+    type_attr: "input_dtype"
+    number_attr: "num_tables"
+  }
+  output_arg {
+    name: "stacked_gradients"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "num_tables"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "interleaved"
+    type: "bool"
+  }
+  attr {
+    name: "input_dtype"
+    type: "type"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+}

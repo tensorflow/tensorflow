@@ -1,0 +1,53 @@
+/* Copyright 2024 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+/** Heading for "Parameters", "See Also", etc., in details sections */
+body.docs h4.jd-details-title {
+  font-size: 1.15em;
+  margin: 1.5em 0 0.6em -0.5em;
+  padding: 0.2em 8em 0.4em 2.5em;
+  text-indent: -2em;
+  background-color: #E9E9E9; /** #DEEAFA */
+}
+
+#jd-header {
+  margin-bottom: 1em;
+}
+
+/* Hide empty first cell of constructors */
+#pubctors td.jd-typecol {
+  display: none;
+}
+
+p {
+  margin-bottom: 0.7em;
+}
+
+body.docs table th {
+  border: 1px solid #ddd;
+}
+
+.main tr th {
+  color: #222;
+  background-color: #fff;
+}
+
+body.docs h2 {
+  margin-left: -0.3em;
+}
+
+td.jd-typecol {
+  min-width: 100px;
+}

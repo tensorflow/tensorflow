@@ -1,0 +1,47 @@
+op {
+  graph_op_name: "DenseToDenseSetOperation"
+  in_arg {
+    name: "set1"
+    description: <<END
+`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set2`.
+Dimension `n` contains values in a set, duplicates are allowed but ignored.
+END
+  }
+  in_arg {
+    name: "set2"
+    description: <<END
+`Tensor` with rank `n`. 1st `n-1` dimensions must be the same as `set1`.
+Dimension `n` contains values in a set, duplicates are allowed but ignored.
+END
+  }
+  out_arg {
+    name: "result_indices"
+    description: <<END
+2D indices of a `SparseTensor`.
+END
+  }
+  out_arg {
+    name: "result_values"
+    description: <<END
+1D values of a `SparseTensor`.
+END
+  }
+  out_arg {
+    name: "result_shape"
+    description: <<END
+1D `Tensor` shape of a `SparseTensor`. `result_shape[0...n-1]` is
+the same as the 1st `n-1` dimensions of `set1` and `set2`, `result_shape[n]`
+is the max result set size across all `0...n-1` dimensions.
+END
+  }
+  summary: "Applies set operation along last dimension of 2 `Tensor` inputs."
+  description: <<END
+See SetOperationOp::SetOperationFromContext for values of `set_operation`.
+
+Output `result` is a `SparseTensor` represented by `result_indices`,
+`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this
+has rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`
+dimension contains the result of `set_operation` applied to the corresponding
+`[0...n-1]` dimension of `set`.
+END
+}

@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package tensorflow.calibrator;
+
+option cc_enable_arenas = true;
+
+// Calibration algorithm's collecting statistics.
+// NEXT_ID: 4
+message CalibrationStatistics {
+  message MinMaxStatistics {
+    // global minimum of all sample datasets.
+    float global_min = 1;
+
+    // global maximum of all sample datasets.
+    float global_max = 2;
+  }
+
+  message AverageMinMaxStatistics {
+    // sum of batch's minimum in each sample dataset.
+    float min_sum = 1;
+
+    // sum of batch's maximum in each sample dataset.
+    float max_sum = 2;
+
+    // number of sample datasets
+    int32 num_samples = 3;
+  }
+
+  message HistogramStatistics {
+    // width of bin
+    float bin_width = 1;
+
+    // lower_bound is the first bin's min value.
+    // lower_bound and bin_width can be used to restore the histogram.
+    float lower_bound = 2;
+
+    // hist_freq[i] saves frequency of range [bins[i], bins[i + 1]).
+    // bins[i]     = lower_bound + bin_width * i
+    // bins[i + 1] = lower_bound + bin_width * (i + 1)
+    repeated float hist_freq = 3;
+  }
+
+  MinMaxStatistics min_max_statistics = 1;
+  AverageMinMaxStatistics average_min_max_statistics = 2;
+  HistogramStatistics histogram_statistics = 3;
+}
+
+message CalibrationStatisticsMap {
+  // A map from the id of CustomAggregator op to its collected statistics.
+  map<string, CalibrationStatistics> statistics = 1;
+}

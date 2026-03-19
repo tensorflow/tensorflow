@@ -1,0 +1,218 @@
+/* Copyright 2023 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
+#include "xla/autotune_results.pb.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/compiler.h"
+#include "xla/service/gpu/autotuning/autotuner_cache.h"
+#include "xla/service/gpu/gpu_symbol_repository.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/symbol_repository.h"
+#include "xla/service/xla_compile_result.pb.h"
+#include "xla/stream_executor/device_description.pb.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tools/xla_compile_lib.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/tsl/protobuf/status.pb.h"
+#include "xla/util.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/path.h"
+
+namespace xla {
+namespace {
+
+using ::testing::IsEmpty;
+using ::testing::Not;
+
+class XlaCompileLibTest : public HloPjRtTestBase {
+ protected:
+  void SetUp() override {
+    const std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                                                   "tools", "data", "add.hlo");
+    std::string hlo;
+    ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), hlo_path, &hlo));
+    ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo));
+  }
+
+  std::unique_ptr<HloModule> module_;
+
+  void ComputeAutotuneResults(AutotuneResults& results) {
+    static constexpr absl::string_view kHloText = R"(
+HloModule t
+ENTRY e {
+  p0 = f16[1,16,17,3] parameter(0)
+  p1 = f16[16,17,3] parameter(1)
+  ROOT _ = f16[1,16,16] dot(p0, p1),
+    lhs_contracting_dims={2,3}, rhs_contracting_dims={1,2}
+})";
+
+    HloModuleConfig config = GetModuleConfigForTest();
+    DebugOptions opts = config.debug_options();
+    opts.set_xla_gpu_autotune_level(3);
+    config.set_debug_options(opts);
+
+    gpu::AutotunerCache::ClearAutotuneResults();
+    ASSERT_OK_AND_ASSIGN(auto module,
+                         ParseAndReturnVerifiedModule(kHloText, config));
+    (void)CreateExecutable(std::move(module), /*run_hlo_passes=*/true);
+
+    ASSERT_OK(gpu::AutotunerCache::SerializeAutotuneResults(&results));
+  }
+};
+
+TEST_F(XlaCompileLibTest, CompilesForGpuWithDevice) {
+  CompilationResult result;
+  EXPECT_THAT(
+      CompileExecutable(std::move(module_), BackendType::kGpu,
+                        /*gpu_target_config=*/std::nullopt,
+                        /*cpu_target_config=*/std::nullopt,
+                        /*num_partitions=*/1, /*num_replicas=*/1, result),
+      absl_testing::IsOkAndHolds(Not(IsEmpty())));
+  EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
+}
+
+TEST_F(XlaCompileLibTest, CompilesForGpuWithoutDevice) {
+  const std::string spec_file =
+      test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)
+          ? "mi200.txtpb"
+          : "h100_sxm.txtpb";
+  const std::string target_config_path =
+      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                        "backends/gpu/target_config/specs", spec_file);
+  stream_executor::GpuTargetConfigProto target_config_proto;
+  ASSERT_OK(tsl::ReadTextProto(tsl::Env::Default(), target_config_path,
+                               &target_config_proto));
+  CompilationResult result;
+  ASSERT_OK_AND_ASSIGN(auto target_config, Compiler::GpuTargetConfig::FromProto(
+                                               target_config_proto));
+  EXPECT_THAT(CompileExecutable(std::move(module_), BackendType::kGpu,
+                                std::move(target_config),
+                                /*cpu_target_config=*/std::nullopt,
+                                /*num_partitions=*/1,
+                                /*num_replicas=*/1, result),
+              absl_testing::IsOkAndHolds(Not(IsEmpty())));
+  EXPECT_TRUE(result.has_hlo_module()) << result.DebugString();
+}
+
+TEST_F(XlaCompileLibTest, MainForGpu) {
+  const std::string module_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "module.txt");
+  ASSERT_OK(tsl::WriteStringToFile(tsl::Env::Default(), module_file,
+                                   module_->ToString()));
+
+  const std::string output_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_output");
+  const std::string result_file =
+      tsl::io::JoinPath(tsl::testing::TmpDir(), "gpu_result.pb");
+
+  XlaCompileOptions options;
+  options.module_path = module_file;
+  options.output_file = output_file;
+  options.platform = "gpu";
+  options.result_output_file = result_file;
+  options.gpu_options.use_attached_device = true;
+  EXPECT_OK(XlaCompileMain(options));
+
+  CompilationResult result;
+  ASSERT_OK(tsl::ReadBinaryProto(tsl::Env::Default(), result_file, &result));
+  EXPECT_TRUE(result.has_status());
+  EXPECT_EQ(result.status().code(), tensorflow::error::OK);
+}
+
+TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningEnabled) {
+  gpu::AutotunerCache::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
+  ComputeAutotuneResults(data->autotune_results.emplace());
+  gpu::AutotunerCache::ClearAutotuneResults();
+  mod.backend_specific_data = std::move(data);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(3);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              absl_testing::IsOkAndHolds(true));
+  EXPECT_FALSE(gpu::AutotunerCache::ResultCacheIsEmpty());
+}
+
+TEST_F(XlaCompileLibTest, LoadAutotuneDataGpuDataPresentAndAutotuningDisabled) {
+  gpu::AutotunerCache::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+  auto data = std::make_unique<gpu::GpuBackendSpecificData>();
+  ComputeAutotuneResults(data->autotune_results.emplace());
+  gpu::AutotunerCache::ClearAutotuneResults();
+  mod.backend_specific_data = std::move(data);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(0);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
+}
+
+TEST_F(XlaCompileLibTest,
+       LoadAutotuneDataGpuDataNotPresentAndAutotuningEnabled) {
+  gpu::AutotunerCache::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(3);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
+}
+
+TEST_F(XlaCompileLibTest,
+       LoadAutotuneDataGpuDataNotPresentAndAutotuningDisabled) {
+  gpu::AutotunerCache::ClearAutotuneResults();
+
+  HloModuleAndMetadata mod;
+  mod.hlo_module = std::move(module_);
+
+  DebugOptions opts = mod.hlo_module->config().debug_options();
+  opts.set_xla_gpu_autotune_level(0);
+  mod.hlo_module->mutable_config().set_debug_options(opts);
+
+  EXPECT_THAT(internal::LoadAutotuneDataFromModule(&mod, BackendType::kGpu),
+              absl_testing::IsOkAndHolds(false));
+  EXPECT_TRUE(gpu::AutotunerCache::ResultCacheIsEmpty());
+}
+
+}  // namespace
+}  // namespace xla

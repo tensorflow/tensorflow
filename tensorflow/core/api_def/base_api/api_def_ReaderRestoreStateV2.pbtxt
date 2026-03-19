@@ -1,0 +1,24 @@
+op {
+  graph_op_name: "ReaderRestoreStateV2"
+  endpoint {
+    name: "ReaderRestoreState"
+  }
+  in_arg {
+    name: "reader_handle"
+    description: <<END
+Handle to a Reader.
+END
+  }
+  in_arg {
+    name: "state"
+    description: <<END
+Result of a ReaderSerializeState of a Reader with type
+matching reader_handle.
+END
+  }
+  summary: "Restore a reader to a previously saved state."
+  description: <<END
+Not all Readers support being restored, so this can produce an
+Unimplemented error.
+END
+}

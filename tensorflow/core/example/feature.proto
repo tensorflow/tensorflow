@@ -1,0 +1,110 @@
+// Protocol messages for describing features for machine learning model
+// training or inference.
+//
+// There are three base Feature types:
+//   - bytes
+//   - float
+//   - int64
+//
+// A Feature contains Lists which may hold zero or more values.  These
+// lists are the base values BytesList, FloatList, Int64List.
+//
+// Features are organized into categories by name.  The Features message
+// contains the mapping from name to Feature.
+//
+// Example Features for a movie recommendation application:
+//   feature {
+//     key: "age"
+//     value { float_list {
+//       value: 29.0
+//     }}
+//   }
+//   feature {
+//     key: "movie"
+//     value { bytes_list {
+//       value: "The Shawshank Redemption"
+//       value: "Fight Club"
+//     }}
+//   }
+//   feature {
+//     key: "movie_ratings"
+//     value { float_list {
+//       value: 9.0
+//       value: 9.7
+//     }}
+//   }
+//   feature {
+//     key: "suggestion"
+//     value { bytes_list {
+//       value: "Inception"
+//     }}
+//   }
+//   feature {
+//     key: "suggestion_purchased"
+//     value { int64_list {
+//       value: 1
+//     }}
+//   }
+//   feature {
+//     key: "purchase_price"
+//     value { float_list {
+//       value: 9.99
+//     }}
+//   }
+//
+
+syntax = "proto3";
+
+package tensorflow;
+
+option cc_enable_arenas = true;
+option java_outer_classname = "FeatureProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.example";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example/example_protos_go_proto";
+
+// LINT.IfChange
+// Containers to hold repeated fundamental values.
+message BytesList {
+  repeated bytes value = 1;
+}
+message FloatList {
+  repeated float value = 1 [packed = true];
+}
+message Int64List {
+  repeated int64 value = 1 [packed = true, jstype = JS_STRING];
+}
+
+// Containers for non-sequential data.
+message Feature {
+  // Each feature can be exactly one kind.
+  oneof kind {
+    BytesList bytes_list = 1;
+    FloatList float_list = 2;
+    Int64List int64_list = 3;
+  }
+}
+
+message Features {
+  // Map from feature name to feature.
+  map<string, Feature> feature = 1;
+}
+
+// Containers for sequential data.
+//
+// A FeatureList contains lists of Features.  These may hold zero or more
+// Feature values.
+//
+// FeatureLists are organized into categories by name.  The FeatureLists message
+// contains the mapping from name to FeatureList.
+//
+message FeatureList {
+  repeated Feature feature = 1;
+}
+
+message FeatureLists {
+  // Map from feature name to feature list.
+  map<string, FeatureList> feature_list = 1;
+}
+// LINT.ThenChange(
+//     https://www.tensorflow.org/code/tensorflow/python/training/training.py)

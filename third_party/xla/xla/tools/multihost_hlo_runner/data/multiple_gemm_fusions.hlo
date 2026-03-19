@@ -1,0 +1,49 @@
+f1 {
+  p0 = f16[64,64,64]{2,1,0} parameter(0)
+  p1 = s8[64,64,64]{2,1,0} parameter(1)
+  c = f16[64,64,64]{2,1,0} convert(p1)
+  ROOT d1 = f32[64,64,64]{2,1,0} dot(p0, c),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+f2 {
+  p0 = s8[64,64,64]{2,1,0} parameter(0)
+  c0 = f32[64,64,64]{2,1,0} convert(p0)
+  p1 = f16[64,64,64]{2,1,0} parameter(1)
+  c1 = f32[64,64,64]{2,1,0} convert(p1)
+  ROOT d2 = f32[64,64,64]{2,1,0} dot(c0, c1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+f3 {
+  p0 = f16[64,64,64]{2,1,0} parameter(0)
+  p1 = f16[64,64,64]{2,1,0} parameter(1)
+  ROOT d3 = f32[64,64,64]{2,1,0} dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={1},
+    rhs_batch_dims={0}, rhs_contracting_dims={2}
+}
+
+fa {
+  p0 = f32[64,64,64]{2,1,0} parameter(0)
+  p1 = f32[64,64,64]{2,1,0} parameter(1)
+  p2 = f32[64,64,64]{2,1,0} parameter(2)
+  a1 = f32[64,64,64]{2,1,0} add(p2, p1)
+  a2 = f32[64,64,64]{2,1,0} add(p0, a1)
+  c = f32[] constant(1)
+  b = f32[64,64,64]{2,1,0} broadcast(c)
+  ROOT a3 = f32[64,64,64]{2,1,0} add(a2, b)
+}
+
+ENTRY e {
+  p0 = f16[64,64,64]{2,1,0} parameter(0)
+  p1 = s8[64,64,64]{2,1,0} parameter(1)
+  f1r = f32[64,64,64]{2,1,0} fusion(p0, p1), kind=kCustom, calls=f1,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  f2r = f32[64,64,64]{2,1,0} fusion(p1, p0), kind=kCustom, calls=f2,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  f3r = f32[64,64,64]{2,1,0} fusion(p0, p0), kind=kCustom, calls=f3,
+    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+  ROOT _ = f32[64,64,64]{2,1,0} fusion(f1r, f2r, f3r), kind=kLoop, calls=fa
+}

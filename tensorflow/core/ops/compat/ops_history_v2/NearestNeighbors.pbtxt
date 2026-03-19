@@ -1,0 +1,23 @@
+op {
+  name: "NearestNeighbors"
+  input_arg {
+    name: "points"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "centers"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "k"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "nearest_center_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "nearest_center_distances"
+    type: DT_FLOAT
+  }
+}

@@ -1,0 +1,16 @@
+path: "tensorflow.distribute.coordinator.RemoteValue"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.coordinator.remote_value.RemoteValue\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "fetch"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

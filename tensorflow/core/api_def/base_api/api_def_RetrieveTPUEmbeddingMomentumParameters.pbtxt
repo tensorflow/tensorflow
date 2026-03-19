@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "RetrieveTPUEmbeddingMomentumParameters"
+  visibility: HIDDEN
+  out_arg {
+    name: "parameters"
+    description: <<END
+Parameter parameters updated by the Momentum optimization algorithm.
+END
+  }
+  out_arg {
+    name: "momenta"
+    description: <<END
+Parameter momenta updated by the Momentum optimization algorithm.
+END
+  }
+  summary: "Retrieve Momentum embedding parameters."
+  description: <<END
+An op that retrieves optimization parameters from embedding to host
+memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+the correct embedding table configuration. For example, this op is
+used to retrieve updated parameters before saving a checkpoint.
+END
+}

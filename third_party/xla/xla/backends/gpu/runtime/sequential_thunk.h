@@ -1,0 +1,72 @@
+/* Copyright 2017 The OpenXLA Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef XLA_BACKENDS_GPU_RUNTIME_SEQUENTIAL_THUNK_H_
+#define XLA_BACKENDS_GPU_RUNTIME_SEQUENTIAL_THUNK_H_
+
+#include <memory>
+#include <string>
+
+#include "absl/functional/function_ref.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
+
+namespace xla::gpu {
+
+// A thunk that wraps a list of sub-thunks. Executing this thunk executes all
+// the sub-thunks sequentially. This is useful to implement instructions that
+// require multiple kernel launches or library calls.
+class SequentialThunk : public Thunk {
+ public:
+  SequentialThunk(ThunkInfo thunk_info, ThunkSequence thunks);
+  SequentialThunk(const SequentialThunk&) = delete;
+  SequentialThunk& operator=(const SequentialThunk&) = delete;
+
+  ThunkSequence& thunks() { return executor_.thunks(); }
+  const ThunkSequence& thunks() const { return executor_.thunks(); }
+  std::string ToString(int indent) const override;
+
+  absl::Status Prepare(const PrepareParams& params) override;
+  absl::Status Initialize(const InitializeParams& params) override;
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::Status WalkNested(Walker callback) override;
+  absl::Status TransformNested(Transformer callback) override;
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
+  ThunkExecutor& executor() { return executor_; }
+
+  static absl::StatusOr<std::unique_ptr<SequentialThunk>> FromProto(
+      ThunkInfo thunk_info, const SequentialThunkProto& thunk_proto,
+      const Deserializer& deserializer);
+
+  // Converts a Thunk into a SequentialThunk. If the input is already a
+  // SequentialThunk, the returned value is the downcasted input.
+  //
+  // The new thunk, if created, will use a default-initialized ThunkInfo.
+  static std::unique_ptr<SequentialThunk> FromThunk(
+      std::unique_ptr<Thunk> thunk);
+
+ private:
+  ThunkExecutor executor_;
+};
+
+}  // namespace xla::gpu
+
+#endif  // XLA_BACKENDS_GPU_RUNTIME_SEQUENTIAL_THUNK_H_

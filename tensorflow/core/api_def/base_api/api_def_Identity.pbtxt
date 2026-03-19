@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Identity"
+  summary: "Return a tensor with the same shape and contents as the input tensor or value."
+}

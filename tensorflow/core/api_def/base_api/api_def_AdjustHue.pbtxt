@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "AdjustHue"
+  in_arg {
+    name: "images"
+    description: <<END
+Images to adjust.  At least 3-D.
+END
+  }
+  in_arg {
+    name: "delta"
+    description: <<END
+A float delta to add to the hue.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The hue-adjusted image or images.
+END
+  }
+  summary: "Adjust the hue of one or more images."
+  description: <<END
+`images` is a tensor of at least 3 dimensions.  The last dimension is
+interpreted as channels, and must be three.
+
+The input image is considered in the RGB colorspace. Conceptually, the RGB
+colors are first mapped into HSV. A delta is then applied all the hue values,
+and then remapped back to RGB colorspace.
+END
+}

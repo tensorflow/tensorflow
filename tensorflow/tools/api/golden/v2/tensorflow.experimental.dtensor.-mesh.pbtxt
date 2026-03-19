@@ -1,0 +1,122 @@
+path: "tensorflow.experimental.dtensor.Mesh"
+tf_class {
+  is_instance: "<class \'tensorflow.dtensor.python.layout.Mesh\'>"
+  is_instance: "<class \'tensorflow.python._pywrap_dtensor_device.Mesh\'>"
+  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
+  member {
+    name: "dim_names"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "single_device"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "size"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "strides"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'dim_names\', \'global_device_ids\', \'local_device_ids\', \'local_devices\', \'mesh_name\', \'global_devices\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "as_proto"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "contains_dim"
+    argspec: "args=[\'self\', \'dim_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "coords"
+    argspec: "args=[\'self\', \'device_idx\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "device_location"
+    argspec: "args=[\'self\', \'arg0\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "device_type"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dim_size"
+    argspec: "args=[\'self\', \'dim_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_device"
+    argspec: "args=[\'cls\', \'device\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_proto"
+    argspec: "args=[\'cls\', \'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_string"
+    argspec: "args=[\'cls\', \'mesh_str\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "global_device_ids"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "global_devices"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "host_mesh"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_remote"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_single_device"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_device_ids"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_device_locations"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_devices"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "min_global_device_id"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "num_local_devices"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "shape"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "to_string"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unravel_index"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "use_xla_spmd"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -1,0 +1,7 @@
+// This proto describes the format of the output profile file from
+// the Roofline Model tool.
+syntax = "proto2";
+
+package tensorflow.profiler.roofline_model;
+
+import public "plugin/xprof/protobuf/roofline_model.proto";

@@ -1,0 +1,9 @@
+func.func @OnesLike_platform_elem_type_output_type(%arg0: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+  %0 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
+  %1 = shape.num_elements %0 : tensor<?xindex> -> index
+  %from_elements = tensor.from_elements %1 : tensor<1xindex>
+  %2 = tensor.reshape %arg0(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+  %3 = "chlo.constant_like"(%2) {value = #complex.number<:scalar_type 1.000000e+00, 0.000000e+00> : elem_type} : (tensor<?xelem_type>) -> tensor<?xelem_type>
+  %4 = tensor.reshape %3(%0) : (tensor<?xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  return %4 : tensor<*xelem_type>
+}

@@ -1,0 +1,17 @@
+# copybara:uncomment package(default_applicable_licenses = ["//third_party/tensorflow:license"])
+
+package_group(
+    name = "friends",
+)
+
+package_group(
+    name = "internal",
+)
+
+package_group(
+    name = "xla_profiler_backends",
+)
+
+package_group(
+    name = "xla_internal",
+)

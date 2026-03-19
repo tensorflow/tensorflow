@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DecodeCSV"
+  endpoint {
+    name: "io.DecodeCsv"
+  }
+}

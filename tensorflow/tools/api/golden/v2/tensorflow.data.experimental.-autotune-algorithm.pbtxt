@@ -1,0 +1,24 @@
+path: "tensorflow.data.experimental.AutotuneAlgorithm"
+tf_class {
+  is_instance: "<enum \'AutotuneAlgorithm\'>"
+  member {
+    name: "DEFAULT"
+    mtype: "<enum \'AutotuneAlgorithm\'>"
+  }
+  member {
+    name: "GRADIENT_DESCENT"
+    mtype: "<enum \'AutotuneAlgorithm\'>"
+  }
+  member {
+    name: "HILL_CLIMB"
+    mtype: "<enum \'AutotuneAlgorithm\'>"
+  }
+  member {
+    name: "MAX_PARALLELISM"
+    mtype: "<enum \'AutotuneAlgorithm\'>"
+  }
+  member {
+    name: "STAGE_BASED"
+    mtype: "<enum \'AutotuneAlgorithm\'>"
+  }
+}

@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>lite/c/c_api.h</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>lite/c/c_api.h</h1>
+  <p>C API for TensorFlow Lite. </p>
+  <h2>Summary</h2>
+  <p>The API leans towards simplicity and uniformity instead of convenience, as most usage will be by language-specific wrappers. It provides largely the same set of functionality as that of the C++ TensorFlow Lite <code>Interpreter</code> API, but is useful for shared libraries where having a stable ABI boundary is important.</p>
+  <p>Conventions:<ul>
+      <li>We use the prefix TfLite for everything in the API.</li>
+      <li>size_t is used to represent byte sizes of objects that are materialized in the address space of the calling process.</li>
+      <li>int is used as an index into arrays.</li>
+    </ul></p>
+  <p>Usage: <pre class="prettyprint"><code>
+// Create the model and interpreter options.
+TfLiteModel* model = TfLiteModelCreateFromFile("/path/to/model.tflite");
+TfLiteInterpreterOptions* options = <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4fa7fc7968e814e55617b4de3f92ab6d">TfLiteInterpreterOptionsCreate()</a>;
+TfLiteInterpreterOptionsSetNumThreads(options, 2);</code></pre></p>
+  <p>
+    <pre class="prettyprint"><code>// Create the interpreter.
+TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);</code></pre>
+  </p>
+  <p>
+    <pre class="prettyprint"><code>// Allocate tensors and populate the input tensor data.
+TfLiteInterpreterAllocateTensors(interpreter);
+TfLiteTensor* input_tensor =
+    TfLiteInterpreterGetInputTensor(interpreter, 0);
+TfLiteTensorCopyFromBuffer(input_tensor, input.data(),
+                           input.size() * sizeof(float));</code></pre>
+  </p>
+  <p>
+    <pre class="prettyprint"><code>// Execute inference.
+TfLiteInterpreterInvoke(interpreter);</code></pre>
+  </p>
+  <p>
+    <pre class="prettyprint"><code>// Extract the output tensor data.
+const TfLiteTensor* output_tensor =
+     TfLiteInterpreterGetOutputTensor(interpreter, 0);
+TfLiteTensorCopyToBuffer(output_tensor, output.data(),
+                         output.size() * sizeof(float));</code></pre>
+  </p>
+  <p>
+    <pre class="prettyprint"><code>// Dispose of the model and interpreter objects.
+TfLiteInterpreterDelete(interpreter);
+TfLiteInterpreterOptionsDelete(options);
+TfLiteModelDelete(model);
+</code></pre>
+    <aside class="note"><strong>Note:</strong> Users of TensorFlow Lite should use <pre class="prettyprint">#include "tensorflow/lite/c/c_api.h"</pre> to access the APIs documented on this page. </aside>
+  </p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Typedefs</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a></code>
+        </div><div>TfLiteInterpreter provides inference from a provided model. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a></code>
+        </div><div>TfLiteInterpreterOptions allows customized interpreter configuration. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a></code>
+        </div><div>TfLiteModel wraps a loaded TensorFlow Lite model. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a></code>
+        </div><div>TfLiteSignatureRunner is used to run inference on a signature. </div></td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga9dfc579d42a8b685e188d79f379803f1">TfLiteTensor</a></code>
+      </td>
+      <td>typedef<div>
+          <code>struct <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a></code>
+        </div><div>A tensor in the interpreter system which is a wrapper around a buffer of data including a dimensionality (or NULL if not currently defined). </div></td>
+    </tr>
+  </table>
+  <table class="methods responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Functions</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga70f12c31503125b41f71404bc60a1666">TfLiteExtensionApisVersion</a>(void)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const char *</code>
+        </div>
+        <div>The TensorFlow Lite Extension APIs version. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gaf9dfd1837fd95c9813cb6bb5a99ffec4">TfLiteInterpreterAllocateTensors</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Updates allocations for all tensors, resizing dependent tensors using the specified input tensor dimensionality. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gaf36dc00c90ca1f54a2c242a770c7f824">TfLiteInterpreterCancel</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Tries to cancel any in-flight invocation. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gac7097d1b60a438a2be53e526eafbd54d">TfLiteInterpreterCreate</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> *model, const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *optional_options)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *</code>
+        </div>
+        <div>Returns a new interpreter using the provided model and options, or null on failure. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gab8afe2e7c0c605eb83db474526802c85">TfLiteInterpreterDelete</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Destroys the interpreter. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga92177c68915722a4adabae8debbc3f96">TfLiteInterpreterGetInputTensor</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter, int32_t input_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *</code>
+        </div>
+        <div>Returns the tensor associated with the input index. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga513a9d3086c8fb6e2a9b05351788cfd3">TfLiteInterpreterGetInputTensorCount</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int32_t</code>
+        </div>
+        <div>Returns the number of input tensors associated with the model. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga77e520de8e526b95332102d803172a49">TfLiteInterpreterGetOutputTensor</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter, int32_t output_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *</code>
+        </div>
+        <div>Returns the tensor associated with the output index. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga869dbf2f8375050929f32b34595af090">TfLiteInterpreterGetOutputTensorCount</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int32_t</code>
+        </div>
+        <div>Returns the number of output tensors associated with the model. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gab05aab37f768ca97f71aeeb82c02a7a0">TfLiteInterpreterGetSignatureCount</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int32_t</code>
+        </div>
+        <div><hr />
+ SignatureRunner APIs </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga1ba870b49993b58c30cbe9d3549d82a1">TfLiteInterpreterGetSignatureKey</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter, int32_t signature_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const char *</code>
+        </div>
+        <div>Returns the key of the Nth signature in the model, where N is specified as <code>signature_index</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga69801f27d983434c590c25a3716102ff">TfLiteInterpreterGetSignatureRunner</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter, const char *signature_key)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *</code>
+        </div>
+        <div>Returns a new signature runner using the provided interpreter and signature key, or nullptr on failure. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gadadd39a091e6c18a02a188518ba660ec">TfLiteInterpreterGetTensor</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter, int index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *</code>
+        </div>
+        <div>Returns modifiable access to the tensor that corresponds to the specified <code>index</code> and is associated with the provided <code>interpreter</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga0560962b88e528d1285bb891808769d2">TfLiteInterpreterInputTensorIndices</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const int *</code>
+        </div>
+        <div>Returns a pointer to an array of input tensor indices. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga2abdf9bbe20a7a69a4b380a0b67cd5e9">TfLiteInterpreterInvoke</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Runs inference for the loaded graph. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga91fb01244f7d52e118f5dfee7fc8820f">TfLiteInterpreterOptionsAddDelegate</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options, <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *delegate)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Adds a delegate to be applied during <code>TfLiteInterpreter</code> creation. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga3a49604750ff037e5b5e01c9d10ce0ec">TfLiteInterpreterOptionsAddRegistrationExternal</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options, <a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> *registration)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Adds an op registration to be applied during <code>TfLiteInterpreter</code> creation. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga36432a9ae3857cbf89d0da20a27203d9">TfLiteInterpreterOptionsCopy</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *from)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *</code>
+        </div>
+        <div>Creates and returns a shallow copy of an options object. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga4fa7fc7968e814e55617b4de3f92ab6d">TfLiteInterpreterOptionsCreate</a>()</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *</code>
+        </div>
+        <div>Returns a new interpreter options instances. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga4e37d10221b151c9bea1acfc175561a1">TfLiteInterpreterOptionsDelete</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Destroys the interpreter options instance. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga29febba7282d5a7c41e469c3eb332f8f">TfLiteInterpreterOptionsEnableCancellation</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options, bool enable)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Enables users to cancel in-flight invocations with <code>TfLiteInterpreterCancel</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gabecb69962a1ee724da79d4a03c77e2ea">TfLiteInterpreterOptionsSetErrorReporter</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options, void(*)(void *user_data, const char *format, va_list args) reporter, void *user_data)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Sets a custom error reporter for interpreter execution. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga08614487dfa5a1cf90078ac6e594e222">TfLiteInterpreterOptionsSetNumThreads</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options, int32_t num_threads)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Sets the number of CPU threads to use for the interpreter. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gaef9a530ccff933f8c3f1b6d9cf0e74b8">TfLiteInterpreterOutputTensorIndices</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const int *</code>
+        </div>
+        <div>Returns a pointer to an array of output tensor indices. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gab857f13dae3969753c697febfabe5b45">TfLiteInterpreterResizeInputTensor</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter, int32_t input_index, const int *input_dims, int32_t input_dims_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Resizes the specified input tensor. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga806c0417a84995be7cc300bab560bb80">TfLiteModelCreate</a>(const void *model_data, size_t model_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> *</code>
+        </div>
+        <div>Returns a model from the provided buffer, or null on failure. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gaa7864c8960173c9e727396439d6125d5">TfLiteModelCreateFromFile</a>(const char *model_path)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> *</code>
+        </div>
+        <div>Returns a model from the provided file, or null on failure. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga97a1a41146e88023438b135e6c2716a5">TfLiteModelCreateFromFileWithErrorReporter</a>(const char *model_path, void(*)(void *user_data, const char *format, va_list args) reporter, void *user_data)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> *</code>
+        </div>
+        <div>Same as <code>TfLiteModelCreateFromFile</code> with customizble error reporter. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gacb663b81e01435e32dbbe4ab0c49c5b4">TfLiteModelCreateWithErrorReporter</a>(const void *model_data, size_t model_size, void(*)(void *user_data, const char *format, va_list args) reporter, void *user_data)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> *</code>
+        </div>
+        <div>Same as <code>TfLiteModelCreate</code> with customizble error reporter. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga3b5db3b2345e7d5d9fdec4ac68d54ae3">TfLiteModelDelete</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> *model)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Destroys the model instance. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga068fa20e2902141247703e984b972a50">TfLiteSchemaVersion</a>(void)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int</code>
+        </div>
+        <div>The supported TensorFlow Lite model file Schema version. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga3d00a54fd91b73b351ff837e7afcd688">TfLiteSignatureRunnerAllocateTensors</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Updates allocations for tensors associated with a signature and resizes dependent tensors using the specified input tensor dimensionality. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gac5969a8ab2c1fccdb804a379bcbc2b46">TfLiteSignatureRunnerDelete</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void</code>
+        </div>
+        <div>Destroys the signature runner. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga4ad6c64303b12715281fc48cc315a808">TfLiteSignatureRunnerGetInputCount</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT size_t</code>
+        </div>
+        <div>Returns the number of inputs associated with a signature. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gacdc5734e1c8da99e632d7cec93474626">TfLiteSignatureRunnerGetInputName</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner, int32_t input_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const char *</code>
+        </div>
+        <div>Returns the (null-terminated) name of the Nth input in a signature, where N is specified as <code>input_index</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga0ba6843c19bd40e99c56c5d4cdf7b15c">TfLiteSignatureRunnerGetInputTensor</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner, const char *input_name)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *</code>
+        </div>
+        <div>Returns the input tensor identified by <code>input_name</code> in the given signature. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gaef595af5e6de4ae9d337b240c5406261">TfLiteSignatureRunnerGetOutputCount</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT size_t</code>
+        </div>
+        <div>Returns the number of output tensors associated with the signature. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga0af68bdabc46e4a4e0307e47186933dd">TfLiteSignatureRunnerGetOutputName</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner, int32_t output_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const char *</code>
+        </div>
+        <div>Returns the (null-terminated) name of the Nth output in a signature, where N is specified as <code>output_index</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gaf89f1146d31eae50c71455afedf5f9f2">TfLiteSignatureRunnerGetOutputTensor</a>(const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner, const char *output_name)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *</code>
+        </div>
+        <div>Returns the output tensor identified by <code>output_name</code> in the given signature. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga3dfaa78e5de5819772fbdd4a8d822aca">TfLiteSignatureRunnerInvoke</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Runs inference on a given signature. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga40b6dad3402b3ced1afbe079db34244f">TfLiteSignatureRunnerResizeInputTensor</a>(<a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner, const char *input_name, const int *input_dims, int32_t input_dims_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Resizes the input tensor identified as <code>input_name</code> to be the dimensions specified by <code>input_dims</code> and <code>input_dims_size</code>. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga2602a6b29f004de83c30835bd425a7f0">TfLiteTensorByteSize</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT size_t</code>
+        </div>
+        <div>Returns the size of the underlying data in bytes. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga3ead6f9a0f66fb05a1d95cb1abe0dd33">TfLiteTensorCopyFromBuffer</a>(<a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor, const void *input_data, size_t input_data_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Copies from the provided input buffer into the tensor's buffer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga8e997a8cb4874133e26828d0fd088fe8">TfLiteTensorCopyToBuffer</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *output_tensor, void *output_data, size_t output_data_size)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a></code>
+        </div>
+        <div>Copies to the provided output buffer from the tensor's buffer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga0aba1c9a54a4d9e331ad1ba3c547148f">TfLiteTensorData</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT void *</code>
+        </div>
+        <div>Returns a pointer to the underlying data buffer. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga43c803e7e9aec354d826a057f86130f7">TfLiteTensorDim</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor, int32_t dim_index)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int32_t</code>
+        </div>
+        <div>Returns the length of the tensor in the "dim_index" dimension. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gabdb5291a62539966be21d752a9cafa73">TfLiteTensorName</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const char *</code>
+        </div>
+        <div>Returns the (null-terminated) name of the tensor. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga1924021a280eb3037ff42e7c99c1a4f6">TfLiteTensorNumDims</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT int32_t</code>
+        </div>
+        <div>Returns the number of dimensions that the tensor has. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga0a70935678a77e13fdc58325943ef0ce">TfLiteTensorQuantizationParams</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a></code>
+        </div>
+        <div>Returns the parameters for asymmetric quantization. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1ga1c40b72ac053fca8332b7c4d0c7b2aa1">TfLiteTensorType</a>(const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a></code>
+        </div>
+        <div>Returns the type of a tensor element. </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#group__c__api_1gac3f951f32a909a4056d8cbb31ae6c26e">TfLiteVersion</a>(void)</code>
+      </td>
+      <td>
+        <div>
+          <code>TFL_CAPI_EXPORT const char *</code>
+        </div>
+        <div>The TensorFlow Lite Runtime version. </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Typedefs</h2>
+  <div id="group__c__api_1ga58688a4cf8e43f56b7796925b134f175">
+    <h3>TfLiteInterpreter</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> TfLiteInterpreter</pre>
+    <div>
+      <p>TfLiteInterpreter provides inference from a provided model. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gacbeed8c564457ffba2504486b6c351f0">
+    <h3>TfLiteInterpreterOptions</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> TfLiteInterpreterOptions</pre>
+    <div>
+      <p>TfLiteInterpreterOptions allows customized interpreter configuration. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">
+    <h3>TfLiteModel</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> TfLiteModel</pre>
+    <div>
+      <p>TfLiteModel wraps a loaded TensorFlow Lite model. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">
+    <h3>TfLiteSignatureRunner</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> TfLiteSignatureRunner</pre>
+    <div>
+      <p>TfLiteSignatureRunner is used to run inference on a signature. </p>
+      <p>Note: A signature is used to define a computation in a TF model. A model can have multiple signatures. Each signature contains three components:<ul>
+          <li>Signature Key: A unique string to identify a signature</li>
+          <li>Inputs: A list of names, each mapped to an input tensor of a signature</li>
+          <li>Outputs: A list of names, each mapped to an output tensor of a signature</li>
+        </ul></p>
+      <p>To learn more about signatures in TFLite, refer to: <a href="https://www.tensorflow.org/lite/guide/signatures">https://www.tensorflow.org/lite/guide/signatures</a></p>
+      <p>Using the TfLiteSignatureRunner, for a particular signature, you can set its inputs, invoke (i.e. execute) the computation, and retrieve its outputs. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga9dfc579d42a8b685e188d79f379803f1">
+    <h3>TfLiteTensor</h3>
+    <pre class="prettyprint">struct <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> TfLiteTensor</pre>
+    <div>
+      <p>A tensor in the interpreter system which is a wrapper around a buffer of data including a dimensionality (or NULL if not currently defined). </p>
+    </div>
+  </div>
+  <h2>Functions</h2>
+  <div id="group__c__api_1ga70f12c31503125b41f71404bc60a1666">
+    <h3>TfLiteExtensionApisVersion</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const char * TfLiteExtensionApisVersion(
+  void
+)</pre>
+    <div>
+      <p>The TensorFlow Lite Extension APIs version. </p>
+      <p>Returns a pointer to a statically allocated string that is the version number of the TF Lite Extension APIs supported by the (potentially dynamically loaded) TF Lite Runtime library. The TF Lite "Extension APIs" are the APIs for extending TF Lite with custom ops and delegates. More specifically, this version number covers the (non-experimental) functionality documented in the following header files:</p>
+      <p>
+        <ul>
+          <li>lite/c/c_api_opaque.h</li>
+          <li>lite/c/common.h</li>
+          <li>lite/c/builtin_op_data.h</li>
+          <li>lite/builtin_ops.h</li>
+        </ul>
+      </p>
+      <p>This version number uses semantic versioning, and the return value should be in semver 2 format <a href="http://semver.org">http://semver.org</a>, starting with MAJOR.MINOR.PATCH, e.g. "2.14.0" or "2.15.0-rc2". </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gaf9dfd1837fd95c9813cb6bb5a99ffec4">
+    <h3>TfLiteInterpreterAllocateTensors</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteInterpreterAllocateTensors(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p>Updates allocations for all tensors, resizing dependent tensors using the specified input tensor dimensionality. </p>
+      <p>This is a relatively expensive operation, and need only be called after creating the graph and/or resizing any inputs. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gaf36dc00c90ca1f54a2c242a770c7f824">
+    <h3>TfLiteInterpreterCancel</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteInterpreterCancel(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p>Tries to cancel any in-flight invocation. </p>
+      <p><aside class="note"><strong>Note:</strong> This only cancels <code>TfLiteInterpreterInvoke</code> calls that happen before calling this and it does not cancel subsequent invocations. </aside><aside class="note"><strong>Note:</strong> Calling this function will also cancel any in-flight invocations of SignatureRunners constructed from this interpreter. Non-blocking and thread safe.</aside>
+Returns kTfLiteError if cancellation is not enabled via <code>TfLiteInterpreterOptionsEnableCancellation</code>. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gac7097d1b60a438a2be53e526eafbd54d">
+    <h3>TfLiteInterpreterCreate</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> * TfLiteInterpreterCreate(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> *model,
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *optional_options
+)</pre>
+    <div>
+      <p>Returns a new interpreter using the provided model and options, or null on failure. </p>
+      <p>
+        <ul>
+          <li><code>model</code> must be a valid model instance. The caller retains ownership of the object, and may destroy it (via TfLiteModelDelete) immediately after creating the interpreter. However, if the TfLiteModel was allocated with TfLiteModelCreate, then the <code>model_data</code> buffer that was passed to TfLiteModelCreate must outlive the lifetime of the TfLiteInterpreter object that this function returns, and must not be modified during that time; and if the TfLiteModel was allocated with TfLiteModelCreateFromFile, then the contents of the model file must not be modified during the lifetime of the TfLiteInterpreter object that this function returns.</li>
+          <li><code>optional_options</code> may be null. The caller retains ownership of the object, and can safely destroy it (via TfLiteInterpreterOptionsDelete) immediately after creating the interpreter.</li>
+        </ul>
+      </p>
+      <p>
+        <aside class="note"><strong>Note:</strong> The client <i>must</i> explicitly allocate tensors before attempting to access input tensor data or invoke the interpreter. </aside>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gab8afe2e7c0c605eb83db474526802c85">
+    <h3>TfLiteInterpreterDelete</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteInterpreterDelete(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p>Destroys the interpreter. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga92177c68915722a4adabae8debbc3f96">
+    <h3>TfLiteInterpreterGetInputTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> * TfLiteInterpreterGetInputTensor(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter,
+  int32_t input_index
+)</pre>
+    <div>
+      <p>Returns the tensor associated with the input index. </p>
+      <p>REQUIRES: 0 <= input_index < TfLiteInterpreterGetInputTensorCount(tensor) </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga513a9d3086c8fb6e2a9b05351788cfd3">
+    <h3>TfLiteInterpreterGetInputTensorCount</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int32_t TfLiteInterpreterGetInputTensorCount(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p>Returns the number of input tensors associated with the model. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga77e520de8e526b95332102d803172a49">
+    <h3>TfLiteInterpreterGetOutputTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> * TfLiteInterpreterGetOutputTensor(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter,
+  int32_t output_index
+)</pre>
+    <div>
+      <p>Returns the tensor associated with the output index. </p>
+      <p>REQUIRES: 0 <= output_index < TfLiteInterpreterGetOutputTensorCount(tensor)</p>
+      <p>
+        <aside class="note"><strong>Note:</strong> The shape and underlying data buffer for output tensors may be not be available until after the output tensor has been both sized and allocated. In general, best practice is to interact with the output tensor <i>after</i> calling <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga2abdf9bbe20a7a69a4b380a0b67cd5e9">TfLiteInterpreterInvoke()</a>. </aside>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga869dbf2f8375050929f32b34595af090">
+    <h3>TfLiteInterpreterGetOutputTensorCount</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int32_t TfLiteInterpreterGetOutputTensorCount(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p>Returns the number of output tensors associated with the model. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gab05aab37f768ca97f71aeeb82c02a7a0">
+    <h3>TfLiteInterpreterGetSignatureCount</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int32_t TfLiteInterpreterGetSignatureCount(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p><hr />
+ SignatureRunner APIs </p>
+      <p>You can run inference by either:</p>
+      <p>(i) (recommended) using the Interpreter to initialize SignatureRunner(s) and then only using SignatureRunner APIs.</p>
+      <p>(ii) only using Interpreter APIs.</p>
+      <p>NOTE:<ul>
+          <li>Only use one of the above options to run inference, i.e. avoid mixing both SignatureRunner APIs and Interpreter APIs to run inference as they share the same underlying data (e.g. updating an input tensor “A” retrieved using the Interpreter APIs will update the state of the input tensor “B” retrieved using SignatureRunner APIs, if they point to the same underlying tensor in the model; as it is not possible for a user to debug this by analyzing the code, it can lead to undesirable behavior).</li>
+          <li>The TfLiteSignatureRunner type is conditionally thread-safe, provided that no two threads attempt to simultaneously access two TfLiteSignatureRunner instances that point to the same underlying signature, or access a TfLiteSignatureRunner and its underlying TfLiteInterpreter, unless all such simultaneous accesses are reads (rather than writes).</li>
+          <li>The lifetime of a TfLiteSignatureRunner object ends when <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gac5969a8ab2c1fccdb804a379bcbc2b46">TfLiteSignatureRunnerDelete()</a> is called on it (or when the lifetime of the underlying TfLiteInterpreter ends  but you should call <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gac5969a8ab2c1fccdb804a379bcbc2b46">TfLiteSignatureRunnerDelete()</a> before that happens in order to avoid resource leaks).</li>
+          <li>You can only apply delegates to the interpreter (via TfLiteInterpreterOptions) and not to a signature. Returns the number of signatures defined in the model. </li>
+        </ul></p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga1ba870b49993b58c30cbe9d3549d82a1">
+    <h3>TfLiteInterpreterGetSignatureKey</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const char * TfLiteInterpreterGetSignatureKey(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter,
+  int32_t signature_index
+)</pre>
+    <div>
+      <p>Returns the key of the Nth signature in the model, where N is specified as <code>signature_index</code>. </p>
+      <p>NOTE: The lifetime of the returned key is the same as (and depends on) the lifetime of <code>interpreter</code>. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga69801f27d983434c590c25a3716102ff">
+    <h3>TfLiteInterpreterGetSignatureRunner</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> * TfLiteInterpreterGetSignatureRunner(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter,
+  const char *signature_key
+)</pre>
+    <div>
+      <p>Returns a new signature runner using the provided interpreter and signature key, or nullptr on failure. </p>
+      <p>NOTE: <code>signature_key</code> is a null-terminated C string that must match the key of a signature in the interpreter's model.</p>
+      <p>NOTE: The returned signature runner should be destroyed, by calling <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gac5969a8ab2c1fccdb804a379bcbc2b46">TfLiteSignatureRunnerDelete()</a>, before the interpreter is destroyed. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gadadd39a091e6c18a02a188518ba660ec">
+    <h3>TfLiteInterpreterGetTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> * TfLiteInterpreterGetTensor(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter,
+  int index
+)</pre>
+    <div>
+      <p>Returns modifiable access to the tensor that corresponds to the specified <code>index</code> and is associated with the provided <code>interpreter</code>. </p>
+      <p>This requires the <code>index</code> to be between 0 and N - 1, where N is the number of tensors in the model.</p>
+      <p>Typically the tensors associated with the <code>interpreter</code> would be set during the <code>interpreter</code> initialization, through a mechanism like the <code>InterpreterBuilder</code>, and remain unchanged throughout the lifetime of the interpreter. However, there are some circumstances in which the pointer may not remain valid throughout the lifetime of the interpreter, because calls to <code>AddTensors</code> on the interpreter invalidate the returned pointer.</p>
+      <p>Note the difference between this function and <code>TfLiteInterpreterGetInputTensor</code> (or <code>TfLiteInterpreterGetOutputTensor</code> for that matter): <code>TfLiteInterpreterGetTensor</code> takes an index into the array of all tensors associated with the <code>interpreter</code>'s model, whereas <code>TfLiteInterpreterGetInputTensor</code> takes an index into the array of input tensors.</p>
+      <p>The ownership of the tensor remains with the TFLite runtime, meaning the caller should not deallocate the pointer. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga0560962b88e528d1285bb891808769d2">
+    <h3>TfLiteInterpreterInputTensorIndices</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const int * TfLiteInterpreterInputTensorIndices(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p>Returns a pointer to an array of input tensor indices. </p>
+      <p>The length of the array can be obtained via a call to <code>TfLiteInterpreterGetInputTensorCount</code>.</p>
+      <p>Typically the input tensors associated with an <code>interpreter</code> would be set during the initialization of the <code>interpreter</code>, through a mechanism like the <code>InterpreterBuilder</code>, and remain unchanged throughout the lifetime of the interpreter. However, there are some circumstances in which the pointer may not remain valid throughout the lifetime of the interpreter, because calls to <code>SetInputs</code> on the interpreter invalidate the returned pointer.</p>
+      <p>The ownership of the array remains with the TFLite runtime. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga2abdf9bbe20a7a69a4b380a0b67cd5e9">
+    <h3>TfLiteInterpreterInvoke</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteInterpreterInvoke(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p>Runs inference for the loaded graph. </p>
+      <p>Before calling this function, the caller should first invoke <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gaf9dfd1837fd95c9813cb6bb5a99ffec4">TfLiteInterpreterAllocateTensors()</a> and should also set the values for the input tensors. After successfully calling this function, the values for the output tensors will be set.</p>
+      <p><aside class="note"><strong>Note:</strong> It is possible that the interpreter is not in a ready state to evaluate (e.g., if AllocateTensors() hasn't been called, or if a ResizeInputTensor() has been performed without a subsequent call to AllocateTensors()).</aside>
+If the (experimental!) delegate fallback option was enabled in the interpreter options, then the interpreter will automatically fall back to not using any delegates if execution with delegates fails. For details, see TfLiteInterpreterOptionsSetEnableDelegateFallback in <a href="/lite/api_docs/c/c/api-experimental-8h-source.html#c__api__experimental_8h_source">c_api_experimental.h</a>.</p>
+      <p>Returns one of the following status codes:<ul>
+          <li>kTfLiteOk: Success. Output is valid.</li>
+          <li>kTfLiteDelegateError: Execution with delegates failed, due to a problem with the delegate(s). If fallback was not enabled, output is invalid. If fallback was enabled, this return value indicates that fallback succeeded, the output is valid, and all delegates previously applied to the interpreter have been undone.</li>
+          <li>kTfLiteApplicationError: Same as for kTfLiteDelegateError, except that the problem was not with the delegate itself, but rather was due to an incompatibility between the delegate(s) and the interpreter or model.</li>
+          <li>kTfLiteError: Unexpected/runtime failure. Output is invalid. </li>
+        </ul></p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga91fb01244f7d52e118f5dfee7fc8820f">
+    <h3>TfLiteInterpreterOptionsAddDelegate</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddDelegate(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options,
+  <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gac2bc3e65b2b4dfe997134c006faa442f">TfLiteOpaqueDelegate</a> *delegate
+)</pre>
+    <div>
+      <p>Adds a delegate to be applied during <code>TfLiteInterpreter</code> creation. </p>
+      <p>If delegate application fails, interpreter creation will also fail with an associated error logged.</p>
+      <p><aside class="note"><strong>Note:</strong> The caller retains ownership of the delegate and should ensure that it remains valid for the duration of any created interpreter's lifetime.</aside>
+If you are NOT using "TensorFlow Lite in Play Services", and NOT building with <code>TFLITE_WITH_STABLE_ABI</code> or <code>TFLITE_USE_OPAQUE_DELEGATE</code> macros enabled, it is possible to pass a <code>TfLiteDelegate*</code> rather than a <code>TfLiteOpaqueDelegate*</code> to this function, since in those cases, <code>TfLiteOpaqueDelegate</code> is just a typedef alias for <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>. This is for compatibility with existing source code and existing delegates. For new delegates, it is recommended to use <code>TfLiteOpaqueDelegate</code> rather than <code><a href="/lite/api_docs/c/struct/tf-lite-delegate.html#struct_tf_lite_delegate">TfLiteDelegate</a></code>. (See <code>TfLiteOpaqueDelegate</code> in <a href="/lite/api_docs/c/c/api-types-8h-source.html#c__api__types_8h_source">tensorflow/lite/core/c/c_api_types.h</a>.) </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga3a49604750ff037e5b5e01c9d10ce0ec">
+    <h3>TfLiteInterpreterOptionsAddRegistrationExternal</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddRegistrationExternal(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options,
+  <a href="/lite/api_docs/c/group/common.html#group__common_1gac0d70c820dfb7187a23e38e14deec7eb">TfLiteRegistrationExternal</a> *registration
+)</pre>
+    <div>
+      <p>Adds an op registration to be applied during <code>TfLiteInterpreter</code> creation. </p>
+      <p>The <code>TfLiteRegistrationExternal</code> object is needed to implement custom op of TFLite Interpreter via C API. Calling this function ensures that any <code>TfLiteInterpreter</code> created with the specified <code>options</code> can execute models that use the custom operator specified in <code>registration</code>. Please refer <a href="https://www.tensorflow.org/lite/guide/ops_custom">https://www.tensorflow.org/lite/guide/ops_custom</a> for custom op support. <aside class="note"><strong>Note:</strong> The caller retains ownership of the TfLiteRegistrationExternal object and should ensure that it remains valid for the duration of any created interpreter's lifetime. </aside>This is an experimental API and subject to change. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga36432a9ae3857cbf89d0da20a27203d9">
+    <h3>TfLiteInterpreterOptionsCopy</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> * TfLiteInterpreterOptionsCopy(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *from
+)</pre>
+    <div>
+      <p>Creates and returns a shallow copy of an options object. </p>
+      <p>The caller is responsible for calling <code>TfLiteInterpreterOptionsDelete</code> to deallocate the object pointed to by the returned pointer. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga4fa7fc7968e814e55617b4de3f92ab6d">
+    <h3>TfLiteInterpreterOptionsCreate</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> * TfLiteInterpreterOptionsCreate()</pre>
+    <div>
+      <p>Returns a new interpreter options instances. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga4e37d10221b151c9bea1acfc175561a1">
+    <h3>TfLiteInterpreterOptionsDelete</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteInterpreterOptionsDelete(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options
+)</pre>
+    <div>
+      <p>Destroys the interpreter options instance. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga29febba7282d5a7c41e469c3eb332f8f">
+    <h3>TfLiteInterpreterOptionsEnableCancellation</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteInterpreterOptionsEnableCancellation(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options,
+  bool enable
+)</pre>
+    <div>
+      <p>Enables users to cancel in-flight invocations with <code>TfLiteInterpreterCancel</code>. </p>
+      <p>By default it is disabled and calling to <code>TfLiteInterpreterCancel</code> will return kTfLiteError. See <code>TfLiteInterpreterCancel</code>. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gabecb69962a1ee724da79d4a03c77e2ea">
+    <h3>TfLiteInterpreterOptionsSetErrorReporter</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteInterpreterOptionsSetErrorReporter(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options,
+  void(*)(void *user_data, const char *format, va_list args) reporter,
+  void *user_data
+)</pre>
+    <div>
+      <p>Sets a custom error reporter for interpreter execution. </p>
+      <p>
+        <ul>
+          <li><code>reporter</code> takes the provided <code>user_data</code> object, as well as a C-style format string and arg list (see also vprintf).</li>
+          <li><code>user_data</code> is optional. If non-null, it is owned by the client and must remain valid for the duration of the interpreter lifetime. </li>
+        </ul>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga08614487dfa5a1cf90078ac6e594e222">
+    <h3>TfLiteInterpreterOptionsSetNumThreads</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteInterpreterOptionsSetNumThreads(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gacbeed8c564457ffba2504486b6c351f0">TfLiteInterpreterOptions</a> *options,
+  int32_t num_threads
+)</pre>
+    <div>
+      <p>Sets the number of CPU threads to use for the interpreter. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gaef9a530ccff933f8c3f1b6d9cf0e74b8">
+    <h3>TfLiteInterpreterOutputTensorIndices</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const int * TfLiteInterpreterOutputTensorIndices(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter
+)</pre>
+    <div>
+      <p>Returns a pointer to an array of output tensor indices. </p>
+      <p>The length of the array can be obtained via a call to <code>TfLiteInterpreterGetOutputTensorCount</code>.</p>
+      <p>Typically the output tensors associated with an <code>interpreter</code> would be set during the initialization of the <code>interpreter</code>, through a mechanism like the <code>InterpreterBuilder</code>, and remain unchanged throughout the lifetime of the interpreter. However, there are some circumstances in which the pointer may not remain valid throughout the lifetime of the interpreter, because calls to <code>SetOutputs</code> on the interpreter invalidate the returned pointer.</p>
+      <p>The ownership of the array remains with the TFLite runtime. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gab857f13dae3969753c697febfabe5b45">
+    <h3>TfLiteInterpreterResizeInputTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteInterpreterResizeInputTensor(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga58688a4cf8e43f56b7796925b134f175">TfLiteInterpreter</a> *interpreter,
+  int32_t input_index,
+  const int *input_dims,
+  int32_t input_dims_size
+)</pre>
+    <div>
+      <p>Resizes the specified input tensor. </p>
+      <p><aside class="note"><strong>Note:</strong> After a resize, the client <i>must</i> explicitly allocate tensors before attempting to access the resized tensor data or invoke the interpreter.</aside>
+REQUIRES: 0 <= input_index < TfLiteInterpreterGetInputTensorCount(tensor)</p>
+      <p>This function makes a copy of the input dimensions, so the client can safely deallocate <code>input_dims</code> immediately after this function returns. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga806c0417a84995be7cc300bab560bb80">
+    <h3>TfLiteModelCreate</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> * TfLiteModelCreate(
+  const void *model_data,
+  size_t model_size
+)</pre>
+    <div>
+      <p>Returns a model from the provided buffer, or null on failure. </p>
+      <p>
+        <aside class="note"><strong>Note:</strong> The caller retains ownership of the <code>model_data</code> buffer and should ensure that the lifetime of the <code>model_data</code> buffer must be at least as long as the lifetime of the <code>TfLiteModel</code> and of any <code>TfLiteInterpreter</code> objects created from that <code>TfLiteModel</code>, and furthermore the contents of the <code>model_data</code> buffer must not be modified during that time." </aside>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gaa7864c8960173c9e727396439d6125d5">
+    <h3>TfLiteModelCreateFromFile</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> * TfLiteModelCreateFromFile(
+  const char *model_path
+)</pre>
+    <div>
+      <p>Returns a model from the provided file, or null on failure. </p>
+      <p>
+        <aside class="note"><strong>Note:</strong> The file's contents must not be modified during the lifetime of the <code>TfLiteModel</code> or of any <code>TfLiteInterpreter</code> objects created from that <code>TfLiteModel</code>. </aside>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga97a1a41146e88023438b135e6c2716a5">
+    <h3>TfLiteModelCreateFromFileWithErrorReporter</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> * TfLiteModelCreateFromFileWithErrorReporter(
+  const char *model_path,
+  void(*)(void *user_data, const char *format, va_list args) reporter,
+  void *user_data
+)</pre>
+    <div>
+      <p>Same as <code>TfLiteModelCreateFromFile</code> with customizble error reporter. </p>
+      <p>
+        <ul>
+          <li><code>reporter</code> takes the provided <code>user_data</code> object, as well as a C-style format string and arg list (see also vprintf).</li>
+          <li><code>user_data</code> is optional. If non-null, it is owned by the client and must remain valid for the duration of the interpreter lifetime. </li>
+        </ul>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gacb663b81e01435e32dbbe4ab0c49c5b4">
+    <h3>TfLiteModelCreateWithErrorReporter</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> * TfLiteModelCreateWithErrorReporter(
+  const void *model_data,
+  size_t model_size,
+  void(*)(void *user_data, const char *format, va_list args) reporter,
+  void *user_data
+)</pre>
+    <div>
+      <p>Same as <code>TfLiteModelCreate</code> with customizble error reporter. </p>
+      <p>
+        <ul>
+          <li><code>reporter</code> takes the provided <code>user_data</code> object, as well as a C-style format string and arg list (see also vprintf).</li>
+          <li><code>user_data</code> is optional. If non-null, it is owned by the client and must remain valid for the duration of the interpreter lifetime. </li>
+        </ul>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga3b5db3b2345e7d5d9fdec4ac68d54ae3">
+    <h3>TfLiteModelDelete</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteModelDelete(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga4edaf7802d29c53df72ed1410289d1be">TfLiteModel</a> *model
+)</pre>
+    <div>
+      <p>Destroys the model instance. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga068fa20e2902141247703e984b972a50">
+    <h3>TfLiteSchemaVersion</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int TfLiteSchemaVersion(
+  void
+)</pre>
+    <div>
+      <p>The supported TensorFlow Lite model file Schema version. </p>
+      <p>Returns the (major) version number of the Schema used for model files that is supported by the (potentially dynamically loaded) TensorFlow Lite Runtime.</p>
+      <p>Model files using schema versions different to this may not be supported by the current version of the TF Lite Runtime. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga3d00a54fd91b73b351ff837e7afcd688">
+    <h3>TfLiteSignatureRunnerAllocateTensors</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteSignatureRunnerAllocateTensors(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner
+)</pre>
+    <div>
+      <p>Updates allocations for tensors associated with a signature and resizes dependent tensors using the specified input tensor dimensionality. </p>
+      <p>This is a relatively expensive operation and hence should only be called after initializing the signature runner object and/or resizing any inputs. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gac5969a8ab2c1fccdb804a379bcbc2b46">
+    <h3>TfLiteSignatureRunnerDelete</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void TfLiteSignatureRunnerDelete(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner
+)</pre>
+    <div>
+      <p>Destroys the signature runner. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga4ad6c64303b12715281fc48cc315a808">
+    <h3>TfLiteSignatureRunnerGetInputCount</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT size_t TfLiteSignatureRunnerGetInputCount(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner
+)</pre>
+    <div>
+      <p>Returns the number of inputs associated with a signature. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gacdc5734e1c8da99e632d7cec93474626">
+    <h3>TfLiteSignatureRunnerGetInputName</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const char * TfLiteSignatureRunnerGetInputName(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner,
+  int32_t input_index
+)</pre>
+    <div>
+      <p>Returns the (null-terminated) name of the Nth input in a signature, where N is specified as <code>input_index</code>. </p>
+      <p>NOTE: The lifetime of the returned name is the same as (and depends on) the lifetime of <code>signature_runner</code>. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga0ba6843c19bd40e99c56c5d4cdf7b15c">
+    <h3>TfLiteSignatureRunnerGetInputTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> * TfLiteSignatureRunnerGetInputTensor(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner,
+  const char *input_name
+)</pre>
+    <div>
+      <p>Returns the input tensor identified by <code>input_name</code> in the given signature. </p>
+      <p>Returns nullptr if the given name is not valid.</p>
+      <p>NOTE: The lifetime of the returned tensor is the same as (and depends on) the lifetime of <code>signature_runner</code>. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gaef595af5e6de4ae9d337b240c5406261">
+    <h3>TfLiteSignatureRunnerGetOutputCount</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT size_t TfLiteSignatureRunnerGetOutputCount(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner
+)</pre>
+    <div>
+      <p>Returns the number of output tensors associated with the signature. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga0af68bdabc46e4a4e0307e47186933dd">
+    <h3>TfLiteSignatureRunnerGetOutputName</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const char * TfLiteSignatureRunnerGetOutputName(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner,
+  int32_t output_index
+)</pre>
+    <div>
+      <p>Returns the (null-terminated) name of the Nth output in a signature, where N is specified as <code>output_index</code>. </p>
+      <p>NOTE: The lifetime of the returned name is the same as (and depends on) the lifetime of <code>signature_runner</code>. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gaf89f1146d31eae50c71455afedf5f9f2">
+    <h3>TfLiteSignatureRunnerGetOutputTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> * TfLiteSignatureRunnerGetOutputTensor(
+  const <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner,
+  const char *output_name
+)</pre>
+    <div>
+      <p>Returns the output tensor identified by <code>output_name</code> in the given signature. </p>
+      <p>Returns nullptr if the given name is not valid.</p>
+      <p>NOTE: The lifetime of the returned tensor is the same as (and depends on) the lifetime of <code>signature_runner</code>. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga3dfaa78e5de5819772fbdd4a8d822aca">
+    <h3>TfLiteSignatureRunnerInvoke</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteSignatureRunnerInvoke(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner
+)</pre>
+    <div>
+      <p>Runs inference on a given signature. </p>
+      <p>Before calling this function, the caller should first invoke <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga3d00a54fd91b73b351ff837e7afcd688">TfLiteSignatureRunnerAllocateTensors()</a> and should also set the values for the input tensors. After successfully calling this function, the values for the output tensors will be set. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga40b6dad3402b3ced1afbe079db34244f">
+    <h3>TfLiteSignatureRunnerResizeInputTensor</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteSignatureRunnerResizeInputTensor(
+  <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga0c696ec6f394f670de745b04a57e7e2c">TfLiteSignatureRunner</a> *signature_runner,
+  const char *input_name,
+  const int *input_dims,
+  int32_t input_dims_size
+)</pre>
+    <div>
+      <p>Resizes the input tensor identified as <code>input_name</code> to be the dimensions specified by <code>input_dims</code> and <code>input_dims_size</code>. </p>
+      <p>Only unknown dimensions can be resized with this function. Unknown dimensions are indicated as <code>-1</code> in the <code>dims_signature</code> attribute of a <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a>.</p>
+      <p>Returns status of failure or success. Note that this doesn't actually resize any existing buffers. A call to <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1ga3d00a54fd91b73b351ff837e7afcd688">TfLiteSignatureRunnerAllocateTensors()</a> is required to change the tensor input buffer.</p>
+      <p>NOTE: This function is similar to TfLiteInterpreterResizeInputTensorStrict() and not <a href="/lite/api_docs/c/group/c-api.html#group__c__api_1gab857f13dae3969753c697febfabe5b45">TfLiteInterpreterResizeInputTensor()</a>.</p>
+      <p>NOTE: <code>input_name</code> must match the name of an input in the signature.</p>
+      <p>NOTE: This function makes a copy of the input dimensions, so the caller can safely deallocate <code>input_dims</code> immediately after this function returns. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga2602a6b29f004de83c30835bd425a7f0">
+    <h3>TfLiteTensorByteSize</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT size_t TfLiteTensorByteSize(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Returns the size of the underlying data in bytes. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga3ead6f9a0f66fb05a1d95cb1abe0dd33">
+    <h3>TfLiteTensorCopyFromBuffer</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteTensorCopyFromBuffer(
+  <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor,
+  const void *input_data,
+  size_t input_data_size
+)</pre>
+    <div>
+      <p>Copies from the provided input buffer into the tensor's buffer. </p>
+      <p>REQUIRES: input_data_size == TfLiteTensorByteSize(tensor) </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga8e997a8cb4874133e26828d0fd088fe8">
+    <h3>TfLiteTensorCopyToBuffer</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1gacf79d2fb5fa520303014d1303f1f6361">TfLiteStatus</a> TfLiteTensorCopyToBuffer(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *output_tensor,
+  void *output_data,
+  size_t output_data_size
+)</pre>
+    <div>
+      <p>Copies to the provided output buffer from the tensor's buffer. </p>
+      <p>REQUIRES: output_data_size == TfLiteTensorByteSize(tensor) </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga0aba1c9a54a4d9e331ad1ba3c547148f">
+    <h3>TfLiteTensorData</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT void * TfLiteTensorData(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Returns a pointer to the underlying data buffer. </p>
+      <p>
+        <aside class="note"><strong>Note:</strong> The result may be null if tensors have not yet been allocated, e.g., if the Tensor has just been created or resized and <code>TfLiteAllocateTensors()</code> has yet to be called, or if the output tensor is dynamically sized and the interpreter hasn't been invoked. </aside>
+      </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga43c803e7e9aec354d826a057f86130f7">
+    <h3>TfLiteTensorDim</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int32_t TfLiteTensorDim(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor,
+  int32_t dim_index
+)</pre>
+    <div>
+      <p>Returns the length of the tensor in the "dim_index" dimension. </p>
+      <p>REQUIRES: 0 <= dim_index < TFLiteTensorNumDims(tensor) </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gabdb5291a62539966be21d752a9cafa73">
+    <h3>TfLiteTensorName</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const char * TfLiteTensorName(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Returns the (null-terminated) name of the tensor. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga1924021a280eb3037ff42e7c99c1a4f6">
+    <h3>TfLiteTensorNumDims</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT int32_t TfLiteTensorNumDims(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Returns the number of dimensions that the tensor has. </p>
+      <p>Returns -1 in case the 'opaque_tensor' does not have its dimensions property set. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga0a70935678a77e13fdc58325943ef0ce">
+    <h3>TfLiteTensorQuantizationParams</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/struct/tf-lite-quantization-params.html#struct_tf_lite_quantization_params">TfLiteQuantizationParams</a> TfLiteTensorQuantizationParams(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Returns the parameters for asymmetric quantization. </p>
+      <p>The quantization parameters are only valid when the tensor type is <code>kTfLiteUInt8</code> and the <code>scale != 0</code>. Quantized values can be converted back to float using: real_value = scale * (quantized_value - zero_point); </p>
+    </div>
+  </div>
+  <div id="group__c__api_1ga1c40b72ac053fca8332b7c4d0c7b2aa1">
+    <h3>TfLiteTensorType</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT <a href="/lite/api_docs/c/group/c-api-types.html#group__c__api__types_1ga8a47ba81bdef28b5c479ee7928a7d123">TfLiteType</a> TfLiteTensorType(
+  const <a href="/lite/api_docs/c/struct/tf-lite-tensor.html#struct_tf_lite_tensor">TfLiteTensor</a> *tensor
+)</pre>
+    <div>
+      <p>Returns the type of a tensor element. </p>
+    </div>
+  </div>
+  <div id="group__c__api_1gac3f951f32a909a4056d8cbb31ae6c26e">
+    <h3>TfLiteVersion</h3>
+    <pre class="prettyprint">TFL_CAPI_EXPORT const char * TfLiteVersion(
+  void
+)</pre>
+    <div>
+      <p>The TensorFlow Lite Runtime version. </p>
+      <p>Returns a pointer to a statically allocated string that is the version number of the (potentially dynamically loaded) TF Lite Runtime library. TensorFlow Lite uses semantic versioning, and the return value should be in semver 2 format <a href="http://semver.org">http://semver.org</a>, starting with MAJOR.MINOR.PATCH, e.g. "2.12.0" or "2.13.0-rc2". </p>
+    </div>
+  </div>
+</body>
+</html>

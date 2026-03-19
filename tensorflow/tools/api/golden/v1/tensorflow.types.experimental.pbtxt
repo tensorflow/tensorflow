@@ -1,0 +1,11 @@
+path: "tensorflow.types.experimental"
+tf_module {
+  member {
+    name: "FunctionType"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TensorLike"
+    mtype: "typing.Union"
+  }
+}

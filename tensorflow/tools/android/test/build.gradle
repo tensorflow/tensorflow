@@ -1,0 +1,138 @@
+// This file provides basic support for building the TensorFlow demo
+// in Android Studio with Gradle.
+//
+// Note that Bazel is still used by default to compile the native libs,
+// and should be installed at the location noted below. This build file
+// automates the process of calling out to it and copying the compiled
+// libraries back into the appropriate directory.
+//
+// It is necessary to customize Gradle's build directory, as otherwise
+// it will conflict with the BUILD file used by Bazel on case-insensitive OSs.
+project.buildDir = 'gradleBuild'
+getProject().setBuildDir('gradleBuild')
+
+buildscript {
+    repositories {
+        jcenter()
+        google()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:4.0.1'
+        classpath 'org.apache.httpcomponents:httpclient:4.5.12'
+    }
+}
+
+allprojects {
+    repositories {
+        jcenter()
+        google()
+    }
+}
+
+// set to 'bazel', 'none'
+def nativeBuildSystem = 'bazel'
+
+// Controls output directory in APK and CPU type for Bazel builds.
+def cpuType = 'armeabi-v7a'
+
+// Output directory in the local directory for packaging into the APK.
+def nativeOutDir = 'libs/' + cpuType
+
+// Default to building with Bazel.
+def nativeBuildRule = 'buildNativeBazel'
+def demoLibPath = '../../../bazel-bin/tensorflow/tools/android/test/libtensorflow_demo.so'
+def inferenceLibPath = '../../../bazel-bin/tensorflow/tools/android/inference_interface/libtensorflow_inference.so'
+
+// If building with Bazel, this is the location of the bazel binary.
+// NOTE: Bazel does not yet support building for Android on Windows.
+def bazelLocation = '/usr/local/bin/bazel'
+
+// import DownloadModels task
+project.ext.ASSET_DIR = projectDir.toString() + '/assets'
+project.ext.TMP_DIR   = project.buildDir.toString() + '/downloads'
+
+// Download default models; if you wish to use your own models then
+// place them in the "assets" directory and comment out this line.
+apply from: "download-models.gradle"
+
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 29
+
+    lintOptions {
+        abortOnError false
+    }
+
+    sourceSets {
+        main {
+            if (nativeBuildSystem == 'bazel') {
+                // TensorFlow Java API sources.
+                java {
+                    srcDir '../../java/src/main/java'
+                    exclude '**/examples/**'
+                }
+
+                // Android TensorFlow wrappers, etc.
+                java {
+                    srcDir '../../tools/android/inference_interface/java'
+                }
+            }
+            // Android demo app sources.
+            java {
+                srcDir 'src'
+            }
+
+            manifest.srcFile 'AndroidManifest.xml'
+            resources.srcDirs = ['src']
+            aidl.srcDirs = ['src']
+            renderscript.srcDirs = ['src']
+            res.srcDirs = ['res']
+            assets.srcDirs = [project.ext.ASSET_DIR]
+            jniLibs.srcDirs = ['libs']
+        }
+
+        debug.setRoot('build-types/debug')
+        release.setRoot('build-types/release')
+    }
+    defaultConfig {
+        targetSdkVersion 29
+        minSdkVersion 21
+    }
+}
+
+task buildNativeBazel(type: Exec) {
+    workingDir '../../..'
+    commandLine bazelLocation, 'build', '-c', 'opt',  \
+         'tensorflow/tools/android/test:tensorflow_native_libs',  \
+         '--crosstool_top=//external:android/crosstool',  \
+         '--cpu=' + cpuType,  \
+         '--host_crosstool_top=@bazel_tools//tools/cpp:toolchain'
+}
+
+task copyNativeLibs(type: Copy) {
+    from demoLibPath
+    from inferenceLibPath
+    into nativeOutDir
+    duplicatesStrategy = 'include'
+    dependsOn nativeBuildRule
+    fileMode 0644
+}
+
+tasks.whenTaskAdded { task ->
+    if (nativeBuildSystem == 'bazel') {
+        if (task.name == 'assembleDebug') {
+            task.dependsOn 'copyNativeLibs'
+        }
+        if (task.name == 'assembleRelease') {
+            task.dependsOn 'copyNativeLibs'
+        }
+    }
+}
+
+dependencies {
+    if (nativeBuildSystem == 'none') {
+        implementation 'org.tensorflow:tensorflow-android:+'
+    }
+}

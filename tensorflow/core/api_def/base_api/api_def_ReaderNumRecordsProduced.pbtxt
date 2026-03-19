@@ -1,0 +1,15 @@
+op {
+  graph_op_name: "ReaderNumRecordsProduced"
+  visibility: SKIP
+  in_arg {
+    name: "reader_handle"
+    description: <<END
+Handle to a Reader.
+END
+  }
+  summary: "Returns the number of records this Reader has produced."
+  description: <<END
+This is the same as the number of ReaderRead executions that have
+succeeded.
+END
+}

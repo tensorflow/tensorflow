@@ -1,0 +1,6 @@
+HloModule f
+
+ENTRY f {
+  arg = f32[2,2] parameter(0), sharding={devices=[1,2]0,1}
+  ROOT add_result = f32[2,2] add(arg, arg), sharding={devices=[1,2]0,1}
+}

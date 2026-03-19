@@ -1,0 +1,25 @@
+// RUN: gpu_fusion_to_mlir %s | emitters_opt -xla-test-optimize \
+// RUN:   -xla-gpu-test-transform-loops | FileCheck %s
+// RUN: gpu_test_correctness %s --bijection_inputs=dus:1
+// RUN: cpu_test_correctness %s
+
+fusion {
+  %input = f32[40,40,300] parameter(0)
+  %update = f32[1,1,40] parameter(1)
+  %idx = s32[] parameter(2)
+  %zero = s32[] constant(0)
+  ROOT dus = f32[40,40,300] dynamic-update-slice(%input, %update, %idx, %zero, %zero)
+}
+
+ENTRY main {
+  %param_0 = f32[40,40,300] parameter(0)
+  %param_1 = f32[1,1,40] parameter(1)
+  %param_2 = s32[] parameter(2)
+  // On CPU the input/output alias, this is resulting in a double free so we
+  // need to copy the input.
+  %param_0_copy = f32[40,40,300] copy(%param_0)
+  ROOT %fusion = f32[40,40,300] fusion(%param_0_copy, %param_1, %param_2), kind=kLoop, calls=fusion
+}
+
+// CHECK-NOT: vector.transfer_read {{.*}} vector<4xf32>
+// CHECK-NOT: vector.transfer_write {{.*}} vector<4xf32>

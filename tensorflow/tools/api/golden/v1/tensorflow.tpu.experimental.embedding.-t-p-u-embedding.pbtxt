@@ -1,0 +1,31 @@
+path: "tensorflow.tpu.experimental.embedding.TPUEmbedding"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v2.TPUEmbedding\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "embedding_tables"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'feature_config\', \'optimizer\', \'pipeline_execution_with_tensor_core\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "apply_gradients"
+    argspec: "args=[\'self\', \'gradients\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\', \'per_replica_input_shapes\', \'per_replica_batch_size\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "dequeue"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "enqueue"
+    argspec: "args=[\'self\', \'features\', \'weights\', \'training\', \'name\', \'device\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
+  }
+}

@@ -1,0 +1,213 @@
+op {
+  name: "XlaSparseDenseMatmulGradWithCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tables"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  input_arg {
+    name: "hyperparameters"
+    type: DT_FLOAT
+    number_attr: "M"
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_tables"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "M"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "custom_computation"
+    type: "func"
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tables"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  input_arg {
+    name: "hyperparameters"
+    type: DT_FLOAT
+    number_attr: "M"
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_tables"
+    type: DT_FLOAT
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "M"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "custom_computation"
+    type: "func"
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}
+op {
+  name: "XlaSparseDenseMatmulGradWithCsrInput"
+  input_arg {
+    name: "row_pointers"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_sample_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_token_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "sorted_gains"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "activation_gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tables"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "hyperparameters"
+    type: DT_FLOAT
+    number_attr: "M"
+  }
+  input_arg {
+    name: "num_minibatches_per_physical_sparse_core"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "updated_tables"
+    type_attr: "T"
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "M"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "custom_computation"
+    type: "func"
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+  }
+  attr {
+    name: "num_sparsecores_per_device"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_FLOAT
+      }
+    }
+  }
+}

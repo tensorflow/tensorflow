@@ -1,0 +1,27 @@
+path: "tensorflow.__internal__.saved_model"
+tf_module {
+  member {
+    name: "SavedModelBuilder"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "load"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "decode_proto"
+    argspec: "args=[\'proto\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "encode_structure"
+    argspec: "args=[\'nested_structure\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load_partial"
+    argspec: "args=[\'export_dir\', \'filters\', \'tags\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "parse_saved_model"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+}

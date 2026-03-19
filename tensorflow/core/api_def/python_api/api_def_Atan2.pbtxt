@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "Atan2"
+  endpoint {
+    name: "math.atan2"
+  }
+  endpoint {
+    name: "atan2"
+  }
+}

@@ -1,0 +1,63 @@
+path: "tensorflow.io.gfile"
+tf_module {
+  member {
+    name: "GFile"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "copy"
+    argspec: "args=[\'src\', \'dst\', \'overwrite\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "exists"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_registered_schemes"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "glob"
+    argspec: "args=[\'pattern\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "isdir"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "join"
+    argspec: "args=[\'path\'], varargs=paths, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "listdir"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "makedirs"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mkdir"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "remove"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "rename"
+    argspec: "args=[\'src\', \'dst\', \'overwrite\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "rmtree"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stat"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "walk"
+    argspec: "args=[\'top\', \'topdown\', \'onerror\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Xlogy"
+  endpoint {
+    name: "math.xlogy"
+  }
+}

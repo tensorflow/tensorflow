@@ -1,0 +1,34 @@
+// This is used for convolution logging.
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/autotuning.proto";
+import "xla/service/gpu/backend_configs.proto";
+import "xla/service/hlo.proto";
+import "xla/xla_data.proto";
+
+message ConvInstructionLog {
+  xla.HloInstructionProto instruction = 1;
+  repeated xla.ShapeProto operand_shapes = 2;
+  repeated uint64 result_addresses = 3;
+  repeated uint64 operand_addresses = 4;
+}
+
+message DenylistedAlgorithm {
+  int64 id = 1;
+  bool tensor_ops = 2;
+}
+
+message AlgorithmDenylistEntry {
+  string hlo = 1;
+  GpuBackendConfig backend_config = 6;
+  ComputeCapability cc = 2;
+  CudnnVersion cudnn_version = 3;
+  string blas_version = 5;
+  repeated DenylistedAlgorithm algos = 4;
+}
+
+message AlgorithmDenylist {
+  repeated AlgorithmDenylistEntry entries = 1;
+}

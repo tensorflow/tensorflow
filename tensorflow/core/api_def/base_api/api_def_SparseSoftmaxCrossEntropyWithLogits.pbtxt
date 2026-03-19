@@ -1,0 +1,37 @@
+op {
+  graph_op_name: "SparseSoftmaxCrossEntropyWithLogits"
+  in_arg {
+    name: "features"
+    description: <<END
+batch_size x num_classes matrix
+END
+  }
+  in_arg {
+    name: "labels"
+    description: <<END
+batch_size vector with values in [0, num_classes).
+This is the label for the given minibatch entry.
+END
+  }
+  out_arg {
+    name: "loss"
+    description: <<END
+Per example loss (batch_size vector).
+END
+  }
+  out_arg {
+    name: "backprop"
+    description: <<END
+backpropagated gradients (batch_size x num_classes matrix).
+END
+  }
+  summary: "Computes softmax cross entropy cost and gradients to backpropagate."
+  description: <<END
+Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
+a matrix of label probabilities, but rather a single label per row
+of features.  This label is considered to have probability 1.0 for the
+given row.
+
+Inputs are the logits, not probabilities.
+END
+}

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::impl::FlatBufferModel Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body>
+<div id="top"><!-- do not remove this div --></div>
+<h1>tflite::<wbr/>impl::<wbr/>FlatBufferModel</h1>
+<h2>Summary</h2>
+
+<aside class="note">
+  <b>Note:</b> <code>tflite::impl::FlatBufferModel</code> class is implementation details. Users should reference it as <code>tflite::FlatBufferModel</code> instead.
+</aside>
+
+<table class="constructors responsive">
+<tr>
+<th colspan="2">
+<h3>Constructors and Destructors</h3>
+</th>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a00aa20b6f40d08c042aad316b9306df3">FlatBufferModel</a>(const FlatBufferModel &amp;)</code>
+<br/>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a8525ac7d8f97198012f53533264f25f1">~FlatBufferModel</a>()</code>
+<br/>
+</td>
+</tr>
+</table>
+<table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public static functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a8c35c802badcd67b27013c7f4e5d69f2">BuildFromAllocation</a>(std::unique_ptr&lt; <a href="/lite/api_docs/cc/class/tflite/allocation.html#classtflite_1_1_allocation">Allocation</a> &gt; allocation, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Builds a model directly from an allocation. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1aa0394bee07dcb66afcbffb1020f6b955">BuildFromBuffer</a>(const char *caller_owned_buffer, size_t buffer_size, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Builds a model based on a pre-loaded flatbuffer. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a66f82c70621340376720208507d6d91d">BuildFromFile</a>(const char *filename, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Builds a model based on a file. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a1b1d1c28f251321fcafd9ba8ae04e14f">BuildFromModel</a>(const tflite::Model *caller_owned_model_spec, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Builds a model directly from a flatbuffer pointer Caller retains ownership of the buffer and should keep it alive until the returned object is destroyed. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a8f959451f3bc0758fb89a51c1dd15547">ByteConvertModel</a>(std::unique_ptr&lt; FlatBufferModel &gt; model, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Convert the TFLite buffers field between LE and BE format in a FlatBufferModel which is not empty and return the converted instance. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a29738923249836d30c0a9bc1000e0641">ByteSwapBuffer</a>(int8_t tensor_type, size_t buffer_size, uint8_t *buffer)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Byte swap a constant buffer in place. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a45f26e7052b972a11c520cfb3d0f6a94">ByteSwapFlatBufferModel</a>(std::unique_ptr&lt; FlatBufferModel &gt; model, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Byte Swap the TFLite buffers field in a FlatBufferModel and return the swapped instance. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1ab92e054440ffbdafb7c19151b5f81b17">ByteSwapSerializedModel</a>(std::string *serialized_model)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Byte Swap the serialized String of a TFLite model in place. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a4da359bffdbe229b72a2642f5f27c3d7">ByteSwapTFLiteModel</a>(const tflite::Model *tfl_model)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Byte swap the buffers field of a TFLite Model instance in place. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1ae81b10e1496884af894f4d6ee0e1a17b">ByteSwapTFLiteModelT</a>(tflite::ModelT *tfl_modelt)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+<div>Byte swap the buffers field of a TFLite ModelT instance in place. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1ae596a5f76ddfc906fed835a6bfa7f6e8">ReadAllMetadata</a>(const ::tflite::Model *model)</code>
+</td>
+<td>
+<div>
+<code>std::map&lt; std::string, std::string &gt;</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1ab81c2685e53304944dab7dcbedfa90dd">VerifyAndBuildFromAllocation</a>(std::unique_ptr&lt; <a href="/lite/api_docs/cc/class/tflite/allocation.html#classtflite_1_1_allocation">Allocation</a> &gt; allocation, TfLiteVerifier *extra_verifier, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Verifies whether the content of the allocation is legit, then builds a model based on the provided allocation. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a75c22976a1948281c88cbcb22c016e75">VerifyAndBuildFromBuffer</a>(const char *caller_owned_buffer, size_t buffer_size, TfLiteVerifier *extra_verifier, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Verifies whether the content of the buffer is legit, then builds a model based on the pre-loaded flatbuffer. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1aa3fb7e8581e21887e884529c4b66dcb6">VerifyAndBuildFromFile</a>(const char *filename, TfLiteVerifier *extra_verifier, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>std::unique_ptr&lt; FlatBufferModel &gt;</code>
+</div>
+<div>Verifies whether the content of the file is legit, then builds a model based on the file. </div>
+</td>
+</tr>
+</table>
+<table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a79091666372a065029f80542d0f76dcd">CheckModelIdentifier</a>() const </code>
+</td>
+<td>
+<div>
+<code>bool</code>
+</div>
+<div>Returns true if the model identifier is correct (otherwise false and reports an error). </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a9e97c601aad103c768a797ae6bd30c9b">GetMinimumRuntime</a>() const </code>
+</td>
+<td>
+<div>
+<code>std::string</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1ae7314ca1da43d94b0de130331239330a">GetModel</a>() const </code>
+</td>
+<td>
+<div>
+<code>const tflite::Model *</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a8e23634cdfe9c6a0a482439793216734">ReadAllMetadata</a>() const </code>
+</td>
+<td>
+<div>
+<code>std::map&lt; std::string, std::string &gt;</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1ae9576f8f03a5c5f0a8111053b325fa91">ValidateModelBuffers</a>(<a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+</td>
+<td>
+<div>
+<code>void</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1aa578f6bd19c0b413ca59e4f1953a022d">allocation</a>() const </code>
+</td>
+<td>
+<div>
+<code>const <a href="/lite/api_docs/cc/class/tflite/allocation.html#classtflite_1_1_allocation">Allocation</a> *</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a9cd2cfeb5cb724c238472fa2b7918028">error_reporter</a>() const </code>
+</td>
+<td>
+<div>
+<code><a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a61f9fe2e4049ca564f9dbaaf17fbb8b4">initialized</a>() const </code>
+</td>
+<td>
+<div>
+<code>bool</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1ad7af7815eee2bc17fa5e10845a56de5f">operator-&gt;</a>() const </code>
+</td>
+<td>
+<div>
+<code>const tflite::Model *</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1impl_1_1_flat_buffer_model_1a05628a6826dd832cd0b788ab0a6358ad">operator=</a>(const FlatBufferModel &amp;)=delete</code>
+</td>
+<td>
+<div>
+<code>FlatBufferModel &amp;</code>
+</div>
+</td>
+</tr>
+</table>
+<h2>Public static functions</h2>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a8c35c802badcd67b27013c7f4e5d69f2">
+<h3>BuildFromAllocation</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; BuildFromAllocation(
+  std::unique_ptr&lt; <a href="/lite/api_docs/cc/class/tflite/allocation.html#classtflite_1_1_allocation">Allocation</a> &gt; allocation,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Builds a model directly from an allocation. </p>
+<p>Ownership of the allocation is passed to the model, but the caller retains ownership of <code>error_reporter</code> and must ensure its lifetime is longer than the FlatBufferModel instance. Returns a nullptr in case of failure (e.g., the allocation is invalid). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1aa0394bee07dcb66afcbffb1020f6b955">
+<h3>BuildFromBuffer</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; BuildFromBuffer(
+  const char *caller_owned_buffer,
+  size_t buffer_size,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Builds a model based on a pre-loaded flatbuffer. </p>
+<p>Caller retains ownership of the buffer and should keep it alive until the returned object is destroyed. Caller also retains ownership of <code>error_reporter</code> and must ensure its lifetime is longer than the FlatBufferModel instance. Returns a nullptr in case of failure. NOTE: this does NOT validate the buffer so it should NOT be called on invalid/untrusted input. Use VerifyAndBuildFromBuffer in that case </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a66f82c70621340376720208507d6d91d">
+<h3>BuildFromFile</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; BuildFromFile(
+  const char *filename,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Builds a model based on a file. </p>
+<p>Caller retains ownership of <code>error_reporter</code> and must ensure its lifetime is longer than the FlatBufferModel instance. Returns a nullptr in case of failure. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a1b1d1c28f251321fcafd9ba8ae04e14f">
+<h3>BuildFromModel</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; BuildFromModel(
+  const tflite::Model *caller_owned_model_spec,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Builds a model directly from a flatbuffer pointer Caller retains ownership of the buffer and should keep it alive until the returned object is destroyed. </p>
+<p>Caller retains ownership of <code>error_reporter</code> and must ensure its lifetime is longer than the FlatBufferModel instance. Returns a nullptr in case of failure. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a8f959451f3bc0758fb89a51c1dd15547">
+<h3>ByteConvertModel</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; ByteConvertModel(
+  std::unique_ptr&lt; FlatBufferModel &gt; model,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Convert the TFLite buffers field between LE and BE format in a FlatBufferModel which is not empty and return the converted instance. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a29738923249836d30c0a9bc1000e0641">
+<h3>ByteSwapBuffer</h3>
+<pre class="prettyprint">void ByteSwapBuffer(
+  int8_t tensor_type,
+  size_t buffer_size,
+  uint8_t *buffer
+)</pre>
+<div>
+<p>Byte swap a constant buffer in place. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a45f26e7052b972a11c520cfb3d0f6a94">
+<h3>ByteSwapFlatBufferModel</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; ByteSwapFlatBufferModel(
+  std::unique_ptr&lt; FlatBufferModel &gt; model,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Byte Swap the TFLite buffers field in a FlatBufferModel and return the swapped instance. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1ab92e054440ffbdafb7c19151b5f81b17">
+<h3>ByteSwapSerializedModel</h3>
+<pre class="prettyprint">void ByteSwapSerializedModel(
+  std::string *serialized_model
+)</pre>
+<div>
+<p>Byte Swap the serialized String of a TFLite model in place. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a4da359bffdbe229b72a2642f5f27c3d7">
+<h3>ByteSwapTFLiteModel</h3>
+<pre class="prettyprint">void ByteSwapTFLiteModel(
+  const tflite::Model *tfl_model
+)</pre>
+<div>
+<p>Byte swap the buffers field of a TFLite Model instance in place. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1ae81b10e1496884af894f4d6ee0e1a17b">
+<h3>ByteSwapTFLiteModelT</h3>
+<pre class="prettyprint">void ByteSwapTFLiteModelT(
+  tflite::ModelT *tfl_modelt
+)</pre>
+<div>
+<p>Byte swap the buffers field of a TFLite ModelT instance in place. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1ae596a5f76ddfc906fed835a6bfa7f6e8">
+<h3>ReadAllMetadata</h3>
+<pre class="prettyprint">std::map&lt; std::string, std::string &gt; ReadAllMetadata(
+  const ::tflite::Model *model
+)</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1ab81c2685e53304944dab7dcbedfa90dd">
+<h3>VerifyAndBuildFromAllocation</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; VerifyAndBuildFromAllocation(
+  std::unique_ptr&lt; <a href="/lite/api_docs/cc/class/tflite/allocation.html#classtflite_1_1_allocation">Allocation</a> &gt; allocation,
+  TfLiteVerifier *extra_verifier,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Verifies whether the content of the allocation is legit, then builds a model based on the provided allocation. </p>
+<p>The extra_verifier argument is an additional optional verifier for the buffer. By default, we always check with tflite::VerifyModelBuffer. If extra_verifier is supplied, the buffer is checked against the extra_verifier after the check against tflite::VerifyModelBuilder. Ownership of the allocation is passed to the model, but the caller retains ownership of <code>error_reporter</code> and must ensure its lifetime is longer than the FlatBufferModel instance. Returns a nullptr in case of failure. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a75c22976a1948281c88cbcb22c016e75">
+<h3>VerifyAndBuildFromBuffer</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; VerifyAndBuildFromBuffer(
+  const char *caller_owned_buffer,
+  size_t buffer_size,
+  TfLiteVerifier *extra_verifier,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Verifies whether the content of the buffer is legit, then builds a model based on the pre-loaded flatbuffer. </p>
+<p>The extra_verifier argument is an additional optional verifier for the buffer. By default, we always check with tflite::VerifyModelBuffer. If extra_verifier is supplied, the buffer is checked against the extra_verifier after the check against tflite::VerifyModelBuilder. The caller retains ownership of the buffer and should keep it alive until the returned object is destroyed. Caller retains ownership of <code>error_reporter</code> and must ensure its lifetime is longer than the FlatBufferModel instance. Returns a nullptr in case of failure. </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1aa3fb7e8581e21887e884529c4b66dcb6">
+<h3>VerifyAndBuildFromFile</h3>
+<pre class="prettyprint">std::unique_ptr&lt; FlatBufferModel &gt; VerifyAndBuildFromFile(
+  const char *filename,
+  TfLiteVerifier *extra_verifier,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Verifies whether the content of the file is legit, then builds a model based on the file. </p>
+<p>The extra_verifier argument is an additional optional verifier for the file contents. By default, we always check with tflite::VerifyModelBuffer. If extra_verifier is supplied, the file contents is also checked against the extra_verifier after the check against tflite::VerifyModelBuilder. Caller retains ownership of <code>error_reporter</code> and must ensure its lifetime is longer than the FlatBufferModel instance. Returns a nullptr in case of failure. </p>
+</div>
+</div>
+<h2>Public functions</h2>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a79091666372a065029f80542d0f76dcd">
+<h3>CheckModelIdentifier</h3>
+<pre class="prettyprint">bool CheckModelIdentifier() const </pre>
+<div>
+<p>Returns true if the model identifier is correct (otherwise false and reports an error). </p>
+</div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a00aa20b6f40d08c042aad316b9306df3">
+<h3>FlatBufferModel</h3>
+<pre class="prettyprint"> FlatBufferModel(
+  const FlatBufferModel &amp;
+)=delete</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a9e97c601aad103c768a797ae6bd30c9b">
+<h3>GetMinimumRuntime</h3>
+<pre class="prettyprint">std::string GetMinimumRuntime() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1ae7314ca1da43d94b0de130331239330a">
+<h3>GetModel</h3>
+<pre class="prettyprint">const tflite::Model * GetModel() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a8e23634cdfe9c6a0a482439793216734">
+<h3>ReadAllMetadata</h3>
+<pre class="prettyprint">std::map&lt; std::string, std::string &gt; ReadAllMetadata() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1ae9576f8f03a5c5f0a8111053b325fa91">
+<h3>ValidateModelBuffers</h3>
+<pre class="prettyprint">void ValidateModelBuffers(
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1aa578f6bd19c0b413ca59e4f1953a022d">
+<h3>allocation</h3>
+<pre class="prettyprint">const <a href="/lite/api_docs/cc/class/tflite/allocation.html#classtflite_1_1_allocation">Allocation</a> * allocation() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a9cd2cfeb5cb724c238472fa2b7918028">
+<h3>error_reporter</h3>
+<pre class="prettyprint"><a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> * error_reporter() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a61f9fe2e4049ca564f9dbaaf17fbb8b4">
+<h3>initialized</h3>
+<pre class="prettyprint">bool initialized() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1ad7af7815eee2bc17fa5e10845a56de5f">
+<h3>operator-&gt;</h3>
+<pre class="prettyprint">const tflite::Model * operator-&gt;() const </pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a05628a6826dd832cd0b788ab0a6358ad">
+<h3>operator=</h3>
+<pre class="prettyprint">FlatBufferModel &amp; operator=(
+  const FlatBufferModel &amp;
+)=delete</pre>
+<div></div>
+</div>
+<div id="classtflite_1_1impl_1_1_flat_buffer_model_1a8525ac7d8f97198012f53533264f25f1">
+<h3>~FlatBufferModel</h3>
+<pre class="prettyprint"> ~FlatBufferModel()</pre>
+<div></div>
+</div>
+</body>
+</html>

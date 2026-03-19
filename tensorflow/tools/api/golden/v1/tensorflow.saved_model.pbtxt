@@ -1,0 +1,211 @@
+path: "tensorflow.saved_model"
+tf_module {
+  member {
+    name: "ASSETS_DIRECTORY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "ASSETS_KEY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "Asset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Builder"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CLASSIFY_INPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_METHOD_NAME"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_OUTPUT_CLASSES"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "CLASSIFY_OUTPUT_SCORES"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "DEBUG_DIRECTORY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "DEBUG_INFO_FILENAME_PB"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "DEFAULT_SERVING_SIGNATURE_DEF_KEY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "GPU"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "LEGACY_INIT_OP_KEY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "MAIN_OP_KEY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "PREDICT_INPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "PREDICT_METHOD_NAME"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "PREDICT_OUTPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "REGRESS_INPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "REGRESS_METHOD_NAME"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "REGRESS_OUTPUTS"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_FILENAME_PB"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_FILENAME_PBTXT"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SAVED_MODEL_SCHEMA_VERSION"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "SERVING"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "SaveOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPU"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "TRAINING"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "VARIABLES_DIRECTORY"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "VARIABLES_FILENAME"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "builder"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "loader"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "main_op"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "signature_constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "signature_def_utils"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tag_constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "utils"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "build_signature_def"
+    argspec: "args=[\'inputs\', \'outputs\', \'method_name\', \'defaults\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "build_tensor_info"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "classification_signature_def"
+    argspec: "args=[\'examples\', \'classes\', \'scores\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "contains_saved_model"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_tensor_from_tensor_info"
+    argspec: "args=[\'tensor_info\', \'graph\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "is_valid_signature"
+    argspec: "args=[\'signature_def\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load"
+    argspec: "args=[\'sess\', \'tags\', \'export_dir\', \'import_scope\'], varargs=None, keywords=saver_kwargs, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "load_v2"
+    argspec: "args=[\'export_dir\', \'tags\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "main_op_with_restore"
+    argspec: "args=[\'restore_op_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "maybe_saved_model_directory"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "predict_signature_def"
+    argspec: "args=[\'inputs\', \'outputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "regression_signature_def"
+    argspec: "args=[\'examples\', \'predictions\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "simple_save"
+    argspec: "args=[\'session\', \'export_dir\', \'inputs\', \'outputs\', \'legacy_init_op\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

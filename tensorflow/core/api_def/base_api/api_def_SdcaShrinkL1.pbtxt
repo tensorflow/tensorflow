@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "SdcaShrinkL1"
+  in_arg {
+    name: "weights"
+    description: <<END
+a list of vectors where each value is the weight associated with a
+feature group.
+END
+  }
+  attr {
+    name: "num_features"
+    description: <<END
+Number of feature groups to apply shrinking step.
+END
+  }
+  attr {
+    name: "l1"
+    description: <<END
+Symmetric l1 regularization strength.
+END
+  }
+  attr {
+    name: "l2"
+    description: <<END
+Symmetric l2 regularization strength. Should be a positive float.
+END
+  }
+  summary: "Applies L1 regularization shrink step on the parameters."
+}

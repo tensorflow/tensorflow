@@ -1,0 +1,15 @@
+op {
+  name: "RiscLogicalOr"
+  input_arg {
+    name: "x"
+    type: DT_BOOL
+  }
+  input_arg {
+    name: "y"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "z"
+    type: DT_BOOL
+  }
+}

@@ -1,0 +1,45 @@
+# To have reproducible builds, these dependencies should be pinned always.
+# Prefer pinning to the same version as in setup.py for now.
+# This will change in the future.
+absl-py ~= 1.0.0
+astunparse ~= 1.6.3
+flatbuffers ~= 25.9.23
+google_pasta ~= 0.2
+h5py ~= 3.10.0  # Earliest version for Python 3.12
+ml_dtypes ~= 0.5.1
+# TODO(b/262592253): Support older versions of NumPy for Python 3.10 and lower
+# to support TFX. Remove when Apache Beam upgrades to newer NumPy.
+numpy ~= 1.22.0; python_version < '3.11'
+numpy ~= 1.23.2; python_version == '3.11' # Earliest version for Python 3.11
+numpy ~= 1.26.0; python_version >= '3.12' # Earliest version for Python 3.12
+opt_einsum ~= 3.3.0
+protobuf ~= 3.20.3  # NOTE: Earliest version for Python 3.10
+six ~= 1.16.0
+termcolor ~= 2.1.1
+typing_extensions ~= 4.8.0
+wheel ~= 0.41.2
+wrapt ~= 1.14.1
+
+# We need to pin the gast dependency exactly
+gast == 0.4.0
+
+# Finally, install tensorboard and keras
+# Note that here we want the latest version that matches TF major.minor version
+# Note that we must use nightly here as these are used in nightly jobs
+# For release jobs, we will pin these on the release branch
+keras-nightly ~= 2.14.0.dev
+tb-nightly ~= 2.14.0.a
+
+# Test dependencies
+grpcio ~= 1.59.0 # Earliest version for Python 3.12
+portpicker ~= 1.6.0
+scipy ~= 1.7.2; python_version < '3.11'
+scipy ~= 1.9.2; python_version == '3.11' # Earliest version for Python 3.11
+scipy ~= 1.11.3; python_version >= '3.12' # Earliest version for Python 3.12
+
+# This is usually vendored in setuptools but ensure it gets installed in CI anyway
+# No bound here, we prefer the one in setuptools
+packaging
+
+# For using Python 3.11 with Bazel 6 (b/286090018)
+lit ~= 17.0.2

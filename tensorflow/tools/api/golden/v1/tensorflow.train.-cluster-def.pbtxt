@@ -1,0 +1,13 @@
+path: "tensorflow.train.ClusterDef"
+tf_proto {
+  descriptor {
+    name: "ClusterDef"
+    field {
+      name: "job"
+      number: 1
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.JobDef"
+    }
+  }
+}

@@ -1,0 +1,56 @@
+op {
+  graph_op_name: "XlaSendTPUEmbeddingGradients"
+  visibility: HIDDEN
+  in_arg {
+    name: "gradients"
+    description: <<END
+A TensorList of gradients with which to update embedding tables.
+END
+  }
+  in_arg {
+    name: "learning_rates"
+    description: <<END
+A TensorList of learning rates used for updating the embedding
+tables via the optimizer. The length of the TensorList must be equal to the
+number of dynamic learning rate tags specified in the
+TPUEmbeddingConfiguration proto.
+END
+  }
+  in_arg {
+    name: "deduplication_data"
+    description: <<END
+A Tensor with type=DT_VARIANT containing the deduplication
+data. The tensor is an XLA nested tuple containing N elements (where N is
+the ratio of the number of embedding to tensor cores per TPU chip). Each
+element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
+contains indices (DT_UINT32) for embedding lookup on the TensorCore or
+weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
+END
+  }
+  attr {
+    name: "NumTables"
+    description: <<END
+number of tables
+END
+  }
+  attr {
+    name: "NumLearningRateTags"
+    description: <<END
+number of learning rate tags
+END
+  }
+  attr {
+    name: "config"
+    description: <<END
+Serialized TPUEmbeddingConfiguration proto.
+END
+  }
+  summary: "An op that performs gradient updates of embedding tables."
+  description: <<END
+The gradients argument is a TensorList having the same length and shapes as the
+return value of XlaRecvTPUEmbeddingActivations, but contains gradients of the
+model's loss with respect to the embedding activations. The embedding tables are
+updated from these gradients via the optimizer specified in the
+TPUEmbeddingConfiguration proto given to tpu.initialize_system.
+END
+}

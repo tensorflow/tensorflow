@@ -1,0 +1,155 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -o - | FileCheck %s
+
+node {
+  name: "arg0"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "arg1"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_arg1_attr0"
+    value {
+      s: "_arg1_attr0_value"
+    }
+  }
+  attr {
+    key: "_arg1_attr1"
+    value {
+      f: 8.0
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "arg2"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 2
+    }
+  }
+}
+node {
+  name: "ret0"
+  op: "_Retval"
+  input: "arg0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_ret0_attr0"
+    value {
+      i: 8
+    }
+  }
+  attr {
+    key: "_ret0_attr1"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "ret1"
+  op: "_Retval"
+  input: "arg1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "ret2"
+  op: "_Retval"
+  input: "arg2"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_ret2_attr0"
+    value {
+      type: DT_VARIANT
+    }
+  }
+  attr {
+    key: "_ret2_attr1"
+    value {
+      shape {
+        dim {
+          size: 128
+        }
+        dim {
+          size: 1024
+        }
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 2
+    }
+  }
+}
+versions {
+  producer: 121
+}
+
+# Check that _Arg/_Retval attributes prefixed with `_` are imported as FuncOp
+# arg/result attributes, at the right index.
+
+# CHECK:      func @main
+# CHECK-SAME: ({{%.*}}: tensor<*xf32>, {{%.*}}: tensor<*xi32> {tf._arg1_attr0 = "_arg1_attr0_value", tf._arg1_attr1 = 8.000000e+00 : f32}, {{%.*}}: tensor<*xi1>)
+# CHECK-SAME: -> (tensor<*xf32> {tf._ret0_attr0 = 8 : i64, tf._ret0_attr1 = false}, tensor<*xi32>, tensor<*xi1> {tf._ret2_attr0 = !tf_type.variant, tf._ret2_attr1 = #tf_type.shape<128x1024>})
+# CHECK-SAME: attributes {allow_soft_placement = false, tf.entry_function = {control_outputs = "", inputs = "arg0,arg1,arg2", outputs = "ret0,ret1,ret2"}}

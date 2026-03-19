@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "CudnnRNNParamsToCanonicalV2"
+  visibility: HIDDEN
+}

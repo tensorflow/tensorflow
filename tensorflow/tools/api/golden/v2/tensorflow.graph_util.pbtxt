@@ -1,0 +1,7 @@
+path: "tensorflow.graph_util"
+tf_module {
+  member_method {
+    name: "import_graph_def"
+    argspec: "args=[\'graph_def\', \'input_map\', \'return_elements\', \'name\', \'op_dict\', \'producer_op_list\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+}

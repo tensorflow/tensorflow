@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "TensorSliceDataset"
+  endpoint {
+    name: "data.TensorSliceDataset"
+  }
+}

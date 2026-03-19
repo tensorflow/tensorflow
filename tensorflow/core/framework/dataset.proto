@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+option cc_enable_arenas = true;
+
+// This file contains protocol buffers for working with tf.data Datasets.
+
+// Metadata describing a compressed component of a dataset element.
+message CompressedComponentMetadata {
+  // The dtype of the component tensor.
+  .tensorflow.DataType dtype = 1;
+
+  // The shape of the component tensor.
+  .tensorflow.TensorShapeProto tensor_shape = 2;
+
+  // The amount of uncompressed tensor data.
+  // - For string tensors, there is an element for each string indicating the
+  // size of the string.
+  // - For all other tensors, there is a single element indicating the size of
+  // the tensor.
+  repeated uint64 uncompressed_bytes = 4;
+
+  reserved 3;
+}
+
+message CompressedElement {
+  // Compressed tensor bytes for all components of the element.
+  bytes data = 1;
+  // Metadata for the components of the element.
+  repeated CompressedComponentMetadata component_metadata = 2;
+  // Version of the CompressedElement. CompressedElements may be stored on disk
+  // and read back by later versions of code, so we store a version number to
+  // help readers understand which version they are reading. When you add a new
+  // field to this proto, you need to increment kCompressedElementVersion in
+  // tensorflow/core/data/compression_utils.cc.
+  int32 version = 3;
+}
+
+// An uncompressed dataset element.
+message UncompressedElement {
+  repeated TensorProto components = 1;
+}

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html devsite>
+<head>
+  <title>TfLiteQuantizationParams Struct Reference</title>
+  <meta name="page_type" value="reference" />
+</head>
+<body>
+  <div id="top"><!-- do not remove this div --></div>
+  <h1>TfLiteQuantizationParams</h1>
+  <code>#include &lt;c_api_types.h&gt;</code>
+  <p>Legacy. </p>
+  <h2>Summary</h2>
+  <p>Will be deprecated in favor of <code><a href="/lite/api_docs/c/struct/tf-lite-affine-quantization.html#struct_tf_lite_affine_quantization">TfLiteAffineQuantization</a></code>. If per-layer quantization is specified this field will still be populated in addition to <code><a href="/lite/api_docs/c/struct/tf-lite-affine-quantization.html#struct_tf_lite_affine_quantization">TfLiteAffineQuantization</a></code>. Parameters for asymmetric quantization. Quantized values can be converted back to float using: <code>real_value = scale * (quantized_value - zero_point)</code></p>
+  <table class="properties responsive">
+    <tr>
+      <th colspan="2">
+        <h3>Public attributes</h3>
+      </th>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_quantization_params_1aedc85f69317ce1c27e6e88f886ea8af8">scale</a></code>
+      </td>
+      <td>
+        <div>
+          <code>float</code>
+        </div>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <code><a href="#struct_tf_lite_quantization_params_1a7bfb85a682ab431a6c0c609d3938ab6e">zero_point</a></code>
+      </td>
+      <td>
+        <div>
+          <code>int32_t</code>
+        </div>
+      </td>
+    </tr>
+  </table>
+  <h2>Public attributes</h2>
+  <div id="struct_tf_lite_quantization_params_1aedc85f69317ce1c27e6e88f886ea8af8">
+    <h3>scale</h3>
+    <pre class="prettyprint">float TfLiteQuantizationParams::scale</pre>
+    <div />
+  </div>
+  <div id="struct_tf_lite_quantization_params_1a7bfb85a682ab431a6c0c609d3938ab6e">
+    <h3>zero_point</h3>
+    <pre class="prettyprint">int32_t TfLiteQuantizationParams::zero_point</pre>
+    <div />
+  </div>
+</body>
+</html>

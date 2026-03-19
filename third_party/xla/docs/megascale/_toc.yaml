@@ -1,0 +1,14 @@
+toc:
+- heading: Megascale debugging playbook
+- title: Overview
+  path: xla/megascale/overview
+- title: Getting started
+  section:
+  - title: Debugging Megascale
+    path: xla/megascale/debugging_workflow
+  - title: Hang
+    path: /xla/megascale/hangs
+  - title: Performance
+    path: /xla/megascale/performance
+  - title: Straggler
+    path: /xla/megascale/straggler

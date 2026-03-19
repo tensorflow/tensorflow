@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "IteratorGetDevice"
+  summary: <<END
+Returns the name of the device on which `resource` has been placed.
+END
+  visibility: HIDDEN
+}
+

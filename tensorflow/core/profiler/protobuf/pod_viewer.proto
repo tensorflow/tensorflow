@@ -1,0 +1,7 @@
+// This proto describes the format of the output profile file from
+// the Pod Viewer tool.
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+import public "plugin/xprof/protobuf/pod_viewer.proto";

@@ -1,0 +1,111 @@
+path: "tensorflow.train"
+tf_module {
+  member {
+    name: "BytesList"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "Checkpoint"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CheckpointManager"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CheckpointOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CheckpointView"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ClusterDef"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "ClusterSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Coordinator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Example"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "ExponentialMovingAverage"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Feature"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "FeatureList"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "FeatureLists"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "Features"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "FloatList"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "Int64List"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "JobDef"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "SequenceExample"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "ServerDef"
+    mtype: "<class \'google._upb._message.MessageMeta\'>"
+  }
+  member {
+    name: "TrackableView"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "checkpoints_iterator"
+    argspec: "args=[\'checkpoint_dir\', \'min_interval_secs\', \'timeout\', \'timeout_fn\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "get_checkpoint_state"
+    argspec: "args=[\'checkpoint_dir\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "latest_checkpoint"
+    argspec: "args=[\'checkpoint_dir\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "list_variables"
+    argspec: "args=[\'ckpt_dir_or_file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load_checkpoint"
+    argspec: "args=[\'ckpt_dir_or_file\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "load_variable"
+    argspec: "args=[\'ckpt_dir_or_file\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+}

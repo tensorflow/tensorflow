@@ -1,0 +1,33 @@
+# Copyright 2025 The OpenXLA Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+diff --git a/src/cpu/aarch64/matmul/acl_matmul.cpp b/src/cpu/aarch64/matmul/acl_matmul.cpp
+index 380a0a3843..61cd2af4b7 100644
+--- a/src/cpu/aarch64/matmul/acl_matmul.cpp
++++ b/src/cpu/aarch64/matmul/acl_matmul.cpp
+@@ -178,11 +178,9 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
+
+     std::unique_lock<std::mutex> locker {mtx_, std::defer_lock};
+
+-    // Some of the underlying kernels used by ACL still require some state and
+-    // are not safe to be called in parallel with different execution contexts.
+-    // Eventually when all kernels are truly stateless, this guard can be
+-    // removed.
+-    if (!acl_obj_->asm_gemm.has_stateless_impl()) { locker.lock(); }
++    // Non-fixed-format kernels in ACL hold shared state and are not safe to be
++    // called in parallel with different execution contexts.
++    if (!IsFixedFormat) { locker.lock(); }
+
+     bool is_transA = amp.is_transA;
+     bool is_transB = amp.is_transB;

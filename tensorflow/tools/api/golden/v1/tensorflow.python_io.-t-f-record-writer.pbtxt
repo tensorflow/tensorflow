@@ -1,0 +1,22 @@
+path: "tensorflow.python_io.TFRecordWriter"
+tf_class {
+  is_instance: "<class \'tensorflow.python.lib.io.tf_record.TFRecordWriter\'>"
+  is_instance: "<class \'tensorflow.python.lib.io._pywrap_record_io.RecordWriter\'>"
+  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "close"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "flush"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "write"
+    argspec: "args=[\'self\', \'record\'], varargs=None, keywords=None, defaults=None"
+  }
+}

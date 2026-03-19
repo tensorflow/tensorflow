@@ -1,0 +1,7 @@
+HloModule t, entry_computation_layout={(bf16[4096,64,8]{2,1,0}, bf16[4096,512,8]{2,1,0})->bf16[8,64,512]{2,1,0}}
+
+ENTRY main {
+  p0 = bf16[4096,64,8]{2,1,0} parameter(0)
+  p1 = bf16[4096,512,8]{2,1,0} parameter(1)
+  ROOT res = bf16[8,64,512]{2,1,0} dot(p0,p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}, lhs_batch_dims={2}, rhs_batch_dims={2}
+}

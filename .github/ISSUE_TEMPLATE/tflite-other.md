@@ -1,0 +1,62 @@
+name: TensorFlow Lite Other Issue description: Use this template to report any
+issue in TensorFlow Lite that is not about Converters, Play Services or Ops
+body: - type: dropdown id: issue-type attributes: label: Issue Type description:
+What type of issue would you like to report? multiple: false options: - Bug -
+Build/Install - Performance - Support - Feature Request - Documentation Feature
+Request - Documentation Bug - Others validations: required: true - type:
+markdown attributes: value: | Please make sure that this is a bug. As per our
+[GitHub Policy](https://github.com/tensorflow/tensorflow/blob/master/ISSUES.md),we
+only address code/doc bugs, performance issues, feature requests and
+build/installation issues on GitHub.
+
+-   type: markdown
+    attributes:
+      value: |
+        You can collect some of this information using our environment capture [script](https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh)  You can also obtain the TensorFlow version with: <br> 1. TF 1.0: `python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"` <br>2. TF 2.0: `python -c "import tensorflow as tf; print(tf.version.GIT_VERSION, tf.version.VERSION)"`
+
+-   type: dropdown id: source attributes: label: Source description: Tensorflow
+    installed from options: - source - binary validations: required: true
+
+-   type: input id: tfversion attributes: label: Tensorflow Version description:
+    placeholder: ex,. tf 2.8 validations: required: true
+
+-   type: dropdown id: Code attributes: label: Custom Code description:
+    options: - "Yes" - "No" validations: required: true
+
+-   type: input id: OS attributes: label: OS Platform and Distribution
+    description: placeholder: e.g., Linux Ubuntu 16.04 validations: required:
+    false
+
+-   type: input id: Mobile attributes: label: Mobile device description:
+    placeholder: e.g., Linux Ubuntu 16.04 validations: required: false
+
+-   type: input id: Python attributes: label: Python version description:
+    placeholder: e.g., 3.9 validations: required: false
+
+-   type: input id: Bazel attributes: label: Bazel version description: if
+    compiling from source placeholder: validations: required: false
+
+-   type: input id: Compiler attributes: label: GCC/Compiler version
+    description: if compiling from source placeholder: validations: required:
+    false
+
+-   type: input id: Cuda attributes: label: CUDA/cuDNN version description:
+    placeholder: validations: required: false
+
+-   type: input id: Gpu attributes: label: GPU model and memory description: if
+    compiling from source placeholder: validations: required: false
+
+-   type: textarea id: what-happened attributes: label: Current Behaviour?
+    description: Also tell us, what did you expect to happen? placeholder: Tell
+    us what you see! value: "A bug happened!" render: shell validations:
+    required: true
+
+-   type: textarea id: code-to-reproduce attributes: label: Standalone code to
+    reproduce the issue description: Provide a reproducible test case that is
+    the bare minimum necessary to generate the problem. If possible, please
+    share a link to Colab/Jupyter/any notebook. placeholder: Tell us what you
+    see! value: render: shell validations: required: true
+
+-   type: textarea id: logs attributes: label: Relevant log output description:
+    Please copy and paste any relevant log output. This will be automatically
+    formatted into code, so no need for backticks. render: shell

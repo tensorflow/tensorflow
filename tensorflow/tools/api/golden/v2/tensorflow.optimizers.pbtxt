@@ -1,0 +1,75 @@
+path: "tensorflow.optimizers"
+tf_module {
+  member {
+    name: "Adadelta"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Adafactor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Adagrad"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Adam"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "AdamW"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Adamax"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Ftrl"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Lion"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Nadam"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Optimizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RMSprop"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SGD"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "legacy"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "schedules"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\', \'use_legacy_format\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=kwargs, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'optimizer\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+}

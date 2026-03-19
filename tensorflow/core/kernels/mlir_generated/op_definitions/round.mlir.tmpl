@@ -1,0 +1,3 @@
+func.func @Round_platform_elem_type_output_type(%arg0: tensor<*xelem_type>) -> tensor<*xoutput_type> attributes {llvm.emit_c_interface, tf_entry} {
+  return %arg0 : tensor<*xelem_type>
+}

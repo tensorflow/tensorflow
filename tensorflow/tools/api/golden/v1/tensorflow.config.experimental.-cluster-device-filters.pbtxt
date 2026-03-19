@@ -1,0 +1,13 @@
+path: "tensorflow.config.experimental.ClusterDeviceFilters"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.server_lib.ClusterDeviceFilters\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_device_filters"
+    argspec: "args=[\'self\', \'job_name\', \'task_index\', \'device_filters\'], varargs=None, keywords=None, defaults=None"
+  }
+}

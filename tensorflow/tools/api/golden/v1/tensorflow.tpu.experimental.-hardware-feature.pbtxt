@@ -1,0 +1,21 @@
+path: "tensorflow.tpu.experimental.HardwareFeature"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_hardware_feature.HardwareFeature\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "EmbeddingFeature"
+    mtype: "<class \'enum.EnumType\'>"
+  }
+  member {
+    name: "embedding_feature"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_embedding_devices_per_chip"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'tpu_hardware_feature_proto\'], varargs=None, keywords=None, defaults=None"
+  }
+}

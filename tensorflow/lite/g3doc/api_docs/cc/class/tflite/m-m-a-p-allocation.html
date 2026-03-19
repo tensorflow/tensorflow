@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+
+<html devsite="">
+<head>
+<title>tflite::MMAPAllocation Class Reference</title>
+<meta name="page_type" value="reference"/>
+<meta content="reference" name="page_type"/></head>
+<body><div id="top"><!-- do not remove this div --></div><h1>tflite::<wbr/>MMAPAllocation</h1><code>#include &lt;allocation.h&gt;</code><p>Note that not all platforms support MMAP-based allocation. </p><h2>Summary</h2><p>Use <code>IsSupported()</code> to check. </p><h3>Inheritance</h3>Inherits from: <a href="/lite/api_docs/cc/class/tflite/allocation">tflite::Allocation</a><table class="constructors responsive">
+<tr>
+<th colspan="2">
+<h3>Constructors and Destructors</h3>
+</th>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1acfb9fdd33f19fe08872f14e63618f31d">MMAPAllocation</a>(const char *filename, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+<br/>
+<div>Loads and maps the provided file to a memory region. </div>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1af72bf81b83867751c29d0e75603d1caf">MMAPAllocation</a>(int fd, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+<br/>
+<div>Maps the provided file descriptor to a memory region. </div>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a390a6e0a6b423436886ec122923323ce">MMAPAllocation</a>(int fd, size_t offset, size_t length, <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter)</code>
+<br/>
+<div>Maps the provided file descriptor, with the given offset and length (both in bytes), to a memory region. </div>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a724a1271605a5219a1f782138b51e872">~MMAPAllocation</a>()</code>
+<br/>
+</td>
+</tr>
+</table><table class="properties responsive">
+<tr>
+<th colspan="2">
+<h3>Protected attributes</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1acf9b343574e71ae396bc266d2fdc3bce">buffer_size_bytes_</a> = 0</code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a4720771013a16b8aecd350fcc8af4a86">mmap_fd_</a> = -1</code>
+</td>
+<td>
+<div>
+<code>int</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a57949c0d6f4606eb7b4147bf6844791e">mmapped_buffer_</a></code>
+</td>
+<td>
+<div>
+<code>const void *</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1aab66abf26d41bf9874c47a88d3e82f19">offset_in_buffer_</a> = 0</code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a69941c27fae1886d4001b9d0683bb3fa">offset_of_buffer_in_file_</a> = 0</code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+</td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a43eb45a4d239fdd780d290a2731a9995">base</a>() const override</code>
+</td>
+<td>
+<div>
+<code>virtual const void *</code>
+</div>
+<div>Base pointer of this allocation. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a4921c8aa477f8f02f39414c975ec745e">bytes</a>() const override</code>
+</td>
+<td>
+<div>
+<code>virtual size_t</code>
+</div>
+<div>Size in bytes of the allocation. </div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a53f6934b487782b4c5fea8f496b8f6eb">fd</a>() const </code>
+</td>
+<td>
+<div>
+<code>int</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a670ddca35f6472197bdb996f274f9c84">mmapped_buffer</a>() const </code>
+</td>
+<td>
+<div>
+<code>const void *</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a440183d0b5f82f6aa385c7ca3bf3d6a9">mmapped_buffer_offset_in_file</a>() const </code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a11929d39b9b8e17348e9e31e319d6991">mmapped_buffer_size</a>() const </code>
+</td>
+<td>
+<div>
+<code>size_t</code>
+</div>
+</td>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a51e5b1b20a087c6be03caaf42cdc2ba2">valid</a>() const override</code>
+</td>
+<td>
+<div>
+<code>virtual bool</code>
+</div>
+<div>Whether the allocation is valid. </div>
+</td>
+</tr>
+</table><table class="methods responsive">
+<tr>
+<th colspan="2">
+<h3>Public static functions</h3>
+</th>
+</tr>
+<tr>
+<td>
+<code><a href="#classtflite_1_1_m_m_a_p_allocation_1a3418fb63069005bd3f08595fd1891e7c">IsSupported</a>()</code>
+</td>
+<td>
+<div>
+<code>bool</code>
+</div>
+</td>
+</tr>
+</table><h2>Protected attributes</h2><div id="classtflite_1_1_m_m_a_p_allocation_1acf9b343574e71ae396bc266d2fdc3bce">
+<h3>buffer_size_bytes_</h3>
+<pre class="prettyprint">size_t buffer_size_bytes_ = 0</pre>
+<div></div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a4720771013a16b8aecd350fcc8af4a86">
+<h3>mmap_fd_</h3>
+<pre class="prettyprint">int mmap_fd_ = -1</pre>
+<div></div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a57949c0d6f4606eb7b4147bf6844791e">
+<h3>mmapped_buffer_</h3>
+<pre class="prettyprint">const void * mmapped_buffer_</pre>
+<div></div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1aab66abf26d41bf9874c47a88d3e82f19">
+<h3>offset_in_buffer_</h3>
+<pre class="prettyprint">size_t offset_in_buffer_ = 0</pre>
+<div></div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a69941c27fae1886d4001b9d0683bb3fa">
+<h3>offset_of_buffer_in_file_</h3>
+<pre class="prettyprint">size_t offset_of_buffer_in_file_ = 0</pre>
+<div></div>
+</div><h2>Public functions</h2><div id="classtflite_1_1_m_m_a_p_allocation_1acfb9fdd33f19fe08872f14e63618f31d">
+<h3>MMAPAllocation</h3>
+<pre class="prettyprint"> MMAPAllocation(
+  const char *filename,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Loads and maps the provided file to a memory region. </p>
+</div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1af72bf81b83867751c29d0e75603d1caf">
+<h3>MMAPAllocation</h3>
+<pre class="prettyprint"> MMAPAllocation(
+  int fd,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Maps the provided file descriptor to a memory region. </p>
+<p>Note: The provided file descriptor will be dup'ed for usage; the caller retains ownership of the provided descriptor and should close accordingly. </p>
+</div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a390a6e0a6b423436886ec122923323ce">
+<h3>MMAPAllocation</h3>
+<pre class="prettyprint"> MMAPAllocation(
+  int fd,
+  size_t offset,
+  size_t length,
+  <a href="/lite/api_docs/cc/class/tflite/error-reporter.html#classtflite_1_1_error_reporter">ErrorReporter</a> *error_reporter
+)</pre>
+<div>
+<p>Maps the provided file descriptor, with the given offset and length (both in bytes), to a memory region. </p>
+<p>Note: The provided file descriptor will be dup'ed for usage; the caller retains ownership of the provided descriptor and should close accordingly. </p>
+</div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a43eb45a4d239fdd780d290a2731a9995">
+<h3>base</h3>
+<pre class="prettyprint">virtual const void * base() const override</pre>
+<div>
+<p>Base pointer of this allocation. </p>
+</div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a4921c8aa477f8f02f39414c975ec745e">
+<h3>bytes</h3>
+<pre class="prettyprint">virtual size_t bytes() const override</pre>
+<div>
+<p>Size in bytes of the allocation. </p>
+</div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a53f6934b487782b4c5fea8f496b8f6eb">
+<h3>fd</h3>
+<pre class="prettyprint">int fd() const </pre>
+<div></div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a670ddca35f6472197bdb996f274f9c84">
+<h3>mmapped_buffer</h3>
+<pre class="prettyprint">const void * mmapped_buffer() const </pre>
+<div></div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a440183d0b5f82f6aa385c7ca3bf3d6a9">
+<h3>mmapped_buffer_offset_in_file</h3>
+<pre class="prettyprint">size_t mmapped_buffer_offset_in_file() const </pre>
+<div></div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a11929d39b9b8e17348e9e31e319d6991">
+<h3>mmapped_buffer_size</h3>
+<pre class="prettyprint">size_t mmapped_buffer_size() const </pre>
+<div></div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a51e5b1b20a087c6be03caaf42cdc2ba2">
+<h3>valid</h3>
+<pre class="prettyprint">virtual bool valid() const override</pre>
+<div>
+<p>Whether the allocation is valid. </p>
+</div>
+</div><div id="classtflite_1_1_m_m_a_p_allocation_1a724a1271605a5219a1f782138b51e872">
+<h3>~MMAPAllocation</h3>
+<pre class="prettyprint"> ~MMAPAllocation() override</pre>
+<div></div>
+</div><h2>Public static functions</h2><div id="classtflite_1_1_m_m_a_p_allocation_1a3418fb63069005bd3f08595fd1891e7c">
+<h3>IsSupported</h3>
+<pre class="prettyprint">bool IsSupported()</pre>
+<div></div>
+</div></body>
+</html>
