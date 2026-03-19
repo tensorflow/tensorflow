@@ -1546,21 +1546,12 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
     return std::nullopt;
   }
   std::vector<int64_t> expand_tile_dims;
-  std::vector<int64_t> tiling_dim_factors;
   int64_t rank = hlo_->shape().dimensions().size();
-  tiling_dim_factors.reserve(target.num_dimensions());
   const auto& temp_target_sharding = target_compatible_sharding.value();
   for (int64_t dim = 0; dim < rank; dim++) {
     if (temp_target_sharding.dimension(dim) > sharding().dimension(dim)) {
       expand_tile_dims.push_back(dim);
     }
-    tiling_dim_factors.emplace_back(temp_target_sharding.dimension(dim) /
-                                    sharding().dimension(dim));
-  }
-
-  // Add another dimension in tiling_dim_factors if target is partial replicate.
-  if (target.ReplicateOnLastTileDim()) {
-    tiling_dim_factors.emplace_back(target.dimensions().back());
   }
 
   // 2. Get the padded_hlo, do right halo exchange if needed.
