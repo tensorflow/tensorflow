@@ -494,7 +494,8 @@ class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []>
 
 def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
     [Pure, TFGraph_ReturnLike, Terminator, AttrSizedOperandSegments,
-     DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
+     DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
+                               ["getMutableSuccessorOperands"]>]> {
   let description = [{
     The `yield` operation is the terminator for control-flow regions. The
     operation takes data operands and control results. All data operands are
@@ -772,7 +773,8 @@ def TFGraph_StatefulCaseRegionOp :
 // Special terminator op for while op condition regions.
 def TFGraph_ConditionOp : TFG_IntrinsicOp<"condition",
     [Pure, TFGraph_ReturnLike, Terminator, AttrSizedOperandSegments,
-     DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
+     DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface,
+                               ["getMutableSuccessorOperands"]>]> {
   let description = [{
     The `condition` operation is a special terminator for the condition region
     of while loops. Its only purpose is to support reasoning about region

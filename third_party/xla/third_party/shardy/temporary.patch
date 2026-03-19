@@ -1,258 +1,99 @@
-diff --git a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
-index 4b25c64..dd67492 100644
---- a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
-+++ b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
-@@ -44,7 +44,6 @@ limitations under the License.
- #include "shardy/dialect/sdy/ir/dialect.h"  // IWYU pragma: keep
- #include "shardy/dialect/sdy/ir/utils.h"
- #include "shardy/dialect/sdy/transforms/export/passes.h"  // IWYU pragma: keep
--#include "shardy/dialect/sdy/transforms/propagation/utils.h"
- #include "stablehlo/dialect/StablehloOps.h"
- 
- namespace mlir {
-@@ -172,9 +171,8 @@ class GenericOpPattern : public ConversionPattern {
-   LogicalResult matchAndRewrite(
-       Operation* op, ArrayRef<Value> operands,
-       ConversionPatternRewriter& rewriter) const override {
--    if ((op->getDialect()->getNamespace() != "stablehlo" &&
--        !isa<sdy::AllReduceOp, sdy::ReturnOp>(op)) ||
--        isa<stablehlo::IotaOp>(op)) {
-+    if (op->getDialect()->getNamespace() != "stablehlo" &&
-+        !isa<sdy::AllReduceOp>(op) && !isa<sdy::ReturnOp>(op)) {
-       return failure();
-     }
- 
-@@ -1244,63 +1242,6 @@ class NamedComputationOpPattern
-   ConversionState& conversionState;
- };
- 
--class StablehloIotaOpPattern : public OpConversionPattern<stablehlo::IotaOp> {
-- public:
--  StablehloIotaOpPattern(TypeConverter& converter, MLIRContext* ctx,
--                         ConversionState& state)
--      : OpConversionPattern<stablehlo::IotaOp>(converter, ctx),
--        conversionState(state) {}
--
--  LogicalResult matchAndRewrite(
--      stablehlo::IotaOp op, OpAdaptor,
--      ConversionPatternRewriter& rewriter) const override {
--    TensorShardingAttr sharding = getSharding(op->getResult(0));
--    if (isFullyReplicated(sharding)) {
--      conversionState.removeToConvertOp(op);
--      return success();
--    }
--
--    auto* converter =
--        static_cast<const GlobalToLocalTypeConverter*>(getTypeConverter());
--    MeshAttr mesh = sharding.getMesh(converter->getSymbolTable());
--    if (!mesh) {
--      return op.emitOpError("failed to resolve mesh");
--    }
--    auto localType = cast<RankedTensorType>(converter->convertType(op));
--    Location loc = op.getLoc();
--    int64_t iotaDim = op.getIotaDimension();
--    // Create the local iota.
--    Value localIota =
--        stablehlo::IotaOp::create(rewriter, loc, localType, iotaDim);
--    if (sharding.getDimShardings()[iotaDim].getAxes().empty()) {
--      rewriter.replaceOp(op, localIota);
--      conversionState.removeToConvertOp(op);
--      return success();
--    }
--
--    // Calculate and apply the global offset for this shard.
--    int64_t shardSize = localType.getDimSize(iotaDim);
--    Type convertedOffsetType =
--        RankedTensorType::get({}, localType.getElementType());
--    Value offset = getDimensionOffset(
--        loc, mesh, sharding.getDimShardings()[iotaDim].getAxes(), shardSize,
--        rewriter);
--    Value offsetConverted = stablehlo::ConvertOp::create(
--        rewriter, loc, convertedOffsetType, offset);
--    Value broadcastOffset = stablehlo::BroadcastOp::create(
--        rewriter, loc, localType, offsetConverted,
--        rewriter.getDenseI64ArrayAttr(localType.getShape()));
--    rewriter.replaceOpWithNewOp<stablehlo::AddOp>(op, localIota,
--                                                  broadcastOffset);
--
--    conversionState.removeToConvertOp(op);
--    return success();
--  }
--
-- private:
--  ConversionState& conversionState;
--};
--
- // This pass converts a Shardy module with consistent sharding notations and
- // global tensor types to a module with local tensor types.
- //
-@@ -1356,12 +1297,11 @@ struct ConvertGlobalToLocalPass
-     populateCallOpTypeConversionPattern(patterns, typeConverter);
-     populateReturnOpTypeConversionPattern(patterns, typeConverter);
- 
--    patterns
--        .add<AllSliceOpPattern, AllToAllOpPattern, CollectivePermuteOpPattern,
--             ConstantOpPattern, FuncOpSignaturePattern, GenericOpPattern,
--             ManualComputationOpPattern, NamedComputationOpPattern,
--             ReturnOpPattern, StablehloIotaOpPattern>(
--            typeConverter, &getContext(), conversionState);
-+    patterns.add<
-+        AllSliceOpPattern, AllToAllOpPattern, CollectivePermuteOpPattern,
-+        ConstantOpPattern, FuncOpSignaturePattern, GenericOpPattern,
-+        ManualComputationOpPattern, NamedComputationOpPattern, ReturnOpPattern>(
-+        typeConverter, &getContext(), conversionState);
-     patterns.add<AllGatherOpPattern>(typeConverter, &getContext(),
-                                      conversionState, perDimensionAllGather);
-     patterns.add<ReduceScatterOpPattern>(typeConverter, &getContext(),
-diff --git a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/stablehlo_iota.mlir b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/stablehlo_iota.mlir
-deleted file mode 100644
-index ed43aa8..0000000
---- a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/stablehlo_iota.mlir
-+++ /dev/null
-@@ -1,59 +0,0 @@
--// RUN: sdy_opt %s -sdy-convert-global-to-local | FileCheck %s
--
--sdy.mesh @mesh_4 = <["x"=4]>
--sdy.mesh @mesh_4_2 = <["x"=4, "y"=2]>
--
--// CHECK-LABEL: func @non_sharded
--func.func @non_sharded() -> tensor<16xi32> {
--  // CHECK: %[[RES:.*]] = stablehlo.iota dim = 0 : tensor<16xi32>
--  // CHECK: return %[[RES]]
--  %0 = stablehlo.iota dim = 0 : tensor<16xi32>
--  return %0 : tensor<16xi32>
--}
--
--
--// CHECK-LABEL: func @iota_on_non_sharded_dim
--// CHECK-SAME:   -> (tensor<8x4xi32> {sdy.sharding = #sdy.sharding<@mesh_4, [{}, {"x"}]>}) {
--func.func @iota_on_non_sharded_dim() -> (tensor<8x16xi32> {sdy.sharding = #sdy.sharding<@mesh_4, [{}, {"x"}]>}) {
--  // CHECK:  %[[RES:.*]] = stablehlo.iota dim = 0 : tensor<8x4xi32>
--  %0 = stablehlo.iota dim = 0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4, [{}, {"x"}]>]>} : tensor<8x16xi32>
--  // CHECK:  return %[[RES]] : tensor<8x4xi32>
--  return %0 : tensor<8x16xi32>
--}
--
--// CHECK-LABEL: func @iota_on_sharded_dim
--// CHECK-SAME:   -> (tensor<8x4xi32> {sdy.sharding = #sdy.sharding<@mesh_4, [{}, {"x"}]>}) {
--func.func @iota_on_sharded_dim() -> (tensor<8x16xi32> {sdy.sharding = #sdy.sharding<@mesh_4, [{}, {"x"}]>}) {
--  // CHECK: %[[LOCAL_IOTA:.*]] = stablehlo.iota dim = 1 : tensor<8x4xi32>
--  // CHECK: %[[PID:.*]] = stablehlo.partition_id : tensor<ui32>
--  // CHECK: %[[PID_I64:.*]] = stablehlo.convert %[[PID]] : (tensor<ui32>) -> tensor<i64>
--  // CHECK: %[[TABLE:.*]] = stablehlo.constant dense<[0, 4, 8, 12]> : tensor<4xi64>
--  // CHECK: %[[SLICE:.*]] = stablehlo.dynamic_slice %[[TABLE]], %[[PID_I64]], sizes = [1] : (tensor<4xi64>, tensor<i64>) -> tensor<1xi64>
--  // CHECK: %[[OFFSET_I64:.*]] = stablehlo.reshape %[[SLICE]] : (tensor<1xi64>) -> tensor<i64>
--  // CHECK: %[[OFFSET_I32:.*]] = stablehlo.convert %[[OFFSET_I64]] : (tensor<i64>) -> tensor<i32>
--  // CHECK: %[[BCAST:.*]] = stablehlo.broadcast %[[OFFSET_I32]], sizes = [8, 4] : (tensor<i32>) -> tensor<8x4xi32>
--  // CHECK: %[[RES:.*]] = stablehlo.add %[[LOCAL_IOTA]], %[[BCAST]] : tensor<8x4xi32>
--  %0 = stablehlo.iota dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4, [{}, {"x"}]>]>} : tensor<8x16xi32>
--  // CHECK: return %[[RES]] : tensor<8x4xi32>
--  return %0 : tensor<8x16xi32>
--}
--
--// CHECK-LABEL: func @sharded_2d
--// CHECK-SAME:   -> (tensor<4x4xi32> {sdy.sharding = #sdy.sharding<@mesh_4_2, [{"x"}, {"y"}]>})
--func.func @sharded_2d() -> (tensor<16x8xi32> {sdy.sharding = #sdy.sharding<@mesh_4_2, [{"x"}, {"y"}]>}) {
--  // CHECK: %[[LOCAL_IOTA:.*]] = stablehlo.iota dim = 1 : tensor<4x4xi32>
--  // CHECK: %[[PID:.*]] = stablehlo.partition_id
--  // CHECK: %[[PID_I64:.*]] = stablehlo.convert %[[PID]]
--
--  // Offset table for 8 devices (4x2 mesh). Dimension 1 is sharded by "y".
--  // Coordinates for "y": [0, 1, 0, 1, 0, 1, 0, 1]. Local size 4 -> Offsets: [0, 4, 0, 4, ...]
--  // CHECK: %[[TABLE:.*]] = stablehlo.constant dense<[0, 4, 0, 4, 0, 4, 0, 4]> : tensor<8xi64>
--  // CHECK: %[[OFFSET_S:.*]] = stablehlo.dynamic_slice %[[TABLE]], %[[PID_I64]]
--  // CHECK: %[[OFFSET_C:.*]] = stablehlo.convert %{{.*}} : (tensor<i64>) -> tensor<i32>
--  // CHECK: %[[BCAST:.*]] = stablehlo.broadcast %[[OFFSET_C]], sizes = [4, 4] : (tensor<i32>) -> tensor<4x4xi32>
--  // CHECK:  %[[RES:.*]] = stablehlo.add %[[LOCAL_IOTA]], %[[BCAST]]
--  %0 = stablehlo.iota dim = 1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_4_2, [{"x"}, {"y"}]>]>} : tensor<16x8xi32>
--  // CHECK: return %[[RES]] : tensor<4x4xi32>
--  return %0 : tensor<16x8xi32>
--}
--
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..93f137d 100644
+index 93f137d..190a28a 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1 +1,67 @@
+@@ -1,67 +1,13 @@
  Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/clang/lib/Format/Format.cpp b/clang/lib/Format/Format.cpp
-+--- a/clang/lib/Format/Format.cpp
-++++ b/clang/lib/Format/Format.cpp
-+@@ -2011,11 +2011,6 @@
-+   GoogleStyle.IncludeStyle.IncludeIsMainRegex = "([-_](test|unittest))?$";
-+   GoogleStyle.IndentCaseLabels = true;
-+   GoogleStyle.KeepEmptyLines.AtStartOfBlock = false;
-+-
-+-  GoogleStyle.Macros.push_back("ASSIGN_OR_RETURN(a, b)=a = (b)");
-+-  GoogleStyle.Macros.push_back(
-+-      "ASSIGN_OR_RETURN(a, b, c)=a = (b); if (x) return c");
-+-
-+   GoogleStyle.ObjCBinPackProtocolList = FormatStyle::BPS_Never;
-+   GoogleStyle.ObjCSpaceAfterProperty = false;
-+   GoogleStyle.ObjCSpaceBeforeProtocolList = true;
-+diff -ruN --strip-trailing-cr a/clang/unittests/Format/ConfigParseTest.cpp b/clang/unittests/Format/ConfigParseTest.cpp
-+--- a/clang/unittests/Format/ConfigParseTest.cpp
-++++ b/clang/unittests/Format/ConfigParseTest.cpp
-+@@ -1043,13 +1043,6 @@
-+               StatementAttributeLikeMacros,
-+               std::vector<std::string>({"emit", "Q_EMIT"}));
-+ 
-+-  Style.Macros.clear();
-+-  CHECK_PARSE("{Macros: [foo]}", Macros, std::vector<std::string>({"foo"}));
-+-  std::vector<std::string> GoogleMacros;
-+-  GoogleMacros.push_back("ASSIGN_OR_RETURN(a, b)=a = (b)");
-+-  GoogleMacros.push_back("ASSIGN_OR_RETURN(a, b, c)=a = (b); if (x) return c");
-+-  CHECK_PARSE("BasedOnStyle: Google", Macros, GoogleMacros);
-+-
-+   Style.StatementMacros.clear();
-+   CHECK_PARSE("StatementMacros: [QUNUSED]", StatementMacros,
-+               std::vector<std::string>{"QUNUSED"});
-+@@ -1057,6 +1050,7 @@
-+               std::vector<std::string>({"QUNUSED", "QT_REQUIRE_VERSION"}));
-+ 
-+   CHECK_PARSE_LIST(JavaImportGroups);
-++  CHECK_PARSE_LIST(Macros);
-+   CHECK_PARSE_LIST(MacrosSkippedByRemoveParentheses);
-+   CHECK_PARSE_LIST(NamespaceMacros);
-+   CHECK_PARSE_LIST(ObjCPropertyAttributeOrder);
-+diff -ruN --strip-trailing-cr a/clang/unittests/Format/FormatTestMacroExpansion.cpp b/clang/unittests/Format/FormatTestMacroExpansion.cpp
-+--- a/clang/unittests/Format/FormatTestMacroExpansion.cpp
-++++ b/clang/unittests/Format/FormatTestMacroExpansion.cpp
-+@@ -58,18 +58,10 @@
-+   verifyFormat("ASSIGN_OR_RETURN(MySomewhatLongType *variable,\n"
-+                "                 MySomewhatLongFunction(SomethingElse()));",
-+                Style);
-+-  verifyFormat(
-+-      "ASSIGN_OR_RETURN(MySomewhatLongType *variable,\n"
-+-      "                 MySomewhatLongFunction(SomethingElse()), RetMe());",
-+-      Style);
-+-
-+-  verifyFormat(
-+-      "void f() {\n"
-+-      "  ASSIGN_OR_RETURN(MySomewhatLongType* variable,\n"
-+-      "                   MySomewhatLongFunction(SomethingElse()));\n"
-+-      "  ASSIGN_OR_RETURN(MySomewhatLongType* variable,\n"
-+-      "                   MySomewhatLongFunction(SomethingElse()), RetMe());",
-+-      getGoogleStyle());
-++  verifyFormat("ASSIGN_OR_RETURN(MySomewhatLongType *variable,\n"
-++               "                 MySomewhatLongFunction(SomethingElse()), "
-++               "ReturnMe());",
-++               Style);
-+ 
-+   verifyFormat(R"(
-+ #define MACRO(a, b) ID(a + b)
+-diff -ruN --strip-trailing-cr a/clang/lib/Format/Format.cpp b/clang/lib/Format/Format.cpp
+---- a/clang/lib/Format/Format.cpp
+-+++ b/clang/lib/Format/Format.cpp
+-@@ -2011,11 +2011,6 @@
+-   GoogleStyle.IncludeStyle.IncludeIsMainRegex = "([-_](test|unittest))?$";
+-   GoogleStyle.IndentCaseLabels = true;
+-   GoogleStyle.KeepEmptyLines.AtStartOfBlock = false;
+--
+--  GoogleStyle.Macros.push_back("ASSIGN_OR_RETURN(a, b)=a = (b)");
+--  GoogleStyle.Macros.push_back(
+--      "ASSIGN_OR_RETURN(a, b, c)=a = (b); if (x) return c");
+--
+-   GoogleStyle.ObjCBinPackProtocolList = FormatStyle::BPS_Never;
+-   GoogleStyle.ObjCSpaceAfterProperty = false;
+-   GoogleStyle.ObjCSpaceBeforeProtocolList = true;
+-diff -ruN --strip-trailing-cr a/clang/unittests/Format/ConfigParseTest.cpp b/clang/unittests/Format/ConfigParseTest.cpp
+---- a/clang/unittests/Format/ConfigParseTest.cpp
+-+++ b/clang/unittests/Format/ConfigParseTest.cpp
+-@@ -1043,13 +1043,6 @@
+-               StatementAttributeLikeMacros,
+-               std::vector<std::string>({"emit", "Q_EMIT"}));
+- 
+--  Style.Macros.clear();
+--  CHECK_PARSE("{Macros: [foo]}", Macros, std::vector<std::string>({"foo"}));
+--  std::vector<std::string> GoogleMacros;
+--  GoogleMacros.push_back("ASSIGN_OR_RETURN(a, b)=a = (b)");
+--  GoogleMacros.push_back("ASSIGN_OR_RETURN(a, b, c)=a = (b); if (x) return c");
+--  CHECK_PARSE("BasedOnStyle: Google", Macros, GoogleMacros);
+--
+-   Style.StatementMacros.clear();
+-   CHECK_PARSE("StatementMacros: [QUNUSED]", StatementMacros,
+-               std::vector<std::string>{"QUNUSED"});
+-@@ -1057,6 +1050,7 @@
+-               std::vector<std::string>({"QUNUSED", "QT_REQUIRE_VERSION"}));
+- 
+-   CHECK_PARSE_LIST(JavaImportGroups);
+-+  CHECK_PARSE_LIST(Macros);
+-   CHECK_PARSE_LIST(MacrosSkippedByRemoveParentheses);
+-   CHECK_PARSE_LIST(NamespaceMacros);
+-   CHECK_PARSE_LIST(ObjCPropertyAttributeOrder);
+-diff -ruN --strip-trailing-cr a/clang/unittests/Format/FormatTestMacroExpansion.cpp b/clang/unittests/Format/FormatTestMacroExpansion.cpp
+---- a/clang/unittests/Format/FormatTestMacroExpansion.cpp
+-+++ b/clang/unittests/Format/FormatTestMacroExpansion.cpp
+-@@ -58,18 +58,10 @@
+-   verifyFormat("ASSIGN_OR_RETURN(MySomewhatLongType *variable,\n"
+-                "                 MySomewhatLongFunction(SomethingElse()));",
+-                Style);
+--  verifyFormat(
+--      "ASSIGN_OR_RETURN(MySomewhatLongType *variable,\n"
+--      "                 MySomewhatLongFunction(SomethingElse()), RetMe());",
+--      Style);
+--
+--  verifyFormat(
+--      "void f() {\n"
+--      "  ASSIGN_OR_RETURN(MySomewhatLongType* variable,\n"
+--      "                   MySomewhatLongFunction(SomethingElse()));\n"
+--      "  ASSIGN_OR_RETURN(MySomewhatLongType* variable,\n"
+--      "                   MySomewhatLongFunction(SomethingElse()), RetMe());",
+--      getGoogleStyle());
+-+  verifyFormat("ASSIGN_OR_RETURN(MySomewhatLongType *variable,\n"
+-+               "                 MySomewhatLongFunction(SomethingElse()), "
+-+               "ReturnMe());",
+-+               Style);
+- 
+-   verifyFormat(R"(
+- #define MACRO(a, b) ID(a + b)
++diff -ruN --strip-trailing-cr a/llvm/unittests/Analysis/IR2VecTest.cpp b/llvm/unittests/Analysis/IR2VecTest.cpp
++--- a/llvm/unittests/Analysis/IR2VecTest.cpp
+++++ b/llvm/unittests/Analysis/IR2VecTest.cpp
++@@ -604,8 +604,6 @@
++   // Test invalid type IDs
++   EXPECT_DEATH(Vocabulary::getIndex(static_cast<Type::TypeID>(MaxTypeIDs)),
++                "Invalid type ID");
++-  EXPECT_DEATH(Vocabulary::getIndex(static_cast<Type::TypeID>(MaxTypeIDs + 10)),
++-               "Invalid type ID");
++ }
++ #endif // NDEBUG
++ #endif // GTEST_HAS_DEATH_TEST
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 927399f..5befc46 100644
+index 5befc46..ce41781 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "bcdf3c930b8bbf59e7fc65da37c5baa89aa73f30"
--    LLVM_SHA256 = "c82433825ad2c46b391a34e6922f0892974ebc5a6fd2584d0d7c096860cc6345"
-+    LLVM_COMMIT = "e30aa40aa677ea967db9d2d20e43b64902070e56"
-+    LLVM_SHA256 = "5679e4b832ebceed8edc5cd3034c6db5568f62ddf7c584a8420968d2753e6584"
+-    LLVM_COMMIT = "e30aa40aa677ea967db9d2d20e43b64902070e56"
+-    LLVM_SHA256 = "5679e4b832ebceed8edc5cd3034c6db5568f62ddf7c584a8420968d2753e6584"
++    LLVM_COMMIT = "b03b58be38f9e89f44ef7785bcc8f9a823309c77"
++    LLVM_SHA256 = "183961a7464ac3bbc90b86519c19d4eba63485ab636f85d7fe419bf0da72fe3c"
  
      tf_http_archive(
          name = name,
