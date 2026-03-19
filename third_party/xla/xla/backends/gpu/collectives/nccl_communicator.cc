@@ -179,6 +179,13 @@ class NcclCommunicator::NcclRegisteredBufferHandle
     }
   }
 
+  PackedKernelArg PackKernelArg() const final {
+    PackedKernelArg packed;
+    static_assert(sizeof(ncclWindow_t) <= sizeof(void*));
+    std::memcpy(packed.data(), &handle_, sizeof(ncclWindow_t));
+    return packed;
+  }
+
   absl::Status Unregister() final {
     VLOG(3) << absl::StreamFormat(
         "[%d] Deregister buffer for NCCL communicator; handle=%p; comm=%p",
