@@ -143,25 +143,10 @@ bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo) {
          hlo.custom_call_target() == kCudnnBlockScaledDotCallTarget;
 }
 
-bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceRadixSortTarget;
-}
-
 bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() ==
              kCubDeviceRadixSortUnassignedScratchSizeTarget;
-}
-
-bool IsCubDeviceScan(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceScanTarget;
-}
-
-bool IsCubDeviceScanNoScratchSize(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceScanUnassignedScratchSizeTarget;
 }
 
 absl::StatusOr<CudnnConvKind> GetCudnnConvKind(

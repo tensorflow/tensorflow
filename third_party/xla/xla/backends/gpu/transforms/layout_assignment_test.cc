@@ -391,7 +391,7 @@ TEST_F(LayoutAssignmentTest,
     values = f32[2,3]{1,0} parameter(0)
     transpose = f32[3,2]{1,0} transpose(values), dimensions={1,0}
     ROOT sort = (f32[3,2]{1,0}, f32[3,2]{1,0}, u8[128]{0})
-        custom-call(keys, transpose), custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize"
+        custom-call(keys, transpose), custom_call_target="xla.gpu.ext.cub_sort_unassigned_scratch_size"
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

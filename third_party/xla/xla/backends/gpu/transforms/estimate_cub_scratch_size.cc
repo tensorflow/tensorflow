@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -55,7 +56,8 @@ namespace xla::gpu {
 // and dimensions) matching the HLO custom call layout.
 static absl::StatusOr<int64_t> ComputeFfiScratchSize(
     const ffi::HandlerRegistration& registration,
-    const HloCustomCallInstruction* custom_call, int64_t batch_size) {
+    const HloCustomCallInstruction* custom_call,
+    ffi::CallFrameBuilder::AttributesBuilder attrs) {
   bool is_pairs = custom_call->operand_count() == 2;
   int num_args = is_pairs ? 2 : 1;  // keys [+ values]
   int num_rets = is_pairs ? 3 : 2;  // keys_out [+ values_out] + scratch
@@ -100,9 +102,6 @@ static absl::StatusOr<int64_t> ComputeFfiScratchSize(
   builder.AddBufferRet(scratch_placeholder, U8, {0});
 
   // Add attributes matching the MLIR backend config.
-  ffi::CallFrameBuilder::AttributesBuilder attrs;
-  attrs.Insert("descending", false);
-  attrs.Insert("batch_size", batch_size);
   builder.AddAttributes(attrs.Build());
   ffi::CallFrame call_frame = builder.Build();
 
@@ -132,8 +131,8 @@ absl::Status EstimateCubScratchSize::RunOnSortInstruction(
                    custom_call->backend_config<SortOptions>());
 
   // Determine FFI handler target name.
-  std::string ffi_target =
-      is_pairs ? "xla.gpu.ext.cub_sort_pairs" : "xla.gpu.ext.cub_sort_keys";
+  absl::string_view ffi_target =
+      is_pairs ? kCubDeviceRadixSortPairsTarget : kCubDeviceRadixSortKeysTarget;
 
   // Look up the registered FFI handler.
   ASSIGN_OR_RETURN(ffi::HandlerRegistration registration,
@@ -142,9 +141,13 @@ absl::Status EstimateCubScratchSize::RunOnSortInstruction(
   int64_t num_items = Product(key_shape.dimensions());
   int64_t batch_size = num_items / key_shape.dimensions().back();
 
+  ffi::CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("descending", false);
+  attrs.Insert("batch_size", batch_size);
+
   ASSIGN_OR_RETURN(
       int64_t scratch_size,
-      ComputeFfiScratchSize(registration, custom_call, batch_size));
+      ComputeFfiScratchSize(registration, custom_call, std::move(attrs)));
 
   // Create the FFI custom call with correct scratch size and MLIR dict
   // backend config for the FFI handler attributes.
@@ -169,23 +172,14 @@ absl::Status EstimateCubScratchSize::RunOnSortInstruction(
 // Rewrites a single scan instruction with a custom call.
 absl::Status EstimateCubScratchSize::RunOnScanInstruction(
     HloCustomCallInstruction* custom_call) {
-  // TODO(b/469020791): We use kCubDeviceScanUnassignedScratchSizeTarget as an
-  // initial custom call target to indicate that the scratch size needs to be
-  // determined. There is also kCubDeviceScanTarget, but it's unused and we use
-  // 'xla.gpu.ext.cub_scan' instead. There are also some unused wrapper
-  // functions around them. The same applies for sort. We should clean this up.
-  // For scan specifically, the instantiate and execute FFI handlers have
-  // different attributes. It might make sense to register them under different
-  // names so that the execute handler doesn't need a dummy type attribute.
   CHECK_EQ(custom_call->custom_call_target(),
            kCubDeviceScanUnassignedScratchSizeTarget);
   ASSIGN_OR_RETURN(CubScanOptions options,
                    custom_call->backend_config<CubScanOptions>());
 
   ASSIGN_OR_RETURN(ffi::HandlerRegistration handler,
-                   ffi::FindHandler("xla.gpu.ext.cub_scan", platform_name_));
-
-  ffi::CallFrameBuilder builder(0, 0);
+                   ffi::FindHandler(kCubDeviceScanUnassignedScratchSizeTarget,
+                                    platform_name_));
 
   ffi::CallFrameBuilder::AttributesBuilder attrs;
   xla::PrimitiveType type = custom_call->operand(0)->shape().element_type();
@@ -195,32 +189,25 @@ absl::Status EstimateCubScratchSize::RunOnScanInstruction(
   attrs.Insert("column_length", options.column_length());
   attrs.Insert("kind", static_cast<int32_t>(options.kind()));
   attrs.Insert("is_reverse", options.is_reverse());
-  builder.AddAttributes(attrs.Build());
-  ffi::CallFrame call_frame = builder.Build();
 
-  ffi::ExecutionState state;
-  ffi::InvokeContext context{};
-  context.state_context = {&state, nullptr, nullptr};
-  RETURN_IF_ERROR(ffi::Invoke(ffi::GetXlaFfiApi(), handler.bundle.instantiate,
-                              call_frame, context,
-                              XLA_FFI_ExecutionStage_INSTANTIATE));
-  ASSIGN_OR_RETURN(size_t* scratch_size_ptr, state.Get<size_t>());
+  ASSIGN_OR_RETURN(
+      int64_t scratch_size,
+      ComputeFfiScratchSize(handler, custom_call, std::move(attrs)));
 
   // Replace the custom call with one that has a scratch size.
   Shape new_shape = custom_call->shape();
   new_shape.mutable_tuple_shapes()->back() =
-      ShapeUtil::MakeShape(U8, {static_cast<int64_t>(*scratch_size_ptr)});
+      ShapeUtil::MakeShape(U8, {scratch_size});
   HloInstruction* new_custom_call =
       custom_call->AddInstruction(HloInstruction::CreateCustomCall(
-          new_shape, custom_call->operands(), "xla.gpu.ext.cub_scan"));
+          new_shape, custom_call->operands(), kCubDeviceScanTarget));
   static_cast<HloCustomCallInstruction*>(new_custom_call)
       ->set_api_version(CustomCallApiVersion::API_VERSION_TYPED_FFI);
   std::string backend_config = absl::StrFormat(
-      "{element_type = %d : i32, vector_length = %d : i64, "
-      "row_length = %d : i64, column_length = %d : i64, kind = %d : i32, "
-      "is_reverse = %s}",
-      static_cast<int32_t>(type), options.vector_length(), options.row_length(),
-      options.column_length(), static_cast<int32_t>(options.kind()),
+      "{vector_length = %d : i64, row_length = %d : i64, "
+      "column_length = %d : i64, kind = %d : i32, is_reverse = %s}",
+      options.vector_length(), options.row_length(), options.column_length(),
+      static_cast<int32_t>(options.kind()),
       options.is_reverse() ? "true" : "false");
   new_custom_call->set_raw_backend_config_string(backend_config);
   RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(

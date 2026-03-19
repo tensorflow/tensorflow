@@ -24,6 +24,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/xla_data.pb.h"
 #include "xla/tsl/platform/status_macros.h"
 
@@ -70,6 +71,12 @@ XLA_FFI_DEFINE_HANDLER(kCubScanExecute, CubScanLaunchKernelFfiHandler,
                            .Ctx<xla::ffi::PlatformStream<CUstream>>(),
                        {xla::ffi::Traits::kCmdBufferCompatible});
 
+XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(),
+                         xla::gpu::kCubDeviceScanTarget.data(), "CUDA",
+                         {/*instantiate=*/nullptr, /*prepare=*/nullptr,
+                          /*initialize=*/nullptr,
+                          /*.execute=*/kCubScanExecute});
+
 XLA_FFI_DEFINE_HANDLER(kCubScanInstantiate, CubScanGetScratchSizeFfiHandler,
                        xla::ffi::Ffi::BindInstantiate()
                            .Attr<xla::PrimitiveType>("element_type")
@@ -79,11 +86,10 @@ XLA_FFI_DEFINE_HANDLER(kCubScanInstantiate, CubScanGetScratchSizeFfiHandler,
                            .Attr<CubScanKind>("kind")
                            .Attr<bool>("is_reverse"));
 
-XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_scan",
-                         "CUDA",
-                         {/* .instantiate = */ kCubScanInstantiate,
-                          /* .prepare = */ nullptr,
-                          /* .initialize = */ nullptr,
-                          /* .execute = */ kCubScanExecute});
+XLA_FFI_REGISTER_HANDLER(
+    xla::ffi::GetXlaFfiApi(),
+    xla::gpu::kCubDeviceScanUnassignedScratchSizeTarget.data(), "CUDA",
+    {/*.instantiate=*/kCubScanInstantiate, /*prepare=*/nullptr,
+     /*initialize=*/nullptr, /*execute=*/nullptr});
 
 }  // namespace stream_executor::cuda
