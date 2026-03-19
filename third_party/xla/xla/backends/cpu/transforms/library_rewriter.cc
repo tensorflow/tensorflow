@@ -326,16 +326,15 @@ absl::StatusOr<bool> LibraryRewriter::ProcessComputation(
 
     // Start a fusion node.
     fused_.insert(centroid);
+    VLOG(3) << "Starting a fusion with: " << centroid->ToString();
     TF_ASSIGN_OR_RETURN(HloFusionInstruction * fusion,
                         CreateLibraryFusion(centroid, lib->fusion_prefix(),
                                             lib->fusion_kind()));
     TF_RETURN_IF_ERROR(InsertConvertIfNecessary(
         fusion->fused_expression_root(), lib->LibraryOpOutputType(centroid)));
 
-    // Fuse as many neighbors as we can.
-    if (lib->ShouldGrowFusion(centroid)) {
-      TF_RETURN_IF_ERROR(FuseNeighbors(fusion, lib));
-    }
+    // Fuse as many neighbors as as we can.
+    TF_RETURN_IF_ERROR(FuseNeighbors(fusion, lib));
   }
   return !fused_.empty();
 }
