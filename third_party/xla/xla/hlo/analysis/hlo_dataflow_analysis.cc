@@ -449,23 +449,22 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
   // AsyncStart forwards the operand values to element {0} of its output.
   for (int64_t i = 0; i < async_start->operand_count(); ++i) {
     const HloInstruction* operand = async_start->operand(i);
-    ShapeUtil::ForEachSubshape(
-        operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray()) {
-            return;
-          }
-          const HloValueSet& operand_value_set = GetValueSet(operand, index);
+    ShapeUtil::ForEachSubshape(operand->shape(), [&](const Shape& subshape,
+                                                     const ShapeIndex& index) {
+      if (!subshape.IsArray()) {
+        return;
+      }
+      const HloValueSet& operand_value_set = GetValueSet(operand, index);
 
-          ShapeIndex output_index = {0, i};
-          output_index.insert(output_index.end(), index.begin(), index.end());
+      ShapeIndex output_index = {0, i};
+      output_index.insert(output_index.end(), index.begin(), index.end());
 
-          HloValueSet& value_set =
-              GetMutableValueSet(async_start, output_index);
-          if (value_set != operand_value_set) {
-            value_set = operand_value_set;
-            changed = true;
-          }
-        });
+      HloValueSet& value_set = GetMutableValueSet(async_start, output_index);
+      if (value_set != operand_value_set) {
+        value_set = operand_value_set;
+        changed = true;
+      }
+    });
   }
   if (!HloInstruction::IsThreadIncluded(async_start->async_execution_thread(),
                                         execution_threads_)) {
@@ -946,44 +945,45 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteStartValueSet(
   // output.
   if (!Cast<HloCollectivePermuteInstruction>(collective_permute_start)
            ->inplace() &&
-      collective_permute_start->operands().size() > 1) {
-    for (int oprd_idx = 0;
-         oprd_idx < collective_permute_start->operands().size(); ++oprd_idx) {
-      const HloValueSet& operand_value_set =
-          GetValueSet(collective_permute_start->operand(oprd_idx));
-      HloValueSet& value_set =
-          GetMutableValueSet(collective_permute_start, {0, oprd_idx});
-      if (value_set != operand_value_set) {
-        value_set = operand_value_set;
-        changed = true;
-      }
+      collective_permute_start->operand_count() > 1) {
+    for (int oprd_idx = 0; oprd_idx < collective_permute_start->operand_count();
+         ++oprd_idx) {
+      ShapeUtil::ForEachSubshape(
+          collective_permute_start->operand(oprd_idx)->shape(),
+          [&](const Shape& subshape, const ShapeIndex& index) {
+            if (subshape.IsArray()) {
+              const HloValueSet& operand_value_set = GetValueSet(
+                  collective_permute_start->operand(oprd_idx), index);
+              ShapeIndex output_index = {0, oprd_idx};
+              for (int64_t i : index) output_index.push_back(i);
+              HloValueSet& value_set =
+                  GetMutableValueSet(collective_permute_start, output_index);
+              if (value_set != operand_value_set) {
+                value_set = operand_value_set;
+                changed = true;
+              }
+            }
+          });
     }
   } else {
     // TODO support multi-operand in-place collective-permute and unify in-place
     // collective-permute with normal ones
-    if (collective_permute_start->operand(0)->shape().IsTuple()) {
-      for (int i = 0; i < ShapeUtil::TupleElementCount(
-                              collective_permute_start->operand(0)->shape());
-           ++i) {
-        const HloValueSet& operand_value_set =
-            GetValueSet(collective_permute_start->operand(0), {i});
-        HloValueSet& value_set =
-            GetMutableValueSet(collective_permute_start, {0, i});
-        if (value_set != operand_value_set) {
-          value_set = operand_value_set;
-          changed = true;
-        }
-      }
-    } else {
-      const HloValueSet& operand_value_set =
-          GetValueSet(collective_permute_start->operand(0));
-      HloValueSet& value_set =
-          GetMutableValueSet(collective_permute_start, {0});
-      if (value_set != operand_value_set) {
-        value_set = operand_value_set;
-        changed = true;
-      }
-    }
+    ShapeUtil::ForEachSubshape(
+        collective_permute_start->operand(0)->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsArray()) {
+            const HloValueSet& operand_value_set =
+                GetValueSet(collective_permute_start->operand(0), index);
+            ShapeIndex output_index = {0};
+            for (int64_t i : index) output_index.push_back(i);
+            HloValueSet& value_set =
+                GetMutableValueSet(collective_permute_start, output_index);
+            if (value_set != operand_value_set) {
+              value_set = operand_value_set;
+              changed = true;
+            }
+          }
+        });
   }
   return changed;
 }
@@ -994,27 +994,22 @@ bool HloDataflowAnalysis::UpdateCollectivePermuteDoneValueSet(
            HloOpcode::kCollectivePermuteDone);
   bool changed = false;
   // CollectivePermuteDone forwards the operand value at {1} to its output.
-  if (collective_permute_done->shape().IsTuple()) {
-    for (int i = 0;
-         i < ShapeUtil::TupleElementCount(collective_permute_done->shape());
-         ++i) {
-      const HloValueSet& operand_value_set =
-          GetValueSet(collective_permute_done->operand(0), {1, i});
-      HloValueSet& value_set = GetMutableValueSet(collective_permute_done, {i});
-      if (value_set != operand_value_set) {
-        value_set = operand_value_set;
-        changed = true;
-      }
-    }
-  } else {
-    const HloValueSet& operand_value_set =
-        GetValueSet(collective_permute_done->operand(0), {1});
-    HloValueSet& value_set = GetMutableValueSet(collective_permute_done);
-    if (value_set != operand_value_set) {
-      value_set = operand_value_set;
-      changed = true;
-    }
-  }
+  ShapeUtil::ForEachSubshape(
+      collective_permute_done->shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) {
+        if (subshape.IsArray()) {
+          ShapeIndex input_index = {1};
+          for (int64_t i : index) input_index.push_back(i);
+          const HloValueSet& operand_value_set =
+              GetValueSet(collective_permute_done->operand(0), input_index);
+          HloValueSet& value_set =
+              GetMutableValueSet(collective_permute_done, index);
+          if (value_set != operand_value_set) {
+            value_set = operand_value_set;
+            changed = true;
+          }
+        }
+      });
   return changed;
 }
 
@@ -1365,32 +1360,18 @@ absl::Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // CollectivePermuteStart produces a tuple of {{aliased operand(s)},
           // {destination buffer(s)}, contexts}, where the context data are
           // optional.
-          define_value_at(/*index=*/{});
-          define_value_at(/*index=*/{1});
-          for (int i = 2; i < instruction->shape().tuple_shapes().size(); ++i) {
-            define_value_at(/*index=*/{i});
-          }
-
-          if (Cast<HloCollectivePermuteInstruction>(instruction)->inplace()) {
-            CHECK_EQ(instruction->operand_count(), 4);
-            if (instruction->operand(1)->shape().IsTuple()) {
-              for (int i = 0; i < ShapeUtil::TupleElementCount(
-                                      instruction->operand(1)->shape());
-                   ++i) {
-                define_value_at(/*index=*/{1, i});
-              }
-            }
-          } else if (instruction->operand_count() > 1) {
-            for (int i = 0; i < instruction->operand_count(); ++i) {
-              define_value_at(/*index=*/{1, i});
-            }
-          }
+          define_all_values([&](const ShapeIndex& index) {
+            return ShapeUtil::GetSubshape(instruction->shape(), index)
+                       .IsTuple() ||
+                   index.front() != 0;
+          });
           break;
         case HloOpcode::kCollectivePermuteDone:
           // CollectivePermuteDone's output aliases its input tuple element {1}.
-          if (instruction->shape().IsTuple()) {
-            define_value_at(/*index=*/{});
-          }
+          define_all_values([&](const ShapeIndex& index) {
+            return ShapeUtil::GetSubshape(instruction->shape(), index)
+                .IsTuple();
+          });
           break;
         case HloOpcode::kRecvDone:
           // RecvDone produces a two-element tuple. Element zero aliases its

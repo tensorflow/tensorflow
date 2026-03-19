@@ -3713,5 +3713,32 @@ TEST_F(GetInPlaceInputOutputPairsTest, nvshmem_ar) {
   EXPECT_EQ(in_place_pairs, expected_pairs);
 }
 
+TEST_F(HloDataflowAnalysisTest, MultiOperandCollectivePermuteTupleDataflow) {
+  const std::string hlo_text = R"(
+HloModule combined_cp_test_multi
+
+ENTRY test_computation {
+  p0 = ((u32[4,1,1528], u32[3,1,1528]), u32[4,1,1528]) parameter(0)
+  p1 = ((u32[4,1,1528], u32[3,1,1528]), u32[4,1,1528]) parameter(1)
+
+  cp-start = ((((u32[4,1,1528], u32[3,1,1528]), u32[4,1,1528]), ((u32[4,1,1528], u32[3,1,1528]), u32[4,1,1528])), (((u32[4,1,1528], u32[3,1,1528]), u32[4,1,1528]), ((u32[4,1,1528], u32[3,1,1528]), u32[4,1,1528])), u32[], u32[]) collective-permute-start(p0, p1), source_target_pairs={{0,0}}
+
+  ROOT cp-done = (((u32[4,1,1528], u32[3,1,1528]), u32[4,1,1528]), ((u32[4,1,1528], u32[3,1,1528]), u32[4,1,1528])) collective-permute-done(cp-start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow_analysis,
+                          xla::HloDataflowAnalysis::Run(*module));
+
+  auto cp_start = module->entry_computation()->root_instruction()->operand(0);
+
+  // They should alias each other.
+  // Param0{0, 1} should alias with cp-start{0, 0, 0, 1}
+  EXPECT_TRUE(
+      dataflow_analysis->GetValueSet(
+          module->entry_computation()->parameter_instruction(0), {0, 1}) ==
+      dataflow_analysis->GetValueSet(cp_start, {0, 0, 0, 1}));
+}
+
 }  // namespace
 }  // namespace xla
