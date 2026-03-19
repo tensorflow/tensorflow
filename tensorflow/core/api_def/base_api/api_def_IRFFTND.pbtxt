@@ -37,7 +37,7 @@ assumed to be the result of `IRFFTND`. The inner-most dimension contains the
 `fft_length / 2 + 1` unique components of the DFT of a real-valued signal. 
 
 If fft_length[i]<shape(input)[i], the input is cropped. If
-fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+fft_length[i]>shape(input)[i], an `InvalidArgumentError` is raised. If fft_length
 is not given, the default shape(input) is used.
 
 Axes mean the dimensions to perform the transform on. Default is to perform on
