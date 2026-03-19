@@ -103,18 +103,17 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
     TF_ASSIGN_OR_RETURN(DotOperandDims dims,
                         DotOperandDims::FromDotOperand(&dot, operand));
     // cuBLAS only supports single contracting dimension.
-    if (dims.DimensionCount(DotOperandDims::kContracting) != 1) {
+    if (dims.Rank(DotOperandDims::kContracting) != 1) {
       return false;
     }
     // cuBLAS doesn't support minor batch dimension.
-    if (absl::c_any_of(dims.DimensionIndices(DotOperandDims::kBatch),
-                       [&](int64_t dim) {
-                         return dim == dims.shape().dimensions().size() - 1;
-                       })) {
+    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
+          return dim == dims.shape().dimensions().size() - 1;
+        })) {
       return false;
     }
     // cuBLAS supports up to one non-contracting dimension.
-    const auto& nc_dims = dims.DimensionSizes(DotOperandDims::kNonContracting);
+    const auto& nc_dims = dims.Sizes(DotOperandDims::kNonContracting);
     if (nc_dims.size() > 1) {
       return false;
     }
