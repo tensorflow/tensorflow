@@ -247,15 +247,6 @@ class HloSharding {
     return IsReplicatedLeaf() || IsSingleDeviceLeaf();
   }
 
-  [[deprecated("Use IsReplicatedOrSingleDevice instead.")]]
-  bool IsTileMaximal() const {
-    return IsReplicatedOrSingleDevice();
-  }
-  [[deprecated("Use IsReplicatedOrSingleDeviceLeaf instead.")]]
-  bool IsTileMaximalLeaf() const {
-    return IsReplicatedOrSingleDeviceLeaf();
-  }
-
   // Returns whether the sharding represents manual partitioning.
   bool IsManual() const {
     if (!IsTuple()) {
