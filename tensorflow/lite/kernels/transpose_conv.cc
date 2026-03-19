@@ -16,6 +16,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <limits>
 #include <vector>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -217,8 +218,16 @@ TfLiteStatus ResizeCol2ImTensor(TfLiteContext* context,
   const RuntimeShape& input_shape = GetTensorShape(input);
   const RuntimeShape& weights_shape = GetTensorShape(weights);
   col2im_shape_array->data[0] = input_shape.Dims(1) * input_shape.Dims(2);
-  col2im_shape_array->data[1] =
-      weights_shape.Dims(0) * weights_shape.Dims(1) * weights_shape.Dims(2);
+  const size_t col2im_dim1 = static_cast<size_t>(weights_shape.Dims(0)) *
+                             weights_shape.Dims(1) * weights_shape.Dims(2);
+  if (col2im_dim1 > std::numeric_limits<int32_t>::max()) {
+    TF_LITE_KERNEL_LOG(
+        context,
+        "TransposeConv col2im elements (%zu) exceed the 32-bit integer limit.",
+        col2im_dim1);
+    return kTfLiteError;
+  }
+  col2im_shape_array->data[1] = static_cast<int>(col2im_dim1);
 
   col2im->type = input->type == kTfLiteFloat32 ? kTfLiteFloat32 : kTfLiteInt32;
   col2im->allocation_type = kTfLiteDynamic;
