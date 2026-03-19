@@ -7,6 +7,7 @@ load("//xla/util:build_defs.bzl", "embed_files")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//third_party/py/jax/jaxlib/mosaic/gpu:__subpackages__",
         "//xla:__subpackages__",
     ],
     licenses = ["notice"],
