@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -2716,7 +2717,7 @@ absl::StatusOr<bool> GemmRewriter::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (HloComputation* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
+       GetFusibleComputations(*module, execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result,
                         RunOnComputation(computation, gpu_version_,
                                          toolkit_version_, options_));

@@ -1582,6 +1582,34 @@ ENTRY main {
                   .value());
 }
 
+TEST_F(GemmRewriteTest, SkipNonFusibleComputations) {
+  const char* hlo_text = R"(
+HloModule module
+
+reducer {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  lhs = f32[2,2] broadcast(p0), dimensions={}
+  rhs = f32[2,2] broadcast(p1), dimensions={}
+  dot = f32[2,2] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  slice = f32[1,1] slice(dot), slice={[0:1:1], [0:1:1]}
+  ROOT reshape = f32[] reshape(slice)
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  zero = f32[] constant(0.0)
+  ROOT reduce = f32[] reduce(p0, zero), dimensions={0}, to_apply=reducer
+}
+)";
+  // Expect no change.
+  RunAndFilecheckHloRewrite(
+      hlo_text,
+      GemmRewriter(se::CudaComputeCapability{},
+                   stream_executor::SemanticVersion{0, 0, 0}),
+      std::nullopt);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
