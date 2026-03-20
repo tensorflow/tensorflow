@@ -76,6 +76,7 @@ cc_library(
         "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:named_sharding",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_utils",
+        "//xla/mlir_hlo",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/service/spmd/shardy/extensions:mhlo_extensions",
         "@com_google_absl//absl/log",
