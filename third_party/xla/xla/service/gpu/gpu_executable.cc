@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>

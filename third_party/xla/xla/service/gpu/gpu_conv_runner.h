@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/protobuf/dnn.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {

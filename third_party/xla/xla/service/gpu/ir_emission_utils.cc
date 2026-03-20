@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <queue>
 #include <string>
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"

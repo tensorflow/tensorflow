@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/tests/hlo_legacy_gpu_test_base.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
@@ -54,6 +55,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
