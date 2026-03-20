@@ -46,8 +46,8 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/service/hlo_value.h"
 #include "xla/service/layout_assignment.h"
-#include "xla/service/logical_buffer.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/service/memory_annotations.h"
 #include "xla/shape.h"
@@ -246,14 +246,14 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   // The custom call returns a tuple of (actual_result, scratch_buffer);
   // call_result_buf is the logical buffer for actual_result, the thing that
   // contains the result of the conv call.
-  TF_ASSIGN_OR_RETURN(
-      const LogicalBuffer* call_result_buf,
-      points_to_analysis_->GetBufferDefinedAt(instr, /*index=*/{0}));
+  const HloValue& call_result_buf =
+      alias_analysis_->dataflow_analysis().GetValueDefinedAt(instr,
+                                                             /*index=*/{0});
 
   // Set layouts of the instructions' shapes.
   TF_RETURN_IF_ERROR(SetOperandLayout(lhs_shape, instr, 0));
   TF_RETURN_IF_ERROR(SetOperandLayout(rhs_shape, instr, 1));
-  TF_RETURN_IF_ERROR(SetBufferLayout(result_shape.layout(), *call_result_buf));
+  TF_RETURN_IF_ERROR(SetBufferLayout(result_shape.layout(), call_result_buf));
   // For fused convolutions, instr->operand(2), if exists, is the bias buffer.
   // There is no need to assign layout to it, as it has only one dimension.
   // instr->operand(3), if exists, is the side input buffer.
@@ -532,15 +532,15 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
         Shape shape = instruction->operand(i)->shape();
         *shape.mutable_layout() = keys_layout;
         TF_RETURN_IF_ERROR(SetOperandLayout(shape, instruction, i));
-        const LogicalBuffer* output_buffer;
+        const HloValue* output_buffer;
         if (instruction->shape().IsArray()) {
-          TF_ASSIGN_OR_RETURN(
-              output_buffer,
-              points_to_analysis_->GetBufferDefinedAt(instruction, {}));
+          output_buffer =
+              &alias_analysis_->dataflow_analysis().GetValueDefinedAt(
+                  instruction, {});
         } else {
-          TF_ASSIGN_OR_RETURN(
-              output_buffer,
-              points_to_analysis_->GetBufferDefinedAt(instruction, {i}));
+          output_buffer =
+              &alias_analysis_->dataflow_analysis().GetValueDefinedAt(
+                  instruction, {i});
         }
         TF_RETURN_IF_ERROR(SetBufferLayout(keys_layout, *output_buffer));
       }
@@ -548,14 +548,14 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
       // The output of the TopK custom call needs to have default layout.
       Layout default_layout = LayoutUtil::GetDefaultLayoutForRank(
           instruction->operand(0)->shape().dimensions().size());
-      TF_ASSIGN_OR_RETURN(
-          auto values_buffer,
-          points_to_analysis_->GetBufferDefinedAt(instruction, {0}));
-      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *values_buffer));
-      TF_ASSIGN_OR_RETURN(
-          auto indices_buffer,
-          points_to_analysis_->GetBufferDefinedAt(instruction, {1}));
-      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, *indices_buffer));
+      const HloValue& values_buffer =
+          alias_analysis_->dataflow_analysis().GetValueDefinedAt(instruction,
+                                                                 {0});
+      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, values_buffer));
+      const HloValue& indices_buffer =
+          alias_analysis_->dataflow_analysis().GetValueDefinedAt(instruction,
+                                                                 {1});
+      TF_RETURN_IF_ERROR(SetBufferLayout(default_layout, indices_buffer));
     } else if (HloPredicateIsOp<HloOpcode::kBitcastConvert>(instruction)) {
       Shape operand_shape = instruction->operand(0)->shape();
       Shape output_shape = instruction->shape();
