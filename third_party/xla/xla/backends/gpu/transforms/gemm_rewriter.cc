@@ -2141,14 +2141,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::string_view(kGemmCallTarget);
     }
 
-    // cublasLt is enabled, check if other internal conditions are met.
-    const HloInstruction* lhs = instr.operand(0);
-    const HloInstruction* rhs = instr.operand(1);
-    if (lhs->shape().element_type() == S8 ||
-        rhs->shape().element_type() == S8) {
-      return absl::string_view(kGemmCallTarget);
-    }
-
     // All internal conditions are met, check if we meet the requirements of
     // cublasLt.
     TF_ASSIGN_OR_RETURN(bool gemm_is_supported_by_cublas_lt,
@@ -2259,6 +2251,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const PrimitiveType b_dtype = instr.operand(1)->shape().element_type();
     const PrimitiveType output_type =
         bias ? bias->shape().element_type() : instr.shape().element_type();
+
+    // S8 GEMM is not supported on CUDA devices with compute capability less
+    // than 6.1. E.g. Tesla P100.
+    if (auto* cuda_cc = gpu_version_.cuda_compute_capability();
+        cuda_cc &&
+        (a_dtype == PrimitiveType::S8 || b_dtype == PrimitiveType::S8) &&
+        !cuda_cc->IsAtLeast(6, 1)) {
+      return false;
+    }
+
     const std::array<PrimitiveType, 12> supported_type = {
         PrimitiveType::F8E5M2FNUZ, PrimitiveType::F8E4M3FNUZ,
         PrimitiveType::F8E5M2,     PrimitiveType::F8E4M3FN,
