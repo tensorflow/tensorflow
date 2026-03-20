@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cassert>
 #include <memory>
-#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseSet.h"
