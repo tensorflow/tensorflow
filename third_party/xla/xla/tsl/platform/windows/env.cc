@@ -30,14 +30,16 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/ram_file_system.h"
 #include "xla/tsl/platform/windows/wide_char.h"
 #include "xla/tsl/platform/windows/windows_file_system.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tsl/platform/load_library.h"
-#include "tsl/platform/mutex.h"
 
 #pragma comment(lib, "shlwapi.lib")
 
@@ -45,7 +47,7 @@ namespace tsl {
 
 namespace {
 
-mutex name_mutex(tsl::LINKER_INITIALIZED);
+ABSL_CONST_INIT static absl::Mutex name_mutex(absl::kConstInit);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
     TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
@@ -63,7 +65,7 @@ class StdThread : public Thread {
     if (detached) {
       thread_.detach();
     }
-    mutex_lock l(name_mutex);
+    absl::MutexLock l(name_mutex);
     GetThreadNameRegistry().emplace(thread_.get_id(), name);
   }
 
@@ -72,7 +74,7 @@ class StdThread : public Thread {
     if (!detached_) {
       thread_.join();
     }
-    mutex_lock l(name_mutex);
+    absl::MutexLock l(name_mutex);
     GetThreadNameRegistry().erase(thread_id);
   }
 
@@ -126,7 +128,7 @@ class WindowsEnv : public Env {
   }
 
   bool GetCurrentThreadName(string* name) override {
-    mutex_lock l(name_mutex);
+    absl::MutexLock l(name_mutex);
     auto thread_name = GetThreadNameRegistry().find(std::this_thread::get_id());
     if (thread_name != GetThreadNameRegistry().end()) {
       *name = thread_name->second;

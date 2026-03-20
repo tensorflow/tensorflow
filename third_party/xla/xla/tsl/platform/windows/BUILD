@@ -110,6 +110,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:load_library",
         "@tsl//tsl/platform:mutex",
     ],
@@ -242,7 +243,10 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = ["@tsl//tsl/platform:mutex"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 cc_library(
@@ -256,7 +260,8 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:types",
-        "@tsl//tsl/platform:mutex",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:stacktrace",
     ],
 )
