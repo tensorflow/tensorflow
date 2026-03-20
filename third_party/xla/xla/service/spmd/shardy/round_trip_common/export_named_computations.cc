@@ -227,11 +227,27 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
         namedComputationOp.getOperands());
     callOp->setAttrs(callOpAttrs);
 
-    // Copy the func output shardings to the call op.
     FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
+    // Add reshard/copy operations to resolve conflicts between call argument
+    // sharding and func input sharding.
+    if (TensorShardingPerValueAttr funcArgShardings =
+            getFuncArgShardings(funcOp, symbolTable)) {
+      rewriter.setInsertionPoint(callOp);
+      for (auto [funcArgSharding, operand] : llvm::zip_equal(
+               funcArgShardings.getShardings(), callOp->getOpOperands())) {
+        mlir::sdy::TensorShardingAttr callArgSharding =
+            mlir::sdy::getSharding(operand.get());
+        if (!funcArgSharding.isEquivalent(callArgSharding)) {
+          auto copyOp = mlir::mhlo::CopyOp::create(
+              rewriter, operand.get().getLoc(), operand.get());
+          mlir::sdy::setShardings(copyOp, funcArgSharding);
+          operand.set(copyOp);
+        }
+      }
+    }
+    // Copy the func output shardings to the call op.
     if (TensorShardingPerValueAttr funcResultShardings =
-            getFuncResultShardings(funcOp, symbolTable);
-        funcResultShardings) {
+            getFuncResultShardings(funcOp, symbolTable)) {
       mlir::sdy::setShardings(callOp, funcResultShardings);
       if (outShardings.has_value()) {
         for (auto [funcResultSharding, outSharding, result] : llvm::zip_equal(
