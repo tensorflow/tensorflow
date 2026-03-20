@@ -1375,6 +1375,7 @@ cc_binary(
         "//xla/hlo/utils:hlo_query",
         "//xla/service:hlo_graph_dumper",
         "//xla/service:hlo_module_config",
+        "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
