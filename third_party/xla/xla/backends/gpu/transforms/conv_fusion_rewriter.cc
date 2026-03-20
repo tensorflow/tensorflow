@@ -289,18 +289,18 @@ std::vector<HloInstruction*> GetAllReachableAndFusible(
   return fusible_users;
 }
 
-using ConvKind = HloConvolutionInstruction::ConvKind;
 HloComputation::Builder CreateConvFusionBuilder(HloInstruction* conv) {
   HloComputation* computation = conv->parent();
-  ConvKind conv_kind = DynCast<HloConvolutionInstruction>(conv)->conv_kind();
+  ConvolutionKind convolution_kind =
+      DynCast<HloConvolutionInstruction>(conv)->convolution_kind();
 
   // Give the conv a user-friendly name.
   std::string name;
-  if (conv_kind == ConvKind::FPROP) {
+  if (convolution_kind == CONVOLUTION_KIND_FPROP) {
     name = "conv_fprop";
-  } else if (conv_kind == ConvKind::DGRAD) {
+  } else if (convolution_kind == CONVOLUTION_KIND_DGRAD) {
     name = "conv_dgrad";
-  } else if (conv_kind == ConvKind::WGRAD) {
+  } else if (convolution_kind == CONVOLUTION_KIND_WGRAD) {
     name = "conv_wgrad";
   }
 
@@ -400,9 +400,10 @@ HloInstruction* CreateGpuConvFusion(
 }
 
 absl::StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
-  CHECK_NE(DynCast<HloConvolutionInstruction>(conv)->conv_kind(),
-           ConvKind::UNSET)
-      << "ConvKind assignment pass must run before ConvFusionRewriter pass.";
+  CHECK_NE(DynCast<HloConvolutionInstruction>(conv)->convolution_kind(),
+           CONVOLUTION_KIND_UNSET)
+      << "ConvolutionKind assignment pass must run before ConvFusionRewriter "
+         "pass.";
 
   std::vector<HloInstruction*> fusion_outputs;
   HloInstruction* conv_fusion = CreateGpuConvFusion(conv, fusion_outputs);

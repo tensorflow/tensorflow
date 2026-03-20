@@ -1004,31 +1004,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      instruction =
-          CreateConvolve(shape, operands(0), operands(1),
-                         std::max<int64_t>(proto.feature_group_count(), 1),
-                         std::max<int64_t>(proto.batch_group_count(), 1),
-                         proto.window(), proto.convolution_dimension_numbers(),
-                         precision_config, proto.sparsity_config());
-      if (proto.conv_kind() != CONVOLUTION_KIND_UNSET) {
-        HloConvolutionInstruction::ConvKind conv_kind =
-            HloConvolutionInstruction::ConvKind::UNSET;
-        switch (proto.conv_kind()) {
-          case CONVOLUTION_KIND_FPROP:
-            conv_kind = HloConvolutionInstruction::ConvKind::FPROP;
-            break;
-          case CONVOLUTION_KIND_WGRAD:
-            conv_kind = HloConvolutionInstruction::ConvKind::WGRAD;
-            break;
-          case CONVOLUTION_KIND_DGRAD:
-            conv_kind = HloConvolutionInstruction::ConvKind::DGRAD;
-            break;
-          default:
-            break;
-        }
-        Cast<HloConvolutionInstruction>(instruction.get())
-            ->set_conv_kind(conv_kind);
-      }
+      instruction = CreateConvolve(
+          shape, operands(0), operands(1),
+          std::max<int64_t>(proto.feature_group_count(), 1),
+          std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
+          proto.convolution_dimension_numbers(), precision_config,
+          proto.sparsity_config(), proto.conv_kind());
       break;
     }
     case HloOpcode::kReduceWindow:
@@ -1676,10 +1657,10 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    const SparsityConfig& sparsity_config) {
+    const SparsityConfig& sparsity_config, ConvolutionKind convolution_kind) {
   return std::make_unique<HloConvolutionInstruction>(
       shape, lhs, rhs, feature_group_count, batch_group_count, window,
-      dimension_numbers, precision_config, sparsity_config);
+      dimension_numbers, precision_config, sparsity_config, convolution_kind);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(

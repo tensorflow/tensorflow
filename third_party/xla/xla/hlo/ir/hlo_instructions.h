@@ -1973,8 +1973,8 @@ class HloConvolutionInstruction : public HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config,
-      const SparsityConfig& sparsity_config);
-  enum class ConvKind { UNSET, FPROP, WGRAD, DGRAD };
+      const SparsityConfig& sparsity_config,
+      ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
   const Window& window() const override { return window_; }
   void set_window(const Window& window) override { window_ = window; }
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
@@ -1996,8 +1996,10 @@ class HloConvolutionInstruction : public HloInstruction {
     batch_group_count_ = num_batch_groups;
   }
 
-  ConvKind conv_kind() const { return conv_kind_; }
-  void set_conv_kind(ConvKind conv_kind) { conv_kind_ = conv_kind; }
+  ConvolutionKind convolution_kind() const { return convolution_kind_; }
+  void set_convolution_kind(ConvolutionKind convolution_kind) {
+    convolution_kind_ = convolution_kind;
+  }
 
   // Returns the information used to tell the implementation information about
   // what sort of precision is requested. The meaning of the field is backend
@@ -2047,7 +2049,7 @@ class HloConvolutionInstruction : public HloInstruction {
   // The sparsity configuration used for the convolution.
   SparsityConfig sparsity_config_;
   // Conv type (fprop, dgrad, wgrad)
-  ConvKind conv_kind_ = ConvKind::UNSET;
+  ConvolutionKind convolution_kind_ = CONVOLUTION_KIND_UNSET;
 };
 
 class HloReduceWindowInstruction : public HloInstruction {
