@@ -257,6 +257,9 @@ struct RunningOptions {
   // The last `num_repeats_with_profiler` repeats out of `num_repeats` will be
   // profiled. Default is 1, i.e., the last repeat will be profiled.
   size_t num_repeats_with_profiler = 1;
+  // If true, the first repeat with profiling is considered a warmup run and
+  // will not be uploaded to save time (only if num_repeats_with_profiler > 1)
+  bool profiler_warmup_run = false;
   // If true, we recreate the profiler session between repeats when profiling
   // more than one repeat.
   bool recreate_profiler_session_between_repeats = false;

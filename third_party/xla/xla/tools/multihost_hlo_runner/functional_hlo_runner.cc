@@ -608,8 +608,14 @@ absl::StatusOr<PerDeviceLiteralVecType> RunInternal(
         TF_RETURN_IF_ERROR(future.Await());
       }
 
+      const bool is_first_repeat_with_profiler =
+          repeat == running_options.num_repeats -
+                        running_options.num_repeats_with_profiler;
+      const bool is_profiler_warmup_run =
+          running_options.profiler_warmup_run && is_first_repeat_with_profiler;
       const bool upload_active_profiler_session =
-          running_options.recreate_profiler_session_between_repeats ||
+          (running_options.recreate_profiler_session_between_repeats &&
+           !is_profiler_warmup_run) ||
           is_last_repeat;
       if (has_active_profiler_session && upload_active_profiler_session) {
         XLA_SCOPED_LOGGING_TIMER("FunctionalHloRunner::XProfUpload");

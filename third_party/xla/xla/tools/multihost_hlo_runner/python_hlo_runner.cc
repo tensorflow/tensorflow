@@ -76,6 +76,7 @@ struct PyHloRunnerConfig {
   bool force_auto_layout = false;
   int32_t num_repeats = 1;
   int32_t num_repeats_with_profiler = 1;
+  bool profiler_warmup_run = false;
   std::string execution_options_path = "";
   int64_t gpu_client_initialization_timeout_sec = 300;
   float gpu_client_mem_fraction = GpuAllocatorConfig{}.memory_fraction;
@@ -107,6 +108,7 @@ absl::StatusOr<FunctionalHloRunner::RunningOptions> RunningOptionsFromFlags(
   out.num_repeats = static_cast<size_t>(opts.num_repeats);
   out.num_repeats_with_profiler =
       static_cast<size_t>(opts.num_repeats_with_profiler);
+  out.profiler_warmup_run = opts.profiler_warmup_run;
   out.log_input_output_mode =
       opts.log_output ? FunctionalHloRunner::LogOutputMode::kLogOutput
                       : FunctionalHloRunner::LogOutputMode::kNotLogOutput;
