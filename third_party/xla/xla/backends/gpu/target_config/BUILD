@@ -61,3 +61,26 @@ xla_cc_test(
         "@com_google_protobuf//:protobuf",
     ],
 )
+
+cc_library(
+    name = "gpu_topology_utils",
+    srcs = ["gpu_topology_utils.cc"],
+    hdrs = ["gpu_topology_utils.h"],
+    deps = [
+        "//xla/service:gpu_topology",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_topology_utils_test",
+    srcs = ["gpu_topology_utils_test.cc"],
+    deps = [
+        ":gpu_topology_utils",
+        "//xla/service:gpu_topology",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
