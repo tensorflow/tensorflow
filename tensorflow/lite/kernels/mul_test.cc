@@ -1158,6 +1158,9 @@ void TestFloatMultiDimBroadcast(int selected_subshard, int subshard_count) {
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
           TestFloatBroadcast<T>(input1_shape, input2_shape);
+          if (testing::Test::IsSkipped()) {
+            return;
+          }
         }
       }
     }
@@ -1265,6 +1268,9 @@ void TestIntegerMultiDimBroadcast(int selected_subshard, int subshard_count) {
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
           TestIntegerBroadcast<TypeParam>(input1_shape, input2_shape);
+          if (testing::Test::IsSkipped()) {
+            return;
+          }
         }
       }
     }
@@ -1466,6 +1472,9 @@ void TestQuantizedMultiDimBroadcast(int selected_subshard, int subshard_count) {
           std::copy(input2_full_shape.end() - input2_dims,
                     input2_full_shape.end(), input2_shape.data());
           TestQuantizedBroadcast<T>(input1_shape, input2_shape);
+          if (testing::Test::IsSkipped()) {
+            return;
+          }
         }
       }
     }
