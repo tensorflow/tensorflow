@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 namespace {

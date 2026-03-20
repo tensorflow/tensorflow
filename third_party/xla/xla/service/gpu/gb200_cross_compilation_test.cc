@@ -31,10 +31,12 @@ limitations under the License.
 #include "xla/service/gpu/gpu_executable.pb.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/xla.pb.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
