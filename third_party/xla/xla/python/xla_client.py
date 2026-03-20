@@ -447,3 +447,43 @@ def make_replica_groups(replica_groups):
         _make_replica_group_proto(group) for group in replica_groups
     ]
   return replica_groups_protos
+
+
+def get_backend_config_string(instruction_proto, module_proto=None) -> str:
+  """Extracts the backend_config string from an HloInstructionProto.
+
+  If the payload is stored externally, module_proto must be provided to look up
+  the string using the stored ID.
+
+  Args:
+    instruction_proto: An HloInstructionProto.
+    module_proto: An optional HloModuleProto.
+
+  Returns:
+    The backend config string.
+  """
+  if instruction_proto.HasField('backend_config_payload'):
+    payload = instruction_proto.backend_config_payload
+    if payload.HasField('id'):
+      if module_proto is not None and 0 <= payload.id < len(
+          module_proto.payloads
+      ):
+        return (
+            module_proto.payloads[payload.id].decode('utf-8')
+            if isinstance(module_proto.payloads[payload.id], bytes)
+            else module_proto.payloads[payload.id]
+        )
+      raise ValueError(
+          f'Payload requested ID {payload.id} but payloads array has size'
+          f' {len(module_proto.payloads) if module_proto else 0}'
+      )
+    return (
+        payload.value.decode('utf-8')
+        if isinstance(payload.value, bytes)
+        else payload.value
+    )
+  return (
+      instruction_proto.backend_config.decode('utf-8')
+      if isinstance(instruction_proto.backend_config, bytes)
+      else instruction_proto.backend_config
+  )

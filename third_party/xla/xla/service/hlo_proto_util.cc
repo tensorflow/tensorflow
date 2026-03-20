@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "xla/service/hlo_proto_util.h"
 
-#include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -75,6 +79,30 @@ absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
   }
 
   return &hlo_proto.hlo_module().host_program_shape().result();
+}
+
+absl::StatusOr<std::string> GetBackendConfigString(
+    const HloInstructionProto& instruction, const HloModuleProto* module) {
+  const tsl::protobuf::RepeatedPtrField<std::string>* payloads =
+      module ? &module->payloads() : nullptr;
+
+  if (instruction.has_backend_config_payload()) {
+    const Payload& payload = instruction.backend_config_payload();
+    if (payload.has_id()) {
+      if (module == nullptr) {
+        return absl::InvalidArgumentError(
+            "Module must be provided for external payload lookup.");
+      }
+      if (payload.id() < 0 || payload.id() >= payloads->size()) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Payload requested ID %d but payloads array has size %d",
+            payload.id(), payloads ? payloads->size() : 0));
+      }
+      return payloads->at(payload.id());
+    }
+    return payload.value();
+  }
+  return instruction.backend_config();
 }
 
 }  // namespace xla
