@@ -271,10 +271,9 @@ void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
         if (absl::c_linear_search(*dims, reshaped_dim)) {
           add_reshaped_dim = true;
         }
-        for (int64_t i = 0; i < dims->size(); ++i) {
-          auto dim = dims->at(i);
+        for (int64_t& dim : *dims) {
           if (reshaped_dim <= dim) {
-            dims->Set(i, dim + 1);
+            dim += 1;
           }
         }
         if (add_reshaped_dim) {
@@ -812,13 +811,13 @@ std::vector<ReplicaGroup> GetLoopReplicaGroups(HloInstruction* while_loop) {
       }
 
       absl::flat_hash_set<int64_t> visited;
-      for (int64_t i = 0; i < st_pairs.size(); ++i) {
-        if (visited.contains(st_pairs[i].first)) {
+      for (const std::pair<int64_t, int64_t>& pair : st_pairs) {
+        if (visited.contains(pair.first)) {
           continue;
         }
         std::vector<int64_t> replica_group;
-        int64_t source = st_pairs[i].first;
-        int64_t target = st_pairs[i].second;
+        int64_t source = pair.first;
+        int64_t target = pair.second;
         replica_group.push_back(source);
         replica_group.push_back(target);
         visited.insert(source);

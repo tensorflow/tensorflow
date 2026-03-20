@@ -270,8 +270,7 @@ IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
   // Find the per-dimension index bounds.
   std::vector<HloInstruction*> min_indices;
   std::vector<HloInstruction*> max_indices;
-  for (int64_t i = 0; i < index_map.size(); ++i) {
-    int64_t dim = index_map[i];
+  for (const int64_t dim : index_map) {
     int64_t partitions = operand.sharding().dimension(dim);
     if (partitions == 1 || !absl::c_linear_search(trivial_slice_dims, dim)) {
       min_indices.push_back(CreateR0WithType<int32_t>(indices_type, 0, b));
