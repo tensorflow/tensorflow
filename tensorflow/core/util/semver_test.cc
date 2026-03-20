@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <cstdint>
+#include <string>
 
 #include "absl/strings/ascii.h"
+#include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
