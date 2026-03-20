@@ -551,6 +551,10 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
     return *this;
   }
 
+  if (sharding().IsUnreducedSubgroup()) {
+    return *this;
+  }
+
   CHECK_EQ(target.IsManualSubgroup(), sharding().IsManualSubgroup());
   if (sharding().IsManualSubgroup()) {
     auto grouped = hlo_sharding_util::GetManualSubgroupSharding(sharding());
@@ -593,7 +597,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   if (!target.IsReplicatedOrSingleDevice() &&
-      sharding().ReplicateOnLastTileDim()) {
+      sharding().HasPartialReplication()) {
     auto try_reshard = ReshardFromPartialReplicateWithDynamicSlice(target);
     if (try_reshard.has_value()) {
       return try_reshard.value();
@@ -605,7 +609,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   if (!sharding().IsReplicatedOrSingleDevice() &&
-      target.ReplicateOnLastTileDim()) {
+      target.HasPartialReplication()) {
     auto try_reshard = ReshardToPartialReplicateWithAllGather(target);
     if (try_reshard.has_value()) {
       return try_reshard.value();
@@ -687,7 +691,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   // 'Replicated' to partial replicated.
-  if (target.ReplicateOnLastTileDim()) {
+  if (target.HasPartialReplication()) {
     std::vector<int64_t> group_dims(target.num_dimensions() - 1);
     absl::c_iota(group_dims, 0);
     auto target_grouped =
