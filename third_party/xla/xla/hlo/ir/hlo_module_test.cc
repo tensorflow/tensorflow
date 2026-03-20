@@ -1395,6 +1395,67 @@ TEST(HloModuleTest, DeviceTypeSerialization) {
   EXPECT_EQ(module_from_proto_2->config().device_type(), "GPU");
 }
 
+TEST(HloModuleTest, CreateFromProto_DecodesBackendConfigPayload) {
+  HloModuleProto proto;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        name: "test_module"
+        entry_computation_id: 1
+        payloads: "inlined_large_payload_string"
+        computations {
+          name: "main"
+          id: 1
+          instructions {
+            name: "inst1"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            id: 2
+            backend_config_payload { id: 0 }
+          }
+          instructions {
+            name: "inst2"
+            opcode: "parameter"
+            shape { element_type: F32 }
+            parameter_number: 1
+            id: 3
+            backend_config_payload { value: "small_inline_payload" }
+          }
+          instructions {
+            name: "root"
+            opcode: "add"
+            shape { element_type: F32 }
+            id: 4
+            operand_ids: 2
+            operand_ids: 3
+          }
+          root_id: 4
+        }
+        host_program_shape {
+          parameters { element_type: F32 }
+          parameters { element_type: F32 }
+          result { element_type: F32 }
+          parameter_names: "p0"
+          parameter_names: "p1"
+        }
+      )pb",
+      &proto));
+
+  TF_ASSERT_OK_AND_ASSIGN(HloModuleConfig config,
+                          HloModule::CreateModuleConfigFromProto(
+                              proto, GetDebugOptionsFromFlags()));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          HloModule::CreateFromProto(proto, config));
+
+  HloInstruction* i1 =
+      module->entry_computation()->GetInstructionWithName("inst1");
+  HloInstruction* i2 =
+      module->entry_computation()->GetInstructionWithName("inst2");
+
+  EXPECT_EQ(i1->raw_backend_config_string(), "inlined_large_payload_string");
+  EXPECT_EQ(i2->raw_backend_config_string(), "small_inline_payload");
+}
+
 class TestCacheEntry : public HloModule::CacheEntry {
  public:
   explicit TestCacheEntry(tsl::Fprint128 key, int value)

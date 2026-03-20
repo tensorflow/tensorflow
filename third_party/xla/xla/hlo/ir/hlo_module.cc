@@ -544,6 +544,7 @@ void HloModule::ToProto(HloModuleProto* proto) const {
   for (const HloComputation* computation : MakeComputationPostOrder()) {
     computation->ToProto(proto->add_computations());
   }
+
   if (has_schedule()) {
     *proto->mutable_schedule() = schedule().ToProto().value();
   }
@@ -861,8 +862,9 @@ absl::StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         std::unique_ptr<HloComputation> computation,
         HloComputation::CreateFromProto(
             computation_proto, computation_map, prohibit_empty_literal,
-            preserve_instruction_ids,
-            requires_remap_memorization ? &id_remap_map : nullptr));
+            /*preserve_instruction_ids=*/preserve_instruction_ids,
+            requires_remap_memorization ? &id_remap_map : nullptr,
+            &proto.payloads()));
     CHECK_NE(computation.get(), nullptr);
     int64_t computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);

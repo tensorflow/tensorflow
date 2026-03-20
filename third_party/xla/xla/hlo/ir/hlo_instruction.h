@@ -73,6 +73,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -323,7 +324,8 @@ class HloInstruction {
       const HloInstructionProto& proto,
       const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
-      bool prohibit_empty_literal = true);
+      bool prohibit_empty_literal = true,
+      const tsl::protobuf::RepeatedPtrField<std::string>* payloads = nullptr);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(
