@@ -335,6 +335,7 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
 
 /*static*/ TileAnalysisOrError TiledHloComputation::Tile(
     const HloFusionAdaptor& fusion, std::unique_ptr<TilingSpace> tiling_space) {
+  SmallVector<const TiledHloInstruction*> roots;
   SmallVector<const TiledHloInstruction*> roots_with_no_users;
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
 
@@ -342,6 +343,7 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
        llvm::zip(fusion.GetRoots(), tiling_space->tiled_roots())) {
     auto root_tiled_hlo =
         std::make_unique<TiledHloInstruction>(&root.instruction(), tile);
+    roots.push_back(root_tiled_hlo.get());
     if (root.GetUsers().empty()) {
       roots_with_no_users.push_back(root_tiled_hlo.get());
     }
@@ -366,7 +368,8 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
                                       roots_with_no_users);
 
   return TiledHloComputation(std::move(tiling_space),
-                             std::move(tiled_hlo_instructions));
+                             std::move(tiled_hlo_instructions),
+                             std::move(roots));
 }
 
 std::string TiledHloComputation::ToString() const {

@@ -48,11 +48,14 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/xtile/ir/xtile_attrs.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_map_converter.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -80,9 +83,11 @@ using ::mlir::ShapedType;
 using ::mlir::Type;
 using ::mlir::Value;
 using ::mlir::ValueRange;
+using ::stream_executor::GpuComputeCapability;
 
 namespace ma = ::mlir::arith;
 namespace mh = ::mlir::mhlo;
+namespace ge = ::xla::gpu::experimental;
 namespace mm = ::mlir::math;
 
 namespace {
@@ -96,6 +101,20 @@ Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
   clamped_index = ma::MinSIOp::create(b, clamped_index,
                                       CreateConst(b, value.getType(), upper));
   return ma::IndexCastOp::create(b, b.getIndexType(), clamped_index);
+}
+
+absl::StatusOr<SmallVector<int64_t>> ConvertAffineExprsToInts(
+    ArrayRef<mlir::AffineExpr> affine_exprs) {
+  SmallVector<int64_t> result;
+  result.reserve(affine_exprs.size());
+  for (const auto& affine_expr : affine_exprs) {
+    if (auto constant = mlir::dyn_cast<mlir::AffineConstantExpr>(affine_expr)) {
+      result.push_back(constant.getValue());
+    } else {
+      return absl::InvalidArgumentError("Affine expression is not a constant.");
+    }
+  }
+  return result;
 }
 
 absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
@@ -125,6 +144,30 @@ absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
     dims.push_back(Cast(b, clamped_index, pid.getType()));
   }
   return emitters::ApplyIndexing(dim_only_tiling, /*dims=*/dims,
+                                 /*symbols=*/{}, b);
+}
+
+// This function only supports pid and does not support runtime values including
+// the induction variables yet.
+absl::StatusOr<SmallVector<Value>> ComputeOffsets(
+    mlir::ImplicitLocOpBuilder& b, Value pid,
+    const ge::TiledHloInstruction& tiled_hlo,
+    const ::xla::IndexingMap& schedule) {
+  SmallVector<mlir::AffineExpr> affine_exprs;
+  for (const auto& expr : schedule.GetSymbolicMap().GetResults()) {
+    affine_exprs.push_back(SymbolicExprToAffineExpr(expr, 1));
+  }
+  SmallVector<mlir::AffineExpr> offsets;
+  for (const auto& offset : tiled_hlo.tile().offsets()) {
+    offsets.push_back(offset.replaceDims(affine_exprs));
+  }
+  IndexingMap offset_indexing_map(
+      AffineMapToSymbolicMap(
+          mlir::AffineMap::get(1, 0, offsets, schedule.GetMLIRContext())),
+      schedule.GetDimVars(), {}, {});
+
+  SmallVector<Value> dims{Cast(b, pid, pid.getType())};
+  return emitters::ApplyIndexing(offset_indexing_map, /*dims=*/dims,
                                  /*symbols=*/{}, b);
 }
 
@@ -288,11 +331,9 @@ Value Cast(mlir::ImplicitLocOpBuilder& b, Value value, Type dst_element_ty) {
   if (src_ty == dst_ty) {
     return value;
   }
-
   if (src_ty.isIndex() || dst_ty.isIndex()) {
     return ma::IndexCastOp::create(b, dst_ty, value);
   }
-
   return mlir::stablehlo::ConvertOp::create(b, dst_ty, value);
 }
 
@@ -486,11 +527,10 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 
   // Triton requires that all block dimensions are a power of 2.
   auto padded_tile_sizes = GetPaddedTileSizes(tiled_hlo.tile_sizes());
-  SmallVector<int64_t> original_shape;
-  original_shape.assign(tiled_hlo.hlo()->shape().dimensions().begin(),
-                        tiled_hlo.hlo()->shape().dimensions().end());
-
   const Shape& shape = tiled_hlo.hlo()->shape();
+  SmallVector<int64_t> original_shape;
+  original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
+
   TF_ASSIGN_OR_RETURN(Type expected_element_type,
                       PrimitiveTypeToMlirType(b, shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
@@ -499,6 +539,32 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
   auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
 
   return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
+                  minor_to_major_layout, storage_type);
+}
+
+/*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
+    mlir::ImplicitLocOpBuilder& b, Value pid,
+    const ge::TiledHloInstruction& tiled_hlo,
+    const ::xla::IndexingMap& schedule) {
+  TF_ASSIGN_OR_RETURN(SmallVector<Value> offsets,
+                      ComputeOffsets(b, pid, tiled_hlo, schedule));
+
+  // Triton requires that all block dimensions are a power of 2.
+  TF_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                      ConvertAffineExprsToInts(tiled_hlo.tile().sizes()));
+  TF_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_strides,
+                      ConvertAffineExprsToInts(tiled_hlo.tile().strides()));
+  const Shape& shape = tiled_hlo.hlo()->shape();
+  SmallVector<int64_t> original_shape;
+  original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
+
+  TF_ASSIGN_OR_RETURN(Type expected_element_type,
+                      PrimitiveTypeToMlirType(b, shape.element_type()));
+  auto storage_type = StorageType(expected_element_type);
+
+  auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
+
+  return TileInfo(offsets, tile_strides, original_shape, tile_sizes,
                   minor_to_major_layout, storage_type);
 }
 
@@ -670,6 +736,47 @@ mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type) {
   auto layout = xtile::LayoutAttr::get(context, minor_to_major_attr);
 
   return mlir::MemRefType::get(shape.dimensions(), storage_type, layout);
+}
+
+absl::StatusOr<Type> GetMlirType(
+    mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
+    const std::optional<GpuComputeCapability>& gpu_cc) {
+  if (type == U16) {
+    return b.getI16Type();
+  }
+  if (type == S4) {
+    return b.getI4Type();
+  }
+  return PrimitiveTypeToMlirType(b, type, gpu_cc);
+}
+
+absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
+    absl::Span<mlir::Type> opaque_args_types,
+    const std::optional<GpuComputeCapability>& gpu_cc) {
+  SmallVector<Type> fn_arg_types;
+
+  auto hlo_computation = fusion->fused_instructions_computation();
+  // Add parameter types.
+  for (HloInstruction* p : hlo_computation->parameter_instructions()) {
+    TF_ASSIGN_OR_RETURN(Type ir_type,
+                        GetMlirType(b, p->shape().element_type(), gpu_cc));
+    fn_arg_types.push_back(GetMemRefType(p->shape(), ir_type));
+  }
+
+  // Add result types.
+  for (const auto& [index, shape] : ShapeUtil::GetLeafShapes(fusion->shape())) {
+    TF_ASSIGN_OR_RETURN(
+        Type ir_type, PrimitiveTypeToMlirType(b, shape.element_type(), gpu_cc));
+    fn_arg_types.push_back(GetMemRefType(shape, ir_type));
+  }
+
+  // Add opaque arguments.
+  fn_arg_types.reserve(fn_arg_types.size() + opaque_args_types.size());
+  for (const auto& type : opaque_args_types) {
+    fn_arg_types.push_back(type);
+  }
+  return fn_arg_types;
 }
 
 }  // namespace xla::xtile

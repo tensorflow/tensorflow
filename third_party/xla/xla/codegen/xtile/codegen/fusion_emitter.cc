@@ -1882,32 +1882,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
   b.setInsertionPointToEnd(xtile_module->getBody());
 
   // Build Triton kernel.
-  SmallVector<Type> fn_arg_types;
-  for (HloInstruction* p : hlo_computation->parameter_instructions()) {
-    PrimitiveType type = p->shape().element_type();
-    Type ir_type;
-    if (type == U16) {
-      ir_type = b.getI16Type();
-    } else if (type == S4) {
-      ir_type = b.getI4Type();
-    } else {
-      TF_ASSIGN_OR_RETURN(ir_type, PrimitiveTypeToMlirType(b, type, gpu_cc));
-    }
-    fn_arg_types.push_back(GetMemRefType(p->shape(), ir_type));
-  }
-
-  for (const auto& [index, shape] : ShapeUtil::GetLeafShapes(fusion->shape())) {
-    TF_ASSIGN_OR_RETURN(
-        Type ir_type, PrimitiveTypeToMlirType(b, shape.element_type(), gpu_cc));
-    fn_arg_types.push_back(GetMemRefType(shape, ir_type));
-  }
-
-  // Add opaque arguments.
-  fn_arg_types.reserve(fn_arg_types.size() + opaque_args_types.size());
-
-  for (const auto& type : opaque_args_types) {
-    fn_arg_types.push_back(type);
-  }
+  TF_ASSIGN_OR_RETURN(auto fn_arg_types,
+                      GetFnArgTypes(b, fusion, opaque_args_types, gpu_cc));
 
   // Metadata arguments are opaque to the tiling infra.
   llvm::SmallVector<mlir::NamedAttribute> named_attributes{b.getNamedAttr(
@@ -1932,7 +1908,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitXTileModule(
     tsl::StatusScopedDiagnosticHandler diagnostic_handler(&mlir_context);
     TF_RETURN_IF_ERROR(diagnostic_handler.consumeStatus(pm.run(*xtile_module)));
   }
-
   return xtile_module;
 }
 

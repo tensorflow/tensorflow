@@ -315,16 +315,7 @@ ENTRY entry_computation {
           "num_ctas":"1",
           "num_stages":"1"}}}
 })";
-
-  if (GetParam()) {
-    TF_EXPECT_OK(
-        CreateTritonIrFromHloTextAndFileCheck(kHloText, "computation", R"(
-           // CHECK:xtile.entry_func
-           // CHECK-NEXT: xtile.return
-        )"));
-  } else {
-    EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
-  }
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
 TEST_F(TritonEmitterTest, DivByZeroIsEmittedCorrectly) {

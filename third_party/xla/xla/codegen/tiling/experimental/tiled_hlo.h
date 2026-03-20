@@ -141,6 +141,9 @@ class TiledHloComputation {
   // Returns the tiling space.
   const TilingSpace& tiling_space() const { return *tiling_space_; }
 
+  // Returns the root instructions.
+  absl::Span<const TiledHloInstruction* const> roots() const { return roots_; }
+
   // Returns a string representation of the analysis.
   std::string ToString() const;
 
@@ -154,9 +157,11 @@ class TiledHloComputation {
  private:
   TiledHloComputation(
       std::unique_ptr<TilingSpace> tiling_space,
-      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions)
+      std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
+      llvm::SmallVector<const TiledHloInstruction*> roots)
       : tiling_space_(std::move(tiling_space)),
-        tiled_hlo_instructions_(std::move(tiled_hlo_instructions)) {}
+        tiled_hlo_instructions_(std::move(tiled_hlo_instructions)),
+        roots_(std::move(roots)) {}
 
   static TiledHloRegionOrError CreateRegion(
       std::unique_ptr<TiledHloInstruction> tiled_root,
@@ -165,6 +170,10 @@ class TiledHloComputation {
   std::unique_ptr<TilingSpace> tiling_space_;
   // The tiled HLO instructions in def-before-use order.
   std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions_;
+
+  // Stores pointers to the root instructions. Note that they do not necessarily
+  // appear all at the end of `instructions_`.
+  llvm::SmallVector<const TiledHloInstruction*> roots_;
 };
 
 }  // namespace xla::gpu::experimental
