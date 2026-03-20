@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "mlir/IR/BuiltinOps.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
