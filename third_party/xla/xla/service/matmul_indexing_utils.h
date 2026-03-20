@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -80,6 +81,10 @@ class DotOperandDims {
   static absl::StatusOr<DotDimensionNumbers> CreateDotDimensionNumbers(
       const DotOperandDims& lhs_dims, const DotOperandDims& rhs_dims);
 
+  // Converts a span of two DotOperandDims to a DotDimensionNumbers.
+  static absl::StatusOr<DotDimensionNumbers> CreateDotDimensionNumbers(
+      absl::Span<const DotOperandDims> operands_dims);
+
   // Computes the output shape of the dot instruction.
   static absl::StatusOr<Shape> ComputeOutputShape(
       PrimitiveType element_type, const DotOperandDims& lhs_dims,
@@ -129,6 +134,12 @@ class DotOperandDims {
 
   // Returns the shape of the operand.
   const Shape& shape() const { return shape_; }
+
+  // Updates the shape of the operand.
+  absl::Status UpdateShape(const Shape& new_shape);
+
+  // Returns a debug string representation of the DotOperandDims.
+  std::string ToString() const;
 
  private:
   Shape shape_;

@@ -841,7 +841,6 @@ absl::Status RunOptimizationPasses(
                                              gpu_version);
   }();
 
-  pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description);
   pipeline.AddPass<HloComputationDeduplicator>(
       /*mark_fusion_duplications=*/false);
   return pipeline.Run(hlo_module, {HloInstruction::kMainExecutionThread})
@@ -1240,7 +1239,6 @@ void AddDoubleBufferingPasses(const HloModule& module,
     pipeline.AddPass<ScalarConstantSinker>();
   }
 }
-
 
 void AddCollectiveCombinerPasses(
     HloPassPipeline& pipeline, const HloModule& module,
@@ -1815,6 +1813,8 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
           cuda_cc->IsAtLeast(se::CudaComputeCapability::kAmpere)) ||
          rocm_cc != nullptr)) {
       pipeline.AddPass<GemvRewriter>();
+      pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description,
+                                       /*normalize_dots=*/true);
       pipeline.AddPass<GemmFusion>(gpu_version);
       pipeline.AddPass<GemmFusionSwapOperands>();
       pipeline.AddPass<HoistFusedBitcasts>();

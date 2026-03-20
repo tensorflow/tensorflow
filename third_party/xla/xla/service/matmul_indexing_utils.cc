@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <iterator>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,6 +26,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -162,6 +165,12 @@ absl::StatusOr<DotOperandDims> DotOperandDims::FromDotOperand(
 }
 
 absl::StatusOr<DotDimensionNumbers> DotOperandDims::CreateDotDimensionNumbers(
+    absl::Span<const DotOperandDims> operands_dims) {
+  TF_RET_CHECK(operands_dims.size() == 2);
+  return CreateDotDimensionNumbers(operands_dims[0], operands_dims[1]);
+}
+
+absl::StatusOr<DotDimensionNumbers> DotOperandDims::CreateDotDimensionNumbers(
     const DotOperandDims& lhs_dims, const DotOperandDims& rhs_dims) {
   DotDimensionNumbers dot_dim_numbers;
   TF_RET_CHECK(lhs_dims.Indices(kBatch).size() ==
@@ -259,6 +268,16 @@ absl::Status DotOperandDims::Collapse(Category category, bool remove_if_empty) {
   return EraseDimensions(min_dim + 1, max_dim + 1);
 }
 
+std::string DotOperandDims::ToString() const {
+  auto format_dims = [](absl::Span<const int64_t> dims) {
+    return absl::StrCat("{", absl::StrJoin(dims, ","), "}");
+  };
+  return absl::StrCat(
+      "shape=", shape_.ToString(), " batch=", format_dims(dim_numbers_[kBatch]),
+      " noncontracting=", format_dims(dim_numbers_[kNonContracting]),
+      " contracting=", format_dims(dim_numbers_[kContracting]));
+}
+
 absl::Status DotOperandDims::EraseDimensions(int64_t start, int64_t end) {
   TF_RET_CHECK(start >= 0);
   TF_RET_CHECK(start <= end);
@@ -297,6 +316,12 @@ absl::Status DotOperandDims::InsertDimension(Category category, int64_t dim_idx,
   auto iter = absl::c_find_if(dim_numbers_[category],
                               [&](int64_t dim) { return dim >= dim_idx; });
   dim_numbers_[category].insert(iter, dim_idx);
+  return absl::OkStatus();
+}
+
+absl::Status DotOperandDims::UpdateShape(const Shape& new_shape) {
+  TF_RET_CHECK(new_shape.dimensions().size() == shape_.dimensions().size());
+  shape_ = new_shape;
   return absl::OkStatus();
 }
 
