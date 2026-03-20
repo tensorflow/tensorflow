@@ -414,8 +414,8 @@ setup(
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 12',
-        'Environment :: GPU :: NVIDIA CUDA :: 12 :: 12.2',
+        'Environment :: GPU :: NVIDIA CUDA :: 13',
+        'Environment :: GPU :: NVIDIA CUDA :: 13 :: 13.0',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
