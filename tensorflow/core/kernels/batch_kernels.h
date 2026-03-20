@@ -112,6 +112,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   std::vector<int32_t> low_priority_allowed_batch_sizes_;
   std::string mixed_priority_policy_;
   std::string batch_padding_policy_;
+  int32_t num_warmup_batch_threads_ = 0;
   NameAttrList func_;
   absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
   bool enable_large_batch_splitting_ = false;
