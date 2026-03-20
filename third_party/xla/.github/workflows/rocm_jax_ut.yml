@@ -79,6 +79,7 @@ jobs:
           JAXCI_BUILD_JAX: "true"
           JAXCI_BUILD_JAXLIB: wheel
         working-directory: jax
+        timeout-minutes: 120
         run: |
           ./ci/run_bazel_test_rocm_rbe.sh \
             --override_repository=xla=${GITHUB_WORKSPACE} \

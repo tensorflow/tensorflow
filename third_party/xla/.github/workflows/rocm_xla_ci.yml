@@ -78,12 +78,14 @@ jobs:
           docker exec ${{ env.CONTAINER_NAME }} bash -c "/opt/rocm/bin/rocminfo"
 
       - name: Test XLA [single_gpu]
+        timeout-minutes: 60
         run: |
           docker exec \
             ${{ env.CONTAINER_NAME }} \
             bash -c "build_tools/rocm/execute_ci_build.sh --config=ci_single_gpu --local_test_jobs=2 --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL=linux_x64_gpu_gfx90a --repo_env=TF_ROCM_RBE_DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}"
 
       - name: Test XLA [multi_gpu]
+        timeout-minutes: 80
         if: always()
         run: |
           docker exec \
