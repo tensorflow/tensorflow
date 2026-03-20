@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
@@ -31,6 +32,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::Not;
 
@@ -130,6 +132,31 @@ TEST(MlirToHloTest, MhloMixedSerializationTest) {
 
   // Use Mixed serialization starting at v1.11.0.
   EXPECT_THAT(blob, IsVhloArtifact("1.11.0"));
+}
+
+TEST(MlirToHloTest, MhloMixedSerializationTest_UnstableDialect) {
+  constexpr char kProgram[] =
+      R"(
+  module {
+    func.func @main() -> tensor<16xf32> {
+      %f = constant @helper : () -> tensor<16xf32>
+      %0 = call_indirect %f() : () -> tensor<16xf32>
+      return %0 : tensor<16xf32>
+    }
+    func.func @helper() -> tensor<16xf32> {
+      %cst = stablehlo.constant dense<1.000000e+00> : tensor<16xf32>
+      return %cst : tensor<16xf32>
+    }
+  }
+  )";
+  mlir::MLIRContext context;
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModuleString(kProgram, context));
+  auto status = Serialize(*module, "1.11.0");
+
+  // Use Mixed serialization starting at v1.11.0.
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("found unstable op: func.constant")));
 }
 
 TEST(MlirToHloTest, InvalidBytecodeTest) {

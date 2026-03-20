@@ -253,13 +253,18 @@ absl::Status ExportShardyForGSPMD(mlir::ModuleOp module) {
 
 std::optional<mlir::StringRef> FindPotentiallyUnstableDialects(
     mlir::ModuleOp module) {
+  // Stable dialects that may not be registered in current mlir context
+  mlir::DenseSet<mlir::StringRef> stable_dialects{"mpmd"};
+
+  // Check that all ops are from known stable dialects.
   std::optional<mlir::StringRef> unstable_dialect = std::nullopt;
   module->walk([&](mlir::Operation* op) {
-    if (!llvm::isa<mlir::ModuleOp>(op) &&
-        !llvm::isa<mlir::stablehlo::StablehloDialect, mlir::func::FuncDialect,
-                   mlir::chlo::ChloDialect, mlir::sdy::SdyDialect>(
-            op->getDialect())) {
-      unstable_dialect = op->getDialect()->getNamespace();
+    if (!llvm::isa<mlir::stablehlo::StablehloDialect, mlir::chlo::ChloDialect,
+                   mlir::sdy::SdyDialect>(op->getDialect()) &&
+        !llvm::isa<mlir::ModuleOp, mlir::func::FuncOp, mlir::func::CallOp,
+                   mlir::func::ReturnOp>(op) &&
+        !stable_dialects.contains(op->getDialect()->getNamespace())) {
+      unstable_dialect = op->getName().getStringRef();
       return mlir::WalkResult::interrupt();
     }
     return mlir::WalkResult::advance();
@@ -330,11 +335,20 @@ absl::StatusOr<std::string> SerializeUsingVersionedStablehlo(
     mlir_module = *cloned;
   }
 
+  // Only allow mixed serialization of stable dialects.
+  if (allow_mixed_serialization) {
+    auto unstable_dialect_op = FindPotentiallyUnstableDialects(mlir_module);
+    if (unstable_dialect_op.has_value()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Failed to serialize StableHLO with mixed dialects to plugin "
+          "version ",
+          target, "; found unstable op: ", unstable_dialect_op.value().str()));
+    }
+  }
+
   // Serialize portable artifact
   std::string buffer;
   llvm::raw_string_ostream os(buffer);
-  // TODO(gleasonk): make `allowOtherDialects` an allow-list of dialects instead
-  // of a boolean.
   if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
           mlir_module, target, os,
           /*allowOtherDialects=*/allow_mixed_serialization))) {
