@@ -433,6 +433,9 @@ class MMapWeightCacheProvider {
   // C interface: `xnn_weights_cache_provider` callback.
   static enum xnn_status delete_cache(void* context);
 
+  // C interface: `xnn_weights_cache_provider` callback.
+  static enum xnn_status alias_data(void* context, void* alias, void* original);
+
   // Checks if caches misses have happened and updates the cache file stale
   // flag.
   bool WriteCacheMissFlag();
@@ -458,7 +461,9 @@ class MMapWeightCacheProvider {
       /*look_up_or_insert=*/MMapWeightCacheProvider::look_up_or_insert,
       /*is_finalized=*/MMapWeightCacheProvider::is_finalized,
       /*offset_to_addr=*/MMapWeightCacheProvider::offset_to_addr,
-      /*delete_cache=*/MMapWeightCacheProvider::delete_cache};
+      /*delete_cache=*/MMapWeightCacheProvider::delete_cache,
+      /*alias_data=*/MMapWeightCacheProvider::alias_data,
+  };
 
   // Path to the cache file.
   std::string file_path_;
