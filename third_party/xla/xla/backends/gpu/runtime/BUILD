@@ -1403,8 +1403,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@tsl//tsl/profiler/lib:traceme",
-        "@tsl//tsl/profiler/lib:traceme_encode",
     ],
 )
 

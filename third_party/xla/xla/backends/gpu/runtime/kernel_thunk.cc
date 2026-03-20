@@ -50,12 +50,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/profiler/lib/traceme.h"
-#include "tsl/profiler/lib/traceme_encode.h"
-
-using tsl::profiler::TraceMe;
-using tsl::profiler::TraceMeEncode;
-using tsl::profiler::TraceMeLevel;
 
 namespace xla {
 namespace gpu {
@@ -184,25 +178,8 @@ absl::Status KernelThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
-  TraceMe trace(
-      [] { return TraceMeEncode("KernelThunk::ExecuteOnStream", {}); },
-      /*level=*/TraceMeLevel::kVerbose);
-
-  // Load the kernel.
-  se::StreamExecutor* executor = params.stream->parent();
-  se::Kernel* kernel = nullptr;
-
-  se::Stream* stream = nullptr;
-  {
-    TraceMe trace(
-        [] {
-          return TraceMeEncode(
-              "KernelThunk::ExecuteOnStream/GetStreamForExecution", {});
-        },
-        /*level=*/TraceMeLevel::kVerbose);
-    TF_ASSIGN_OR_RETURN(
-        stream, GetStreamForExecution(Thunk::execution_stream_id(), params));
-  }
+  se::Stream* stream = params.stream;
+  se::StreamExecutor* executor = stream->parent();
 
   for (int64_t index : zeroed_output_buffer_indices_) {
     se::DeviceAddressBase address =
@@ -210,52 +187,40 @@ absl::Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(stream->MemZero(&address, address.size()));
   }
 
+  // Lookup the loaded kernel.
+  se::Kernel* kernel = nullptr;
   {
-    TraceMe trace(
-        [] { return TraceMeEncode("KernelThunk::ExecuteOnStream/mutex", {}); },
-        /*level=*/TraceMeLevel::kVerbose);
     absl::MutexLock lock(mutex_);
-    TraceMe trace_find(
-        [] {
-          return TraceMeEncode("KernelThunk::ExecuteOnStream/mutex/find", {});
-        },
-        /*level=*/TraceMeLevel::kVerbose);
     auto it = kernel_cache_.find(executor);
     CHECK(it != kernel_cache_.end())
         << "Initialize() not called for StreamExecutor " << executor;
     kernel = it->second.get();
   }
 
-  absl::InlinedVector<se::KernelArg, 4> kernel_args;
-  {
-    TraceMe trace(
-        [] {
-          return TraceMeEncode("KernelThunk::ExecuteOnStream/kernel_args", {});
-        },
-        /*level=*/TraceMeLevel::kVerbose);
-    int device_ordinal = executor->device_ordinal();
-    XLA_VLOG_DEVICE(3, device_ordinal) << "Launching " << kernel->name();
-    for (const auto& [idx, arg] : llvm::enumerate(args_)) {
-      se::DeviceAddressBase buf =
-          params.buffer_allocations->GetDeviceAddress(arg.slice);
-      XLA_VLOG_DEVICE(3, device_ordinal)
-          << "Arg: alloc #" << arg.slice.index()
-          << ", offset: " << arg.slice.offset() << ": " << buf.opaque() << " ("
-          << buf.size() << "B)";
+  int device_ordinal = executor->device_ordinal();
+  XLA_VLOG_DEVICE(3, device_ordinal) << "Launching " << kernel->name();
 
-      if (auto it = tma_metadata_.arg_index_to_tma_info.find(idx);
-          it != tma_metadata_.arg_index_to_tma_info.end()) {
-        // TMA descriptor argument.
-        const se::gpu::TmaDescriptor& tma_desc = it->second;
-        TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
-                            executor->CreateTensorMap(tma_desc, buf.opaque()));
-        XLA_VLOG_DEVICE(3, device_ordinal) << "Using TensorMap for arg #" << idx
-                                           << ": " << tma_desc.ToString();
-        kernel_args.push_back(std::move(tensor_map));
-      } else {
-        // Buffer argument.
-        kernel_args.push_back(buf);
-      }
+  absl::InlinedVector<se::KernelArg, 4> kernel_args;
+  for (const auto& [idx, arg] : llvm::enumerate(args_)) {
+    se::DeviceAddressBase buf =
+        params.buffer_allocations->GetDeviceAddress(arg.slice);
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "Arg: alloc #" << arg.slice.index()
+        << ", offset: " << arg.slice.offset() << ": " << buf.opaque() << " ("
+        << buf.size() << "B)";
+
+    if (auto it = tma_metadata_.arg_index_to_tma_info.find(idx);
+        it != tma_metadata_.arg_index_to_tma_info.end()) {
+      // TMA descriptor argument.
+      const se::gpu::TmaDescriptor& tma_desc = it->second;
+      TF_ASSIGN_OR_RETURN(se::TensorMap tensor_map,
+                          executor->CreateTensorMap(tma_desc, buf.opaque()));
+      XLA_VLOG_DEVICE(3, device_ordinal)
+          << "Using TensorMap for arg #" << idx << ": " << tma_desc.ToString();
+      kernel_args.push_back(std::move(tensor_map));
+    } else {
+      // Buffer argument.
+      kernel_args.push_back(buf);
     }
   }
 

@@ -538,9 +538,7 @@ absl::Status HostExecuteStartThunk::Initialize(const InitializeParams& params) {
 
 absl::Status HostExecuteStartThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
-      se::Stream * compute_stream,
-      GetStreamForExecution(Thunk::execution_stream_id(), params));
+  se::Stream* compute_stream = params.stream;
 
   // Host execute thunk enqueues compute on the device to host stream to allow
   // for the compute stream to be used for device compute.
@@ -677,9 +675,6 @@ absl::Status HostExecuteDoneThunk::Initialize(const InitializeParams& params) {
 
 absl::Status HostExecuteDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(
-      se::Stream * stream,
-      GetStreamForExecution(Thunk::execution_stream_id(), params));
   TF_ASSIGN_OR_RETURN(auto event, async_events_->ExtractEvent(
                                       params.host_to_device_stream->parent(),
                                       RunId(params.execution_id)));
@@ -691,7 +686,7 @@ absl::Status HostExecuteDoneThunk::ExecuteOnStream(
 
   // We queue this event on the compute stream so that the host to device copy
   // finishes before the consumer of the data can start.
-  TF_RETURN_IF_ERROR(stream->WaitFor(event.get().get()));
+  TF_RETURN_IF_ERROR(params.stream->WaitFor(event.get().get()));
 
   return absl::OkStatus();
 }
