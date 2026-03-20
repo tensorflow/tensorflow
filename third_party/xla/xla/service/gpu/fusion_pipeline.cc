@@ -49,7 +49,7 @@ HloPassPipeline FusionPipeline(
     const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
     const se::DeviceDescription& gpu_device_info,
     mlir::MLIRContext* mlir_context) {
-  HloPassFix<HloPassPipeline> fusion("fusion");
+  HloPassPipeline fusion("fusion");
   // We try to split variadic ops with many parameters into several such ops
   // to avoid exceeding the parameter space.
   fusion.AddPass<VariadicOpSplitter>();
@@ -90,7 +90,7 @@ HloPassPipeline FusionPipeline(
       /*should_eliminate_computation=*/&HloComputation::IsFusionComputation);
   fusion.AddPass<HloDCE>();
 
-  return std::move(fusion);
+  return fusion;
 }
 
 }  // namespace gpu
