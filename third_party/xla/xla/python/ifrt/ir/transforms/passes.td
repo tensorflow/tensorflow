@@ -155,12 +155,12 @@ them. The duplicated callee `FuncOp` will not be removed.
   }];
 }
 
-def IfrtMergeReshardsPass :
-    Pass<"ifrt-merge-reshards", "mlir::func::FuncOp"> {
-  let summary = "Merge reshards for each (src, dst) pair into a single reshard.";
+def IfrtMergeCopiesAndReshardsPass :
+    Pass<"ifrt-merge-copies-and-reshards", "mlir::func::FuncOp"> {
+  let summary = "Merge copies and reshards into a single op.";
   let description = [{
-Merges reshards from a source op which flow into the same destination op,
-ignoring control dependencies.
+Merges copies and reshards from a source op which flow into the same destination
+op, ignoring control dependencies.
 
 E.g.
 

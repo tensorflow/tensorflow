@@ -36,7 +36,7 @@ cc_library(
         "ifrt_legalize_to_vifrt_pass.cc",
         "ifrt_lower_atom_program_metadata_to_xla_pass.cc",
         "ifrt_lower_mpmd_reshard_to_call_pass.cc",
-        "ifrt_merge_reshards_pass.cc",
+        "ifrt_merge_copies_and_reshards_pass.cc",
         "ifrt_outline_atom_program_to_module_pass.cc",
         "ifrt_populate_atom_program_metadata_pass.cc",
         "ifrt_precompile_atom_program_preprocessing_pass.cc",

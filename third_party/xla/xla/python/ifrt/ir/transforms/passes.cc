@@ -79,13 +79,15 @@ void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
   pm.addPass(createIfrtOutlineAtomProgramToModulePass());
 
   pm.addPass(createIfrtVerifyShardingSpecifiedPass());
-  // IfrtMergeReshardsPass doesn't handle control dependencies, so we need to
-  // run it before adding the control dependencies.
-  pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeReshardsPass());
-  pm.addNestedPass<mlir::func::FuncOp>(createIfrtAddCtrlDependenciesPass());
   // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
-  // are specified.
+  // are specified. Moreover, it is necessary to run
+  // IfrtMergeCopiesAndReshardsPass after this pass because it introduces
+  // non-merged CopyArrays ops.
   pm.addPass(createIfrtReshardToCopyArraysPass());
+  // IfrtMergeCopiesAndReshardsPass doesn't handle control dependencies, so we
+  // need to run it before adding the control dependencies.
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtMergeCopiesAndReshardsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtAddCtrlDependenciesPass());
 }
 
 void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm) {

@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -217,9 +220,13 @@ mlir::LogicalResult IfrtArrayType::verify(
 }
 
 xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {
-  return getMemoryKindAttr() == nullptr
+  static const absl::NoDestructor<std::string> default_memory_kind(
+      absl::StrCat(xla::ifrt::MemoryKind()));
+  mlir::StringAttr memory_kind_attr = getMemoryKindAttr();
+  return memory_kind_attr == nullptr ||
+                 memory_kind_attr.getValue() == *default_memory_kind
              ? xla::ifrt::MemoryKind()
-             : xla::ifrt::MemoryKind(getMemoryKindAttr().str());
+             : xla::ifrt::MemoryKind(memory_kind_attr.str());
 };
 
 // TODO(icgog): Migrate to xla::ifrt::Layout.
