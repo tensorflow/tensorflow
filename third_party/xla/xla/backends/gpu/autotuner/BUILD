@@ -223,6 +223,7 @@ cc_library(
         "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
@@ -672,6 +673,7 @@ cc_library(
         "//xla:autotuning_proto_cc",
         "//xla:shape_layout",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
@@ -1239,6 +1241,7 @@ xla_test(
     ),
     deps = [
         ":factory",
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
         "//xla/hlo/analysis:alias_info",
