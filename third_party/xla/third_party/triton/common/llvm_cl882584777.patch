@@ -1,6 +1,6 @@
 --- a/lib/Target/LLVMIR/LLVMDIUtils.cpp
 +++ b/lib/Target/LLVMIR/LLVMDIUtils.cpp
-@@ -68,7 +68,8 @@
+@@ -68,7 +68,8 @@ LLVM::DITypeAttr LLVMDIUtils::convertPtrType(MLIRContext *context,
    LLVM::DITypeAttr diElTypeAttr = convertType(context, pointeeType);
    LLVM::DITypeAttr diTypeAttr = mlir::LLVM::DIDerivedTypeAttr::get(
        context, llvm::dwarf::DW_TAG_pointer_type,

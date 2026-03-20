@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1202 @@
+@@ -0,0 +1,1206 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -538,6 +538,7 @@ new file mode 100644
 +        # What is this lone header doing rooted under Conversion? Best to add it to Dialect, but
 +        # it would be better if upstream moved it there.
 +        "include/triton/Conversion/MLIRTypes.h",
++        "include/triton/Dialect/TritonInstrument/Transforms/ConSanTargetHooks.h",
 +    ],
 +    copts = select({
 +        ":compiler_is_msvc": [],
@@ -603,6 +604,7 @@ new file mode 100644
 +        "@triton//third_party/f2reduce",  # for Utility
 +        "@triton//third_party/nvidia:NVGPUDialect",
 +    ],
++    alwayslink = True,
 +)
 +
 +cc_library(
@@ -635,6 +637,7 @@ new file mode 100644
 +        "@llvm-project//mlir:ArithDialect",
 +        "@llvm-project//mlir:ControlFlowDialect",
 +        "@llvm-project//mlir:FuncTransforms",
++        "@llvm-project//mlir:FunctionInterfaces",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:SCFDialect",
@@ -880,6 +883,7 @@ new file mode 100644
 +        ":TritonDialects",
 +        ":TritonGPUToLLVM",
 +        ":TritonGPUTransforms",
++        ":TritonInstrumentTransforms",
 +        ":TritonTools",
 +        ":triton_nvidia_gpu_transforms_inc_gen",
 +        "@llvm-project//llvm:Support",
@@ -2041,7 +2045,7 @@ diff --git b/third_party/amd/BUILD b/third_party/amd/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/BUILD
-@@ -0,0 +1,372 @@
+@@ -0,0 +1,373 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -2146,6 +2150,7 @@ new file mode 100644
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:LLVMCommonConversion",
 +        "@llvm-project//mlir:LLVMDialect",
++        "@llvm-project//mlir:ROCDLDialect",
 +        "@llvm-project//mlir:Support",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUToLLVM",
