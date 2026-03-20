@@ -584,13 +584,9 @@ absl::StatusOr<HloInstruction*> PartitionGatherTrivialSlicedOperandDimensions(
             operand, indices, operand.state().partition_id,
             dnums.start_index_map(), *trivial_slice_dims,
             dnums.index_vector_dim(), b);
-    // Clamp the indices.
-    auto adjusted_indices = b->AddInstruction(
-        HloInstruction::CreateTernary(indices.hlo()->shape(), HloOpcode::kClamp,
-                                      indices_min, indices.hlo(), indices_max));
     // Adjust the indices by subtracting the offset.
-    adjusted_indices = b->AddInstruction(HloInstruction::CreateBinary(
-        indices.hlo()->shape(), HloOpcode::kSubtract, adjusted_indices,
+    auto adjusted_indices = b->AddInstruction(HloInstruction::CreateBinary(
+        indices.hlo()->shape(), HloOpcode::kSubtract, indices.hlo(),
         indices_min));
     PartitionedHlo new_indices = indices.CloneWithNewHlo(adjusted_indices);
 
@@ -1041,11 +1037,11 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
           b);
 
   HloInstruction* adjusted_indices_hlo = b->AddInstruction(
-      HloInstruction::CreateTernary(indices.hlo()->shape(), HloOpcode::kClamp,
-                                    indices_min, indices.hlo(), indices_max));
-  adjusted_indices_hlo = b->AddInstruction(
       HloInstruction::CreateBinary(indices.hlo()->shape(), HloOpcode::kSubtract,
-                                   adjusted_indices_hlo, indices_min));
+                                   indices.hlo(), indices_min));
+  HloInstruction* pgather = b->AddInstruction(HloInstruction::CreateGather(
+      pshape, operand.hlo(), adjusted_indices_hlo, dnums, pslice_sizes,
+      gather->indices_are_sorted()));
 
   const Shape filter_shape =
       ShapeUtil::ChangeElementType(indices.hlo()->shape(), PRED);
@@ -1069,10 +1065,6 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
         CreateR0WithType(PRED, false, b), {dnums.index_vector_dim()},
         MakeBinaryAdd(PRED, hlo->GetModule())));
   }
-
-  HloInstruction* pgather = b->AddInstruction(HloInstruction::CreateGather(
-      pshape, operand.hlo(), adjusted_indices_hlo, dnums, pslice_sizes,
-      gather->indices_are_sorted()));
 
   std::vector<int64_t> gather_batch_dims;
   for (int64_t i = 0; i < pgather->shape().dimensions().size(); ++i) {

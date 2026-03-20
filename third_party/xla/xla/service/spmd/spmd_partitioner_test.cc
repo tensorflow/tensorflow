@@ -8884,8 +8884,8 @@ ENTRY entry {
     auto clamped_indices =
         op::Clamp(op::Broadcast(op::Constant()), op::Parameter(1),
                   op::Broadcast(op::Constant()));
-    auto clamp = op::Clamp(min, clamped_indices, max);
-    auto gather = op::Gather(op::Parameter(0), op::Subtract(clamp, min));
+    auto gather =
+        op::Gather(op::Parameter(0), op::Subtract(clamped_indices, min));
     auto mask =
         op::Or(op::Lt(clamped_indices, min), op::Gt(clamped_indices, max));
     auto masked =
@@ -8924,8 +8924,8 @@ ENTRY entry {
     auto min = AllOf(op::Broadcast(offset), op::Shape("s32[2,3]"));
     auto max = AllOf(op::Broadcast(op::Add(offset, op::Constant())),
                      op::Shape("s32[2,3]"));
-    auto clamp = op::Clamp(min, clamped_indices, max);
-    auto gather = op::Gather(op::Parameter(0), op::Subtract(clamp, min));
+    auto gather =
+        op::Gather(op::Parameter(0), op::Subtract(clamped_indices, min));
     auto mask =
         op::Or(op::Lt(clamped_indices, min), op::Gt(clamped_indices, max));
     auto masked =
@@ -12811,9 +12811,8 @@ ENTRY entry {
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::AllReduce(op::Select(_, _, op::Gather(_, _))));
-  EXPECT_THAT(
-      root->operand(0)->operand(2)->operand(1),
-      op::Subtract(op::Clamp(_, op::Clamp(_, op::Parameter(1), _), _), _));
+  EXPECT_THAT(root->operand(0)->operand(2)->operand(1),
+              op::Subtract(op::Clamp(_, op::Parameter(1), _), _));
 
   auto dynamic_slice = FindInstruction(module.get(), HloOpcode::kDynamicSlice);
   EXPECT_THAT(dynamic_slice->operand(1), op::PartitionId());
@@ -12845,9 +12844,8 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllGather(op::AllReduce(
                         op::Select(_, _, op::Gather(op::AllGather(_), _)))));
   auto gather = FindInstruction(module.get(), HloOpcode::kGather);
-  EXPECT_THAT(
-      gather->operand(1),
-      op::Subtract(op::Clamp(_, op::Clamp(_, op::Parameter(1), _), _), _));
+  EXPECT_THAT(gather->operand(1),
+              op::Subtract(op::Clamp(_, op::Parameter(1), _), _));
   auto collective_permute =
       FindInstruction(module.get(), HloOpcode::kCollectivePermute);
   EXPECT_NE(collective_permute, nullptr);
