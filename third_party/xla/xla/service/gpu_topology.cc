@@ -38,8 +38,17 @@ absl::StatusOr<gpu::GpuModel> GetGpuModel(absl::string_view platform_type) {
   if (platform_type == "nvidia_h100") {
     return gpu::GpuModel::H100_SXM;
   }
-  if (platform_type == "umbriel_b200" || platform_type == "oberon_b200") {
+  if (platform_type == "umbriel_b200") {
     return gpu::GpuModel::B200;
+  }
+  if (platform_type == "umbriel_b300") {
+    return gpu::GpuModel::B300;
+  }
+  if (platform_type == "oberon_b200") {
+    return gpu::GpuModel::GB200;
+  }
+  if (platform_type == "oberon_b300") {
+    return gpu::GpuModel::GB300;
   }
   return absl::InvalidArgumentError(
       absl::StrCat("Unsupported GPU platform type: ", platform_type));
