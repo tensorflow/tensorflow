@@ -203,9 +203,9 @@ absl::StatusOr<HloInstruction*> TryMergeSameOperand(HloInstruction* a,
 
   // We can't keep both. But one is better then none.
   if (!a->metadata().op_name().empty()) {
-    new_dot->set_metadata(a->metadata());
+    new_dot->set_metadata(a->metadata_ptr());
   } else if (!b->metadata().op_name().empty()) {
-    new_dot->set_metadata(b->metadata());
+    new_dot->set_metadata(b->metadata_ptr());
   }
 
   // Slice the outputs.
@@ -359,9 +359,9 @@ absl::StatusOr<HloInstruction*> TryMergeLHSWithRHSOperand(HloInstruction* a,
 
   // We can't keep both. But one is better then none.
   if (!a->metadata().op_name().empty()) {
-    new_dot->set_metadata(a->metadata());
+    new_dot->set_metadata(a->metadata_ptr());
   } else if (!b->metadata().op_name().empty()) {
-    new_dot->set_metadata(b->metadata());
+    new_dot->set_metadata(b->metadata_ptr());
   }
 
   // Slice the outputs.

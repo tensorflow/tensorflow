@@ -160,7 +160,7 @@ HloInstruction* AddCP(HloCollectivePermuteInstruction* orig,
       HloInstruction::CreateCollectivePermute(
           orig->shape(), orig->mutable_operand(0), pairs, channel_id),
       absl::StrCat(orig->name(), name_suffix));
-  cp1->set_metadata(orig->metadata());
+  cp1->set_metadata(orig->metadata_ptr());
   cp1->set_frontend_attributes(attrs);
   return cp1;
 }

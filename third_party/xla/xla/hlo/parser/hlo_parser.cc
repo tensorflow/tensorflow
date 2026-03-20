@@ -1594,9 +1594,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
   }
   if (metadata) {
-    instruction->set_metadata(*metadata);
     if (instruction->IsAsynchronous()) {
-      instruction->async_wrapped_instruction()->set_metadata(*metadata);
+      // make shared metadata
+      std::shared_ptr<OpMetadata> metadata_ptr =
+          std::make_shared<OpMetadata>(std::move(*metadata));
+      instruction->set_metadata(metadata_ptr);
+      instruction->async_wrapped_instruction()->set_metadata(metadata_ptr);
+    } else {
+      instruction->set_metadata(std::move(*metadata));
     }
   }
   if (original_value) {
@@ -4169,20 +4174,20 @@ bool HloParserImpl::ParseAxisRef(
                   "expected '(' before pre_size in sub axis")) {
     return false;
   }
-    int64_t pre_size;
-    if (!ParseInt64(&pre_size)) {
-      return false;
-    }
-    if (!ParseToken(TokKind::kRparen,
-                    "expected ')' after pre_size in sub axis")) {
-      return false;
-    }
-    int64_t size;
-    if (!ParseInt64(&size)) {
-      return false;
-    }
-    axis = AxisRef(axis_index, {pre_size, size});
-    return true;
+  int64_t pre_size;
+  if (!ParseInt64(&pre_size)) {
+    return false;
+  }
+  if (!ParseToken(TokKind::kRparen,
+                  "expected ')' after pre_size in sub axis")) {
+    return false;
+  }
+  int64_t size;
+  if (!ParseInt64(&size)) {
+    return false;
+  }
+  axis = AxisRef(axis_index, {pre_size, size});
+  return true;
 }
 
 bool HloParserImpl::ParseAxisRefList(const Mesh& mesh,

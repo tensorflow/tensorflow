@@ -134,7 +134,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
               ? reduce->parent()->AddInstruction(
                     HloInstruction::CreateBitcast(new_operand_shape, operand))
               : operand;
-      canonical_reduce_input->set_metadata(operand->metadata());
+      canonical_reduce_input->set_metadata(operand->metadata_ptr());
       VLOG(5) << "Reduction input: " << canonical_reduce_input->ToString();
 
       new_reduce_shapes.push_back(new_reduce_shape);
