@@ -88,13 +88,15 @@ class OneDnnThreadPool : public threadpool_iface {
   bool get_in_parallel() const override {
     return (eigen_interface_->CurrentThreadId() != -1) ? true : false;
   }
-  uint64_t get_flags() const override { return ASYNCHRONOUS; }
 #ifdef ENABLE_ONEDNN_ASYNC
+  uint64_t get_flags() const override { return 0; }
   // wait() method for synchronous execution is basically a no-op.
   // But we need to implement it to satisfy the interface.
   // This is the requirement of the new experimental async runtime support
   // in oneDNN.
   virtual void wait() override {}
+#else
+  uint64_t get_flags() const override { return ASYNCHRONOUS; }
 #endif  // ENABLE_ONEDNN_ASYNC
   void parallel_for(int n, const std::function<void(int, int)>& fn) override {
     // Should never happen (handled by DNNL)
@@ -119,6 +121,33 @@ class OneDnnThreadPool : public threadpool_iface {
     const int njobs_to_schedule = use_caller_thread ? njobs - 1 : njobs;
 
     if (use_caller_thread) {
+#ifdef ENABLE_ONEDNN_ASYNC
+      absl::BlockingCounter counter(njobs_to_schedule + 1);
+      for (int i = 0; i < njobs_to_schedule; i++) {
+        eigen_interface_->ScheduleWithHint(
+            [balance, i, n, njobs, fn, &counter]() {
+              run_jobs(balance, i, n, njobs, fn);
+              counter.DecrementCount();
+            },
+            i, i + 1);
+      }
+      run_jobs(balance, njobs_to_schedule, n, njobs, fn);
+      counter.DecrementCount();
+      counter.Wait();
+    } else {
+      absl::BlockingCounter counter(njobs);
+      std::function<void(int, int)> handle_range = [=, &handle_range, &counter](
+                                                       int first, int last) {
+        while (last - first > 1) {
+          const auto mid = first + (last - first) / 2;
+          // Find something near the midpoint which is a multiple of block size.
+          eigen_interface_->ScheduleWithHint([=]() { handle_range(mid, last); },
+                                             mid, mid + 1);
+          last = mid;
+        }
+        run_jobs(balance, first, n, njobs, fn);
+        counter.DecrementCount();
+#else   // !ENABLE_ONEDNN_ASYNC
       for (int i = 0; i < njobs_to_schedule; i++) {
         eigen_interface_->ScheduleWithHint(
             [balance, i, n, njobs, fn]() {
@@ -140,6 +169,7 @@ class OneDnnThreadPool : public threadpool_iface {
         }
         counter.DecrementCount();
         run_jobs(balance, first, n, njobs, fn);
+#endif  // ENABLE_ONEDNN_ASYNC
       };
 
       // Eigen avoids a thread hop by running the root of the tree on the main

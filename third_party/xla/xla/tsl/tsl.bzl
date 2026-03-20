@@ -12,7 +12,6 @@ load(
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_openmp",
     "if_onednn",
-    "if_onednn_async",
     "onednn_v3_define",
 )
 load(
@@ -351,7 +350,7 @@ def tsl_copts(
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
-        if_onednn_async(["-DENABLE_ONEDNN_ASYNC"]) +
+        if_onednn(["-DENABLE_ONEDNN_ASYNC"]) +
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
