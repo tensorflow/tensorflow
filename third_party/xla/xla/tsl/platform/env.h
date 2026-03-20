@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -301,6 +302,28 @@ class Env {
                                     TransactionToken* token) {
     return absl::OkStatus();
   }
+
+  // TODO(b/485502789): Remove the const std::string& versions of these
+  // functions and move the actual implementation here, avoiding the string
+  // copy.
+  // Until then, we need to SFINAE out the std::string case to avoid ambiguity
+  // errors when T could be deduced as either absl::string_view or std::string
+  // (e.g. tstring).
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status RecursivelyCreateDir(const T& dirname) {
+    return RecursivelyCreateDir(std::string(dirname));
+  }
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status RecursivelyCreateDir(const T& dirname, TransactionToken* token) {
+    return RecursivelyCreateDir(std::string(dirname), token);
+  }
+
   /// \brief Creates the specified directory. Typical return codes
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory already exists.
@@ -334,6 +357,19 @@ class Env {
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   absl::Status IsDirectory(const std::string& fname);
+
+  // TODO(b/485502789): Remove the const std::string& version of this function
+  // and move the actual implementation here, avoiding the string copy.
+  // Until then, we need to SFINAE out the std::string case to avoid ambiguity
+  // errors when T could be deduced as either absl::string_view or std::string
+  // (e.g. tstring).
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status IsDirectory(const T& fname) {
+    return IsDirectory(std::string(fname));
+  }
 
   /// \brief Returns whether the given path is on a file system
   /// that has atomic move capabilities. This can be used
@@ -655,10 +691,36 @@ absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
 absl::Status ReadFileToString(Env* env, const std::string& fname,
                               std::string* data);
 
+// TODO(b/485502789): Remove the const std::string& version of this function
+// and move the actual implementation here, avoiding the string copy.
+// Until then, we need to SFINAE out the std::string case to avoid ambiguity
+// errors when T could be deduced as either absl::string_view or std::string
+// (e.g. tstring).
+template <typename T, typename = std::enable_if_t<
+                          std::is_convertible_v<const T&, absl::string_view> &&
+                          !std::is_same_v<std::decay_t<T>, std::string>>>
+inline absl::Status ReadFileToString(Env* env, const T& fname,
+                                     std::string* data) {
+  return ReadFileToString(env, std::string(fname), data);
+}
+
 /// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
 absl::Status WriteStringToFile(Env* env, const std::string& fname,
                                absl::string_view data);
+
+// TODO(b/485502789): Remove the const std::string& version of this function
+// and move the actual implementation here, avoiding the string copy.
+// Until then, we need to SFINAE out the std::string case to avoid ambiguity
+// errors when T could be deduced as either absl::string_view or std::string
+// (e.g. tstring).
+template <typename T, typename = std::enable_if_t<
+                          std::is_convertible_v<const T&, absl::string_view> &&
+                          !std::is_same_v<std::decay_t<T>, std::string>>>
+inline absl::Status WriteStringToFile(Env* env, const T& fname,
+                                      absl::string_view data) {
+  return WriteStringToFile(env, std::string(fname), data);
+}
 
 /// A utility routine: append contents of `data` to file named `fname`.
 /// If the file does not exist, it is created.
