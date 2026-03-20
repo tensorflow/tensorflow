@@ -80,6 +80,8 @@ class HloRunnerPropertyTag final {
   static constexpr Type kCpu = 2;
   // Indicates that the runner is using CUDA.
   static constexpr Type kUsingGpuCuda = 3;
+  // Indicates that this is a oneAPI (sycl) runner.
+  static constexpr Type kUsingGpuOneAPI = 4;
 
  private:
   HloRunnerPropertyTag() = default;
