@@ -579,8 +579,15 @@ bool HloSharding::UsesDevice(int64_t device) const {
     });
   }
 
-  return IsReplicatedLeaf() || IsManualLeaf() ||
-         TileAgnosticDeviceAssignment().UsesDevice(device);
+  if (IsReplicatedLeaf() || IsManualLeaf()) {
+    return true;
+  }
+
+  if (std::optional<int64_t> unique_device = UniqueDevice()) {
+    return unique_device == device;
+  }
+
+  return device >= 0 && device < num_devices();
 }
 
 std::vector<int64_t> HloSharding::TileIndexForDevice(int64_t device) const {
