@@ -1778,6 +1778,8 @@ xla_test(
         "gpu",
         "interpreter",
     ],
+    # TODO(intel-tf): Enable on oneAPI once int4 support is added to oneAPI.
+    tags = ["no-oneapi"],
     deps = [
         ":hlo_pjrt_interpreter_reference_mixin",
         ":hlo_pjrt_test_base",

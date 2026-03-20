@@ -1809,7 +1809,9 @@ ENTRY %reduce-window (parameter.0: s64[81,8], parameter.1: s64[]) -> s64[82,8] {
 }
 
 TEST_F(ReduceWindowHloTest, ReduceWindowS4) {
-  if (test::DeviceTypeIs(test::kTpu)) {
+  // TODO(intel-tf): Enable this test for Intel GPU when the support for S4 is
+  // added.
+  if (test::DeviceTypeIs(test::kTpu) || test::DeviceIs("intelgpu")) {
     GTEST_SKIP();
   }
   const std::string hlo_string = R"(

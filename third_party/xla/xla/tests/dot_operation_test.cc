@@ -1963,6 +1963,11 @@ ENTRY SmallIntegerDot {
 }
 
 TEST_F(DotOperationTextTest, S4Dot) {
+  // TODO(intel-tf): Enable this test for Intel GPU when the suport for S4 is
+  // added.
+  if (test::DeviceIs("intelgpu")) {
+    GTEST_SKIP();
+  }
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
