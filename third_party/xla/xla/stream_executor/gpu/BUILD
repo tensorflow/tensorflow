@@ -827,6 +827,7 @@ cc_library(
     name = "multi_gpu_barrier_kernel",
     hdrs = ["multi_gpu_barrier_kernel.h"],
     deps = [
+        "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
     ],

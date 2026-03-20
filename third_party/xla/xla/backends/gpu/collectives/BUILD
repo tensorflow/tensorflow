@@ -372,7 +372,7 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
-    visibility = ["//visibility:private"],
+    visibility = ["//xla/stream_executor/cuda:__subpackages__"],
     deps = [
         ":nccl_errors",
         "//xla/core/collectives:symmetric_memory",

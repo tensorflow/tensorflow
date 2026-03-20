@@ -22,15 +22,26 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "third_party/gpus/nccl/src/nccl.h"
+#include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/concurrency/executor.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/threadpool.h"
+
+// Include NCCL after XLA headers.
+#include "third_party/nccl/nccl.h"
 
 namespace stream_executor::gpu {
 namespace {
@@ -130,6 +141,106 @@ TEST_F(MultiGpuBarrierTest, BarrierSynchronization) {
                               streams_[i].get(), static_cast<int64_t>(i),
                               static_cast<int64_t>(num_devices_),
                               kernel_arg_ptrs, counters[i]));
+    }
+  }
+
+  for (int i = 0; i < num_devices_; ++i) {
+    ASSERT_OK(streams_[i]->BlockHostUntilDone());
+  }
+
+  // 5. Verify Counters
+  // After 8 runs, counters should be 8.
+  for (int i = 0; i < num_devices_; ++i) {
+    uint32_t val;
+    ASSERT_OK(streams_[i]->Memcpy(&val, counters[i], sizeof(uint32_t)));
+    ASSERT_OK(streams_[i]->BlockHostUntilDone());
+    EXPECT_EQ(val, 8) << "Counter on device " << i << " failed to increment";
+  }
+
+  // 6. Verify Signal Buffers
+  // Each device's signal buffer is an array of size 'num_devices'.
+  // By the end of step 8, every device should have written the value '8'
+  // into its designated slot on every peer's buffer.
+  for (int i = 0; i < num_devices_; ++i) {
+    std::vector<uint32_t> host_buffer(num_devices_);
+
+    // Copy the device's signal buffer back to the host
+    ASSERT_OK(streams_[i]->Memcpy(host_buffer.data(), signal_buffers[i],
+                                  num_devices_ * sizeof(uint32_t)));
+    ASSERT_OK(streams_[i]->BlockHostUntilDone());
+
+    // Verify every slot contains the final step value (8)
+    for (int j = 0; j < num_devices_; ++j) {
+      EXPECT_EQ(host_buffer[j], 8)
+          << "Signal buffer on Device " << i << " at slot " << j
+          << " (which belongs to Peer " << j << ")"
+          << " has incorrect value.";
+    }
+  }
+}
+
+TEST_F(MultiGpuBarrierTest, BarrierSynchronizationWithNccl) {
+#if NCCL_VERSION_CODE < 22800
+  GTEST_SKIP() << "Test requires NCCL 2.28.0 or later.";
+#endif  // NCCL_VERSION_CODE < 22800
+
+  // 1. Allocate Signal Buffers on each device
+  std::vector<DeviceAddressBase> signal_buffers;
+  for (int i = 0; i < num_devices_; ++i) {
+    auto alloc =
+        executors_[i]->Allocate(sizeof(uint32_t) * num_devices_,
+                                static_cast<int64_t>(MemorySpace::kCollective));
+    ASSERT_OK(streams_[i]->MemZero(&alloc, num_devices_ * sizeof(uint32_t)));
+    signal_buffers.push_back(alloc);
+  }
+
+  std::vector<ncclComm_t> comms(num_devices_);
+  ncclResult_t result =
+      ncclCommInitAll(comms.data(), num_devices_, /*devlist=*/nullptr);
+  ASSERT_EQ(result, ncclSuccess);
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "nccl", num_devices_);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  std::vector<tsl::Future<std::unique_ptr<xla::gpu::NcclSymmetricMemory>>>
+      symmetric_memory_futures(num_devices_);
+  for (int i = 0; i < num_devices_; ++i) {
+    symmetric_memory_futures[i] = tsl::MakeFutureOn(exec, [&, i]() {
+      return xla::gpu::NcclSymmetricMemory::Create(comms[i], signal_buffers[i]);
+    });
+  }
+
+  std::vector<std::unique_ptr<xla::SymmetricMemory>> symmetric_memory;
+  for (int i = 0; i < num_devices_; ++i) {
+    ASSERT_OK_AND_ASSIGN(auto mem,
+                         std::move(symmetric_memory_futures[i]).Await());
+    symmetric_memory.push_back(std::move(mem));
+  }
+
+  // 2. Allocate Counters on each device
+  std::vector<DeviceAddress<uint32_t>> counters;
+  std::vector<void*> counter_ptrs;
+  for (int i = 0; i < num_devices_; ++i) {
+    auto c = executors_[i]->AllocateArray<uint32_t>(1);
+    // It is ok to initialize the counter to 0,
+    // as the kernel pre-increments signal_value.
+    ASSERT_OK(streams_[i]->MemZero(&c, sizeof(uint32_t)));
+    counters.push_back(c);
+    counter_ptrs.push_back(c.opaque());
+  }
+
+  // 4. Launch Kernel REPEATEDLY 8 times to verify auto-increment
+  for (int step = 0; step < 8; ++step) {
+    for (int i = 0; i < num_devices_; ++i) {
+      ASSERT_OK_AND_ASSIGN(
+          auto kernel,
+          (GpuKernelRegistry::GetGlobalRegistry()
+               .LoadKernel<MultiGpuBarrierWithNcclKernel>(executors_[i])));
+
+      ASSERT_OK(kernel.Launch(ThreadDim(num_devices_, 1, 1), BlockDim(1, 1, 1),
+                              streams_[i].get(), static_cast<int64_t>(i),
+                              static_cast<int64_t>(num_devices_),
+                              symmetric_memory[i].get(), counters[i]));
     }
   }
 
