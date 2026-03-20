@@ -43,11 +43,6 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-// Fusion mode selects what op types can start a fusion.
-// - dot: Grow fusions from dot ops.
-// - single_dot: Each fusion has just one op, which is the dot.
-// - greedy: Grow fusions from dot or elementwise ops.
-// - reduce: Grow fusions from dot or reduce ops.
 struct DotRewriteTestSpec {
   std::string lib;
   std::string in_dtype;
@@ -92,11 +87,7 @@ class CpuLibraryTest : public TargetMachineTestBase {
 
     // Run the pass.
     tsl::protobuf::RepeatedField<int> fusion_types;
-    if (spec.fusion_mode == "single_dot") {
-      fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
-    } else {
-      fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_DOT);
-    }
+    fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_DOT);
     if (spec.fusion_mode == "greedy") {
       fusion_types.Add(DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE);
     }
@@ -662,31 +653,6 @@ TEST_F(CpuLibraryTest, UpdateFusion) {
   spec.fusion_mode = "dot";
   RunTestInternal(spec, hlo_template,
                   FusionProperties{HloOpcode::kAdd, 3, 8, true});
-}
-
-TEST_F(CpuLibraryTest, SingleDotFusion) {
-  //   b -------     c
-  //    \       \     \
-  // a -- mul -- dot -- add
-  //
-  // Only the dot should be in the fusion for "single_dot" mode.
-  const absl::string_view hlo_template = R"(
-    HloModule matmul
-
-    ENTRY %main {
-      %a = $in_dtype[64,64] parameter(0)
-      %b = $in_dtype[64,64] parameter(1)
-      %c = $in_dtype[64,64] parameter(2)
-      %mul = $in_dtype[64,64] multiply(%a, %b)
-      %dot = $in_dtype[64,64] dot(%mul, %b), lhs_contracting_dims={1},
-                                            rhs_contracting_dims={0}
-      ROOT %add = $in_dtype[64,64] add(%b, %c)
-    })";
-
-  DotRewriteTestSpec spec = GetDefaultTestSpec();
-  spec.fusion_mode = "single_dot";
-  RunTestInternal(spec, hlo_template,
-                  FusionProperties{HloOpcode::kDot, 2, 3, true});
 }
 
 }  // namespace
