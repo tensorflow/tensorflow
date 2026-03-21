@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/platform/enable_tf2_utils.h"
 
 #include <atomic>
+#include <cstdint>
+#include <string>
 
 #include "tensorflow/core/util/env_var.h"
 
