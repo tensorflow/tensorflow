@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
-#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/extensions/mhlo_extensions.h"
@@ -631,47 +630,6 @@ FuncOp cloneFuncRecursively(FuncOp funcOp,
         funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
   });
   return clonedFuncOp;
-}
-
-void maybeInsertReshardsOnFuncArguments(FuncOp funcOp, CallOp callOp,
-                                        const SymbolTable& symbolTable,
-                                        mlir::IRRewriter& rewriter) {
-  if (TensorShardingPerValueAttr funcArgShardings =
-          getFuncArgShardings(funcOp, symbolTable)) {
-    rewriter.setInsertionPoint(callOp);
-    for (auto [funcArgSharding, operand] : llvm::zip_equal(
-             funcArgShardings.getShardings(), callOp->getOpOperands())) {
-      mlir::sdy::TensorShardingAttr callArgSharding =
-          mlir::sdy::getSharding(operand.get());
-      if (!funcArgSharding.isEquivalent(callArgSharding)) {
-        auto copyOp = mlir::mhlo::CopyOp::create(
-            rewriter, operand.get().getLoc(), operand.get());
-        mlir::sdy::setShardings(copyOp, funcArgSharding);
-        operand.set(copyOp);
-      }
-    }
-  }
-}
-
-void maybeInsertReshardsOnFuncResults(FuncOp funcOp, CallOp callOp,
-                                      const SymbolTable& symbolTable,
-                                      mlir::IRRewriter& rewriter) {
-  if (TensorShardingPerValueAttr funcResultShardings =
-          getFuncResultShardings(funcOp, symbolTable)) {
-    for (auto [funcResultSharding, result] : llvm::zip_equal(
-             funcResultShardings.getShardings(), callOp.getResults())) {
-      mlir::sdy::TensorShardingAttr callResultSharding =
-          mlir::sdy::getSharding(result);
-      if (!funcResultSharding.isEquivalent(callResultSharding)) {
-        rewriter.setInsertionPointAfterValue(result);
-        auto copyOp =
-            mlir::mhlo::CopyOp::create(rewriter, result.getLoc(), result);
-        mlir::sdy::setShardings(copyOp, callResultSharding);
-        rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
-      }
-    }
-    mlir::sdy::setShardings(callOp, funcResultShardings);
-  }
 }
 
 }  // namespace sdy
