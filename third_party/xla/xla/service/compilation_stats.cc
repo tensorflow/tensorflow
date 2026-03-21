@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "xla/service/compilation_stats.h"
 
-#include <iostream>
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_format.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/types.h"
 #include "tsl/platform/env.h"
 
