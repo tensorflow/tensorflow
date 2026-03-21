@@ -812,10 +812,12 @@ absl::Status OpKernelContext::allocate_output(int index,
                             " kernel=", params_->op_kernel->name());
   }
   if (mutable_output(index) != nullptr) {
-    return errors::Internal("allocate_output on same index multiple times.",
-                            " index = ", index,
-                            " mutable_output(index) = ", mutable_output(index),
-                            " kernel=", params_->op_kernel->name());
+    return absl::InternalError(absl::StrFormat(
+        "allocate_output on same index multiple times."
+        " index = %d"
+        " mutable_output(index) = %p"
+        " kernel=%s",
+        index, mutable_output(index), params_->op_kernel->name()));
   }
   if (attr.scope_id > 0) {
     maybe_initialize_scope_id_set();
