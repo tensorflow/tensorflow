@@ -66,6 +66,8 @@ void registerStablehloImportPipeline();
 
 // Add the xla-sdy-stablehlo-import-pipeline in `pm`. The pipeline, including a
 // sequence of passes, imports a StableHLO module into the SDY (Shardy) dialect.
+// It is a wrapper of SDY import pipeline that first converts from mhlo
+// shardings to Shardy dialect shardings and calls SDY import pipeline.
 //
 // `allowPropagationToArgs` and `allowPropagationToResults` indicate for each
 // argument and result of the main function respectively, whether their existing
@@ -74,10 +76,13 @@ void registerStablehloImportPipeline();
 // - be empty, in which case the default is false for all args/results.
 // - have a single element, in which case the value applies to all args/results.
 // - have the same number of elements as the number of args/results.
+// TODO(enver): Drop Stablehlo import pipeline in favor of Sdy import pipeline
+// after HloShardingV3 is enabled.
 void addStablehloImportPipeline(
     mlir::OpPassManager& pm, mlir::ArrayRef<bool> allowPropagationToArgs,
     mlir::ArrayRef<bool> allowPropagationToResults,
-    bool enableStablehloCanonicalizeFromHloImport = true);
+    bool enableStablehloCanonicalizeFromHloImport = true,
+    bool use_stablehlo_shard_map_import = false);
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
 // `sdy.sharding`.

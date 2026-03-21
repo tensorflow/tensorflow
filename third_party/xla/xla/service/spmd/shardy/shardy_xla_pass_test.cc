@@ -741,7 +741,7 @@ TEST_F(ShardyXLATest, ShardMap) {
       ROOT add = f32[] add(p0, p1)
     }
 
-    shmap_body.11 {
+    xla.sdy.manual_computation_body.11 {
       Arg_0.12 = f32[2,8] parameter(0)
       add.14 = f32[2,8] add(Arg_0.12, Arg_0.12)
       Arg_1.13 = f32[8,32] parameter(1)
@@ -751,18 +751,16 @@ TEST_F(ShardyXLATest, ShardMap) {
 
     ENTRY main {
       p0 = f32[8,16] parameter(0)
-      custom-call.3 = f32[8,16] custom-call(p0), custom_call_target="Sharding", sharding={devices=[4,2]<=[8]}
-      custom-call.4 = f32[2,8] custom-call(custom-call.3), custom_call_target="SPMDFullToShardShape", sharding={manual}
       p1 = f32[16,32] parameter(1)
-      custom-call.5 = f32[16,32] custom-call(p1), custom_call_target="Sharding", sharding={devices=[2,1,4]<=[4,2]T(1,0) last_tile_dim_replicate}
-      custom-call.6 = f32[8,32] custom-call(custom-call.5), custom_call_target="SPMDFullToShardShape", sharding={manual}
-      call.17 = f32[2,32] call(custom-call.4, custom-call.6), to_apply=shmap_body.11
-      custom-call.18 = f32[2,32] custom-call(call.17), custom_call_target="Sharding", sharding={manual}
-      ROOT custom-call.19 = f32[8,32] custom-call(custom-call.18), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,2]<=[8] last_tile_dim_replicate}
+      %custom-call.2 = (f32[2,8], f32[8,32]) custom-call(p0, p1), custom_call_target="xla.sdy.GlobalToLocalShape", frontend_attributes={xla.sdy.in_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=4, \"b\"=2]>, [{\"a\"}, {\"b\"}]>, <mesh<[\"a\"=4, \"b\"=2]>, [{\"b\"}, {}], replicated={\"a\"}>]>",xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>"}
+      %get-tuple-element.2 = f32[2,8] get-tuple-element(%custom-call.2), index=0
+      %get-tuple-element.3 = f32[8,32] get-tuple-element(%custom-call.2), index=1
+      %call.1 = f32[2,32] call(%get-tuple-element.2, %get-tuple-element.3), to_apply=xla.sdy.manual_computation_body.11
+      ROOT %custom-call.3 = f32[8,32] custom-call(%call.1), custom_call_target="xla.sdy.LocalToGlobalShape", frontend_attributes={xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>",xla.sdy.out_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=4, \"b\"=2]>, [{\"a\"}, {}], replicated={\"b\"}>]>"}
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardyWithStablehloImport(module.get());
+  runShardyWithSdyImport(module.get());
 
   // The entry computation, the region_add for the all-reduce, and the
   // shmap_body.
