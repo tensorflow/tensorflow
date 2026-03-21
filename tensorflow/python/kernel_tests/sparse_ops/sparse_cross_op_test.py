@@ -1267,6 +1267,7 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
       )
       self.evaluate(op)
 
+<<<<<<< HEAD
   @test_util.run_in_graph_and_eager_modes
   def test_invalid_dtype_dense_cross_hashed(self):
     inp_float = constant_op.constant([[1.0], [2.0]], dtypes.float64)
@@ -1354,6 +1355,34 @@ class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
       )
       self.evaluate(op)
 
+=======
+  def test_sparse_cross_hashed_with_dense_inputs_and_strong_hash(self):
+    dense = constant_op.constant([[1], [2]], dtype=dtypes.int64)
+    idx = constant_op.constant([[0, 0], [1, 0]], dtype=dtypes.int64)
+    shape = constant_op.constant([2, 1], dtype=dtypes.int64)
+    val1 = constant_op.constant(["a", "b"], dtype=dtypes.string)
+    val2 = constant_op.constant(["c", "d"], dtype=dtypes.string)
+
+    indices = [idx, idx]
+    values = [val1, val2]
+    shapes = [shape, shape]
+    dense_inputs = [dense]
+    num_buckets = 101
+    salt = [1234, 5678]
+    strong_hash = True
+    _ = gen_sparse_ops.sparse_cross_hashed(
+      indices=indices,
+      values=values,
+      shapes=shapes,
+      dense_inputs=dense_inputs,
+      num_buckets=num_buckets,
+      salt=salt,
+      strong_hash=strong_hash,
+    )
+
+    with session.Session():
+      self.assertTrue(True)    
+>>>>>>> c7e707938bd (add missing & in reinterpret_cast in KeyedDenseTensorColumn<int64_t>::Feature)
 
 if __name__ == '__main__':
   test.main()
