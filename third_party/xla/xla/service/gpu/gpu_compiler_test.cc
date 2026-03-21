@@ -543,6 +543,211 @@ TEST_F(GpuCompilerTest, AnnotatesPipelinedInstructions) {
   EXPECT_TRUE(filecheck_matched);
 }
 
+TEST_F(GpuCompilerTest, AnnotatesPipelinedCollectivePermute) {
+  // Simple IR with CollectivePermute subjectible to pipelining.
+  absl::string_view kHloString = R"(
+     HloModule module
+      while_cond {
+        param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+        gte = s32[] get-tuple-element(param), index=0
+        constant.1 = s32[] constant(3)
+        ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+      }
+
+      while_body {
+        param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+        current-loop-index = s32[] get-tuple-element(param), index=0
+        output-buffer = bf16[3,8,128] get-tuple-element(param), index=1
+        input-buffer = bf16[3,8,128] get-tuple-element(param), index=2
+        constant.1 = s32[] constant(1)
+        next-loop-index = s32[] add(current-loop-index, constant.1)
+        constant.0 = s32[] constant(0)
+        sliced-input-buffer = bf16[1,8,128] dynamic-slice(input-buffer,
+          current-loop-index, constant.0, constant.0),
+            dynamic_slice_sizes={1,8,128}
+        collective-permute = bf16[1,8,128] collective-permute(sliced-input-buffer),
+          source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, channel_id=1
+        dynamic-update-slice = bf16[3,8,128] dynamic-update-slice(output-buffer,
+          collective-permute, current-loop-index, constant.0, constant.0)
+        ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(
+        next-loop-index, dynamic-update-slice, input-buffer)
+      }
+
+      ENTRY entry {
+        c0 = s32[] constant(1)
+        p0 = bf16[3,8,128] parameter(0)
+        tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+        while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple),
+          condition=while_cond, body=while_body
+        ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+      }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_enable_enzyme_comms_opt(true);
+  ASSERT_OK_AND_ASSIGN(auto module_and_executable,
+                       GetOptimizedModuleForExecutable(kHloString, config));
+  const HloModule* module = module_and_executable.first;
+
+  absl::string_view kExpected = R"(
+    CHECK: collective-permute-start{{.*}}"is_pipelined":true
+  )";
+  HloPrintOptions options;
+  options.set_print_operand_shape(false);
+  options.set_print_result_shape(false);
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(options), kExpected));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(GpuCompilerTest, AnnotatesPipelinedCollectivePermuteWithParameterBound) {
+  // Simple IR with CollectivePermute subjectible to pipelining, where the loop
+  // bound is passed as a parameter.
+  absl::string_view kHloString = R"(
+     HloModule module
+      while_cond {
+        param = (s32[], bf16[3,8,128], bf16[3,8,128], s32[]) parameter(0)
+        gte = s32[] get-tuple-element(param), index=0
+        limit = s32[] get-tuple-element(param), index=3
+        ROOT cmp = pred[] compare(gte, limit), direction=LT
+      }
+
+      while_body {
+        param = (s32[], bf16[3,8,128], bf16[3,8,128], s32[]) parameter(0)
+        current-loop-index = s32[] get-tuple-element(param), index=0
+        output-buffer = bf16[3,8,128] get-tuple-element(param), index=1
+        input-buffer = bf16[3,8,128] get-tuple-element(param), index=2
+        limit = s32[] get-tuple-element(param), index=3
+        constant.1 = s32[] constant(1)
+        next-loop-index = s32[] add(current-loop-index, constant.1)
+        constant.0 = s32[] constant(0)
+        sliced-input-buffer = bf16[1,8,128] dynamic-slice(input-buffer,
+          current-loop-index, constant.0, constant.0),
+            dynamic_slice_sizes={1,8,128}
+        collective-permute = bf16[1,8,128] collective-permute(sliced-input-buffer),
+          source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, channel_id=1
+        dynamic-update-slice = bf16[3,8,128] dynamic-update-slice(output-buffer,
+          collective-permute, current-loop-index, constant.0, constant.0)
+        ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128], s32[]) tuple(
+        next-loop-index, dynamic-update-slice, input-buffer, limit)
+      }
+
+      ENTRY entry {
+        c0 = s32[] constant(1)
+        p0 = bf16[3,8,128] parameter(0)
+        limit = s32[] parameter(1)
+        tuple = (s32[], bf16[3,8,128], bf16[3,8,128], s32[]) tuple(c0, p0, p0, limit)
+        while = (s32[], bf16[3,8,128], bf16[3,8,128], s32[]) while(tuple),
+          condition=while_cond, body=while_body
+        ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+      }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_enable_enzyme_comms_opt(true);
+  ASSERT_OK_AND_ASSIGN(auto module_and_executable,
+                       GetOptimizedModuleForExecutable(kHloString, config));
+  const HloModule* module = module_and_executable.first;
+
+  absl::string_view kExpected = R"(
+    CHECK: collective-permute-start{{.*}}"is_pipelined":true
+  )";
+  HloPrintOptions options;
+  options.set_print_operand_shape(false);
+  options.set_print_result_shape(false);
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(options), kExpected));
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(GpuCompilerTest, AnnotatesPipelinedCollectivePermuteLoopVariant) {
+  // Simple IR with CollectivePermute subjectible to pipelining, with
+  // loop-variant parameters.
+  absl::string_view kHloString = R"(
+     HloModule module
+      while_cond {
+        param = (s32[], s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+        gte = s32[] get-tuple-element(param), index=0
+        bound = s32[] get-tuple-element(param), index=1
+        ROOT cmp = pred[] compare(gte, bound), direction=LT
+      }
+
+      while_body {
+        param = (s32[], s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+        current-loop-index = s32[] get-tuple-element(param), index=0
+        bound = s32[] get-tuple-element(param), index=1
+        output-buffer = bf16[3,8,128] get-tuple-element(param), index=2
+        input-buffer = bf16[3,8,128] get-tuple-element(param), index=3
+        constant.1 = s32[] constant(1)
+        next-loop-index = s32[] add(current-loop-index, constant.1)
+        constant.0 = s32[] constant(0)
+        sliced-input-buffer = bf16[1,8,128] dynamic-slice(input-buffer,
+          current-loop-index, constant.0, constant.0),
+            dynamic_slice_sizes={1,8,128}
+        collective-permute = bf16[1,8,128] collective-permute(sliced-input-buffer),
+          source_target_pairs={{0,1},{1,2},{2,3},{3,0}}, channel_id=1
+        dynamic-update-slice = bf16[3,8,128] dynamic-update-slice(output-buffer,
+          collective-permute, current-loop-index, constant.0, constant.0)
+        ROOT tuple = (s32[], s32[], bf16[3,8,128], bf16[3,8,128]) tuple(
+        next-loop-index, bound, dynamic-update-slice, input-buffer)
+      }
+
+      ENTRY entry {
+        c0 = s32[] constant(1)
+        p0 = bf16[3,8,128] parameter(0)
+        p1 = s32[] parameter(1)
+        tuple = (s32[], s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p1, p0, p0)
+        while = (s32[], s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple),
+          condition=while_cond, body=while_body
+        ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=2
+      }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto& debug_options = config.mutable_debug_options();
+  debug_options.set_xla_enable_enzyme_comms_opt(true);
+  ASSERT_OK_AND_ASSIGN(auto module_and_executable,
+                       GetOptimizedModuleForExecutable(kHloString, config));
+  const HloModule* module = module_and_executable.first;
+
+  absl::string_view kExpected = R"(
+    CHECK: collective-permute-start{{.*}}"is_pipelined":true
+  )";
+  HloPrintOptions options;
+  options.set_print_operand_shape(false);
+  options.set_print_result_shape(false);
+  ASSERT_OK_AND_ASSIGN(bool filecheck_matched,
+                       RunFileCheck(module->ToString(options), kExpected));
+  if (!filecheck_matched) {
+    LOG(INFO) << module->ToString(options);
+  }
+  EXPECT_TRUE(filecheck_matched);
+}
+
+TEST_F(GpuCompilerTest, ValidateFullInputIR) {
+  tsl::Env* env = tsl::Env::Default();
+  std::string file_path =
+      "/usr/local/google/home/wmoses/async_permute/"
+      "simulation-xla-dump-linux-x86-a2-48-a100-4gpu-1.11--main-mst3/"
+      "xla_dump_run/"
+      "module_0051.reactant_loop_.0092.collective-optimizations.after_pipeline-"
+      "start.before_ragged-all-to-all-canonicalizer.txt";
+  std::string hlo_text;
+  TF_ASSERT_OK(tsl::ReadFileToString(env, file_path, &hlo_text));
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
+
+  ASSERT_OK_AND_ASSIGN(auto module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_text, config));
+  const HloModule* module = module_and_executable.first;
+
+  std::string opt_hlo = module->ToString();
+  EXPECT_TRUE(absl::StrContains(opt_hlo, "\"is_pipelined\":true"));
+}
+
 TEST_F(GpuCompilerTest, RemovesUnnecessaryCopyAfterScheduling) {
   const absl::string_view hlo_string = R"(
 HloModule all_gather_overlapping
