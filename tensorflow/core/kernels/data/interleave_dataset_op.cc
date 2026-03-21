@@ -82,7 +82,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
             {{"block_length",
               strings::Printf("%lld", static_cast<long long>(block_length))},
              {"cycle_length",
-              strings::Printf("%lld", static_cast<long long>(cycle_length))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(cycle_length))}}) {
     input_->Ref();
   }
 
