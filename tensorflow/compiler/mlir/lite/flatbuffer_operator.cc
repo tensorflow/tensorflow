@@ -364,7 +364,7 @@ static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
       BuildRankedTensorAttr(shape, value, builder));
   auto vhlo_type = type_converter.convertType(builtin_attr.getType());
   return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
-                                       builtin_attr.getRawData());
+                                       builtin_attr);
 }
 
 static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
@@ -375,7 +375,7 @@ static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
       BuildRankedTensorAttr(shape, value, builder));
   auto vhlo_type = type_converter.convertType(builtin_attr.getType());
   return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
-                                       builtin_attr.getRawData());
+                                       builtin_attr);
 }
 
 static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
@@ -386,7 +386,7 @@ static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
       BuildRankedTensorAttr(shape, value, builder));
   auto vhlo_type = type_converter.convertType(builtin_attr.getType());
   return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
-                                       builtin_attr.getRawData());
+                                       builtin_attr);
 }
 
 static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
@@ -397,7 +397,7 @@ static mlir::Attribute BuildVhloTensorV1Attr(std::vector<int64_t> shape,
       BuildRankedTensorAttr(shape, value, builder));
   auto vhlo_type = type_converter.convertType(builtin_attr.getType());
   return mlir::vhlo::TensorV1Attr::get(builder.getContext(), vhlo_type,
-                                       builtin_attr.getRawData());
+                                       builtin_attr);
 }
 
 static mlir::Attribute BuildVhloPrecisionConfigV1Attr(

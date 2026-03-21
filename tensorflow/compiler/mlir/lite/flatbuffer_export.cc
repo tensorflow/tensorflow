@@ -1123,10 +1123,8 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   } else if (auto cst = dyn_cast<mlir::vhlo::ConstantOpV1>(inst)) {
     mlir::VhloToStablehloTypeConverter vhlo_type_converter;
     auto tensor_v1_attr = mlir::cast<mlir::vhlo::TensorV1Attr>(cst.getValue());
-    attr = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
-        mlir::cast<mlir::ShapedType>(
-            vhlo_type_converter.convertType(tensor_v1_attr.getType())),
-        tensor_v1_attr.getData());
+    attr = mlir::DenseElementsAttr::get(tensor_v1_attr.getData().getType(),
+                                        tensor_v1_attr.getData().getRawData());
   } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
     attr = cst.getCompressedData();
   } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
@@ -2082,10 +2080,9 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
       mlir::VhloToStablehloTypeConverter vhlo_type_converter;
       auto tensor_v1_attr = mlir::cast<mlir::vhlo::TensorV1Attr>(attr);
 
-      auto dense = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
-          mlir::cast<mlir::ShapedType>(
-              vhlo_type_converter.convertType(tensor_v1_attr.getType())),
-          tensor_v1_attr.getData());
+      auto dense =
+          mlir::DenseElementsAttr::get(tensor_v1_attr.getData().getType(),
+                                       tensor_v1_attr.getData().getRawData());
       auto type = mlir::cast<TensorType>(dense.getType());
       tflite::TensorType tflite_element_type =
           GetTFLiteType(type.getElementType()).value();
