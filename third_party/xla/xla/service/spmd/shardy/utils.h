@@ -209,6 +209,23 @@ mlir::func::FuncOp cloneFuncRecursively(
     mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
     mlir::SymbolTable& symbolTable);
 
+// Adds reshard/copy operations to resolve conflicts between call argument
+// sharding and func input sharding. Does not insert reshards in case `funcOp`
+// does not have a non-empty `TensorShardingPerValueAttr` for its arguments.
+void maybeInsertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
+                                        mlir::func::CallOp callOp,
+                                        const mlir::SymbolTable& symbolTable,
+                                        mlir::IRRewriter& rewriter);
+
+// Adds reshard/copy operations to resolve conflicts between call result
+// sharding and func output sharding. Sets the call result sharding to the func
+// output shardings. Does not insert reshards in case `funcOp` does not have a
+// non-empty `TensorShardingPerValueAttr` for its results.
+void maybeInsertReshardsOnFuncResults(mlir::func::FuncOp funcOp,
+                                      mlir::func::CallOp callOp,
+                                      const mlir::SymbolTable& symbolTable,
+                                      mlir::IRRewriter& rewriter);
+
 }  // namespace sdy
 }  // namespace xla
 
