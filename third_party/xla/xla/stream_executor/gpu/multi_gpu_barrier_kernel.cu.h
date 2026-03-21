@@ -23,11 +23,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 
-#if NCCL_VERSION_CODE >= 22800
-// Device initiated collective operations were added in NCCL 2.28.0.
-#include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22800
-
 namespace stream_executor::gpu {
 
 template <PlatformType PlatformT>
