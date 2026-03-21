@@ -597,8 +597,7 @@ absl::Status CommonPjRtClient::PrepareArguments(
           expected_shape.IsArray() && on_device_shape.IsArray() &&
           // Dynamic shapes cannot be compared directly.
           expected_shape.is_static() && on_device_shape.is_static() &&
-          !xla::Shape::Equal().IgnoreMemorySpaceInLayout()(expected_shape,
-                                                           on_device_shape)) {
+          expected_shape != on_device_shape) {
         return InvalidArgument(
             "Buffer passed to Execute() as argument %d to replica %d has "
             "unexpected shape: %s (expected %s).",
