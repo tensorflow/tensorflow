@@ -64,18 +64,11 @@ FuncOp getFuncOpOrDie(StringRef funcSymName, const SymbolTable& symbolTable) {
   return funcOp;
 }
 TensorShardingPerValueAttr getFuncArgShardings(FuncOp funcOp,
-                                               const SymbolTable& symbolTable,
-                                               bool dedupFunctionsFully) {
-  if (dedupFunctionsFully) {
-    return TensorShardingPerValueAttr();
-  }
+                                               const SymbolTable& symbolTable) {
   return sdy::getFuncArgShardings(funcOp, symbolTable);
 }
 TensorShardingPerValueAttr getFuncResultShardings(
-    FuncOp funcOp, const SymbolTable& symbolTable, bool dedupFunctionsFully) {
-  if (dedupFunctionsFully) {
-    return TensorShardingPerValueAttr();
-  }
+    FuncOp funcOp, const SymbolTable& symbolTable) {
   return sdy::getFuncResultShardings(funcOp, symbolTable);
 }
 ManualAxesAttr getManualAxesAttr(FuncOp funcOp) {
@@ -118,10 +111,9 @@ class UnflattenCallGraphPass
     moduleOp.walk([&](CallOp callOp) {
       FuncOp funcOp = getFuncOpOrDie(callOp.getCallee(), symbolTable);
       StringAttr originalFuncName = getOriginalFuncName(funcOp);
-      ComputationKey key = {
-          originalFuncName, getManualAxesAttr(funcOp),
-          getFuncArgShardings(funcOp, symbolTable, dedupFunctionsFully),
-          getFuncResultShardings(funcOp, symbolTable, dedupFunctionsFully)};
+      ComputationKey key = {originalFuncName, getManualAxesAttr(funcOp),
+                            getFuncArgShardings(funcOp, symbolTable),
+                            getFuncResultShardings(funcOp, symbolTable)};
       if (auto it = funcCache.find(key); it != funcCache.end()) {
         FuncOp& cachedFuncOp = it->second;
         callOp.setCallee(cachedFuncOp.getName());
