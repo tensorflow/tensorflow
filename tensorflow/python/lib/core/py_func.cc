@@ -156,7 +156,7 @@ absl::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
                                           TFE_Context* ctx,
                                           const Device* expected_device,
                                           const Tensor** output_tensor) {
-  tensorflow::TensorHandle* handle = down_cast<tensorflow::TensorHandle*>(
+  tensorflow::TensorHandle* handle = absl::down_cast<TensorHandle*>(
       tensorflow::unwrap(ctx)->TFTensorHandleFromInterface(
           tensorflow::unwrap(EagerTensor_Handle(eager_tensor))));
 
