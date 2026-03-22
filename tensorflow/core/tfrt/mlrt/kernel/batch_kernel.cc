@@ -291,7 +291,7 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
 
   std::vector<mlrt::Value> results(batch_function_.output_regs().size());
 
-  const auto& task = down_cast<const MlrtBatchTask&>(last_task);
+  const auto& task = absl::down_cast<const MlrtBatchTask&>(last_task);
   DCHECK(task.context);
   mlrt::ExecutionContext& caller_context = *task.caller_context;
 
