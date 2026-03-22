@@ -199,6 +199,7 @@ cc_library(
         "//xla/codegen:trace_pass_instrumentation",
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/emitters/ir:xla_attrs_inc_gen",
+        "//xla/codegen/emitters/ir:xla_to_llvm_ir_translation",
         "//xla/codegen/emitters/transforms:lower_to_llvm_cpu_pass",
         "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",

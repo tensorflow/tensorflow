@@ -60,6 +60,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Export.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
+#include "xla/codegen/emitters/ir/xla_to_llvm_ir_translation.h"
 #include "xla/pjrt/triton.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -145,6 +146,7 @@ absl::StatusOr<std::string> LLVMToPTX(mlir::ModuleOp module,
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
+  xla::registerXlaDialectTranslation(registry);
   module.getContext()->appendDialectRegistry(registry);
 
   llvm::LLVMContext llvmContext;
@@ -226,6 +228,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);
+  xla::registerXlaDialectTranslation(registry);
   context.appendDialectRegistry(registry);
 
   mlir::OwningOpRef<mlir::ModuleOp> module_op =

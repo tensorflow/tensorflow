@@ -220,7 +220,7 @@ cc_library(
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
         "//xla/codegen:ir_printing",
-        "//xla/codegen/emitters/ir:xla",
+        "//xla/codegen/emitters/ir:xla_to_llvm_ir_translation",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiling_specification",

@@ -110,6 +110,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xla_to_llvm_ir_translation",
+    srcs = ["xla_to_llvm_ir_translation.cc"],
+    hdrs = ["xla_to_llvm_ir_translation.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":xla",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:ToLLVMIRTranslation",
+    ],
+)
+
 xla_test(
     name = "xla_ops_test",
     srcs = ["xla_ops_test.cc"],

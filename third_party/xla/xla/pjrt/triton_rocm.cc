@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
+#include "xla/codegen/emitters/ir/xla_to_llvm_ir_translation.h"
 #include "xla/debug_options_flags.h"
 #include "xla/pjrt/triton.h"
 #include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
@@ -84,6 +85,7 @@ absl::StatusOr<std::string> LLVMToHSACO(mlir::ModuleOp module,
   mlir::registerBuiltinDialectTranslation(registry);
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);
+  xla::registerXlaDialectTranslation(registry);
   module.getContext()->appendDialectRegistry(registry);
 
   stream_executor::RocmComputeCapability rocm_cc =
@@ -131,6 +133,7 @@ absl::StatusOr<CompilationResult> Compile(absl::string_view module,
   mlir::DialectRegistry registry;
   mlir::func::registerInlinerExtension(registry);
   mlir::LLVM::registerInlinerInterface(registry);
+  xla::registerXlaDialectTranslation(registry);
   context.appendDialectRegistry(registry);
 
   mlir::OwningOpRef<mlir::ModuleOp> module_op =
