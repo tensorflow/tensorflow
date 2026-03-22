@@ -153,7 +153,7 @@ absl::Status RunCallbackOnStream(se::Stream* stream,
                                  absl::AnyInvocable<void() &&> callback) {
   return stream->DoHostCallbackWithStatus(
       [cb = std::move(callback), async_work_runner]() mutable {
-        async_work_runner->Schedule(
+        async_work_runner->Execute(
             [cb_ptr = new absl::AnyInvocable<void() &&>(std::move(cb))]() {
               std::move (*cb_ptr)();
               delete cb_ptr;
@@ -1168,7 +1168,7 @@ void StreamExecutorGpuClient::ScheduleRemoteSend(
           SetEventAsError(usage_event, serialized_descriptor.status());
         }
         auto events = absl::MakeSpan(definition_events);
-        async_work_runner()->ScheduleWhenReady(
+        async_work_runner()->ExecuteWhenReady(
             events,
             [this, on_done = std::move(on_done),
              gpu_collectives = std::move(gpu_collectives),
@@ -1306,7 +1306,8 @@ StreamExecutorGpuClient::MakeCrossHostReceiveBuffers(
       SetEventAsError(definition_event, s);
     }
   };
-  async_work_runner()->Schedule(recv);
+  absl::AnyInvocable<void() &&> work = recv;
+  async_work_runner()->Execute(std::move(work));
 
   std::vector<std::unique_ptr<PjRtBuffer>> buffers;
   buffers.push_back(std::move(receive_prep_result.buffer));
