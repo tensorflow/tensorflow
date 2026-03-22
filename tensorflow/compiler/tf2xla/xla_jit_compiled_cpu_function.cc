@@ -202,7 +202,7 @@ XlaJitCompiledCpuFunction::Compile(
             compilation_result->proto());
 
     auto compiled_function_library =
-        tsl::down_cast<xla::cpu::CompiledFunctionLibrary*>(
+        absl::down_cast<xla::cpu::CompiledFunctionLibrary*>(
             cpu_executable->function_library());
 
     if (!compiled_function_library) {
