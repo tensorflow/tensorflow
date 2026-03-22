@@ -191,12 +191,12 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
     const LiteralSlice& literal, const xla::Layout& layout,
     AsyncWorkRunner* async_work_runner) {
   auto event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-  async_work_runner->Schedule([literal, layout, event, buffer = buffer_]() {
+  async_work_runner->Execute([literal, layout, event, buffer = buffer_]() {
     CHECK(buffer.IsConcrete());
     const xla::Shape& shape = literal.shape();
     if ((!shape.has_layout() &&
          !xla::LayoutUtil::IsMonotonicWithDim0Major(layout)) ||
-        (shape.layout() != layout)) {
+        shape.layout() != layout) {
       auto shape_copy = xla::ShapeUtil::MakeShape(
           literal.shape().element_type(), literal.shape().dimensions());
       shape_copy.mutable_layout()->mutable_minor_to_major()->assign(
@@ -302,10 +302,10 @@ CpuRawBuffer::CopyFromHostBuffer(
           tsl::MakeConstructedAsyncValueRef<CpuEvent>();
       auto result = tsl::MakeRef<CpuTrackedDeviceEvent>(
           copy_event.CopyRef(), "CpuRawBuffer", "CopyFromHostBuffer");
-      async_work_runner->Schedule([device_buffer, dst_data_ptr, data, byte_size,
-                                   copy_event = std::move(copy_event),
-                                   on_done_with_host_buffer = std::move(
-                                       on_done_with_host_buffer)]() mutable {
+      async_work_runner->Execute([device_buffer, dst_data_ptr, data, byte_size,
+                                  copy_event = std::move(copy_event),
+                                  on_done_with_host_buffer = std::move(
+                                      on_done_with_host_buffer)]() mutable {
         tsl::profiler::TraceMe traceme("H2D Dispatch");
         std::memcpy(dst_data_ptr, data, byte_size);
         if (on_done_with_host_buffer) {
