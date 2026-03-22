@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
@@ -81,7 +82,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                cpu_backend_context->max_num_threads());
 
   TfLiteIntArray* scratch_shape = TfLiteIntArrayCreate(1);
-  scratch_shape->data[0] = thread_count * NumElements(input1);
+  const int64_t scratch_elements =
+      static_cast<int64_t>(thread_count) * NumElements(input1);
+  TF_LITE_ENSURE(context,
+                  scratch_elements <= std::numeric_limits<int32_t>::max());
+  scratch_shape->data[0] = static_cast<int32_t>(scratch_elements);
   TF_LITE_ENSURE_OK(
       context, context->ResizeTensor(context, scratch_tensor, scratch_shape));
 
