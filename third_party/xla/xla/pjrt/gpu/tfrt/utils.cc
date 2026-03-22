@@ -426,7 +426,7 @@ SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
         tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
             std::move(se_event));
 
-    runner->Schedule([done_event, stream, src, channel_id, shape, send] {
+    runner->Execute([done_event, stream, src, channel_id, shape, send] {
       tsl::profiler::TraceMe trace([&] {
         return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::Send",
                                             {{"channel_id", channel_id}});

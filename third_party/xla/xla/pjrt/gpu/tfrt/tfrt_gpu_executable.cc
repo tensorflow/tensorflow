@@ -959,13 +959,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           }
         }
 
-        client->blocking_thread_pool()->ScheduleWhenReady(
+        client->blocking_thread_pool()->ExecuteWhenReady(
             input_deps, [execute_fn(std::move(execute_fn)),
                          inputs(std::move(inputs))]() mutable {
               execute_fn(std::move(inputs));
             });
       };
-  client_->non_blocking_thread_pool()->ScheduleWhenReady(
+  client_->non_blocking_thread_pool()->ExecuteWhenReady(
       prepare_input_deps, std::move(prepare_inputs));
 
   // Create output TFRT buffers.
@@ -1057,7 +1057,7 @@ TfrtGpuExecutable::Execute(
       // launch_id are run at the same time. We conservatively run only one
       // collective at a time, because we may not have enough threads to run
       // arbitrary number of collectives concurrently.
-      client_->non_blocking_thread_pool()->Schedule(
+      client_->non_blocking_thread_pool()->Execute(
           [this, replica, partition, i, &argument_handles, &options,
            &returned_futures, &wrapped_results, &mu, &running, &failed,
            &first_failure_status] {

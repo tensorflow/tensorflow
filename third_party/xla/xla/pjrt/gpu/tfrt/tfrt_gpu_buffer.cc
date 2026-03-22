@@ -155,7 +155,7 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
   };
 
   absl::StatusOr<Shape> shape_or;
-  client_->blocking_thread_pool()->ScheduleWhenReady(
+  client_->blocking_thread_pool()->ExecuteWhenReady(
       {device_buffer->definition_event().CopyRCRef()},
       [get_shape = std::move(get_shape), &shape_or,
        usage_event_holder = std::move(ready_on_exit)]() {
@@ -520,7 +520,7 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
       }
     }
   };
-  client_->blocking_thread_pool()->ScheduleWhenReady(
+  client_->blocking_thread_pool()->ExecuteWhenReady(
       {device_buffer->definition_event().CopyRCRef()}, std::move(d2h_copy));
 
   return FutureHelpers::WithProfiling(
@@ -643,7 +643,7 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
           LOG(ERROR) << "dst resolved to an error: " << dst_or.status();
           return;
         }
-        client->blocking_thread_pool()->ScheduleWhenReady(
+        client->blocking_thread_pool()->ExecuteWhenReady(
             {device_buffer->definition_event().CopyRCRef()},
             [dst = std::move(dst_or.value()), promise = std::move(promise),
              d2h_copy = std::move(d2h_copy)]() mutable {
@@ -832,7 +832,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
         }
       };
 
-  client_->blocking_thread_pool()->ScheduleWhenReady(
+  client_->blocking_thread_pool()->ExecuteWhenReady(
       {src_device_buffer->ready_event().CopyRCRef()}, std::move(transfer_d2d));
   return output_buffer;
 }
