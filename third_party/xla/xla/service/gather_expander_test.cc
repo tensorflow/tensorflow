@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "xla/service/gather_expander.h"
 
+#include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -24,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
