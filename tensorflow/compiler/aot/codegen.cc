@@ -1210,7 +1210,7 @@ absl::StatusOr<xla::EmbeddedConstantBuffers> GenerateConstantBuffersData(
                       std::move(*aot_thunk_result_temp).LoadExecutable());
 
   xla::cpu::CpuExecutable* cpu_executable =
-      tsl::down_cast<xla::cpu::CpuExecutable*>(executable.get());
+      absl::down_cast<xla::cpu::CpuExecutable*>(executable.get());
 
   std::vector<xla::ConstantToEmbed> constants_to_embed;
 
