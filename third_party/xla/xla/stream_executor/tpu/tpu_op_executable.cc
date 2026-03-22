@@ -87,7 +87,7 @@ absl::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     c_dev_assign.size = dev_assign_serialized.size;
   }
 
-  auto platform = down_cast<tpu::TpuPlatform*>(
+  auto platform = absl::down_cast<tpu::TpuPlatform*>(
       tpu::TpuPlatformInterface::GetRegisteredPlatform());
   auto stream = platform->LookupStream(run_options.run_options().stream());
   StatusHelper status;
