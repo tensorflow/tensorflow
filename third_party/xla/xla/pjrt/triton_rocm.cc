@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
