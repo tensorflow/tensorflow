@@ -39,7 +39,8 @@ namespace xla::cpu {
 namespace {
 
 absl::Status CustomCallThunkToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& custom_call_thunk = tsl::down_cast<const CustomCallThunk&>(thunk);
+  const auto& custom_call_thunk =
+      absl::down_cast<const CustomCallThunk&>(thunk);
   CustomCallThunkProto* custom_call_proto = proto.mutable_custom_call_thunk();
 
   custom_call_proto->set_target_name(custom_call_thunk.target_name());

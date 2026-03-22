@@ -52,7 +52,7 @@ namespace xla::cpu {
 namespace {
 
 absl::Status YnnFusionThunkToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& ynn_fusion_thunk = tsl::down_cast<const YnnFusionThunk&>(thunk);
+  const auto& ynn_fusion_thunk = absl::down_cast<const YnnFusionThunk&>(thunk);
   YnnFusionThunkProto* ynn_fusion_proto = proto.mutable_ynn_fusion_thunk();
   ynn_fusion_proto->mutable_options()->set_use_threadpool(
       ynn_fusion_thunk.options().use_threadpool);
