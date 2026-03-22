@@ -6228,5 +6228,80 @@ ENTRY entry {
   }
 }
 
+TEST_F(CollectivePipelinerTest, ForwardSinkWithNegatedConstantIndex) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+  add {
+    lhs = bf16[] parameter(0)
+    rhs = bf16[] parameter(1)
+    ROOT add = bf16[] add(lhs, rhs)
+  }
+
+  while_cond {
+    param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+    gte = s32[] get-tuple-element(param), index=0
+    constant.1 = s32[] constant(3)
+    ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+  }
+
+  while_body {
+    param = (s32[], bf16[3,8,128], bf16[3,8,128]) parameter(0)
+    i = s32[] get-tuple-element(param), index=0
+    buffer = bf16[3,8,128] get-tuple-element(param), index=1
+    input_data = bf16[3,8,128] get-tuple-element(param), index=2
+    c1 = s32[] constant(1)
+    i_next = s32[] add(i, c1)
+    c3 = s32[] constant(3)
+    sub = s32[] subtract(c3, i)
+    neg = s32[] negate(c1)
+    idx = s32[] add(sub, neg)
+    c0 = s32[] constant(0)
+    ds = bf16[1,8,128] dynamic-slice(input_data, idx, c0, c0), dynamic_slice_sizes={1,8,128}
+    mul = bf16[1,8,128] multiply(ds, ds)
+    ar = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
+    dus = bf16[3,8,128] dynamic-update-slice(buffer, ar, idx, c0, c0)
+    ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(i_next, dus, input_data)
+  }
+
+  ENTRY entry {
+    c0 = s32[] constant(0)
+    p0 = bf16[3,8,128] parameter(0)
+    tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(c0, p0, p0)
+    while = (s32[], bf16[3,8,128], bf16[3,8,128]) while(tuple), condition=while_cond, body=while_body
+    ROOT gte1 = bf16[3,8,128] get-tuple-element(while), index=1
+  }
+  )";
+
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(
+                  module.get(), /*last_run=*/true, /*level_to_operate_on=*/0,
+                  /*pipeline_use_tree=*/true,
+                  /*process_different_sized_ops=*/true,
+                  collective_pipeliner_utils::PipeliningDirection::kForwardSink)
+                  .value());
+  EXPECT_TRUE(HloPassFix<HloDCE>(/*remove_cross_partition_collective_ops=*/true)
+                  .Run(module.get())
+                  .value());
+
+  XLA_VLOG_LINES(1, module->ToString());
+
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  ASSERT_NE(while_instr, nullptr);
+
+  // Verify the all-reduce was successfully removed from the loop body
+  EXPECT_TRUE(absl::c_none_of(while_instr->while_body()->instructions(),
+                              [](const HloInstruction* instr) {
+                                return instr->opcode() == HloOpcode::kAllReduce;
+                              }));
+
+  // Verify the all-reduce was successfully sunk outside the loop
+  const HloInstruction* sunk_all_reduce =
+      FindInstruction(module.get(), HloOpcode::kAllReduce);
+  ASSERT_NE(sunk_all_reduce, nullptr);
+  EXPECT_EQ(sunk_all_reduce->parent(), module->entry_computation());
+}
+
 }  // namespace
 }  // namespace xla
