@@ -2115,11 +2115,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
           FindCanonicalSendRecvStartOp(instr);
       if (collectives_async_events.contains(canonical_send_instr)) {
         if (IsNvshmemCollective(instr)) {
-          tsl::down_cast<NvshmemSendThunk*>(thunk.get())
+          absl::down_cast<NvshmemSendThunk*>(thunk.get())
               ->set_async_events(
                   collectives_async_events[canonical_send_instr]);
         } else {
-          tsl::down_cast<SendThunk*>(thunk.get())
+          absl::down_cast<SendThunk*>(thunk.get())
               ->set_async_events(
                   collectives_async_events[canonical_send_instr]);
         }
@@ -2127,10 +2127,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSendThunk(
         if (IsNvshmemCollective(instr)) {
           collectives_async_events.try_emplace(
               instr,
-              tsl::down_cast<NvshmemSendThunk*>(thunk.get())->async_events());
+              absl::down_cast<NvshmemSendThunk*>(thunk.get())->async_events());
         } else {
           collectives_async_events.try_emplace(
-              instr, tsl::down_cast<SendThunk*>(thunk.get())->async_events());
+              instr, absl::down_cast<SendThunk*>(thunk.get())->async_events());
         }
       }
     }
@@ -2214,11 +2214,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvThunk(
           FindCanonicalSendRecvStartOp(instr);
       if (collectives_async_events.contains(canonical_recv_instr)) {
         if (IsNvshmemCollective(instr)) {
-          tsl::down_cast<NvshmemRecvThunk*>(thunk.get())
+          absl::down_cast<NvshmemRecvThunk*>(thunk.get())
               ->set_async_events(
                   collectives_async_events[canonical_recv_instr]);
         } else {
-          tsl::down_cast<RecvThunk*>(thunk.get())
+          absl::down_cast<RecvThunk*>(thunk.get())
               ->set_async_events(
                   collectives_async_events[canonical_recv_instr]);
         }
@@ -2226,10 +2226,10 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitRecvThunk(
         if (IsNvshmemCollective(instr)) {
           collectives_async_events.try_emplace(
               instr,
-              tsl::down_cast<NvshmemRecvThunk*>(thunk.get())->async_events());
+              absl::down_cast<NvshmemRecvThunk*>(thunk.get())->async_events());
         } else {
           collectives_async_events.try_emplace(
-              instr, tsl::down_cast<RecvThunk*>(thunk.get())->async_events());
+              instr, absl::down_cast<RecvThunk*>(thunk.get())->async_events());
         }
       }
     }
