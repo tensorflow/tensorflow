@@ -522,9 +522,9 @@ absl::StatusOr<std::unique_ptr<xla::MultiSliceConfig>> CreateAoTMegascaleConfig(
 
   PJRT_Megascale_CreateAoTConfig_Args args;
   args.struct_size = PJRT_Megascale_CreateAoTConfig_Args_STRUCT_SIZE;
-  args.topology = tsl::down_cast<const xla::PjRtCApiTopologyDescription&>(
-                      topology_description)
-                      .c_topology();
+  args.topology =
+      absl::down_cast<const PjRtCApiTopologyDescription&>(topology_description)
+          .c_topology();
   args.num_slices = num_slices;
   args.multi_slice_config = nullptr;
 
@@ -566,9 +566,9 @@ CreateMultiSliceMegascaleConfig(
 
   PJRT_Megascale_CreateMultiSliceConfig_Args args;
   args.struct_size = PJRT_Megascale_CreateMultiSliceConfig_Args_STRUCT_SIZE;
-  args.topology = tsl::down_cast<const xla::PjRtCApiTopologyDescription&>(
-                      topology_description)
-                      .c_topology();
+  args.topology =
+      absl::down_cast<const PjRtCApiTopologyDescription&>(topology_description)
+          .c_topology();
   args.num_slices = num_slices;
   args.local_slice_id = local_slice_id;
   args.local_host_id = local_host_id;
@@ -589,8 +589,7 @@ CreateMultiSliceMegascaleConfig(
 
 absl::StatusOr<std::shared_ptr<CApiPjRtClientContext>>
 MegaScaleClientContextFromClient(xla::PjRtClient* client) {
-  xla::PjRtCApiClient* c_api_client =
-      tsl::down_cast<xla::PjRtCApiClient*>(client);
+  xla::PjRtCApiClient* c_api_client = absl::down_cast<PjRtCApiClient*>(client);
   const PJRT_Api* c_api = c_api_client->pjrt_c_api();
   const PJRT_Megascale_Extension* extension =
       c_api_client->FindExtension<PJRT_Megascale_Extension>(
