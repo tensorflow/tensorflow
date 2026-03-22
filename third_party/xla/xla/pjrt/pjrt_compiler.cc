@@ -21,8 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
