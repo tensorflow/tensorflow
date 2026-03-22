@@ -93,7 +93,7 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
     // Briefly acquire the lock to read the last pending seqno.
     uint64_t last_seqno = 0;
     {
-      absl::MutexLock lock(&state->mu);
+      absl::MutexLock lock(state->mu);
       if (!state->pending_deallocations.empty()) {
         last_seqno = state->pending_deallocations.back().seqno;
       }
@@ -108,7 +108,7 @@ DeviceAddressVmmAllocator::~DeviceAddressVmmAllocator() {
     }
 
     {
-      absl::MutexLock lock(&state->mu);
+      absl::MutexLock lock(state->mu);
       for (auto& pending : state->pending_deallocations) {
         DoDeallocate(*state, pending.mem);
       }
@@ -178,7 +178,7 @@ void DeviceAddressVmmAllocator::WaitPendingDeallocationsToComplete(
 
   // Release the lock before spin-waiting to avoid stalling other threads for
   // potentially milliseconds while the GPU drains its work queue.
-  state.mu.Unlock();
+  state.mu.unlock();
 
   // Poll until the GPU writes a timeline value >= target_seqno.
   // Since timeline values are written in stream order, this guarantees all
@@ -190,7 +190,7 @@ void DeviceAddressVmmAllocator::WaitPendingDeallocationsToComplete(
   }
 
   // Reacquire the lock before modifying the maps.
-  state.mu.Lock();
+  state.mu.lock();
 
   for (auto& item : selected) {
     DoDeallocate(state, item.mem);
@@ -310,7 +310,7 @@ DeviceAddressVmmAllocator::Allocate(int device_ordinal, uint64_t size,
     return DeviceNotFoundError(device_ordinal);
   }
 
-  absl::MutexLock lock(&state->mu);
+  absl::MutexLock lock(state->mu);
 
   // Try to reuse a completed pending deallocation with matching size.
   std::optional<DeviceAddressBase> reused =
@@ -355,7 +355,7 @@ absl::Status DeviceAddressVmmAllocator::Deallocate(int device_ordinal,
     return DeviceNotFoundError(device_ordinal);
   }
 
-  absl::MutexLock lock(&state->mu);
+  absl::MutexLock lock(state->mu);
 
   VLOG(3) << absl::StreamFormat(
       "Queueing deferred deallocation for virtual address %p (size=%uB) "
@@ -397,7 +397,7 @@ MemoryAllocation* DeviceAddressVmmAllocator::GetRawAllocation(
   if (state == nullptr) {
     return nullptr;
   }
-  absl::MutexLock lock(&state->mu);
+  absl::MutexLock lock(state->mu);
   auto it = state->raw_allocations.find(addr.opaque());
   if (it == state->raw_allocations.end()) {
     return nullptr;
@@ -411,7 +411,7 @@ MemoryReservation* DeviceAddressVmmAllocator::GetReservation(
   if (state == nullptr) {
     return nullptr;
   }
-  absl::MutexLock lock(&state->mu);
+  absl::MutexLock lock(state->mu);
   auto it = state->reservations.find(addr.opaque());
   if (it == state->reservations.end()) {
     return nullptr;
