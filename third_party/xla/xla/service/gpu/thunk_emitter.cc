@@ -275,23 +275,6 @@ ThunkEmitter::ThunkEmitter(
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
     const HloConstantInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(DenseDataIntermediate content,
-                      LiteralToXlaFormat(instr->literal()));
-
-  int element_bytes =
-      primitive_util::ByteWidth(instr->literal().shape().element_type());
-  TF_RET_CHECK(content.span().size() % element_bytes == 0);
-  // Treat packed constants as a byte constant.
-  int num_elements = content.span().size() / element_bytes;
-
-  std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      GetAllocationSliceForHlo(instr, {}));
-
-  GpuExecutable::ConstantInfo info =
-      AppendGlobalConstant(constants_module_.get(), num_elements, element_bytes,
-                           global_name, slice.index(), std::move(content));
-  ir_emitter_context_->constants().push_back(std::move(info));
   return ThunkSequence{};
 }
 
