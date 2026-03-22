@@ -87,7 +87,7 @@ void CommonPjRtRawBuffer::ScheduleCopyTo(
     ::tsl::AsyncValueRef<bool> allocation_event) {
   absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_span =
       transfer_dependency_avs;
-  async_work_runner->ScheduleWhenReady(
+  async_work_runner->ExecuteWhenReady(
       definition_events_span,
       [src_raw_buffer = tsl::FormRef(this),
        dst_raw_buffer = std::move(dst_raw_buffer),
