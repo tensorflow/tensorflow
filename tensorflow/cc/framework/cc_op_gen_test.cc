@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+
 #include "tensorflow/cc/framework/cc_op_gen.h"
 
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -61,101 +64,22 @@ op {
 }
 )";
 
-void ExpectHasSubstr(absl::string_view s, absl::string_view expected) {
-  EXPECT_TRUE(absl::StrContains(s, expected))
-      << "'" << s << "' does not contain '" << expected << "'";
-}
-
-void ExpectDoesNotHaveSubstr(absl::string_view s, absl::string_view expected) {
-  EXPECT_FALSE(absl::StrContains(s, expected))
-      << "'" << s << "' contains '" << expected << "'";
-}
-
-void ExpectSubstrOrder(const string& s, const string& before,
-                       const string& after) {
-  int before_pos = s.find(before);
-  int after_pos = s.find(after);
-  ASSERT_NE(std::string::npos, before_pos);
-  ASSERT_NE(std::string::npos, after_pos);
-  EXPECT_LT(before_pos, after_pos)
-      << before << " is not before " << after << " in " << s;
-}
-
-// Runs WriteCCOps and stores output in (internal_)cc_file_path and
-// (internal_)h_file_path.
-void GenerateCcOpFiles(Env* env, const OpList& ops,
-                       const ApiDefMap& api_def_map, string* h_file_text,
-                       string* internal_h_file_text) {
-  const string& tmpdir = testing::TmpDir();
-
-  const auto h_file_path = io::JoinPath(tmpdir, "test.h");
-  const auto cc_file_path = io::JoinPath(tmpdir, "test.cc");
-  const auto internal_h_file_path = io::JoinPath(tmpdir, "test_internal.h");
-  const auto internal_cc_file_path = io::JoinPath(tmpdir, "test_internal.cc");
-
-  cc_op::WriteCCOps(ops, api_def_map, h_file_path, cc_file_path);
-
-  TF_ASSERT_OK(ReadFileToString(env, h_file_path, h_file_text));
-  TF_ASSERT_OK(
-      ReadFileToString(env, internal_h_file_path, internal_h_file_text));
-}
-
-TEST(CcOpGenTest, TestVisibilityChangedToHidden) {
-  const string api_def = R"(
+constexpr char kHiddenApiDef[] = R"(
 op {
   graph_op_name: "Foo"
   visibility: HIDDEN
 }
 )";
-  Env* env = Env::Default();
-  OpList op_defs;
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
-  ApiDefMap api_def_map(op_defs);
 
-  string h_file_text, internal_h_file_text;
-  // Without ApiDef
-  GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
-                    &internal_h_file_text);
-  ExpectHasSubstr(h_file_text, "class Foo");
-  ExpectDoesNotHaveSubstr(internal_h_file_text, "class Foo");
-
-  // With ApiDef
-  TF_ASSERT_OK(api_def_map.LoadApiDef(api_def));
-  GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
-                    &internal_h_file_text);
-  ExpectHasSubstr(internal_h_file_text, "class Foo");
-  ExpectDoesNotHaveSubstr(h_file_text, "class Foo");
-}
-
-TEST(CcOpGenTest, TestArgNameChanges) {
-  const string api_def = R"(
+constexpr char kReorderedArgsApiDef[] = R"(
 op {
   graph_op_name: "Foo"
   arg_order: "dim"
   arg_order: "images"
 }
 )";
-  Env* env = Env::Default();
-  OpList op_defs;
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
 
-  ApiDefMap api_def_map(op_defs);
-  string cc_file_text, h_file_text;
-  string internal_cc_file_text, internal_h_file_text;
-  // Without ApiDef
-  GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
-                    &internal_h_file_text);
-  ExpectSubstrOrder(h_file_text, "Input images", "Input dim");
-
-  // With ApiDef
-  TF_ASSERT_OK(api_def_map.LoadApiDef(api_def));
-  GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
-                    &internal_h_file_text);
-  ExpectSubstrOrder(h_file_text, "Input dim", "Input images");
-}
-
-TEST(CcOpGenTest, TestEndpoints) {
-  const string api_def = R"(
+constexpr char kEndpointsApiDef[] = R"(
 op {
   graph_op_name: "Foo"
   endpoint {
@@ -166,27 +90,109 @@ op {
   }
 }
 )";
-  Env* env = Env::Default();
-  OpList op_defs;
-  protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs);  // NOLINT
 
-  ApiDefMap api_def_map(op_defs);
-  string cc_file_text, h_file_text;
-  string internal_cc_file_text, internal_h_file_text;
-  // Without ApiDef
-  GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
-                    &internal_h_file_text);
-  ExpectHasSubstr(h_file_text, "class Foo {");
-  ExpectDoesNotHaveSubstr(h_file_text, "class Foo1");
-  ExpectDoesNotHaveSubstr(h_file_text, "class Foo2");
+struct GeneratedCcOpTexts {
+  std::string header;
+  std::string source;
+  std::string internal_header;
+  std::string internal_source;
+};
 
-  // With ApiDef
-  TF_ASSERT_OK(api_def_map.LoadApiDef(api_def));
-  GenerateCcOpFiles(env, op_defs, api_def_map, &h_file_text,
-                    &internal_h_file_text);
-  ExpectHasSubstr(h_file_text, "class Foo1");
-  ExpectHasSubstr(h_file_text, "typedef Foo1 Foo2");
-  ExpectDoesNotHaveSubstr(h_file_text, "class Foo {");
+void ExpectHasSubstr(absl::string_view text, absl::string_view expected) {
+  EXPECT_TRUE(absl::StrContains(text, expected))
+      << "'" << text << "' does not contain '" << expected << "'";
 }
+
+void ExpectDoesNotHaveSubstr(absl::string_view text, absl::string_view expected) {
+  EXPECT_FALSE(absl::StrContains(text, expected))
+      << "'" << text << "' contains '" << expected << "'";
+}
+
+void ExpectSubstrOrder(absl::string_view text, absl::string_view before,
+                       absl::string_view after) {
+  const size_t before_pos = text.find(before);
+  const size_t after_pos = text.find(after);
+
+  ASSERT_NE(std::string::npos, before_pos)
+      << "Missing substring: " << before;
+  ASSERT_NE(std::string::npos, after_pos)
+      << "Missing substring: " << after;
+
+  EXPECT_LT(before_pos, after_pos)
+      << "'" << before << "' is not before '" << after << "' in:\n"
+      << text;
+}
+
+class CcOpGenTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    ASSERT_TRUE(protobuf::TextFormat::ParseFromString(kBaseOpDef, &op_defs_));
+    api_def_map_ = std::make_unique<ApiDefMap>(op_defs_);
+  }
+
+  GeneratedCcOpTexts GenerateCcOpFiles() const {
+    const std::string tmpdir = testing::TmpDir();
+
+    const std::string h_file_path = io::JoinPath(tmpdir, "test.h");
+    const std::string cc_file_path = io::JoinPath(tmpdir, "test.cc");
+    const std::string internal_h_file_path =
+        io::JoinPath(tmpdir, "test_internal.h");
+    const std::string internal_cc_file_path =
+        io::JoinPath(tmpdir, "test_internal.cc");
+
+    cc_op::WriteCCOps(op_defs_, *api_def_map_, h_file_path, cc_file_path);
+
+    GeneratedCcOpTexts result;
+    TF_ASSERT_OK(ReadFileToString(env_, h_file_path, &result.header));
+    TF_ASSERT_OK(ReadFileToString(env_, cc_file_path, &result.source));
+    TF_ASSERT_OK(
+        ReadFileToString(env_, internal_h_file_path, &result.internal_header));
+    TF_ASSERT_OK(ReadFileToString(env_, internal_cc_file_path,
+                                  &result.internal_source));
+    return result;
+  }
+
+  Env* const env_ = Env::Default();
+  OpList op_defs_;
+  std::unique_ptr<ApiDefMap> api_def_map_;
+};
+
+TEST_F(CcOpGenTest, TestVisibilityChangedToHidden) {
+  const auto without_api_def = GenerateCcOpFiles();
+
+  ExpectHasSubstr(without_api_def.header, "class Foo");
+  ExpectDoesNotHaveSubstr(without_api_def.internal_header, "class Foo");
+
+  ASSERT_TRUE(api_def_map_->LoadApiDef(kHiddenApiDef));
+  const auto with_api_def = GenerateCcOpFiles();
+
+  ExpectHasSubstr(with_api_def.internal_header, "class Foo");
+  ExpectDoesNotHaveSubstr(with_api_def.header, "class Foo");
+}
+
+TEST_F(CcOpGenTest, TestArgNameChanges) {
+  const auto without_api_def = GenerateCcOpFiles();
+  ExpectSubstrOrder(without_api_def.header, "Input images", "Input dim");
+
+  ASSERT_TRUE(api_def_map_->LoadApiDef(kReorderedArgsApiDef));
+  const auto with_api_def = GenerateCcOpFiles();
+  ExpectSubstrOrder(with_api_def.header, "Input dim", "Input images");
+}
+
+TEST_F(CcOpGenTest, TestEndpoints) {
+  const auto without_api_def = GenerateCcOpFiles();
+
+  ExpectHasSubstr(without_api_def.header, "class Foo {");
+  ExpectDoesNotHaveSubstr(without_api_def.header, "class Foo1");
+  ExpectDoesNotHaveSubstr(without_api_def.header, "class Foo2");
+
+  ASSERT_TRUE(api_def_map_->LoadApiDef(kEndpointsApiDef));
+  const auto with_api_def = GenerateCcOpFiles();
+
+  ExpectHasSubstr(with_api_def.header, "class Foo1");
+  ExpectHasSubstr(with_api_def.header, "typedef Foo1 Foo2");
+  ExpectDoesNotHaveSubstr(with_api_def.header, "class Foo {");
+}
+
 }  // namespace
 }  // namespace tensorflow
