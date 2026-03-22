@@ -15,7 +15,7 @@ pytype_strict_library(
     srcs = [
         "transform.py",
     ],
-    visibility = ["//smartass/brain/configure:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/framework:function_proto_py",
