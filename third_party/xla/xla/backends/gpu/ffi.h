@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "absl/base/optimization.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
@@ -49,6 +50,7 @@ struct CollectiveMemoryRequests {};    //  xla::gpu::CollectiveMemoryRequests*
 struct CollectiveCliques {};           //  const xla::gpu::CollectiveCliques*
 struct CollectiveMemory {};            //  const xla::gpu::CollectiveMemory*
 struct TargetGpuComputeCapability {};  //  const se::GpuComputeCapability*
+struct CpuTargetMachineOptions {};     //  const xla::cpu::TargetMachineOptions*
 
 // Parametrized type tag for platform stream, e.g. cudaStream_t
 template <typename T>
@@ -203,6 +205,20 @@ struct CtxDecoding<TargetGpuComputeCapability> {
         api, ctx, diagnostic,
         api->internal_api->XLA_FFI_INTERNAL_GpuComputeCapability_Get,
         "gpu compute capability");
+  }
+};
+
+template <>
+struct CtxDecoding<CpuTargetMachineOptions> {
+  using Type = const xla::cpu::TargetMachineOptions*;
+
+  static std::optional<Type> Decode(const XLA_FFI_Api* api,
+                                    XLA_FFI_ExecutionContext* ctx,
+                                    DiagnosticEngine& diagnostic) {
+    return internal::DecodeInternalCtx<Type>(
+        api, ctx, diagnostic,
+        api->internal_api->XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get,
+        "cpu target machine options");
   }
 };
 
