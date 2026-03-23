@@ -160,6 +160,18 @@ TEST_F(SymbolicMapTest, Evaluate) {
   EXPECT_THAT(res_ceil, ElementsAre(2, 7));
 }
 
+TEST_F(SymbolicMapTest, GetSliceMap) {
+  SymbolicMap map = SymbolicMap::Get(&ctx, 2, 0, {d0, d1, d0 + d1, d0 - d1});
+  SymbolicMap slice = map.GetSliceMap(1, 2);
+  EXPECT_EQ(slice.GetNumResults(), 2);
+  EXPECT_THAT(slice.GetResults(), ElementsAre(d1, d0 + d1));
+
+  SymbolicMap empty_slice = map.GetSliceMap(2, 0);
+  EXPECT_TRUE(empty_slice.IsEmpty());
+
+  EXPECT_DEATH(map.GetSliceMap(3, 2), "Slice length out of bounds");
+}
+
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
   SymbolicExpr c3 = CreateSymbolicConstant(30, &ctx);
 

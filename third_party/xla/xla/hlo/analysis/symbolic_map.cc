@@ -228,6 +228,14 @@ SymbolicMap SymbolicMap::GetSubMap(
   return SymbolicMap(ctx_, num_dimensions_, num_symbols_, std::move(sub_exprs));
 }
 
+SymbolicMap SymbolicMap::GetSliceMap(size_t start, size_t length) const {
+  CHECK_LE(start, exprs_.size()) << "Slice start out of bounds";
+  CHECK_LE(length, exprs_.size() - start) << "Slice length out of bounds";
+  llvm::SmallVector<SymbolicExpr> sub_exprs(exprs_.begin() + start,
+                                            exprs_.begin() + start + length);
+  return SymbolicMap(ctx_, num_dimensions_, num_symbols_, std::move(sub_exprs));
+}
+
 SymbolicMap SymbolicMap::Replace(SymbolicExpr expr,
                                  SymbolicExpr replacement) const {
   llvm::SmallVector<SymbolicExpr> new_exprs;

@@ -142,6 +142,9 @@ class SymbolicMap {
   // Creates a new SymbolicMap with a subset of the results of this map.
   SymbolicMap GetSubMap(absl::Span<const size_t> result_indices) const;
 
+  // Returns the map consisting of `length` expressions starting from `start`.
+  SymbolicMap GetSliceMap(size_t start, size_t length) const;
+
   // Creates a new SymbolicMap with the given number of dimensions. Symbols are
   // preserved and shifted accordingly.
   SymbolicMap SetNumDimensions(int num_new_dims) const;
