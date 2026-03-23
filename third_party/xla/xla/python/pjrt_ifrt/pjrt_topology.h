@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <vector>
 
 #include "absl/status/statusor.h"
@@ -55,7 +54,6 @@ class PjRtTopology final : public llvm::RTTIExtends<PjRtTopology, Topology> {
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
-  absl::StatusOr<std::string> Serialize() const override;
   absl::StatusOr<uint64_t> Fingerprint() const override;
 
   const AttributeMap& Attributes() const override;
