@@ -3583,11 +3583,7 @@ xla_test(
 
 xla_test(
     name = "iota_test",
-    timeout = "long",
     srcs = ["iota_test.cc"],
-    backend_tags = {
-        "cpu": ["optonly"],
-    },
     shard_count = 50,
     deps = [
         ":client_library_test_runner_mixin",
