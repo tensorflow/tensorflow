@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 
+#include <cmath>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "third_party/gloop/util/status/status_macros.h"
 
 namespace tflite {
 namespace gpu {
