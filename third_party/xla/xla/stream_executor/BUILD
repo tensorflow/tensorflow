@@ -384,10 +384,12 @@ xla_cc_test(
 
 cc_library(
     name = "memory_allocation",
+    srcs = ["memory_allocation.cc"],
     hdrs = ["memory_allocation.h"],
     deps = [
         ":device_address",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

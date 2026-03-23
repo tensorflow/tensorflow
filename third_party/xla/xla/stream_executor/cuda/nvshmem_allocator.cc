@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/cuda/nvshmem_memory_allocator.h"
+#include "xla/stream_executor/cuda/nvshmem_allocator.h"
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -25,7 +26,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "third_party/nvshmem/nvshmem.h"   // IWYU pragma: keep
 #include "third_party/nvshmem/nvshmemx.h"  // IWYU pragma: keep
-#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
+#include "xla/stream_executor/cuda/cuda_collective_allocator.h"
 #include "xla/stream_executor/cuda/nvshmem.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/memory_allocation.h"
@@ -36,9 +37,8 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 namespace stream_executor::gpu {
-namespace {
 
-absl::StatusOr<void*> NvshmemAllocate(uint64_t size) {
+static absl::StatusOr<void*> NvshmemAllocate(uint64_t size) {
   TF_RETURN_IF_ERROR(nvshmem::InitializeOnce());
   VLOG(3) << absl::StreamFormat(
       "Start allocation of %s (%llu bytes) for NVSHMEM",
@@ -52,7 +52,7 @@ absl::StatusOr<void*> NvshmemAllocate(uint64_t size) {
   return buffer;
 }
 
-absl::Status NvshmemFree(void* ptr) {
+static absl::Status NvshmemFree(void* ptr) {
   TF_RETURN_IF_ERROR(nvshmem::InitializeOnce());
   VLOG(3) << absl::StreamFormat("Start de-allocation for NVSHMEM buffer: %p",
                                 ptr);
@@ -60,13 +60,25 @@ absl::Status NvshmemFree(void* ptr) {
   return absl::OkStatus();
 }
 
-// A memory allocated from NVSHMEM on the given executor.
+namespace {
+
+// A memory allocation backed by NVSHMEM memory.
 class NvshmemMemoryAllocation : public MemoryAllocation {
  public:
-  NvshmemMemoryAllocation(void* ptr, uint64_t size);
+  NvshmemMemoryAllocation(void* ptr, uint64_t size) : ptr_(ptr), size_(size) {}
 
-  ~NvshmemMemoryAllocation() final;
-  DeviceAddressBase address() const final;
+  ~NvshmemMemoryAllocation() final {
+    CHECK_OK(NvshmemFree(ptr_));  // Crash OK
+  }
+
+  DeviceAddressBase address() const final {
+    return DeviceAddressBase(ptr_, size_);
+  }
+
+  std::string ToString() const final {
+    return absl::StrFormat("NvshmemMemoryAllocation[ptr=%p, size=%d]", ptr_,
+                           size_);
+  }
 
  private:
   void* ptr_;
@@ -74,17 +86,6 @@ class NvshmemMemoryAllocation : public MemoryAllocation {
 };
 
 }  // namespace
-
-NvshmemMemoryAllocation::NvshmemMemoryAllocation(void* ptr, uint64_t size)
-    : ptr_(ptr), size_(size) {}
-
-NvshmemMemoryAllocation::~NvshmemMemoryAllocation() {
-  CHECK_OK(NvshmemFree(ptr_));  // Crash OK
-}
-
-DeviceAddressBase NvshmemMemoryAllocation::address() const {
-  return DeviceAddressBase(ptr_, size_);
-}
 
 absl::StatusOr<std::unique_ptr<MemoryAllocation>>
 NvshmemMemoryAllocator::Allocate(uint64_t size) {
@@ -95,7 +96,7 @@ NvshmemMemoryAllocator::Allocate(uint64_t size) {
 }  // namespace stream_executor::gpu
 
 STREAM_EXECUTOR_REGISTER_MODULE_INITIALIZER(
-    nvshmem_memory_allocator,
+    nvshmem_allocator,
     stream_executor::gpu::RegisterCollectiveAllocatorFactory(
         stream_executor::gpu::CollectiveAllocatorType::kNvshmem,
         [](stream_executor::StreamExecutor* executor) {
