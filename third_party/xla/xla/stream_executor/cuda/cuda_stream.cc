@@ -27,6 +27,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/base/casts.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
