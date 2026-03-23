@@ -112,6 +112,8 @@ jobs:
     name: ${{ matrix.job_info.name }}
     runs-on: ${{ matrix.job_info.pool }}
     container: ${{ matrix.job_info.container }}
+    # TODO(b/495279482): Reenable once the oneapi compiler stops crashing.
+    continue-on-error: ${{ matrix.job_info.name == 'XLA Linux X86 GPU ONEAPI' }}
     defaults:
       run:
         shell: bash
