@@ -59,6 +59,8 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -86,6 +88,12 @@ RaggedAllToAllConfig GetRaggedAllToAllConfig(
   config.num_row_elements =
       ShapeUtil::ElementsIn(instr->shape()) / instr->shape().dimensions(0);
   return config;
+}
+
+absl::Status SynchronousMemZero(se::StreamExecutor* executor,
+                                const se::MemoryAllocation& memory_allocation) {
+  se::DeviceAddressBase device_address = memory_allocation.address();
+  return executor->SynchronousMemZero(&device_address, device_address.size());
 }
 
 // Loads the offsets and sizes of the input and output ragged tensors from
@@ -358,33 +366,31 @@ RaggedAllToAllStartThunk::InitializeOnce(const InitializeParams& params) {
       use_multi_gpu_barrier_in_one_shot_kernel_) {
     using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
 
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<se::MemoryAllocator> collective_allocator,
+        executor->CreateMemoryAllocator(se::MemorySpace::kCollective));
+
     // 1. Allocate Signal Buffer (Array of uint32_t)
     // We allocate kMaxPeers to be safe and avoid bounds issues, aligning with
     // the fixed-size kernel logic.
     int64_t signal_buf_bytes =
         MultiGpuBarrierKernel::kMaxPeers * sizeof(uint32_t);
-    state->barrier_signal_buffer =
-        se::DeviceAddressHandle{executor, executor->Allocate(signal_buf_bytes)};
 
-    TF_RET_CHECK(state->barrier_signal_buffer.address())
-        << "Failed to allocate barrier signal buffer.";
+    ASSIGN_OR_RETURN(state->barrier_signal_buffer,
+                     collective_allocator->Allocate(signal_buf_bytes));
 
     // 2. Allocate Counter (Scalar uint32_t)
     // This value acts as the local step counter.
-    state->barrier_signal_value =
-        se::DeviceAddressHandle{executor, executor->Allocate(sizeof(uint32_t))};
-
-    TF_RET_CHECK(state->barrier_signal_value.address())
-        << "Failed to allocate barrier signal value.";
+    ASSIGN_OR_RETURN(state->barrier_signal_value,
+                     collective_allocator->Allocate(sizeof(uint32_t)));
 
     // 3. Zero-out BOTH buffers using SynchronousMemZero.
-    TF_RETURN_IF_ERROR(executor->SynchronousMemZero(
-        state->barrier_signal_buffer.address_ptr(), signal_buf_bytes));
+    RETURN_IF_ERROR(
+        SynchronousMemZero(executor, *state->barrier_signal_buffer));
 
     // Initialize the counter to 0.
     // This is ok, as the MultiGpuBarrierKernel pre-increments signal_value.
-    TF_RETURN_IF_ERROR(executor->SynchronousMemZero(
-        state->barrier_signal_value.address_ptr(), sizeof(uint32_t)));
+    RETURN_IF_ERROR(SynchronousMemZero(executor, *state->barrier_signal_value));
   }
 
   RaggedAllToAllStreamState* state_ptr = state.get();
@@ -416,7 +422,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
         state->participants,
         RendezvousResources(state->device_ordinal, state->rank,
                             state->clique_key, output_buffer,
-                            state->barrier_signal_buffer.address()));
+                            state->barrier_signal_buffer->address()));
   }
 
   return absl::OkStatus();
@@ -533,8 +539,8 @@ absl::Status RaggedAllToAllStartThunk::RunCollective(
   if (should_use_one_shot_kernel && use_multi_gpu_barrier_in_one_shot_kernel_) {
     return RunOneShotRaggedAllToAll(
         clique_key, stream, state->rank,
-        state->barrier_signal_buffer.address(),  // Buff peers write signals to
-        state->barrier_signal_value.address(),   // Local monotonic step counter
+        state->barrier_signal_buffer->address(),  // Buff peers write signals to
+        state->barrier_signal_value->address(),  // Local monotonic step counter
         config_.num_total_updates, config_.num_input_rows,
         config_.num_row_elements, device_buffers, *state->participants);
   }

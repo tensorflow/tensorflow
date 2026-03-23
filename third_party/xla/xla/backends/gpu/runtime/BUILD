@@ -1910,6 +1910,8 @@ cc_library(
         "//xla/stream_executor:device_address_handle",
         "//xla/stream_executor:event",
         "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:memory_space",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
         "//xla/tsl/platform:errors",

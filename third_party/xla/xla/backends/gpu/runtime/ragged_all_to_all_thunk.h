@@ -94,11 +94,11 @@ struct RaggedAllToAllStreamState {
 
   // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
   // Peers write specific slots in this array to signal this device.
-  se::DeviceAddressHandle barrier_signal_buffer;
+  std::unique_ptr<se::MemoryAllocation> barrier_signal_buffer;
 
   // MultiGpuBarrier: Device memory for the current local step counter.
   // This value is incremented locally by the kernel after every barrier.
-  se::DeviceAddressHandle barrier_signal_value;
+  std::unique_ptr<se::MemoryAllocation> barrier_signal_value;
 
   // Contains the output buffer pointers and barrier signal buffers for all
   // peers.
