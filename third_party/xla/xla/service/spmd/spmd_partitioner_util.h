@@ -608,7 +608,13 @@ std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
 // Expands partition group list across all replicas. Expects that provided
 // partition_group_list utilizes all the partitions.
 IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
-    IotaReplicaGroupList partition_group_list, int64_t num_replicas,
+    const IotaReplicaGroupList& partition_group_list, int64_t num_replicas,
+    int64_t num_partitions);
+
+// Expands partition group list across all replicas. Expects that provided
+// partition_group_list utilizes all the partitions.
+MeshAxesReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
+    const MeshAxesReplicaGroupList& partition_group_list, int64_t num_replicas,
     int64_t num_partitions);
 
 namespace detail {

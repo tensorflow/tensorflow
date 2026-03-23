@@ -3225,7 +3225,7 @@ std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
 // Expands partition group list across all replicas. Expects that provided
 // partition group list utilizes all the partitions.
 IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
-    IotaReplicaGroupList partition_group_list, int64_t num_replicas,
+    const IotaReplicaGroupList& partition_group_list, int64_t num_replicas,
     int64_t num_partitions) {
   int64_t partition_group_count = partition_group_list.num_replica_groups();
   int64_t partition_group_size = partition_group_list.num_devices_per_group();
@@ -3254,6 +3254,53 @@ IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
 
   return IotaReplicaGroupList(replica_group_count, partition_group_size,
                               new_reshape_dims, new_transpose_dims);
+}
+
+MeshAxesReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
+    const MeshAxesReplicaGroupList& partition_group_list, int64_t num_replicas,
+    int64_t num_partitions) {
+  const Mesh& mesh = partition_group_list.mesh();
+  // Create a new mesh with an additional internal "replica" dimension
+  // prepended to the existing mesh dimensions.
+  std::vector<int64_t> new_axis_sizes;
+  new_axis_sizes.reserve(mesh.axis_sizes().size() + 1);
+  new_axis_sizes.push_back(num_replicas);
+  new_axis_sizes.insert(new_axis_sizes.end(), mesh.axis_sizes().begin(),
+                        mesh.axis_sizes().end());
+
+  // Find a name for the new replica axis that doesn't collide with existing
+  // mesh axis names.
+  std::string replica_axis_name = "replica";
+  for (int i = 0; absl::c_linear_search(mesh.axis_names(), replica_axis_name);
+       ++i) {
+    replica_axis_name = absl::StrCat("replica_", i);
+  }
+
+  std::vector<std::string> new_axis_names;
+  new_axis_names.reserve(mesh.axis_names().size() + 1);
+  new_axis_names.push_back(replica_axis_name);
+  new_axis_names.insert(new_axis_names.end(), mesh.axis_names().begin(),
+                        mesh.axis_names().end());
+
+  std::vector<absl::string_view> new_axis_names_view(new_axis_names.begin(),
+                                                     new_axis_names.end());
+  Mesh new_mesh(new_axis_sizes, new_axis_names_view);
+
+  // Shift the underlying axis references to account for the prepended
+  // "replica" axis.
+  absl::Span<const AxisRef> axes = partition_group_list.axes();
+  std::vector<AxisRef> new_axes;
+  new_axes.reserve(axes.size());
+  for (const AxisRef& axis : axes) {
+    if (axis.sub_axis_info().has_value()) {
+      new_axes.push_back(
+          AxisRef(axis.mesh_axis_index() + 1, axis.sub_axis_info().value()));
+    } else {
+      new_axes.push_back(AxisRef(axis.mesh_axis_index() + 1));
+    }
+  }
+
+  return MeshAxesReplicaGroupList(new_mesh, new_axes);
 }
 
 PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,

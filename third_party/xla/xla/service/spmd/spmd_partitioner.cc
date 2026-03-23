@@ -5332,6 +5332,19 @@ std::optional<IotaReplicaGroupList> TryExpandingPartitionGroupList(
   return std::nullopt;
 }
 
+std::optional<MeshAxesReplicaGroupList> TryExpandingMeshAxesDeviceList(
+    const CollectiveDeviceListBase& device_list, int64_t num_replicas,
+    int64_t num_partitions) {
+  if (device_list.version() == CollectiveDeviceListVersion::kMeshAxes) {
+    const auto& mesh_axes_list =
+        static_cast<const MeshAxesReplicaGroupList&>(device_list);
+    return num_replicas > 1 ? ExpandPartitionGroupListAcrossReplicas(
+                                  mesh_axes_list, num_replicas, num_partitions)
+                            : mesh_axes_list;
+  }
+  return std::nullopt;
+}
+
 SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
                                                         int64_t num_replicas) {
   SPMDCollectiveOpsCreator result = {
@@ -5344,6 +5357,19 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, HloInstruction* operand,
               HloComputation* reduction,
               const CollectiveDeviceListBase& device_list, int64_t channel_id) {
+            if (std::optional<MeshAxesReplicaGroupList> expanded_mesh_axes =
+                    TryExpandingMeshAxesDeviceList(device_list, num_replicas,
+                                                   num_partitions)) {
+              HloComputation* reduction_clone =
+                  reduction->parent()->AddComputationAndUnifyNamesAndIds(
+                      reduction->Clone(), false);
+              return b->AddInstruction(HloInstruction::CreateAllReduce(
+                  operand->shape(), {operand}, reduction_clone,
+                  std::make_shared<MeshAxesReplicaGroupList>(
+                      *expanded_mesh_axes),
+                  /*constrain_layout=*/false, channel_id,
+                  /*use_global_device_ids=*/true));
+            }
             if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
@@ -5390,13 +5416,32 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, absl::Span<HloInstruction* const> operands,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
               std::optional<int64_t> split_dimension) {
+            std::vector<Shape> shapes;
+            shapes.reserve(operands.size());
+            for (const auto* operand : operands) {
+              shapes.push_back(operand->shape());
+            }
+            Shape output_shape;
+            if (shapes.size() == 1) {
+              output_shape = shapes[0];
+            } else {
+              auto status_or_shape = ShapeUtil::MakeValidatedTupleShape(shapes);
+              CHECK_OK(status_or_shape.status());
+              output_shape = *status_or_shape;
+            }
+
+            if (std::optional<MeshAxesReplicaGroupList> expanded_mesh_axes =
+                    TryExpandingMeshAxesDeviceList(device_list, num_replicas,
+                                                   num_partitions)) {
+              return b->AddInstruction(HloInstruction::CreateAllToAll(
+                  output_shape, operands,
+                  std::make_shared<MeshAxesReplicaGroupList>(
+                      *expanded_mesh_axes),
+                  /*constrain_layout=*/false, channel_id, split_dimension));
+            }
             if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
-              std::vector<Shape> shapes(operands.size(), operands[0]->shape());
-              Shape output_shape = (operands.size() == 1)
-                                       ? operands[0]->shape()
-                                       : ShapeUtil::MakeTupleShape(shapes);
               return b->AddInstruction(HloInstruction::CreateAllToAll(
                   output_shape, operands,
                   std::make_shared<IotaReplicaGroupList>(*expanded),
@@ -5410,6 +5455,16 @@ SPMDCollectiveOpsCreator GetDefaultCollectiveOpsCreator(int64_t num_partitions,
               SpmdBuilder* b, HloInstruction* operand, const Shape& ag_shape,
               const CollectiveDeviceListBase& device_list, int64_t channel_id,
               int64_t all_gather_dimension) {
+            if (std::optional<MeshAxesReplicaGroupList> expanded_mesh_axes =
+                    TryExpandingMeshAxesDeviceList(device_list, num_replicas,
+                                                   num_partitions)) {
+              return b->AddInstruction(HloInstruction::CreateAllGather(
+                  ag_shape, {operand}, all_gather_dimension,
+                  std::make_shared<MeshAxesReplicaGroupList>(
+                      *expanded_mesh_axes),
+                  /*constrain_layout=*/false, channel_id,
+                  /*use_global_device_ids=*/true));
+            }
             if (std::optional<IotaReplicaGroupList> expanded =
                     TryExpandingPartitionGroupList(device_list, num_replicas,
                                                    num_partitions)) {
