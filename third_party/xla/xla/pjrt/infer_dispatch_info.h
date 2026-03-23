@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PJRT_INFER_DISPATCH_INFO_H_
 #define XLA_PJRT_INFER_DISPATCH_INFO_H_
 
+#include "absl/status/statusor.h"
 #include "xla/pjrt/common_pjrt_client.h"
 
 namespace xla {
