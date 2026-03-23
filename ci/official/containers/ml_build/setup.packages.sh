@@ -22,7 +22,9 @@ set -e
 # Prevent apt install tzinfo from asking our location (assumes UTC)
 export DEBIAN_FRONTEND=noninteractive
 
-apt-get update
+# Update index for latest packages and upgrade base image packages.
+# Updating base image packages pulls in security fixes.
+apt-get update && apt-get upgrade -y
 # Remove commented lines and blank lines
 apt-get install -y --no-install-recommends $(sed -e '/^\s*#.*$/d' -e '/^\s*$/d' "$1" | sort -u)
 rm -rf /var/lib/apt/lists/*
