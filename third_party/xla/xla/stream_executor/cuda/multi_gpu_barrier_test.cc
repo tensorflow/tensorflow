@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "third_party/gpus/nccl/src/nccl.h"
 #include "xla/backends/gpu/collectives/nccl_symmetric_memory.h"
 #include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"

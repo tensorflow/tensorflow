@@ -2710,7 +2710,6 @@ xla_test(
         "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
-        "//xla/stream_executor:kernel_args",
         "//xla/stream_executor:launch_dim",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
