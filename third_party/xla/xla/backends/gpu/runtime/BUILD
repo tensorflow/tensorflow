@@ -3643,6 +3643,7 @@ cc_library(
         ":triangular_solve_thunk",
         ":wait_for_streams_thunk",
         ":while_thunk",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/stream_executor:device_description",

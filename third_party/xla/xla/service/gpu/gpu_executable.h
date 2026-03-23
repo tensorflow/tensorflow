@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -128,6 +129,7 @@ class GpuExecutable : public Executable {
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
     stream_executor::ExecutableAbiVersion executable_abi_version;
+    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -243,6 +245,11 @@ class GpuExecutable : public Executable {
     return executable_abi_version_;
   }
 
+  const std::optional<xla::cpu::TargetMachineOptions>&
+  cpu_target_machine_options() const {
+    return cpu_target_machine_options_;
+  }
+
  private:
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(
@@ -259,7 +266,8 @@ class GpuExecutable : public Executable {
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
       bool enable_debug_info_manager, ModuleStats module_stats,
       absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
-      stream_executor::ExecutableAbiVersion executable_abi_version);
+      stream_executor::ExecutableAbiVersion executable_abi_version,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -387,6 +395,8 @@ class GpuExecutable : public Executable {
   absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto_;
 
   stream_executor::ExecutableAbiVersion executable_abi_version_;
+
+  std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

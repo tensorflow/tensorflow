@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
@@ -46,6 +45,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "riegeli/bytes/string_writer.h"
 #include "riegeli/bytes/writer.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/annotation.h"
@@ -307,7 +307,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.debug_options), std::move(params.constants),
       std::move(params.output_info), params.enable_debug_info_manager,
       std::move(params.module_stats), std::move(thunk_sequence_proto),
-      std::move(params.executable_abi_version)));
+      std::move(params.executable_abi_version),
+      std::move(params.cpu_target_machine_options)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -326,7 +327,8 @@ GpuExecutable::GpuExecutable(
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     bool enable_debug_info_manager, ModuleStats module_stats,
     absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
-    stream_executor::ExecutableAbiVersion executable_abi_version)
+    stream_executor::ExecutableAbiVersion executable_abi_version,
+    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options)
     : Executable(std::move(debug_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -348,7 +350,8 @@ GpuExecutable::GpuExecutable(
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(enable_debug_info_manager),
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),
-      executable_abi_version_(std::move(executable_abi_version)) {
+      executable_abi_version_(std::move(executable_abi_version)),
+      cpu_target_machine_options_(std::move(cpu_target_machine_options)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -1501,6 +1504,11 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 
   *proto.mutable_executable_abi_version() = executable_abi_version_.proto();
 
+  if (cpu_target_machine_options_.has_value()) {
+    *proto.mutable_cpu_target_machine_options() =
+        cpu_target_machine_options_->ToProto();
+  }
+
   return proto;
 }
 
@@ -1549,13 +1557,22 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   params.device_description = device_description;
 
+  if (proto.has_cpu_target_machine_options()) {
+    ASSIGN_OR_RETURN(params.cpu_target_machine_options,
+                     xla::cpu::TargetMachineOptions::FromProto(
+                         proto.cpu_target_machine_options()));
+  }
+
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
   ASSIGN_OR_RETURN(ThunkSequence thunk_sequence,
                    DeserializeThunkSequenceProto(
                        thunk_sequence_proto, params.mlir_allocations.value(),
                        params.debug_module.get(), platform_name,
-                       gpu_compute_capability, symbol_resolver));
+                       gpu_compute_capability, symbol_resolver,
+                       params.cpu_target_machine_options.has_value()
+                           ? &params.cpu_target_machine_options.value()
+                           : nullptr));
 
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));

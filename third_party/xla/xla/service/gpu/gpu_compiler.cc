@@ -24,7 +24,6 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -64,6 +63,7 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
@@ -252,7 +252,6 @@ limitations under the License.
 #include "xla/service/gather_expander.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/autotuning/autotuner_cache.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/conv_layout_normalization.h"
@@ -328,6 +327,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -2517,7 +2517,7 @@ GpuCompiler::CompileToBackendResult(
         GetLLVMCommandLineOptions(module->config().debug_options()));
     BufferValue::SizeFunction buffer_size_bytes_function =
         BufferSizeBytesFunction();
-    // Compile the module to thnks and llvm IR.
+    // Compile the module to thunks and llvm IR.
     ASSIGN_OR_RETURN(
         compile_module_results,
         CompileModuleToLlvmIr(
@@ -2724,7 +2724,11 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
               : std::unique_ptr<HloModule>(),
           /*enable_debug_info_manager=*/embed_debug_info,
           /*module_stats=*/std::move(module_stats),
-          /*executable_abi_version=*/executable_abi_version}));
+          /*executable_abi_version=*/executable_abi_version,
+          /*cpu_target_machine_options=*/
+          options.cpu_target_config.has_value()
+              ? options.cpu_target_config->cpu_target_machine_options
+              : std::nullopt}));
 
   if (embed_ir_in_executable) {
     std::string ir_module_string_before_opt =
@@ -3177,6 +3181,13 @@ GpuCompiler::LoadExecutableFromAotResult(
                    stream_executor::ExecutableAbiVersion::FromDeviceDescription(
                        device_description));
 
+  std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
+      std::nullopt;
+  if (proto.has_cpu_target_machine_options()) {
+    ASSIGN_OR_RETURN(cpu_target_machine_options,
+                     xla::cpu::TargetMachineOptions::FromProto(
+                         proto.cpu_target_machine_options()));
+  }
   {
     tsl::profiler::TraceMe traceme("CreateGpuExecutable");
     std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
@@ -3200,7 +3211,9 @@ GpuCompiler::LoadExecutableFromAotResult(
         /*debug_module=*/std::move(hlo_module),
         /*enable_debug_info_manager=*/true,
         /*module_stats=*/{},
-        /*executable_abi_version=*/executable_abi_version});
+        /*executable_abi_version=*/executable_abi_version,
+        /*cpu_target_machine_options=*/std::move(cpu_target_machine_options),
+    });
   }
 }
 
