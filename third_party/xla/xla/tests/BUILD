@@ -2021,7 +2021,6 @@ xla_test(
 
 xla_test(
     name = "select_and_scatter_test",
-    timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
     shard_count = 25,
     tags = [
@@ -2359,7 +2358,6 @@ xla_test(
 
 xla_test(
     name = "matrix_ops_simple_test",
-    timeout = "long",
     srcs = ["matrix_ops_simple_test.cc"],
     deps = [
         ":client_library_test_runner_mixin",
