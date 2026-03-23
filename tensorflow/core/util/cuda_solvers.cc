@@ -298,7 +298,7 @@ Status GpuSolver::allocate_scoped_tensor(DataType type,
 }
 
 Status GpuSolver::forward_input_or_allocate_scoped_tensor(
-    gtl::ArraySlice<int> candidate_input_indices, DataType type,
+    absl::Span<const int> candidate_input_indices, DataType type,
     const TensorShape& shape, Tensor* out_temp) {
   const Status status = context_->forward_input_or_allocate_temp(
       candidate_input_indices, type, shape, out_temp);
