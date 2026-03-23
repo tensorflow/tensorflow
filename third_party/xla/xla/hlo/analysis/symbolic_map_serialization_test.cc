@@ -59,18 +59,18 @@ TEST_F(SymbolicMapSerializationTest,
        PrintSymbolicExprWithDifferentNumDimensions) {
   SymbolicExpr expr = v0 * 2 + v1;
 
-  EXPECT_THAT(expr.ToString(), MatchIndexingString("((v0 * 2) + v1)"));
+  EXPECT_THAT(expr.ToString(), MatchIndexingString("(v0 * 2) + v1"));
   // Only symbols
-  EXPECT_THAT(expr.ToString(0), MatchIndexingString("((s0 * 2) + s1)"));
+  EXPECT_THAT(expr.ToString(0), MatchIndexingString("(s0 * 2) + s1"));
   // One dimension and one symbol
-  EXPECT_THAT(expr.ToString(1), MatchIndexingString("((d0 * 2) + s0)"));
+  EXPECT_THAT(expr.ToString(1), MatchIndexingString("(d0 * 2) + s0"));
   // Only dimensions
-  EXPECT_THAT(expr.ToString(2), MatchIndexingString("((d0 * 2) + d1)"));
+  EXPECT_THAT(expr.ToString(2), MatchIndexingString("(d0 * 2) + d1"));
 }
 
 TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprAndPrint) {
   const std::string kStringContainingAllOperators =
-      "(((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2) mod 5)";
+      "((((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2) mod 5";
   SymbolicExpr parsed_expr =
       ParseSymbolicExpr(kStringContainingAllOperators, &ctx);
   ASSERT_NE(parsed_expr, nullptr);

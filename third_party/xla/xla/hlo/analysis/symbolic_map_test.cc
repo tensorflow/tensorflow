@@ -64,8 +64,7 @@ TEST_F(SymbolicMapTest, GetSymbolAndDimExpressions) {
 }
 
 TEST_F(SymbolicMapTest, ToString) {
-  EXPECT_EQ(sample_map.ToString(),
-            "(d0, d1)[s0, s1] -> ((d0 + s0), (d1 * s1))");
+  EXPECT_EQ(sample_map.ToString(), "(d0, d1)[s0, s1] -> (d0 + s0, d1 * s1)");
 
   SymbolicMap empty_map = SymbolicMap::Get(&ctx, 0, 0, {});
   EXPECT_EQ(empty_map.ToString(), "()[] -> ()");

@@ -48,7 +48,8 @@ bool IsIdentifierCharacter(char c) {
 
 void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
                std::optional<int64_t> num_dims,
-               absl::Span<const std::string> var_names) {
+               absl::Span<const std::string> var_names,
+               bool is_top_level = false) {
   switch (expr.GetType()) {
     case SymbolicExprType::kConstant:
       os << expr.GetValue();
@@ -82,20 +83,24 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kCeilDiv:
     case SymbolicExprType::kMod: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
-      os << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names);
+      if (!is_top_level) {
+        os << "(";
+      }
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, /*is_top_level=*/false);
       os << " " << bin_op_str << " ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names);
-      os << ")";
+      PrintImpl(expr.GetRHS(), os, num_dims, var_names, /*is_top_level=*/false);
+      if (!is_top_level) {
+        os << ")";
+      }
       return;
     }
     case SymbolicExprType::kMax:
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
       os << bin_op_str << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, /*is_top_level=*/true);
       os << ", ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names);
+      PrintImpl(expr.GetRHS(), os, num_dims, var_names, /*is_top_level=*/true);
       os << ")";
       return;
     }
@@ -536,12 +541,12 @@ std::string GetBinaryOpString(SymbolicExprType type) {
 
 void Print(SymbolicExpr expr, llvm::raw_ostream& os,
            std::optional<int64_t> num_dims) {
-  PrintImpl(expr, os, num_dims, {});
+  PrintImpl(expr, os, num_dims, {}, /*is_top_level=*/true);
 }
 
 void Print(SymbolicExpr expr, llvm::raw_ostream& os,
            absl::Span<const std::string> var_names) {
-  PrintImpl(expr, os, std::nullopt, var_names);
+  PrintImpl(expr, os, std::nullopt, var_names, /*is_top_level=*/true);
 }
 
 void Print(const SymbolicMap& map, llvm::raw_ostream& os) {
