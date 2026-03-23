@@ -13,3 +13,12 @@ index c22f1f7..7c3fc0d 100644
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/openxla/shardy/src/shardy/dialect/sdy/ir/bytecode.td b/third_party/openxla/shardy/src/shardy/dialect/sdy/ir/bytecode.td
+--- a/third_party/openxla/shardy/src/shardy/dialect/sdy/ir/bytecode.td
++++ b/third_party/openxla/shardy/src/shardy/dialect/sdy/ir/bytecode.td
+@@ -225,4 +225,5 @@ def Sdy_AllToAllParamListAttrBc: Dialect
+   Array<Sdy_AllToAllParamAttrBc>:$value
+ )> {
+   let cType = "AllToAllParamListAttr";
++  let cBuilder = "AllToAllParamListAttr::get(context, value)";
+ }
