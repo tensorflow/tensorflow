@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -625,6 +626,19 @@ IfrtServingExecutable::CreateExecutableSynchronously(
       }
     }
     executable_bundle->xla_input_layouts = std::move(xla_input_layouts);
+    executable_bundle->xla_input_shapes = std::move(xla_input_shapes);
+  } else {
+    // Fall back to using shapes from `reshaped_input_tensors`.
+    std::vector<std::shared_ptr<xla::Shape>> xla_input_shapes;
+    xla_input_shapes.reserve(executable_bundle->reshaped_input_tensors.size());
+    for (size_t i = 0; i < executable_bundle->reshaped_input_tensors.size();
+         ++i) {
+      xla::Shape xla_shape;
+      TF_RETURN_IF_ERROR(tensorflow::TensorShapeToXLAShape(
+          tf2hlo_result.compile_metadata.args(i).dtype(),
+          executable_bundle->reshaped_input_tensors[i], &xla_shape));
+      xla_input_shapes.push_back(std::make_shared<xla::Shape>(xla_shape));
+    }
     executable_bundle->xla_input_shapes = std::move(xla_input_shapes);
   }
 
