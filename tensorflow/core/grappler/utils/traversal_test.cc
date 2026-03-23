@@ -152,7 +152,7 @@ TEST(TraversalTest, OutputDfsWithLoop) {
 
   const std::vector<string> expected_pre = {"2", "3", "6", "4", "5"};
   const std::vector<string> expected_post = {"6", "5", "4", "3", "2"};
-  const std::vector<string> expected_edges = {"5->2"};
+  const std::vector<std::string> expected_edges = {"5->2"};
 
   EXPECT_EQ(pre_order, expected_pre);
   EXPECT_EQ(post_order, expected_post);
