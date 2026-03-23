@@ -238,8 +238,9 @@ struct SparseConcatFunctor<GPUDevice, T> {
   }
 
  private:
-  Status allocate_outputs(OpKernelContext* context, int rank, int64 output_nnz,
-                          int64** output_inds_ptr, T** output_vals_ptr) const {
+  absl::Status allocate_outputs(OpKernelContext* context, int rank,
+                                int64 output_nnz, int64** output_inds_ptr,
+                                T** output_vals_ptr) const {
     Tensor* output_inds = nullptr;
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({output_nnz, rank}), &output_inds));
@@ -248,7 +249,7 @@ struct SparseConcatFunctor<GPUDevice, T> {
     TF_RETURN_IF_ERROR(
         context->allocate_output(1, TensorShape({output_nnz}), &output_vals));
     *output_vals_ptr = output_vals->vec<T>().data();
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
