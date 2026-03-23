@@ -862,9 +862,9 @@ static std::unique_ptr<PjRtBuffer> CreateOutputLeafBuffer(
     CHECK(memory_space) << "No memory space found for device: "
                         << device->DebugString() << " kind: " << kind_id;
   }
-  auto buffer_or =
-      client->DefineBuffer(output_leaf_shape, memory_space,
-                           std::move(leaf_buffer), {definition_event});
+  auto buffer_or = client->DefineBuffer(output_leaf_shape, memory_space,
+                                        std::move(leaf_buffer),
+                                        {std::move(definition_event)});
   CHECK_OK(buffer_or);
   return *std::move(buffer_or);
 }
