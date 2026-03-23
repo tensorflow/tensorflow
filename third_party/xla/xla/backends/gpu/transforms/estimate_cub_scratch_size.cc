@@ -52,60 +52,8 @@ limitations under the License.
 namespace xla::gpu {
 
 // Invokes the FFI instantiate handler to compute the scratch buffer size.
-// Builds a call frame with placeholder buffers (nullptr data, correct types
-// and dimensions) matching the HLO custom call layout.
-static absl::StatusOr<int64_t> ComputeFfiScratchSize(
-    const ffi::HandlerRegistration& registration,
-    const HloCustomCallInstruction* custom_call,
-    ffi::CallFrameBuilder::AttributesBuilder attrs) {
-  bool is_pairs = custom_call->operand_count() == 2;
-  int num_args = is_pairs ? 2 : 1;  // keys [+ values]
-  int num_rets = is_pairs ? 3 : 2;  // keys_out [+ values_out] + scratch
-
-  ffi::CallFrameBuilder builder(num_args, num_rets);
-
-  // Keys input placeholder.
-  const Shape& key_shape = custom_call->operand(0)->shape();
-  int64_t num_items = Product(key_shape.dimensions());
-  auto key_bytes =
-      primitive_util::ByteWidth(key_shape.element_type()) * num_items;
-  se::DeviceAddressBase keys_placeholder(nullptr, key_bytes);
-  builder.AddBufferArg(keys_placeholder, key_shape.element_type(),
-                       key_shape.dimensions());
-
-  if (is_pairs) {
-    // Values input placeholder.
-    const Shape& value_shape = custom_call->operand(1)->shape();
-    auto value_bytes =
-        primitive_util::ByteWidth(value_shape.element_type()) * num_items;
-    se::DeviceAddressBase values_placeholder(nullptr, value_bytes);
-    builder.AddBufferArg(values_placeholder, value_shape.element_type(),
-                         value_shape.dimensions());
-  }
-
-  // Keys output placeholder.
-  builder.AddBufferRet(keys_placeholder, key_shape.element_type(),
-                       key_shape.dimensions());
-
-  if (is_pairs) {
-    // Values output placeholder.
-    const Shape& value_shape = custom_call->operand(1)->shape();
-    auto value_bytes =
-        primitive_util::ByteWidth(value_shape.element_type()) * num_items;
-    se::DeviceAddressBase values_placeholder(nullptr, value_bytes);
-    builder.AddBufferRet(values_placeholder, value_shape.element_type(),
-                         value_shape.dimensions());
-  }
-
-  // Scratch output placeholder (size 0, we're computing it).
-  se::DeviceAddressBase scratch_placeholder(nullptr, 0);
-  builder.AddBufferRet(scratch_placeholder, U8, {0});
-
-  // Add attributes matching the MLIR backend config.
-  builder.AddAttributes(attrs.Build());
-  ffi::CallFrame call_frame = builder.Build();
-
-  // Invoke the instantiate handler to compute scratch size.
+static absl::StatusOr<int64_t> InvokeInstantiateHandlerAndGetScratchSize(
+    const ffi::HandlerRegistration& registration, ffi::CallFrame call_frame) {
   ffi::ExecutionState state;
   ffi::InvokeContext context{};
   context.state_context = {&state, nullptr, nullptr};
@@ -145,9 +93,51 @@ absl::Status EstimateCubScratchSize::RunOnSortInstruction(
   attrs.Insert("descending", false);
   attrs.Insert("batch_size", batch_size);
 
+  int num_args = is_pairs ? 2 : 1;  // keys [+ values]
+  int num_rets = is_pairs ? 3 : 2;  // keys_out [+ values_out] + scratch
+  ffi::CallFrameBuilder builder(num_args, num_rets);
+
+  // Keys input placeholder.
+  auto key_bytes =
+      primitive_util::ByteWidth(key_shape.element_type()) * num_items;
+  se::DeviceAddressBase keys_placeholder(nullptr, key_bytes);
+  builder.AddBufferArg(keys_placeholder, key_shape.element_type(),
+                       key_shape.dimensions());
+
+  if (is_pairs) {
+    // Values input placeholder.
+    const Shape& value_shape = custom_call->operand(1)->shape();
+    auto value_bytes =
+        primitive_util::ByteWidth(value_shape.element_type()) * num_items;
+    se::DeviceAddressBase values_placeholder(nullptr, value_bytes);
+    builder.AddBufferArg(values_placeholder, value_shape.element_type(),
+                         value_shape.dimensions());
+  }
+
+  // Keys output placeholder.
+  builder.AddBufferRet(keys_placeholder, key_shape.element_type(),
+                       key_shape.dimensions());
+
+  if (is_pairs) {
+    // Values output placeholder.
+    const Shape& value_shape = custom_call->operand(1)->shape();
+    auto value_bytes =
+        primitive_util::ByteWidth(value_shape.element_type()) * num_items;
+    se::DeviceAddressBase values_placeholder(nullptr, value_bytes);
+    builder.AddBufferRet(values_placeholder, value_shape.element_type(),
+                         value_shape.dimensions());
+  }
+
+  // Scratch output placeholder (size 0, we're computing it).
+  se::DeviceAddressBase scratch_placeholder(nullptr, 0);
+  builder.AddBufferRet(scratch_placeholder, U8, {0});
+
+  // Add attributes matching the MLIR backend config.
+  builder.AddAttributes(attrs.Build());
+
   ASSIGN_OR_RETURN(
       int64_t scratch_size,
-      ComputeFfiScratchSize(registration, custom_call, std::move(attrs)));
+      InvokeInstantiateHandlerAndGetScratchSize(registration, builder.Build()));
 
   // Create the FFI custom call with correct scratch size and MLIR dict
   // backend config for the FFI handler attributes.
@@ -190,9 +180,12 @@ absl::Status EstimateCubScratchSize::RunOnScanInstruction(
   attrs.Insert("kind", static_cast<int32_t>(options.kind()));
   attrs.Insert("is_reverse", options.is_reverse());
 
+  ffi::CallFrameBuilder builder(0, 0);
+  builder.AddAttributes(attrs.Build());
+
   ASSIGN_OR_RETURN(
       int64_t scratch_size,
-      ComputeFfiScratchSize(handler, custom_call, std::move(attrs)));
+      InvokeInstantiateHandlerAndGetScratchSize(handler, builder.Build()));
 
   // Replace the custom call with one that has a scratch size.
   Shape new_shape = custom_call->shape();

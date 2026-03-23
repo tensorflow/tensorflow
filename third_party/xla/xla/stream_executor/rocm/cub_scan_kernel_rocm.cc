@@ -17,70 +17,79 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 XLA_FFI_REGISTER_ENUM_ATTR_DECODING(stream_executor::rocm::CubScanKind);
+XLA_FFI_REGISTER_ENUM_ATTR_DECODING(xla::PrimitiveType);
 
 namespace stream_executor::rocm {
 
 namespace {
 
 absl::Status CubScanLaunchKernelFfiHandler(
-    xla::ffi::AnyBuffer d_temp_storage, xla::ffi::AnyBuffer d_in,
-    xla::ffi::Result<xla::ffi::AnyBuffer> d_out, int64_t vector_length,
+    xla::ffi::AnyBuffer d_in, xla::ffi::Result<xla::ffi::AnyBuffer> d_out,
+    xla::ffi::Result<xla::ffi::AnyBuffer> d_temp_storage, int64_t vector_length,
     int64_t row_length, int64_t column_length, CubScanKind kind,
     bool is_reverse, hipStream_t stream) {
-  return CubScanLaunchKernel(d_in.element_type(), d_temp_storage.untyped_data(),
-                             d_temp_storage.size_bytes(), d_in.untyped_data(),
-                             d_out->untyped_data(), vector_length, row_length,
-                             column_length, kind, is_reverse, stream);
+  return CubScanLaunchKernel(
+      d_in.element_type(), d_temp_storage->untyped_data(),
+      d_temp_storage->size_bytes(), d_in.untyped_data(), d_out->untyped_data(),
+      vector_length, row_length, column_length, kind, is_reverse, stream);
 }
 
-absl::Status CubScanGetScratchSizeFfiHandler(
-    xla::ffi::AnyBuffer d_in, size_t* temp_bytes, int64_t vector_length,
-    int64_t row_length, int64_t column_length, CubScanKind kind,
-    bool is_reverse) {
-  TF_ASSIGN_OR_RETURN(
-      *temp_bytes,
-      CubScanGetScratchSize(d_in.element_type(), vector_length, row_length,
+absl::StatusOr<std::unique_ptr<int64_t>> CubScanGetScratchSizeFfiHandler(
+    xla::PrimitiveType element_type, int64_t vector_length, int64_t row_length,
+    int64_t column_length, CubScanKind kind, bool is_reverse) {
+  ASSIGN_OR_RETURN(
+      size_t temp_bytes,
+      CubScanGetScratchSize(element_type, vector_length, row_length,
                             column_length, kind, is_reverse));
-  return absl::OkStatus();
+  return std::make_unique<int64_t>(temp_bytes);
 }
 
 }  // namespace
 
 XLA_FFI_DEFINE_HANDLER(kCubScanExecute, CubScanLaunchKernelFfiHandler,
                        xla::ffi::Ffi::Bind()
-                           .Arg<xla::ffi::AnyBuffer>()
-                           .Arg<xla::ffi::AnyBuffer>()
-                           .Ret<xla::ffi::AnyBuffer>()
+                           .Arg<xla::ffi::AnyBuffer>()  // d_in
+                           .Ret<xla::ffi::AnyBuffer>()  // d_out
+                           .Ret<xla::ffi::AnyBuffer>()  // d_temp_storage
                            .Attr<int64_t>("vector_length")
                            .Attr<int64_t>("row_length")
                            .Attr<int64_t>("column_length")
                            .Attr<CubScanKind>("kind")
                            .Attr<bool>("is_reverse")
-                           .Ctx<xla::ffi::PlatformStream<hipStream_t>>());
+                           .Ctx<xla::ffi::PlatformStream<hipStream_t>>(),
+                       {xla::ffi::Traits::kCmdBufferCompatible});
 
-XLA_FFI_DEFINE_HANDLER(kCubScanInitialize, CubScanGetScratchSizeFfiHandler,
-                       xla::ffi::Ffi::BindInitialize()
-                           .Arg<xla::ffi::AnyBuffer>()
-                           .Attr<xla::ffi::Pointer<size_t>>("temp_bytes")
+XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(),
+                         xla::gpu::kCubDeviceScanTarget.data(), "ROCM",
+                         {/*instantiate=*/nullptr, /*prepare=*/nullptr,
+                          /*initialize=*/nullptr,
+                          /*.execute=*/kCubScanExecute});
+
+XLA_FFI_DEFINE_HANDLER(kCubScanInstantiate, CubScanGetScratchSizeFfiHandler,
+                       xla::ffi::Ffi::BindInstantiate()
+                           .Attr<xla::PrimitiveType>("element_type")
                            .Attr<int64_t>("vector_length")
                            .Attr<int64_t>("row_length")
                            .Attr<int64_t>("column_length")
                            .Attr<CubScanKind>("kind")
                            .Attr<bool>("is_reverse"));
 
-XLA_FFI_REGISTER_HANDLER(xla::ffi::GetXlaFfiApi(), "xla.gpu.ext.cub_scan",
-                         "ROCM",
-                         {/* .instantiate = */ nullptr,
-                          /* .prepare = */ nullptr,
-                          /* .initialize = */ kCubScanInitialize,
-                          /* .execute = */ kCubScanExecute});
+XLA_FFI_REGISTER_HANDLER(
+    xla::ffi::GetXlaFfiApi(),
+    xla::gpu::kCubDeviceScanUnassignedScratchSizeTarget.data(), "ROCM",
+    {/*.instantiate=*/kCubScanInstantiate, /*prepare=*/nullptr,
+     /*initialize=*/nullptr, /*execute=*/nullptr});
 
 }  // namespace stream_executor::rocm
