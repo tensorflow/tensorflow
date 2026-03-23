@@ -8,9 +8,9 @@ nvidia-cuda-runtime>=13.0.48,<14.0
 # https://docs.nvidia.com/deeplearning/cudnn/backend/latest/developer/forward-compatibility.html#cudnn-api-compatibility
 nvidia-cudnn-cu13>=9.12.0.46,<10.0
 nvidia-cufft>=12.0.0.15,<13.0
-nvidia-curand>=10.3.8.48,<11.0
-nvidia-cusolver>=11.7.2.48,<12.0
-nvidia-cusparse>=12.5.5.48,<13.0
+nvidia-curand>=10.4.2.51
+nvidia-cusolver>=12.1.0.51
+nvidia-cusparse>=12.7.9.17
 nvidia-nccl-cu13>=2.28.9,<3.0
-nvidia-nvjitlink>=13.0.48,<14.0
+nvidia-nvjitlink>=13.2.51
 nvidia-nvshmem-cu13>=3.3.20
