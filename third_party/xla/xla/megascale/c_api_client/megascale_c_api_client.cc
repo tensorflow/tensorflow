@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/megascale/c_api_client/c_api_megascale_error_aggregator.h"
 #include "xla/megascale/c_api_client/megascale_types.h"
 #include "xla/megascale/dcn_topology.pb.h"
+#include "xla/megascale/megascale_runtime_error_overlay.pb.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_collectives_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
