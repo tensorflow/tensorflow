@@ -617,6 +617,8 @@ xla_test(
         ":conv_fusion_rewriter",
         ":conv_kind_assignment",
         "//xla:error_spec",
+        "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:pattern_matcher_gmock",
@@ -2726,6 +2728,7 @@ cc_library(
     hdrs = ["scan_rewriter.h"],
     deps = [
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/service/gpu:cublas_cudnn",
