@@ -15,6 +15,16 @@ limitations under the License.
 
 #include "xla/pjrt/infer_dispatch_info.h"
 
+#include <cstdint>
+#include <iterator>
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/algorithm/container.h"
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/pjrt/utils.h"
 
 namespace xla {
