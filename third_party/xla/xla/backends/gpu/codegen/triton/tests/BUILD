@@ -6,7 +6,7 @@ load(
     "@local_config_sycl//sycl:build_defs.bzl",
     "if_sycl_is_configured",
 )
-load("//xla:lit.bzl", "lit_test_suite")
+load("//xla:lit.bzl", "lit_device_test")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load(
     "//xla/tsl/platform/default:cuda_build_defs.bzl",
@@ -48,23 +48,13 @@ xla_cc_binary(
     ]),
 )
 
-# Tags adopted from xla_test() for a100.
-triton_lit_tags = [
-    "cuda-only",
-    "gpu",
-    "notsan",
-    "no_mac",
-    "nomsan",
-    "nozapfhahn",
-    "requires-gpu-sm80-only",
-]
-
-lit_test_suite(
+lit_device_test(
     name = "tests",
     srcs = glob(["**/*.hlo"]),
-    cfg = "//xla:lit.cfg.py",
-    default_tags = triton_lit_tags,
-    hermetic_cuda_data_dir = "%S/../../../../../../cuda_nvcc",
+    backends = [
+        "h100",
+        "b200",
+    ],
     tools = [
         ":triton_test_correctness",
         "//xla/backends/gpu/codegen/triton/tools:hlo_to_xtileir",
