@@ -62,7 +62,7 @@ void GpuPjRtCodegenTest::CompileAndOptionallyVerifyPtx(
       std::unique_ptr<Executable> executable,
       CompileToExecutable(std::move(hlo_module), run_optimization_passes));
   std::string ptx_str(
-      tensorflow::down_cast<GpuExecutable*>(executable.get())->text());
+      absl::down_cast<GpuExecutable*>(executable.get())->text());
 
   // On the ROCM platform the "ptx" string is not populated for the compiled
   // executable, and hence the "ptx_str" will be empty. So disabling the
@@ -109,7 +109,7 @@ GpuPjRtCodegenTest::CompileToExecutable(std::unique_ptr<HloModule> hlo_module,
 absl::Status GpuPjRtCodegenTest::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, absl::string_view expected_llvm_ir,
     bool match_optimized_ir, bool run_optimization_passes) {
-  auto llvm_compiler = tensorflow::down_cast<LLVMCompiler*>(compiler());
+  auto llvm_compiler = absl::down_cast<LLVMCompiler*>(compiler());
   return xla::CompileAndVerifyIr(llvm_compiler, compile_options_,
                                  std::move(hlo_module), expected_llvm_ir,
                                  match_optimized_ir, run_optimization_passes);
