@@ -4931,6 +4931,14 @@ class Subgraph {
     const int32_t* axes_data =
         reinterpret_cast<const int32_t*>(axes_tensor.data.data);
     const int num_reduction_axes = NumElements(&axes_tensor);
+    if (num_reduction_axes > XNN_MAX_TENSOR_DIMS) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "unsupported number of reduction axes (%d) in node #%d: "
+          "must not exceed %d",
+          num_reduction_axes, node_index, XNN_MAX_TENSOR_DIMS);
+      return kTfLiteError;
+    }
     if (num_reduction_axes <= 0 ||
         (num_reduction_axes == 1 && axes_data[0] == 0 &&
          input_tensor.dims->size == 0)) {
