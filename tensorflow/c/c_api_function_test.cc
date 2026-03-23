@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
@@ -1355,7 +1356,7 @@ TEST_F(CApiFunctionTest, TFGraphCopyFunctionWithStackTraces) {
   const StackTracesMap* grad_stack_traces;
 
   {
-    mutex_lock l(host_graph_->mu);
+    absl::MutexLock l(host_graph_->mu);
     auto flib_def = host_graph_->graph.flib_def();
     func_stack_traces = flib_def.GetStackTraces(func_name_);
     grad_stack_traces = flib_def.GetStackTraces("MyGrad");

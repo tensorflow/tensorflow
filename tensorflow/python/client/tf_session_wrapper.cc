@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "Python.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "pybind11/attr.h"  // from @pybind11
@@ -51,7 +52,6 @@ limitations under the License.
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tsl/platform/mutex.h"
 
 namespace pybind11 {
 namespace detail {
@@ -441,7 +441,7 @@ struct PyGraphData {
 
     // By default shape inference functions are required, however this breaks
     // many custom ops. Disable this check for Python graphs.
-    tsl::mutex_lock l(graph->mu);
+    absl::MutexLock l(graph->mu);
     graph->refiner.set_require_shape_inference_fns(false);
   }
 
@@ -491,7 +491,7 @@ struct PyGraph {
   // OperationHandle's. This logic is only invoked when importing an existing
   // GraphDef into Python. It should be removed once all logic moves to C++.
   std::vector<TF_Operation*> new_operations() {
-    tsl::mutex_lock l(tf_graph()->mu);
+    absl::MutexLock l(tf_graph()->mu);
     std::vector<TF_Operation*> ops;
 
     // SUBTLE: `op_nodes` skips the SOURCE and SINK nodes
@@ -504,7 +504,7 @@ struct PyGraph {
   }
 
   py::object get_operation_by_name(const std::string& name) {
-    tsl::mutex_lock l(tf_graph()->mu);
+    absl::MutexLock l(tf_graph()->mu);
     auto it = data->ops_by_name.find(name);
     if (it == data->ops_by_name.end()) {
       throw py::key_error();
@@ -528,7 +528,7 @@ struct PyGraph {
     std::string versions;
     {
       py::gil_scoped_release release;
-      tsl::mutex_lock l(tf_graph()->mu);
+      absl::MutexLock l(tf_graph()->mu);
       versions = tf_graph()->graph.versions().SerializeAsString();
     }
     pybind11::gil_scoped_acquire acquire;
@@ -537,7 +537,7 @@ struct PyGraph {
 
   absl::StatusOr<py::bytes> _op_def_for_type(
       const std::string& kTypeName) const {
-    tsl::mutex_lock l(tf_graph()->mu);
+    absl::MutexLock l(tf_graph()->mu);
     const tensorflow::OpDef* op_def;
     TF_RETURN_IF_ERROR(
         tf_graph()->graph.op_registry()->LookUpOpDef(kTypeName, &op_def));
@@ -545,14 +545,14 @@ struct PyGraph {
   }
 
   void add_control_input(tensorflow::Node* src, tensorflow::Node* dst) {
-    tsl::mutex_lock l(tf_graph()->mu);
+    absl::MutexLock l(tf_graph()->mu);
 
     tf_graph()->graph.AddControlEdge(src, dst);
     record_mutation(*dst, "adding control edge");
   }
 
   void remove_all_control_inputs(const tensorflow::Node& node) {
-    tsl::mutex_lock l(tf_graph()->mu);
+    absl::MutexLock l(tf_graph()->mu);
     std::vector<const tensorflow::Edge*> control_edges;
     for (const tensorflow::Edge* edge : node.in_edges()) {
       if (!edge->IsControlEdge()) continue;
@@ -668,7 +668,7 @@ struct PyOperation {
   }
 
   void set_device(const std::string& device) {
-    tsl::mutex_lock l(data->graph->tf_graph()->mu);
+    absl::MutexLock l(data->graph->tf_graph()->mu);
     tf_op()->node.set_requested_device(device);
     data->graph->record_mutation(tf_op()->node, "setting device");
   }
@@ -777,7 +777,7 @@ struct PyTensor {
   }
 
   int64_t rank() {
-    tsl::mutex_lock l(data->graph->tf_graph()->mu);
+    absl::MutexLock l(data->graph->tf_graph()->mu);
     tensorflow::shape_inference::InferenceContext* ic =
         data->graph->tf_graph()->refiner.GetContext(&data->op->tf_op()->node);
 
@@ -839,7 +839,7 @@ absl::Status PyOperation::_add_outputs(py::list dtypes, py::list shapes) {
 }
 
 void PyOperation::add_control_inputs(py::iterable inputs) {
-  tsl::mutex_lock l(data->graph->tf_graph()->mu);
+  absl::MutexLock l(data->graph->tf_graph()->mu);
   for (py::handle input : inputs) {
     auto* input_handle = py::cast<PyOperation*>(input);
     data->graph->tf_graph()->graph.AddControlEdge(&input_handle->tf_op()->node,
@@ -1819,7 +1819,7 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
     TF_Graph* tf_graph = graph->tf_graph();
     auto def = new tensorflow::GraphDef();
     {
-      tensorflow::mutex_lock l(tf_graph->mu);
+      absl::MutexLock l(tf_graph->mu);
       tf_graph->graph.ToGraphDef(def);
     }
     tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());

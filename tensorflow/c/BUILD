@@ -178,7 +178,9 @@ tf_cuda_library(
         ":tf_status_internal",
         ":tf_tensor_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -249,7 +251,9 @@ tf_cuda_library(
         ":tf_tstring",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:tstring",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/synchronization",
         "@xla//xla/tsl/c:tsl_status",
     ] + select({
         "//tensorflow:with_xla_support": [
@@ -318,7 +322,9 @@ tf_cuda_library(
             "//tensorflow/core/config:flags",
             "//tensorflow/core/distributed_runtime:server_lib",
             "//tensorflow/core/kernels:logging_ops",
+            "@com_google_absl//absl/base:core_headers",
             "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/synchronization",
         ],
     }),
     alwayslink = 1,
@@ -645,6 +651,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@xla//xla/tsl/c:tsl_status_internal",
@@ -1018,6 +1025,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -1131,6 +1139,7 @@ tf_cuda_library(
     deps = [
         ":c_api",
         ":c_api_internal",
+        "@com_google_absl//absl/synchronization",
         "//tensorflow/core:protos_all_cc",
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
     ],
