@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
-#include "xla/backends/gpu/runtime/copy_done_thunk.h"
 #include "xla/backends/gpu/runtime/copy_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
@@ -81,6 +80,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
@@ -141,15 +141,15 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kDeviceToHostCopyThunk:
       return DeviceToHostCopyThunk::FromProto(
           std::move(thunk_info), thunk_proto.device_to_host_copy_thunk(),
-          buffer_allocations, copy_async_events_map);
+          buffer_allocations);
     case ThunkProto::kHostToDeviceCopyThunk:
       return HostToDeviceCopyThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_to_device_copy_thunk(),
-          buffer_allocations, copy_async_events_map);
+          buffer_allocations);
     case ThunkProto::kCopyDoneThunk:
-      return CopyDoneThunk::FromProto(std::move(thunk_info),
-                                      thunk_proto.copy_done_thunk(),
-                                      copy_async_events_map);
+      return Internal(
+          "CopyDoneThunk is no longer supported. Use "
+          "AsyncStartThunk/AsyncDoneThunk instead.");
     case ThunkProto::kDeviceToDeviceCopyThunk:
       return DeviceToDeviceCopyThunk::FromProto(
           std::move(thunk_info), thunk_proto.device_to_device_copy_thunk(),
