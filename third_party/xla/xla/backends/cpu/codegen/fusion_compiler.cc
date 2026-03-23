@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -90,6 +89,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/WalkResult.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
@@ -119,6 +119,7 @@ limitations under the License.
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/service/dump.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/framework/mlir/status_scoped_diagnostic_handler.h"
 #include "xla/tsl/platform/errors.h"
@@ -153,17 +154,39 @@ static void RegisterPassPipeline(
                              option_handler);
 }
 
+bool ShouldDumpMlir(const HloModule* hlo_module) {
+  return hlo_module != nullptr && DumpingEnabledForHloModule(*hlo_module) &&
+         DumpingEnabledForEmitter("mlir-fusion",
+                                  hlo_module->config().debug_options());
+}
+
+void DumpMlirModule(mlir::ModuleOp module, absl::string_view stage_name,
+                    const HloModule& hlo_module) {
+  std::optional<llvm::StringRef> name = module.getName();
+  if (!name.has_value()) {
+    return;
+  }
+  DumpToFileInDirOrStdout(
+      hlo_module, "",
+      absl::StrCat(absl::string_view(*name), "-", stage_name, ".mlir"),
+      mlir::debugString(module));
+}
+
 class ModuleCallbackPass
     : public mlir::PassWrapper<ModuleCallbackPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
-  explicit ModuleCallbackPass(absl::FunctionRef<void(mlir::ModuleOp)> callback)
-      : callback_(callback) {}
+  explicit ModuleCallbackPass(const HloModule* hlo_module,
+                              absl::string_view stage_name)
+      : hlo_module_(hlo_module), stage_name_(stage_name) {}
 
-  void runOnOperation() override { callback_(getOperation()); }
+  void runOnOperation() override {
+    DumpMlirModule(getOperation(), stage_name_, *hlo_module_);
+  }
 
  private:
-  absl::FunctionRef<void(mlir::ModuleOp)> callback_;
+  const HloModule* hlo_module_;
+  std::string stage_name_;
 };
 
 static absl::Status RunPassPipeline(
@@ -410,9 +433,9 @@ static void ApplyFastMathFlags(llvm::Module& llvm_module,
 }
 
 FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
-                               CompilationHooks hooks)
+                               const HloModule* hlo_module)
     : options_(std::move(options)),
-      hooks_(std::move(hooks)),
+      hlo_module_(hlo_module),
       scalar_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)),
       tiled_pass_manager_(mlir::PassManager::on<mlir::ModuleOp>(context)) {
   // Only enable verifier in debug builds.
@@ -422,11 +445,12 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
 #endif
   scalar_pass_manager_.enableVerifier(should_verify);
   tiled_pass_manager_.enableVerifier(should_verify);
+  bool should_dump_mlir_passes = ShouldDumpMlir(hlo_module_);
   // Scalar passes.
   AddScalarOptimizationPasses(scalar_pass_manager_, options_.vector_width);
-  if (hooks_.post_optimization) {
+  if (should_dump_mlir_passes) {
     scalar_pass_manager_.addPass(
-        std::make_unique<ModuleCallbackPass>(hooks_.post_optimization));
+        std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));
   }
   AddScalarLoweringPasses(scalar_pass_manager_, options_.vector_width,
                           options_.fast_min_max);
@@ -434,9 +458,9 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
   // Tiled passes.
   tiled_pass_manager_.addPass(xtile::createVerifyLegalXTileOpsPass());
   AddTiledOptimizationPasses(tiled_pass_manager_);
-  if (hooks_.post_optimization) {
+  if (should_dump_mlir_passes) {
     tiled_pass_manager_.addPass(
-        std::make_unique<ModuleCallbackPass>(hooks_.post_optimization));
+        std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));
   }
   AddTiledLoweringPasses(tiled_pass_manager_, options_.fast_min_max);
 
@@ -462,6 +486,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   };
 
   bool is_tiled = !mlir_module.getBody()->getOps<xtile::EntryFuncOp>().empty();
+  bool should_dump_mlir_passes = ShouldDumpMlir(hlo_module_);
   mlir::PassManager& pm = is_tiled ? tiled_pass_manager_ : scalar_pass_manager_;
 
   VLOG(1) << "Compiling MLIR module: " << module_name << ", with "
@@ -475,14 +500,14 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
         {{"module", module_name}, {"op_count", get_module_op_count()}});
   });
 
-  if (hooks_.pre_optimization) {
-    hooks_.pre_optimization(mlir_module);
+  if (should_dump_mlir_passes) {
+    DumpMlirModule(mlir_module, "pre-optimization", *hlo_module_);
   }
   TF_RETURN_IF_ERROR(
       RunPassPipeline(mlir_module, pm, nullptr, options_.verification_level));
 
-  if (hooks_.post_lowering) {
-    hooks_.post_lowering(mlir_module);
+  if (should_dump_mlir_passes) {
+    DumpMlirModule(mlir_module, "post-lowering", *hlo_module_);
   }
 
   // At the end of the MLIR pipeline we must have just one function definition.

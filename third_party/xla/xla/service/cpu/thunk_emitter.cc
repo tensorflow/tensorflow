@@ -144,34 +144,6 @@ absl::StatusOr<std::string> GetFusionFingerprint(
 
 }  // namespace
 
-static FusionCompiler::CompilationHooks FusionCompilerHooks(
-    const HloModule& hlo_module) {
-  if (!DumpingEnabledForHloModule(hlo_module)) {
-    return {};
-  }
-
-  auto callback_factory = [&hlo_module](std::string stage_name) {
-    return [&hlo_module, stage_name](mlir::ModuleOp module) {
-      std::optional<llvm::StringRef> name = module.getName();
-      if (!name.has_value()) {
-        return;
-      }
-
-      DumpToFileInDirOrStdout(
-          hlo_module, "",
-          absl::StrCat(absl::string_view(*name), "-", stage_name, ".mlir"),
-          mlir::debugString(module));
-    };
-  };
-
-  FusionCompiler::CompilationHooks hooks;
-  hooks.pre_optimization = callback_factory("pre-optimization");
-  hooks.post_optimization = callback_factory("post-optimization");
-  hooks.post_lowering = callback_factory("post-lowering");
-
-  return hooks;
-}
-
 static FusionCompiler::Options FusionCompilerOptions(
     const HloModuleConfig& config) {
   const DebugOptions& debug_options = config.debug_options();
@@ -185,9 +157,7 @@ static FusionCompiler::Options FusionCompilerOptions(
 static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
                                             const HloModule& hlo_module) {
   FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
-
-  return FusionCompiler(context, std::move(options),
-                        FusionCompilerHooks(hlo_module));
+  return FusionCompiler(context, std::move(options), &hlo_module);
 }
 
 ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
@@ -205,8 +175,8 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       mlir_context_(FusionCompiler::CreateContext()),
       fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
       parallel_fusion_emitter_(
-          thread_pool, FusionCompilerOptions(hlo_module_config_),
-          FusionCompilerHooks(hlo_module), &buffer_assignment,
+          thread_pool, FusionCompilerOptions(hlo_module_config_), &hlo_module,
+          &buffer_assignment,
           hlo_module_config_.debug_options()
               .xla_cpu_generate_unique_c_style_kernel_entry_points(),
           options::EnableTiledEmitter(hlo_module_config_)) {}
