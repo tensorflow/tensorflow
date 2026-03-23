@@ -110,13 +110,21 @@ class CudaBlasLtTest : public ::testing::Test {
 
     DeviceAddressBase workspace = executor_->Allocate(workspace_size);
 
-    gpu::BlasLt::MemoryArgs args;
-    args.scratch_allocator = nullptr;
-    args.a = d_a;
-    args.b = d_b;
-    args.c = d_c;
-    args.d = d_c;
-    args.workspace = workspace;
+    gpu::BlasLt::MemoryArgs args{
+        /*a=*/d_a,
+        /*b=*/d_b,
+        /*c=*/d_c,
+        /*d=*/d_c,
+        /*bias=*/DeviceAddressBase{},
+        /*aux=*/DeviceAddressBase{},
+        /*a_scale=*/DeviceAddressBase{},
+        /*b_scale=*/DeviceAddressBase{},
+        /*c_scale=*/DeviceAddressBase{},
+        /*d_scale=*/DeviceAddressBase{},
+        /*d_amax=*/DeviceAddressBase{},
+        workspace,
+        /*scratch_allocator=*/nullptr,
+    };
 
     ASSERT_OK(plan->ExecuteOnStream(stream_.get(), args, nullptr));
 
