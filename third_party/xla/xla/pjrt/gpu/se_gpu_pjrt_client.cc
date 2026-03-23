@@ -1862,7 +1862,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
   auto pjrt_platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM
 
-  bool use_async_dispatch;
+  bool use_async_dispatch = false;
   if (options.use_async_dispatch.has_value()) {
     use_async_dispatch = *options.use_async_dispatch;
   } else if (const char* v = std::getenv("PJRT_GPU_ENABLE_ASYNC_DISPATCH")) {
