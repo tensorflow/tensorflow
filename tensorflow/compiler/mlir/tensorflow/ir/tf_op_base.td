@@ -253,7 +253,7 @@ def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
 def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
 def TF_WriteTrainingPredictions : MemoryEffects<[MemWrite<TF_WriteTrainingPredictionsResource>]>;
-def TF_RecordEventMetricForTensor : MemoryEffects<[MemWrite<TF_RecordEventMetricForTensorResource>]>;
+def TF_RecordEventMetricForTensor : MemoryEffects<[MemRead<TF_RecordEventMetricForTensorResource>]>;
 def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
 
 // Special effect for keeping `CollectiveReduce` ops in order.

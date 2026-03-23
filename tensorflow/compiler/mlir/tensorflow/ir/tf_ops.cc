@@ -222,8 +222,12 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 void RecordEventMetricForTensorOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
         effects) {
+  // Modeling as a Read rather than a Write prevents XLA from
+  // forcefully serializing every streamz op against one another (which hangs
+  // the TPU execution due to synchronous host callbacks), while still modeling
+  // a side-effect footprint to avoid aggressive compilation errors.
   effects.reserve(1);
-  effects.emplace_back(MemoryEffects::Write::get(),
+  effects.emplace_back(MemoryEffects::Read::get(),
                        ResourceEffects::RecordEventMetricForTensor::get());
 }
 
