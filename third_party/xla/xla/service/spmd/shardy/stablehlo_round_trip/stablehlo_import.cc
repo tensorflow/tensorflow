@@ -590,25 +590,10 @@ void registerStablehloImportShardingsPass() {
 // This way Shardy XLA Pass tests run the logic that actually runs in prod.
 void addStablehloImportPipeline(mlir::OpPassManager& pm,
                                 ArrayRef<bool> allowPropagationToArgs,
-                                ArrayRef<bool> allowPropagationToResults,
-                                bool enableStablehloCanonicalizeFromHloImport,
-                                bool use_stablehlo_shard_map_import) {
-  // TODO(enver): Drop this branch. It is currently only used for auto_sharding
-  // which is an experimental tool.
-  if (use_stablehlo_shard_map_import) {
-    addCommonPreImportPasses(pm, /*enableConstantImport=*/true,
-                             enableStablehloCanonicalizeFromHloImport);
-    pm.addPass(createImportShardingsPass(allowPropagationToArgs,
-                                         allowPropagationToResults));
-    pm.addPass(createStablehloRoundTripShardMapImportPass());
-    pm.addPass(createImportSdyCustomCallsPass());
-    pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
-    pm.addPass(createImportFuncCallsPass());
-  } else {
-    pm.addPass(createImportShardingsPass(allowPropagationToArgs,
-                                         allowPropagationToResults));
-    addSdyRoundTripImportPipeline(pm);
-  }
+                                ArrayRef<bool> allowPropagationToResults) {
+  pm.addPass(createImportShardingsPass(allowPropagationToArgs,
+                                       allowPropagationToResults));
+  addSdyRoundTripImportPipeline(pm);
 }
 
 void registerStablehloImportPipeline() {
@@ -617,9 +602,7 @@ void registerStablehloImportPipeline() {
       "Run passes to import a StableHLO module with `mhlo.shardings` into the "
       "SDY (Shardy) dialect.",
       [](mlir::OpPassManager& pm) {
-        addStablehloImportPipeline(
-            pm, ArrayRef<bool>(), ArrayRef<bool>(),
-            /*enableStablehloCanonicalizeFromHloImport=*/true);
+        addStablehloImportPipeline(pm, ArrayRef<bool>(), ArrayRef<bool>());
       });
 }
 

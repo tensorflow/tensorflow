@@ -73,10 +73,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertHloToShardyStablehlo(
   mlir::PassManager pm(context);
   llvm::SmallVector<bool> prop_args = {false};
   llvm::SmallVector<bool> prop_results = {false};
-  xla::sdy::addStablehloImportPipeline(
-      pm, prop_args, prop_results,
-      /*enableStablehloCanonicalizeFromHloImport=*/false,
-      /*use_stablehlo_shard_map_import=*/true);
+  xla::sdy::addStablehloImportPipeline(pm, prop_args, prop_results);
   // TODO(hanruobing): Explore reinserting the original mesh and calling
   // xla::sdy::createDedupMeshesPass
   if (mlir::failed(pm.run(stablehlo_module.get()))) {

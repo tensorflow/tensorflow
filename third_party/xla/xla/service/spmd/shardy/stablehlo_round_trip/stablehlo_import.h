@@ -78,11 +78,9 @@ void registerStablehloImportPipeline();
 // - have the same number of elements as the number of args/results.
 // TODO(enver): Drop Stablehlo import pipeline in favor of Sdy import pipeline
 // after HloShardingV3 is enabled.
-void addStablehloImportPipeline(
-    mlir::OpPassManager& pm, mlir::ArrayRef<bool> allowPropagationToArgs,
-    mlir::ArrayRef<bool> allowPropagationToResults,
-    bool enableStablehloCanonicalizeFromHloImport = true,
-    bool use_stablehlo_shard_map_import = false);
+void addStablehloImportPipeline(mlir::OpPassManager& pm,
+                                mlir::ArrayRef<bool> allowPropagationToArgs,
+                                mlir::ArrayRef<bool> allowPropagationToResults);
 
 // Creates ImportShardingsPass that converts `mhlo.sharding` to `mesh` and
 // `sdy.sharding`.
