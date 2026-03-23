@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -1001,8 +1002,7 @@ absl::Status SpmdPartitioningVisitor::HandleGatherWithoutConflicts(
 
   std::vector<int64_t> trivial_slice_dims;
   for (int64_t i = 0; i < operand.base_shape().dimensions().size(); ++i) {
-    if (!operand.sharding().IsReplicated() &&
-        operand.sharding().dimension(i) > 1 && slice_sizes[i] == 1 &&
+    if (operand.sharding().dimension(i) > 1 && slice_sizes[i] == 1 &&
         operand.base_shape().dimensions(i) != 1 &&
         !absl::c_linear_search(dnums.operand_batching_dims(), i)) {
       trivial_slice_dims.push_back(i);
@@ -1520,6 +1520,43 @@ absl::StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
   return nullptr;
 }
 
+HloInstruction* SelectOperandForScatterIndexPassthroughDimensions(
+    const HloScatterInstruction* scatter, const PartitionedHlo& indices,
+    const PartitionedHlo& per_group_operand, SpmdBuilder* b) {
+  std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(scatter->to_apply());
+  if (!reduction_kind) {
+    // XOR is not supported for now, as it will need to keep the operand around
+    // in buffer after local scatter to XOR with the final all-reduced results.
+    return nullptr;
+  }
+  std::optional<Literal> identity_literal =
+      GetReductionIdentity(*reduction_kind, scatter->shape().element_type());
+  if (!identity_literal) {
+    return nullptr;
+  }
+  HloInstruction* identity = CreateConstant(per_group_operand.hlo()->shape(),
+                                            std::move(*identity_literal), b);
+  // Update partition_id for partial replicate.
+  auto partition_id = indices.state().partition_id;
+  if (indices.sharding().HasPartialReplication()) {
+    auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
+        indices.sharding(), {indices.sharding().SubgroupReplicationDim()});
+    partition_id =
+        GetInGroupPartitionId(partition_id, sharding_grouped.device_groups, b);
+  }
+  // To avoid accumulating the initial operand multiple times during all-reduce,
+  // we use identity operands for all non-zero partitions.
+  auto not_partition_zero = b->AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeScalarShape(PRED), partition_id));
+  not_partition_zero = b->AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::ChangeElementType(identity->shape(), PRED), not_partition_zero,
+      {}));
+  return b->AddInstruction(HloInstruction::HloInstruction::CreateTernary(
+      identity->shape(), HloOpcode::kSelect, not_partition_zero, identity,
+      per_group_operand.hlo()));
+}
+
 // Perform partitioning of Scatter when the indices are partitioned on the
 // non-index vector dimension.
 absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
@@ -1584,41 +1621,13 @@ absl::StatusOr<HloInstruction*> PartitionScatterIndexPassthroughDimensions(
   PartitionedHlo per_group_operand =
       PerGroupPartitionedHlo(operands[0], operand_grouped, b, clean_ups);
 
-  std::optional<ReductionKind> reduction_kind =
-      MatchReductionComputation(scatter->to_apply());
-  if (!reduction_kind) {
-    // XOR is not supported for now, as it will need to keep the operand
-    // around in buffer after local scatter to XOR with the final all-reduced
-    // results.
+  HloInstruction* select_operand =
+      SelectOperandForScatterIndexPassthroughDimensions(scatter, indices,
+                                                        per_group_operand, b);
+  if (select_operand == nullptr) {
     return nullptr;
   }
-  std::optional<Literal> identity_literal =
-      GetReductionIdentity(*reduction_kind, scatter->shape().element_type());
-  if (!identity_literal) {
-    return nullptr;
-  }
-  HloInstruction* identity = CreateConstant(per_group_operand.hlo()->shape(),
-                                            std::move(*identity_literal), b);
-  // Update partition_id for partial replicate.
-  auto partition_id = indices.state().partition_id;
-  if (indices.sharding().HasPartialReplication()) {
-    auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
-        indices.sharding(), {indices.sharding().SubgroupReplicationDim()});
-    auto per_group_partitioner_state = CreatePerGroupPartitioningState(
-        indices.state(), sharding_grouped.device_groups, b);
-    partition_id = per_group_partitioner_state.partition_id;
-  }
-  // To avoid accumulating the initial operand multiple times during
-  // all-reduce, we use identity operands for all non-zero partitions.
-  auto not_partition_zero = b->AddInstruction(HloInstruction::CreateConvert(
-      ShapeUtil::MakeScalarShape(PRED), partition_id));
-  not_partition_zero = b->AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::ChangeElementType(identity->shape(), PRED), not_partition_zero,
-      {}));
-  auto select_operand =
-      b->AddInstruction(HloInstruction::HloInstruction::CreateTernary(
-          identity->shape(), HloOpcode::kSelect, not_partition_zero, identity,
-          per_group_operand.hlo()));
+
   PartitionedHlo new_operand =
       per_group_operand.CloneWithNewHlo(select_operand);
   std::vector<PartitionedHlo> per_group_new_operands = {new_operand};

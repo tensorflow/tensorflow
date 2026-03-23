@@ -49,6 +49,7 @@ cc_library(
         "//xla:util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
