@@ -68,21 +68,50 @@ FuncOp getFuncOpOrDie(StringRef funcSymName, const SymbolTable& symbolTable) {
 }
 TensorShardingPerValueAttr getFuncArgShardings(FuncOp funcOp,
                                                const SymbolTable& symbolTable,
-                                               bool dedupFunctionsFully) {
-  if (dedupFunctionsFully) {
+                                               bool ignoreShardings) {
+  if (ignoreShardings) {
     return TensorShardingPerValueAttr();
   }
   return sdy::getFuncArgShardings(funcOp, symbolTable);
 }
 TensorShardingPerValueAttr getFuncResultShardings(
-    FuncOp funcOp, const SymbolTable& symbolTable, bool dedupFunctionsFully) {
-  if (dedupFunctionsFully) {
+    FuncOp funcOp, const SymbolTable& symbolTable, bool ignoreShardings) {
+  if (ignoreShardings) {
     return TensorShardingPerValueAttr();
   }
   return sdy::getFuncResultShardings(funcOp, symbolTable);
 }
+
 ManualAxesAttr getManualAxesAttr(FuncOp funcOp) {
   return funcOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
+}
+
+ComputationKey getComputationKey(FuncOp funcOp, const SymbolTable& symbolTable,
+                                 bool ignoreShardings) {
+  return {getOriginalFuncName(funcOp), getManualAxesAttr(funcOp),
+          getFuncArgShardings(funcOp, symbolTable, ignoreShardings),
+          getFuncResultShardings(funcOp, symbolTable, ignoreShardings)};
+}
+
+ComputationKey getComputationKey(CallOp callOp, const SymbolTable& symbolTable,
+                                 bool ignoreShardings) {
+  return getComputationKey(getFuncOpOrDie(callOp.getCallee(), symbolTable),
+                           symbolTable, ignoreShardings);
+}
+
+llvm::SmallDenseMap<ComputationKey, FuncOp> populateFuncCache(
+    ModuleOp moduleOp, const SymbolTable& symbolTable,
+    bool dedupFunctionsFully) {
+  llvm::SmallDenseMap<ComputationKey, FuncOp> funcCache;
+  moduleOp.walk([&](CallOp callOp) {
+    FuncOp funcOp = getFuncOpOrDie(callOp.getCallee(), symbolTable);
+    ComputationKey key = getComputationKey(
+        funcOp, symbolTable, /*ignoreShardings=*/dedupFunctionsFully);
+    // Keep the attribute for the original func name as other calls to the
+    // same function would still need it to deduplicate.
+    funcCache.try_emplace(key, funcOp);
+  });
+  return funcCache;
 }
 }  // namespace
 
@@ -102,23 +131,6 @@ class UnflattenCallGraphPass
     this->dedupFunctionsFully = other.dedupFunctionsFully;
   }
 
-  FuncOp getOrCacheFuncOp(
-      llvm::SmallDenseMap<ComputationKey, FuncOp>& funcCache, CallOp callOp,
-      const SymbolTable& symbolTable, bool dedupFunctionsFully) {
-    FuncOp funcOp = getFuncOpOrDie(callOp.getCallee(), symbolTable);
-    ComputationKey key = {
-        getOriginalFuncName(funcOp), getManualAxesAttr(funcOp),
-        getFuncArgShardings(funcOp, symbolTable, dedupFunctionsFully),
-        getFuncResultShardings(funcOp, symbolTable, dedupFunctionsFully)};
-    if (auto it = funcCache.find(key); it != funcCache.end()) {
-      return it->second;
-    }
-    // Keep the attribute for the original func name as other calls to the
-    // same function would still need it to deduplicate.
-    funcCache[key] = funcOp;
-    return funcOp;
-  }
-
   // Unflattens the graph. It deduplicates functions with the same
   // input/output shardings *and* the same origin as desribed by the
   // 'original_func_name' attribute attached to the functions.
@@ -134,10 +146,13 @@ class UnflattenCallGraphPass
     ModuleOp moduleOp = getOperation();
     SymbolTable symbolTable(moduleOp);
     IRRewriter rewriter(moduleOp.getContext());
-    llvm::SmallDenseMap<ComputationKey, FuncOp> funcCache;
+
+    llvm::SmallDenseMap<ComputationKey, FuncOp> funcCache =
+        populateFuncCache(moduleOp, symbolTable, dedupFunctionsFully);
     moduleOp.walk([&](CallOp callOp) {
-      FuncOp funcOp =
-          getOrCacheFuncOp(funcCache, callOp, symbolTable, dedupFunctionsFully);
+      ComputationKey key = getComputationKey(
+          callOp, symbolTable, /*ignoreShardings=*/dedupFunctionsFully);
+      FuncOp funcOp = funcCache[key];
       callOp.setCallee(funcOp.getName());
       maybeInsertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
       maybeInsertReshardsOnFuncResults(funcOp, callOp, symbolTable, rewriter);
