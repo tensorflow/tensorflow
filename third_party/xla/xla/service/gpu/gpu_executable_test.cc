@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "riegeli/bytes/cfile_reader.h"
 #include "riegeli/bytes/string_reader.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
@@ -480,6 +481,8 @@ TEST(GpuExecutableTest, ProtoConversion) {
   params.module_name = "test_module";
   params.enable_debug_info_manager = false;
   params.mlir_allocations = {BufferAllocation(0, 1024, 0)};
+  params.cpu_target_machine_options = xla::cpu::TargetMachineOptions(
+      "test_triple", "test_cpu", "+test_features");
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> reference_executable,
                           GpuExecutable::Create(std::move(params)));
   TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto,
@@ -500,6 +503,11 @@ TEST(GpuExecutableTest, ProtoConversion) {
   EXPECT_THAT(reconstructed_executable->GetAllocations(),
               ElementsAre(Pointee(Property(&BufferAllocation::size, 1024))));
   EXPECT_THAT(reconstructed_executable->name(), "test_module");
+  ASSERT_TRUE(
+      reconstructed_executable->cpu_target_machine_options().has_value());
+  EXPECT_EQ(reconstructed_executable->cpu_target_machine_options().value(),
+            xla::cpu::TargetMachineOptions("test_triple", "test_cpu",
+                                           "+test_features"));
 }
 
 TEST(GpuExecutableTest, GpuExecutableDump) {
