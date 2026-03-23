@@ -665,7 +665,7 @@ class DecodeImageV2Op : public OpKernel {
         absl::InvalidArgumentError(
             "Total possible pixel bytes must be less than 2^30"));
 
-    const int32_t abs_height = abs(height);
+    const uint32_t abs_height = abs(height);
 
     // there may be padding bytes when the width is not a multiple of 4 bytes
     const int row_size = (img_channels * width + 3) / 4 * 4;
