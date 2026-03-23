@@ -62,6 +62,8 @@ struct InputHandle {
   xla::ifrt::ShardingRef ifrt_sharding;
   // The layout of the input tensor.
   xla::ifrt::LayoutRef xla_input_layout;
+  // The byte strides of the input tensor.
+  absl::Span<const int64_t> byte_strides;
 };
 
 // A per-request H2D transfer executor. The caller should call

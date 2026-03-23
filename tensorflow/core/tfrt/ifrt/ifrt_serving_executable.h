@@ -196,11 +196,10 @@ class IfrtServingExecutable {
     // are either both populated or both empty and they will have the same size.
     // The index `i` in these vectors corresponds to the i-th argument in the
     // executable.
-    // TODO(b/477700609): Currently `xla_input_layouts` and `xla_input_shapes`
-    // are not used. We should use them to generate ifrt arrays.
-    std::optional<std::vector<std::shared_ptr<xla::Shape>>> xla_input_shapes;
+    std::vector<std::shared_ptr<const xla::Shape>> xla_input_shapes;
+    std::vector<absl::InlinedVector<int64_t, 4>> byte_strides;
     std::vector<std::shared_ptr<const xla::ifrt::Shape>> ifrt_input_shapes;
-    std::optional<std::vector<xla::ifrt::LayoutRef>> xla_input_layouts;
+    std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
@@ -344,6 +343,12 @@ class IfrtServingExecutable {
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes,
       absl::Span<const int> variable_arg_indices);
+
+  absl::Status PopulateInvariantMetadata(
+      const Tf2HloResult& tf2hlo_result,
+      xla::ifrt::LoadedExecutableRef ifrt_executable,
+      std::vector<std::unique_ptr<TfHostCallback>> host_callbacks,
+      CachedExecutableBundle& executable_bundle);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
       int num_devices, const xla::ifrt::Shape& arg_xla_shape,
