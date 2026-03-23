@@ -1336,6 +1336,7 @@ cc_library(
         "//xla/service/gpu/llvm_gpu_backend:amdgpu_backend",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/rocm:rocm_compute_capability",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:statusor",
@@ -1363,6 +1364,7 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@triton//:TritonDialects",
         "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:random",
     ],
 )
 
