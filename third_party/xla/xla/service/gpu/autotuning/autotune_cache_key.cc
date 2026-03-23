@@ -57,11 +57,14 @@ std::string AutotuneCacheKey::DeviceDescriptionToCacheKey(
   if (auto* ccc = device_description.gpu_compute_capability()
                       .cuda_compute_capability()) {
     compute_capability = absl::StrCat("CUDA: ", ccc->major, ".", ccc->minor);
-  } else {
-    auto* rcc =
-        device_description.gpu_compute_capability().rocm_compute_capability();
-    CHECK(rcc != nullptr) << "Unknown compute capability type";
+  } else if (auto* rcc = device_description.gpu_compute_capability()
+                             .rocm_compute_capability()) {
     compute_capability = absl::StrCat("ROCM: ", rcc->gfx_version());
+  } else if (auto* oneapi_cc = device_description.gpu_compute_capability()
+                                   .oneapi_compute_capability()) {
+    compute_capability = absl::StrCat("oneAPI: ", oneapi_cc->ToString());
+  } else {
+    LOG(FATAL) << "Unknown compute capability type";
   }
 
   // The string below should include only as much information as is needed to
