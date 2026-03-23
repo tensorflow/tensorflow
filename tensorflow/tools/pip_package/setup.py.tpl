@@ -70,6 +70,23 @@ nvidia_nvjitlink_version = ''  # placeholder
 nvidia_cuda_nvrtc_version = ''  # placeholder
 nvidia_curand_version = ''  # placeholder
 
+# If the compilation is for CUDA 13, remove the suffix
+# (Bazel could inject incompatible with CUDA 12 version).
+if str(cuda_version).startswith('13'):
+  cuda_wheel_suffix = ''
+  nvidia_cublas_version = ''
+  nvidia_cuda_cupti_version = ''
+  nvidia_cuda_nvcc_version = ''
+  nvidia_cuda_runtime_version = ''
+  nvidia_cudnn_version = ''
+  nvidia_cufft_version = ''
+  nvidia_cusolver_version = ''
+  nvidia_cusparse_version = ''
+  nvidia_nccl_version = ''
+  nvidia_nvjitlink_version = ''
+  nvidia_cuda_nvrtc_version = ''
+  nvidia_curand_version = ''
+
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
 # when building the pip package.
@@ -162,18 +179,18 @@ if collaborator_build:
 EXTRA_PACKAGES = {
     'and-cuda': [
         # TODO(nluehr): set nvidia-* versions based on build components.
-        f'nvidia-cublas{cuda_wheel_suffix}{nvidia_cublas_version}',
-        f'nvidia-cuda-cupti{cuda_wheel_suffix}{nvidia_cuda_cupti_version}',
-        f'nvidia-cuda-nvcc{cuda_wheel_suffix}{nvidia_cuda_nvcc_version}',
-        f'nvidia-cuda-nvrtc{cuda_wheel_suffix}{nvidia_cuda_nvrtc_version}',
-        f'nvidia-cuda-runtime{cuda_wheel_suffix}{nvidia_cuda_runtime_version}',
-        f'nvidia-cudnn-cu{cuda_version}{nvidia_cudnn_version}',
-        f'nvidia-cufft{cuda_wheel_suffix}{nvidia_cufft_version}',
-        f'nvidia-curand{cuda_wheel_suffix}{nvidia_curand_version}',
-        f'nvidia-cusolver{cuda_wheel_suffix}{nvidia_cusolver_version}',
-        f'nvidia-cusparse{cuda_wheel_suffix}{nvidia_cusparse_version}',
-        f'nvidia-nccl-cu{cuda_version}{nvidia_nccl_version}',
-        f'nvidia-nvjitlink{cuda_wheel_suffix}{nvidia_nvjitlink_version}',
+        f'nvidia-cublas{nvidia_cublas_version}',
+        f'nvidia-cuda-cupti{nvidia_cuda_cupti_version}',
+        f'nvidia-cuda-nvcc{nvidia_cuda_nvcc_version}',
+        f'nvidia-cuda-nvrtc{nvidia_cuda_nvrtc_version}',
+        f'nvidia-cuda-runtime{nvidia_cuda_runtime_version}',
+        f'nvidia-cudnn-cu13{nvidia_cudnn_version}',
+        f'nvidia-cufft{nvidia_cufft_version}',
+        f'nvidia-curand{nvidia_curand_version}',
+        f'nvidia-cusolver{nvidia_cusolver_version}',
+        f'nvidia-cusparse{nvidia_cusparse_version}',
+        f'nvidia-nccl-cu13{nvidia_nccl_version}',
+        f'nvidia-nvjitlink{nvidia_nvjitlink_version}',
     ],
     'gcs-filesystem': [
         ('tensorflow-io-gcs-filesystem>=0.23.1; '
