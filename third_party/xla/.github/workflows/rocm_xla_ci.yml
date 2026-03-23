@@ -78,7 +78,7 @@ jobs:
           docker exec ${{ env.CONTAINER_NAME }} bash -c "/opt/rocm/bin/rocminfo"
 
       - name: Test XLA [single_gpu]
-        timeout-minutes: 60
+        timeout-minutes: 80
         run: |
           docker exec \
             ${{ env.CONTAINER_NAME }} \
@@ -86,7 +86,7 @@ jobs:
 
       - name: Test XLA [multi_gpu]
         timeout-minutes: 80
-        if: always()
+        if: always() && !cancelled()
         run: |
           docker exec \
             ${{ env.CONTAINER_NAME }} \
