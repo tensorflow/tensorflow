@@ -616,7 +616,6 @@ xla_cc_test(
         "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
     ],
-    tags = ["pjrt_migration_candidate"],
     deps = [
         "//xla:literal",
         "//xla:literal_util",
