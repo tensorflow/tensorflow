@@ -38,9 +38,9 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
   // rewriters shouldn't be applied before converting to HLO as they apply
   // folding.
   pm.addPass(createExportOpsPass(options.keepHloShardingConstraints));
+  pm.addPass(createExportNamedComputationsPass());
   pm.addPass(createStablehloRoundTripShardMapExportPass(
       options.keepHloShardingConstraints));
-  pm.addPass(createExportNamedComputationsPass(options.dedupFunctionsFully));
   // NOTE: It is currently a literal no-op.
   pm.addPass(createUnflattenCallGraphPass(options.dedupFunctionsFully));
   pm.addPass(mlir::createSymbolDCEPass());

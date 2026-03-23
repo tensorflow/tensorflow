@@ -134,6 +134,7 @@ llvm::SmallDenseMap<ComputationKey, FuncOp> populateFuncCache(
       }
     });
   }
+
   return funcCache;
 }
 }  // namespace
@@ -181,8 +182,10 @@ class UnflattenCallGraphPass
       maybeInsertReshardsOnFuncResults(funcOp, callOp, symbolTable, rewriter);
     });
 
-    moduleOp.walk(
-        [&](FuncOp funcOp) { funcOp->removeAttr(kOriginalFuncName); });
+    for (FuncOp funcOp : moduleOp.getOps<FuncOp>()) {
+      funcOp->removeAttr(kManualAxes);
+      funcOp->removeAttr(kOriginalFuncName);
+    }
   }
 
   StringRef getArgument() const override {
