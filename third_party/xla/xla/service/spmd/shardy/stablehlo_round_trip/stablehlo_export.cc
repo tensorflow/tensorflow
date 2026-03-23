@@ -40,7 +40,7 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createExportOpsPass(options.keepHloShardingConstraints));
   pm.addPass(createStablehloRoundTripShardMapExportPass(
       options.keepHloShardingConstraints));
-  pm.addPass(createExportNamedComputationsPass(options.dedupFunctionsFully));
+  pm.addPass(createExportNamedComputationsPass());
   // NOTE: It is currently a literal no-op.
   pm.addPass(createUnflattenCallGraphPass(options.dedupFunctionsFully));
   pm.addPass(mlir::createSymbolDCEPass());
