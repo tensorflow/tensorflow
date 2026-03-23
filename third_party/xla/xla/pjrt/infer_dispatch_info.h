@@ -30,6 +30,17 @@ absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
         addressable_device_logical_ids,
     std::vector<PjRtDevice*> addressable_devices, bool tuple_inputs);
 
+// Constructs CommonPjRtLoadedExecutable::DispatchInfo from both device lists
+// and metadata extracted from the input mlir::ModuleOp. This may fail if all
+// information is not available yet.
+absl::StatusOr<CommonPjRtLoadedExecutable::DispatchInfo> InferDispatchInfo(
+    CommonPjRtClient* client, mlir::ModuleOp mlir_module,
+    const CompileOptions& options,
+    std::shared_ptr<DeviceAssignment> device_assignment,
+    std::vector<CommonPjRtLoadedExecutable::LogicalDeviceIds>
+        addressable_device_logical_ids,
+    std::vector<PjRtDevice*> addressable_devices, bool tuple_inputs);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_INFER_DISPATCH_INFO_H_
