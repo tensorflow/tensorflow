@@ -422,6 +422,61 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "combined_gpu_performance_model",
+    srcs = ["combined_gpu_performance_model.cc"],
+    hdrs = ["combined_gpu_performance_model.h"],
+    deps = [
+        ":coalescing_analysis",
+        ":fusion_analysis_cache",
+        ":gpu_hlo_cost_analysis",
+        ":gpu_indexing_performance_model",
+        ":gpu_performance_model",
+        ":gpu_performance_model_base",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu:gpu_fusible",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/stream_executor:device_description",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_cc_test(
+    name = "combined_gpu_performance_model_test",
+    srcs = ["combined_gpu_performance_model_test.cc"],
+    deps = [
+        ":combined_gpu_performance_model",
+        ":fusion_analysis_cache",
+        ":gpu_hlo_cost_analysis",
+        ":gpu_indexing_performance_model",
+        ":gpu_performance_model",
+        ":gpu_performance_model_base",
+        "//xla:shape_util",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_cost_analysis",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/stream_executor:device_description",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "gpu_dot_fusion_cost_model",
     srcs = ["gpu_dot_fusion_cost_model.cc"],
     hdrs = ["gpu_dot_fusion_cost_model.h"],
