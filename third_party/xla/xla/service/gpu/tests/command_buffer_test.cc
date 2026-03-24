@@ -156,7 +156,7 @@ class CommandBufferTest
     TF_ASSERT_OK_AND_ASSIGN(
         auto exec, CreateExecutable(std::move(module), run_hlo_passes));
 
-    auto* pjrt_runner = tsl::down_cast<HloRunnerPjRt*>(&test_runner());
+    auto* pjrt_runner = absl::down_cast<HloRunnerPjRt*>(&test_runner());
     ASSERT_TRUE(pjrt_runner != nullptr);
 
     // Create two copies of device buffers to make sure command buffer saved
