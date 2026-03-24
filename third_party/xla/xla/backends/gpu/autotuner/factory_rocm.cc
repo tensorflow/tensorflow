@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
