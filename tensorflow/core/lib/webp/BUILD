@@ -44,13 +44,14 @@ tf_cc_test(
     tags = ["benchmark"],
     deps = [
         ":webp_io",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/platform:test",
         "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/log:check",
+        "@com_google_googletest//:gtest",
         "@libwebp//:webp",
     ],
 )
