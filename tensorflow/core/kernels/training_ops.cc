@@ -1467,6 +1467,9 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions"));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
@@ -2216,6 +2219,9 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions"));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
@@ -2473,6 +2479,9 @@ class SparseApplyAdagradDAOp : public OpKernel {
                 errors::InvalidArgument("global_step is not a scalar: ",
                                         global_step.shape().DebugString()));
 
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions"));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
@@ -2899,6 +2908,10 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("lr_power is not a "
                                         "non-positive scalar: ",
                                         lr_power.shape().DebugString()));
+
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions"));
     int64_t inner_dim = 1;
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
@@ -3218,6 +3231,9 @@ class SparseApplyMomentumOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions"));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(absl::StrCat(
@@ -3437,6 +3453,9 @@ class SparseApplyKerasMomentumOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions"));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(ctx, var.dim_size(d) == grad.dim_size(d),
                   errors::InvalidArgument(absl::StrCat(
@@ -4253,6 +4272,9 @@ class SparseApplyRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions"));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(
           ctx, var.dim_size(d) == grad.dim_size(d),
@@ -4391,6 +4413,9 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    OP_REQUIRES(ctx, var.dims() == grad.dims(),
+                errors::InvalidArgument(
+                    "var and grad must have the same number of dimensions"));
     for (int d = 1; d < var.dims(); d++) {
       OP_REQUIRES(
           ctx, var.dim_size(d) == grad.dim_size(d),
