@@ -46,10 +46,23 @@ bool IsIdentifierCharacter(char c) {
   return absl::ascii_isalnum(c) || c == '_';
 }
 
+int GetPrecedence(SymbolicExprType type) {
+  switch (type) {
+    case SymbolicExprType::kAdd:
+      return 1;
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+      return 2;
+    default:
+      return 3;
+  }
+}
+
 void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
                std::optional<int64_t> num_dims,
-               absl::Span<const std::string> var_names,
-               bool is_top_level = false) {
+               absl::Span<const std::string> var_names, int parent_prec = 0) {
   switch (expr.GetType()) {
     case SymbolicExprType::kConstant:
       os << expr.GetValue();
@@ -83,13 +96,16 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kCeilDiv:
     case SymbolicExprType::kMod: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
-      if (!is_top_level) {
+      int prec = GetPrecedence(expr.GetType());
+      bool needs_parens = prec < parent_prec;
+      if (needs_parens) {
         os << "(";
       }
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names, /*is_top_level=*/false);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, prec);
       os << " " << bin_op_str << " ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names, /*is_top_level=*/false);
-      if (!is_top_level) {
+      int rhs_prec = prec + 1;
+      PrintImpl(expr.GetRHS(), os, num_dims, var_names, rhs_prec);
+      if (needs_parens) {
         os << ")";
       }
       return;
@@ -98,9 +114,9 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
       os << bin_op_str << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names, /*is_top_level=*/true);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, 0);
       os << ", ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names, /*is_top_level=*/true);
+      PrintImpl(expr.GetRHS(), os, num_dims, var_names, 0);
       os << ")";
       return;
     }
@@ -541,12 +557,12 @@ std::string GetBinaryOpString(SymbolicExprType type) {
 
 void Print(SymbolicExpr expr, llvm::raw_ostream& os,
            std::optional<int64_t> num_dims) {
-  PrintImpl(expr, os, num_dims, {}, /*is_top_level=*/true);
+  PrintImpl(expr, os, num_dims, {});
 }
 
 void Print(SymbolicExpr expr, llvm::raw_ostream& os,
            absl::Span<const std::string> var_names) {
-  PrintImpl(expr, os, std::nullopt, var_names, /*is_top_level=*/true);
+  PrintImpl(expr, os, std::nullopt, var_names);
 }
 
 void Print(const SymbolicMap& map, llvm::raw_ostream& os) {
