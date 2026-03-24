@@ -280,6 +280,13 @@ def if_not_mobile(a):
         "//conditions:default": a,
     })
 
+def if_not_tflite_converter(if_true, if_false = []):
+    """Include deps if not tflite_converter."""
+    return select({
+        clean_dep("//tensorflow:tflite_converter"): if_false,
+        "//conditions:default": if_true,
+    })
+
 # Config setting selector used when building for products
 # which requires restricted licenses to be avoided.
 def if_not_mobile_or_arm_or_macos_or_lgpl_restricted(a):
