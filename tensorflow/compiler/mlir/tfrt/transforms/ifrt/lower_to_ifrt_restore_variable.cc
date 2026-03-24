@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -70,8 +71,9 @@ class LowerToIfrtRestoreVariablePass
     // handle the host tensor restore asynchronously in IfrtRestoreVariableOp.
     std::vector<mlir::Operation*> path_to_assign_variable_op;
 
-    // The VarHandleOp associated with the AssignVariableOp.
-    mlir::TF::VarHandleOp var_handle_op;
+    // The resource associated with the AssignVariableOp or
+    // LookupTableImportV2Op.
+    mlir::Value resource;
     bool truncate_in_cast =
         false;  // value of the truncate attribute in the CastOp.
                 // Default to false if CastOp is not present.
@@ -102,12 +104,17 @@ class LowerToIfrtRestoreVariablePass
         if (auto var_handle_op = llvm::dyn_cast<mlir::TF::VarHandleOp>(
                 assign_variable_op.getResource().getDefiningOp())) {
           // The AssignVariableOp must be associated with a VarHandleOp.
-          restored_tensor_user.var_handle_op = var_handle_op;
+          restored_tensor_user.resource = assign_variable_op.getResource();
           break;
         } else {
           return assign_variable_op->emitOpError()
                  << "does not have any associated VarHandle";
         }
+      } else if (auto lookup_table_import_v2_op =
+                     llvm::dyn_cast<mlir::TF::LookupTableImportV2Op>(user)) {
+        restored_tensor_user.resource =
+            lookup_table_import_v2_op.getTableHandle();
+        break;
       } else {
         // Any other op in the user chain is not supported.
         return user->emitOpError() << "is not a supported user of RestoreV2Op";
@@ -147,19 +154,27 @@ class LowerToIfrtRestoreVariablePass
     std::vector<mlir::Value> var_handle_values;
     // Collect attributes from users and delete the old user op chain.
     llvm::SmallVector<bool, 4> truncate_in_cast;
+    llvm::SmallPtrSet<mlir::Operation*, 16> ops_to_delete;
     var_handle_values.reserve(restored_tensor_users.size());
     truncate_in_cast.reserve(restored_tensor_users.size());
     for (auto& restored_tensor_user : restored_tensor_users) {
-      var_handle_values.push_back(
-          restored_tensor_user.var_handle_op.getResult());
+      var_handle_values.push_back(restored_tensor_user.resource);
 
       truncate_in_cast.push_back(restored_tensor_user.truncate_in_cast);
 
-      // Delete the path from the RestoreV2Op to the AssignVariableOp in reverse
-      // order.
-      for (auto r = restored_tensor_user.path_to_assign_variable_op.rbegin();
-           r != restored_tensor_user.path_to_assign_variable_op.rend(); ++r) {
-        (*r)->erase();
+      for (auto* op : restored_tensor_user.path_to_assign_variable_op) {
+        ops_to_delete.insert(op);
+      }
+    }
+
+    for (auto& restored_tensor_user : restored_tensor_users) {
+      for (auto it = restored_tensor_user.path_to_assign_variable_op.rbegin();
+           it != restored_tensor_user.path_to_assign_variable_op.rend(); ++it) {
+        mlir::Operation* op = *it;
+        if (ops_to_delete.contains(op)) {
+          op->erase();
+          ops_to_delete.erase(op);
+        }
       }
     }
 
