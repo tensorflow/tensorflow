@@ -78,7 +78,7 @@ void createIfrtToOutlinedAtomProgramsPipeline(mlir::OpPassManager& pm) {
 
   pm.addPass(createIfrtOutlineAtomProgramToModulePass());
 
-  pm.addPass(createIfrtVerifyShardingSpecifiedPass());
+  pm.addNestedPass<mlir::func::FuncOp>(createIfrtVerifyShardingSpecifiedPass());
   // We can split ifrt.Reshard to ifrt.CopyArrays because all the shardings
   // are specified. Moreover, it is necessary to run
   // IfrtMergeCopiesAndReshardsPass after this pass because it introduces

@@ -195,7 +195,7 @@ Verifiy that no `!ifrt.array` is donated more than once, and that all
 }
 
 def IfrtVerifyShardingSpecifiedPass :
-    Pass<"ifrt-verify-sharding-specified", "mlir::ModuleOp"> {
+    Pass<"ifrt-verify-sharding-specified", "mlir::func::FuncOp"> {
   let summary = "Verify that all `!ifrt.array` have sharding specified.";
   let description = [{
 Verify that each `!ifrt.array` has sharding attribute that is not of type
