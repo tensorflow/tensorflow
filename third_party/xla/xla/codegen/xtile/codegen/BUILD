@@ -35,7 +35,7 @@ cc_library(
         "//xla/codegen/tiling/experimental:tiled_hlo",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_map_converter",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",

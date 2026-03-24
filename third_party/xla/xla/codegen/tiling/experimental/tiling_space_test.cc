@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -42,6 +43,8 @@ MATCHER_P(MatchString, tiling_space_string, "") {
 
 class TilingSpaceTest : public HloHardwareIndependentTestBase {
  public:
+  TilingSpaceTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);

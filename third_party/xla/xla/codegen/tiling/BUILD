@@ -121,6 +121,7 @@ cc_library(
         ":tiling_specification",
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

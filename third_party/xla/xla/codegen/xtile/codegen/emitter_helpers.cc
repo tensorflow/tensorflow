@@ -54,8 +54,8 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_map_serialization.h"
-#include "xla/hlo/analysis/symbolic_map_converter.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -103,15 +103,16 @@ Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
   return ma::IndexCastOp::create(b, b.getIndexType(), clamped_index);
 }
 
-absl::StatusOr<SmallVector<int64_t>> ConvertAffineExprsToInts(
-    ArrayRef<mlir::AffineExpr> affine_exprs) {
+absl::StatusOr<SmallVector<int64_t>> ConvertSymbolicExprsToInts(
+    ArrayRef<SymbolicExpr> symbolic_exprs) {
   SmallVector<int64_t> result;
-  result.reserve(affine_exprs.size());
-  for (const auto& affine_expr : affine_exprs) {
-    if (auto constant = mlir::dyn_cast<mlir::AffineConstantExpr>(affine_expr)) {
-      result.push_back(constant.getValue());
+  result.reserve(symbolic_exprs.size());
+  for (const auto& symbolic_expr : symbolic_exprs) {
+    if (symbolic_expr.GetType() == SymbolicExprType::kConstant) {
+      result.push_back(symbolic_expr.GetValue());
     } else {
-      return absl::InvalidArgumentError("Affine expression is not a constant.");
+      return absl::InvalidArgumentError(
+          "Symbolic expression is not a constant.");
     }
   }
   return result;
@@ -153,17 +154,15 @@ absl::StatusOr<SmallVector<Value>> ComputeOffsets(
     mlir::ImplicitLocOpBuilder& b, Value pid,
     const ge::TiledHloInstruction& tiled_hlo,
     const ::xla::IndexingMap& schedule) {
-  SmallVector<mlir::AffineExpr> affine_exprs;
-  for (const auto& expr : schedule.GetSymbolicMap().GetResults()) {
-    affine_exprs.push_back(SymbolicExprToAffineExpr(expr, 1));
-  }
-  SmallVector<mlir::AffineExpr> offsets;
+  SmallVector<SymbolicExpr> symbolic_exprs(
+      schedule.GetSymbolicMap().GetResults());
+
+  SmallVector<SymbolicExpr> offsets;
   for (const auto& offset : tiled_hlo.tile().offsets()) {
-    offsets.push_back(offset.replaceDims(affine_exprs));
+    offsets.push_back(offset.ReplaceDims(symbolic_exprs));
   }
   IndexingMap offset_indexing_map(
-      AffineMapToSymbolicMap(
-          mlir::AffineMap::get(1, 0, offsets, schedule.GetMLIRContext())),
+      SymbolicMap::Get(schedule.GetMLIRContext(), 1, 0, offsets),
       schedule.GetDimVars(), {}, {});
 
   SmallVector<Value> dims{Cast(b, pid, pid.getType())};
@@ -553,9 +552,9 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 
   // Triton requires that all block dimensions are a power of 2.
   TF_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
-                      ConvertAffineExprsToInts(tiled_hlo.tile().sizes()));
+                      ConvertSymbolicExprsToInts(tiled_hlo.tile().sizes()));
   TF_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_strides,
-                      ConvertAffineExprsToInts(tiled_hlo.tile().strides()));
+                      ConvertSymbolicExprsToInts(tiled_hlo.tile().strides()));
   const Shape& shape = tiled_hlo.hlo()->shape();
   SmallVector<int64_t> original_shape;
   original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
