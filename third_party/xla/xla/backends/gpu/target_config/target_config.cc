@@ -64,6 +64,8 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
       return get_v100();
     case GpuModel::GB200:
       return get_gb200();
+    case GpuModel::GB300:
+      return get_gb300();
     default:
       return absl::NotFoundError(
           absl::StrCat("Embedded file not found: ", gpu_model, ".txtpb"));
