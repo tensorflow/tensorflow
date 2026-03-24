@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_executable.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -244,18 +245,7 @@ GetLayouts(
     const absl::StatusOr<std::vector<std::shared_ptr<const xla::PjRtLayout>>>&
         pjrt_executable_layouts,
     absl::Span<const xla::LayoutMode> layout_modes) {
-  // An unimplemented error is converted into all-default layouts. This
-  // happens when a parameter is a token or opaque, or the PjRt plugin does not
-  // support layouts. Since parameter layouts are not load bearing in such a
-  // case (no custom layouts are expected to be used), we can use a default
-  // layout. However, this should be fixed in both PjRt and PjRt-IFRT so that
-  // token and opaque parameters can be used with other parameters that have
-  // custom layouts.
-  //
-  // TODO(hyeontaek): Once parameter layouts are changed to use the IFRT
-  // layout style (default layouts are not using concrete PjRt layouts),
-  // extract parameters directly from StableHLO and avoid calling
-  // `GetParameterLayouts()`.
+  // An unimplemented error is converted into all-default layouts.
   if (absl::IsUnimplemented(pjrt_executable_layouts.status())) {
     return std::vector<std::shared_ptr<const xla::PjRtLayout>>(
         /*size=*/layout_modes.size(), /*value=*/nullptr);
@@ -316,35 +306,6 @@ absl::StatusOr<std::vector<int>> GetDonatableInputIndicesFromMlirModule(
     }
   }
   return donatable_input_indices;
-}
-
-// Returns a list of input shapes from the given MLIR module.
-absl::StatusOr<std::vector<xla::Shape>> InputShapesOfModule(
-    mlir::ModuleOp module) {
-  mlir::func::FuncOp main_func =
-      module.lookupSymbol<mlir::func::FuncOp>("main");
-  if (!main_func) {
-    return absl::InvalidArgumentError("MLIR module must have a main function");
-  }
-  mlir::FunctionType func_type = main_func.getFunctionType();
-
-  std::optional<mlir::TypeRange> arg_types;
-  if (func_type.getNumInputs() == 1) {
-    auto tuple_type = llvm::dyn_cast<mlir::TupleType>(func_type.getInput(0));
-    if (tuple_type) {
-      arg_types = tuple_type.getTypes();
-    }
-  }
-  if (!arg_types.has_value()) {
-    arg_types = func_type.getInputs();
-  }
-
-  std::vector<xla::Shape> input_shapes;
-  input_shapes.reserve(arg_types->size());
-  for (const mlir::Type& arg : *arg_types) {
-    input_shapes.push_back(xla::TypeToShape(arg));
-  }
-  return input_shapes;
 }
 
 // Returns a list of result shapes from the given MLIR module.
@@ -448,11 +409,6 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
       std::vector<int> donatable_input_indices,
       GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(
-      const std::vector<xla::Shape> mlir_module_input_xla_shapes,
-      InputShapesOfModule(module.mlir_module()));
-  TF_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> input_layout_modes,
-                      GetArgLayoutModes(module.mlir_module()));
-  TF_ASSIGN_OR_RETURN(
       const std::vector<xla::Shape> mlir_module_output_xla_shapes,
       ResultShapesOfModule(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(const std::vector<xla::LayoutMode> output_layout_modes,
@@ -462,25 +418,6 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
       auto pjrt_executable,
       PjRtCompile(std::move(compile_options), std::move(module), topology,
                   /*client=*/nullptr));
-
-  TF_ASSIGN_OR_RETURN(auto parameter_dtypes_and_shapes,
-                      GetDTypesAndShapes(mlir_module_input_xla_shapes));
-  std::vector<DType> parameter_dtypes =
-      std::move(parameter_dtypes_and_shapes.first);
-  std::vector<Shape> parameter_shapes =
-      std::move(parameter_dtypes_and_shapes.second);
-  TF_ASSIGN_OR_RETURN(
-      std::optional<std::vector<xla::HloSharding>> parameter_hlo_shardings,
-      GetHloShardings(pjrt_executable->GetParameterShardings(),
-                      parameter_dtypes,
-                      /*is_output=*/false));
-  TF_ASSIGN_OR_RETURN(std::vector<MemoryKind> parameter_memory_kinds,
-                      GetMemoryKinds(pjrt_executable->GetParameterMemoryKinds(),
-                                     parameter_dtypes));
-  TF_ASSIGN_OR_RETURN(
-      std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
-          parameter_layouts,
-      GetLayouts(pjrt_executable->GetParameterLayouts(), input_layout_modes));
 
   TF_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                       GetDTypesAndShapes(mlir_module_output_xla_shapes));
@@ -502,11 +439,6 @@ absl::StatusOr<ExecutableRef> PjRtExecutable::Create(
 
   CommonMetadata common_metadata;
   common_metadata.is_portable = is_portable;
-  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
-  common_metadata.parameter_shapes = std::move(parameter_shapes);
-  common_metadata.parameter_hlo_shardings = std::move(parameter_hlo_shardings);
-  common_metadata.parameter_layouts = std::move(parameter_layouts);
-  common_metadata.parameter_memory_kinds = std::move(parameter_memory_kinds);
   common_metadata.donatable_input_indices = std::move(donatable_input_indices);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
@@ -599,37 +531,59 @@ absl::StatusOr<std::string> PjRtExecutable::CommonMetadata::Serialize(
     *output_spec.mutable_dtype() = output_dtypes[i].ToProto(serdes_version);
   }
 
+  // Get parameter specs.
+  const std::optional<std::vector<xla::OpSharding>> parameter_shardings =
+      pjrt_executable->GetParameterShardings();
+  uint64_t num_parameters;
+  std::vector<std::shared_ptr<const xla::PjRtLayout>> parameter_layouts;
+  if (auto maybe_layouts = pjrt_executable->GetParameterLayouts();
+      maybe_layouts.ok()) {
+    num_parameters = maybe_layouts->size();
+    parameter_layouts = *std::move(maybe_layouts);
+  } else if (absl::IsUnimplemented(maybe_layouts.status())) {
+    // An unimplemented error is converted into all-default layouts. This
+    // happens when a parameter is a token or opaque. Since parameter layouts
+    // are not load bearing in such a case (no custom layouts are expected to be
+    // used), we can use a default layout. However, this should be fixed in both
+    // PjRt and PjRt-IFRT so that token and opaque parameters can be used with
+    // other parameters that have custom layouts.
+    //
+    // TODO(hyeontaek): Once parameter layouts are changed to use the IFRT
+    // layout style (default layouts are not using concrete PjRt layouts),
+    // extract parameters directly from StableHLO and avoid calling
+    // `GetParameterLayouts()`.
+    num_parameters =
+        parameter_shardings.has_value() ? parameter_shardings->size() : 0;
+    parameter_layouts = std::vector<std::shared_ptr<const xla::PjRtLayout>>(
+        /*size=*/num_parameters,
+        /*value=*/nullptr);
+  } else {
+    return maybe_layouts.status();
+  }
+  if (parameter_shardings.has_value()) {
+    if (parameter_shardings->size() != num_parameters) {
+      return FailedPrecondition(
+          "Parameter shardings have a different size from parameter layouts: "
+          "%d vs. %d",
+          parameter_shardings->size(), num_parameters);
+    }
+  }
   absl::flat_hash_set<int> donated_inputs_set(donatable_input_indices.begin(),
                                               donatable_input_indices.end());
 
   // Encode parameter specs.
-  for (int i = 0; i < parameter_dtypes.size(); ++i) {
+  for (int i = 0; i < num_parameters; ++i) {
     SerializedXlaExecutableMetadata::ParameterSpec& parameter_spec =
         *metadata.add_parameter_specs();
-    // Layout - only populate if it's not the default layout
-    if (parameter_layouts.has_value() && (*parameter_layouts)[i] != nullptr) {
-      auto pjrt_layout = PjRtLayout::Create((*parameter_layouts)[i]);
-      TF_ASSIGN_OR_RETURN(*parameter_spec.mutable_layout(),
-                          pjrt_layout->ToProto(serdes_version));
-    }
+    // Layout
+    auto pjrt_layout = PjRtLayout::Create(parameter_layouts[i]);
+    TF_ASSIGN_OR_RETURN(*parameter_spec.mutable_layout(),
+                        pjrt_layout->ToProto(serdes_version));
 
     // Sharding
-    if (parameter_hlo_shardings.has_value()) {
-      *parameter_spec.mutable_op_sharding() =
-          (*parameter_hlo_shardings)[i].ToProto();
+    if (parameter_shardings.has_value()) {
+      *parameter_spec.mutable_op_sharding() = parameter_shardings->at(i);
     }
-
-    // Memory kind
-    parameter_spec.set_memory_kind(
-        std::string(parameter_memory_kinds[i].memory_kind().value_or("")));
-
-    // Shape
-    *parameter_spec.mutable_shape() =
-        parameter_shapes[i].ToProto(serdes_version);
-
-    // DType
-    *parameter_spec.mutable_dtype() =
-        parameter_dtypes[i].ToProto(serdes_version);
 
     // Donated input
     bool is_donated = donated_inputs_set.contains(i);
@@ -696,20 +650,7 @@ PjRtExecutable::CommonMetadata::Deserialize(
     // branch.
   }
 
-  std::vector<DType> parameter_dtypes;
-  std::vector<Shape> parameter_shapes;
-  std::optional<std::vector<xla::HloSharding>> parameter_hlo_shardings;
-  std::vector<MemoryKind> parameter_memory_kinds;
-  std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
-      parameter_layouts;
-  parameter_layouts.emplace();
-
-  parameter_dtypes.reserve(metadata.parameter_specs_size());
-  parameter_shapes.reserve(metadata.parameter_specs_size());
-  parameter_memory_kinds.reserve(metadata.parameter_specs_size());
-  parameter_layouts->reserve(metadata.parameter_specs_size());
-
-  std::vector<int> donatable_input_indices;
+  std::vector<int> donated_input_indices;
   std::vector<DType> output_dtypes;
   std::vector<Shape> output_shapes;
   std::optional<std::vector<xla::HloSharding>> output_hlo_shardings;
@@ -724,47 +665,8 @@ PjRtExecutable::CommonMetadata::Deserialize(
   output_layouts->reserve(metadata.output_specs_size());
 
   for (int i = 0; i < metadata.parameter_specs_size(); ++i) {
-    TF_ASSIGN_OR_RETURN(auto dtype,
-                        DType::FromProto(metadata.parameter_specs(i).dtype()));
-    parameter_dtypes.push_back(dtype);
-    TF_ASSIGN_OR_RETURN(auto shape,
-                        Shape::FromProto(metadata.parameter_specs(i).shape()));
-    parameter_shapes.push_back(std::move(shape));
-    if (metadata.parameter_specs(i).has_op_sharding()) {
-      if (!parameter_hlo_shardings.has_value()) {
-        parameter_hlo_shardings.emplace();
-        parameter_hlo_shardings->reserve(metadata.parameter_specs_size());
-      }
-      TF_ASSIGN_OR_RETURN(auto hlo_sharding,
-                          xla::HloSharding::FromProto(
-                              metadata.parameter_specs(i).op_sharding()));
-      parameter_hlo_shardings->push_back(std::move(hlo_sharding));
-    } else {
-      // TODO(hyeontaek): Remove this branch once every parameter uses
-      // `HloSharding` as `parameter_spec.has_op_sharding()` would be always
-      // true.
-      if (parameter_hlo_shardings.has_value()) {
-        return absl::InvalidArgumentError(
-            "All parameters must use either HloSharding or "
-            "ConcreteEvenSharding, not a mix of the two.");
-      }
-    }
-    if (metadata.parameter_specs(i).memory_kind().empty()) {
-      parameter_memory_kinds.push_back(MemoryKind());
-    } else {
-      parameter_memory_kinds.push_back(
-          MemoryKind(metadata.parameter_specs(i).memory_kind()));
-    }
-    if (metadata.parameter_specs(i).has_layout()) {
-      TF_ASSIGN_OR_RETURN(
-          auto layout, Layout::FromProto(metadata.parameter_specs(i).layout()));
-      parameter_layouts->push_back(
-          llvm::cast<PjRtLayout>(layout.get())->pjrt_layout());
-    } else {
-      parameter_layouts->push_back(nullptr);
-    }
     if (metadata.parameter_specs(i).donated_input()) {
-      donatable_input_indices.push_back(i);
+      donated_input_indices.push_back(i);
     }
   }
 
@@ -806,12 +708,7 @@ PjRtExecutable::CommonMetadata::Deserialize(
 
   CommonMetadata common_metadata;
   common_metadata.is_portable = metadata.portable();
-  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
-  common_metadata.parameter_shapes = std::move(parameter_shapes);
-  common_metadata.parameter_hlo_shardings = std::move(parameter_hlo_shardings);
-  common_metadata.parameter_memory_kinds = std::move(parameter_memory_kinds);
-  common_metadata.parameter_layouts = std::move(parameter_layouts);
-  common_metadata.donatable_input_indices = std::move(donatable_input_indices);
+  common_metadata.donatable_input_indices = std::move(donated_input_indices);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
   common_metadata.output_hlo_shardings = std::move(output_hlo_shardings);
@@ -860,10 +757,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
   TF_ASSIGN_OR_RETURN(
       std::vector<int> donatable_input_indices,
       GetDonatableInputIndicesFromMlirModule(module.mlir_module()));
-  TF_ASSIGN_OR_RETURN(std::vector<xla::Shape> mlir_module_input_xla_shapes,
-                      InputShapesOfModule(module.mlir_module()));
-  TF_ASSIGN_OR_RETURN(std::vector<xla::LayoutMode> input_layout_modes,
-                      GetArgLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(
       const std::vector<xla::Shape> mlir_module_output_xla_shapes,
       ResultShapesOfModule(module.mlir_module()));
@@ -879,27 +772,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       executable_devices,
       AdjustExecutableDevicesForPmap(client, pjrt_loaded_executable.get(),
                                      std::move(executable_devices)));
-
-  TF_ASSIGN_OR_RETURN(auto parameter_dtypes_and_shapes,
-                      GetDTypesAndShapes(mlir_module_input_xla_shapes));
-  std::vector<DType> parameter_dtypes =
-      std::move(parameter_dtypes_and_shapes.first);
-  std::vector<Shape> parameter_shapes =
-      std::move(parameter_dtypes_and_shapes.second);
-  TF_ASSIGN_OR_RETURN(
-      std::optional<std::vector<xla::HloSharding>> parameter_hlo_shardings,
-      GetHloShardings(pjrt_loaded_executable->GetParameterShardings(),
-                      parameter_dtypes,
-                      /*is_output=*/false));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<MemoryKind> parameter_memory_kinds,
-      GetMemoryKinds(pjrt_loaded_executable->GetParameterMemoryKinds(),
-                     parameter_dtypes));
-  TF_ASSIGN_OR_RETURN(
-      std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
-          parameter_layouts,
-      GetLayouts(pjrt_loaded_executable->GetParameterLayouts(),
-                 input_layout_modes));
 
   TF_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                       GetDTypesAndShapes(mlir_module_output_xla_shapes));
@@ -924,11 +796,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
 
   PjRtExecutable::CommonMetadata common_metadata;
   common_metadata.is_portable = is_portable;
-  common_metadata.parameter_dtypes = std::move(parameter_dtypes);
-  common_metadata.parameter_shapes = std::move(parameter_shapes);
-  common_metadata.parameter_hlo_shardings = std::move(parameter_hlo_shardings);
-  common_metadata.parameter_memory_kinds = std::move(parameter_memory_kinds);
-  common_metadata.parameter_layouts = std::move(parameter_layouts);
   common_metadata.donatable_input_indices = std::move(donatable_input_indices);
   common_metadata.output_dtypes = std::move(output_dtypes);
   common_metadata.output_shapes = std::move(output_shapes);
