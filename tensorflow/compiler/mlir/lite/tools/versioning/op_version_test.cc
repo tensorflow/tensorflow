@@ -727,6 +727,15 @@ TEST(OpVersionTest, VersioningFullyConnectedTest) {
   fake_op_sig = {
       .op = BuiltinOperator_FULLY_CONNECTED,
       .inputs = CreateOpSignatureTensorSpecs(
+          std::vector<TfLiteType>{kTfLiteInt16, kTfLiteInt16}),
+      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
+      .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_FULLY_CONNECTED,
+      .inputs = CreateOpSignatureTensorSpecs(
           std::vector<TfLiteType>{kTfLiteFloat32, kTfLiteInt8}),
       .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
       .builtin_data = reinterpret_cast<void*>(&fully_connected_params),
