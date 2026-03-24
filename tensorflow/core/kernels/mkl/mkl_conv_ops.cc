@@ -804,6 +804,21 @@ class MklConvOp : public OpKernel {
       // Input tensors
       const Tensor& src_tensor = MklGetInput(context, kInputIndex_Src);
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
+      if (is_depthwise) {
+        OP_REQUIRES(context, src_tensor.dims() == 4,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 4-dimensional",
+                                    src_tensor.shape().DebugString())));
+        OP_REQUIRES(context, filter_tensor.dims() == 4,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("filter must be 4-dimensional: ",
+                                    filter_tensor.shape().DebugString())));
+      }
+
+      OP_REQUIRES(
+          context, filter_tensor.NumElements() > 0,
+          absl::InvalidArgumentError("filter must not have zero elements "
+                                    "(i.e. all dimensions must be non-zero)"));
       OP_REQUIRES(
           context, filter_tensor.NumElements() > 0,
           absl::InvalidArgumentError("filter must not have zero elements "
