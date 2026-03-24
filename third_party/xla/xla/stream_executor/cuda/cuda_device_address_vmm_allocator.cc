@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/log/log.h"
@@ -57,6 +58,35 @@ CudaDeviceAddressVmmAllocator::Create(StreamExecutor* executor, Stream* stream,
                                       uint64_t pa_budget) {
   return Create(executor->GetPlatform(),
                 {{DeviceConfig{executor, stream, pa_budget}}});
+}
+
+absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>>
+CudaDeviceAddressVmmAllocator::Create(
+    const Platform* platform, double memory_fraction,
+    std::optional<int64_t> gpu_system_memory_size,
+    absl::Span<const std::pair<StreamExecutor*, Stream*>> devices) {
+  LOG(INFO) << "Using VMM (Virtual Memory Management) allocator.";
+  std::vector<DeviceConfig> device_configs;
+  device_configs.reserve(devices.size());
+  for (const auto& [executor, stream] : devices) {
+    int64_t free_memory;
+    int64_t total_memory;
+    if (!executor->DeviceMemoryUsage(&free_memory, &total_memory)) {
+      return absl::UnavailableError(
+          absl::StrFormat("Failed to query available memory from device %i",
+                          executor->device_ordinal()));
+    }
+    // Calculate pa_budget the same way as BFCAllocator.
+    uint64_t pa_budget = total_memory * memory_fraction;
+    // If gpu_system_memory_size is set, use it instead.
+    if (gpu_system_memory_size.has_value()) {
+      pa_budget = gpu_system_memory_size.value();
+    }
+    LOG(INFO) << "VMM allocator pa_budget for device "
+              << executor->device_ordinal() << ": " << pa_budget << " bytes.";
+    device_configs.push_back({executor, stream, pa_budget});
+  }
+  return Create(platform, device_configs);
 }
 
 absl::Status CudaDeviceAddressVmmAllocator::InitializeDeviceState(

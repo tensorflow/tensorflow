@@ -175,6 +175,7 @@ cc_library(
         "@tsl//tsl/profiler/lib:traceme",
     ] + if_cuda([
         # keep sorted
+        "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
         # keep sorted

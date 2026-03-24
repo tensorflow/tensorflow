@@ -137,6 +137,8 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -1521,6 +1523,23 @@ GetStreamExecutorGpuDeviceAllocator(
       // Returning null will cause the client to use the default backend
       // allocator.
       return nullptr;
+
+    case GpuAllocatorConfig::Kind::kVmm: {
+#if GOOGLE_CUDA
+      std::vector<std::pair<se::StreamExecutor*, se::Stream*>> executor_streams;
+      executor_streams.reserve(addressable_devices.size());
+      for (const auto& [ordinal, device] : addressable_devices) {
+        executor_streams.push_back(
+            {device->executor(), device->compute_stream()});
+      }
+      return se::gpu::CudaDeviceAddressVmmAllocator::Create(
+          platform, allocator_config.memory_fraction,
+          allocator_config.gpu_system_memory_size, executor_streams);
+#else
+      return absl::UnimplementedError(
+          "VMM allocator is only supported with CUDA.");
+#endif  // GOOGLE_CUDA
+    }
   }
 
   // Add any additional allocators for alternate memory spaces.

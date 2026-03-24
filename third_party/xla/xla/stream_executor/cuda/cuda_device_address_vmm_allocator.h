@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -50,6 +52,16 @@ class CudaDeviceAddressVmmAllocator : public DeviceAddressVmmAllocator {
   // Precondition: all entries in `devices` have distinct device ordinals.
   static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
       const Platform* platform, absl::Span<const DeviceConfig> devices);
+
+  // Creates an allocator supporting multiple devices, computing the pa_budget
+  // for each device by querying DeviceMemoryUsage and applying memory_fraction.
+  // If gpu_system_memory_size is set, it overrides the memory_fraction budget.
+  //
+  // Precondition: all entries in `devices` have distinct device ordinals.
+  static absl::StatusOr<std::unique_ptr<CudaDeviceAddressVmmAllocator>> Create(
+      const Platform* platform, double memory_fraction,
+      std::optional<int64_t> gpu_system_memory_size,
+      absl::Span<const std::pair<StreamExecutor*, Stream*>> devices);
 
   // Creates an allocator for a single device.
   //

@@ -754,7 +754,7 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
                   absl::StatusCode::kUnimplemented,
                   "Allocator invalid_allocator not supported for PJRT GPU "
                   "plugin. Supported allocator options are: 'default', "
-                  "'platform', 'bfc' and 'cuda_async'."));
+                  "'platform', 'bfc', 'cuda_async' and 'vmm'."));
 
   PJRT_Error_Destroy_Args error_destroy_args;
   error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
