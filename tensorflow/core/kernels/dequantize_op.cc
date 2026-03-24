@@ -113,10 +113,20 @@ class DequantizeOp : public OpKernel {
             input.dims(), "), got ", axis_)));
 
     int num_slices = 1;
-    if (axis_ <= -1) {
-      axis_ = axis_ + input.dims();
+    if (axis_ == -1) {
+      if (input_min_tensor.NumElements() != num_slices ||
+          input_max_tensor.NumElements() != num_slices) {
+        axis_ = axis_ + input.dims();
+      }
     }
-    num_slices = input.dim_size(axis_);
+    else if (axis_ < -1 and input.dims() > 0) {
+      while (axis_ <= -1) {
+        axis_ = axis_ + input.dims();
+      }
+    }
+    if (axis_ > -1) {
+      num_slices = input.dim_size(axis_);
+    }
     OP_REQUIRES(ctx, input_min_tensor.NumElements() == num_slices,
                 errors::InvalidArgument(
                     "input_min_tensor must have as many elements as input on "
