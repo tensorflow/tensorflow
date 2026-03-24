@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
