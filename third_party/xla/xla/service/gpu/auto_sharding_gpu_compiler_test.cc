@@ -66,6 +66,9 @@ ENTRY matmul {
 };
 
 TEST_F(AutoShardingTest, MatMulWithAutosharding) {
+#if !defined(PLATFORM_GOOGLE)
+  GTEST_SKIP() << "GPU autosharding not available in OSS";
+#endif
   std::unique_ptr<HloModule> compiled_module = CompileMatMul(true, 4);
   const HloInstruction* parameter1 =
       compiled_module->entry_computation()->parameter_instruction(0);
