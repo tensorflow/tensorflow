@@ -121,7 +121,7 @@ class CudaBlasLtTest : public ::testing::Test {
         /*b_scale=*/DeviceAddressBase{},
         /*c_scale=*/DeviceAddressBase{},
         /*d_scale=*/DeviceAddressBase{},
-        /*d_amax=*/DeviceAddressBase{},
+        /*d_amax=*/{DeviceAddressBase{}},
         workspace,
         /*scratch_allocator=*/nullptr,
     };

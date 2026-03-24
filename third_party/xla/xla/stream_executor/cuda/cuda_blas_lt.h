@@ -138,6 +138,10 @@ class BlasLt : public gpu::BlasLt {
   absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(const gpu::GemmConfig& cfg,
                                               Epilogue epilogue) const override;
 
+  absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
+      gpu::GroupedGemmConfig& config,
+      const std::vector<Epilogue>& epilogues) const override;
+
   ~BlasLt() override = default;
 
  private:

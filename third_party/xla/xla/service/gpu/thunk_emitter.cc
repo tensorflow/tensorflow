@@ -642,6 +642,51 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkF8(
   return GetThunkSequence(std::move(thunk));
 }
 
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtGroupedMatmulThunk(
+    const HloCustomCallInstruction* instr) {
+  TF_RET_CHECK(instr->operand_count() == 3);
+
+  xla::ShapeIndex output_index =
+      instr->shape().IsTuple() ? xla::ShapeIndex{0} : xla::ShapeIndex{};
+
+  TF_ASSIGN_OR_RETURN(ShapedSlice a, GetShapedSliceForHlo(instr->operand(0)));
+  TF_ASSIGN_OR_RETURN(ShapedSlice b, GetShapedSliceForHlo(instr->operand(1)));
+  TF_ASSIGN_OR_RETURN(ShapedSlice group_sizes,
+                      GetShapedSliceForHlo(instr->operand(2)));
+  // No bias
+  TF_ASSIGN_OR_RETURN(ShapedSlice c, GetShapedSliceForHlo(instr, output_index));
+  TF_ASSIGN_OR_RETURN(ShapedSlice d, GetShapedSliceForHlo(instr, output_index));
+
+  std::optional<ShapedSlice> workspace_buffer;
+  if (instr->shape().IsTuple() && (instr->shape().tuple_shapes().size() - 1)) {
+    TF_ASSIGN_OR_RETURN(
+        workspace_buffer,
+        GetShapedSliceForHlo(instr, {instr->shape().tuple_shapes_size() - 1}));
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto gemm_config,
+      GroupedGemmConfig::For(static_cast<const HloInstruction*>(instr),
+                             ir_emitter_context_->gpu_compute_capability()));
+
+  // Autotuner does not support yet GroupedGemm operations.
+  // This will be enabled by PR https://github.com/openxla/xla/pull/38737
+  // For now, algorithm is set by default to 0 (autotuning disable).
+  int64_t algorithm = 0;
+  int64_t autotune_workspace_size = 0;
+
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      instr, ir_emitter_context_->GetNextThunkId());
+  std::string canonical_hlo = instr->ToString(
+      HloPrintOptions::Fingerprint().set_print_backend_config(true));
+
+  auto thunk = std::make_unique<CublasLtMatmulThunk>(
+      std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
+      se::gpu::BlasLt::Epilogue::kDefault, algorithm, autotune_workspace_size,
+      a, b, c, d, group_sizes, std::nullopt, std::nullopt, std::nullopt,
+      std::nullopt, std::nullopt, std::nullopt, std::nullopt, workspace_buffer);
+  return GetThunkSequence(std::move(thunk));
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCublasLtMatmulThunkMx(
     const HloCustomCallInstruction* instr) {
   TF_RET_CHECK(instr->operand_count() == 4);
@@ -2484,6 +2529,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallSwitch(
   }
   if (IsCublasLtMatmulF8(*hlo)) {
     return EmitCublasLtMatmulThunkF8(custom_call);
+  }
+  if (IsCublasLtGroupedMatmul(*hlo)) {
+    return EmitCublasLtGroupedMatmulThunk(custom_call);
   }
   if (IsCublasLtMatmulMx(*hlo)) {
     return EmitCublasLtMatmulThunkMx(custom_call);

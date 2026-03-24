@@ -215,7 +215,11 @@ message SelectKThunkProto {
 }
 
 message CublasLtMatmulThunkProto {
-  xla.GemmConfigProto gemm_config = 1;
+  // For regular matmul, use gemm_config. For grouped matmul, use
+  // grouped_gemm_config.
+  optional xla.GemmConfigProto gemm_config = 1;
+  optional xla.GroupedGemmConfigProto grouped_gemm_config = 19;
+
   xla.BlasLtEpilogueProto epilogue = 2;
   int64 algorithm_idx = 3;
   string canonical_hlo = 4;
@@ -223,6 +227,7 @@ message CublasLtMatmulThunkProto {
   ShapedSliceProto b = 6;
   ShapedSliceProto c = 7;
   ShapedSliceProto d = 8;
+  optional ShapedSliceProto group_sizes = 18;  // Only for grouped
   optional ShapedSliceProto bias = 9;
   optional ShapedSliceProto aux = 10;
   optional ShapedSliceProto a_scale = 11;

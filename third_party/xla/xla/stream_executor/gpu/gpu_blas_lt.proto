@@ -36,7 +36,6 @@ message GemmConfigProto {
     xla.BlasTransposeProto transpose = 7;
     xla.PrimitiveType dtype = 8;
   }
-
   MatrixLayout lhs_layout = 1;
   MatrixLayout rhs_layout = 2;
   MatrixLayout c_layout = 3;
@@ -53,6 +52,35 @@ message GemmConfigProto {
   int32 scale_mode = 14;
 }
 
+message GroupedGemmConfigProto {
+  uint64 m = 1;
+  uint64 n = 2;
+  uint64 k = 3;
+  uint64 batch_count = 4;
+  uint64 group_count = 5;
+  int64 lhs_leading_dim_stride = 6;
+  int64 rhs_leading_dim_stride = 7;
+  int64 c_leading_dim_stride = 8;
+  int64 output_leading_dim_stride = 9;
+  xla.BlasTransposeProto trans_a = 10;
+  xla.BlasTransposeProto trans_b = 11;
+  bool must_swap_operands = 12;
+  double alpha_real = 13;
+  double alpha_imag = 14;
+  double beta = 15;
+  xla.PrimitiveType type_a = 16;
+  xla.PrimitiveType type_b = 17;
+  xla.PrimitiveType type_c = 18;
+  xla.PrimitiveType type_d = 19;
+  int64 stride_ragged_dim = 20;
+  int64 stride_group_dim = 21;
+  int64 output_stride_ragged_dim = 22;
+  xla.PrecisionConfig.Algorithm precision_algorithm = 23;
+  int64 compute_precision = 24;
+  RaggedDotModeProto ragged_mode = 25;
+  xla.BlasComputationTypeProto compute_type = 26;
+}
+
 enum BlasLtEpilogueProto {
   EPILOGUE_DEFAULT = 0;
   EPILOGUE_RELU = 1;
@@ -66,4 +94,10 @@ enum BlasLtEpilogueProto {
   EPILOGUE_BIAS_THEN_SILU = 9;
   EPILOGUE_BIAS_THEN_GELU_WITH_AUX = 10;
   EPILOGUE_BIAS_THEN_SILU_WITH_AUX = 11;
+}
+
+enum RaggedDotModeProto {
+  RAGGED_NON_CONTRACTING = 0;
+  RAGGED_CONTRACTING = 1;
+  RAGGED_BATCH = 2;
 }

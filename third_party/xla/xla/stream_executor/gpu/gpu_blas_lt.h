@@ -68,6 +68,8 @@ struct MatrixLayout {  // plain MatrixLayout which is extended with create
 
   void Transpose();
 
+  std::string ToString() const;
+
   xla::PrimitiveType dtype;
   // `num_rows` / `num_cols` are for the "logical" matrix shape:
   // i.e. the contracting dim has size `num_cols` for LHS operands and
@@ -145,6 +147,43 @@ struct GemmConfig {  // plain GemmConfig which is extended with create functions
   xla::GemmConfigProto ToProto() const;
 };
 
+enum class RaggedDotMode : uint8_t {
+  kRaggedNonContracting = 0,
+  kRaggedContracting = 1,
+  kRaggedBatch = 2
+};
+
+absl::StatusOr<RaggedDotMode> RaggedDotModeFromProto(
+    const xla::RaggedDotModeProto& proto);
+xla::RaggedDotModeProto RaggedDotModeToProto(RaggedDotMode ragged_mode);
+
+struct GroupedGemmConfig {
+  uint64_t m, n, k;
+  uint64_t batch_count;
+  uint64_t group_count;
+  int64_t lhs_leading_dim_stride;
+  int64_t rhs_leading_dim_stride;
+  int64_t c_leading_dim_stride;
+  int64_t output_leading_dim_stride;
+  blas::Transpose trans_a, trans_b;
+  bool must_swap_operands;
+  xla::complex128 alpha;
+  double beta;
+  blas::DataType type_a, type_b, type_c, type_d;
+  int64_t stride_ragged_dim;
+  int64_t stride_group_dim;
+  int64_t output_stride_ragged_dim;
+  // PrecisionConfig-level algorithm
+  xla::PrecisionConfig::Algorithm precision_algorithm;
+  int64_t compute_precision;
+  RaggedDotMode ragged_mode;
+  std::optional<blas::ComputationType> compute_type;
+
+  static absl::StatusOr<GroupedGemmConfig> FromProto(
+      const xla::GroupedGemmConfigProto& proto);
+  xla::GroupedGemmConfigProto ToProto() const;
+};
+
 struct BlasLt {
   enum class Epilogue {
     kDefault = 1,                   // No special postprocessing
@@ -177,11 +216,14 @@ struct BlasLt {
   };
 
   struct MemoryArgs {
-    DeviceAddressBase a, b, c, d;  // these are mandatory
-    DeviceAddressBase bias, aux;   // these may be null
-    DeviceAddressBase a_scale, b_scale, c_scale, d_scale;  // these may be null
-    DeviceAddressBase d_amax;                              // this may be null
-    DeviceAddressBase workspace;          // either workspace or
+    DeviceMemoryBase a, b, c, d;                          // these are mandatory
+    DeviceMemoryBase bias, aux;                           // these may be null
+    DeviceMemoryBase a_scale, b_scale, c_scale, d_scale;  // these may be null
+    union {
+      DeviceMemoryBase d_amax;       // this may be null
+      DeviceMemoryBase group_sizes;  // used by grouped gemm
+    };
+    DeviceMemoryBase workspace;           // either workspace or
     ScratchAllocator* scratch_allocator;  // scratch_allocator must not be null
   };
 
@@ -201,11 +243,21 @@ struct BlasLt {
       // Temporary hack until Tensorflow side is fixed
       TF_RETURN_IF_ERROR(
           const_cast<MatmulPlan*>(this)->SetAlgorithm(algorithm));
-      return ExecuteOnStream(
-          stream,
-          MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
-                     d_amax, DeviceAddressBase{}, &scratch_allocator},
-          profile_result);
+      return ExecuteOnStream(stream,
+                             MemoryArgs{a,
+                                        b,
+                                        c,
+                                        d,
+                                        bias,
+                                        aux,
+                                        a_scale,
+                                        b_scale,
+                                        c_scale,
+                                        d_scale,
+                                        {d_amax},
+                                        DeviceAddressBase{},
+                                        &scratch_allocator},
+                             profile_result);
     }
 
     // API that uses scratch_allocator to allocate workspace.
@@ -219,14 +271,24 @@ struct BlasLt {
         DeviceAddressBase c_scale, DeviceAddressBase d_scale,
         DeviceAddressBase d_amax, ScratchAllocator& scratch_allocator,
         blas::ProfileResult* profile_result = nullptr) const {
-      return ExecuteOnStream(
-          stream,
-          MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
-                     d_amax, DeviceAddressBase{}, &scratch_allocator},
-          profile_result);
+      return ExecuteOnStream(stream,
+                             MemoryArgs{a,
+                                        b,
+                                        c,
+                                        d,
+                                        bias,
+                                        aux,
+                                        a_scale,
+                                        b_scale,
+                                        c_scale,
+                                        d_scale,
+                                        {d_amax},
+                                        DeviceAddressBase{},
+                                        &scratch_allocator},
+                             profile_result);
     }
 
-    // API that uses pre-allocated buffer as workspace.
+    // API that uses pre-allocated buffer as workspace (regular matmul).
     absl::Status ExecuteOnStream(
         Stream* stream, DeviceAddressBase a, DeviceAddressBase b,
         DeviceAddressBase c, DeviceAddressBase d,
@@ -236,11 +298,48 @@ struct BlasLt {
         DeviceAddressBase c_scale, DeviceAddressBase d_scale,
         DeviceAddressBase d_amax, DeviceAddressBase workspace,
         blas::ProfileResult* profile_result = nullptr) const {
-      return ExecuteOnStream(
-          stream,
-          MemoryArgs{a, b, c, d, bias, aux, a_scale, b_scale, c_scale, d_scale,
-                     d_amax, workspace, nullptr},
-          profile_result);
+      return ExecuteOnStream(stream,
+                             MemoryArgs{a,
+                                        b,
+                                        c,
+                                        d,
+                                        bias,
+                                        aux,
+                                        a_scale,
+                                        b_scale,
+                                        c_scale,
+                                        d_scale,
+                                        {d_amax},
+                                        workspace,
+                                        nullptr},
+                             profile_result);
+    }
+
+    // API that uses pre-allocated buffer as workspace (grouped matmul).
+    absl::Status ExecuteOnStream(
+        Stream* stream, DeviceMemoryBase a, DeviceMemoryBase b,
+        DeviceMemoryBase c, DeviceMemoryBase d, DeviceMemoryBase group_sizes,
+        DeviceMemoryBase bias,  // may be null
+        DeviceMemoryBase aux,   // may be null
+        DeviceMemoryBase a_scale, DeviceMemoryBase b_scale,
+        DeviceMemoryBase c_scale, DeviceMemoryBase d_scale,
+        DeviceMemoryBase d_amax, DeviceMemoryBase workspace,
+        blas::ProfileResult* profile_result = nullptr) const {
+      return ExecuteOnStream(stream,
+                             MemoryArgs{a,
+                                        b,
+                                        c,
+                                        d,
+                                        bias,
+                                        aux,
+                                        a_scale,
+                                        b_scale,
+                                        c_scale,
+                                        d_scale,
+                                        {group_sizes},
+                                        workspace,
+                                        nullptr},
+                             profile_result);
     }
 
     // The most general form: to be implemented by derived clases.
@@ -272,6 +371,10 @@ struct BlasLt {
   virtual absl::StatusOr<MatmulPlanPtr> GetMatmulPlan(
       const GemmConfig& cfg, Epilogue epilogue) const = 0;
 
+  virtual absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
+      gpu::GroupedGemmConfig& config,
+      const std::vector<Epilogue>& epilogues) const = 0;
+
   static BlasLt* Get(const Stream* stream);
 
   // convenience function to create MatmulPlan directly using stream
@@ -279,17 +382,29 @@ struct BlasLt {
                                                      const GemmConfig& cfg,
                                                      Epilogue epilogue);
 
+  static absl::StatusOr<MatmulPlanPtr> GetGroupedMatmulPlan(
+      const Stream* stream, gpu::GroupedGemmConfig& config,
+      const std::vector<Epilogue>& epilogues);
+
   absl::StatusOr<MatmulPlan*> GetOrCreateMatmulPlan(const std::string& key,
                                                     PlanCreateFunc create);
 
+  absl::StatusOr<MatmulPlan*> GetOrCreateGroupedMatmulPlan(
+      const std::string& key, PlanCreateFunc create);
+
   void ClearMatmulPlanCache();
   size_t GetMatmulPlanCacheSize() const;
+
+  void ClearGroupedMatmulPlanCache();
+  size_t GetGroupedMatmulPlanCacheSize() const;
 
   virtual ~BlasLt() = default;
 
  protected:
   mutable absl::Mutex plan_cache_mu_;
   absl::flat_hash_map<std::string, MatmulPlanPtr> plan_cache_
+      ABSL_GUARDED_BY(plan_cache_mu_);
+  absl::flat_hash_map<std::string, MatmulPlanPtr> grouped_plan_cache_
       ABSL_GUARDED_BY(plan_cache_mu_);
 };  // class BlasLt
 
