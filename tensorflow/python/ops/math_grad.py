@@ -1467,6 +1467,7 @@ def _DivGrad(op: ops.Operation, grad):
   cx = math_ops.conj(x)
   cy = math_ops.conj(y)
   gx = math_ops.divide(grad, cy)
+  # pylint: disable-next=invalid-unary-operand-type
   gy = grad * math_ops.divide(math_ops.divide(-cx, cy), cy)
   return _ReduceGradientArgs(x, y, gx, gy)
 
@@ -1501,6 +1502,7 @@ def _RealDivGrad(op: ops.Operation, grad):
   cx = math_ops.conj(op.inputs[0])
   cy = math_ops.conj(op.inputs[1])
   gx = math_ops.realdiv(grad, cy)
+  # pylint: disable-next=invalid-unary-operand-type
   gy = grad * math_ops.realdiv(math_ops.realdiv(-cx, cy), cy)
   return _ReduceGradientArgs(x, y, gx, gy)
 
@@ -1511,6 +1513,7 @@ def _DivNoNanGrad(op: ops.Operation, grad):
   x = math_ops.conj(op.inputs[0])
   y = math_ops.conj(op.inputs[1])
   gx = math_ops.div_no_nan(grad, y)
+  # pylint: disable-next=invalid-unary-operand-type
   gy = grad * math_ops.div_no_nan(math_ops.div_no_nan(-x, y), y)
   return _ReduceGradientArgs(x, y, gx, gy)
 
