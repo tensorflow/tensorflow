@@ -45,7 +45,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/proto/parse_text_proto.h"
@@ -62,7 +62,7 @@ using ::testing::ElementsAre;
 using Kind = Thunk::Kind;
 using ::tsl::proto_testing::EqualsProto;
 
-using GpuRaggedAllToAllTest = HloTestBase;
+using GpuRaggedAllToAllTest = HloTestBaseLegacy;
 
 TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
   // Generate HLO text with parameters substituted.
