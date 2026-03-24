@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
+#include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
 #include "xla/stream_executor/memory_space.h"
@@ -751,10 +752,9 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
   // 2. Execution of RunRaggedAllToAllKernel
   const int64_t num_updates_per_replica = num_total_updates / num_ranks;
 
-  absl::InlinedVector<se::DeviceAddressBase, 8> output_ptrs;
-  output_ptrs.reserve(participants.size());
-  for (const auto& value : participants) {
-    output_ptrs.push_back(value.output_buffer);
+  stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs;
+  for (int i = 0; i < participants.size(); ++i) {
+    output_ptrs[i] = participants[i].output_buffer.opaque();
   }
 
   TF_RETURN_IF_ERROR(RunRaggedAllToAllKernel(
@@ -802,9 +802,9 @@ absl::Status RunOneShotRaggedAllToAll(
 
   const int64_t num_updates_per_replica = num_total_updates / num_ranks;
 
-  absl::InlinedVector<se::DeviceAddressBase, 8> output_ptrs;
-  for (auto& value : *rendezvous_values) {
-    output_ptrs.push_back(value.output_buffer);
+  stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs;
+  for (int i = 0; i < rendezvous_values->size(); ++i) {
+    output_ptrs[i] = (*rendezvous_values)[i].output_buffer.opaque();
   }
 
   TF_RETURN_IF_ERROR(RunRaggedAllToAllKernel(
@@ -852,10 +852,9 @@ absl::Status RunOneShotRaggedAllToAll(
   // 2. Execution of RunRaggedAllToAllKernel
   const int64_t num_updates_per_replica = num_total_updates / num_ranks;
 
-  absl::InlinedVector<se::DeviceAddressBase, 8> output_ptrs;
-  output_ptrs.reserve(participants.size());
-  for (const auto& value : participants) {
-    output_ptrs.push_back(value.output_buffer);
+  stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs;
+  for (int i = 0; i < participants.size(); ++i) {
+    output_ptrs[i] = participants[i].output_buffer.opaque();
   }
 
   TF_RETURN_IF_ERROR(RunRaggedAllToAllKernel(

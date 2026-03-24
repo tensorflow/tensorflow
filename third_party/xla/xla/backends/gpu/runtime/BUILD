@@ -1874,6 +1874,7 @@ cc_library(
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:multi_gpu_barrier_kernel",
+        "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
@@ -3389,7 +3390,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -3408,6 +3408,7 @@ xla_test(
         "//xla/stream_executor:platform_manager",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:gpu_init",
+        "//xla/stream_executor/gpu:ragged_all_to_all_kernel",
         "//xla/stream_executor/host:host_platform",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:test",

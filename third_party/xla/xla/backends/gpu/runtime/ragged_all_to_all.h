@@ -17,10 +17,11 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_RAGGED_ALL_TO_ALL_H_
 
 #include <cstdint>
+#include <variant>
 
 #include "absl/status/status.h"
-#include "absl/types/span.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
@@ -50,7 +51,9 @@ bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
 absl::Status RunRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,
     se::DeviceAddressBase input_buffer,
-    absl::Span<const se::DeviceAddressBase> output_buffers,
+    std::variant<stream_executor::gpu::RaggedAllToAllOutputPtrs,
+                 se::DeviceAddressBase>
+        output_ptrs,
     se::DeviceAddressBase input_offsets_buffer,
     se::DeviceAddressBase send_sizes_buffer,
     se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
