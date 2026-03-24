@@ -242,7 +242,7 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
       std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
-  ~PjRtStreamExecutorClient() override = default;
+  ~PjRtStreamExecutorClient() override;
 
   int process_index() const override { return process_index_; }
 

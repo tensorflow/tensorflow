@@ -340,6 +340,20 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
   }
 }
 
+PjRtStreamExecutorClient::~PjRtStreamExecutorClient() {
+  // Properly quiesce async_dispatch_thread.
+  for (auto& device : owned_devices_) {
+    if (device->local_device_state()) {
+      if (device->local_device_state()->async_dispatch_thread()) {
+        absl::Notification done;
+        device->local_device_state()->async_dispatch_thread()->Schedule(
+            [&]() { done.Notify(); });
+        done.WaitForNotification();
+      }
+    }
+  }
+}
+
 std::optional<PjRtPluginAttributes>
 PjRtStreamExecutorClient::plugin_attributes() const {
   PjRtPluginAttributes attributes =
