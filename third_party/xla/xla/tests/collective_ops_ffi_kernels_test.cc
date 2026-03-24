@@ -97,6 +97,11 @@ TEST(CollectiveOpsFfiKernelsTest, CollectiveKernelLaunch) {
   }
 
   // We need peer access between devices to test LSA collective kernel.
+  if (!executor0->CanEnablePeerAccessTo(executor1) ||
+      !executor1->CanEnablePeerAccessTo(executor0)) {
+    GTEST_SKIP() << "Test requires direct peer memory access between devices.";
+  }
+
   ASSERT_OK(executor0->EnablePeerAccessTo(executor1));
   ASSERT_OK(executor1->EnablePeerAccessTo(executor0));
 
