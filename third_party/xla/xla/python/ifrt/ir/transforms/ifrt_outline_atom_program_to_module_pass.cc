@@ -55,12 +55,12 @@ class IfrtOutlineAtomProgramToModulePass
 void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
   mlir::SymbolTableCollection symbol_table;
   mlir::OpBuilder builder(&getContext());
-  llvm::DenseSet<xla::ifrt::CallOp> visited;
+  llvm::DenseSet<CallOp> visited;
   llvm::SmallVector<mlir::Operation*, 16> to_erase;
   mlir::ModuleOp module_op = getOperation();
   mlir::func::FuncOp main_func = GetMainFunction(module_op);
   auto result =
-      main_func.walk([&](xla::ifrt::CallOp call_op) -> mlir::WalkResult {
+      main_func.walk([&](CallOp call_op) -> mlir::WalkResult {
         // Maybe visited by a previous CallOp with the same callee.
         if (visited.contains(call_op)) {
           return mlir::WalkResult::advance();
@@ -118,18 +118,20 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
               mlir::Operation* sym_op = module_op.lookupSymbol(
                   sym_use.getSymbolRef().getRootReference());
               if (sym_op == nullptr) {
-                return sym_use.getUser()->emitOpError()
-                       << "uses a symbol in attributes `"
-                       << sym_use.getSymbolRef().getRootReference().str()
-                       << "` that does not exist in the ModuleOp.";
+                sym_use.getUser()->emitOpError()
+                    << "uses a symbol in attributes `"
+                    << sym_use.getSymbolRef().getRootReference().str()
+                    << "` that does not exist in the ModuleOp.";
+                return mlir::WalkResult::interrupt();
               }
               auto func = llvm::dyn_cast<mlir::func::FuncOp>(sym_op);
               if (func == nullptr) {
-                return sym_use.getUser()->emitOpError()
-                       << "uses a symbol in attributes `"
-                       << sym_use.getSymbolRef().getRootReference().str()
-                       << "` that is not a FuncOp. Cannot handle such cases "
-                          "for now.";
+                sym_use.getUser()->emitOpError()
+                    << "uses a symbol in attributes `"
+                    << sym_use.getSymbolRef().getRootReference().str()
+                    << "` that is not a FuncOp. Cannot handle such cases "
+                       "for now.";
+                return mlir::WalkResult::interrupt();
               }
               func_stack.push_back(func);
             }
@@ -146,12 +148,13 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
             callee.getSymbolUses(main_func);
         if (symbol_uses.has_value()) {
           for (const mlir::SymbolTable::SymbolUse symbol_use : *symbol_uses) {
-            auto user = llvm::dyn_cast<xla::ifrt::CallOp>(symbol_use.getUser());
+            auto user = llvm::dyn_cast<CallOp>(symbol_use.getUser());
             if (user == nullptr) {
-              return symbol_use.getUser()->emitOpError()
-                     << "requires symbol `" << callee.getSymName()
-                     << "` only used by ifrt.Call. Found use by `"
-                     << user.getOperationName() << "`";
+              symbol_use.getUser()->emitOpError()
+                  << "requires symbol `" << callee.getSymName()
+                  << "` only used by ifrt.Call. Found use by `"
+                  << user.getOperationName() << "`";
+              return mlir::WalkResult::interrupt();
             }
             user.setCalleeAttr(new_symbol);
             visited.insert(user);

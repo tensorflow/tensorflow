@@ -412,8 +412,9 @@ class IfrtToVifrtOpConverter : public mlir::OpConversionPattern<IfrtOpTy> {
                                   vifrt_region.end());
       if (mlir::failed(rewriter.convertRegionTypes(
               &vifrt_region, *this->getTypeConverter(),
-              /*entryConversion=*/nullptr)))
+              /*entryConversion=*/nullptr))) {
         return mlir::failure();
+      }
     }
     rewriter.replaceOp(ifrt_op, vifrt_op);
     return mlir::success();

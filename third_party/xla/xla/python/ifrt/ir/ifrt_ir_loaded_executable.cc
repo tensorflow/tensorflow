@@ -37,7 +37,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/OperationSupport.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
@@ -88,7 +88,7 @@ absl::StatusOr<DeviceIdToLogicalDeviceIdMap> CreateDeviceIdToLogicalDeviceIdMap(
     std::shared_ptr<CompiledIfrtIrProgram> program) {
   DeviceIdToLogicalDeviceIdMap device_id_to_logical_device_id;
   for (int i = 0; i < program->device_assignments.size(); ++i) {
-    const xla::ifrt::DeviceId device_id = program->device_assignments[i];
+    const DeviceId device_id = program->device_assignments[i];
     auto [_, inserted] = device_id_to_logical_device_id.insert(
         {device_id, IfrtIrLogicalDeviceId(i)});
     if (!inserted) {
@@ -102,22 +102,21 @@ absl::StatusOr<DeviceIdToLogicalDeviceIdMap> CreateDeviceIdToLogicalDeviceIdMap(
 
 absl::StatusOr<IfrtIrExecutableVersion::AtomExecutableVersion>
 CreateAtomExecutableVersion(
-    std::shared_ptr<const xla::ifrt::LoadedExecutable> executable,
-    absl::flat_hash_map<xla::ifrt::DeviceId, IfrtIrLogicalDeviceId>&
+    std::shared_ptr<const LoadedExecutable> executable,
+    absl::flat_hash_map<DeviceId, IfrtIrLogicalDeviceId>&
         device_id_to_logical_device_id) {
-  std::optional<xla::ifrt::DeviceListRef> device_list = executable->devices();
+  std::optional<DeviceListRef> device_list = executable->devices();
   if (!device_list.has_value()) {
     return absl::UnimplementedError("Portable executables are not supported.");
   }
-  absl::Span<xla::ifrt::Device* const> devices = (*device_list)->devices();
+  absl::Span<Device* const> devices = (*device_list)->devices();
 
   IfrtIrExecutableVersion::AtomExecutableVersion atom_executable_version;
-  TF_ASSIGN_OR_RETURN(
-      std::shared_ptr<const xla::ifrt::ExecutableVersion> version,
-      executable->executable_version());
+  TF_ASSIGN_OR_RETURN(std::shared_ptr<const ExecutableVersion> version,
+                      executable->executable_version());
   atom_executable_version.runtime_abi_version = std::move(version);
   atom_executable_version.logical_device_ids.reserve(devices.size());
-  for (xla::ifrt::Device* device : devices) {
+  for (Device* device : devices) {
     atom_executable_version.logical_device_ids.push_back(
         device_id_to_logical_device_id[device->Id()]);
   }
@@ -134,11 +133,11 @@ absl::StatusOr<std::optional<std::string>> IfrtIrLoadedExecutable::Fingerprint()
   return std::optional<std::string>();
 }
 
-absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
+absl::StatusOr<std::shared_ptr<const ExecutableVersion>>
 IfrtIrLoadedExecutable::executable_version() const {
   absl::call_once(version_once_, [&]() {
-    version_ = [&]()
-        -> absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>> {
+    version_ =
+        [&]() -> absl::StatusOr<std::shared_ptr<const ExecutableVersion>> {
       // Create list of runtime ABI versions for the IFRT IR atom executables.
       std::vector<IfrtIrExecutableVersion::AtomExecutableVersion>
           runtime_abi_versions;
@@ -347,7 +346,7 @@ absl::StatusOr<AttributeMap> IfrtIrLoadedExecutable::GetCostAnalysis() const {
 
 absl::StatusOr<absl::flat_hash_map<std::string, AttributeMap>>
 IfrtIrLoadedExecutable::GetMpmdCostAnalysis() const {
-  absl::flat_hash_map<std::string, xla::ifrt::AttributeMap> mpmd_cost_analysis;
+  absl::flat_hash_map<std::string, AttributeMap> mpmd_cost_analysis;
   for (const auto& [name, executable] : *program_->atom_program_executables) {
     TF_ASSIGN_OR_RETURN(auto atom_program_analysis,
                         executable->GetCostAnalysis());

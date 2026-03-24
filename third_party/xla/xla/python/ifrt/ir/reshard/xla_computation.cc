@@ -106,11 +106,11 @@ std::vector<int64_t> FindDonatableInputs(
 // Converts an XLA computation to an `xla::ifrt::HloProgram`, and applies input
 // donation and memory kind attributes to the input and output. The generated
 // MLIR module will have flattened (non XLA tuple) parameters and results.
-absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ConvertToHloProgram(
+absl::StatusOr<std::unique_ptr<HloProgram>> ConvertToHloProgram(
     const xla::XlaComputation& xla_computation,
     absl::Span<const int64_t> donated_input_indices,
-    absl::Span<const xla::ifrt::MemoryKind> arg_memory_kinds,
-    absl::Span<const xla::ifrt::MemoryKind> result_memory_kinds) {
+    absl::Span<const MemoryKind> arg_memory_kinds,
+    absl::Span<const MemoryKind> result_memory_kinds) {
   const xla::HloModuleProto& hlo_module_proto = xla_computation.proto();
   TF_ASSIGN_OR_RETURN(
       auto host_program_shape,
@@ -125,8 +125,8 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ConvertToHloProgram(
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
       xla::ConvertHloToStablehlo(*mlir_context, hlo_module.get()));
-  auto program = std::make_unique<xla::ifrt::HloProgram>(
-      std::move(mlir_context), std::move(mlir_module));
+  auto program = std::make_unique<HloProgram>(std::move(mlir_context),
+                                              std::move(mlir_module));
 
   mlir::func::FuncOp main =
       program->mlir_module().lookupSymbol<mlir::func::FuncOp>("main");
@@ -168,7 +168,7 @@ absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>> ConvertToHloProgram(
 // propagation) to behave in an unexpected way (e.g., not finishing resharding
 // work by the time when the execution is considered complete).
 absl::Status SetComputeType(xla::XlaBuilder& builder, xla::XlaOp op,
-                            const xla::ifrt::MemoryKind& memory_kind) {
+                            const MemoryKind& memory_kind) {
   if (memory_kind.memory_kind().has_value()) {
     if (*memory_kind.memory_kind() == "device") {
       // No need to set the attribute.
@@ -185,11 +185,11 @@ absl::Status SetComputeType(xla::XlaBuilder& builder, xla::XlaOp op,
 
 }  // namespace
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
+absl::StatusOr<std::unique_ptr<HloProgram>>
 XlaComputationBuilder::BuildXlaReshardComputation(
     const xla::Shape& xla_shape, const xla::HloSharding& old_hlo_sharding,
     const xla::HloSharding& new_hlo_sharding,
-    absl::Span<const xla::ifrt::MemoryKind> memory_kinds, bool pre_resharding) {
+    absl::Span<const MemoryKind> memory_kinds, bool pre_resharding) {
   TF_RET_CHECK(xla_shape.IsTuple());
   TF_RET_CHECK(old_hlo_sharding.IsTuple());
   TF_RET_CHECK(new_hlo_sharding.IsTuple());
@@ -241,10 +241,10 @@ XlaComputationBuilder::BuildXlaReshardComputation(
                              /*result_memory_kinds=*/memory_kinds);
 }
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
+absl::StatusOr<std::unique_ptr<HloProgram>>
 XlaComputationBuilder::BuildXlaZerosComputation(
     const xla::Shape& xla_shape, const xla::HloSharding& new_hlo_sharding,
-    absl::Span<const xla::ifrt::MemoryKind> memory_kinds) {
+    absl::Span<const MemoryKind> memory_kinds) {
   TF_RET_CHECK(xla_shape.IsTuple());
   TF_RET_CHECK(new_hlo_sharding.IsTuple());
   TF_RET_CHECK(new_hlo_sharding.tuple_elements().size() ==
@@ -301,11 +301,11 @@ XlaComputationBuilder::BuildXlaZerosComputation(
                              /*result_memory_kinds=*/memory_kinds);
 }
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::HloProgram>>
+absl::StatusOr<std::unique_ptr<HloProgram>>
 XlaComputationBuilder::BuildXlaReduceComputation(
     const xla::Shape& old_xla_shape, const xla::HloSharding& old_hlo_sharding,
     const xla::Shape& new_xla_shape, const xla::HloSharding& new_hlo_sharding,
-    absl::Span<const xla::ifrt::MemoryKind> memory_kinds) {
+    absl::Span<const MemoryKind> memory_kinds) {
   TF_RET_CHECK(old_xla_shape.IsTuple());
   TF_RET_CHECK(new_xla_shape.IsTuple());
   TF_RET_CHECK(old_xla_shape.tuple_shapes().size() ==
@@ -398,7 +398,7 @@ XlaComputationBuilder::BuildXlaReduceComputation(
                              /*result_memory_kinds=*/memory_kinds);
 }
 
-std::string DumpHloProgram(xla::ifrt::HloProgram& program) {
+std::string DumpHloProgram(HloProgram& program) {
   std::string s;
   llvm::raw_string_ostream os(s);
   program.mlir_module().print(os);

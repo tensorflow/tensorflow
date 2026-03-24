@@ -76,8 +76,8 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
         "IfrtIrCompileOptionsProto.propagate_shardings is deprecated");
   }
 
-  auto compile_options_overrides = std::make_unique<absl::flat_hash_map<
-      std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>();
+  auto compile_options_overrides = std::make_unique<
+      absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>();
   compile_options_overrides->reserve(proto.compile_option_overrides_size());
 
   std::vector<DeviceId> device_ids;
@@ -128,10 +128,9 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
             "compile_options must be XlaCompileOptions");
       }
 
-      TF_ASSIGN_OR_RETURN(
-          CompileOptionsProto compile_options_proto,
-          static_cast<xla::ifrt::XlaCompileOptions*>(compile_options.get())
-              ->compile_options.ToProto());
+      TF_ASSIGN_OR_RETURN(CompileOptionsProto compile_options_proto,
+                          static_cast<XlaCompileOptions*>(compile_options.get())
+                              ->compile_options.ToProto());
       proto.mutable_compile_option_overrides()->insert(
           {id, compile_options_proto});
     }
@@ -151,8 +150,7 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
 
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                               const IfrtIRCompileOptions& options) {
-  absl::StatusOr<xla::ifrt::IfrtIrCompileOptionsProto> proto_or =
-      options.ToProto();
+  absl::StatusOr<IfrtIrCompileOptionsProto> proto_or = options.ToProto();
   if (!proto_or.ok()) {
     os << "Failed to convert IfrtIRCompileOptions to proto: "
        << proto_or.status().ToString();

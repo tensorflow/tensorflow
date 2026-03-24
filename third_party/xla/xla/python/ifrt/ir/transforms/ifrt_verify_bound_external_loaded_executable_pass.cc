@@ -123,11 +123,12 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
     if (exec_it != bound_executable_map_->end()) {
       if (loaded_exec_op.getDevices().size() !=
           exec_it->second->num_devices()) {
-        return loaded_exec_op.emitOpError()
-               << "expects an executable with "
-               << loaded_exec_op.getDevices().size()
-               << " devices, but was bound to an executable with "
-               << exec_it->second->num_devices() << " devices";
+        loaded_exec_op.emitOpError()
+            << "expects an executable with "
+            << loaded_exec_op.getDevices().size()
+            << " devices, but was bound to an executable with "
+            << exec_it->second->num_devices() << " devices";
+        return mlir::WalkResult::interrupt();
       }
 
       auto func_type = loaded_exec_op.getFunctionType();
@@ -140,9 +141,10 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
         parameter_shardings = exec_it->second->GetParameterShardings();
       }
       if (!parameter_shardings.has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to an executable without parameter "
-                  "shardings";
+        loaded_exec_op.emitOpError()
+            << "cannot be bound to an executable without parameter "
+               "shardings";
+        return mlir::WalkResult::interrupt();
       }
       std::optional<std::vector<xla::OpSharding>> output_shardings;
       if (func_type.getNumResults() == 0) {
@@ -153,33 +155,38 @@ void IfrtVerifyBoundExternalLoadedExecutablePass::runOnOperation() {
         output_shardings = exec_it->second->GetOutputShardings();
       }
       if (!output_shardings.has_value()) {
-        return loaded_exec_op.emitOpError()
-               << "cannot be bound to a multi-device executable without output "
-                  "shardings";
+        loaded_exec_op.emitOpError()
+            << "cannot be bound to a multi-device executable without output "
+               "shardings";
+        return mlir::WalkResult::interrupt();
       }
       if (func_type.getNumInputs() != parameter_shardings->size()) {
-        return loaded_exec_op.emitOpError()
-               << "expects an executable with " << func_type.getNumInputs()
-               << " inputs, but was bound to an executable with "
-               << parameter_shardings->size() << " inputs";
+        loaded_exec_op.emitOpError()
+            << "expects an executable with " << func_type.getNumInputs()
+            << " inputs, but was bound to an executable with "
+            << parameter_shardings->size() << " inputs";
+        return mlir::WalkResult::interrupt();
       }
       if (func_type.getNumResults() != output_shardings->size()) {
-        return loaded_exec_op.emitOpError()
-               << "expects an executable with " << func_type.getNumResults()
-               << " results, but was bound to an executable with "
-               << output_shardings->size() << " results";
+        loaded_exec_op.emitOpError()
+            << "expects an executable with " << func_type.getNumResults()
+            << " results, but was bound to an executable with "
+            << output_shardings->size() << " results";
+        return mlir::WalkResult::interrupt();
       }
       // Verify that the input and output shardings of the LoadedExecutableOp
       // are the same as the shardings of the bound executable.
       auto sharding_equal_status = VerifyShardingsEqual(
           func_type.getInputs(), *parameter_shardings, "input");
       if (!sharding_equal_status.ok()) {
-        return loaded_exec_op.emitOpError() << sharding_equal_status.message();
+        loaded_exec_op.emitOpError() << sharding_equal_status.message();
+        return mlir::WalkResult::interrupt();
       }
       sharding_equal_status = VerifyShardingsEqual(func_type.getResults(),
                                                    *output_shardings, "output");
       if (!sharding_equal_status.ok()) {
-        return loaded_exec_op.emitOpError() << sharding_equal_status.message();
+        loaded_exec_op.emitOpError() << sharding_equal_status.message();
+        return mlir::WalkResult::interrupt();
       }
     }
     return mlir::WalkResult::advance();
