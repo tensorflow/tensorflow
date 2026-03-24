@@ -2036,8 +2036,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    // There are four users of the gemm output within the GELU calculation.
-    bool has_aux = gemm->user_count() > 4;
+    // There are four users of the gemm output within the GELU calculation. If
+    // we have a slice or bitcast of the dot, count the number of users of that
+    // instead.
+    bool has_aux = slice_or_bitcast ? slice_or_bitcast->user_count() > 4
+                                    : gemm->user_count() > 4;
 
     TF_ASSIGN_OR_RETURN(auto gpu_config,
                         gemm->backend_config<GpuBackendConfig>());
@@ -2059,18 +2062,22 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(output->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
 
-    if (slice_or_bitcast) {
-      output = slice_or_bitcast->CloneWithNewOperands(
-          slice_or_bitcast->shape(),
-          {gemm->parent()->AddInstruction(std::move(output))});
-    }
-
     if (has_aux) {
-      HloInstruction* tuple_output =
-          gemm->parent()->AddInstruction(std::move(output));
-      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-          gemm, HloInstruction::CreateGetTupleElement(tuple_output, 1)));
-      output = HloInstruction::CreateGetTupleElement(tuple_output, 0);
+      HloInstruction* tuple_output = gemm->AddInstruction(std::move(output));
+      std::unique_ptr<HloInstruction> gte_0 =
+          HloInstruction::CreateGetTupleElement(tuple_output, 0);
+      std::unique_ptr<HloInstruction> gte_1 =
+          HloInstruction::CreateGetTupleElement(tuple_output, 1);
+      if (slice_or_bitcast) {
+        gte_0 = slice_or_bitcast->CloneWithNewOperands(
+            slice_or_bitcast->shape(),
+            {gemm->AddInstruction(std::move(gte_0))});
+      }
+      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(gemm, std::move(gte_1)));
+      output = std::move(gte_0);
+    } else if (slice_or_bitcast) {
+      output = slice_or_bitcast->CloneWithNewOperands(
+          slice_or_bitcast->shape(), {gemm->AddInstruction(std::move(output))});
     }
 
     return ReplaceWithNewInstruction(multiply, std::move(output));
