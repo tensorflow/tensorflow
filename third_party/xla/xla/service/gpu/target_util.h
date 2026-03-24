@@ -75,6 +75,7 @@ enum class TargetDeviceFunctionID {
   kAsinh,
   kCosh,
   kAtanh,
+  kRint,
 };
 
 // Emits a call to the specified target intrinsic with the given operands.

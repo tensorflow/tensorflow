@@ -385,6 +385,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       return mm::CeilOp::create(b, inputs[0]);
     case HloOpcode::kFloor:
       return mm::FloorOp::create(b, inputs[0]);
+    case HloOpcode::kRoundNearestEven:
+      return mm::RoundEvenOp::create(b, inputs[0]);
     case HloOpcode::kNot:
       return mlir::stablehlo::XorOp::create(b, inputs[0],
                                             OnesLike(b, inputs[0].getType()));

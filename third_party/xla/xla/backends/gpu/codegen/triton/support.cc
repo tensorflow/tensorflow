@@ -147,6 +147,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedUnaryElementwiseOps(
         HloOpcode::kFloor,
         HloOpcode::kLog,
         HloOpcode::kLog1p,
+        HloOpcode::kRoundNearestEven,
         HloOpcode::kRsqrt,
         HloOpcode::kSin,
         HloOpcode::kSinh,
@@ -269,9 +270,7 @@ absl::flat_hash_set<HloOpcode> TritonSupportedBinaryElementwiseOps(
     ret.insert(HloOpcode::kAtan2);
     ret.insert(HloOpcode::kPower);
     ret.insert(HloOpcode::kRemainder);
-    if (gpu_version.IsRocm()) {
-      ret.insert(HloOpcode::kDivide);
-    }
+    ret.insert(HloOpcode::kDivide);
   }
 
   return ret;

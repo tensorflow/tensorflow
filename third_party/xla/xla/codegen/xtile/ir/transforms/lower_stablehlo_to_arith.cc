@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -46,11 +47,42 @@ class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
   using mlir::OpRewritePattern<StableHloOp>::OpRewritePattern;
 
  private:
+  bool NeedsPromotion(StableHloOp op, mlir::Type element_type) const {
+    if (!element_type.isBF16() && !element_type.isF16()) {
+      return false;
+    }
+    return mlir::isa<mlir::stablehlo::DivOp, mlir::stablehlo::RemOp>(op);
+  }
+
   mlir::LogicalResult matchAndRewrite(
       StableHloOp op, mlir::PatternRewriter& rewriter) const override {
     auto result_type = mlir::getElementTypeOrSelf(op.getResult().getType());
     if (result_type.isFloat()) {
-      rewriter.replaceOpWithNewOp<FloatArithOp>(op, op.getOperands());
+      if (NeedsPromotion(op, result_type)) {
+        mlir::Type f32_type = rewriter.getF32Type();
+        if (auto ranked_type = mlir::dyn_cast<mlir::RankedTensorType>(
+                op.getResult().getType())) {
+          f32_type = mlir::RankedTensorType::get(ranked_type.getShape(),
+                                                 rewriter.getF32Type());
+        }
+
+        llvm::SmallVector<mlir::Value> promoted_operands;
+        for (auto operand : op.getOperands()) {
+          if (mlir::getElementTypeOrSelf(operand.getType()).isF32()) {
+            promoted_operands.push_back(operand);
+          } else {
+            promoted_operands.push_back(mlir::arith::ExtFOp::create(
+                rewriter, op.getLoc(), f32_type, operand));
+          }
+        }
+
+        auto promoted_op = FloatArithOp::create(rewriter, op.getLoc(), f32_type,
+                                                promoted_operands);
+        rewriter.replaceOpWithNewOp<mlir::arith::TruncFOp>(
+            op, op.getResult().getType(), promoted_op->getResult(0));
+      } else {
+        rewriter.replaceOpWithNewOp<FloatArithOp>(op, op.getOperands());
+      }
     } else {
       mlir::Operation* new_op = nullptr;
       bool should_guard_ub =
@@ -84,6 +116,26 @@ class LowerStableHloOpToArith : public mlir::OpRewritePattern<StableHloOp> {
   }
 };
 
+// Pattern to lower a float-only StableHLO operation to a math dialect
+// operation. Some operations (like RoundNearestEvenOp) do not have a
+// corresponding integer variant in arith or math, so they use a separate
+// pattern.
+template <typename StableHloOp, typename MathOp>
+class LowerStableHloUnaryOpToMath : public mlir::OpRewritePattern<StableHloOp> {
+ public:
+  using mlir::OpRewritePattern<StableHloOp>::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      StableHloOp op, mlir::PatternRewriter& rewriter) const override {
+    auto result_type = mlir::getElementTypeOrSelf(op.getResult().getType());
+    if (!result_type.isFloat()) {
+      return rewriter.notifyMatchFailure(op, "expected float type");
+    }
+    rewriter.replaceOpWithNewOp<MathOp>(op, op->getOperands());
+    return mlir::success();
+  }
+};
+
 struct StablehloLowerToArithPass
     : public impl::StablehloLowerToArithPassBase<StablehloLowerToArithPass> {
   using StablehloLowerToArithPassBase::StablehloLowerToArithPassBase;
@@ -111,8 +163,9 @@ struct StablehloLowerToArithPass
         LowerStableHloOpToArith<mlir::stablehlo::MaxOp, mlir::arith::MaximumFOp,
                                 mlir::arith::MaxSIOp, mlir::arith::MaxUIOp>,
         LowerStableHloOpToArith<mlir::stablehlo::MinOp, mlir::arith::MinimumFOp,
-                                mlir::arith::MinSIOp, mlir::arith::MinUIOp>>(
-        mlir_context);
+                                mlir::arith::MinSIOp, mlir::arith::MinUIOp>,
+        LowerStableHloUnaryOpToMath<mlir::stablehlo::RoundNearestEvenOp,
+                                    mlir::math::RoundEvenOp>>(mlir_context);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
