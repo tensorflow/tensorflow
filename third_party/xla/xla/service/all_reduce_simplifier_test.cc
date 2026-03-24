@@ -278,5 +278,94 @@ test {
   AllReduceSimplifier simplifier;
   EXPECT_FALSE(simplifier.Run(module.get()).value());
 }
+
+TEST_F(AllReduceSimplifierTest, AllGatherSameInputOutputShape) {
+  const char* kModuleStr = R"(
+HloModule m
+
+test {
+  p0 = f32[8,16] parameter(0)
+  ROOT all-gather = f32[8,16] all-gather(p0), dimensions={0},
+    replica_groups={{0},{1},{2},{3},{4},{5},{6},{7}}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/8));
+  AllReduceSimplifier simplifier;
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AllReduceSimplifierTest, ReduceScatterSameInputOutputShape) {
+  const char* kModuleStr = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+test {
+  p0 = f32[8,16] parameter(0)
+  ROOT reduce-scatter = f32[8,16] reduce-scatter(p0), dimensions={0},
+    replica_groups={{0},{1},{2},{3},{4},{5},{6},{7}}, to_apply=sum
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/8));
+  AllReduceSimplifier simplifier;
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AllReduceSimplifierTest, ReplicatedParameterWithOr) {
+  const char* kModuleStr = R"(
+HloModule m
+
+or {
+  a = pred[] parameter(0)
+  b = pred[] parameter(1)
+  ROOT or = pred[] or(a, b)
+}
+
+test {
+  p0 = pred[8,16] parameter(0), parameter_replication={true}
+  ROOT all-reduce = pred[8,16] all-reduce(p0), replica_groups={}, to_apply=or
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/8));
+  AllReduceSimplifier simplifier;
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AllReduceSimplifierTest, ReplicatedParameterWithAnd) {
+  const char* kModuleStr = R"(
+HloModule m
+
+and {
+  a = pred[] parameter(0)
+  b = pred[] parameter(1)
+  ROOT and = pred[] and(a, b)
+}
+
+test {
+  p0 = pred[8,16] parameter(0), parameter_replication={true}
+  ROOT all-reduce = pred[8,16] all-reduce(p0), replica_groups={}, to_apply=and
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/8));
+  AllReduceSimplifier simplifier;
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Parameter(0)));
+}
+
 }  // namespace
 }  // namespace xla
