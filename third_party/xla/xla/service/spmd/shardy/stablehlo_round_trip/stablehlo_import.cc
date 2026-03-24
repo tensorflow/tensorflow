@@ -68,7 +68,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 #include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_import.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"

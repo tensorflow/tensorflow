@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_export.h"
-#include "xla/service/spmd/shardy/stablehlo_round_trip/shard_map_import.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_export.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/stablehlo_import.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/unflatten_call_graph.h"
@@ -61,7 +60,6 @@ int main(int argc, char** argv) {
 
   xla::sdy::registerStablehloImportPipeline();
   xla::sdy::registerStablehloImportShardingsPass();
-  xla::sdy::registerStablehloRoundTripShardMapImportPass();
   xla::sdy::registerImportSdyCustomCallsPass();
   xla::sdy::registerOpenWhileFreeVarsShardingPass();
   xla::sdy::registerImportFuncCallsPass();
