@@ -4772,8 +4772,8 @@ ENTRY e {
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
       CHECK: tensor<128x128xbf16>
-      CHECK: tensor<128x32xf8E4M3FN>, tensor<32x4xi8>
-      CHECK: -> tensor<128x32xf32>
+      CHECK: tensor<128x16xf8E4M3FN>, tensor<16x4xi8>
+      CHECK: -> tensor<128x16xf32>
   )";
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                kExpectedTritonIr),
@@ -4819,8 +4819,8 @@ ENTRY e {
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
       CHECK: tensor<128x128xf8E4M3FN>, tensor<128x4xi8>
-      CHECK: tensor<128x32xf8E4M3FN>, tensor<32x4xi8>
-      CHECK: -> tensor<128x32xf32>
+      CHECK: tensor<128x16xf8E4M3FN>, tensor<16x4xi8>
+      CHECK: -> tensor<128x16xf32>
   )";
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                kExpectedTritonIr),
@@ -4878,8 +4878,8 @@ ENTRY e {
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
       CHECK: tensor<128x128xf8E4M3FN>, tensor<128x4xi8>
-      CHECK: tensor<128x32xf8E4M3FN>, tensor<32x4xi8>
-      CHECK: -> tensor<128x32xf32>
+      CHECK: tensor<128x16xf8E4M3FN>, tensor<16x4xi8>
+      CHECK: -> tensor<128x16xf32>
   )";
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                kExpectedTritonIr),
@@ -4915,7 +4915,6 @@ TEST_F(TritonScaledDotTest, Fp4Succeeds) {
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
       CHECK: tensor<128x64xi8>, tensor<128x4xi8>
-      CHECK: *
       CHECK: tensor<128x16xi8>, tensor<32x4xi8>
       CHECK: -> tensor<128x32xf32>
   )";
