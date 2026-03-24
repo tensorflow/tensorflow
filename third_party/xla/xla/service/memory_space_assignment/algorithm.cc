@@ -1561,20 +1561,14 @@ std::vector<const HloValue*> MsaAlgorithm::GenerateJointProcessedValues(
 void MsaAlgorithm::UpdateSyncDataMovementCandidatesForJointProcessedValues(
     const std::vector<const HloValue*>& joint_processed_values) {
   absl::flat_hash_set<const HloInstruction*> replaceable_sync_instructions;
-  absl::flat_hash_set<const HloInstruction*> do_not_touch_instructions;
   for (const HloValue* value : joint_processed_values) {
     for (const auto& use : value->GetUses()) {
-      bool is_use_replaceable_sync_candidate =
-          IsAsyncConversionCandidate(use.instruction);
-      if (is_use_replaceable_sync_candidate &&
-          !do_not_touch_instructions.contains(use.instruction)) {
+      if (IsAsyncConversionCandidate(use.instruction)) {
         replaceable_sync_instructions.insert(use.instruction);
       }
     }
     HloInstruction* inst = value->instruction();
-    bool is_inst_replaceable_sync_candidate = IsAsyncConversionCandidate(inst);
-    if (is_inst_replaceable_sync_candidate &&
-        !do_not_touch_instructions.contains(inst)) {
+    if (IsAsyncConversionCandidate(inst)) {
       replaceable_sync_instructions.insert(inst);
     }
   }
