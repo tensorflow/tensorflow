@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
@@ -90,41 +91,49 @@ struct EstimateRunTimeData {
   }
 };
 
+// This class is thread-safe.
 class GpuPerformanceModelCache {
  public:
   // Returns cached runtime data for the instruction or producer-consumer pair.
   // Returns nullopt if there is no data in cache.
-  std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction);
+  std::optional<EstimateRunTimeData> Get(const HloInstruction& instruction)
+      ABSL_LOCKS_EXCLUDED(mutex_);
   std::optional<absl::Duration> Get(const HloInstruction& producer,
-                                    const HloInstruction& consumer);
-  const absl::flat_hash_map<const HloInstruction*, absl::Duration>&
+                                    const HloInstruction& consumer)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Returns cache entries for all consumers of this producer.
-  GetAllConsumers(const HloInstruction& producer);
+  absl::flat_hash_map<const HloInstruction*, absl::Duration> GetAllConsumers(
+      const HloInstruction& producer) ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Checks if producer-consumer pair cache entries exist for this producer.
-  bool ContainsConsumers(const HloInstruction& producer);
+  bool ContainsConsumers(const HloInstruction& producer)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   // Sets cache value for the instruction or producer-consumer pair.
   void Set(const HloInstruction& instruction,
-           const EstimateRunTimeData& runtime_data);
+           const EstimateRunTimeData& runtime_data) ABSL_LOCKS_EXCLUDED(mutex_);
   void Set(const HloInstruction& producer, const HloInstruction& consumer,
-           absl::Duration runtime);
+           absl::Duration runtime) ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Removes all cache entries for this instruction. The cache contains entries
   // for individual instructions in instruction_runtime_data_ and for
   // producer-consumer pairs in fusion_runtime_data_.
-  void Invalidate(const HloInstruction& instruction);
+  void Invalidate(const HloInstruction& instruction)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   absl::Mutex mutex_;
 
   // Stores unfused runtime data for individual instructions.
   absl::flat_hash_map<const HloInstruction*, EstimateRunTimeData>
-      instruction_runtime_data_;
+      instruction_runtime_data_ ABSL_GUARDED_BY(mutex_);
 
   // Stores fused runtime data for producer-consumer pairs.
   absl::flat_hash_map<
       const HloInstruction*,
       absl::flat_hash_map<const HloInstruction*, absl::Duration>>
-      fusion_runtime_data_;
+      fusion_runtime_data_ ABSL_GUARDED_BY(mutex_);
 };
 
 class GpuPerformanceModelBase {
