@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_TRANSFORMS_MULTI_OUTPUT_FUSION_H_
 #define XLA_BACKENDS_GPU_TRANSFORMS_MULTI_OUTPUT_FUSION_H_
 
+#include <functional>
 #include <memory>
 
 #include "absl/container/flat_hash_set.h"
@@ -113,7 +114,10 @@ class MultiOutputFusion : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  bool FuseSiblings(HloInstruction* parent, FusionInfoCache* fusion_info_cache,
+  bool FuseSiblings(HloInstruction* parent,
+                    const std::function<void(const HloInstruction*)>&
+                        invalidate_caches_callback,
+                    FusionInfoCache* fusion_info_cache,
                     GpuHloCostAnalysis* cost_analysis);
 
   absl::StatusOr<bool> DoMultiOutputFusion();
