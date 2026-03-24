@@ -19,6 +19,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
@@ -165,11 +166,22 @@ def bincount(arr,
     array_is_nonempty = array_ops.size(arr) > 0
     output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (
         math_ops.reduce_max(arr) + 1)
-    if maxlength is not None and minlength is not None \
-      and gen_math_ops.less(maxlength, minlength):
-      raise ValueError("Argument `maxlength` must be at least `minlength`,"
-                       f"received minlength={minlength}"
-                       f" and maxlength={maxlength}.")
+    if maxlength is not None and minlength is not None:
+        try:
+            max_val = maxlength.numpy() if hasattr(maxlength, 'numpy') else maxlength
+            min_val = minlength.numpy() if hasattr(minlength, 'numpy') else minlength
+            if max_val < min_val:
+                raise ValueError(
+                    "Argument `maxlength` must be at least `minlength`, "
+                    f"received minlength={minlength} and maxlength={maxlength}.")
+        except (AttributeError, RuntimeError):
+            maxlength_tensor = ops.convert_to_tensor(
+                maxlength, name="maxlength", dtype=arr.dtype)
+            minlength_tensor = ops.convert_to_tensor(
+                minlength, name="minlength", dtype=arr.dtype)
+            check_ops.assert_greater_equal(
+                maxlength_tensor, minlength_tensor,
+                message="Argument `maxlength` must be at least `minlength`.")
     if minlength is not None:
       minlength = ops.convert_to_tensor(
           minlength, name="minlength", dtype=arr.dtype)
