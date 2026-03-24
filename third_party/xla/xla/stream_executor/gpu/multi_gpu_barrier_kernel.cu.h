@@ -78,12 +78,18 @@ __global__ void MultiGpuBarrierKernelImpl(
 }
 
 template <PlatformType PlatformT>
-__global__ void MultiGpuBarrierWithNcclKernelImpl(int64_t rank,
-                                                  int64_t num_ranks,
-                                                  void* signal_buffers_handle,
-                                                  uint32_t* sync_counter) {
+__global__ void MultiGpuBarrierWithNcclKernelImpl(
+    int64_t rank, int64_t num_ranks, void* signal_buffers_handle,
+    uint32_t* sync_counter, void* ptr_to_store, void* ptr_storage_handle) {
   if constexpr (PlatformT == PlatformType::kCuda) {
 #if NCCL_VERSION_CODE >= 22800
+    if (ptr_to_store && threadIdx.x < num_ranks) {
+      void** ptr_storage = (void**)ncclGetLsaPointer(
+          (ncclWindow_t)ptr_storage_handle, 0, threadIdx.x);
+
+      ptr_storage[rank] = ptr_to_store;
+    }
+
     // 1. Get individual signal buffers pointers.
     std::array<uint32_t* __restrict__, MultiGpuBarrierWithNcclKernel::kMaxPeers>
         signal_buffers;

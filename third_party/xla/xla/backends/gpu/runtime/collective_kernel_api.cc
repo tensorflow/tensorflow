@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -65,6 +66,14 @@ absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
 
   return &kernel_per_executor->at(executor);
 }
+
+class VoidSymmetricMemory : public xla::SymmetricMemory {
+ public:
+  std::string ToString() const override { return "void"; }
+
+  using PackedKernelArg = xla::SymmetricMemory::PackedKernelArg;
+  PackedKernelArg PackKernelArg() const override { return PackedKernelArg(); }
+};
 
 }  // namespace
 
@@ -125,12 +134,14 @@ absl::Status LaunchMultiGpuBarrierWithNccl(
   stream_executor::DeviceAddress<uint32_t> typed_sync_counter(
       local_barrier_signal_value);
 
-  return kernel->Launch(stream_executor::ThreadDim(
-                            MultiGpuBarrierWithNcclKernel::kMaxPeers, 1, 1),
-                        stream_executor::BlockDim(1, 1, 1), stream,
-                        static_cast<int64_t>(rank.value()),
-                        static_cast<int64_t>(num_devices), symmetric_memory,
-                        typed_sync_counter);
+  VoidSymmetricMemory void_symmetric_memory;
+  return kernel->Launch(
+      stream_executor::ThreadDim(MultiGpuBarrierWithNcclKernel::kMaxPeers, 1,
+                                 1),
+      stream_executor::BlockDim(1, 1, 1), stream,
+      static_cast<int64_t>(rank.value()), static_cast<int64_t>(num_devices),
+      symmetric_memory, typed_sync_counter, se::DeviceAddressBase(),
+      static_cast<xla::SymmetricMemory*>(&void_symmetric_memory));
 }
 
 size_t GetMultiGpuBarrierSignalBufferSize() {
