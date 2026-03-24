@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -29,10 +31,8 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/pass/hlo_pass_pipeline.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/service/compilation_stats.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_module_config.h"
@@ -56,44 +56,19 @@ class NVPTXCompiler : public GpuCompiler {
   explicit NVPTXCompiler();
 
   absl::Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
+      HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
       se::dnn::VersionInfo dnn_version,
-      const se::SemanticVersion& toolkit_version) override;
+      const se::SemanticVersion& toolkit_version,
+      CompilationStats* compilation_stats) override;
 
   absl::Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const TargetConfig& gpu_target_config,
-      const GpuAliasInfo* alias_info,
-      tsl::thread::ThreadPool* thread_pool) override;
-
-  bool RequiresCollectiveScheduleLinearizer(
-      const HloModule* module, se::StreamExecutor* stream_exec) override;
-
-  // target_config must outlive the pipeline.
-  absl::Status AddConvAndGemmAutotuningPasses(
-      HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
-      const CompileOptions& options, HloModule* hlo_module,
-      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      se::StreamExecutor* stream_exec,
-      const Compiler::TargetConfig* target_config) override;
-
-  absl::Status AddGemmFusionAutotuningPasses(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
-      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-      const MultiProcessKeyValueStore& key_value_store,
-      const se::SemanticVersion& toolkit_version,
-      se::StreamExecutor* stream_executor) override;
-
-  // target_config must outlive the pipeline.
-  absl::Status AddFusionAutotuningPass(
-      HloPassPipeline* pipeline, HloModule* hlo_module,
-      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
-      stream_executor::StreamExecutor* stream_executor,
-      const Compiler::TargetConfig* target_config,
-      HloCostAnalysis::ShapeSizeFunction shape_size_fn) override;
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+      const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+      CompilationStats* compilation_stats) override;
 
   absl::Status RunCudnnCompilerPasses(HloModule* module,
-                                      se::StreamExecutor* stream_exec,
+                                      se::dnn::DnnSupport& dnn_support,
                                       BinaryMap* dnn_compiled_graphs) override;
 
   std::unique_ptr<GpuAliasInfo> GetAliasInfo(
@@ -107,13 +82,15 @@ class NVPTXCompiler : public GpuCompiler {
 
   absl::StatusOr<bool> CanUseLinkModules(
       const HloModuleConfig& module_config,
-      const stream_executor::DeviceDescription& device_description) override;
+      const stream_executor::DeviceDescription& device_description,
+      se::StreamExecutor* absl_nullable stream_exec) override;
 
  private:
   absl::StatusOr<std::vector<uint8_t>> LinkModules(
       const stream_executor::DeviceDescription& device_description,
       std::vector<std::vector<uint8_t>> modules,
-      const DebugOptions& debug_options) override;
+      const DebugOptions& debug_options,
+      se::StreamExecutor* absl_nullable stream_exec) override;
 
   absl::Mutex compilation_providers_mutex_;
   absl::flat_hash_map<se::cuda::CompilationProviderOptions,
@@ -121,7 +98,8 @@ class NVPTXCompiler : public GpuCompiler {
       compilation_providers_ ABSL_GUARDED_BY(compilation_providers_mutex_);
 
   absl::StatusOr<const se::cuda::CompilationProvider*> GetCompilationProvider(
-      const DebugOptions& debug_options);
+      const DebugOptions& debug_options,
+      se::StreamExecutor* absl_nullable stream_exec);
 
   NVPTXCompiler(const NVPTXCompiler&) = delete;
   NVPTXCompiler& operator=(const NVPTXCompiler&) = delete;

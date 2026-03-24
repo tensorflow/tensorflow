@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -41,6 +43,7 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/remap_plan.h"
@@ -48,7 +51,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/tuple.h"
-#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/future.h"
@@ -109,6 +111,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // in major-to-minor order. The runtime may return `UNIMPLEMENTED` if
   // `byte_strides` does not equate to a reordering of the dimensions.
   //
+  // `layout` specifies the layout of the array. If `layout` is nullptr, the a
+  // device-default layout used.
+  //
   // `on_done_with_host_buffer` is optional and may be null.
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
@@ -117,8 +122,18 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   virtual absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, HostBufferSemantics semantics,
+      ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
+  ABSL_DEPRECATE_AND_INLINE()
+  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
+      const void* data, DType dtype, Shape shape,
+      std::optional<absl::Span<const int64_t>> byte_strides,
+      ShardingRef sharding, HostBufferSemantics semantics,
+      std::function<void()> on_done_with_host_buffer) {
+    return MakeArrayFromHostBuffer(
+        data, dtype, std::move(shape), byte_strides, std::move(sharding),
+        /*layout=*/nullptr, semantics, std::move(on_done_with_host_buffer));
+  }
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
@@ -200,25 +215,6 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       absl::Span<ArrayRef> arrays, ArrayCopySemantics array_copy_semantics,
       SingleDeviceShardSemantics single_device_shard_semantics) = 0;
 
-  ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, ShardingRef sharding, absl::Span<ArrayRef> arrays,
-      ArrayCopySemantics semantics) {
-    return AssembleArrayFromSingleDeviceArrays(
-        arrays.at(0)->dtype(), std::move(shape), std::move(sharding), arrays,
-        semantics, SingleDeviceShardSemantics::kAddressableShards);
-  }
-
-  ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<ArrayRef> AssembleArrayFromSingleDeviceArrays(
-      Shape shape, ShardingRef sharding, absl::Span<ArrayRef> arrays,
-      ArrayCopySemantics array_copy_semantics,
-      SingleDeviceShardSemantics single_device_shard_semantics) {
-    return AssembleArrayFromSingleDeviceArrays(
-        arrays.at(0)->dtype(), std::move(shape), std::move(sharding), arrays,
-        array_copy_semantics, single_device_shard_semantics);
-  }
-
   // Copies the arrays to a new set of devices.
   //
   // This method copies individual buffers of each array to the destination
@@ -254,6 +250,29 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics) = 0;
 
+  // Bitcasts arrays to new arrays according to the given specs. This bitcasting
+  // is a metadata-only operation that can change the per-shard interpretation
+  // without changing per-shard location.
+  //
+  // As the minimum requirement,
+  //
+  // * On-device size of the shard shape must remain the same.
+  // * `arrays[i].sharding().devices()` must be equal to
+  //   `specs[i].sharding().devices()`.
+  // * `arrays[i].sharding().memory_kind()` must be equal to
+  //   `specs[i].sharding().memory_kind()`.
+  //
+  // `dtype`, `shape`, `sharding`, and `layout` might change, but the runtime
+  // may impose additional constraints. For example, bitcasting to a smaller
+  // dtype or changing `layout` may not be allowed on some platforms.
+  //
+  // NOTE: `ArrayCopySemantics::kAlwaysCopy` is not allowed. Typically, only
+  // `ArrayCopySemantics::kDonateInput` is supported on most runtimes that
+  // impose strict device buffer aliasing rules.
+  virtual absl::StatusOr<std::vector<ArrayRef>> BitcastArrays(
+      absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
+      ArrayCopySemantics semantics) = 0;
+
   // Reshards arrays to new arrays according to the given specs.
   //
   // If destination specs have the layout specifications, applies it to the
@@ -283,6 +302,22 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(
       absl::Span<ValueRef> values) = 0;
+
+  // Attempts to cancel the execution that returned `cancellation_handle` in its
+  // `ExecuteResult` when enqueued.
+  //
+  // Cancellation is best effort and may not be supported by all
+  // implementations.
+  //
+  // If cancellation succeeds, the execution's `Future` and the array outputs of
+  // the execution will transition to `error`, otherwise the execution will run
+  // to completion (with success or error) as if `CancelExecution` had not been
+  // called.
+  //
+  // REQUIRES: `error` is not OK.
+  virtual void CancelExecution(
+      LoadedExecutable::CancellationHandle cancellation_handle,
+      absl::Status error) = 0;
 
   // Identifies the IFRT implementation. Most C++ users should use LLVM RTTI to
   // determine the runtime type. This is a string exposed to users mostly for
@@ -348,22 +383,34 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Returns the default layout for an array with `dtype`, `shape`, and
   // `sharding`.
   virtual absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
-      DType dtype, const Shape& shape, const ShardingRef& sharding) const {
-    // TODO(hyeontaek): Change to a pure virtual method once all implementations
-    // override this method.
-    CHECK(false) << "Placeholder; do not use yet";
-    return absl::UnimplementedError("Not implemented yet");
-  }
+      DType dtype, const Shape& shape, const ShardingRef& sharding) const = 0;
   // Helper method for `GetDefaultLayout` for when shard shape dims are known.
   // TODO(hyeontaek): Remove this sugar API once the transition is complete.
   absl::StatusOr<CustomLayoutRef> GetDefaultLayout(
       DType dtype, absl::Span<const int64_t> shard_dims, Device* device,
       xla::ifrt::MemoryKind memory_kind) const;
 
-  // Returns a UserContext that captures the current context information such as
-  // the stack trace. IFRT implementations that do not support UserContext will
-  // return a nullptr.
-  virtual tsl::RCReference<UserContext> CreateUserContext() = 0;
+  // Subscribe to attribute changes to selected devices.
+  //
+  // The callback is called when attributes are updated.
+  // The updates are provided to the callback a map of device->AttributeMap.
+  // Related attributes that are updated together might be returned together as
+  // a set.
+  //
+  // This AttributeMap will contain only the requested attributes if
+  // 'attribute_names' is std::nullopt. Otherwise, it contains all updated
+  // attributes.
+  //
+  // If the callback returns an error, the subscription will be aborted and no
+  // more callbacks will be issued.
+  //
+  // The returned RAII object controls the lifetime of the subscription. Once
+  // destroyed, no more callbacks will be issued for attribute changes.
+  virtual absl::StatusOr<std::unique_ptr<ifrt::DeviceAttributeSubscription>>
+  SubscribeToAttributeChanges(
+      absl::Span<Device* const> devices,
+      std::optional<absl::Span<const std::string>> attribute_names,
+      OnDeviceAttributeChangeCallback callback) = 0;
 
   static char ID;  // NOLINT
 };

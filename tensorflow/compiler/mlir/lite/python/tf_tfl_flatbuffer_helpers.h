@@ -46,8 +46,8 @@ absl::Status RegisterAllCustomOps(
 absl::Status PopulateQuantizationSpecs(
     const tflite::ModelFlags& model_flags,
     tflite::ConverterFlags& converter_flags,
-    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
-    std::vector<string>* node_dtypes,
+    mlir::TFL::QuantizationSpecs* quant_specs,
+    std::vector<std::string>* node_names, std::vector<std::string>* node_dtypes,
     std::vector<std::optional<std::vector<int>>>* node_shapes,
     std::vector<std::optional<double>>* node_mins,
     std::vector<std::optional<double>>* node_maxs);
@@ -60,7 +60,8 @@ absl::Status ConvertMLIRToTFLiteFlatBuffer(
     std::unique_ptr<mlir::MLIRContext>&& context,
     mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
-    const std::unordered_set<std::string>& saved_model_tags, string* result,
+    const std::unordered_set<std::string>& saved_model_tags,
+    std::string* result,
     const quantization::PyFunctionLibrary* quantization_py_function_lib);
 
 // Give a warning for any unused flags that have been specified.

@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/codegen/tiling/tiling_specification.h"
 
 #include <cstdint>
+#include <string>
 #include <utility>
 
 #include "absl/log/log.h"
@@ -46,6 +47,18 @@ absl::StatusOr<int64_t> TilingSpecification::ParameterIndex(
   }
   return absl::NotFoundError(
       absl::StrCat("No tile sizes found for instruction: ", hlo->ToString()));
+}
+
+std::string TilingSpecification::ToString() const {
+  std::string s = "TilingSpecification{\n";
+  absl::StrAppend(&s, "  parameter_mapping={\n");
+  for (const auto& [instruction, num_params] : parameter_mapping_) {
+    absl::StrAppend(&s, "    ", instruction->name(), ": ", num_params, "\n");
+  }
+  absl::StrAppend(&s, "  }\n");
+  absl::StrAppend(&s, "  constraints=", constraints_.ToString(), "\n");
+  absl::StrAppend(&s, "}");
+  return s;
 }
 
 absl::StatusOr<absl::Span<const int64_t>> Tiling::TileSizesForInstruction(

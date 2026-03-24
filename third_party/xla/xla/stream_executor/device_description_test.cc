@@ -16,11 +16,19 @@ limitations under the License.
 
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
 namespace {
+using absl_testing::IsOkAndHolds;
+using testing::Eq;
+using testing::Pointee;
 
 TEST(DeviceDescription, DefaultConstruction) {
   DeviceDescription desc;
@@ -33,6 +41,8 @@ TEST(DeviceDescription, DefaultConstruction) {
   EXPECT_EQ(desc.driver_version(), kZeroVersion);
   EXPECT_EQ(desc.runtime_version(), kZeroVersion);
   EXPECT_EQ(desc.pci_bus_id(), "<undefined>");
+  EXPECT_EQ(desc.scalar_unit_description(), nullptr);
+  EXPECT_EQ(desc.matrix_unit_description(), nullptr);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -114,6 +124,47 @@ TEST(RocmComputeCapability, Accessors) {
   EXPECT_TRUE(RocmComputeCapability{"gfx1200"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1100"}.has_hipblaslt());
   EXPECT_TRUE(RocmComputeCapability{"gfx1103"}.has_hipblaslt());
+}
+
+TEST(GpuComputeCapability, ProtoConversion) {
+  EXPECT_THAT(
+      GpuComputeCapability::FromProto(
+          GpuComputeCapability(CudaComputeCapability::Volta()).ToProto()),
+      IsOkAndHolds(GpuComputeCapability(CudaComputeCapability::Volta())));
+  EXPECT_THAT(
+      GpuComputeCapability::FromProto(
+          GpuComputeCapability(RocmComputeCapability("gfx900")).ToProto()),
+      IsOkAndHolds(GpuComputeCapability(RocmComputeCapability("gfx900"))));
+}
+
+TEST(ExecutionUnitDescription, ProtoConversion) {
+  ExecutionUnitDescription desc;
+  desc.SetRateInfo(xla::F32, ExecutionUnitDescription::RateInfo{128, 1.5f, 2});
+  desc.SetRateInfo(xla::F16, ExecutionUnitDescription::RateInfo{256, 1.5f, 4});
+
+  EXPECT_THAT(ExecutionUnitDescription::FromProto(desc.ToProto()),
+              IsOkAndHolds(desc));
+}
+
+TEST(DeviceDescription, ProtoConversion) {
+  DeviceDescription desc;
+  ExecutionUnitDescription scalar_unit_desc;
+  scalar_unit_desc.SetRateInfo(xla::F32,
+                               ExecutionUnitDescription::RateInfo{64, 1.2f, 1});
+  desc.set_scalar_unit_description(scalar_unit_desc);
+
+  ExecutionUnitDescription matrix_unit_desc;
+  matrix_unit_desc.SetRateInfo(
+      xla::F16, ExecutionUnitDescription::RateInfo{128, 1.2f, 8});
+  desc.set_matrix_unit_description(matrix_unit_desc);
+
+  TF_ASSERT_OK_AND_ASSIGN(DeviceDescription from_proto,
+                          DeviceDescription::FromProto(desc.ToGpuProto()));
+
+  EXPECT_THAT(from_proto.scalar_unit_description(),
+              Pointee(Eq(*desc.scalar_unit_description())));
+  EXPECT_THAT(from_proto.matrix_unit_description(),
+              Pointee(Eq(*desc.matrix_unit_description())));
 }
 
 }  // namespace

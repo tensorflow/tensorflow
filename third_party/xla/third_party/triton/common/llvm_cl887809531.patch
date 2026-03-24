@@ -1,0 +1,12 @@
+--- a/test/Conversion/tritongpu_to_ptx_mmav3.mlir
++++ b/test/Conversion/tritongpu_to_ptx_mmav3.mlir
+@@ -8,7 +8,7 @@
+ 
+     // As there are 64 elements per lane, we don't use variables to track them.
+ 
+-    // CHECK-COUNT-64: ld.param.b8
++    // CHECK-COUNT-64: ld.param::entry.b8
+ 
+     // Intra-warp layout conversions can be viewed as permutations of register
+     // and lane basis vectors. This can be read off from the linear layouts:
+

@@ -49,6 +49,17 @@ absl::StatusOr<internal::CopyKernel::KernelType> LoadCopyTestKernel(
 absl::StatusOr<KernelLoaderSpec> GetAddI32TestKernelSpec(
     Platform::Id platform_id);
 
+// This is using a kernel with the function signature `void IncI32(int32_t a,
+// int32_t* b, int32_t* c)` under the hood and implements `c[i] = a + b[i]`.
+// It uses a custom argument packing that supplies a constant scalar value of 5
+// to the kernel for `a`, therefore it appears as if the the kernel had the
+// function signature `void IncI32(DeviceAddress<int32_t> in,
+// DeviceAddress<int32_t> out)`.
+//
+// The main purpose is the testing of the custom argument packing feature.
+absl::StatusOr<KernelLoaderSpec>
+GetIncrementBy5I32TestKernelSpecWithCustomArgsPacking(Platform::Id platform_id);
+
 // Returns a PTX kernel loader spec for the `AddI32` PTX kernel above.
 KernelLoaderSpec GetAddI32PtxKernelSpec();
 

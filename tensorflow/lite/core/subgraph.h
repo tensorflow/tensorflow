@@ -130,22 +130,32 @@ class Subgraph {
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter. `quantization` ownership is passed to the subgraph.
+  // `buffer_identifier`: An optional value to identify the buffer. If set to
+  // a value other than kTfLiteNoBufferIdentifier, this tensor is considered a
+  // constant tensor shared across multiple subgraphs / interpreters.
+  // `external_buffer_id`: An optional value to identify the external buffer. If
+  // set to a value other than kTfLiteNoBufferIdentifier, this tensor is
+  // considered a tensor using an external buffer shared across multiple
+  // subgraphs / interpreters.
   inline TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
       const char* buffer, size_t bytes, const Allocation* allocation = nullptr,
       TfLiteSparsity* sparsity = nullptr,
-      size_t buffer_identifier = kTfLiteNoBufferIdentifier) {
+      size_t buffer_identifier = kTfLiteNoBufferIdentifier,
+      size_t external_buffer_id = kTfLiteNoBufferIdentifier) {
     return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
                                        dims.data(), quantization, buffer, bytes,
-                                       allocation, sparsity, buffer_identifier);
+                                       allocation, sparsity, buffer_identifier,
+                                       external_buffer_id);
   }
   TfLiteStatus SetTensorParametersReadOnly(
       int tensor_index, TfLiteType type, const char* name, size_t ndims,
       const int* dims, TfLiteQuantization quantization, const char* buffer,
       size_t bytes, const Allocation* allocation = nullptr,
       TfLiteSparsity* sparsity = nullptr,
-      size_t buffer_identifier = kTfLiteNoBufferIdentifier);
+      size_t buffer_identifier = kTfLiteNoBufferIdentifier,
+      size_t external_buffer_id = kTfLiteNoBufferIdentifier);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
@@ -154,21 +164,33 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      bool is_variable = false, const std::vector<int>& dims_signature = {}) {
+      bool is_variable = false, const std::vector<int>& dims_signature = {},
+      size_t external_buffer_id = 0) {
     if (dims_signature.empty()) {
-      return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                          dims.data(), quantization,
-                                          is_variable);
+      return SetTensorParametersReadWrite(
+          tensor_index, type, name, dims.size(), dims.data(), quantization,
+          is_variable, 0, nullptr, external_buffer_id);
     }
     return SetTensorParametersReadWrite(
         tensor_index, type, name, dims.size(), dims.data(), quantization,
-        is_variable, dims_signature.size(), dims_signature.data());
+        is_variable, dims_signature.size(), dims_signature.data(),
+        external_buffer_id);
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, size_t ndims,
       const int* dims, TfLiteQuantization quantization,
       bool is_variable = false, size_t ndims_signature = 0,
-      const int* dims_signature = nullptr);
+      const int* dims_signature = nullptr, size_t external_buffer_id = 0);
+
+  // Set the external buffer ID for a tensor. This is used for tensors whose
+  // data is stored in an external file.
+  void SetTensorExternalBufferId(size_t tensor_index,
+                                 size_t external_buffer_id) {
+    if (external_buffer_id != kTfLiteNoBufferIdentifier &&
+        external_buffer_id != 0) {
+      tensor_external_buffer_ids_[tensor_index] = external_buffer_id;
+    }
+  }
 
   // Get all tensors in the subgraph.
   //
@@ -609,6 +631,11 @@ class Subgraph {
 
   const std::unordered_map<size_t, size_t>& GetTensorBufferIdentifiers() const {
     return tensor_buffer_identifiers_;
+  }
+
+  const std::unordered_map<size_t, size_t>& GetExternalTensorBufferIdentifiers()
+      const {
+    return tensor_external_buffer_ids_;
   }
 
   // Replaces the node for the given execution index with the subgraph.
@@ -1220,6 +1247,10 @@ class Subgraph {
   // Maps tensor constant buffers used in the subgraph to a model-wide
   // identifiers.
   std::unordered_map<size_t, size_t> tensor_buffer_identifiers_;
+
+  // Maps tensor external buffer ids used in the subgraph to a model-wide
+  // identifiers.
+  std::unordered_map<size_t, size_t> tensor_external_buffer_ids_;
 };
 
 }  // namespace tflite

@@ -31,9 +31,9 @@ class AuthProvider {
   /// \brief Returns the short-term authentication bearer token.
   ///
   /// Safe for concurrent use by multiple threads.
-  virtual absl::Status GetToken(string* t) = 0;
+  virtual absl::Status GetToken(std::string* t) = 0;
 
-  static absl::Status GetToken(AuthProvider* provider, string* token) {
+  static absl::Status GetToken(AuthProvider* provider, std::string* token) {
     if (!provider) {
       return errors::Internal("Auth provider is required.");
     }
@@ -44,7 +44,7 @@ class AuthProvider {
 /// No-op auth provider, which will only work for public objects.
 class EmptyAuthProvider : public AuthProvider {
  public:
-  absl::Status GetToken(string* token) override {
+  absl::Status GetToken(std::string* token) override {
     *token = "";
     return absl::OkStatus();
   }

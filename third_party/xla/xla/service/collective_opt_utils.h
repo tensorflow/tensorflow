@@ -81,6 +81,24 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>,
     bool allow_intervening_bitcast = false);
 
+// The function checks if the dynamic-slice's offset matches the expected
+// pattern for local slicing. It supports two cases:
+//  1. Direct offset calculation: The offset is calculated as `partition_id *
+//  shard_size`, where `shard_size` is the size of each shard in the
+//  all-gather dimension. Calls IsPerIdOffset to check this pattern recursively
+//  because this offset might involve series of other instructions. For example,
+//  the partition_id can pass through convert or clamp. See BacktrackToBase for
+//  such possible patterns.
+//  2. Indirect offset calculation: The offset is calculated as `(partition_id
+//  * shard_size) + constant`, where `constant` is a constant value.
+//
+// If the dynamic-slice's offset matches either of these patterns, the function
+// returns true. Otherwise, it returns false.
+bool IsDynamicSlicingLocalDeviceFromAllGather(
+    HloInstruction* ds, HloAllGatherInstruction* all_gather,
+    int64_t num_partitions, int64_t num_replicas, bool is_cross_module,
+    bool use_global_device_ids);
+
 // Checks whether AG(ICI) and its user DS(ICI) can be canceled out.
 std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     const HloAllGatherInstruction* ag, int64_t num_partitions,
@@ -202,6 +220,26 @@ std::optional<PartitionOffsetSpec> ExtractPartitionOffsetSpec(
 // Otherwise, returns false.
 bool MatchDsPadAllGather(HloInstruction* ds_hlo, HloInstruction** pad_hlo,
                          HloInstruction** ag_hlo);
+
+// Find the canonical send/recv start op for one of send, recv, send-done, or
+// recv-done. For trivial cases send/recv and send-done/recv-done come in pairs
+// and the canonical start op is the send/recv op of the pair. If send/recv is
+// partially pipelined, we will use the send/recv leading into the while loop as
+// the canonical start op.
+//
+// Example:
+//   ```
+//   send_ctx = send(src, ...)  <-- canonical start op
+//   send_ctx_final = while(send_ctx) {
+//     send_ctx_in = parameter(0)
+//     send-done(send_ctx_in)
+//     ...
+//     ROOT send_ctx_out = send(next_src, ...)
+//   }
+//   send-done(send_ctx_final)
+// ```
+//
+const HloInstruction* FindCanonicalSendRecvStartOp(const HloInstruction* hlo);
 
 }  // namespace xla
 

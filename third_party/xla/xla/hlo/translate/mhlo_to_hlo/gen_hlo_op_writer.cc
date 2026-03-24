@@ -115,7 +115,7 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
     }
 
     // Otherwise, this is an attribute.
-    auto named_attr = arg.get<NamedAttribute*>();
+    auto named_attr = arg.dyn_cast<NamedAttribute*>();
     os << "  auto xla_arg_" << index << " = "
        << GetDefaultAttrExport(*named_attr) << "(op.get"
        << convertToCamelFromSnakeCase(op.getArgName(index),
@@ -181,7 +181,7 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
     for (const auto* def : records.getAllDerivedDefinitions(dialect_def)) {
       Operator op(def);
 
-      if (dialect_def == "StableHLO_Op" &&
+      if (dialect_def == "MHLO_Op" &&
           !(hlo_conversion_allowed_op_names.contains(def->getName().str()))) {
         continue;
       }
@@ -221,7 +221,7 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
       // Skip operations that have a custom exporter.
       Operator op(def);
 
-      if (dialect_def == "StableHLO_Op" &&
+      if (dialect_def == "MHLO_Op" &&
           !(hlo_conversion_allowed_op_names.contains(def->getName().str()))) {
         continue;
       }

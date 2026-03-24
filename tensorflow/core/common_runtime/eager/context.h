@@ -86,10 +86,10 @@ bool SkipRemoteHandleWaitReady();
 
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
-  static constexpr uint64 kInvalidContextId = 0;
+  static constexpr uint64_t kInvalidContextId = 0;
 
-  static uint64 NewContextId() {
-    uint64 context_id = random::New64();
+  static uint64_t NewContextId() {
+    uint64_t context_id = random::New64();
     while (context_id == kInvalidContextId) {
       context_id = random::New64();
     }
@@ -108,7 +108,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void Release() override { Unref(); }
 
   AbstractTensorInterface* CreateInt64Scalar(int64_t value) override;
-  AbstractTensorInterface* CreateUint64Scalar(uint64 value) override;
+  AbstractTensorInterface* CreateUint64Scalar(uint64_t value) override;
   AbstractTensorInterface* CreateInt32Scalar(int32_t value) override;
   AbstractTensorInterface* CreateFloatScalar(float value) override;
   AbstractTensorInterface* CreateDoubleScalar(double value) override;
@@ -208,14 +208,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                             const NodeDef& ndef, Device** out) const;
 
   // TODO(mdan): Rename to ContainsFunction.
-  bool FindFunctionByName(const string& name) const;
+  bool FindFunctionByName(const std::string& name) const;
 
   absl::Status FindFunctionOpData(
-      const string& name, const tensorflow::OpRegistrationData** op_data);
+      const std::string& name, const tensorflow::OpRegistrationData** op_data);
 
-  const FunctionDef* FindFunctionDef(const string& name) const override;
+  const FunctionDef* FindFunctionDef(const std::string& name) const override;
   core::RefCountPtr<FunctionRecord> FindRecord(
-      const string& name) const override;
+      const std::string& name) const override;
 
   Device* HostCPU() const { return host_cpu_device_; }
   Device* CanonicalDevice(Device* d) const {
@@ -225,7 +225,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return HostCPU()->parsed_name();
   }
 
-  const string& HostCPUName() const override { return HostCPU()->name(); }
+  const std::string& HostCPUName() const override { return HostCPU()->name(); }
 
   GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
@@ -263,14 +263,14 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   absl::Status AddComponentFunction(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library);
 
-  const FunctionDef* GetFunctionDef(const string& function_name);
+  const FunctionDef* GetFunctionDef(const std::string& function_name);
 
-  std::vector<string> ListFunctionNames() override;
+  std::vector<std::string> ListFunctionNames() override;
   tensorflow::ImmediateExecutionContext::CacheStats GetCacheStats() override;
 
-  absl::Status RemoveFunction(const string& func) override;
+  absl::Status RemoveFunction(const std::string& func) override;
   absl::Status AddRemoveFunctionNotifier(
-      const string& func, std::function<void()> notifier) override;
+      const std::string& func, std::function<void()> notifier) override;
 
   // Wait for pending nodes to be finished in local executors (including context
   // default executor and thread executors) and executors on remote workers.
@@ -401,7 +401,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   const FunctionLibraryDefinition* FuncLibDef() const { return &func_lib_def_; }
 
   FunctionLibraryDefinition* GetComponentFunctionFunctionLibraryDefinition(
-      const string& function_name) {
+      const std::string& function_name) {
     tf_shared_lock lock(cache_mu_);
     auto iter = component_function_libraries_.find(function_name);
     if (iter != component_function_libraries_.end()) {
@@ -421,11 +421,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
                          core::RefCountPtr<eager::EagerClient>* client);
   absl::Status GetClient(const DeviceNameUtils::ParsedName& device_name,
                          core::RefCountPtr<eager::EagerClient>* client);
-  absl::Status GetClient(const string& remote_task,
+  absl::Status GetClient(const std::string& remote_task,
                          core::RefCountPtr<eager::EagerClient>* client);
 
-  uint64 GetContextId() const;
-  uint64 GetContextViewId() const;
+  uint64_t GetContextId() const;
+  uint64_t GetContextViewId() const;
   void IncrementContextViewId();
 
   absl::Status EnableCollectiveOps(const ServerDef& server_def) override;
@@ -450,7 +450,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
-      const std::vector<string>& remote_contexts, uint64 context_id,
+      const std::vector<std::string>& remote_contexts, uint64_t context_id,
       tsl::core::RefCountPtr<Rendezvous> r,
       /*const*/ DeviceMgr* local_device_mgr, int keep_alive_secs,
       DistributedFunctionLibraryRuntime* cluster_flr,
@@ -464,18 +464,18 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // can still be accessed, and will automatically register existing functions
   // if there are newly added hosts.
   absl::Status UpdateRemoteMaster(
-      uint64 context_id,
+      uint64_t context_id,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-      const std::vector<string>& add_remote_contexts,
-      const std::vector<string>& remove_remote_contexts);
+      const std::vector<std::string>& add_remote_contexts,
+      const std::vector<std::string>& remove_remote_contexts);
 
   // Similar with InitializeRemoteMaster but this context will not kill remote
   // contexts in shutdown.
   absl::Status InitializeRemoteWorker(
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       DynamicDeviceMgr* remote_device_mgr,
-      const std::vector<string>& remote_contexts, uint64 context_id,
-      uint64 context_view_id,
+      const std::vector<std::string>& remote_contexts, uint64_t context_id,
+      uint64_t context_view_id,
       std::function<tsl::core::RefCountPtr<Rendezvous>(const int64_t)>
           rendezvous_creator,
       DistributedFunctionLibraryRuntime* cluster_flr,
@@ -487,7 +487,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // increment context_view_id.
   absl::Status UpdateRemoteWorker(
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-      const std::vector<string>& remote_contexts, uint64 context_id);
+      const std::vector<std::string>& remote_contexts, uint64_t context_id);
 
   absl::Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
@@ -495,7 +495,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   // For the specified remote worker, preprocess and set its device filters.
   absl::Status SetRemoteDeviceFilters(
-      const string& remote_worker, const std::vector<string>& device_filters);
+      const std::string& remote_worker,
+      const std::vector<std::string>& device_filters);
 
   // For the specified remote worker, apply the stored device filters to the
   // list of device attributes following these rules:
@@ -507,7 +508,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // filtered_device_mask) indicating whether each of the devices is visible to
   // the remote worker.
   void FilterDevicesForRemoteWorkers(
-      const string& remote_worker,
+      const std::string& remote_worker,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attrs,
       std::vector<bool>* filtered_device_mask);
 
@@ -567,10 +568,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   absl::Status FindCompositeDeviceFromName(absl::string_view device_name,
                                            CompositeDevice** device) const;
 
-  bool IsCustomDevice(const string& device_name) override;
+  bool IsCustomDevice(const std::string& device_name) override;
 
   absl::Status RegisterCustomDevice(
-      const string& name, std::unique_ptr<CustomDevice> device) override;
+      const std::string& name, std::unique_ptr<CustomDevice> device) override;
 
   CustomDeviceOpHandler& GetCustomDeviceOpHandler() override {
     return custom_device_op_handler_;
@@ -579,8 +580,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Find or create a composite device with the given `underlying_devices` and
   // `device_name` (if not empty).
   absl::Status FindOrCreateCompositeDevice(
-      const std::vector<string>& underlying_devices, const string& device_name,
-      CompositeDevice** composite_device);
+      const std::vector<std::string>& underlying_devices,
+      const std::string& device_name, CompositeDevice** composite_device);
 
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
@@ -667,9 +668,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   ~EagerContext() override;
 
   absl::Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
-  absl::Status MaybeRemoveFunctionRemotely(const string& function_name);
+  absl::Status MaybeRemoveFunctionRemotely(const std::string& function_name);
   absl::Status RegisterExistingFunctionsOnRemoteWorkers(
-      const std::vector<string>& remote_workers);
+      const std::vector<std::string>& remote_workers);
 
   void ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                  const ConfigProto* config, int graph_def_version,
@@ -681,7 +682,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void ResetClusterFLR(DistributedFunctionLibraryRuntime* cluster_flr);
   void UpdateGlobalRendezvousDeviceManager(tensorflow::DeviceMgr* device_mgr);
 
-  void ClearResourceContainer(const string& name);
+  void ClearResourceContainer(const std::string& name);
 
   template <typename T>
   struct OwnedOrUnownedHelper {
@@ -750,7 +751,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Maps from the fingerprint of a set of device names to a virtual
   // CompositeDevice.
   // TODO(b/145922293): Consider taking device names as keys.
-  absl::flat_hash_map<uint64, std::unique_ptr<CompositeDevice>>
+  absl::flat_hash_map<uint64_t, std::unique_ptr<CompositeDevice>>
       composite_devices_ ABSL_GUARDED_BY(composite_devices_mu_);
 
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(),
@@ -780,10 +781,10 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   std::unordered_map<Fprint128, core::RefCountPtr<KernelAndDevice>,
                      Fprint128Hasher>
       kernel_cache_ TF_GUARDED_BY(cache_mu_);
-  std::unordered_map<string, RegisteredFunction*> registered_functions_
+  std::unordered_map<std::string, RegisteredFunction*> registered_functions_
       TF_GUARDED_BY(cache_mu_);
 
-  std::unordered_map<string, std::unique_ptr<FunctionLibraryDefinition>>
+  std::unordered_map<std::string, std::unique_ptr<FunctionLibraryDefinition>>
       component_function_libraries_ TF_GUARDED_BY(cache_mu_);
   absl::flat_hash_map<Fprint128, Device*, Fprint128Hasher> device_cache_
       TF_GUARDED_BY(device_cache_mu_);
@@ -830,11 +831,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   OwnedOrUnownedHelper<CollectiveExecutorMgrInterface> collective_executor_mgr_;
 
 #if !defined(IS_MOBILE_PLATFORM)
-  std::vector<string> GetRemoteContexts() TF_LOCKS_EXCLUDED(remote_state_mu_);
+  std::vector<std::string> GetRemoteContexts()
+      TF_LOCKS_EXCLUDED(remote_state_mu_);
   bool IsRemoteContextsEmpty() TF_LOCKS_EXCLUDED(remote_state_mu_);
   void CloseAndClearAllRemoteContexts();
-  void CloseRemoteContexts(const std::vector<string>& remote_contexts,
-                           uint64 context_id, uint64 context_view_id);
+  void CloseRemoteContexts(const std::vector<std::string>& remote_contexts,
+                           uint64_t context_id, uint64_t context_view_id);
 
   // TODO(b/184375824): clean up parameter order for better readability.
   absl::Status SetMasterContextState(
@@ -842,7 +844,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       std::shared_ptr<WorkerSession> worker_session,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
-      uint64 context_id, uint64 context_view_id,
+      uint64_t context_id, uint64_t context_view_id,
       tsl::core::RefCountPtr<Rendezvous> r,
       /*const*/ DeviceMgr* local_device_mgr, int keep_alive_secs,
       DistributedFunctionLibraryRuntime* cluster_flr,
@@ -858,12 +860,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   mutable mutex remote_state_mu_;
 
-  uint64 context_id_ TF_GUARDED_BY(remote_state_mu_);
+  uint64_t context_id_ TF_GUARDED_BY(remote_state_mu_);
   // The view id of an eager context should be set to 0 when context is created,
   // and continuously incremented when context with the same context_id gets
   // updated. The view id should be consistent between master and workers.
-  uint64 context_view_id_ TF_GUARDED_BY(remote_state_mu_);
-  std::vector<string> remote_contexts_ TF_GUARDED_BY(remote_state_mu_);
+  uint64_t context_view_id_ TF_GUARDED_BY(remote_state_mu_);
+  std::vector<std::string> remote_contexts_ TF_GUARDED_BY(remote_state_mu_);
   std::unique_ptr<eager::EagerClientCache> remote_eager_workers_
       TF_GUARDED_BY(remote_state_mu_);
 
@@ -880,7 +882,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   bool is_master_ TF_GUARDED_BY(remote_state_mu_);
 
   // Maps from a remote worker to a list of parsed device filters.
-  std::unordered_map<string, std::vector<DeviceNameUtils::ParsedName>>
+  std::unordered_map<std::string, std::vector<DeviceNameUtils::ParsedName>>
       cluster_device_filters_ TF_GUARDED_BY(remote_state_mu_);
 
   // A distributed manager that helps setup, update, and check liveness of

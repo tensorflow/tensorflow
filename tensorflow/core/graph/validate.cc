@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/graph/validate.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -100,7 +102,7 @@ absl::Status ValidateGraphHasNoCycle(const Graph& graph) {
   }
 
   if (processed < graph.num_nodes()) {
-    std::vector<string> nodes_in_cycle;
+    std::vector<std::string> nodes_in_cycle;
     for (int i = 0; i < pending_count.size() && nodes_in_cycle.size() < 3;
          ++i) {
       if (pending_count[i] != 0) {
@@ -119,7 +121,8 @@ absl::Status VerifyNoDuplicateNodeNames(const GraphDef& graph) {
   absl::flat_hash_set<absl::string_view> nodes;
   for (const auto& node : graph.node()) {
     if (nodes.contains(node.name())) {
-      return errors::AlreadyExists("Node already exists: ", node.name());
+      return absl::AlreadyExistsError(
+          absl::StrCat("Node already exists: ", node.name()));
     }
     nodes.insert(node.name());
   }

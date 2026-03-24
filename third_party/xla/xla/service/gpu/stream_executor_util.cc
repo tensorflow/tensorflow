@@ -51,11 +51,13 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/data_type.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/repeat_buffer_kernel.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -67,6 +69,12 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
+#include "tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme_encode.h"
+
+using tsl::profiler::TraceMe;
+using tsl::profiler::TraceMeEncode;
+using tsl::profiler::TraceMeLevel;
 
 namespace xla {
 namespace gpu {
@@ -370,7 +378,7 @@ absl::Mutex& GetGpuMutex(const se::StreamExecutor* stream_exec) {
 
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     std::string kernel_name, uint64_t num_args, absl::string_view ptx,
-    se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes) {
+    se::StreamExecutor* stream_exec, uint32_t shared_mem_bytes, bool use_pdl) {
   se::KernelLoaderSpec loader_spec =
       se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
           ptx, std::move(kernel_name), num_args);
@@ -381,13 +389,14 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
   kernel->set_metadata(m);
+  kernel->set_use_pdl(use_pdl);
   return kernel;
 }
 
 absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
     std::string kernel_name, uint64_t num_args,
     absl::Span<const uint8_t> cubin_data, se::StreamExecutor* stream_exec,
-    uint32_t shared_mem_bytes) {
+    uint32_t shared_mem_bytes, bool use_pdl) {
   se::KernelLoaderSpec loader_spec =
       se::KernelLoaderSpec::CreateCudaCubinInMemorySpec(
           cubin_data, std::move(kernel_name), num_args);
@@ -398,16 +407,27 @@ absl::StatusOr<std::unique_ptr<se::Kernel>> CreateKernel(
   se::KernelMetadata m;
   m.set_shared_memory_bytes(shared_mem_bytes);
   kernel->set_metadata(m);
+  kernel->set_use_pdl(use_pdl);
   return kernel;
 }
 
 absl::Status ExecuteKernelOnStream(
-    se::Kernel& kernel, absl::Span<const se::KernelArgument> args,
+    se::Kernel& kernel, absl::Span<const se::KernelArg> args,
     const LaunchDimensions& dims,
     const std::optional<se::ClusterDim>& cluster_dim, se::Stream* stream) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args,
-      se::PackKernelArgs(args, kernel.metadata()));
+  TraceMe trace([] { return TraceMeEncode("ExecuteKernelOnStream", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+
+  std::unique_ptr<se::KernelArgsPackedArrayBase> kernel_args;
+  {
+    TraceMe trace(
+        [] {
+          return TraceMeEncode("ExecuteKernelOnStream/PackKernelArgs", {});
+        },
+        /*level=*/TraceMeLevel::kVerbose);
+    TF_ASSIGN_OR_RETURN(kernel_args,
+                        se::PackKernelArgs(args, kernel.metadata()));
+  }
 
   return kernel.Launch(dims.thread_counts_per_block(), dims.block_counts(),
                        cluster_dim, stream, *kernel_args);
@@ -429,7 +449,7 @@ typename std::enable_if<std::is_floating_point<T>::value,
 
 template <typename T>
 static void InitializeTypedBuffer(se::Stream* stream,
-                                  se::DeviceMemoryBase buffer,
+                                  se::DeviceAddressBase buffer,
                                   int64_t* rng_state) {
   // Accesses to static variables are not locked, since the caller is already
   // in a critical section.
@@ -473,8 +493,8 @@ static void InitializeTypedBuffer(se::Stream* stream,
   // Copy the last part of `host_buffer` to the start of `buf` on the device
   int64_t first_size =
       std::min<int64_t>(host_buffer_size - host_index, elements_to_fill);
-  TF_CHECK_OK(stream->Memcpy(&buffer, host_buffer->data() + host_index,
-                             first_size * sizeof(T)));
+  CHECK_OK(stream->Memcpy(&buffer, host_buffer->data() + host_index,
+                          first_size * sizeof(T)));
   elements_to_fill -= first_size;
   if (elements_to_fill == 0) {
     // Nothing more to do
@@ -483,9 +503,9 @@ static void InitializeTypedBuffer(se::Stream* stream,
   // Issue a second host->device copy to transfer the rest of host_buffer
   int64_t second_size = std::min<int64_t>(host_index, elements_to_fill);
   CHECK_LE(first_size + second_size, host_buffer_size);
-  se::DeviceMemoryBase mem =
+  se::DeviceAddressBase mem =
       buffer.GetByteSlice(first_size * sizeof(T), second_size * sizeof(T));
-  TF_CHECK_OK(stream->Memcpy(&mem, host_buffer->data(), mem.size()));
+  CHECK_OK(stream->Memcpy(&mem, host_buffer->data(), mem.size()));
   elements_to_fill -= second_size;
   if (elements_to_fill == 0) {
     // Nothing more to do
@@ -507,14 +527,14 @@ static void InitializeTypedBuffer(se::Stream* stream,
   constexpr int threads_per_block = 256;
   constexpr int blocks_per_grid =
       (host_buffer_bytes + threads_per_block - 1) / threads_per_block;
-  TF_CHECK_OK(kernel->Launch(se::ThreadDim(threads_per_block, 1, 1),
-                             se::BlockDim(blocks_per_grid, 1, 1), stream,
-                             buffer, host_buffer_bytes,
-                             static_cast<int64_t>(buffer.size())));
+  CHECK_OK(kernel->Launch(se::ThreadDim(threads_per_block, 1, 1),
+                          se::BlockDim(blocks_per_grid, 1, 1), stream, buffer,
+                          host_buffer_bytes,
+                          static_cast<int64_t>(buffer.size())));
 }
 
 void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                      int64_t* rng_state, se::DeviceMemoryBase buffer) {
+                      int64_t* rng_state, se::DeviceAddressBase buffer) {
   return primitive_util::PrimitiveTypeSwitch<void>(
       [&](auto primitive_type_constant) -> void {
         if constexpr (primitive_util::IsFloatingPointType(
@@ -541,8 +561,7 @@ void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
       buffer_type);
 }
 
-absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
-    CudnnConvKind kind) {
+se::dnn::ConvolutionKind CudnnConvKindToProto(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
       return se::dnn::BACKWARD_FILTER;
@@ -554,6 +573,23 @@ absl::StatusOr<se::dnn::ConvolutionKind> GetDNNConvKindFromCudnnConvKind(
       return se::dnn::FORWARD_BIAS_ACTIVATION;
     case CudnnConvKind::kForwardGraph:
       return se::dnn::FORWARD_GRAPH;
+      // No default case to ensure that all cases are handled at compile time.
+  }
+}
+
+absl::StatusOr<CudnnConvKind> CudnnConvKindFromProto(
+    se::dnn::ConvolutionKind kind) {
+  switch (kind) {
+    case se::dnn::BACKWARD_FILTER:
+      return CudnnConvKind::kBackwardFilter;
+    case se::dnn::BACKWARD_DATA:
+      return CudnnConvKind::kBackwardInput;
+    case se::dnn::FORWARD:
+      return CudnnConvKind::kForward;
+    case se::dnn::FORWARD_BIAS_ACTIVATION:
+      return CudnnConvKind::kForwardActivation;
+    case se::dnn::FORWARD_GRAPH:
+      return CudnnConvKind::kForwardGraph;
     default:
       break;
   }

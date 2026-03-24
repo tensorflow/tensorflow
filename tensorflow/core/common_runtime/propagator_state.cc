@@ -15,6 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/propagator_state.h"
 
+#include <atomic>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/graph_view.h"
 #include "tensorflow/core/common_runtime/immutable_executor_state.h"
 #include "tensorflow/core/common_runtime/propagator_debug_utils.h"
@@ -159,7 +170,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
         if (need_create_iter) {
           tsl::profiler::TraceMe activit1y(
               [&]() {
-                return strings::StrCat(
+                return absl::StrCat(
                     "PropagateOutputs::NextIteration::CreateIterationState");
               },
               tsl::profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
@@ -259,7 +270,7 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
   const ImmutableExecutorState::FrameInfo& frame_info =
       immutable_state_.get_enter_frame_info(node_item);
 
-  const uint64 child_id = Hash64Combine(
+  const uint64_t child_id = Hash64Combine(
       frame->frame_id,
       Hash64Combine(iter_state->iter_num, Hash64(frame_info.name)));
 
@@ -275,7 +286,7 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
   // Need to create a new frame instance.
   // Note that this new frame instance is created without any locks.
   if (vlog_) {
-    const string child_name = strings::StrCat(
+    const std::string child_name = strings::StrCat(
         frame->frame_name, ";", iter_state->iter_num, ";", frame_info.name);
     VLOG(2) << "Create frame: " << child_name << " id: " << child_id;
   }

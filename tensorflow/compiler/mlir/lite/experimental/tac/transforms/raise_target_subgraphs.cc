@@ -103,30 +103,30 @@ class RaiseTargetSubgraphsPass
       int& func_count, const TF::SideEffectAnalysis::Info& side_effect_info);
 };
 
-// Returns the custom options fingerprint for an added function op, by walking
-// through the ops in the function and collating all the custom options
-// fingerprints.
-std::optional<StringAttr> GetCustomOptionsFingerprint(func::FuncOp func) {
-  StringAttr custom_options_fingerprint;
+// Returns the value of the string attribute `attr_name` for an added function
+// op, by walking through the ops in the function and collating all the
+// attribute values. If the attribute values are not all the same, returns
+// std::nullopt.
+std::optional<StringAttr> GetConsolidatedStringAttr(func::FuncOp func,
+                                                    StringRef attr_name) {
+  StringAttr attr_value;
   WalkResult result = func.walk([&](Operation* op) {
-    if (op->hasAttr(kCustomOptionsFingerprint)) {
-      if (custom_options_fingerprint &&
-          custom_options_fingerprint !=
-              op->getAttr(kCustomOptionsFingerprint)) {
-        // If the custom options fingerprint is not null, and it is different
-        // from the current op's custom options fingerprint, then it is an
+    if (op->hasAttr(attr_name)) {
+      StringAttr current_attr = mlir::cast<StringAttr>(op->getAttr(attr_name));
+      if (attr_value && attr_value != current_attr) {
+        // If the attribute value is not null, and it is different
+        // from the current op's attribute value, then it is an
         // error.
         return WalkResult::interrupt();
       }
-      custom_options_fingerprint =
-          mlir::cast<StringAttr>(op->getAttr(kCustomOptionsFingerprint));
+      attr_value = current_attr;
     }
     return WalkResult::advance();
   });
   if (result.wasInterrupted()) {
     return std::nullopt;
   }
-  return custom_options_fingerprint;
+  return attr_value;
 }
 
 // After raising ops and adding the Func & Call op, call this function
@@ -139,13 +139,24 @@ bool AddAttrs(OpsAdded& ops_added, OpBuilder& builder, int func_count) {
 
   added_func_op->setAttr(kInterfaceNameAttr, interface_name);
   added_call_op->setAttr(kInterfaceNameAttr, interface_name);
-  auto custom_options_fingerprint = GetCustomOptionsFingerprint(added_func_op);
+  auto custom_options_fingerprint =
+      GetConsolidatedStringAttr(added_func_op, kCustomOptionsFingerprint);
   if (!custom_options_fingerprint.has_value()) {
     return false;
   }
   if (custom_options_fingerprint.value() != nullptr) {
     added_func_op->setAttr(kCustomOptionsFingerprint,
                            custom_options_fingerprint.value());
+  }
+
+  auto delegate_compiler_version =
+      GetConsolidatedStringAttr(added_func_op, kDelegateCompilerVersion);
+  if (!delegate_compiler_version.has_value()) {
+    return false;
+  }
+  if (delegate_compiler_version.value() != nullptr) {
+    added_func_op->setAttr(kDelegateCompilerVersion,
+                           delegate_compiler_version.value());
   }
 
   StringAttr device = mlir::cast<StringAttr>(

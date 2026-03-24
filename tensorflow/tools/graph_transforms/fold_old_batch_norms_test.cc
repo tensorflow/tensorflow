@@ -391,7 +391,7 @@ class FoldOldBatchNormsTest : public ::testing::Test {
     Tensor shape_tensor(DT_INT32, TensorShape({}));
     // Concat at dim 3 if split; otherwise, concat at dim 2.
     int32_t concat_axis = split ? 3 : 2;
-    test::FillValues<int32>(&shape_tensor, {concat_axis});
+    test::FillValues<int32_t>(&shape_tensor, {concat_axis});
     Output shape_op =
         Const(root.WithOpName("shape_op"), Input::Initializer(shape_tensor));
     Output concat_op =
@@ -476,12 +476,12 @@ void TestFoldFusedBatchNormsWithBatchToSpace() {
                           {1, 1, 1, 1}, "VALID");
 
   Tensor block_shape_data(DT_INT32, TensorShape({2}));
-  test::FillValues<int32>(&block_shape_data, {1, 2});
+  test::FillValues<int32_t>(&block_shape_data, {1, 2});
   Output block_shape_op = Const(root.WithOpName("block_shape_op"),
                                 Input::Initializer(block_shape_data));
 
   Tensor crops_data(DT_INT32, TensorShape({2, 2}));
-  test::FillValues<int32>(&crops_data, {0, 0, 0, 1});
+  test::FillValues<int32_t>(&crops_data, {0, 0, 0, 1});
   Output crops_op =
       Const(root.WithOpName("crops_op"), Input::Initializer(crops_data));
 

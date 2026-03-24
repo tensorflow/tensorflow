@@ -30,17 +30,16 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/client/client.h"
 #include "xla/client/client_library.h"
-#include "xla/client/local_client.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/types.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 namespace tools {
@@ -49,7 +48,7 @@ void RealMain(absl::Span<char* const> args) {
   Client* client = ClientLibrary::LocalClientOrDie();
   for (char* arg : args) {
     HloSnapshot module;
-    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &module));
+    CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &module));
     auto computation = client->LoadSnapshot(module).value();
     std::unique_ptr<ProgramShape> shape =
         client->GetComputationShape(computation).value();

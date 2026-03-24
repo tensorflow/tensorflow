@@ -43,9 +43,9 @@ class MathGradTest : public ::testing::Test {
   absl::Status Unary(const FDH::Node& op_node, const Tensor& x,
                      const DataType dst, Tensor* y) {
     const DataType src = x.dtype();
-    auto adef = [](const string& name,
+    auto adef = [](const std::string& name,
                    const DataType type) {  // E.g., x:float, dy:double
-      return strings::StrCat(name, ":", DataTypeString(type));
+      return absl::StrCat(name, ":", DataTypeString(type));
     };
     // Sum(op(x)), sum all output of op(x).
     auto test = FDH::Define("Test", {adef("x", src)}, {adef("l", dst)}, {},
@@ -94,13 +94,13 @@ class MathGradTest : public ::testing::Test {
     return s;
   }
 
-  absl::Status Unary(const string& op, const Tensor& x, Tensor* y) {
+  absl::Status Unary(const std::string& op, const Tensor& x, Tensor* y) {
     const FDH::Node op_node = {{"y"}, op, {"x"}, {{"T", x.dtype()}}};
     return Unary(op_node, x, x.dtype(), y);
   }
 
   // Unary op expecting OK.
-  Tensor SymGrad(const string& op, const Tensor& x) {
+  Tensor SymGrad(const std::string& op, const Tensor& x) {
     Tensor ret;
     TF_CHECK_OK(Unary(op, x, &ret));
     return ret;
@@ -115,11 +115,11 @@ class MathGradTest : public ::testing::Test {
   }
 
   // Binary
-  void SymGrad(const string& op, const Tensor& x, const Tensor& y, Tensor* dx,
-               Tensor* dy) {
+  void SymGrad(const std::string& op, const Tensor& x, const Tensor& y,
+               Tensor* dx, Tensor* dy) {
     const DataType T = x.dtype();
-    auto adef = [T](const string& name) {  // E.g., x:float, dy:double
-      return strings::StrCat(name, ":", DataTypeString(T));
+    auto adef = [T](const std::string& name) {  // E.g., x:float, dy:double
+      return absl::StrCat(name, ":", DataTypeString(T));
     };
     // Sum(op(x)), sum all output of op(x).
     auto test = FDH::Define("Test", {adef("x"), adef("y")}, {adef("l")}, {},
@@ -171,11 +171,11 @@ class MathGradTest : public ::testing::Test {
   }
 
   // Reduction grad
-  void ReductionGrad(const string& op, const Tensor& x, const Tensor& idx,
+  void ReductionGrad(const std::string& op, const Tensor& x, const Tensor& idx,
                      Tensor* dx, Tensor* di) {
     const DataType T = x.dtype();
-    auto adef = [T](const string& name) {  // E.g., x:float, dy:double
-      return strings::StrCat(name, ":", DataTypeString(T));
+    auto adef = [T](const std::string& name) {  // E.g., x:float, dy:double
+      return absl::StrCat(name, ":", DataTypeString(T));
     };
     // Sum(op(x, idx)), sum all output of op(x, idx).
     auto test = FDH::Define("Test", {adef("x"), "i:int32"}, {adef("l")}, {},
@@ -225,11 +225,11 @@ class MathGradTest : public ::testing::Test {
     *di = outputs[1];
   }
 
-  Tensor ReduceSum(const Tensor& x, absl::Span<const int32> axes) {
+  Tensor ReduceSum(const Tensor& x, absl::Span<const int32_t> axes) {
     int num_axes = axes.length();
     Tensor y(DT_INT32, TensorShape({num_axes}));
     for (size_t i = 0; i < axes.size(); ++i) {
-      y.flat<int32>()(i) = axes[i];
+      y.flat<int32_t>()(i) = axes[i];
     }
     auto T = x.dtype();
     auto gdef = test::function::GDef(
@@ -248,8 +248,8 @@ class MathGradTest : public ::testing::Test {
     return outputs[0];
   }
 
-  Tensor MatMulCommon(const string& opname, const string& attr_adj_x,
-                      const string& attr_adj_y, const Tensor& x, bool ax,
+  Tensor MatMulCommon(const std::string& opname, const std::string& attr_adj_x,
+                      const std::string& attr_adj_y, const Tensor& x, bool ax,
                       const Tensor& y, bool ay) {
     auto T = x.dtype();
     auto gdef = test::function::GDef(
@@ -281,12 +281,13 @@ class MathGradTest : public ::testing::Test {
     return MatMulCommon("BatchMatMulV2", "adj_x", "adj_y", x, ax, y, ay);
   }
 
-  void MatMulGradCommon(const string& opname, const string& attr_adj_x,
-                        const string& attr_adj_y, const Tensor& x, bool ax,
+  void MatMulGradCommon(const std::string& opname,
+                        const std::string& attr_adj_x,
+                        const std::string& attr_adj_y, const Tensor& x, bool ax,
                         const Tensor& y, bool ay, Tensor* dx, Tensor* dy) {
     const DataType T = x.dtype();
-    auto adef = [T](const string& name) {  // E.g., x:float, dy:double
-      return strings::StrCat(name, ":", DataTypeString(T));
+    auto adef = [T](const std::string& name) {  // E.g., x:float, dy:double
+      return absl::StrCat(name, ":", DataTypeString(T));
     };
     // Sum(op(x)), sum all output of op(x).
     auto test =
@@ -412,7 +413,7 @@ class MathGradTest : public ::testing::Test {
   }
 };
 
-void HasError(const absl::Status& s, const string& substr) {
+void HasError(const absl::Status& s, const std::string& substr) {
   EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
@@ -1363,35 +1364,35 @@ TEST_F(MathGradTest, BatchMatMulV2_BroadcastWhileAdjointed) {
 TEST_F(MathGradTest, Sum_dim0) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0}, TensorShape({}));
+  auto i = test::AsTensor<int32_t>({0}, TensorShape({}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Sum", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(di,
-                                 test::AsTensor<int32>({0}, TensorShape({})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0}, TensorShape({})));
 }
 
 TEST_F(MathGradTest, Sum_dim1) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({1}, TensorShape({}));
+  auto i = test::AsTensor<int32_t>({1}, TensorShape({}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Sum", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({1.f, 1.f, 1.f, 1.f, 1.f, 1.f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(di,
-                                 test::AsTensor<int32>({0}, TensorShape({})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0}, TensorShape({})));
 }
 
 TEST_F(MathGradTest, Mean_dim0) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0}, TensorShape({}));
+  auto i = test::AsTensor<int32_t>({0}, TensorShape({}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Mean", x, i, &dx, &di);
@@ -1399,14 +1400,14 @@ TEST_F(MathGradTest, Mean_dim0) {
       dx, test::AsTensor<float>(
               {1.f / 2, 1.f / 2, 1.f / 2, 1.f / 2, 1.f / 2, 1.f / 2},
               TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(di,
-                                 test::AsTensor<int32>({0}, TensorShape({})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0}, TensorShape({})));
 }
 
 TEST_F(MathGradTest, Mean_dim1) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({1}, TensorShape({}));
+  auto i = test::AsTensor<int32_t>({1}, TensorShape({}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Mean", x, i, &dx, &di);
@@ -1414,14 +1415,14 @@ TEST_F(MathGradTest, Mean_dim1) {
       dx, test::AsTensor<float>(
               {1.f / 3, 1.f / 3, 1.f / 3, 1.f / 3, 1.f / 3, 1.f / 3},
               TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(di,
-                                 test::AsTensor<int32>({0}, TensorShape({})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0}, TensorShape({})));
 }
 
 TEST_F(MathGradTest, Mean_dim0_dim1) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0, 1}, TensorShape({2}));
+  auto i = test::AsTensor<int32_t>({0, 1}, TensorShape({2}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Mean", x, i, &dx, &di);
@@ -1429,70 +1430,70 @@ TEST_F(MathGradTest, Mean_dim0_dim1) {
       dx, test::AsTensor<float>(
               {1.f / 6, 1.f / 6, 1.f / 6, 1.f / 6, 1.f / 6, 1.f / 6},
               TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(
-      di, test::AsTensor<int32>({0, 0}, TensorShape({2})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0, 0}, TensorShape({2})));
 }
 
 TEST_F(MathGradTest, Min_dim0) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0}, TensorShape({}));
+  auto i = test::AsTensor<int32_t>({0}, TensorShape({}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Min", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({1.f, 1.f, 1.f, 0.f, 0.f, 0.f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(di,
-                                 test::AsTensor<int32>({0}, TensorShape({})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0}, TensorShape({})));
 }
 
 TEST_F(MathGradTest, Min_dim1) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({1}, TensorShape({}));
+  auto i = test::AsTensor<int32_t>({1}, TensorShape({}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Min", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({1.f, 0.f, 0.f, 1.f, 0.f, 0.f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(di,
-                                 test::AsTensor<int32>({0}, TensorShape({})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0}, TensorShape({})));
 }
 
 TEST_F(MathGradTest, Min_dim0_dim1) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0, 1}, TensorShape({2}));
+  auto i = test::AsTensor<int32_t>({0, 1}, TensorShape({2}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Min", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({1.f, 0.f, 0.f, 0.f, 0.f, 0.f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(
-      di, test::AsTensor<int32>({0, 0}, TensorShape({2})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0, 0}, TensorShape({2})));
 }
 
 TEST_F(MathGradTest, Min_dim0_dim1_Dups) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, -3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0, 1}, TensorShape({2}));
+  auto i = test::AsTensor<int32_t>({0, 1}, TensorShape({2}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Min", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({.5f, 0.f, 0.f, 0.f, 0.f, .5f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(
-      di, test::AsTensor<int32>({0, 0}, TensorShape({2})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0, 0}, TensorShape({2})));
 }
 
 TEST_F(MathGradTest, Max_dim0) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0}, TensorShape({}));
+  auto i = test::AsTensor<int32_t>({0}, TensorShape({}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Max", x, i, &dx, &di);
@@ -1500,50 +1501,50 @@ TEST_F(MathGradTest, Max_dim0) {
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({0.f, 0.f, 0.f, 1.f, 1.f, 1.f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(di,
-                                 test::AsTensor<int32>({0}, TensorShape({})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0}, TensorShape({})));
 }
 
 TEST_F(MathGradTest, Max_dim1) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({1}, TensorShape({}));
+  auto i = test::AsTensor<int32_t>({1}, TensorShape({}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Max", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({0.f, 0.f, 1.f, 0.f, 0.f, 1.f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(di,
-                                 test::AsTensor<int32>({0}, TensorShape({})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0}, TensorShape({})));
 }
 
 TEST_F(MathGradTest, Max_dim0_dim1) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0, 1}, TensorShape({2}));
+  auto i = test::AsTensor<int32_t>({0, 1}, TensorShape({2}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Max", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({0.f, 0.f, 0.f, 0.f, 0.f, 1.f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(
-      di, test::AsTensor<int32>({0, 0}, TensorShape({2})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0, 0}, TensorShape({2})));
 }
 
 TEST_F(MathGradTest, Max_dim0_dim1_Dups) {
   auto x = test::AsTensor<float>({3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));
-  auto i = test::AsTensor<int32>({0, 1}, TensorShape({2}));
+  auto i = test::AsTensor<int32_t>({0, 1}, TensorShape({2}));
   Tensor dx;
   Tensor di;
   ReductionGrad("Max", x, i, &dx, &di);
   test::ExpectTensorEqual<float>(
       dx, test::AsTensor<float>({.5f, 0.f, 0.f, 0.f, 0.f, .5f},
                                 TensorShape({2, 3})));
-  test::ExpectTensorEqual<int32>(
-      di, test::AsTensor<int32>({0, 0}, TensorShape({2})));
+  test::ExpectTensorEqual<int32_t>(
+      di, test::AsTensor<int32_t>({0, 0}, TensorShape({2})));
 }
 
 }  // namespace

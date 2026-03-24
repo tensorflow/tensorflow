@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/test_compilation_environment.pb.h"
@@ -58,7 +60,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -173,9 +174,8 @@ TEST_F(HloModuleTest, CloneFrontendAttributes) {
   frontend_attributes.mutable_map()->emplace("attribute1", "attribute1_value");
   module->set_frontend_attributes(frontend_attributes);
   std::unique_ptr<HloModule> clone = module->Clone();
-  bool areEqual = std::equal(
-      frontend_attributes.map().begin(), frontend_attributes.map().end(),
-      clone->frontend_attributes().map().begin(),
+  bool areEqual = absl::c_equal(
+      frontend_attributes.map(), clone->frontend_attributes().map(),
       [](const auto& kv1, const auto& kv2) {
         return kv1.first == kv2.first && kv1.second == kv2.second;
       });
@@ -939,7 +939,7 @@ ENTRY main {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
-  EXPECT_TRUE(module->get_stack_frame(1).empty());
+  EXPECT_TRUE(module->get_stack_frame(StackFrameId{1}).empty());
 
   auto module_proto = module->ToProto();
   auto index = module_proto.mutable_stack_frame_index();
@@ -963,10 +963,12 @@ ENTRY main {
       auto module_with_stack_frames,
       HloModule::CreateFromProto(module_proto, module->config()));
 
-  EXPECT_TRUE(module_with_stack_frames->get_stack_frame(0).empty());
-  EXPECT_TRUE(module_with_stack_frames->get_stack_frame(2).empty());
+  EXPECT_TRUE(
+      module_with_stack_frames->get_stack_frame(StackFrameId{0}).empty());
+  EXPECT_TRUE(
+      module_with_stack_frames->get_stack_frame(StackFrameId{2}).empty());
 
-  auto stack_frame = module_with_stack_frames->get_stack_frame(1);
+  auto stack_frame = module_with_stack_frames->get_stack_frame(StackFrameId{1});
   EXPECT_EQ(stack_frame.file_name, index->file_names(0));
   EXPECT_EQ(stack_frame.function_name, index->function_names(0));
   EXPECT_EQ(stack_frame.line, location->line());

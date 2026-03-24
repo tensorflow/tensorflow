@@ -222,25 +222,24 @@ void MlrtIfrtLoadVariableKernel::Invoke() {
 
 absl::Status MlrtIfrtLoadVariableKernel::InvokeHelper() {
   DCHECK_EQ(2, results().size());
-  std::optional<IfrtModelContext*> ifrt_model_context =
-      context().resource_context().GetResource<IfrtModelContext>(
-          "IfrtModelContext");
-  if (!ifrt_model_context.has_value()) {
-    return absl::FailedPreconditionError(
-        "LoadVariableOp: failed to fetch IfrtModelContext: ");
-  }
   auto tensor_promise =
       mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
   auto tensor_future = tensor_promise.GetFuture();
-
-  ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
-      (*ifrt_model_context)->GetRestoreTensorRegistry();
 
   auto& resource_handle = variable_handler_tensor().scalar<ResourceHandle>()();
   std::string runtime_name =
       ifrt_serving::GetRuntimeNameFromVarHandle(resource_handle);
 
   if (used_by_host()) {
+    std::optional<IfrtModelContext*> ifrt_model_context =
+        context().resource_context().GetResource<IfrtModelContext>(
+            "IfrtModelContext");
+    if (!ifrt_model_context.has_value()) {
+      return absl::FailedPreconditionError(
+          "LoadVariableOp: failed to fetch IfrtModelContext: ");
+    }
+    ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
+        (*ifrt_model_context)->GetRestoreTensorRegistry();
     if (ifrt_restore_tensor_registry.SetUsedByHost(runtime_name).ok()) {
       tsl::Future<tensorflow::Tensor> restored_tensor_future =
           ifrt_restore_tensor_registry.GetRestoredTensor(runtime_name);

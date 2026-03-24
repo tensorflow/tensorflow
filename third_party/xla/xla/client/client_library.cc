@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/service/service.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -104,7 +103,7 @@ ClientLibrary::~ClientLibrary() = default;
   se::Platform* platform = options.platform();
   int replica_count = options.number_of_replicas();
   ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
+  absl::MutexLock lock(client_library.service_mutex_);
 
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
@@ -134,14 +133,14 @@ ClientLibrary::~ClientLibrary() = default;
 
 /* static */ LocalClient* ClientLibrary::LocalClientOrDie() {
   auto client_status = GetOrCreateLocalClient();
-  TF_CHECK_OK(client_status.status());
+  CHECK_OK(client_status.status());
   return client_status.value();
 }
 
 /* static */ LocalService* ClientLibrary::GetXlaService(
     se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
+  absl::MutexLock lock(client_library.service_mutex_);
   auto it = client_library.local_instances_.find(platform->id());
   CHECK(it != client_library.local_instances_.end());
   return it->second->service.get();
@@ -150,7 +149,7 @@ ClientLibrary::~ClientLibrary() = default;
 /* static */ absl::StatusOr<CompileOnlyClient*>
 ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
   ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
+  absl::MutexLock lock(client_library.service_mutex_);
 
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
@@ -175,7 +174,7 @@ ClientLibrary::GetOrCreateCompileOnlyClient(se::Platform* platform) {
 
 /* static */ void ClientLibrary::DestroyLocalInstances() {
   ClientLibrary& client_library = Singleton();
-  absl::MutexLock lock(&client_library.service_mutex_);
+  absl::MutexLock lock(client_library.service_mutex_);
 
   client_library.local_instances_.clear();
   client_library.compile_only_instances_.clear();

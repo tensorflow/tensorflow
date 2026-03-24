@@ -38,8 +38,7 @@ HloModuleMetadata::GetCurrentHloPassMetadata() {
     return NotFound(
         "HloPassMetadata for currently running pass not found, either because "
         "the pass did not call RecordPassStart or because a pass is "
-        "creating/switching modules without using "
-        "HloModuleGroup::ReplaceModule.");
+        "creating/switching modules.");
   }
   return running_passes_.back();
 }

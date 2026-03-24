@@ -112,29 +112,9 @@ typedef struct TfLiteOperator {
       void* user_data, TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 } TfLiteOperator;
 
-// Returns true iff it's safe to dereference
-// 'delegate->opaque_delegate_builder'.
-inline bool TfLiteDelegateHasValidOpaqueDelegateBuilder(
-    const TfLiteDelegate* delegate) {
-  // We want to give precedence to the delegate's `opaque_delegate_builder`
-  // field when it is available.  In an ideal setting, where all client code
-  // properly initializes the delegate, we could simply check if the
-  // `opaque_delegate_builder` contains a non-zero address.  However, in
-  // practice this breaks code that doesn't adhere to these best practices.
-  //
-  // We can avoid this problem by checking the `Prepare` field contained in the
-  // `TfliteDelegate` (not to be confused with the `Prepare` field contained in
-  // `TfLiteOpaqueDelegateBuilder` struct). In order to tell if we should use
-  // the `opaque_delegate_builder` field we check that the `TfLiteDelegate`'s
-  // `Prepare` member is null.  This should be true for every delegate that
-  // adopts the `TfLiteOpaqueDelegateBuilder` interface and should not be true
-  // for any delegate implementation that is using `TfLiteDelegate` directly.
-  //
-  // TODO(b/245730811): Consider signalling to clients if the delegate is not
-  // initialized cleanly.
-  return delegate != nullptr && delegate->Prepare == nullptr &&
-         delegate->opaque_delegate_builder != nullptr;
-}
+// Returns true iff the delegate is a well-formed opaque delegate, i.e. none of
+// the fields that are part of the legacy 'TfLiteDelegate' interface are set.
+bool TfLiteDelegateIsOpaque(const TfLiteDelegate* delegate);
 
 // Invokes 'Prepare' on the provided 'delegate', giving the 'delegate' a view
 // of the current graph through the provided 'context'.  Returns the delegate's

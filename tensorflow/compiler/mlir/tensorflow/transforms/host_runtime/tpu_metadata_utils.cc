@@ -224,8 +224,8 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   if (auto options_attr =
           op->getAttrOfType<StringAttr>("tpu_compile_options_proto")) {
-    if (!metadata->mutable_compile_options()->ParseFromArray(
-            options_attr.data(), options_attr.size())) {
+    if (!metadata->mutable_compile_options()->ParseFromString(
+            absl::string_view(options_attr.data(), options_attr.size()))) {
       return failure();
     }
   }

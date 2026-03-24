@@ -42,7 +42,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
 
   ~GenericCachingChannelCache() override {}
 
-  SharedGrpcChannelPtr FindWorkerChannel(const string& target) override {
+  SharedGrpcChannelPtr FindWorkerChannel(const std::string& target) override {
     {
       absl::MutexLock l(mu_);
       auto iter = channels_.find(target);
@@ -60,7 +60,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
 
     {
       absl::MutexLock l(mu_);
-      typename absl::flat_hash_map<string, ChannelState>::iterator iter;
+      typename absl::flat_hash_map<std::string, ChannelState>::iterator iter;
       bool was_inserted;
       std::tie(iter, was_inserted) = channels_.insert({target, new_chan_state});
       VLOG(2) << "Channel cache for target: " << target
@@ -74,7 +74,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
   // Find the ClientChannel for "target".  Only called when no channel was
   // found in the channels_ cache for "target".  A non nullptr result will be
   // cached in channels_.
-  virtual SharedGrpcChannelPtr FindChannelOnce(const string& target) = 0;
+  virtual SharedGrpcChannelPtr FindChannelOnce(const std::string& target) = 0;
 
  private:
   struct ChannelState {
@@ -96,7 +96,7 @@ class GenericCachingChannelCache : public ChannelCacheT {
   const int num_channels_per_target_;
   // TODO(zhifengc): Eviction when the map becomes too big.
   absl::Mutex mu_;
-  absl::flat_hash_map<string, ChannelState> channels_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, ChannelState> channels_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tsl

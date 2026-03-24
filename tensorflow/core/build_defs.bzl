@@ -1,11 +1,11 @@
 """Defines the build rules to disable non-core TF libraries."""
 
-load("//third_party/bazel_rules/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 
 def _tf_core_transition_impl(settings, attr):
     _ignore = (settings, attr)  # @unused
     return {
-        "@local_xla//xla/tsl/framework/contraction:disable_onednn_contraction_kernel": True,
+        "@xla//xla/tsl/framework/contraction:disable_onednn_contraction_kernel": True,
         "//tensorflow/compiler/mlir/python:disable_mlir": True,
     }
 
@@ -13,7 +13,7 @@ _tf_core_transition = transition(
     implementation = _tf_core_transition_impl,
     inputs = [],
     outputs = [
-        "@local_xla//xla/tsl/framework/contraction:disable_onednn_contraction_kernel",
+        "@xla//xla/tsl/framework/contraction:disable_onednn_contraction_kernel",
         "//tensorflow/compiler/mlir/python:disable_mlir",
     ],
 )
@@ -25,6 +25,7 @@ def _py_binary_tf_core_impl(ctx):
     ctx.actions.run_shell(
         inputs = [ctx.executable.py_binary],
         outputs = [out],
+        mnemonic = "TfCorePyBinaryCopy",
         command = "cp %s %s" % (ctx.executable.py_binary.path, out.path),
     )
 

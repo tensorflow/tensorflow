@@ -123,7 +123,8 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
 #if EIGEN_MAX_ALIGN_BYTES == 0
     return malloc(size);
 #else
-    return tensorflow::port::AlignedMalloc(size, EIGEN_MAX_ALIGN_BYTES);
+    return tsl::port::AlignedMalloc(
+        size, static_cast<std::align_val_t>(EIGEN_MAX_ALIGN_BYTES));
 #endif
   };
   se_.host_memory_deallocate = [](const SP_Device* const device, void* mem) {
@@ -136,7 +137,8 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
 #if EIGEN_MAX_ALIGN_BYTES == 0
     mem->opaque = malloc(size);
 #else
-    mem->opaque = tensorflow::port::AlignedMalloc(size, EIGEN_MAX_ALIGN_BYTES);
+    mem->opaque = tsl::port::AlignedMalloc(
+        size, static_cast<std::align_val_t>(EIGEN_MAX_ALIGN_BYTES));
 #endif
     mem->size = size;
   };

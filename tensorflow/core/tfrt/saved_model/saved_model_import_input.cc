@@ -61,7 +61,7 @@ TfrtSavedModelMLIRImportInput::GetSubGraph(
   ABSL_CONST_INIT static absl::Mutex mu(absl::kConstInit);
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     auto iter = optimized_graphs_.find(name);
     if (iter != optimized_graphs_.end()) return iter->second.get();
   }
@@ -70,7 +70,7 @@ TfrtSavedModelMLIRImportInput::GetSubGraph(
       auto optimization_result,
       graph_execution_state_->CreateOptimizedGraph(graph_import_config));
 
-  absl::MutexLock l(&mu);
+  absl::MutexLock l(mu);
   functionalization_duration_ += optimization_result.functionalization_duration;
   grappler_duration_ += optimization_result.grappler_duration;
 

@@ -31,5 +31,5 @@ message GpuNormDescriptorProto {
   optional xla.ShapeProto dy_shape = 8;
   optional xla.ShapeProto dscale_shape = 9;
   optional xla.ShapeProto dbias_shape = 10;
-  int64 scratch_size = 11;
+  optional xla.ShapeProto scratch_shape = 11;
 }

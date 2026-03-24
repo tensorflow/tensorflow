@@ -222,6 +222,7 @@ const StatTypeMap& GetStatTypeMap() {
        {"queue_id", kQueueId},
        {"request_id", kRequestId},
        {"run_id", kRunId},
+       {"global_chip_id", kGlobalChipId},
        {"replica_id", kReplicaId},
        {"graph_type", kGraphType},
        {"step_num", kStepNum},
@@ -303,6 +304,11 @@ const StatTypeMap& GetStatTypeMap() {
        {"Thread Id", kThreadId},
        {"Time Scale Multiplier", kTimeScaleMultiplier},
        {"matrix_unit_utilization_percent", kMatrixUnitUtilizationPercent},
+       {"hbm_utilization_percent", kHbmUtilizationPercent},
+       {"performance_counter_id", kPerformanceCounterId},
+       {"counter_value", kCounterValue},
+       {"performance_counter_description", kPerformanceCounterDescription},
+       {"performance_counter_sets", kPerformanceCounterSets},
        // XLA metadata map related.
        {"Hlo Proto", kHloProto},
        {"EdgeTPU Model information", kEdgeTpuModelInfo},
@@ -384,7 +390,22 @@ const StatTypeMap& GetStatTypeMap() {
        {"cuda_graph_map_id", kCudaGraphMapId},
        {"cuda_graph_map_value_id", kCudaGraphMapValueId},
        {"cuda_graph_node_map_id", kCudaGraphNodeMapId},
-       {"graph_metadata_line_id", kGraphMetadataLineId}});
+       {"graph_metadata_line_id", kGraphMetadataLineId},
+       {"offload_core_id", kOffloadCoreId},
+       {"tc_offload_start_id", kTcOffloadStartId},
+       {"offload_execution_index", kOffloadExecutionIndex},
+       {"marker_payload", kMarkerPayloadString},
+       {"cuda_version", kMetadataCudaVersion},
+       {"libtpu_version", kMetadataLibtpuVersion},
+       {"cuda_runtime_version", kMetadataCudaRuntimeVersion},
+       {"cuda_driver_version", kMetadataCudaDriverVersion},
+       // LLO Debug Dump.
+       {"llo_proto", kLloProto},
+       // Power-related stats
+       {"vdd_core_energy_nj", kVddCoreEnergy},
+       {"vdd_core_power_events", kVddCorePowerEvents},
+       {"hbm_energy_nj", kHbmEnergy},
+       {"hbm_power_events", kHbmPowerEvents}});
   DCHECK_EQ(stat_type_map->size(), kNumStatTypes);
   return *stat_type_map;
 }
@@ -468,6 +489,7 @@ const TaskEnvStatTypeMap& GetTaskEnvStatTypeMap() {
   static auto* const task_env_stat_type_map = new TaskEnvStatTypeMap({
       {"profile_start_time", kEnvProfileStartTime},
       {"profile_stop_time", kEnvProfileStopTime},
+      {"profile_options", kEnvProfileOptions},
   });
   DCHECK_EQ(task_env_stat_type_map->size(), kNumTaskEnvStatTypes);
   return *task_env_stat_type_map;
@@ -568,7 +590,7 @@ bool IsInternalEvent(std::optional<int64_t> event_type) {
 bool IsInternalStat(std::optional<int64_t> stat_type) {
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {
-    case StatType::kKernelDetails:
+    // case StatType::kKernelDetails:  # removed for rocm gpu kernel details
     case StatType::kProducerType:
     case StatType::kProducerId:
     case StatType::kConsumerType:

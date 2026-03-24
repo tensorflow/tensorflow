@@ -63,9 +63,9 @@ namespace benchmark_model {
 namespace {
 
 absl::Status InitializeVariables(Session* session,
-                                 const std::vector<string>& init_ops) {
+                                 const std::vector<std::string>& init_ops) {
   LOG(INFO) << "Initializing graph variables";
-  for (const string& init_op : init_ops) {
+  for (const std::string& init_op : init_ops) {
     TF_RETURN_IF_ERROR(session->Run({}, {}, {init_op}, nullptr));
   }
   return absl::OkStatus();
@@ -85,16 +85,16 @@ void InitializeTensor(const std::vector<float>& initialization_values,
 
 void CreateTensorsFromInputInfo(
     const std::vector<InputLayerInfo>& inputs,
-    std::vector<std::pair<string, tensorflow::Tensor> >* input_tensors) {
+    std::vector<std::pair<std::string, tensorflow::Tensor> >* input_tensors) {
   for (const InputLayerInfo& input : inputs) {
     Tensor input_tensor(input.data_type, input.shape);
     switch (input.data_type) {
       case DT_INT32: {
-        InitializeTensor<int32>(input.initialization_values, &input_tensor);
+        InitializeTensor<int32_t>(input.initialization_values, &input_tensor);
         break;
       }
       case DT_INT64: {
-        InitializeTensor<int64>(input.initialization_values, &input_tensor);
+        InitializeTensor<int64_t>(input.initialization_values, &input_tensor);
         break;
       }
       case DT_FLOAT: {
@@ -106,7 +106,7 @@ void CreateTensorsFromInputInfo(
         break;
       }
       case DT_UINT8: {
-        InitializeTensor<uint8>(input.initialization_values, &input_tensor);
+        InitializeTensor<uint8_t>(input.initialization_values, &input_tensor);
         break;
       }
       case DT_BOOL: {
@@ -131,15 +131,15 @@ void CreateTensorsFromInputInfo(
 
 absl::Status GetOutputShapes(
     const std::vector<InputLayerInfo>& inputs,
-    const std::set<string>& wanted_shapes, Session* session,
-    std::unordered_map<string, TensorShape>* node_shapes) {
-  std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
+    const std::set<std::string>& wanted_shapes, Session* session,
+    std::unordered_map<std::string, TensorShape>* node_shapes) {
+  std::vector<std::pair<std::string, tensorflow::Tensor> > input_tensors;
   CreateTensorsFromInputInfo(inputs, &input_tensors);
   std::vector<tensorflow::Tensor> output_tensors;
-  std::vector<string> output_tensor_names;
-  for (const string& wanted_shape : wanted_shapes) {
+  std::vector<std::string> output_tensor_names;
+  for (const std::string& wanted_shape : wanted_shapes) {
     bool is_input = false;
-    for (const std::pair<string, tensorflow::Tensor>& input_tensor :
+    for (const std::pair<std::string, tensorflow::Tensor>& input_tensor :
          input_tensors) {
       if (input_tensor.first == wanted_shape) {
         (*node_shapes)[wanted_shape] = input_tensor.second.shape();
@@ -155,31 +155,31 @@ absl::Status GetOutputShapes(
       session->Run(input_tensors, output_tensor_names, {}, &output_tensors));
   CHECK_EQ(output_tensors.size(), output_tensor_names.size());
   for (int i = 0; i < output_tensor_names.size(); ++i) {
-    const string& wanted_shape_name = output_tensor_names[i];
+    const std::string& wanted_shape_name = output_tensor_names[i];
     const TensorShape& found_shape = output_tensors[i].shape();
     (*node_shapes)[wanted_shape_name] = found_shape;
   }
   return absl::OkStatus();
 }
 
-absl::Status CalculateFlops(const GraphDef& graph,
-                            const std::vector<InputLayerInfo>& inputs,
-                            Session* session, int64_t* total_flops,
-                            std::unordered_map<string, int64_t>* flops_by_op) {
-  std::unordered_set<string> floppable_ops = {
+absl::Status CalculateFlops(
+    const GraphDef& graph, const std::vector<InputLayerInfo>& inputs,
+    Session* session, int64_t* total_flops,
+    std::unordered_map<std::string, int64_t>* flops_by_op) {
+  std::unordered_set<std::string> floppable_ops = {
       "Conv2D", "MatMul", "QuantizedConv2D", "QuantizedMatMul",
       "DepthwiseConv2dNative"};
 
-  std::set<string> wanted_shapes;
+  std::set<std::string> wanted_shapes;
   for (const NodeDef& node : graph.node()) {
     if (floppable_ops.count(node.op())) {
-      for (const string& input : node.input()) {
+      for (const std::string& input : node.input()) {
         wanted_shapes.insert(input);
       }
       wanted_shapes.insert(node.name());
     }
   }
-  std::unordered_map<string, TensorShape> found_shapes;
+  std::unordered_map<std::string, TensorShape> found_shapes;
   TF_RETURN_IF_ERROR(
       GetOutputShapes(inputs, wanted_shapes, session, &found_shapes));
 
@@ -228,10 +228,10 @@ absl::Status CalculateFlops(const GraphDef& graph,
   return absl::OkStatus();
 }
 
-void RecordBenchmarkEntry(const string& output_prefix,
-                          const string& benchmark_name, const string& postfix,
-                          int num_runs, double total_time_s,
-                          double throughput = -1.0) {
+void RecordBenchmarkEntry(const std::string& output_prefix,
+                          const std::string& benchmark_name,
+                          const std::string& postfix, int num_runs,
+                          double total_time_s, double throughput = -1.0) {
   std::stringstream stream;
   stream << benchmark_name;
   if (!postfix.empty()) {
@@ -262,7 +262,7 @@ void SleepSeconds(double sleep_seconds) {
 
 }  // namespace
 
-absl::Status InitializeSession(int num_threads, const string& graph,
+absl::Status InitializeSession(int num_threads, const std::string& graph,
                                std::unique_ptr<Session>* session,
                                std::unique_ptr<GraphDef>* graph_def) {
   LOG(INFO) << "Loading TensorFlow.";
@@ -298,10 +298,11 @@ absl::Status InitializeSession(int num_threads, const string& graph,
 }
 
 absl::Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
-                          const std::vector<string>& outputs,
-                          const std::vector<string>& targets, Session* session,
-                          StatSummarizer* stats, int64_t* inference_time_us) {
-  std::vector<std::pair<string, tensorflow::Tensor> > input_tensors;
+                          const std::vector<std::string>& outputs,
+                          const std::vector<std::string>& targets,
+                          Session* session, StatSummarizer* stats,
+                          int64_t* inference_time_us) {
+  std::vector<std::pair<std::string, tensorflow::Tensor> > input_tensors;
   CreateTensorsFromInputInfo(inputs, &input_tensors);
 
   std::vector<tensorflow::Tensor> output_tensors;
@@ -337,8 +338,8 @@ absl::Status RunBenchmark(const std::vector<InputLayerInfo>& inputs,
 absl::Status TimeMultipleRuns(double sleep_seconds, int num_runs,
                               double max_time_s,
                               const std::vector<InputLayerInfo>& inputs,
-                              const std::vector<string>& outputs,
-                              const std::vector<string>& targets,
+                              const std::vector<std::string>& outputs,
+                              const std::vector<std::string>& targets,
                               Session* session, StatSummarizer* stats,
                               int64_t* total_time_us,
                               int64_t* actual_num_runs) {
@@ -384,21 +385,21 @@ absl::Status TimeMultipleRuns(double sleep_seconds, int num_runs,
 }
 
 int Main(int argc, char** argv) {
-  string graph = "/data/local/tmp/tensorflow_inception_graph.pb";
-  string init_ops_string = "";
-  string input_layer_string = "input:0";
-  string input_layer_shape_string = "1,224,224,3";
-  string input_layer_type_string = "float";
-  string input_layer_values_string = "";
-  string output_layer_string = "output:0";
-  string target_layer_string = "";
+  std::string graph = "/data/local/tmp/tensorflow_inception_graph.pb";
+  std::string init_ops_string = "";
+  std::string input_layer_string = "input:0";
+  std::string input_layer_shape_string = "1,224,224,3";
+  std::string input_layer_type_string = "float";
+  std::string input_layer_values_string = "";
+  std::string output_layer_string = "output:0";
+  std::string target_layer_string = "";
   int max_num_runs = 1000;
-  string max_time = "10.0";
-  string inference_delay = "-1.0";
-  string inter_benchmark_delay = "-1.0";
+  std::string max_time = "10.0";
+  std::string inference_delay = "-1.0";
+  std::string inter_benchmark_delay = "-1.0";
   int num_threads = -1;
-  string benchmark_name = "";
-  string output_prefix = "";
+  std::string benchmark_name = "";
+  std::string output_prefix = "";
   bool show_sizes = false;
   bool show_run_order = true;
   int run_order_limit = 0;
@@ -446,7 +447,7 @@ int Main(int argc, char** argv) {
       Flag("show_flops", &show_flops, "whether to estimate the model's FLOPs"),
       Flag("warmup_runs", &warmup_runs, "how many runs to initialize model"),
   };
-  string usage = Flags::Usage(argv[0], flag_list);
+  std::string usage = Flags::Usage(argv[0], flag_list);
   const bool parse_result = Flags::Parse(&argc, argv, flag_list);
 
   if (!parse_result) {
@@ -454,16 +455,19 @@ int Main(int argc, char** argv) {
     return -1;
   }
 
-  std::vector<string> init_ops = str_util::Split(init_ops_string, ',');
-  std::vector<string> input_layers = str_util::Split(input_layer_string, ',');
-  std::vector<string> input_layer_shapes =
+  std::vector<std::string> init_ops = str_util::Split(init_ops_string, ',');
+  std::vector<std::string> input_layers =
+      str_util::Split(input_layer_string, ',');
+  std::vector<std::string> input_layer_shapes =
       str_util::Split(input_layer_shape_string, ':');
-  std::vector<string> input_layer_types =
+  std::vector<std::string> input_layer_types =
       str_util::Split(input_layer_type_string, ',');
-  std::vector<string> input_layer_values =
+  std::vector<std::string> input_layer_values =
       str_util::Split(input_layer_values_string, ':');
-  std::vector<string> output_layers = str_util::Split(output_layer_string, ',');
-  std::vector<string> target_layers = str_util::Split(target_layer_string, ',');
+  std::vector<std::string> output_layers =
+      str_util::Split(output_layer_string, ',');
+  std::vector<std::string> target_layers =
+      str_util::Split(target_layer_string, ',');
   if ((input_layers.size() != input_layer_shapes.size()) ||
       (input_layers.size() != input_layer_types.size())) {
     LOG(ERROR) << "There must be the same number of items in --input_layer,"
@@ -552,9 +556,9 @@ int Main(int argc, char** argv) {
     CHECK(DataTypeFromString(input_layer_types[n], &input.data_type))
         << input_layer_types[n] << " was an invalid type";
 
-    std::vector<string> split_layer_shapes =
+    std::vector<std::string> split_layer_shapes =
         str_util::Split(input_layer_shapes[n], ',');
-    for (const string& layer_shape : split_layer_shapes) {
+    for (const std::string& layer_shape : split_layer_shapes) {
       int32_t tmp;
       CHECK(absl::SimpleAtoi(layer_shape, &tmp))
           << "Incorrect size string specified: " << input_layer_shapes[n];
@@ -568,11 +572,11 @@ int Main(int argc, char** argv) {
     }
     input.name = input_layers[n];
     if (n < input_layer_values.size()) {
-      std::vector<string> string_tokens =
+      std::vector<std::string> string_tokens =
           str_util::Split(input_layer_values[n], ',');
       input.initialization_values.clear();
       input.initialization_values.reserve(string_tokens.size());
-      for (const string& str_val : string_tokens) {
+      for (const std::string& str_val : string_tokens) {
         float val;
         CHECK(absl::SimpleAtof(str_val, &val))
             << "Incorrect initialization values string specified: "
@@ -641,14 +645,14 @@ int Main(int argc, char** argv) {
 
   if (show_flops) {
     int64_t total_flops;
-    std::unordered_map<string, int64_t> flops_by_op;
+    std::unordered_map<std::string, int64_t> flops_by_op;
     absl::Status flop_status = CalculateFlops(*graph_def, inputs, session.get(),
                                               &total_flops, &flops_by_op);
     if (!flop_status.ok()) {
       LOG(ERROR) << "FLOPs calculation failed with " << flop_status;
       return -1;
     }
-    string pretty_flops;
+    std::string pretty_flops;
     if (total_flops < 1000) {
       pretty_flops = absl::StrCat(total_flops, " FLOPs");
     } else if (total_flops < (1000 * 1000)) {

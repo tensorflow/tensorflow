@@ -1,3 +1,4 @@
+#include "xla/stream_executor/kernel_symbol_registry.h"
 /* Copyright 2023 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,14 +48,15 @@ __device__ __forceinline__ NT GpuShuffle(NT val, uint32_t idx,
 
 #pragma unroll
   for (uint32_t i = 0; i < SZ; i++) {
-    if constexpr (Type == ShflType::kSync)
+    if constexpr (Type == ShflType::kSync) {
       res.d[i] = __shfl_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::kUp)
+    } else if constexpr (Type == ShflType::kUp) {
       res.d[i] = __shfl_up_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::kDown)
+    } else if constexpr (Type == ShflType::kDown) {
       res.d[i] = __shfl_down_sync(allmsk, in.d[i], idx);
-    else if constexpr (Type == ShflType::kXor)
+    } else if constexpr (Type == ShflType::kXor) {
       res.d[i] = __shfl_xor_sync(allmsk, in.d[i], idx);
+    }
   }
   return res.v;
 }
@@ -184,7 +186,9 @@ struct TopK {
     }
     Reduce(tmp, WarpSize);
 
-    if (threadIdx.x % WarpSize != 0) return;
+    if (threadIdx.x % WarpSize != 0) {
+      return;
+    }
     int warp_id = threadIdx.x / WarpSize;
 #pragma unroll
     for (int i = 0; i < K; i++) {
@@ -198,14 +202,18 @@ struct TopK {
     constexpr uint32_t WarpSize = WAVEFRONT_SIZE;
     KVT tmp[K];
     // We only use one warp for this step.
-    if (threadIdx.x >= WarpSize) return;
+    if (threadIdx.x >= WarpSize) {
+      return;
+    }
     __syncthreads();
 #pragma unroll
     for (int i = 0; i < K; i++) {
       tmp[i] = buffer_[i * WarpSize + threadIdx.x];
     }
     Reduce(tmp, blockDim.x / WarpSize);
-    if (threadIdx.x != 0) return;
+    if (threadIdx.x != 0) {
+      return;
+    }
     for (int i = 0; i < num_outputs_; ++i) {
       keys[i] = tmp[i].key;
       idxs[i] = tmp[i].idx;
@@ -222,7 +230,9 @@ struct TopK {
 #pragma unroll
       for (int i = 0; i < K; i++) {
         KVT kv = GpuShuffle<ShflType::kDown>(tmp[i], offset);
-        if (lane_id >= offset) continue;
+        if (lane_id >= offset) {
+          continue;
+        }
         Push(tmp, kv);
       }
     }
@@ -285,10 +295,15 @@ __launch_bounds__(stream_executor::gpu::kTopKMaxThreadsPerBlock, 1) __global__
   GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                             \
       TopKKernelCuda_K##K_VAL##_##TYPE##_##VT, KERNEL_TRAIT(K_VAL, TYPE, VT), \
       stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {             \
-        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(  \
-            absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>),                     \
-            "topk_k" #K_VAL "_" #TYPE "_" #VT, arity);                        \
-      }));
+        return stream_executor::KernelLoaderSpec::                            \
+            CreateSerializableInProcessSymbolSpec(                            \
+                /*persistent_kernel_name=*/"topk_k" #K_VAL "_" #TYPE "_" #VT, \
+                absl::bit_cast<void*>(&Run<K_VAL, TYPE, VT>),                 \
+                "topk_k" #K_VAL "_" #TYPE "_" #VT, arity);                    \
+      }));                                                                    \
+  KERNEL_SYMBOL_REGISTRY_REGISTER_SYMBOL_STATICALLY(                          \
+      topk_k##K_VAL##_##TYPE##_##VT, stream_executor::cuda::kCudaPlatformId,  \
+      (&Run<K_VAL, TYPE, VT>));
 
 }  // namespace stream_executor::cuda
 

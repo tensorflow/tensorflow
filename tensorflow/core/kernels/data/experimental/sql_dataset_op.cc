@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -70,7 +73,7 @@ class SqlDatasetOp : public DatasetOpKernel {
     // TODO(b/64276826) Change this check when we add support for other
     // databases.
     OP_REQUIRES(ctx, driver_name == "sqlite",
-                errors::InvalidArgument(tensorflow::strings::Printf(
+                errors::InvalidArgument(absl::StrFormat(
                     "The database type, %s, is not supported by SqlDataset. "
                     "The set of supported databases is: {'sqlite'}.",
                     driver_name.c_str())));
@@ -82,8 +85,8 @@ class SqlDatasetOp : public DatasetOpKernel {
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, const string& driver_name,
-            const string& data_source_name, const string& query,
+    Dataset(OpKernelContext* ctx, const std::string& driver_name,
+            const std::string& data_source_name, const std::string& query,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
         : DatasetBase(DatasetContext(ctx)),
@@ -94,7 +97,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           output_shapes_(output_shapes) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(
           Iterator::Params{this, absl::StrCat(prefix, "::Sql")});
     }
@@ -107,7 +110,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override { return "SqlDatasetOp::Dataset"; }
+    std::string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
     absl::Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {

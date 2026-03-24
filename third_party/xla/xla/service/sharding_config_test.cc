@@ -19,20 +19,16 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_sharding.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 
 namespace xla {
 namespace {
 
 class ShardingConfigTest : public ::testing::Test {
  protected:
-  const Shape kShape = ShapeUtil::MakeShape(F32, {1024});
   const ShardingConfig kTestConfig{
       {{HloSharding::Manual()},
        {HloSharding::Replicate()},
-       {{},
-        {{HloSharding::Tile1D(kShape, 2)}, {HloSharding::Tile1D(kShape, 4)}}}}};
+       {{}, {{HloSharding::IotaTile({2})}, {HloSharding::IotaTile({4})}}}}};
 };
 
 TEST_F(ShardingConfigTest, ConfigToProtoToConfigMatchesOriginal) {

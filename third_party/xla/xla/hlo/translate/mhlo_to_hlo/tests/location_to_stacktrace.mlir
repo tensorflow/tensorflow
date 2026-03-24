@@ -1,4 +1,4 @@
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s 
 
 // Checks no locations
 
@@ -9,8 +9,6 @@
 // CHECK-NEXT: element_type: TOKEN
 // CHECK-NEXT: }
 // CHECK-NEXT: metadata {
-// CHECK-NEXT: }
-// CHECK: stack_frame_index {
 // CHECK-NEXT: }
 #loc = loc(unknown)
 module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
@@ -33,12 +31,7 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 // CHECK-NEXT: }
 // CHECK-NEXT: metadata {
 // CHECK-NEXT:   op_name: "name(anothername)"
-// CHECK-NEXT:   source_file: "file_name"
-// CHECK-NEXT:   source_line: 2
 // CHECK-NEXT:   stack_frame_id: 1
-// CHECK-NEXT:   source_end_line: 2
-// CHECK-NEXT:   source_column: 8
-// CHECK-NEXT:   source_end_column: 8
 // CHECK-NEXT: }
 
 // CHECK: stack_frame_index {
@@ -79,12 +72,7 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 // CHECK-NEXT: metadata {
 // CHECK-NEXT:   op_type: "atype"
 // CHECK-NEXT:   op_name: "name(anothername)"
-// CHECK-NEXT:   source_file: "file_name_2"
-// CHECK-NEXT:   source_line: 3
 // CHECK-NEXT:   stack_frame_id: 2
-// CHECK-NEXT:   source_end_line: 3
-// CHECK-NEXT:   source_column: 4
-// CHECK-NEXT:   source_end_column: 4
 // CHECK-NEXT: }
 
 // CHECK: stack_frame_index {

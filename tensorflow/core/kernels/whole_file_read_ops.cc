@@ -35,7 +35,7 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-static absl::Status ReadEntireFile(Env* env, const string& filename,
+static absl::Status ReadEntireFile(Env* env, const std::string& filename,
                                    T* contents) {
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
@@ -47,7 +47,7 @@ static absl::Status ReadEntireFile(Env* env, const string& filename,
 
 class WholeFileReader : public ReaderBase {
  public:
-  WholeFileReader(Env* env, const string& node_name)
+  WholeFileReader(Env* env, const std::string& node_name)
       : ReaderBase(absl::StrCat("WholeFileReader '", node_name, "'")),
         env_(env) {}
 
@@ -136,8 +136,8 @@ class WriteFileOp : public OpKernel {
                 errors::InvalidArgument(
                     "Contents tensor must be scalar, but had shape: ",
                     contents_input->shape().DebugString()));
-    const string& filename = filename_input->scalar<tstring>()();
-    const string dir(io::Dirname(filename));
+    const std::string& filename = filename_input->scalar<tstring>()();
+    const std::string dir(io::Dirname(filename));
     if (!context->env()->FileExists(dir).ok()) {
       OP_REQUIRES_OK(context, context->env()->RecursivelyCreateDir(dir));
     }

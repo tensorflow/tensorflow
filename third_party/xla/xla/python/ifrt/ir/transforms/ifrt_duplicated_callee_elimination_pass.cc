@@ -89,7 +89,7 @@ void IfrtDuplicatedCalleeEliminationPass::runOnOperation() {
   mlir::SymbolTableCollection symbol_table;
   mlir::DenseMap<mlir::func::FuncOp, mlir::SymbolRefAttr, FuncInfo>
       unique_funcs;
-  getOperation().walk([&](xla::ifrt::CallOp call_op) {
+  getOperation().walk([&](CallOp call_op) {
     mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
     auto [it, inserted] =
         unique_funcs.insert({callee, call_op.getCalleeAttr()});

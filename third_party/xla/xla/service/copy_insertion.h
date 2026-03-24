@@ -65,17 +65,13 @@ class CopyInsertion : public HloModulePass {
   // buffer.
   explicit CopyInsertion(
       const AliasInfo* alias_info,
-      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit)
+      int64_t use_region_based_live_range_analysis = kUseRegionAnalysisLimit,
+      std::function<bool(const HloInstruction* copy)> should_skip_removal =
+          nullptr)
       : alias_info_(alias_info),
+        should_skip_removal_(should_skip_removal),
         use_region_based_live_range_analysis_(
             use_region_based_live_range_analysis) {}
-
-  // Run the pass on the given module. Returns whether the module was changed
-  // (copies were inserted).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Try to remove as many copies from the module as possible without
   // introducing live range interference. Only copy instructions that are
@@ -125,6 +121,15 @@ class CopyInsertion : public HloModulePass {
   // Backend specific information about whether an instruction can share buffer
   // with its operand.
   const AliasInfo* alias_info_;
+
+  // Function to determine whether a copy should be skipped during removal.
+  std::function<bool(const HloInstruction* copy)> should_skip_removal_;
+
+  // Run the pass on the given module. Returns whether the module was changed
+  // (copies were inserted).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   absl::Status AddCopiesToResolveInterference(

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
@@ -638,5 +639,26 @@ ENTRY main {
   EXPECT_TRUE(in_schedule(constant));
 }
 
+TEST_F(HloScheduleTest, UpdateScheduleWithReversedControlDependencies) {
+  const std::string module_str = R"(
+HloModule m, is_scheduled=true, entry_computation_layout={((f32[], f32[]))->f32[]}
+
+ENTRY %test (arg.0: (f32[], f32[])) -> f32[] {
+  %arg.0 = (f32[], f32[]) parameter(0)
+  %gte.3 = f32[] get-tuple-element(%arg.0), index=0
+  %gte.1 = f32[] get-tuple-element(%arg.0), index=1
+  %copy.0 = f32[] copy(%gte.1), control-predecessors={%arg.0}
+  ROOT %add.0 = f32[] add(%copy.0, %gte.3)
+}
+)";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                       ParseAndReturnVerifiedModule(module_str));
+  auto gte = module->entry_computation()->GetInstructionWithName("gte.3");
+  auto copy = module->entry_computation()->GetInstructionWithName("copy.0");
+  ASSERT_OK(copy->AddControlDependencyTo(gte));
+  ASSERT_IS_NOT_OK(module->schedule().Verify());
+  ASSERT_OK(module->schedule().Update());
+  ASSERT_OK(module->schedule().Verify());
+}
 }  // namespace
 }  // namespace xla

@@ -26,7 +26,6 @@ limitations under the License.
 #include "oneapi/dnnl/dnnl_types.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
-#include "xla/service/cpu/runtime_lightweight_check.h"
 
 // Eigen Tensor must come after `onednn_threadpool.h`
 #include "unsupported/Eigen/CXX11/Tensor"  // NOLINT

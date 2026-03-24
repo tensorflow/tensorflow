@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/triton_tiling_propagation.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -260,7 +259,9 @@ TensorIterationSpec DimensionOrder::ToTensorIterationSpec() const {
 
     // We should not remove the only fragment in a dimension, because if it is
     // removed, the dimension will be removed from the TensorIterationSpec.
-    if (dim_spec.size() <= 1) continue;
+    if (dim_spec.size() <= 1) {
+      continue;
+    }
 
     TensorIterationSpec::DimIterationSpec filtered_dim_spec;
     absl::c_copy_if(dim_spec, std::back_inserter(filtered_dim_spec),
@@ -575,9 +576,8 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
     std::vector<int>& dst = dst_dim_fragment_orders[dim_index];
     dst.reserve(dim_sequence.size());
     for (const int src : dim_sequence) {
-      std::copy(src_to_dst[&src_fragments_order[src]].cbegin(),
-                src_to_dst[&src_fragments_order[src]].cend(),
-                std::back_inserter(dst));
+      absl::c_copy(src_to_dst[&src_fragments_order[src]],
+                   std::back_inserter(dst));
     }
   }
 
@@ -992,11 +992,29 @@ bool CanNotBeFusedIntoAUser(const HloInstruction& hlo) {
                           hlo.users()[0]->opcode() == HloOpcode::kTuple);
 }
 
+// Maximum contracting dimension size for which slice fusion is allowed when
+// the operand has multiple users.
+constexpr int kMaxContractingDimSizeForSliceFusion = 1024;
+
 // Let input and output data volumes of a fusion grow by small amounts.
 constexpr int kIoToleranceBytes = 1024;
 
+// Returns true if all users of the given operand are kSlice operations
+// with the same shape as `slice_shape`.
+bool AllUsersAreSlicesWithSameShape(const HloInstruction& operand,
+                                    const Shape& slice_shape) {
+  for (const HloInstruction* user : operand.users()) {
+    if (user->opcode() != HloOpcode::kSlice ||
+        !ShapeUtil::SameDimensions(user->shape(), slice_shape)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Tells that fusing an instruction as an input is efficient.
-bool IsInputWorthFusing(const HloInstruction& hlo) {
+bool IsInputWorthFusing(const HloInstruction& hlo,
+                        const DotProperties& properties) {
   std::optional<int64_t> input_minus_output_bytes = InputMinusOutputBytes(hlo);
   if (!input_minus_output_bytes.has_value()) {
     return false;
@@ -1011,6 +1029,26 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
       hlo_query::AllOperandsAreParametersOrConstants(hlo)) {
     return true;
   }
+
+  // Explanation:
+  // * Operand user count > 1 - if the producer of the slice has a single user
+  //   the slice can be fused into the producer instead of here.
+  // * contracting_dim_size < 1024 - fusing slices disables split-K rewriter,
+  //   which may outweigh the benefit of fusing it in the first place. Small
+  //   contracting dimension almost never benefits from splitting it, so we
+  //   allow the fusion.
+  // * AllUsersAreSlicesWithSameShape - slices of the same shape can be
+  //   fused into the producer by the multi output fusion pass.
+  //
+  // TODO: b/393299275 - Remove the contracting dim size restriction once the
+  // new emitter lands and we can support slices in contracting dimension with
+  // splits.
+  if (hlo.opcode() == HloOpcode::kSlice && hlo.operand(0)->user_count() > 1 &&
+      properties.contracting_dim_size <= kMaxContractingDimSizeForSliceFusion &&
+      !AllUsersAreSlicesWithSameShape(*hlo.operand(0), hlo.shape())) {
+    return true;
+  }
+
   const bool enable_subchannel_dequantisation_fusion =
       hlo.GetModule()
           ->config()
@@ -1018,8 +1056,8 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
           .xla_gpu_experimental_enable_subchannel_dequantisation_fusion();
   if (hlo.opcode() == HloOpcode::kMultiply) {
     return enable_subchannel_dequantisation_fusion &&
-           IsInputWorthFusing(*hlo.operand(0)) &&
-           IsInputWorthFusing(*hlo.operand(1));
+           IsInputWorthFusing(*hlo.operand(0), properties) &&
+           IsInputWorthFusing(*hlo.operand(1), properties);
   }
   return hlo_query::AllOperandsAreParametersOrConstantsWithSingleUser(hlo);
 }
@@ -1033,19 +1071,6 @@ bool IsOutputWorthFusing(const HloInstruction& hlo) {
 
   return CanNotBeFusedIntoAUser(hlo) ||
          input_minus_output_bytes.value() >= -kIoToleranceBytes;
-}
-
-FusionDecision IsConversionWorthFusing(const HloInstruction& input,
-                                       se::GpuComputeCapability gpu_version) {
-  // TODO(b/266862494): Can pick up almost any
-  // convert, but if it's reducing the data volume it should rather be fused
-  // to the output of the producer kernel. However not all operations support
-  // output fusion - then it should be fused here anyway!
-  if (ShapeUtil::ByteSizeOf(input.operand(0)->shape()) >
-      ShapeUtil::ByteSizeOf(input.shape())) {
-    return FusionDecision::Forbid("Narrowing conversion.");
-  }
-  return FusionDecision::Allow();
 }
 
 }  // namespace
@@ -1139,7 +1164,7 @@ GetPropagatedDimOrdersAndRequirementsIfProfitablyFusible(
         }
       }
     }
-    if (!accepted && !IsInputWorthFusing(hlo)) {
+    if (!accepted && !IsInputWorthFusing(hlo, properties)) {
       return FusionDecision::Forbid(
           "Not obviously profitable to fuse as input.");
     }

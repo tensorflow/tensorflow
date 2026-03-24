@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,113 +16,650 @@ limitations under the License.
 #ifndef XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_
 #define XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <utility>
 
-#include "absl/container/inlined_vector.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/types/span.h"
-#include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/shape.h"
-#include "xla/xla_data.pb.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "xla/backends/cpu/runtime/work_queue.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
+#include "xla/tsl/framework/convolution/eigen_spatial_convolutions.h"  // IWYU pragma: keep
 
-namespace xla::cpu {
+#define EIGEN_USE_THREADS
+#include "Eigen/Core"
+#include "unsupported/Eigen/CXX11/Tensor"
 
-// Allocation slices of the convolution operation.
-struct ConvolutionSlices {
-  BufferAllocation::Slice input_buffer;
-  Shape input_shape;
+namespace xla::cpu::internal {
 
-  BufferAllocation::Slice kernel_buffer;
-  Shape kernel_shape;
+// Done callback is called when the Convolution computation is complete.
+using DoneCallback = absl::AnyInvocable<void()>;
 
-  BufferAllocation::Slice output_buffer;
-  Shape output_shape;
-};
+template <typename ScalarType>
+void EigenConv2D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
+                 const ScalarType* lhs, const ScalarType* rhs,
+                 Eigen::Index input_batch, Eigen::Index input_x,
+                 Eigen::Index input_y, Eigen::Index input_channels,
+                 Eigen::Index kernel_x, Eigen::Index kernel_y,
+                 Eigen::Index kernel_channels, Eigen::Index kernel_filters,
+                 Eigen::Index output_x, Eigen::Index output_y,
+                 Eigen::Index x_stride, Eigen::Index y_stride,
+                 Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+                 Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+                 Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+                 Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,
+                 Eigen::Index feature_group_count, DoneCallback done);
 
-// Returns buffer uses of the dot operation.
-absl::InlinedVector<BufferUse, 4> ConvolutionBufferUses(
-    const ConvolutionSlices& slices);
+template <typename ScalarType>
+void EigenConv3D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
+                 const ScalarType* lhs, const ScalarType* rhs,
+                 Eigen::Index input_batch, Eigen::Index input_x,
+                 Eigen::Index input_y, Eigen::Index input_z,
+                 Eigen::Index input_channels, Eigen::Index kernel_x,
+                 Eigen::Index kernel_y, Eigen::Index kernel_z,
+                 Eigen::Index kernel_channels, Eigen::Index kernel_filters,
+                 Eigen::Index output_x, Eigen::Index output_y,
+                 Eigen::Index output_z, Eigen::Index x_stride,
+                 Eigen::Index y_stride, Eigen::Index z_stride,
+                 Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+                 Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+                 Eigen::Index padding_z_before, Eigen::Index padding_z_after,
+                 Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+                 Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,
+                 Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,
+                 Eigen::Index feature_group_count, DoneCallback done);
 
-// Convolution dimensions in canonical form inferred from the operands shapes
-// and convolution parameters.
-struct ConvolutionCanonicalDims {
-  // A helper struct to store the x, y and z dimensions of a tensor, introduced
-  // for readability. In case of 2D convolution, only the x and y dimensions are
-  // used and z is set to 0.
-  struct Dims {
-    explicit Dims(absl::Span<const int64_t> dims);
+//===----------------------------------------------------------------------===//
+// Convolution 2D implementation details.
+//===----------------------------------------------------------------------===//
 
-    template <typename Sink>
-    friend void AbslStringify(Sink& sink, const Dims& d);
+// Returns in 'out_data' (assumes to be zero-initialized) image patch in storage
+// order (width, height, depth), constructed from patches in 'conv_matrix',
+// which is required to be in storage order (in_width * in_height, filter_width,
+// filter_height, out_depth).
+// Based on TF implementation by Yangqing Jia (jiayq).
+// TODO(adambanas): The original implementation implicitly rotates the kernel by
+// 180 degrees, but to be backwards compatible, we cannot do that in XLA. This
+// results in counterintuitive operations on conv_matrix, which is also 15-20%
+// slower. Try alternative approaches (e.g. rotate kernel before matrix
+// multiplication in the calling function).
+template <typename T>
+void Pack2DPatches(const T* conv_matrix, const int depth, const int height,
+                   const int width, const int filter_h, const int filter_w,
+                   const int pad_top, const int pad_bottom, const int pad_left,
+                   const int pad_right, const int stride_h, const int stride_w,
+                   T* __restrict out_im_data) {
+  int w_patches_number =
+      (width + filter_w - pad_left - pad_right - 2) / stride_w + 1;
+  int h_patches_number =
+      (height + filter_h - pad_top - pad_bottom - 2) / stride_h + 1;
 
-    int64_t rank;
-    int64_t x;
-    int64_t y;
-    int64_t z;
-  };
+  const int filter_spatial_size = filter_h * filter_w;
 
-  template <typename Sink>
-  friend void AbslStringify(Sink& sink, const ConvolutionCanonicalDims& d);
+  int w_patch_begin = pad_left - filter_w + 1;
+  conv_matrix += depth * (filter_spatial_size - 1);
+  for (int w = 0; w < w_patches_number; ++w) {
+    int h_patch_begin = pad_top - filter_h + 1;
+    for (int h = 0; h < h_patches_number; ++h) {
+      // This loop body covers 1 output patch, at all depths, accounting for
+      // padding. The next line is always a pointer to the first element of the
+      // new output patch. Notice in case of less-than-full padding, the pointer
+      // can point to an element outside the image, but such elements will be
+      // skipped by the inner if (so no write occurs).
+      T* out_im_patch_data =
+          out_im_data + (w_patch_begin * height + h_patch_begin) * depth;
 
-  size_t convolution_rank() const { return input_dims.rank; }
+      for (int iw = w_patch_begin; iw < w_patch_begin + filter_w; ++iw) {
+        for (int ih = h_patch_begin; ih < h_patch_begin + filter_h; ++ih) {
+          // This loop body covers 1 spatial point with coordinates (iw, ih)
+          // in the output buffer, at all depths
+          if (iw >= 0 && iw < width && ih >= 0 && ih < height) {
+            for (int i = 0; i < depth; ++i) {
+              out_im_patch_data[i] += conv_matrix[i];
+            }
+          }
+          out_im_patch_data += depth;
+          conv_matrix -= depth;
+        }
+        // Jump over remaining number of depth.
+        out_im_patch_data += depth * (height - filter_h);
+      }
 
-  int64_t input_batch;
-  Dims input_dims;
-  int64_t input_channels;
-
-  Dims kernel_dims;
-  int64_t kernel_channels;
-  int64_t kernel_filters;
-
-  Dims output_dims;
-
-  Dims strides;
-  Dims padding_before;
-  Dims padding_after;
-  Dims base_dilation;
-  Dims window_dilation;
-
-  int64_t feature_group_count;
-};
-
-// Get convolution dimensions in canonical form inferred from the operands
-// shapes and convolution parameters.
-absl::StatusOr<ConvolutionCanonicalDims> GetConvolutionCanonicalDims(
-    const ConvolutionSlices& slices, const ConvolutionDimensionNumbers& dnums,
-    const Window& window, int64_t feature_group_count);
-
-template <typename Sink>
-void AbslStringify(Sink& sink, const ConvolutionCanonicalDims::Dims& d) {
-  switch (d.rank) {
-    case 2:
-      absl::Format(&sink, "[%d,%d]", d.x, d.y);
-      break;
-    case 3:
-      absl::Format(&sink, "[%d,%d,%d]", d.x, d.y, d.z);
-      break;
-    default:
-      absl::Format(&sink, "[invalid rank %d]", d.rank);
+      conv_matrix += 2 * depth * filter_spatial_size;
+      h_patch_begin += stride_h;
+    }
+    w_patch_begin += stride_w;
   }
 }
 
-template <typename Sink>
-void AbslStringify(Sink& sink, const ConvolutionCanonicalDims& d) {
-  absl::Format(&sink,
-               "convolution_rank=%d input_batch=%d input_dims=%v "
-               "input_channels=%d kernel_dims=%v kernel_channels=%d "
-               "kernel_filters=%d output_dims=%v strides=%v padding_before=%v "
-               "padding_after=%v base_dilation=%v window_dilation=%v "
-               "feature_group_count=%d",
-               d.convolution_rank(), d.input_batch, d.input_dims,
-               d.input_channels, d.kernel_dims, d.kernel_channels,
-               d.kernel_filters, d.output_dims, d.strides, d.padding_before,
-               d.padding_after, d.base_dilation, d.window_dilation,
-               d.feature_group_count);
+template <typename ScalarType>
+bool CanUseCustomTransposedConv(
+    Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y,
+    Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_filters,
+    Eigen::Index output_x, Eigen::Index output_y, Eigen::Index x_stride,
+    Eigen::Index y_stride, Eigen::Index lhs_x_dilation,
+    Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
+    Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count) {
+  // Total spatial dimensions.
+  const int input_image_size = input_x * input_y;
+  const int kernel_total_size = kernel_x * kernel_y * kernel_filters;
+
+  // Don't use custom transposed convolutions with intermediate buffers.
+  constexpr auto kMaxConvMatrixSize = static_cast<size_t>(8) << 30;  // 8 GiB
+
+  // Intermediate buffer (convolution matrix)
+  const size_t buffer_size = input_batch * input_image_size * kernel_total_size;
+  if (buffer_size * sizeof(ScalarType) > kMaxConvMatrixSize) {
+    return false;
+  }
+
+  return (lhs_x_dilation > 1 || lhs_y_dilation > 1) && rhs_x_dilation == 1 &&
+         rhs_y_dilation == 1 && feature_group_count == 1 && x_stride == 1 &&
+         y_stride == 1;
 }
 
-}  // namespace xla::cpu
+// This implementation is based on TF algorithm with parallel contraction.
+// TODO(adambanas): There are other variants of this algorithm, 10% performance
+// improvement was observed on 1D case when not using parallel contraction.
+// Explore these alternatives.
+// TODO(adambanas): Add support for feature group count.
+template <typename ScalarType>
+void EigenTransposedConv2D(
+    const Eigen::ThreadPoolDevice* device, ScalarType* out,
+    const ScalarType* lhs, const ScalarType* rhs, Eigen::Index input_batch,
+    Eigen::Index input_x, Eigen::Index input_y, Eigen::Index input_channels,
+    Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_channels,
+    Eigen::Index kernel_filters, Eigen::Index output_x, Eigen::Index output_y,
+    Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+    Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+    Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+    DoneCallback done) {
+  // Grouped convolutions are not supported yet.
+  CHECK(kernel_channels == input_channels);
+
+  using TensorMap2D =
+      Eigen::TensorMap<Eigen::Tensor<ScalarType, 2, Eigen::RowMajor>,
+                       Eigen::Unaligned>;
+  using ConstTensorMap3D =
+      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 3, Eigen::RowMajor>,
+                       Eigen::Aligned>;
+  using ConstTensorMap2D =
+      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 2, Eigen::RowMajor>,
+                       Eigen::Aligned>;
+
+  // Total spatial dimensions.
+  const int input_image_size = input_x * input_y;
+  const int output_image_size = output_x * output_y;
+  // Kernel dimensions per input channel.
+  const int kernel_total_size = kernel_x * kernel_y * kernel_filters;
+
+  // Intermediate buffer (convolution matrix)
+  const size_t buffer_size = input_batch * input_image_size * kernel_total_size;
+
+  auto conv_matrix = std::make_unique<ScalarType[]>(buffer_size);
+  ScalarType* conv_matrix_data = conv_matrix.get();
+
+  // Initialize output to zero.
+  ScalarType* out_data = out;
+  std::fill(out_data,
+            out_data + input_batch * output_image_size * kernel_filters,
+            ScalarType(0.0f));
+
+  // Initialize contraction dims (we need to transpose 'B' below, the dimension
+  // we need to contract is 'kernel_channels').
+  Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> contract_dims = {
+      Eigen::IndexPair<Eigen::DenseIndex>(1, 1)};
+
+  // Compute intermediate results (convolution matrix) into conv_matrix.
+  TensorMap2D C(conv_matrix_data, input_batch * input_image_size,
+                kernel_total_size);
+
+  ConstTensorMap2D A(lhs, input_batch * input_image_size, input_channels);
+  ConstTensorMap3D B(rhs, kernel_x * kernel_y, kernel_channels, kernel_filters);
+
+  const int input_offset = input_image_size * kernel_total_size;
+  const int output_offset = output_image_size * kernel_filters;
+
+  // Pack the calculated patches into the output buffer.
+  // NOTE: The ownership of the conv_matrix is transferred to the lambda without
+  // data copy or reallocation. Thanks to that, conv_matrix_data pointer remains
+  // valid, and that is important because 'C' matrix is referencing it.
+  auto pack_patches = [=, conv_matrix = std::move(conv_matrix),
+                       done = std::move(done)]() mutable {
+    // Using local pointers to buffers, because lambda is not mutable.
+    const ScalarType* conv_matrix_data = conv_matrix.get();
+    ScalarType* local_out_data = out_data;
+
+    // TODO(adambanas): Run this part in parallel.
+    for (int image_id = 0; image_id < input_batch; ++image_id) {
+      Pack2DPatches<ScalarType>(
+          conv_matrix_data, kernel_filters, output_y, output_x, kernel_y,
+          kernel_x, padding_y_before, padding_y_after, padding_x_before,
+          padding_x_after, lhs_y_dilation, lhs_x_dilation, local_out_data);
+
+      conv_matrix_data += input_offset;
+      local_out_data += output_offset;
+    }
+
+    // Signal completion of the work once the patches are packed.
+    done();
+  };
+
+  // Molds the output of the contraction into the shape expected by packing
+  // algorithm:
+  // - the minor dimension (dims[1]): the patch values to be packed; contiguous
+  //   in memory
+  // - the major dimension (dims[0]): everything else
+  Eigen::DSizes<Eigen::Index, 2> post_contract_dims;
+  post_contract_dims[0] = input_batch * input_image_size;
+  post_contract_dims[1] = kernel_total_size;
+
+  if (device != nullptr) {
+    C.device(*device, std::move(pack_patches)) =
+        A.contract(B, contract_dims).reshape(post_contract_dims);
+  } else {
+    C = A.contract(B, contract_dims).reshape(post_contract_dims);
+    pack_patches();
+  }
+}
+
+// Algorithm that works for all types of 2D convolutions. Even though it works
+// for transposed convolutions, the custom algorithm should be used whenever
+// applicable, because it is faster.
+template <bool is_grouped, typename ScalarType>
+void EigenGenericConv2D(
+    const Eigen::ThreadPoolDevice* device, ScalarType* out,
+    const ScalarType* lhs, const ScalarType* rhs, Eigen::Index input_batch,
+    Eigen::Index input_x, Eigen::Index input_y, Eigen::Index input_channels,
+    Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_channels,
+    Eigen::Index kernel_filters, Eigen::Index output_x, Eigen::Index output_y,
+    Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index padding_x_before,
+    Eigen::Index padding_x_after, Eigen::Index padding_y_before,
+    Eigen::Index padding_y_after, Eigen::Index lhs_x_dilation,
+    Eigen::Index lhs_y_dilation, Eigen::Index rhs_x_dilation,
+    Eigen::Index rhs_y_dilation, Eigen::Index feature_group_count,
+    DoneCallback done) {
+  // For non-grouped convolutions, we can optimize Eigen expressions and avoid
+  // introducing an extra dimension of size `1`.
+  if constexpr (!is_grouped) {
+    DCHECK_EQ(feature_group_count, 1) << "Expected feature group count to be 1";
+  }
+
+  const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
+                         Eigen::Aligned>
+      input(lhs, input_batch, input_x, input_y, input_channels);
+
+  const Eigen::TensorMap<Eigen::Tensor<const ScalarType, 4, Eigen::RowMajor>,
+                         Eigen::Aligned>
+      kernel(rhs, kernel_x, kernel_y, kernel_channels, kernel_filters);
+
+  Eigen::TensorMap<Eigen::Tensor<ScalarType, 4, Eigen::RowMajor>,
+                   Eigen::Aligned>
+      output(out, input_batch, output_x, output_y, kernel_filters);
+
+  Eigen::array<Eigen::IndexPair<Eigen::Index>, 1> contract_dims;
+  contract_dims[0] = Eigen::IndexPair<Eigen::Index>(1, 0);
+
+  Eigen::DSizes<Eigen::Index, 5> input_reshaped_dims;
+  input_reshaped_dims[0] = input_batch;
+  input_reshaped_dims[1] = input_x;
+  input_reshaped_dims[2] = input_y;
+  input_reshaped_dims[3] = feature_group_count;
+  input_reshaped_dims[4] = input_channels / feature_group_count;
+
+  Eigen::DSizes<Eigen::Index, 5> output_reshaped_dims;
+  output_reshaped_dims[0] = input_batch;
+  output_reshaped_dims[1] = output_x;
+  output_reshaped_dims[2] = output_y;
+  output_reshaped_dims[3] = feature_group_count;
+  output_reshaped_dims[4] = kernel_filters / feature_group_count;
+
+  // Molds the output of the patch extraction code into a 2d tensor:
+  // - the first dimension (dims[0]): the patch values to be multiplied with the
+  //   kernels
+  // - the second dimension (dims[1]): everything else
+  Eigen::DSizes<Eigen::Index, 2> pre_contract_dims;
+  pre_contract_dims[0] = output_y * output_x * input_batch;
+  pre_contract_dims[1] = kernel_channels * kernel_y * kernel_x;
+
+  // Molds the output of the contraction into the shape expected by the user:
+  Eigen::DSizes<Eigen::Index, 4> post_contract_dims;
+  post_contract_dims[0] = input_batch;
+  post_contract_dims[1] = output_x;
+  post_contract_dims[2] = output_y;
+  post_contract_dims[3] = kernel_filters / feature_group_count;
+
+  // Kernel dimensions for non-grouped convolution.
+  Eigen::DSizes<Eigen::Index, 2> kernel_dims;
+  kernel_dims[0] = kernel_channels * kernel_y * kernel_x;
+  kernel_dims[1] = kernel_filters;
+
+  // Kernel dimensions for grouped convolution.
+  Eigen::DSizes<Eigen::Index, 3> kernel_reshaped_dims;
+  kernel_reshaped_dims[0] = kernel_channels * kernel_y * kernel_x;
+  kernel_reshaped_dims[1] = feature_group_count;
+  kernel_reshaped_dims[2] = kernel_filters / feature_group_count;
+
+  // IMPORTANT: Below in `convolve_group` and `convolve` lambdas, the row and
+  // column dimensions must be flipped when passed to Eigen.
+
+  // Constructs convolution and output expressions for a given group index.
+  auto convolve_group = [=](int64_t i) {
+    auto convolved =
+        input.reshape(input_reshaped_dims)
+            .chip(i, 3)
+            .extract_image_patches(
+                kernel_y, kernel_x, y_stride, x_stride, rhs_y_dilation,
+                rhs_x_dilation, lhs_y_dilation, lhs_x_dilation,
+                padding_y_before, padding_y_after, padding_x_before,
+                padding_x_after, static_cast<ScalarType>(0.0f))
+            .reshape(pre_contract_dims)
+            .contract(kernel.reshape(kernel_reshaped_dims).chip(i, 1),
+                      contract_dims)
+            .reshape(post_contract_dims);
+    auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 3);
+    return std::make_pair(output_reshaped, convolved);
+  };
+
+  // Constructs convolution and output expressions for full input.
+  auto convolve = [=] {
+    auto convolved =
+        input
+            .extract_image_patches(
+                kernel_y, kernel_x, y_stride, x_stride, rhs_y_dilation,
+                rhs_x_dilation, lhs_y_dilation, lhs_x_dilation,
+                padding_y_before, padding_y_after, padding_x_before,
+                padding_x_after, static_cast<ScalarType>(0.0f))
+            .reshape(pre_contract_dims)
+            .contract(kernel.reshape(kernel_dims), contract_dims)
+            .reshape(post_contract_dims);
+    return std::make_pair(output, convolved);
+  };
+
+  // For non-grouped convolutions, we need to execute only one Eigen expression.
+  if constexpr (!is_grouped) {
+    auto [output, convolved] = convolve();
+
+    if (device != nullptr) {
+      output.device(*device, std::move(done)) = convolved;
+    } else {
+      output = convolved;
+      done();
+    }
+
+    return;
+  }
+
+  // For grouped convolutions, we need to execute multiple Eigen expressions and
+  // we might use thread pool to run them concurrently.
+  if (device != nullptr) {
+    // Although we schedule at most one tasks for each thread, individual
+    // convolution might also schedule more tasks into the same thread pool.
+    auto max_tasks = static_cast<Eigen::Index>(device->numThreads());
+    auto task_size = Eigen::numext::div_ceil(feature_group_count, max_tasks);
+    auto num_tasks = Eigen::numext::div_ceil(feature_group_count, task_size);
+
+    // Signal done callback when all feature groups are done.
+    tsl::CountDownAsyncValueRef<tsl::Chain> count_down(feature_group_count);
+    count_down.AsPtr().AndThen([done = std::move(done)]() mutable { done(); });
+
+    Worker::Parallelize(
+        device->getPool(), /*num_workers=*/num_tasks, num_tasks,
+        [=](Eigen::Index task_index) {
+          Eigen::Index start = task_index * task_size;
+          Eigen::Index end = std::min(start + task_size, feature_group_count);
+          for (Eigen::Index i = start; i < end; ++i) {
+            auto on_done = [count_down]() mutable { count_down.CountDown(); };
+            auto [output, convolved] = convolve_group(i);
+            output.device(*device, std::move(on_done)) = convolved;
+          }
+        });
+
+  } else {
+    // Convolve all feature groups sequentially in the caller thread.
+    for (Eigen::Index i = 0; i < feature_group_count; ++i) {
+      auto [output, convolved] = convolve_group(i);
+      output = convolved;
+    }
+    done();
+  }
+}
+
+template <typename ScalarType>
+void EigenConv2D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
+                 const ScalarType* lhs, const ScalarType* rhs,
+                 Eigen::Index input_batch, Eigen::Index input_x,
+                 Eigen::Index input_y, Eigen::Index input_channels,
+                 Eigen::Index kernel_x, Eigen::Index kernel_y,
+                 Eigen::Index kernel_channels, Eigen::Index kernel_filters,
+                 Eigen::Index output_x, Eigen::Index output_y,
+                 Eigen::Index x_stride, Eigen::Index y_stride,
+                 Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+                 Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+                 Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+                 Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,
+                 Eigen::Index feature_group_count, DoneCallback done) {
+  if (CanUseCustomTransposedConv<ScalarType>(
+          input_batch, input_x, input_y, kernel_x, kernel_y, kernel_filters,
+          output_x, output_y, x_stride, y_stride, lhs_x_dilation,
+          lhs_y_dilation, rhs_x_dilation, rhs_y_dilation,
+          feature_group_count)) {
+    EigenTransposedConv2D(device, out, lhs, rhs, input_batch, input_x, input_y,
+                          input_channels, kernel_x, kernel_y, kernel_channels,
+                          kernel_filters, output_x, output_y, padding_x_before,
+                          padding_x_after, padding_y_before, padding_y_after,
+                          lhs_x_dilation, lhs_y_dilation, std::move(done));
+    return;
+  }
+
+  if (feature_group_count == 1) {
+    EigenGenericConv2D</*is_grouped=*/false>(
+        device, out, lhs, rhs, input_batch, input_x, input_y, input_channels,
+        kernel_x, kernel_y, kernel_channels, kernel_filters, output_x, output_y,
+        x_stride, y_stride, padding_x_before, padding_x_after, padding_y_before,
+        padding_y_after, lhs_x_dilation, lhs_y_dilation, rhs_x_dilation,
+        rhs_y_dilation, feature_group_count, std::move(done));
+
+  } else {
+    EigenGenericConv2D</*is_grouped=*/true>(
+        device, out, lhs, rhs, input_batch, input_x, input_y, input_channels,
+        kernel_x, kernel_y, kernel_channels, kernel_filters, output_x, output_y,
+        x_stride, y_stride, padding_x_before, padding_x_after, padding_y_before,
+        padding_y_after, lhs_x_dilation, lhs_y_dilation, rhs_x_dilation,
+        rhs_y_dilation, feature_group_count, std::move(done));
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Convolution 3D implementation details.
+//===----------------------------------------------------------------------===//
+
+template <typename ScalarType>
+void EigenConv3D(const Eigen::ThreadPoolDevice* device, ScalarType* out,
+                 const ScalarType* lhs, const ScalarType* rhs,
+                 Eigen::Index input_batch, Eigen::Index input_x,
+                 Eigen::Index input_y, Eigen::Index input_z,
+                 Eigen::Index input_channels, Eigen::Index kernel_x,
+                 Eigen::Index kernel_y, Eigen::Index kernel_z,
+                 Eigen::Index kernel_channels, Eigen::Index kernel_filters,
+                 Eigen::Index output_x, Eigen::Index output_y,
+                 Eigen::Index output_z, Eigen::Index x_stride,
+                 Eigen::Index y_stride, Eigen::Index z_stride,
+                 Eigen::Index padding_x_before, Eigen::Index padding_x_after,
+                 Eigen::Index padding_y_before, Eigen::Index padding_y_after,
+                 Eigen::Index padding_z_before, Eigen::Index padding_z_after,
+                 Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,
+                 Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,
+                 Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,
+                 Eigen::Index feature_group_count, DoneCallback done) {
+  using ConstTType =
+      Eigen::TensorMap<Eigen::Tensor<const ScalarType, 5, Eigen::RowMajor>,
+                       Eigen::Aligned>;
+  const ConstTType input(lhs, input_batch, input_x, input_y, input_z,
+                         input_channels);
+
+  const ConstTType kernel(rhs, kernel_x, kernel_y, kernel_z, kernel_channels,
+                          kernel_filters);
+
+  Eigen::TensorMap<Eigen::Tensor<ScalarType, 5, Eigen::RowMajor>,
+                   Eigen::Aligned>
+      output(out, input_batch, output_x, output_y, output_z, kernel_filters);
+
+  Eigen::DSizes<Eigen::Index, 6> input_reshaped_dims;
+  input_reshaped_dims[0] = input_batch;
+  input_reshaped_dims[1] = input_x;
+  input_reshaped_dims[2] = input_y;
+  input_reshaped_dims[3] = input_z;
+  input_reshaped_dims[4] = feature_group_count;
+  input_reshaped_dims[5] = input_channels / feature_group_count;
+
+  Eigen::DSizes<Eigen::Index, 6> output_reshaped_dims;
+  output_reshaped_dims[0] = input_batch;
+  output_reshaped_dims[1] = output_x;
+  output_reshaped_dims[2] = output_y;
+  output_reshaped_dims[3] = output_z;
+  output_reshaped_dims[4] = feature_group_count;
+  output_reshaped_dims[5] = kernel_filters / feature_group_count;
+
+  Eigen::array<Eigen::IndexPair<Eigen::Index>, 1> contract_dims;
+  contract_dims[0] = Eigen::IndexPair<Eigen::Index>(1, 0);
+
+  // Molds the output of the patch extraction code into a 2d tensor:
+  // - the first dimension (dims[0]): the patch values to be multiplied with the
+  //   kernels
+  // - the second dimension (dims[1]): everything else
+  Eigen::DSizes<Eigen::Index, 2> pre_contract_dims;
+  pre_contract_dims[0] = output_x * output_y * output_z * input_batch;
+  pre_contract_dims[1] = kernel_channels * kernel_x * kernel_y * kernel_z;
+
+  // Molds the output of the contraction into the shape expected by the user:
+  Eigen::DSizes<Eigen::Index, 5> post_contract_dims;
+  post_contract_dims[0] = input_batch;
+  post_contract_dims[1] = output_x;
+  post_contract_dims[2] = output_y;
+  post_contract_dims[3] = output_z;
+  post_contract_dims[4] = kernel_filters / feature_group_count;
+
+  Eigen::DSizes<Eigen::Index, 3> kernel_dims;
+  kernel_dims[0] = kernel_channels * kernel_x * kernel_y * kernel_z;
+  kernel_dims[1] = feature_group_count;
+  kernel_dims[2] = kernel_filters / feature_group_count;
+
+  // Signal done callback when all feature groups are done.
+  tsl::CountDownAsyncValueRef<tsl::Chain> count_down(feature_group_count);
+  count_down.AsPtr().AndThen([done = std::move(done)]() mutable { done(); });
+
+  for (Eigen::Index i = 0; i < feature_group_count; ++i) {
+    // The dimension order must be flipped when passed to Eigen.
+    auto input_chip = input.reshape(input_reshaped_dims).chip(i, 4);
+    auto patches =
+        Eigen::TensorVolumePatchOp<Eigen::Dynamic, Eigen::Dynamic,
+                                   Eigen::Dynamic, decltype(input_chip)>(
+            input_chip, kernel_z, kernel_y, kernel_x, z_stride, y_stride,
+            x_stride, rhs_z_dilation, rhs_y_dilation, rhs_x_dilation,
+            lhs_z_dilation, lhs_y_dilation, lhs_x_dilation, padding_z_before,
+            padding_z_after, padding_y_before, padding_y_after,
+            padding_x_before, padding_x_after, static_cast<ScalarType>(0.0f));
+
+    auto convolved =
+        patches.reshape(pre_contract_dims)
+            .contract(kernel.reshape(kernel_dims).chip(i, 1), contract_dims)
+            .reshape(post_contract_dims);
+
+    auto output_reshaped = output.reshape(output_reshaped_dims).chip(i, 4);
+
+    if (device != nullptr) {
+      auto on_done = [count_down]() mutable { count_down.CountDown(); };
+      output_reshaped.device(*device, std::move(on_done)) = convolved;
+    } else {
+      output_reshaped = convolved;
+      count_down.CountDown();
+    }
+  }
+}
+
+}  // namespace xla::cpu::internal
+
+// Define Conv2D template for all supported data types.
+#define XLA_CPU_DECLARE_CONV2D(SCALAR_TYPE)                                 \
+  extern template void xla::cpu::internal::EigenConv2D<SCALAR_TYPE>(        \
+      const Eigen::ThreadPoolDevice* device, SCALAR_TYPE* out,              \
+      const SCALAR_TYPE* lhs, const SCALAR_TYPE* rhs,                       \
+      Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y, \
+      Eigen::Index input_channels, Eigen::Index kernel_x,                   \
+      Eigen::Index kernel_y, Eigen::Index kernel_channels,                  \
+      Eigen::Index kernel_filters, Eigen::Index output_x,                   \
+      Eigen::Index output_y, Eigen::Index x_stride, Eigen::Index y_stride,  \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,          \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,          \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,             \
+      Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,             \
+      Eigen::Index feature_group_count, DoneCallback done)
+
+XLA_CPU_DECLARE_CONV2D(Eigen::half);
+XLA_CPU_DECLARE_CONV2D(float);
+
+#undef XLA_CPU_DECLARE_CONV2D
+
+// Define Conv3D template for all supported data types.
+#define XLA_CPU_DECLARE_CONV3D(SCALAR_TYPE)                                 \
+  extern template void xla::cpu::internal::EigenConv3D<SCALAR_TYPE>(        \
+      const Eigen::ThreadPoolDevice* device, SCALAR_TYPE* out,              \
+      const SCALAR_TYPE* lhs, const SCALAR_TYPE* rhs,                       \
+      Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y, \
+      Eigen::Index input_z, Eigen::Index input_channels,                    \
+      Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,  \
+      Eigen::Index kernel_channels, Eigen::Index kernel_filters,            \
+      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,  \
+      Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,  \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,          \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,          \
+      Eigen::Index padding_z_before, Eigen::Index padding_z_after,          \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,             \
+      Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,             \
+      Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,             \
+      Eigen::Index feature_group_count, DoneCallback done)
+
+XLA_CPU_DECLARE_CONV3D(Eigen::half);
+XLA_CPU_DECLARE_CONV3D(float);
+
+#undef XLA_CPU_DECLARE_CONV3D
+
+#define XLA_CPU_DEFINE_CONV2D(SCALAR_TYPE)                                  \
+  template void xla::cpu::internal::EigenConv2D<SCALAR_TYPE>(               \
+      const Eigen::ThreadPoolDevice* device, SCALAR_TYPE* out,              \
+      const SCALAR_TYPE* lhs, const SCALAR_TYPE* rhs,                       \
+      Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y, \
+      Eigen::Index input_channels, Eigen::Index kernel_x,                   \
+      Eigen::Index kernel_y, Eigen::Index kernel_channels,                  \
+      Eigen::Index kernel_filters, Eigen::Index output_x,                   \
+      Eigen::Index output_y, Eigen::Index x_stride, Eigen::Index y_stride,  \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,          \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,          \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,             \
+      Eigen::Index rhs_x_dilation, Eigen::Index rhs_y_dilation,             \
+      Eigen::Index feature_group_count, DoneCallback done)
+
+#define XLA_CPU_DEFINE_CONV3D(SCALAR_TYPE)                                  \
+  template void xla::cpu::internal::EigenConv3D<SCALAR_TYPE>(               \
+      const Eigen::ThreadPoolDevice* device, SCALAR_TYPE* out,              \
+      const SCALAR_TYPE* lhs, const SCALAR_TYPE* rhs,                       \
+      Eigen::Index input_batch, Eigen::Index input_x, Eigen::Index input_y, \
+      Eigen::Index input_z, Eigen::Index input_channels,                    \
+      Eigen::Index kernel_x, Eigen::Index kernel_y, Eigen::Index kernel_z,  \
+      Eigen::Index kernel_channels, Eigen::Index kernel_filters,            \
+      Eigen::Index output_x, Eigen::Index output_y, Eigen::Index output_z,  \
+      Eigen::Index x_stride, Eigen::Index y_stride, Eigen::Index z_stride,  \
+      Eigen::Index padding_x_before, Eigen::Index padding_x_after,          \
+      Eigen::Index padding_y_before, Eigen::Index padding_y_after,          \
+      Eigen::Index padding_z_before, Eigen::Index padding_z_after,          \
+      Eigen::Index lhs_x_dilation, Eigen::Index lhs_y_dilation,             \
+      Eigen::Index lhs_z_dilation, Eigen::Index rhs_x_dilation,             \
+      Eigen::Index rhs_y_dilation, Eigen::Index rhs_z_dilation,             \
+      Eigen::Index feature_group_count, DoneCallback done)
 
 #endif  // XLA_BACKENDS_CPU_RUNTIME_CONVOLUTION_LIB_H_

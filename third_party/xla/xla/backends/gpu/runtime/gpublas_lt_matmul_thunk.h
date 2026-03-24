@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/stream.h"
 
@@ -35,27 +36,26 @@ namespace gpu {
 
 class CublasLtMatmulThunk : public Thunk {
  public:
-  CublasLtMatmulThunk(Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
-                      GemmConfig gemm_config,
-                      se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
-                      BufferAllocation::Slice a, BufferAllocation::Slice b,
-                      BufferAllocation::Slice c, BufferAllocation::Slice d,
-                      BufferAllocation::Slice bias /* may be null */,
-                      BufferAllocation::Slice aux /* may be null */,
-                      BufferAllocation::Slice a_scale /* may be null */,
-                      BufferAllocation::Slice b_scale /* may be null */,
-                      BufferAllocation::Slice c_scale /* may be null */,
-                      BufferAllocation::Slice d_scale /* may be null */,
-                      BufferAllocation::Slice d_amax /* may be null */,
-                      std::optional<const BufferAllocation::Slice> workspace);
+  CublasLtMatmulThunk(
+      Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
+      GemmConfig gemm_config, se::gpu::BlasLt::Epilogue epilogue,
+      int64_t algorithm_idx, int64_t autotune_workspace_size, ShapedSlice a,
+      ShapedSlice b, ShapedSlice c, ShapedSlice d,
+      std::optional<ShapedSlice> bias, std::optional<ShapedSlice> aux,
+      std::optional<ShapedSlice> a_scale, std::optional<ShapedSlice> b_scale,
+      std::optional<ShapedSlice> c_scale, std::optional<ShapedSlice> d_scale,
+      std::optional<ShapedSlice> d_amax,
+      std::optional<const ShapedSlice> workspace);
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return ExecuteOnStreamInternal(params.stream, params);
   }
   absl::Status Initialize(const InitializeParams& params) override;
   std::optional<const BufferAllocation::Slice> workspace() const {
-    return workspace_;
+    return workspace_->slice;
   }
+
+  BufferUses buffer_uses() const override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
   static absl::StatusOr<std::unique_ptr<Thunk>> FromProto(
@@ -73,19 +73,20 @@ class CublasLtMatmulThunk : public Thunk {
   GemmConfig gemm_config_;
   se::gpu::BlasLt::Epilogue epilogue_;
   int64_t algorithm_idx_;
+  int64_t autotune_workspace_size_;
   std::string canonical_hlo_;
-  BufferAllocation::Slice a_;
-  BufferAllocation::Slice b_;
-  BufferAllocation::Slice c_;
-  BufferAllocation::Slice d_;
-  BufferAllocation::Slice bias_;
-  BufferAllocation::Slice aux_;
-  BufferAllocation::Slice a_scale_;
-  BufferAllocation::Slice b_scale_;
-  BufferAllocation::Slice c_scale_;
-  BufferAllocation::Slice d_scale_;
-  BufferAllocation::Slice d_amax_;
-  std::optional<const BufferAllocation::Slice> workspace_;
+  ShapedSlice a_;
+  ShapedSlice b_;
+  ShapedSlice c_;
+  ShapedSlice d_;
+  std::optional<ShapedSlice> bias_;
+  std::optional<ShapedSlice> aux_;
+  std::optional<ShapedSlice> a_scale_;
+  std::optional<ShapedSlice> b_scale_;
+  std::optional<ShapedSlice> c_scale_;
+  std::optional<ShapedSlice> d_scale_;
+  std::optional<ShapedSlice> d_amax_;
+  std::optional<const ShapedSlice> workspace_;
 };
 
 }  // namespace gpu

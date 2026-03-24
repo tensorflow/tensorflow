@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -44,13 +44,13 @@ template <int64_t kVectorSize>
 absl::Status LaunchTypedKernel(
     se::Stream* stream, se::StreamExecutor* executor,
     const se::ThreadDim& thread_dims, const se::BlockDim& block_dims,
-    se::DeviceMemoryBase input_buffer,
+    se::DeviceAddressBase input_buffer,
     const std::array<void*,
                      stream_executor::gpu::kMaxNumRaggedAllToAllOutputPtrs>&
         output_ptrs,
-    se::DeviceMemoryBase input_offsets_buffer,
-    se::DeviceMemoryBase send_sizes_buffer,
-    se::DeviceMemoryBase output_offsets_buffer, int64_t num_updates_per_output,
+    se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer, int64_t num_updates_per_output,
     int64_t num_row_elements) {
   TF_ASSIGN_OR_RETURN(
       auto kernel,
@@ -75,11 +75,11 @@ bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
 
 absl::Status RunRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,
-    se::DeviceMemoryBase input_buffer,
-    absl::Span<const se::DeviceMemoryBase> output_buffers,
-    se::DeviceMemoryBase input_offsets_buffer,
-    se::DeviceMemoryBase send_sizes_buffer,
-    se::DeviceMemoryBase output_offsets_buffer, int64_t num_outputs,
+    se::DeviceAddressBase input_buffer,
+    absl::Span<const se::DeviceAddressBase> output_buffers,
+    se::DeviceAddressBase input_offsets_buffer,
+    se::DeviceAddressBase send_sizes_buffer,
+    se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
     int64_t num_updates_per_output, int64_t num_input_rows,
     int64_t num_row_elements) {
   if (output_buffers.size() >

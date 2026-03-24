@@ -81,7 +81,7 @@ class CUDAFftPlan : public fft::Plan {
   StreamExecutor* parent_;
   cufftHandle plan_;
   fft::Type fft_type_;
-  DeviceMemory<uint8_t> scratch_;
+  DeviceAddress<uint8_t> scratch_;
   size_t scratch_size_bytes_;
   bool is_initialized_;
   ScratchAllocator* scratch_allocator_;
@@ -114,15 +114,15 @@ class CUDAFft : public fft::FftSupport {
   template <typename FuncT, typename InputT, typename OutputT>
   bool DoFftWithDirectionInternal(Stream* stream, fft::Plan* plan,
                                   FuncT cufft_exec,
-                                  const DeviceMemory<InputT>& input,
-                                  DeviceMemory<OutputT>* output);
+                                  const DeviceAddress<InputT>& input,
+                                  DeviceAddress<OutputT>* output);
 
   // This is for complex to real or real to complex FFT, when the direction
   // is implied.
   template <typename FuncT, typename InputT, typename OutputT>
   bool DoFftInternal(Stream* stream, fft::Plan* plan, FuncT cufft_exec,
-                     const DeviceMemory<InputT>& input,
-                     DeviceMemory<OutputT>* output);
+                     const DeviceAddress<InputT>& input,
+                     DeviceAddress<OutputT>* output);
 
   CUDAFft(const CUDAFft&) = delete;
   void operator=(const CUDAFft&) = delete;

@@ -193,8 +193,8 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       if (!read_variable_ops_to_erase.empty()) {
         // Replace the arg with a tf.Const op in the function body.
         builder.setInsertionPointToStart(&func.getBody().front());
-        auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
-                                                    *global_tensor.getValue());
+        auto const_op = TF::ConstOp::create(builder, global_tensor.getLoc(),
+                                            *global_tensor.getValue());
         for (auto read_op : read_variable_ops_to_erase) {
           read_op.getResult().replaceAllUsesWith(const_op.getResult());
           read_op.erase();

@@ -188,7 +188,7 @@ absl::StatusOr<HloInstruction*> InsertTokenIntoTuple(HloInstruction* tuple,
   if (tuple->has_sharding()) {
     // Assign arbitrary sharding for the token.
     HloSharding sharding = tuple->sharding();
-    sharding.tuple_elements().push_back(HloSharding::AssignDevice(0));
+    sharding.tuple_elements().push_back(HloSharding::SingleDevice(0));
     tuple->set_sharding(sharding);
   }
 
@@ -519,7 +519,7 @@ absl::Status InfeedTokenPropagation::PropagateToken(
   return PropagateToken(ordering);
 }
 
-absl::StatusOr<bool> InfeedTokenPropagation::Run(
+absl::StatusOr<bool> InfeedTokenPropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Before InfeedTokenPropagation:";

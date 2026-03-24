@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -168,10 +168,10 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> FftThunk::Execute(
   TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(output_shape_.layout()));
 
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase input_data,
+      se::DeviceAddressBase input_data,
       params.buffer_allocations->GetDeviceAddress(input_buffer_));
   TF_ASSIGN_OR_RETURN(
-      se::DeviceMemoryBase output_data,
+      se::DeviceAddressBase output_data,
       params.buffer_allocations->GetDeviceAddress(output_buffer_));
 
   const int fft_rank = fft_length_.size();
@@ -197,7 +197,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> FftThunk::Execute(
 }
 
 Thunk::BufferUses FftThunk::buffer_uses() const {
-  return {BufferUse::Read(input_buffer_), BufferUse::Write(output_buffer_)};
+  return {BufferUse::Read(input_buffer_, input_shape_),
+          BufferUse::Write(output_buffer_, output_shape_)};
 }
 
 }  // namespace xla::cpu

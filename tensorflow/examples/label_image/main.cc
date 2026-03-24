@@ -46,6 +46,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -111,7 +112,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
 
 static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
                              Tensor* output) {
-  tensorflow::uint64 file_size = 0;
+  uint64_t file_size = 0;
   TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
 
   string contents;

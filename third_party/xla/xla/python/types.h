@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/nb_numpy.h"
+#include "xla/python/strides.h"  // IWYU pragma: keep
 #include "xla/python/version.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
@@ -64,12 +65,16 @@ absl::StatusOr<nanobind::str> TypeDescriptorForPrimitiveType(
 
 struct NumpyScalarTypes {
   nanobind::object np_bool;
+  // Remove std::optional once the minimum supported ml_dtypes in JAX has int1.
+  std::optional<nanobind::object> np_int1;
   nanobind::object np_int2;
   nanobind::object np_int4;
   nanobind::object np_int8;
   nanobind::object np_int16;
   nanobind::object np_int32;
   nanobind::object np_int64;
+  // Remove std::optional once the minimum supported ml_dtypes in JAX has uint1.
+  std::optional<nanobind::object> np_uint1;
   nanobind::object np_uint2;
   nanobind::object np_uint4;
   nanobind::object np_uint8;
@@ -95,15 +100,6 @@ struct NumpyScalarTypes {
   nanobind::object np_intc;
 };
 const NumpyScalarTypes& GetNumpyScalarTypes();
-
-// Returns the strides for `shape`.
-std::vector<int64_t> ByteStridesForShape(const Shape& shape);
-std::vector<int64_t> ByteStridesForShape(PrimitiveType element_type,
-                                         absl::Span<const int64_t> dimensions,
-                                         const xla::Layout& layout);
-std::vector<int64_t> StridesForShape(PrimitiveType element_type,
-                                     absl::Span<const int64_t> dimensions,
-                                     const xla::Layout& layout);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share

@@ -114,9 +114,9 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
       }
 
       mlir::ImplicitLocOpBuilder builder(loop_op.getLoc(), rewriter);
-      auto cmp_op = builder.create<mlir::arith::CmpIOp>(
-          mlir::arith::CmpIPredicate::sle, work_group_dim.operand,
-          builder.create<mlir::arith::ConstantIndexOp>(query_dimension_upper));
+      auto cmp_op = mlir::arith::CmpIOp::create(
+          builder, mlir::arith::CmpIPredicate::sle, work_group_dim.operand,
+          mlir::arith::ConstantIndexOp::create(builder, query_dimension_upper));
 
       auto loop_body_cloner = GetLoopBodyCloner(loop_op);
 
@@ -128,11 +128,11 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
             query_dimension_upper;
         peeled_map.Simplify();
 
-        auto peeled_loop =
-            then_builder.create<LoopOp>(then_loc, peeled_map, loop_op.getDims(),
-                                        loop_op.getInits(), loop_body_cloner);
-        then_builder.create<mlir::scf::YieldOp>(then_loc,
-                                                peeled_loop.getResults());
+        auto peeled_loop = LoopOp::create(then_builder, then_loc, peeled_map,
+                                          loop_op.getDims(), loop_op.getInits(),
+                                          loop_body_cloner);
+        mlir::scf::YieldOp::create(then_builder, then_loc,
+                                   peeled_loop.getResults());
       };
       auto else_body_builder = [&](mlir::OpBuilder& else_builder,
                                    mlir::Location else_loc) -> void {
@@ -142,14 +142,14 @@ struct PeelWorkgroupLoopPattern : public mlir::OpRewritePattern<xla::LoopOp> {
         tail_map.Simplify();
 
         auto tail_loop =
-            else_builder.create<LoopOp>(else_loc, tail_map, loop_op.getDims(),
-                                        loop_op.getInits(), loop_body_cloner);
-        else_builder.create<mlir::scf::YieldOp>(else_loc,
-                                                tail_loop.getResults());
+            LoopOp::create(else_builder, else_loc, tail_map, loop_op.getDims(),
+                           loop_op.getInits(), loop_body_cloner);
+        mlir::scf::YieldOp::create(else_builder, else_loc,
+                                   tail_loop.getResults());
       };
 
-      auto if_op = builder.create<mlir::scf::IfOp>(cmp_op, then_body_builder,
-                                                   else_body_builder);
+      auto if_op = mlir::scf::IfOp::create(builder, cmp_op, then_body_builder,
+                                           else_body_builder);
 
       rewriter.replaceOp(loop_op, if_op.getResults());
       return mlir::success();

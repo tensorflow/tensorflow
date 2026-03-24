@@ -38,7 +38,7 @@ template <typename DstT,
                                   std::is_same<DstT, bfloat16>::value>::type* =
               nullptr>
 DstT CastTo(int32_t src) {
-  return absl::bit_cast<DstT>(static_cast<uint16>(src));
+  return absl::bit_cast<DstT>(static_cast<uint16_t>(src));
 }
 
 // Returns scalar constant with the value in the tensor, if the given proto has

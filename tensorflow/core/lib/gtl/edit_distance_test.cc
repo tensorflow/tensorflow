@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <cctype>
 #include <vector>
+
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -96,7 +98,7 @@ TEST_F(LevenshteinDistanceTest, DifferentComparisons) {
                           std::equal_to<char>()),
       5);
   auto no_case_cmp = [](char c1, char c2) {
-    return std::tolower(c1) == std::tolower(c2);
+    return absl::ascii_tolower(c1) == absl::ascii_tolower(c2);
   };
   ASSERT_EQ(LevenshteinDistance(lower_, upper_, no_case_cmp), 3);
   ASSERT_EQ(LevenshteinDistance(upper_, lower_, no_case_cmp), 3);
@@ -111,14 +113,14 @@ TEST_F(LevenshteinDistanceTest, Vectors) {
 
 static void BM_EditDistanceHelper(::testing::benchmark::State& state, int len,
                                   bool completely_different) {
-  string a =
+  std::string a =
       "The quick brown fox jumped over the lazy dog and on and on and on"
       " Every good boy deserves fudge.  In fact, this is a very long sentence  "
       " w/many bytes..";
   while (a.size() < static_cast<size_t>(len)) {
     a = a + a;
   }
-  string b = a;
+  std::string b = a;
   if (completely_different) {
     for (size_t i = 0; i < b.size(); i++) {
       b[i]++;

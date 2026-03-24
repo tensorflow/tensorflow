@@ -21,11 +21,10 @@ message TensorSliceProto {
     int64 start = 1;
 
     // Length of the slice: if the length is missing or -1 we will
-    // interpret this as "everything in this dimension".  We use
-    // "oneof" to preserve information about whether the length is
-    // present without changing the serialization format from the
-    // prior proto2 version of this proto.
-    oneof has_length {
+    // interpret this as "everything in this dimension".  This field should
+    // be marked 'optional' but for legacy reasons this was placed into a
+    // oneof instead.
+    oneof has_length_hack {
       int64 length = 2;
     }
   }

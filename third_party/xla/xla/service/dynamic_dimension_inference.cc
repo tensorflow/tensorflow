@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -1352,7 +1351,7 @@ absl::Status DynamicDimensionInferenceVisitor::HandleReshape(
             auto orig_reshape_pair = find_reshape_group_pair(op, op_dim_index);
             if (is_reverse_reshape_group_pair(op, orig_reshape_pair, hlo,
                                               reshape_pair)) {
-              TF_CHECK_OK(ForEachOperandDynamicDimension(
+              CHECK_OK(ForEachOperandDynamicDimension(
                   op,
                   [&](HloInstruction* operand, ShapeIndex index,
                       int64_t op_dynamic_dimension, int64_t operand_index,
@@ -2553,7 +2552,7 @@ absl::Status DynamicDimensionInferenceVisitor::InsertPadToStaticOnInstruction(
           HloInstruction* tuple =
               element->AddInstruction(HloInstruction::CreateVariadic(
                   subshape, HloOpcode::kTuple, children));
-          TF_CHECK_OK(ForEachOperandDynamicDimension(
+          CHECK_OK(ForEachOperandDynamicDimension(
               tuple,
               [&](HloInstruction* operand, ShapeIndex index, int64_t dimension,
                   int64_t operand_index, HloInstruction* dynamic_size) {

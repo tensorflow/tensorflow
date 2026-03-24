@@ -43,6 +43,10 @@ class LibraryMatcher {
         case DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE:
           fuse_eltwise_ = true;
           break;
+        // Not intended to be used by LibraryMatcher.
+        case DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT:
+        case DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION:
+          break;
         case DebugOptions::LIBRARY_FUSION_TYPE_REDUCE:
           fuse_reduce_ = true;
           break;

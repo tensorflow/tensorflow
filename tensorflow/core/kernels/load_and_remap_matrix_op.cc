@@ -133,11 +133,11 @@ class LoadAndRemapMatrixOp : public OpKernel {
         errors::InvalidArgument("The `ckpt_path` tensor must have exactly one "
                                 "element, got tensor of shape ",
                                 ckpt_path_t->shape().DebugString()));
-    const string& ckpt_path = ckpt_path_t->scalar<tstring>()();
+    const std::string& ckpt_path = ckpt_path_t->scalar<tstring>()();
     const Tensor* old_tensor_name_t;
     OP_REQUIRES_OK(context,
                    context->input("old_tensor_name", &old_tensor_name_t));
-    const string& old_tensor_name = old_tensor_name_t->scalar<tstring>()();
+    const std::string& old_tensor_name = old_tensor_name_t->scalar<tstring>()();
 
     LOG(INFO) << "Processing checkpoint : " << ckpt_path;
     BundleReader reader(context->env(), ckpt_path);

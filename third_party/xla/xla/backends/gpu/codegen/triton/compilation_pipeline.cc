@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/compilation_pipeline.h"
 
-#include <variant>
+#include <cassert>
 
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Pass/PassManager.h"
@@ -25,18 +25,28 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 
 namespace xla::gpu {
 
 void CreateTritonXlaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
-    bool allow_tma) {
+    bool allow_tma, int num_stages, bool warp_specialization_allowed,
+    bool enable_pdl) {
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerBlockBarrierPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerAtomicsPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerGetTidPass());
+  pm->addPass(mlir::triton::xla::CreateTritonXLALowerXTilePass());
+  pm->addPass(mlir::triton::xla::CreateStableHLOLowerToTritonPass(
+      warp_specialization_allowed));
 
-  auto* cuda_cc = std::get_if<stream_executor::CudaComputeCapability>(&gpu_cc);
+  pm->addPass(emitters::CreateSafeIntegerArithmeticPass());
+  pm->addPass(mlir::triton::xla::CreateUnsupportedElementwiseToTritonPass());
+
+  auto* cuda_cc = gpu_cc.cuda_compute_capability();
   bool is_at_least_hopper = cuda_cc != nullptr && cuda_cc->IsAtLeastHopper();
 
   if (rewrite_int4) {
@@ -44,8 +54,14 @@ void CreateTritonXlaPipeline(
         /*enable_bf16x2=*/is_at_least_hopper));
   }
 
+  if (enable_pdl) {
+    pm->addPass(CreateInsertPDLPass());
+  }
   pm->addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
-      /*allow_tma=*/allow_tma && is_at_least_hopper));
+      /*allow_tma=*/allow_tma && is_at_least_hopper, num_stages));
+  if (enable_pdl) {
+    pm->addPass(emitters::CreateLowerPdlWaitPass());
+  }
 
   // Lower affine expressions into arithmetic ops.
   pm->addPass(mlir::createLowerAffinePass());
@@ -53,41 +69,35 @@ void CreateTritonXlaPipeline(
   // Lower xla_gpu.apply_indexing into arithmetic ops.
   pm->addPass(emitters::CreateSimplifyAffinePass());
   pm->addPass(CreateConvertIndexTypePass());
-  // We need LICM before unswitching loops because loop unswitcher relies on
-  // having loop invariant code to be outside of the loop.
-  pm->addPass(mlir::createLoopInvariantCodeMotionPass());
-  pm->addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
+  pm->addPass(mlir::createCompositeFixedPointPass(
+      "TritonXLAUnswitchLoopsComposite", [](mlir::OpPassManager& pm) {
+        // Loop unswitcher needs loop invariant code to be outside of the loop.
+        pm.addPass(mlir::createLoopInvariantCodeMotionPass());
+        pm.addPass(mlir::triton::xla::CreateTritonXLAUnswitchLoopsPass());
+        pm.addPass(mlir::createCanonicalizerPass());
+      }));
 }
 
 void CreateTritonCudaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::CudaComputeCapability& cuda_cc, int num_warps,
-    int num_ctas, int num_stages,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info);
+    int num_ctas, int num_stages);
 
 void CreateTritonRocmPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
     int num_ctas, int num_stages);
 
-void CreateTritonPipeline(
-    mlir::OpPassManager* pm,
-    const stream_executor::GpuComputeCapability& gpu_cc, int num_warps,
-    int num_ctas, int num_stages,
-    mlir::triton::nvidia_gpu::ClusterInfo& out_cluster_info) {
-  if (auto* cuda_cc =
-          std::get_if<stream_executor::CudaComputeCapability>(&gpu_cc)) {
+void CreateTritonPipeline(mlir::OpPassManager* pm,
+                          const stream_executor::GpuComputeCapability& gpu_cc,
+                          int num_warps, int num_ctas, int num_stages) {
+  if (auto* cuda_cc = gpu_cc.cuda_compute_capability()) {
     return CreateTritonCudaPipeline(pm, *cuda_cc, num_warps, num_ctas,
-                                    num_stages, out_cluster_info);
+                                    num_stages);
   }
 
-  CreateTritonRocmPipeline(
-      pm, std::get<stream_executor::RocmComputeCapability>(gpu_cc), num_warps,
-      num_ctas, num_stages);
-  // There is no clusters in ROCm for now.
-  out_cluster_info.clusterDimX = 1;
-  out_cluster_info.clusterDimY = 1;
-  out_cluster_info.clusterDimZ = 1;
+  CreateTritonRocmPipeline(pm, *gpu_cc.rocm_compute_capability(), num_warps,
+                           num_ctas, num_stages);
 }
 
 }  // namespace xla::gpu

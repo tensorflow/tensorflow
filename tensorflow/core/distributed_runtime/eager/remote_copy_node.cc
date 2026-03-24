@@ -66,8 +66,8 @@ absl::Status CreateUncachedKernelAndDeviceOp(
 
 // This gets a unique wire ID. We add a random identifier so that if the
 // worker has other clients that it is servicing, we don't have any collision.
-string GetUniqueWireID() {
-  static tensorflow::uint64 random_seed = random::New64();
+std::string GetUniqueWireID() {
+  static uint64_t random_seed = random::New64();
   static tensorflow::mutex wireid_mutex(tensorflow::LINKER_INITIALIZED);
   static std::atomic<int64_t> wire_id;
   return absl::StrCat(random_seed, "_", wire_id++);
@@ -77,7 +77,7 @@ string GetUniqueWireID() {
 
 RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
                                TensorHandle* src, TensorHandle* dst,
-                               Device* recv_device, uint64 recv_op_id)
+                               Device* recv_device, uint64_t recv_op_id)
     : AsyncEagerNode(),
       src_(src),
       ctx_(ctx),
@@ -220,12 +220,12 @@ absl::Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   EnqueueRequest request;
-  uint64 context_id = ctx_->GetContextId();
+  uint64_t context_id = ctx_->GetContextId();
   request.set_context_id(context_id);
   auto* remote_op = request.add_queue()->mutable_operation();
   PrepareRemoteOp(remote_op, op);
   remote_op->set_id(recv_op_id_);
-  uint64 context_view_id = ctx_->GetContextViewId();
+  uint64_t context_view_id = ctx_->GetContextViewId();
 
   core::RefCountPtr<eager::EagerClient> eager_client;
   absl::Status status = ctx_->GetClient(recv_device_, &eager_client);
@@ -316,7 +316,7 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
   }
 }
 
-absl::Status SerializePackedHandle(const uint64 op_id,
+absl::Status SerializePackedHandle(const uint64_t op_id,
                                    TensorHandle* packed_handle,
                                    const Device* target_device,
                                    EagerContext* ctx, SendPackedHandleOp* op) {
@@ -362,7 +362,7 @@ absl::Status SerializePackedHandle(const uint64 op_id,
 
 void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
   absl::Status s;
-  const uint64 context_view_id = ctx_->GetContextViewId();
+  const uint64_t context_view_id = ctx_->GetContextViewId();
   if (!send_device_->IsLocal()) {
     s = errors::InvalidArgument(
         "Copy a packed handle from a remote device is not supported");
@@ -372,7 +372,7 @@ void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
   }
 
   EnqueueRequest request;
-  uint64 context_id = ctx_->GetContextId();
+  uint64_t context_id = ctx_->GetContextId();
   request.set_context_id(context_id);
   s = SerializePackedHandle(recv_op_id_, src_, recv_device_, ctx_,
                             request.add_queue()->mutable_send_packed_handle());
@@ -426,12 +426,12 @@ void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
 void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   absl::Status s;
   EnqueueRequest request;
-  uint64 context_id = ctx_->GetContextId();
+  uint64_t context_id = ctx_->GetContextId();
   request.set_context_id(context_id);
   auto* send_tensor = request.add_queue()->mutable_send_tensor();
   send_tensor->set_op_id(recv_op_id_);
   send_tensor->set_device_name(recv_device_->name());
-  uint64 context_view_id = ctx_->GetContextViewId();
+  uint64_t context_view_id = ctx_->GetContextViewId();
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
@@ -515,7 +515,7 @@ void RemoteCopyNode::RunAsync(StatusCallback done) {
 
 void RemoteCopyNode::Abort(absl::Status status) {
   if (!started_) {
-    uint64 context_view_id = ctx_->GetContextViewId();
+    uint64_t context_view_id = ctx_->GetContextViewId();
     captured_state_->dst()->PoisonRemote(status, recv_device_, context_view_id);
   }
 }

@@ -87,7 +87,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
     LOG(WARNING) << "Failed to open /proc/cpuinfo";
     return INVALID_FREQUENCY;
   }
-  string line;
+  std::string line;
   while (std::getline(cpuinfo, line)) {
     double cpu_freq = 0.0;
     int retval = 0;

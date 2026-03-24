@@ -18,25 +18,26 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <memory>
 #include <string>
-#include <unordered_map>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/strings/ascii.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/strings/string_view.h"
+#include "google/protobuf/message.h"
+#include "google/protobuf/message_lite.h"
 #include "xla/tsl/platform/env_time.h"
-#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numa.h"
-#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/stringpiece.h"
 
 // Delete leaked Windows definitions.
 #ifdef PLATFORM_WINDOWS
@@ -80,7 +81,7 @@ class Env {
   /// for the file system related (non-virtual) functions that follow.
   /// Returned FileSystem object is still owned by the Env object and will
   // (might) be destroyed when the environment is destroyed.
-  virtual absl::Status GetFileSystemForFile(const std::string& fname,
+  virtual absl::Status GetFileSystemForFile(absl::string_view fname,
                                             FileSystem** result);
 
   /// \brief Returns the file system schemes registered for this Env.
@@ -104,7 +105,7 @@ class Env {
                          const std::string& value);
 
   absl::Status SetOption(const std::string& scheme, const std::string& key,
-                         const std::vector<string>& values);
+                         const std::vector<std::string>& values);
 
   absl::Status SetOption(const std::string& scheme, const std::string& key,
                          const std::vector<int64_t>& values);
@@ -202,20 +203,20 @@ class Env {
   }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  absl::Status FileExists(const std::string& fname);
+  absl::Status FileExists(absl::string_view fname);
 
-  absl::Status FileExists(const std::string& fname, TransactionToken* token) {
+  absl::Status FileExists(absl::string_view fname, TransactionToken* token) {
     return absl::OkStatus();
   }
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
   /// for each file.
-  bool FilesExist(const std::vector<string>& files,
+  bool FilesExist(const std::vector<std::string>& files,
                   std::vector<absl::Status>* status);
 
-  bool FilesExist(const std::vector<string>& files, TransactionToken* token,
-                  std::vector<absl::Status>* status) {
+  bool FilesExist(const std::vector<std::string>& files,
+                  TransactionToken* token, std::vector<absl::Status>* status) {
     return true;
   }
 
@@ -223,29 +224,52 @@ class Env {
   /// directory. The names are relative to "dir".
   ///
   /// Original contents of *results are dropped.
-  absl::Status GetChildren(const std::string& dir, std::vector<string>* result);
+  absl::Status GetChildren(const std::string& dir,
+                           std::vector<std::string>* result);
 
   absl::Status GetChildren(const std::string& dir, TransactionToken* token,
-                           std::vector<string>* result) {
+                           std::vector<std::string>* result) {
     return absl::OkStatus();
   }
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
   /// allowed in pattern are described in FileSystem::GetMatchingPaths.
-  virtual bool MatchPath(const std::string& path,
-                         const std::string& pattern) = 0;
+  virtual bool MatchPath(absl::string_view path, absl::string_view pattern) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
   ///
   /// More details about `pattern` in FileSystem::GetMatchingPaths.
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
-                                        std::vector<string>* results);
+                                        std::vector<std::string>* results);
 
   absl::Status GetMatchingPaths(const std::string& pattern,
                                 TransactionToken* token,
-                                std::vector<string>* results) {
+                                std::vector<std::string>* results) {
     return absl::OkStatus();
+  }
+
+  // TODO(b/485502789): Remove the const std::string& versions of these
+  // functions and move the actual implementation here, avoiding the string
+  // copy.
+  // Until then, we need to SFINAE out the std::string case to avoid ambiguity
+  // errors when T could be deduced as either absl::string_view or std::string
+  // (e.g. tstring).
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status GetMatchingPaths(const T& pattern,
+                                std::vector<std::string>* results) {
+    return GetMatchingPaths(std::string(pattern), results);
+  }
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status GetMatchingPaths(const T& pattern, TransactionToken* token,
+                                std::vector<std::string>* results) {
+    return GetMatchingPaths(std::string(pattern), token, results);
   }
 
   /// Deletes the named file.
@@ -301,6 +325,28 @@ class Env {
                                     TransactionToken* token) {
     return absl::OkStatus();
   }
+
+  // TODO(b/485502789): Remove the const std::string& versions of these
+  // functions and move the actual implementation here, avoiding the string
+  // copy.
+  // Until then, we need to SFINAE out the std::string case to avoid ambiguity
+  // errors when T could be deduced as either absl::string_view or std::string
+  // (e.g. tstring).
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status RecursivelyCreateDir(const T& dirname) {
+    return RecursivelyCreateDir(std::string(dirname));
+  }
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status RecursivelyCreateDir(const T& dirname, TransactionToken* token) {
+    return RecursivelyCreateDir(std::string(dirname), token);
+  }
+
   /// \brief Creates the specified directory. Typical return codes
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory already exists.
@@ -309,6 +355,26 @@ class Env {
 
   absl::Status CreateDir(const std::string& dirname, TransactionToken* token) {
     return absl::OkStatus();
+  }
+  // TODO(b/485502789): Remove the const std::string& versions of these
+  // functions and move the actual implementation here, avoiding the string
+  // copy.
+  // Until then, we need to SFINAE out the std::string case to avoid ambiguity
+  // errors when T could be deduced as either absl::string_view or std::string
+  // (e.g. tstring).
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status CreateDir(const T& dirname) {
+    return CreateDir(std::string(dirname));
+  }
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status CreateDir(const T& dirname, TransactionToken* token) {
+    return CreateDir(std::string(dirname), token);
   }
 
   /// Deletes the specified directory.
@@ -335,6 +401,19 @@ class Env {
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   absl::Status IsDirectory(const std::string& fname);
 
+  // TODO(b/485502789): Remove the const std::string& version of this function
+  // and move the actual implementation here, avoiding the string copy.
+  // Until then, we need to SFINAE out the std::string case to avoid ambiguity
+  // errors when T could be deduced as either absl::string_view or std::string
+  // (e.g. tstring).
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status IsDirectory(const T& fname) {
+    return IsDirectory(std::string(fname));
+  }
+
   /// \brief Returns whether the given path is on a file system
   /// that has atomic move capabilities. This can be used
   /// to determine if there needs to be a temp location to safely write objects.
@@ -348,16 +427,19 @@ class Env {
   absl::Status HasAtomicMove(const std::string& path, bool* has_atomic_move);
 
   /// Stores the size of `fname` in `*file_size`.
-  absl::Status GetFileSize(const std::string& fname, uint64* file_size);
+  absl::Status GetFileSize(const std::string& fname, uint64_t* file_size);
 
   absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
-                           uint64* file_size) {
+                           uint64_t* file_size) {
     return absl::OkStatus();
   }
 
   /// \brief Renames file src to target. If target already exists, it will be
   /// replaced.
   absl::Status RenameFile(const std::string& src, const std::string& target);
+
+  absl::Status RenameFile(const std::string& src, const std::string& target,
+                          bool overwrite);
 
   absl::Status RenameFile(const std::string& src, const std::string& target,
                           TransactionToken* token) {
@@ -426,19 +508,19 @@ class Env {
   // provide a routine to get the absolute time.
 
   /// \brief Returns the number of nano-seconds since the Unix epoch.
-  virtual uint64 NowNanos() const { return EnvTime::NowNanos(); }
+  virtual uint64_t NowNanos() const { return EnvTime::NowNanos(); }
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
-  virtual uint64 NowMicros() const { return EnvTime::NowMicros(); }
+  virtual uint64_t NowMicros() const { return EnvTime::NowMicros(); }
 
   /// \brief Returns the number of seconds since the Unix epoch.
-  virtual uint64 NowSeconds() const { return EnvTime::NowSeconds(); }
+  virtual uint64_t NowSeconds() const { return EnvTime::NowSeconds(); }
 
   /// Sleeps/delays the thread for the prescribed number of micro-seconds.
   virtual void SleepForMicroseconds(int64_t micros) = 0;
 
   /// Returns the process ID of the calling process.
-  int32 GetProcessId();
+  int32_t GetProcessId();
 
   /// \brief Returns a new thread that is running fn() and is identified
   /// (for debugging/performance-analysis) by "name".
@@ -466,6 +548,9 @@ class Env {
 
   // Copies current thread name to "name". Returns true if success.
   virtual bool GetCurrentThreadName(std::string* name) = 0;
+
+  // Returns true if the current thread is a cooperatively scheduled fiber.
+  virtual bool IsCurrentThreadFiber() { return false; }
 
   // \brief Schedules the given closure on a thread-pool.
   //
@@ -511,7 +596,7 @@ class Env {
                                             const std::string& version) = 0;
 
   // Returns a possible list of local temporary directories.
-  virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
+  virtual void GetLocalTempDirectories(std::vector<std::string>* list) = 0;
 
  private:
   std::unique_ptr<FileSystemRegistry> file_system_registry_;
@@ -532,13 +617,13 @@ class EnvWrapper : public Env {
   /// Returns the target to which this Env forwards all calls
   Env* target() const { return target_; }
 
-  absl::Status GetFileSystemForFile(const std::string& fname,
+  absl::Status GetFileSystemForFile(absl::string_view fname,
                                     FileSystem** result) override {
     return target_->GetFileSystemForFile(fname, result);
   }
 
   absl::Status GetRegisteredFileSystemSchemes(
-      std::vector<string>* schemes) override {
+      std::vector<std::string>* schemes) override {
     return target_->GetRegisteredFileSystemSchemes(schemes);
   }
 
@@ -547,11 +632,11 @@ class EnvWrapper : public Env {
     return target_->RegisterFileSystem(scheme, factory);
   }
 
-  bool MatchPath(const std::string& path, const std::string& pattern) override {
+  bool MatchPath(absl::string_view path, absl::string_view pattern) override {
     return target_->MatchPath(path, pattern);
   }
 
-  uint64 NowMicros() const override { return target_->NowMicros(); }
+  uint64_t NowMicros() const override { return target_->NowMicros(); }
   void SleepForMicroseconds(int64_t micros) override {
     target_->SleepForMicroseconds(micros);
   }
@@ -571,6 +656,9 @@ class EnvWrapper : public Env {
   }
   bool GetCurrentThreadName(std::string* name) override {
     return target_->GetCurrentThreadName(name);
+  }
+  bool IsCurrentThreadFiber() override {
+    return target_->IsCurrentThreadFiber();
   }
   void SchedClosure(absl::AnyInvocable<void()> closure) override {
     target_->SchedClosure(std::move(closure));
@@ -595,7 +683,7 @@ class EnvWrapper : public Env {
   std::string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
 
  private:
-  void GetLocalTempDirectories(std::vector<string>* list) override {
+  void GetLocalTempDirectories(std::vector<std::string>* list) override {
     target_->GetLocalTempDirectories(list);
   }
 
@@ -646,10 +734,41 @@ absl::Status FileSystemCopyFile(FileSystem* src_fs, const std::string& src,
 absl::Status ReadFileToString(Env* env, const std::string& fname,
                               std::string* data);
 
+// TODO(b/485502789): Remove the const std::string& version of this function
+// and move the actual implementation here, avoiding the string copy.
+// Until then, we need to SFINAE out the std::string case to avoid ambiguity
+// errors when T could be deduced as either absl::string_view or std::string
+// (e.g. tstring).
+template <typename T, typename = std::enable_if_t<
+                          std::is_convertible_v<const T&, absl::string_view> &&
+                          !std::is_same_v<std::decay_t<T>, std::string>>>
+inline absl::Status ReadFileToString(Env* env, const T& fname,
+                                     std::string* data) {
+  return ReadFileToString(env, std::string(fname), data);
+}
+
 /// A utility routine: write contents of `data` to file named `fname`
 /// (overwriting existing contents, if any).
 absl::Status WriteStringToFile(Env* env, const std::string& fname,
                                absl::string_view data);
+
+// TODO(b/485502789): Remove the const std::string& version of this function
+// and move the actual implementation here, avoiding the string copy.
+// Until then, we need to SFINAE out the std::string case to avoid ambiguity
+// errors when T could be deduced as either absl::string_view or std::string
+// (e.g. tstring).
+template <typename T, typename = std::enable_if_t<
+                          std::is_convertible_v<const T&, absl::string_view> &&
+                          !std::is_same_v<std::decay_t<T>, std::string>>>
+inline absl::Status WriteStringToFile(Env* env, const T& fname,
+                                      absl::string_view data) {
+  return WriteStringToFile(env, std::string(fname), data);
+}
+
+/// A utility routine: append contents of `data` to file named `fname`.
+/// If the file does not exist, it is created.
+absl::Status AppendStringToFile(Env* env, const std::string& fname,
+                                absl::string_view data);
 
 /// Write binary representation of "proto" to the named file.
 absl::Status WriteBinaryProto(Env* env, const std::string& fname,
@@ -660,21 +779,55 @@ absl::Status WriteBinaryProto(Env* env, const std::string& fname,
 absl::Status ReadBinaryProto(Env* env, const std::string& fname,
                              protobuf::MessageLite* proto);
 
+// TODO(b/485502789): Remove the const std::string& version of this function
+// and move the actual implementation here, avoiding the string copy.
+// Until then, we need to SFINAE out the std::string case to avoid ambiguity
+// errors when T could be deduced as either absl::string_view or std::string
+// (e.g. tstring).
+template <typename T, typename = std::enable_if_t<
+                          std::is_convertible_v<const T&, absl::string_view> &&
+                          !std::is_same_v<std::decay_t<T>, std::string>>>
+absl::Status ReadBinaryProto(Env* env, const T& fname,
+                             protobuf::MessageLite* proto) {
+  return ReadBinaryProto(env, std::string(fname), proto);
+}
+
 /// Write the text representation of "proto" to the named file.
 inline absl::Status WriteTextProto(Env* /* env */,
                                    const std::string& /* fname */,
                                    const protobuf::MessageLite& /* proto */) {
-  return errors::Unimplemented("Can't write text protos with protolite.");
+  return absl::UnimplementedError("Can't write text protos with protolite.");
 }
 absl::Status WriteTextProto(Env* env, const std::string& fname,
                             const protobuf::Message& proto);
+
+// TODO(b/485502789): Remove the const std::string& versions of these
+// functions and move the actual implementation here, avoiding the string
+// copy.
+// Until then, we need to SFINAE out the std::string case to avoid ambiguity
+// errors when T could be deduced as either absl::string_view or std::string
+// (e.g. tstring).
+template <typename T, typename = std::enable_if_t<
+                          std::is_convertible_v<const T&, absl::string_view> &&
+                          !std::is_same_v<std::decay_t<T>, std::string>>>
+inline absl::Status WriteTextProto(Env* env, const T& fname,
+                                   const protobuf::MessageLite& proto) {
+  return WriteTextProto(env, std::string(fname), proto);
+}
+template <typename T, typename = std::enable_if_t<
+                          std::is_convertible_v<const T&, absl::string_view> &&
+                          !std::is_same_v<std::decay_t<T>, std::string>>>
+absl::Status WriteTextProto(Env* env, const T& fname,
+                            const protobuf::Message& proto) {
+  return WriteTextProto(env, std::string(fname), proto);
+}
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
 inline absl::Status ReadTextProto(Env* /* env */,
                                   const std::string& /* fname */,
                                   protobuf::MessageLite* /* proto */) {
-  return errors::Unimplemented("Can't parse text protos with protolite.");
+  return absl::UnimplementedError("Can't parse text protos with protolite.");
 }
 absl::Status ReadTextProto(Env* env, const std::string& fname,
                            protobuf::Message* proto);
@@ -700,7 +853,8 @@ struct Register {
     // after TF 2.6+.
     if (try_modular_filesystems) {
       const char* env_value = getenv("TF_USE_MODULAR_FILESYSTEM");
-      string load_plugin = env_value ? absl::AsciiStrToLower(env_value) : "";
+      std::string load_plugin =
+          env_value ? absl::AsciiStrToLower(env_value) : "";
       if (load_plugin == "true" || load_plugin == "1") {
         // We don't register the static filesystem and wait for SIG IO one
         LOG(WARNING) << "Using modular file system for '" << scheme << "'."

@@ -45,8 +45,8 @@ LogicalResult LowerGetTidOp(GetTidOp get_flat_tid, PatternRewriter& rewriter) {
   const absl::string_view get_tid_asm = R"(
     mov.u32 $0, %tid.x;
   )";
-  auto tid_op = rewriter.create<mlir::triton::ElementwiseInlineAsmOp>(
-      loc,
+  auto tid_op = mlir::triton::ElementwiseInlineAsmOp::create(
+      rewriter, loc,
       /*result_types=*/i32_type,
       /*asm_string=*/rewriter.getStringAttr(get_tid_asm),
       /*constraints=*/rewriter.getStringAttr("=r"),

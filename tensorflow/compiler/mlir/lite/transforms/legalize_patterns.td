@@ -75,14 +75,14 @@ def CreateInt32ConstOrCast : NativeCodeCall<
 
 // Creates an int32 constant op from an integer attribute $0.
 def CreateInt32ConstOpFromIntAttr
-  : NativeCodeCall<"$_builder.create<TF::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {static_cast<int32_t>(llvm::cast<IntegerAttr>($0).getInt())}))">;
+  : NativeCodeCall<"TF::ConstOp::create($_builder, $_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {static_cast<int32_t>(llvm::cast<IntegerAttr>($0).getInt())}))">;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
 //===----------------------------------------------------------------------===//
 
 def createConstOp
-  : NativeCodeCall<"$_builder.create<ConstOp>($_loc, $0.getType(), $1)">;
+  : NativeCodeCall<"ConstOp::create($_builder, $_loc, $0.getType(), $1)">;
 
 def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp:$res ElementsAttr:$value),
                                    (createConstOp $res, $value)>;

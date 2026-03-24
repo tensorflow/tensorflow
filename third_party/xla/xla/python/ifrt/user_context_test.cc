@@ -35,15 +35,15 @@ TEST(AnnotatedUserContextTest, Id) {
   UserContextRef context = TestUserContext::Create(kUserContextId);
 
   UserContextRef annotated_context1 =
-      AnnotatedUserContext::Create(context, "test annotation");
+      AnnotatedUserContext::Create(context, "; test annotation");
   EXPECT_NE(annotated_context1->Id(), context->Id());
 
   UserContextRef annotated_context2 =
-      AnnotatedUserContext::Create(context, "test annotation 2");
+      AnnotatedUserContext::Create(context, "; test annotation 2");
   EXPECT_NE(annotated_context2->Id(), annotated_context1->Id());
 
   UserContextRef annotated_context3 =
-      AnnotatedUserContext::Create(UserContextRef(), "test annotation");
+      AnnotatedUserContext::Create(UserContextRef(), "; test annotation");
   EXPECT_NE(annotated_context3->Id(), annotated_context1->Id());
 }
 
@@ -52,13 +52,21 @@ TEST(AnnotatedUserContextTest, DebugString) {
     const UserContextId kUserContextId(100);
     UserContextRef context = TestUserContext::Create(kUserContextId);
     UserContextRef annotated_context =
-        AnnotatedUserContext::Create(context, "test annotation");
+        AnnotatedUserContext::Create(context, "; test annotation");
     EXPECT_EQ(annotated_context->DebugString(),
               "TestUserContext(100); test annotation");
   }
   {
+    const UserContextId kUserContextId(200);
+    UserContextRef context = TestUserContext::Create(kUserContextId);
     UserContextRef annotated_context =
-        AnnotatedUserContext::Create(UserContextRef(), "test annotation");
+        AnnotatedUserContext::Create("test annotation: ", context);
+    EXPECT_EQ(annotated_context->DebugString(),
+              "test annotation: TestUserContext(200)");
+  }
+  {
+    UserContextRef annotated_context =
+        AnnotatedUserContext::Create(UserContextRef(), "; test annotation");
     EXPECT_EQ(annotated_context->DebugString(),
               "(nullptr user context); test annotation");
   }

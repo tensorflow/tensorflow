@@ -78,15 +78,15 @@ absl::Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
   return absl::OkStatus();
 }
 
-void CreateConstNode(const Tensor& tensor, const string& name,
+void CreateConstNode(const Tensor& tensor, const std::string& name,
                      NodeDef* node_def) {
   node_def->set_op("Const");
   node_def->set_name(name);
   SetNodeTensorAttr<float>("value", tensor, node_def);
 }
 
-string GetMonolithicTensorKey(const string& tensor_slice_name) {
-  std::vector<string> names = Split(tensor_slice_name, "/");
+std::string GetMonolithicTensorKey(const std::string& tensor_slice_name) {
+  std::vector<std::string> names = Split(tensor_slice_name, "/");
   if (absl::StartsWith(names[names.size() - 1], "part_")) {
     CHECK_GE(names.size(), 2);
     names.pop_back();
@@ -95,11 +95,11 @@ string GetMonolithicTensorKey(const string& tensor_slice_name) {
 }
 
 absl::Status ObtainTensorSlice(const GraphDef& input_graph_def,
-                               const string& target_name,
-                               string* shape_slice_string) {
-  string restore_node_name;
+                               const std::string& target_name,
+                               std::string* shape_slice_string) {
+  std::string restore_node_name;
   for (const auto& node : input_graph_def.node()) {
-    std::vector<string> node_name_parts = Split(node.name(), "/");
+    std::vector<std::string> node_name_parts = Split(node.name(), "/");
     if (node_name_parts.size() == 2 &&
         absl::StartsWith(node_name_parts[0], "save") &&
         absl::StartsWith(node_name_parts[1], "Assign") &&
@@ -109,10 +109,10 @@ absl::Status ObtainTensorSlice(const GraphDef& input_graph_def,
     }
   }
 
-  std::vector<string> restore_node_parts = Split(restore_node_name, ":");
+  std::vector<std::string> restore_node_parts = Split(restore_node_name, ":");
   CHECK_LE(restore_node_parts.size(), 2);
-  string tensor_names_node;
-  string shape_and_slices_node;
+  std::string tensor_names_node;
+  std::string shape_and_slices_node;
   for (const auto& node : input_graph_def.node()) {
     if ((node.name() == restore_node_parts[0]) && (node.op() == "RestoreV2")) {
       tensor_names_node = node.input(1);
@@ -153,8 +153,9 @@ absl::Status ObtainTensorSlice(const GraphDef& input_graph_def,
 }
 
 absl::Status ReadTensorFromCheckpoint(
-    const string& tensor_name, const std::unique_ptr<BundleReader>& ckpt_reader,
-    const string& shape_and_slice, Tensor* tensor) {
+    const std::string& tensor_name,
+    const std::unique_ptr<BundleReader>& ckpt_reader,
+    const std::string& shape_and_slice, Tensor* tensor) {
   if (ckpt_reader) {
     TensorShape parsed_full_shape;
     TensorSlice parsed_slice;
@@ -183,7 +184,8 @@ absl::Status InitializeCheckpointReader(
     const TransformFuncContext& context,
     std::unique_ptr<BundleReader>* ckpt_reader) {
   if (context.params.count("input_checkpoint")) {
-    const string input_checkpoint = context.params.at("input_checkpoint")[0];
+    const std::string input_checkpoint =
+        context.params.at("input_checkpoint")[0];
     *ckpt_reader =
         std::make_unique<BundleReader>(Env::Default(), input_checkpoint);
     TF_RETURN_IF_ERROR((*ckpt_reader)->status());
@@ -193,11 +195,13 @@ absl::Status InitializeCheckpointReader(
 
 absl::Status ObtainVariableInfo(
     const GraphDef& input_graph_def,
-    std::unique_ptr<std::unordered_map<string, string>>* shapes_and_slices) {
-  *shapes_and_slices = std::make_unique<std::unordered_map<string, string>>();
+    std::unique_ptr<std::unordered_map<std::string, std::string>>*
+        shapes_and_slices) {
+  *shapes_and_slices =
+      std::make_unique<std::unordered_map<std::string, std::string>>();
   for (const auto& node : input_graph_def.node()) {
     if ((node.op() == "Variable") || (node.op() == "VariableV2")) {
-      string s;
+      std::string s;
       TF_RETURN_IF_ERROR(ObtainTensorSlice(input_graph_def, node.name(), &s));
       (**shapes_and_slices)[node.name()] = s;
     }
@@ -223,12 +227,12 @@ absl::Status RemoveNodeAtIndex(GraphDef* g, int index) {
 
 absl::Status SparsifyGatherInternal(
     const GraphDef& input_graph_def,
-    const std::unique_ptr<std::unordered_map<string, string>>&
+    const std::unique_ptr<std::unordered_map<std::string, std::string>>&
         shapes_and_slices,
     const TransformFuncContext& context, const OpTypePattern& pattern,
     const std::unique_ptr<BundleReader>& ckpt_reader,
     GraphDef* output_graph_def) {
-  string group_init_node = "group_deps";
+  std::string group_init_node = "group_deps";
   if (context.params.count("group_init_node")) {
     group_init_node = context.params.at("group_init_node")[0];
   }
@@ -236,7 +240,7 @@ absl::Status SparsifyGatherInternal(
   bool any_match_found = false;
 
   // Populate references.
-  std::unordered_map<string, int> refs;
+  std::unordered_map<std::string, int> refs;
   for (const auto& node : current_graph_def.node()) {
     for (const auto& input : node.input()) {
       auto parsed_input = StringReplace(input, "^", "", true);
@@ -250,16 +254,16 @@ absl::Status SparsifyGatherInternal(
   do {
     any_match_found = false;
     GraphDef replaced_graph_def = current_graph_def;
-    std::vector<string> init_table_node_names;
-    std::vector<string> removed_node_names;
+    std::vector<std::string> init_table_node_names;
+    std::vector<std::string> removed_node_names;
 
     TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
         current_graph_def, pattern,
         [&ckpt_reader, &any_match_found, &init_table_node_names,
-         &shapes_and_slices, &removed_node_names,
-         &refs](const NodeMatch& match, const std::set<string>& input_nodes,
-                const std::set<string>& output_nodes,
-                std::vector<NodeDef>* new_nodes) {
+         &shapes_and_slices, &removed_node_names, &refs](
+            const NodeMatch& match, const std::set<std::string>& input_nodes,
+            const std::set<std::string>& output_nodes,
+            std::vector<NodeDef>* new_nodes) {
           any_match_found = true;
 
           // The captured subgraph should be of the following pattern:
@@ -305,7 +309,7 @@ absl::Status SparsifyGatherInternal(
             TF_RETURN_IF_ERROR(GetNodeAttr(axis_node, "value", &axis_t));
             int64_t axis = 0;
             if (axis_t.dtype() == DT_INT32) {
-              axis = axis_t.scalar<int32>()();
+              axis = axis_t.scalar<int32_t>()();
             } else if (axis_t.dtype() == DT_INT64) {
               axis = axis_t.scalar<int64_t>()();
             } else {
@@ -404,7 +408,7 @@ absl::Status SparsifyGatherInternal(
 
           // ExpandDims argument
           Tensor dim_idx(DT_INT32, TensorShape({}));
-          dim_idx.flat<int32>()(0) = -1;
+          dim_idx.flat<int32_t>()(0) = -1;
           NodeDef dim_idx_node;
           dim_idx_node.set_op("Const");
           dim_idx_node.set_name(
@@ -468,7 +472,7 @@ absl::Status SparsifyGatherInternal(
       init_op->set_op("NoOp");
       init_op->set_name(group_init_node);
     }
-    for (const string& name : init_table_node_names) {
+    for (const std::string& name : init_table_node_names) {
       // Add control dependence from init_table_node to group_deps_node
       AddNodeInput(absl::StrCat("^", name), init_op);
       refs[name]++;
@@ -602,7 +606,8 @@ absl::Status SparsifyGather(const GraphDef& input_graph_def,
   std::unique_ptr<BundleReader> ckpt_reader;
   TF_RETURN_IF_ERROR(InitializeCheckpointReader(context, &ckpt_reader));
 
-  std::unique_ptr<std::unordered_map<string, string> > shapes_and_slices;
+  std::unique_ptr<std::unordered_map<std::string, std::string>>
+      shapes_and_slices;
   TF_RETURN_IF_ERROR(
       ObtainVariableInfo(cleaned_input_graph_def, &shapes_and_slices));
 

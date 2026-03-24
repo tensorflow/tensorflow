@@ -23,7 +23,7 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/literal.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -33,10 +33,10 @@ namespace {
 
 // Tests NCCL group execution.
 
-class NcclGroupExecutionTest : public HloTestBase {
+class NcclGroupExecutionTest : public HloPjRtTestBase {
  public:
   NcclGroupExecutionTest() {
-    VLOG(1) << "Running with " << num_devices() << " devices";
+    VLOG(1) << "Running with " << test_runner().device_count() << " devices";
   }
 };
 
@@ -126,7 +126,7 @@ TEST_F(NcclGroupExecutionTest, NcclGroupSendRecvNoWhileLoop) {
 
 TEST_F(NcclGroupExecutionTest, BidirectionalCommunication) {
   const absl::string_view kModuleStr = R"(
-  HloModule module_main, entry_computation_layout={()->(u32[], u32[])}, num_partitions=4
+  HloModule module_main, entry_computation_layout={()->(u32[], u32[])}, num_replicas=4
 
   bidirectional_ring {
     a = u32[] parameter(0)

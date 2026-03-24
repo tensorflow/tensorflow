@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/env.h"
 #include "tsl/platform/env.h"
 
 namespace xla {
@@ -33,6 +34,8 @@ class WorkerThread {
  public:
   // 'name' is a name for the thread for debugging purposes.
   WorkerThread(tsl::Env* env, const std::string& name);
+  WorkerThread(tsl::Env* env, const tsl::ThreadOptions& thread_options,
+               const std::string& name);
 
   // Blocks until all enqueued closures have completed.
   ~WorkerThread();
@@ -40,12 +43,19 @@ class WorkerThread {
   // Adds 'fn' to the queue of closures to be executed by the worker thread.
   void Schedule(absl::AnyInvocable<void() &&> fn);
 
+  // Returns true if there is any outstanding work.
+  bool HasBacklog() {
+    absl::MutexLock lock(mu_);
+    return !work_queue_.empty() || is_running_;
+  }
+
  private:
   bool WorkAvailable() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
   absl::Mutex mu_;
   std::queue<absl::AnyInvocable<void() &&>> work_queue_ ABSL_GUARDED_BY(mu_);
+  bool is_running_ = false;
 
   std::unique_ptr<tsl::Thread> thread_;
 };

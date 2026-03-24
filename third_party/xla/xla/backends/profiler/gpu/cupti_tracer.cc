@@ -29,6 +29,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
@@ -40,15 +42,20 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
+// Note: can not include cupti_driver_cbid.h because it is not once guarded in
+// cuda 11. Remove comment here once cuda 11 is no longer supported.
+// #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "xla/backends/profiler/gpu/cuda_version_variants.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_marker_data_parser.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler.h"
 #include "xla/backends/profiler/gpu/cupti_pm_sampler_factory.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
@@ -61,6 +68,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/thread_annotations.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace profiler {
@@ -81,11 +89,6 @@ class CuptiApiTracingDisabler {
   CuptiApiTracingDisabler() { internalCuCall++; }
   ~CuptiApiTracingDisabler() { internalCuCall--; }
 };
-
-// CUPTI_ERROR_INSUFFICIENT_PRIVILEGES is introduced at CUDA 10.1.
-#if CUDA_VERSION <= 10000
-#define CUPTI_ERROR_INSUFFICIENT_PRIVILEGES 35
-#endif
 
 #define RETURN_IF_CUPTI_ERROR(expr)                                           \
   do {                                                                        \
@@ -619,11 +622,11 @@ void SetCuMemHostUnregisterEventUponApiExit(
 struct GraphResourceCreationInfo {
   uint32_t graph_id = 0;
   uint32_t orig_graph_id = 0;
-  absl::flat_hash_map<uint64_t, uint64_t> node_id_map;
+  absl::flat_hash_map<uint64_t, uint64_t> node_id_map = {};
 };
 
 static GraphResourceCreationInfo& GetGraphResourceCreationInfo() {
-  static thread_local GraphResourceCreationInfo per_thread_graph_info;
+  static thread_local GraphResourceCreationInfo per_thread_graph_info{};
   return per_thread_graph_info;
 }
 
@@ -801,41 +804,87 @@ void SetGenericEventUponApiExit(CuptiTracerEvent& event, uint32_t device_id,
           << " name=" << cbdata->functionName;
 }
 
-static void SetCallbackEventUponApiExit(
+// Supporting CUPTI paired with CUDA, and hence the value of
+// CUPTI_DRIVER_TRACE_CBID_SIZE in cupti_driver_cbid.h are as follows
+// corresponding to different CUDA version: CUDA version -->
+// CUPTI_DRIVER_TRACE_CBID_SIZE
+//   11.0 --> 579
+//   12.0 --> 701
+//   12.8 --> 782
+//   12.9 --> 784
+//   13.0 -->
+// CUDA versions that are impacting code logic here are
+// (11.0), 12.0, 12.8 with their corresponding
+// CUPTI_DRIVER_TRACE_CBID_SIZE value (579), 701, 782 respectively.
+
+// As this is the call back function, no need to check the CUDA
+// runtime/driver version. CBIDs are naturally valid here.
+void SetCallbackEventUponApiExit(
     CuptiTracerEvent& event, CuptiInterface* cupti_interface,
     uint32_t device_id, CUpti_CallbackId cbid, const CUpti_CallbackData* cbdata,
     uint64_t start_tsc, uint64_t end_tsc,
     GuardedCallbackAnnotationsAndEvents& guarded_annotations_and_events,
     CuptiTracer* tracer) {
+  static absl::NoDestructor<
+      std::vector<cuda_versions::CbidCategoryMap const*>> const
+      kExtraCbidCategories(
+          {&cuda_versions::GetExtraCallbackIdCategories12080(),
+           &cuda_versions::GetExtraCallbackIdCategories12000()});
+
+  // Find the category of the CBID, checking newer CUDA version earlier than
+  // older versions. If needed, process and return directly;
+  cuda_versions::CbidCategory category = cuda_versions::CbidCategory::kNone;
+  for (const auto* cbid_categories : *kExtraCbidCategories) {
+    category = cuda_versions::FindCbidCategory(
+        *cbid_categories, static_cast<CUpti_driver_api_trace_cbid>(cbid));
+    if (category != cuda_versions::CbidCategory::kNone) {
+      break;
+    }
+  }
+  switch (category) {
+    case cuda_versions::CbidCategory::kKernel:
+      SetKernelEventUponApiExit(event, device_id, cbdata, start_tsc, end_tsc);
+      return;
+    case cuda_versions::CbidCategory::kGraph:
+      SetCudaGraphEventUponApiExit(event, cupti_interface, device_id, cbid,
+                                   cbdata, start_tsc, end_tsc,
+                                   guarded_annotations_and_events, tracer);
+      return;
+    case cuda_versions::CbidCategory::kGraphNode:
+      SetCudaGraphNodeEventUponApiExit(event, cupti_interface, device_id, cbid,
+                                       cbdata, start_tsc, end_tsc);
+      return;
+    default:
+      break;
+  }
+
+  // All CBIDs < 579 are handled here for CUDA 11.0 and above.
   switch (cbid) {
-    case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:
-#if CUDA_VERSION >= 11080  // CUDA 11.8
-    case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx:
-#endif  // CUDA_VERSION >= 11080
-    case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel:
-    case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice:
+    case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel:                        // 307
+    case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel:             // 477
+    case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice:  // 480
       SetKernelEventUponApiExit(event, device_id, cbdata, start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2:         // 276
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2:    // 277
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2:         // 278
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2:    // 279
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2:         // 280
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2:    // 281
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2:         // 282
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2:    // 283
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2:         // 284
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2:         // 285
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2:         // 286
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2:           // 287
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2:  // 288
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2:      // 289
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2:           // 290
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2:      // 291
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2:         // 292
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2:    // 293
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpy:                // 305
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync:           // 306
       // This would be the place to populate the memcpy API activity's src and
       // dst memory kind by casting cbdata->functionParams. However, we are not
       // doing that because that will incur significant overhead to get the
@@ -843,96 +892,81 @@ static void SetCallbackEventUponApiExit(
       SetNormalMemcpyEventUponApiExit(event, device_id, cbid, cbdata, start_tsc,
                                       end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer:       // 318
+    case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync:  // 319
       SetP2PMemcpyEventUponApiExit(event, cupti_interface, device_id, cbid,
                                    cbdata, start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2:  // 243
       SetCuMemAllocEventUponApiExit(event, device_id, cbid, cbdata, start_tsc,
                                     end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2:  // 244
       SetCuMemAllocPitchEventUponApiExit(event, device_id, cbid, cbdata,
                                          start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocManaged:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocManaged:  // 371
       SetCuMemAllocManagedEventUponApiExit(event, device_id, cbid, cbdata,
                                            start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocHost_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocHost_v2:  // 294
       SetCuMemAllocHostEventUponApiExit(event, device_id, cbid, cbdata,
                                         start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemHostAlloc:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemHostAlloc:  // 39
       SetCuMemHostAllocEventUponApiExit(event, device_id, cbid, cbdata,
                                         start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2:  // 245
       SetCuMemFreeEventUponApiExit(event, device_id, cbid, cbdata, start_tsc,
                                    end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemFreeHost:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemFreeHost:  // 38
       SetCuMemFreeHostEventUponApiExit(event, device_id, cbid, cbdata,
                                        start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemHostRegister_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemHostRegister_v2:  // 379
       SetCuMemHostRegisterEventUponApiExit(event, device_id, cbid, cbdata,
                                            start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemHostUnregister:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemHostUnregister:  // 302
       SetCuMemHostUnregisterEventUponApiExit(event, device_id, cbid, cbdata,
                                              start_tsc, end_tsc);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async:
-    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async:     // 216
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async:    // 218
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async:    // 220
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async:   // 222
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async:  // 224
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async:  // 226
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2:       // 249
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2:      // 250
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2:      // 251
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2:     // 252
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2:    // 253
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2:    // 254
       SetCuMemsetEventUponApiExit(event, device_id, cbid, cbdata, start_tsc,
                                   end_tsc);
       break;
-#if CUDA_VERSION >= 11070  // CUDA 11.7
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphCreate:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphClone:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphCreate:          // 501
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate:     // 513
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch:          // 514
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz:     // 515
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphClone:           // 523
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate_v2:  // 578
       SetCudaGraphEventUponApiExit(event, cupti_interface, device_id, cbid,
                                    cbdata, start_tsc, end_tsc,
                                    guarded_annotations_and_events, tracer);
       break;
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemcpyNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemsetNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddChildGraphNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddEmptyNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddHostNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddNode_v2:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddEventRecordNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddEventWaitNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddExternalSemaphoresSignalNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddExternalSemaphoresWaitNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemAllocNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemFreeNode:
-    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddBatchMemOpNode:
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode:      // 502
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemcpyNode:      // 504
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemsetNode:      // 506
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddChildGraphNode:  // 525
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddEmptyNode:       // 526
+    case CUPTI_DRIVER_TRACE_CBID_cuGraphAddHostNode:        // 530
       SetCudaGraphNodeEventUponApiExit(event, cupti_interface, device_id, cbid,
                                        cbdata, start_tsc, end_tsc);
       break;
-#endif  // CUDA_VERSION >= 11070
     default:
       SetGenericEventUponApiExit(event, device_id, cbid, cbdata, start_tsc,
                                  end_tsc);
@@ -1035,17 +1069,20 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
   return absl::StrCat(tsl::port::Hostname(), ": ", error_message);
 }
 
-absl::Span<const uint32_t> GetCudaGraphTracingResourceCbids() {
-#if CUDA_VERSION >= 11070
-  static constexpr uint32_t res_cbids[] = {
-      CUPTI_CBID_RESOURCE_GRAPH_CREATED, CUPTI_CBID_RESOURCE_GRAPH_CLONED,
-      CUPTI_CBID_RESOURCE_GRAPHEXEC_CREATED,
-      CUPTI_CBID_RESOURCE_GRAPHNODE_CREATED,
-      CUPTI_CBID_RESOURCE_GRAPHNODE_CLONED};
-  return absl::MakeSpan(res_cbids);
-#else
-  return absl::Span<const uint32_t>();
-#endif
+const char* GetCuptiErrorString(CuptiInterface* cupti_interface,
+                                CUptiResult err) {
+  const char* err_str = "ERROR-WHEN-GETTING-NAME";
+  if (cupti_interface != nullptr) {
+    cupti_interface->GetResultString(err, &err_str);
+  }
+  return err_str;
+}
+
+bool& IsCuptiHardwareEventSystemEnabled() {
+  // This flag can not flip to true once per process. Once enabled, it will stay
+  // enabled until the process is terminated.
+  static bool is_enabled = false;
+  return is_enabled;
 }
 
 }  // namespace
@@ -1088,14 +1125,18 @@ absl::Status CuptiTracer::Enable(
   if (option_->enable_nvtx_tracking) {
     VLOG(1) << "NVTX tracking Enabled.";
     std::vector<CUpti_ActivityKind>& activities = option_->activities_selected;
-    if (std::find(activities.begin(), activities.end(),
-                  CUPTI_ACTIVITY_KIND_MARKER) == activities.end()) {
+    if (!absl::c_contains(activities, CUPTI_ACTIVITY_KIND_MARKER)) {
       VLOG(1) << "Adding CUPTI_ACTIVITY_KIND_MARKER to activities:"
               << (int)CUPTI_ACTIVITY_KIND_MARKER;
       activities.push_back(CUPTI_ACTIVITY_KIND_MARKER);
     }
-    // TODO: Add CUPTI_ACTIVITY_KIND_MARKER_DATA to activities after cupti
-    // more detailed data could be provided by cupti.
+    // If marker data is supported, add it to activities.
+    if (GetActivityMarkerDataKind().has_value() &&
+        !absl::c_contains(activities, CUPTI_ACTIVITY_KIND_MARKER_DATA)) {
+      VLOG(1) << "Adding CUPTI_ACTIVITY_KIND_MARKER_DATA to activities:"
+              << (int)CUPTI_ACTIVITY_KIND_MARKER_DATA;
+      activities.push_back(GetActivityMarkerDataKind().value());
+    }
   }
 
   cupti_driver_api_hook_ = std::make_unique<CuptiDriverApiHookWithActivityApi>(
@@ -1196,68 +1237,100 @@ void CuptiTracer::Disable() {
   tsl::profiler::AnnotationStack::Enable(false);
 }
 
+// Generate default callback ids list that tracer needs to enable them.
+// Have to check the cuda runtime/driver version.
 std::vector<CUpti_driver_api_trace_cbid_enum>
 CuptiTracer::CreateDefaultCallbackIds() {
-  return {
-      // KERNEL
-      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,
-#if CUDA_VERSION >= 11080  // CUDA 11.8
-      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernelEx,
-#endif  // CUDA_VERSION >= 11080
-      // MEMCPY
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
-      // MemAlloc
-      CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
-      // MemFree
-      CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
-      // Memset
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
-      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
-      // GENERIC
-      CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
-#if CUDA_VERSION >= 12080  // CUDA 12.8
-      CUPTI_DRIVER_TRACE_CBID_cuGraphCreate,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphClone,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate_v2,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithFlags,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiateWithParams_ptsz,
-      CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemcpyNode,
-#endif  // CUDA_VERSION >= 12080
+  // Default CBIDs for CUDA 11.0 and above.
+  std::vector<CUpti_driver_api_trace_cbid_enum> cbids = {
+      /* Next three CBIDs are handled by SetKernelEventUponApiExit(). */
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel,                        // 307
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel,             // 477
+      CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice,  // 480
+      /* Following group are handled by SetNormalMemcpyEventUponApiExit(). */
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2,         // 276
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2,    // 277
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2,         // 278
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2,    // 279
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2,         // 280
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2,    // 281
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoH_v2,         // 282
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoHAsync_v2,    // 283
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoD_v2,         // 284
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoA_v2,         // 285
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAtoA_v2,         // 286
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2,           // 287
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DUnaligned_v2,  // 288
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2,      // 289
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2,           // 290
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,      // 291
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,         // 292
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,    // 293
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpy,                // 305
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync,           // 306
+      /* SetP2PMemcpyEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer,       // 318
+      CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync,  // 319
+      /* SetCuMemAllocEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,  // 243
+      /* SetCuMemAllocPitchEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,  // 244
+      /* SetCuMemAllocManagedEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemAllocManaged,  // 371
+      /* SetCuMemAllocHostEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemAllocHost_v2,  // 294
+      /* SetCuMemHostAllocEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemHostAlloc,  // 39
+      /* SetCuMemFreeEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,  // 245
+      /* SetCuMemFreeHostEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemFreeHost,  // 38
+      /* SetCuMemHostRegisterEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemHostRegister_v2,  // 379
+      /* SetCuMemHostUnregisterEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemHostUnregister,  // 302
+      /* SetCuMemsetEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,     // 216
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,    // 218
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,    // 220
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,   // 222
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,  // 224
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,  // 226
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,       // 249
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,      // 250
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,      // 251
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,     // 252
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,    // 253
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,    // 254
+      /* SetCudaGraphEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuGraphCreate,          // 501
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate,     // 513
+      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch,          // 514
+      CUPTI_DRIVER_TRACE_CBID_cuGraphLaunch_ptsz,     // 515
+      CUPTI_DRIVER_TRACE_CBID_cuGraphClone,           // 523
+      CUPTI_DRIVER_TRACE_CBID_cuGraphInstantiate_v2,  // 578
+      /* SetCudaGraphNodeEventUponApiExit() */
+      CUPTI_DRIVER_TRACE_CBID_cuGraphAddKernelNode,      // 502
+      CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemcpyNode,      // 504
+      CUPTI_DRIVER_TRACE_CBID_cuGraphAddMemsetNode,      // 506
+      CUPTI_DRIVER_TRACE_CBID_cuGraphAddChildGraphNode,  // 525
+      CUPTI_DRIVER_TRACE_CBID_cuGraphAddEmptyNode,       // 526
+      CUPTI_DRIVER_TRACE_CBID_cuGraphAddHostNode,        // 530
   };
+
+  // Adding default Callback cbids according to the CUDA version, considering
+  // both compilation and runtime/driver version.
+  for (const auto& id_categories :
+       {cuda_versions::GetExtraCallbackIdCategories12080(),
+        cuda_versions::GetExtraCallbackIdCategories12000()}) {
+    for (const auto& [cbid, category] : id_categories) {
+      if (category != cuda_versions::CbidCategory::kNone) {
+        cbids.push_back(cbid);
+      }
+    }
+  }
+
+  return cbids;
 }
 
 absl::Status CuptiTracer::FlushEventsToCollector() {
@@ -1310,7 +1383,8 @@ absl::Status CuptiTracer::EnableApiTracing() {
       Subscribe(&subscriber_, (CUpti_CallbackFunc)ApiCallback, this));
   api_tracing_enabled_ = true;
 
-  absl::Span<const uint32_t> res_cbids = GetCudaGraphTracingResourceCbids();
+  absl::Span<const CUpti_CallbackIdResource> res_cbids =
+      cuda_versions::GetCudaGraphTracingResourceCbids();
   for (auto cbid : res_cbids) {
     RETURN_IF_CUPTI_ERROR(EnableCallback(1 /* ENABLE */, subscriber_,
                                          CUPTI_CB_DOMAIN_RESOURCE, cbid));
@@ -1338,7 +1412,8 @@ absl::Status CuptiTracer::DisableApiTracing() {
 
   api_tracing_enabled_ = false;
 
-  absl::Span<const uint32_t> res_cbids = GetCudaGraphTracingResourceCbids();
+  absl::Span<const CUpti_CallbackIdResource> res_cbids =
+      cuda_versions::GetCudaGraphTracingResourceCbids();
   for (auto cbid : res_cbids) {
     RETURN_IF_CUPTI_ERROR(EnableCallback(0 /* DISABLE */, subscriber_,
                                          CUPTI_CB_DOMAIN_RESOURCE, cbid));
@@ -1379,6 +1454,32 @@ absl::Status CuptiTracer::EnableActivityTracing() {
                       "overhead may be big. CUPTI ERROR CODE:"
                    << err;
     }
+    if (option_->enable_activity_hardware_tracing) {
+      if (IsCuptiHardwareEventSystemEnabled()) {
+        LOG(INFO) << "CUPTI activity HW trace already enabled.";
+      } else {
+        auto err = cupti_interface_->ActivityEnableHWTrace(true);
+        if (err == CUPTI_ERROR_NOT_SUPPORTED) {
+          LOG(INFO)
+              << "CUPTI activity HW trace not enabled due to not supported on "
+                 "this platform!";
+        } else if (err != CUPTI_SUCCESS) {
+          LOG(WARNING)
+              << "Fail to enable CUPTI activity HW trace, CUPTI ERROR CODE:"
+              << err << " (" << GetCuptiErrorString(cupti_interface_, err)
+              << ")";
+        } else {
+          LOG(INFO) << "CUPTI activity HW trace successfully enabled.";
+          IsCuptiHardwareEventSystemEnabled() = true;
+        }
+      }
+    } else {
+      if (IsCuptiHardwareEventSystemEnabled()) {
+        LOG(INFO)
+            << "CUPTI activity HW trace already enabled, continue with it.";
+      }
+    }
+
     RETURN_IF_CUPTI_ERROR(ActivityRegisterCallbacks(
         RequestCuptiActivityBuffer, ProcessCuptiActivityBuffer));
     VLOG(1) << "Enabling activity tracing for "

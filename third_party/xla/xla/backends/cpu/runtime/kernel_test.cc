@@ -65,10 +65,10 @@ TEST(KernelTest, InternalAddition1D) {
   std::vector<int32_t> rhs = {5, 6, 7, 8};
   std::vector<int32_t> out = {0, 0, 0, 0};
 
-  Kernel::DeviceMemoryBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
-  Kernel::DeviceMemoryBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
-  Kernel::DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
-  std::vector<Kernel::DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
+  Kernel::DeviceAddressBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
+  Kernel::DeviceAddressBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
+  Kernel::DeviceAddressBase out_mem(out.data(), out.size() * sizeof(int32_t));
+  std::vector<Kernel::DeviceAddressBase> args = {lhs_mem, rhs_mem, out_mem};
 
   TF_ASSERT_OK(kernel.Launch(NumWorkGroups{4, 1, 1}, args));
 
@@ -84,10 +84,10 @@ TEST(KernelTest, InternalAddition3D) {
   std::vector<int32_t> rhs = {10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21};
   std::vector<int32_t> out = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-  Kernel::DeviceMemoryBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
-  Kernel::DeviceMemoryBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
-  Kernel::DeviceMemoryBase out_mem(out.data(), out.size() * sizeof(int32_t));
-  std::vector<Kernel::DeviceMemoryBase> args = {lhs_mem, rhs_mem, out_mem};
+  Kernel::DeviceAddressBase lhs_mem(lhs.data(), lhs.size() * sizeof(int32_t));
+  Kernel::DeviceAddressBase rhs_mem(rhs.data(), rhs.size() * sizeof(int32_t));
+  Kernel::DeviceAddressBase out_mem(out.data(), out.size() * sizeof(int32_t));
+  std::vector<Kernel::DeviceAddressBase> args = {lhs_mem, rhs_mem, out_mem};
 
   TF_ASSERT_OK(kernel.Launch(NumWorkGroups{2, 2, 3}, args));
 

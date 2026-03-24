@@ -892,6 +892,17 @@ class XlaBuilder {
       XlaComputationId computation,
       absl::Span<const int64_t> dimensions_to_reduce);
 
+  XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
+             const XlaComputation& computation, int64_t scan_dimension,
+             std::optional<int64_t> scan_dimension_size = std::nullopt,
+             bool is_reverse = false,
+             TriState is_associative = TRI_STATE_UNSPECIFIED);
+  XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
+             XlaComputationId computation, int64_t scan_dimension,
+             std::optional<int64_t> scan_dimension_size = std::nullopt,
+             bool is_reverse = false,
+             TriState is_associative = TRI_STATE_UNSPECIFIED);
+
   XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                   XlaComputationId computation);
 
@@ -1638,6 +1649,16 @@ class XlaBuilder {
                       absl::Span<const XlaOp> init_values,
                       XlaComputationId computation,
                       absl::Span<const int64_t> dimensions_to_reduce);
+  friend XlaOp Scan(absl::Span<const XlaOp> inputs,
+                    absl::Span<const XlaOp> inits,
+                    const XlaComputation& computation, int64_t scan_dimension,
+                    std::optional<int64_t> scan_dimension_size, bool is_reverse,
+                    TriState is_associative);
+  friend XlaOp Scan(absl::Span<const XlaOp> inputs,
+                    absl::Span<const XlaOp> inits, XlaComputationId computation,
+                    int64_t scan_dimension,
+                    std::optional<int64_t> scan_dimension_size, bool is_reverse,
+                    TriState is_associative);
   friend XlaOp ReduceAll(XlaOp operand, XlaOp init_value,
                          const XlaComputation& computation);
   friend XlaOp ReduceWindow(XlaOp operand, XlaOp init_value,
@@ -1740,6 +1761,12 @@ class XlaBuilder {
                     const std::optional<ResultAccuracy>& result_accuracy,
                     bool expand);
   friend XlaOp Acosh(XlaOp x,
+                     const std::optional<ResultAccuracy>& result_accuracy,
+                     bool expand);
+  friend XlaOp Asin(XlaOp x,
+                    const std::optional<ResultAccuracy>& result_accuracy,
+                    bool expand);
+  friend XlaOp Asinh(XlaOp x,
                      const std::optional<ResultAccuracy>& result_accuracy,
                      bool expand);
   friend XlaOp Atan2(XlaOp y, XlaOp x,
@@ -2765,6 +2792,18 @@ XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
 XlaOp Reduce(XlaBuilder* builder, absl::Span<const XlaOp> operands,
              absl::Span<const XlaOp> init_values, XlaComputationId computation,
              absl::Span<const int64_t> dimensions_to_reduce);
+
+// Enqueues a scan instruction onto the computation.
+XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
+           const XlaComputation& computation, int64_t scan_dimension,
+           std::optional<int64_t> scan_dimension_size = std::nullopt,
+           bool is_reverse = false,
+           TriState is_associative = TRI_STATE_UNSPECIFIED);
+XlaOp Scan(absl::Span<const XlaOp> inputs, absl::Span<const XlaOp> inits,
+           XlaComputationId computation, int64_t scan_dimension,
+           std::optional<int64_t> scan_dimension_size = std::nullopt,
+           bool is_reverse = false,
+           TriState is_associative = TRI_STATE_UNSPECIFIED);
 
 // Convenience wrapper around the above that reduces all the dimensions in the
 // operand shape.

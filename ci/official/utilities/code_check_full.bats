@@ -45,7 +45,10 @@ do_external_licenses_check(){
 @bazel_tools//platforms
 @bazel_tools//third_party/
 @bazel_tools//tools
+@jpegxl//lib
 @local
+@xla//xla
+@tsl//tsl
 @com_google_absl//absl
 @pybind11_abseil//pybind11_abseil
 @org_tensorflow//
@@ -64,8 +67,8 @@ EOF
 
   # grep patterns for targets which are allowed to be extra licenses
   cat > $BATS_TEST_TMPDIR/allowed_to_be_extra <<EOF
-@local_xla//third_party/mkl
-@local_xla//third_party/mkl_dnn
+@xla//third_party/mkl
+@xla//third_party/mkl_dnn
 @absl_py//
 @bazel_tools//src
 @bazel_tools//platforms
@@ -74,9 +77,12 @@ EOF
 @com_google_absl//
 @com_google_protobuf//
 @internal_platforms_do_not_use//host
+@jpegxl//
 @pybind11_abseil//pybind11_abseil
 //external
 @local
+@xla//xla
+@tsl//tsl
 @com_github_googlecloudplatform_google_cloud_cpp//
 @embedded_jdk//
 ^//$
@@ -216,6 +222,7 @@ EOF
     --@local_config_cuda//cuda:include_cuda_libs=false \
     --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
     --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
+    --repo_env=HERMETIC_NCCL_VERSION="2.27.7" \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
@@ -240,6 +247,7 @@ EOF
     --@local_config_cuda//cuda:include_cuda_libs=false \
     --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
     --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
+    --repo_env=HERMETIC_NCCL_VERSION="2.27.7" \
     --define framework_shared_object=false \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\

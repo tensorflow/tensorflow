@@ -138,8 +138,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[2048,24576]{1,0} parameter(0), sharding={devices=[1,4]<=[4]}
   Arg_1 = bf16[24576,98304]{1,0} parameter(1), sharding={devices=[4,1]<=[4]}
-  ROOT dot = bf16[2048,98304]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[2048,98304]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,4]<=[4]}
 }
 )";
@@ -183,9 +183,9 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[8,2048,256]{2,1,0} parameter(0), sharding={devices=[4,1,1]<=[4]}
   Arg_1 = bf16[8,256,512]{2,1,0} parameter(1), sharding={devices=[4,1,1]<=[4]}
-  ROOT dot = bf16[8,2048,512]{2,1,0} dot(Arg_0, Arg_1), 
+  ROOT dot = bf16[8,2048,512]{2,1,0} dot(Arg_0, Arg_1),
     lhs_batch_dims={0}, rhs_batch_dims={0},
-    lhs_contracting_dims={2}, rhs_contracting_dims={1}, 
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
     sharding={devices=[4,1,1]<=[4]}
 }
 )";
@@ -218,8 +218,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[128,256]{1,0} parameter(0), sharding={devices=[1,16]<=[16]}
   Arg_1 = bf16[256,512]{1,0} parameter(1), sharding={devices=[16,1]<=[16]}
-  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,16]<=[16]}
 }
 )";
@@ -243,8 +243,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[128,256]{1,0} parameter(0), sharding={devices=[1,32]<=[32]}
   Arg_1 = bf16[256,512]{1,0} parameter(1), sharding={devices=[32,1]<=[32]}
-  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,32]<=[32]}
 }
 )";
@@ -269,8 +269,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[128,256]{1,0} parameter(0), sharding={devices=[1,64]<=[64]}
   Arg_1 = bf16[256,512]{1,0} parameter(1), sharding={devices=[64,1]<=[64]}
-  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,64]<=[64]}
 }
 )";
@@ -296,8 +296,8 @@ HloModule test
 ENTRY main {
   Arg_0 = bf16[128,256]{1,0} parameter(0), sharding={devices=[1,8]<=[8]}
   Arg_1 = bf16[256,512]{1,0} parameter(1), sharding={devices=[8,1]<=[8]}
-  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1), 
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}, 
+  ROOT dot = bf16[128,512]{1,0} dot(Arg_0, Arg_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
     sharding={devices=[1,8]<=[8]}
 }
 )";

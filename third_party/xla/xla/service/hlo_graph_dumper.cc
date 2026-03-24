@@ -29,25 +29,23 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/shape.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/file_system.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 
-#include <algorithm>
-#include <atomic>
 #include <deque>
 #include <functional>
-#include <map>
-#include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -65,26 +63,17 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/lib/io/zlib_compression_options.h"
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
-#include "xla/types.h"
 #include "xla/util.h"
-#include "xla/window_util.h"
 #include "tsl/platform/base64.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/numbers.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/regexp.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -95,6 +84,16 @@ using absl::StrFormat;
 using absl::StrJoin;
 using std::nullopt;
 using std::optional;
+
+// Some fused instructions are not in a fusion computation; require the parent
+// computation's FusionInstruction to be present before treating them as fused.
+bool IsFusedWithParentFusionInstNotNull(const HloInstruction* instr) {
+  if (!instr->IsFused()) {
+    return false;
+  }
+  const HloComputation* parent = instr->parent();
+  return parent != nullptr && parent->FusionInstruction() != nullptr;
+}
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -644,12 +643,17 @@ stylesheet=<
     // If this edge crosses a fusion cluster boundary, highlight it when the
     // cluster is hovered over.
     if (to_node) {
-      if (from_node->IsFused() &&
+      // Only treat as fused if the parent fusion instruction exists; needed
+      // for reliable cluster membership.
+      if (IsFusedWithParentFusionInstNotNull(from_node) &&
           from_node->parent()->root_instruction() == from_node) {
         int64_t cluster_id = cluster_ids_.at(from_node->parent());
         add_hover_css_rule("clust", cluster_id, kBlue);
       }
-      if (to_node->IsFused() && to_node->opcode() == HloOpcode::kParameter) {
+      // Fusion parameters should only map to a cluster when the fusion
+      // instruction is present.
+      if (IsFusedWithParentFusionInstNotNull(to_node) &&
+          to_node->opcode() == HloOpcode::kParameter) {
         int64_t cluster_id = cluster_ids_.at(to_node->parent());
         add_hover_css_rule("clust", cluster_id, kRed);
       }
@@ -851,7 +855,8 @@ std::string HloDotDumper::DumpRootTag() {
 
 static const HloConstantInstruction* TryGetFusionParameterConstant(
     const HloInstruction* instr) {
-  if (instr->opcode() != HloOpcode::kParameter || !instr->IsFused()) {
+  if (instr->opcode() != HloOpcode::kParameter ||
+      !IsFusedWithParentFusionInstNotNull(instr)) {
     return nullptr;
   }
   const HloInstruction* fusion = instr->parent()->FusionInstruction();
@@ -881,7 +886,9 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
   }
   const int kMinUsersToOmit = 3;
   return instr->opcode() == HloOpcode::kParameter && instr->shape().IsTuple() &&
-         !instr->IsFused() &&
+         // Treat as fused only when the parent fusion instruction exists to
+         // avoid misclassifying non-fusion parameters.
+         !IsFusedWithParentFusionInstNotNull(instr) &&
          absl::c_count_if(instr->users(),
                           [&](const HloInstruction* user) {
                             return filter_.Show(user);
@@ -1089,7 +1096,9 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
 
   // Special case: fused parameter is fed from a get-tuple-element.  If
   // so, name the tuple index.
-  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
+  // Only access FusionInstruction when the parent fusion instruction exists.
+  if (instr->opcode() == HloOpcode::kParameter &&
+      IsFusedWithParentFusionInstNotNull(instr)) {
     const HloInstruction* param_input =
         instr->parent()->FusionInstruction()->operand(
             instr->parameter_number());
@@ -1113,7 +1122,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     if (it != sharding_colors_.end()) {
       return it->second;
     }
-    ColorScheme color = static_cast<ColorScheme>(
+    auto color = static_cast<ColorScheme>(
         kBlue + (next_shard_color_++ % (kDashedBorder - kBlue)));
     sharding_colors_.emplace(instr->sharding(), color);
     return color;
@@ -1141,6 +1150,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
     case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
     case HloOpcode::kAcos:
     case HloOpcode::kAcosh:
     case HloOpcode::kAdd:
@@ -1258,6 +1268,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
+    case HloOpcode::kScan:
     case HloOpcode::kScatter:  // scatter is a kind of reduction
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kGather:  // not a reduction, but goes with scatter
@@ -1346,8 +1357,8 @@ std::string HloDotDumper::GetInstructionNodeMetadata(
   }
   if (instr->metadata().stack_frame_id() != 0) {
     auto hlo_module = instr->parent()->parent();
-    int frame_id = instr->metadata().stack_frame_id();
-    while (frame_id != 0) {
+    StackFrameId frame_id{instr->metadata().stack_frame_id()};
+    while (frame_id.valid()) {
       HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
       if (frame.empty()) {
         break;
@@ -1627,7 +1638,9 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   // Add edges from instr's operands to instr.  Parameters within fusion
   // expressions are handled specially -- we draw an edge from the corresponding
   // operand on the fusion node itself to the parameter.
-  if (instr->opcode() == HloOpcode::kParameter && instr->IsFused()) {
+  // Only access FusionInstruction when the parent fusion instruction exists.
+  if (instr->opcode() == HloOpcode::kParameter &&
+      IsFusedWithParentFusionInstNotNull(instr)) {
     // Only add the edge if this is not the outermost computation; otherwise it
     // will lead from a node we're not drawing.
     if (instr->parent() != computation_) {
@@ -1689,8 +1702,9 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
 // implementation details.
 bool IsAcfPrameter(const xla::HloInstruction* instruction) {
   // Parameter is fused
+  // Require a real fusion parent to avoid nullptr FusionInstruction.
   if (instruction->opcode() != xla::HloOpcode::kParameter ||
-      !instruction->IsFused())
+      !IsFusedWithParentFusionInstNotNull(instruction))
     return false;
 
   // Parameter piped through and is only consumed by 1 user

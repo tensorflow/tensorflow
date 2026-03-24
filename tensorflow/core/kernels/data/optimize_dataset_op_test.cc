@@ -28,11 +28,11 @@ constexpr char kNoopElimination[] = "noop_elimination";
 class OptimizeDatasetParams : public DatasetParams {
  public:
   template <typename T>
-  OptimizeDatasetParams(T input_dataset_params, string optimizations,
+  OptimizeDatasetParams(T input_dataset_params, std::string optimizations,
                         DataTypeVector output_dtypes,
                         std::vector<PartialTensorShape> output_shapes,
                         std::vector<tstring> optimization_configs,
-                        string node_name)
+                        std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         optimizations_(std::move(optimizations)),
@@ -47,7 +47,8 @@ class OptimizeDatasetParams : public DatasetParams {
     return {CreateTensor<tstring>(TensorShape({1}), {optimizations_})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     *input_names = {OptimizeDatasetOp::kInputDataset,
                     OptimizeDatasetOp::kOptimizations};
     return absl::OkStatus();
@@ -61,12 +62,12 @@ class OptimizeDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return OptimizeDatasetOp::kDatasetType;
   }
 
  private:
-  string optimizations_;
+  std::string optimizations_;
   std::vector<tstring> optimization_configs_;
 };
 

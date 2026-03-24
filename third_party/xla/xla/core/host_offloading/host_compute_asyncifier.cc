@@ -60,7 +60,7 @@ void RemoveTilesAndMemorySpaces(HloComputation* computation) {
 }
 }  // namespace
 
-absl::StatusOr<bool> HostComputeAsyncifier::Run(
+absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;
@@ -111,6 +111,13 @@ absl::StatusOr<bool> HostComputeAsyncifier::Run(
               call_instr_no_constants, {ShapeUtil::MakeScalarShape(U32)},
               HloInstruction::kHostThread,
               /*replace=*/true, /*override_names=*/true));
+      if (call_instr_no_constants->has_frontend_attributes()) {
+        HloInstruction* async_start = async_done->async_chain_start();
+        async_start->set_frontend_attributes(
+            call_instr_no_constants->frontend_attributes());
+        async_done->set_frontend_attributes(
+            call_instr_no_constants->frontend_attributes());
+      }
       VLOG(1) << "Turning " << call_instr_no_constants->name()
               << " into an async instruction " << async_done->name();
 

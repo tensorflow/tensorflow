@@ -1,7 +1,7 @@
 # Description:
 #   TensorFlow C++ inference example for labeling images.
 
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
@@ -49,22 +49,24 @@ tf_cc_binary(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
-        "@local_xla//xla/tsl/util:command_line_flags",
-        "@local_xla//xla/tsl/platform:status",
-        "@local_xla//xla/tsl/platform:types",
+        "@xla//xla/tsl/util:command_line_flags",
+        "@xla//xla/tsl/platform:status",
+        "@xla//xla/tsl/platform:types",
         # cc:cc_ops is used to include image ops (for label_image)
         # Jpg, gif, and png related code won't be included
         "//tensorflow/cc:cc_ops",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "label_image_py",
     srcs = ["label_image.py"],
     main = "label_image.py",
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

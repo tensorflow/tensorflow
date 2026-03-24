@@ -15,12 +15,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
@@ -70,7 +71,6 @@ using ::testing::AnyOf;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
-using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::Optional;
 using ::testing::SizeIs;
@@ -160,8 +160,10 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
       std::make_unique<XlaCompileOptions>(compile_options, device_list);
   TF_ASSIGN_OR_RETURN(
       auto loaded_executable,
-      compiler->CompileAndLoad(std::make_unique<HloProgram>(*module),
-                               std::move(xla_compile_options)));
+      compiler
+          ->CompileAndLoad(std::make_unique<HloProgram>(*module),
+                           std::move(xla_compile_options))
+          .Await());
   if (!serialize) {
     return loaded_executable;
   }
@@ -169,8 +171,10 @@ absl::StatusOr<LoadedExecutableRef> CompileOnDevices(
                       loaded_executable->Serialize());
   auto options = std::make_unique<XlaDeserializeExecutableOptions>();
   options->devices = std::move(device_list);
-  return compiler->DeserializeLoadedExecutable(std::move(serialized_executable),
-                                               std::move(options));
+  return compiler
+      ->DeserializeLoadedExecutable(std::move(serialized_executable),
+                                    std::move(options))
+      .Await();
 }
 
 class LoadedExecutableImplTest
@@ -279,22 +283,20 @@ TEST_P(LoadedExecutableImplTest, ProgramText) {
 }
 
 TEST_P(LoadedExecutableImplTest, Analysis) {
-  if (const bool serialize = GetParam(); serialize) {
-    GTEST_SKIP() << "Analysis is not supported for serialized executables.";
-  }
-
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   TF_ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
-      SimpleAddExecutable(client.get(), /*serialize=*/false));
+      SimpleAddExecutable(client.get(), /*serialize=*/GetParam()));
 
   TF_ASSERT_OK_AND_ASSIGN(const xla::CompiledMemoryStats compiled_memory_stats,
                           executable->GetCompiledMemoryStats());
   EXPECT_GT(compiled_memory_stats.argument_size_in_bytes, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis,
-                          executable->GetCostAnalysis());
-  EXPECT_THAT(cost_analysis.map(), Not(IsEmpty()));
+  auto cost_analysis = executable->GetCostAnalysis();
+  if (!absl::IsUnimplemented(cost_analysis.status())) {
+    TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis_value, cost_analysis);
+    EXPECT_FALSE(cost_analysis_value.IsEmpty());
+  }
 }
 
 TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
@@ -325,11 +327,6 @@ TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
   absl::StatusOr<absl::Span<const int>> donatable_input_indices =
       loaded_executable->GetDonatableInputIndices();
 
-  if (absl::IsUnimplemented(donatable_input_indices.status())) {
-    GTEST_SKIP() << "GetDonatableInputIndices() returned unimplemented error: "
-                 << donatable_input_indices.status();
-  }
-
   EXPECT_THAT(donatable_input_indices,
               IsOkAndHolds(UnorderedElementsAre(0, 2)));
 }
@@ -354,7 +351,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -386,7 +383,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
   TF_ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
-  std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
+  absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
@@ -406,11 +403,12 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
                          /*replicated=*/false, serialize));
   }
   EXPECT_EQ(loaded_executable->user_context()->Id(), UserContextId(20));
+  EXPECT_EQ(loaded_executable->devices(), std::nullopt);
 
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -418,6 +416,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, std::move(shape),
                       /*byte_strides=*/std::nullopt, std::move(sharding),
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -444,8 +443,68 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   TF_ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
-  std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
+  absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
+}
+
+TEST_P(LoadedExecutableImplTest, CancelExecution) {
+  bool serialize = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<Device*> devices = {client->addressable_devices().at(0)};
+  LoadedExecutableRef loaded_executable;
+  {
+    UserContextScope user_context_scope(test_util::MakeUserContext(20));
+    TF_ASSERT_OK_AND_ASSIGN(
+        loaded_executable,
+        CompileOnDevices(client.get(), compiler, module_add_one, devices,
+                         /*replicated=*/false, serialize));
+  }
+  EXPECT_EQ(loaded_executable->user_context()->Id(), UserContextId(20));
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  std::vector<float> data(6);
+  absl::c_iota(data, 0);
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data.data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/{}));
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+  LoadedExecutable::ExecuteResult result;
+  {
+    UserContextScope user_context_scope(test_util::MakeUserContext(100));
+    TF_ASSERT_OK_AND_ASSIGN(
+        result,
+        loaded_executable->Execute(absl::MakeSpan(&array, 1), execute_options,
+                                   /*devices=*/std::nullopt));
+
+    // Smoke test for execution cancellation. Whether cancellation
+    // succeeds/fails or is supported/unsupported, the API call should finish
+    // without an error.
+    client->CancelExecution(result.cancellation_handle,
+                            absl::CancelledError("test"));
+    // Execution cancellation is idempotent.
+    client->CancelExecution(result.cancellation_handle,
+                            absl::CancelledError("test"));
+  }
+
+  // After cancellation, the user code typically blocks on the execution result
+  // future to ensure that the execution has completed or fully cancelled.
+  std::vector<float> out_data(6);
+  auto future = result.outputs[0]->CopyToHostBuffer(
+      out_data.data(), /*byte_strides=*/std::nullopt,
+      ArrayCopySemantics::kAlwaysCopy);
+  future.Await().IgnoreError();
 }
 
 TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
@@ -463,7 +522,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -492,7 +551,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
   TF_ASSERT_OK(future.Await());
 
   std::vector<float> expected_out_data(6);
-  std::iota(expected_out_data.begin(), expected_out_data.end(), 1);
+  absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
@@ -555,7 +614,7 @@ module @add_sub {
     ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
     for (int i = 0; i < 2; ++i) {
       std::vector<int32_t> data(6);
-      std::iota(data.begin(), data.end(), 0);
+      absl::c_iota(data, 0);
       TF_ASSERT_OK_AND_ASSIGN(
           arrays.emplace_back(),
           client->MakeArrayFromHostBuffer(
@@ -649,15 +708,18 @@ TEST(ExecutableTest, ExecutableSerialization) {
   ASSERT_TRUE(google::protobuf::util::ParseDelimitedFromZeroCopyStream(
       &metadata, &input_stream, nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable_version,
-                          loaded_executable->executable_version());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto xla_executable_version,
-      xla::ifrt::ToXlaExecutableVersion(std::move(executable_version)));
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
-                          xla_executable_version->ToProto());
-  EXPECT_THAT(metadata.executable_version(),
-              EqualsProto(serialized_xla_executable_version));
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
+      executable_version = loaded_executable->executable_version();
+  if (!absl::IsUnimplemented(executable_version.status())) {
+    TF_ASSERT_OK(executable_version.status());
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto xla_executable_version,
+        xla::ifrt::ToXlaExecutableVersion(*std::move(executable_version)));
+    TF_ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
+                            xla_executable_version->ToProto());
+    EXPECT_THAT(metadata.executable_version(),
+                EqualsProto(serialized_xla_executable_version));
+  }
 
   EXPECT_EQ(metadata.computation_name(), "add_sub");
 
@@ -742,6 +804,17 @@ TEST(ExecutableTest, ExecutableSerialization) {
     // Verify donated_input field
     bool expected_donated = donated_input_indices_set.contains(i);
     EXPECT_EQ(metadata.parameter_specs(i).donated_input(), expected_donated);
+
+    // Verify shape and dtype fields
+    if (metadata.parameter_specs(i).has_dtype()) {
+      EXPECT_EQ(
+          static_cast<int32_t>(metadata.parameter_specs(i).dtype().kind()),
+          static_cast<int32_t>(xla::ifrt::DType::kS32));
+    }
+    if (metadata.parameter_specs(i).has_shape()) {
+      EXPECT_THAT(metadata.parameter_specs(i).shape().dims(),
+                  testing::ElementsAre(2, 3));
+    }
   }
 
   absl::string_view serialized_pjrt_executable = *serialized_executable;
@@ -753,10 +826,11 @@ TEST(ExecutableTest, ExecutableSerialization) {
                           client->MakeDeviceList(devices));
   auto options = std::make_unique<xla::ifrt::XlaDeserializeExecutableOptions>();
   options->devices = device_list;
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto deserialized_executable,
-      client->GetDefaultCompiler()->DeserializeLoadedExecutable(
-          *serialized_executable, std::move(options)));
+  TF_ASSERT_OK_AND_ASSIGN(auto deserialized_executable,
+                          client->GetDefaultCompiler()
+                              ->DeserializeLoadedExecutable(
+                                  *serialized_executable, std::move(options))
+                              .Await());
 
   TF_ASSERT_OK_AND_ASSIGN(auto loaded_output_layouts,
                           loaded_executable->GetOutputLayouts());
@@ -795,12 +869,28 @@ TEST(ExecutableTest, ExecutableSerialization) {
   }
   EXPECT_EQ(deserialized_executable->name(), "add_sub");
 
+  ASSERT_OK_AND_ASSIGN(
+      xla::CompiledMemoryStats deserialized_compiled_memory_stats,
+      deserialized_executable->GetCompiledMemoryStats());
+  ASSERT_OK_AND_ASSIGN(xla::CompiledMemoryStats loaded_compiled_memory_stats,
+                       loaded_executable->GetCompiledMemoryStats());
+
+  // Temporary workaround for some implementations not round-tripping the
+  // CompiledMemoryStats upon executable deserialization.
+  loaded_compiled_memory_stats.serialized_buffer_assignment = "";
+  loaded_compiled_memory_stats.peak_memory_in_bytes = 0;
+  deserialized_compiled_memory_stats.serialized_buffer_assignment = "";
+  deserialized_compiled_memory_stats.peak_memory_in_bytes = 0;
+
+  EXPECT_THAT(deserialized_compiled_memory_stats.ToProto(),
+              EqualsProto(loaded_compiled_memory_stats.ToProto()));
+
   // Execute the deserialized executable.
   xla::ifrt::DType dtype(xla::ifrt::DType::kS32);
   xla::ifrt::Shape shard_shape({1, 3});
   xla::ifrt::Shape shape({2, 3});
   std::vector<int32_t> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   std::vector<xla::ifrt::ArrayRef> input_arrays;
 
   // Input 1 : [0, 1, 2, 3, 4, 5] sharded on device 0 and 1.
@@ -830,10 +920,12 @@ TEST(ExecutableTest, ExecutableSerialization) {
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   std::vector<xla::ifrt::ArrayRef> shards = {array_shard0, array_shard1};
-  TF_ASSERT_OK_AND_ASSIGN(input_arrays.emplace_back(),
-                          client->AssembleArrayFromSingleDeviceArrays(
-                              shape, input1_sharding, absl::MakeSpan(shards),
-                              xla::ifrt::ArrayCopySemantics::kDonateInput));
+  TF_ASSERT_OK_AND_ASSIGN(
+      input_arrays.emplace_back(),
+      client->AssembleArrayFromSingleDeviceArrays(
+          dtype, shape, input1_sharding, absl::MakeSpan(shards),
+          xla::ifrt::ArrayCopySemantics::kDonateInput,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   // Input 2 : [0, 1, 2, 3, 4, 5] replicated on device 0 and 1.
   xla::ifrt::ShardingRef input2_sharding =

@@ -111,6 +111,7 @@ EXPORTS
   ??0SignatureDef@tensorflow@@IEAA@PEAVArena@protobuf@google@@@Z
   ??0SimpleFieldComparator@util@protobuf@google@@QEAA@XZ
   ??0SingleMachine@grappler@tensorflow@@QEAA@HHH@Z
+  ??0SourceMgr@llvm@@QEAA@XZ
   ??0SourceMgrDiagnosticHandler@mlir@@QEAA@AEAVSourceMgr@llvm@@PEAVMLIRContext@1@$$QEAV?$unique_function@$$A6A_NVLocation@mlir@@@Z@3@@Z
   ??0SparseCoreLayoutStacker@tpu@tensorflow@@QEAA@H_NH@Z
   ??0SrcBuffer@SourceMgr@llvm@@QEAA@$$QEAU012@@Z
@@ -173,6 +174,7 @@ EXPORTS
   ??1RunMetadata@tensorflow@@UEAA@XZ
   ??1SignatureDef@tensorflow@@UEAA@XZ
   ??1SimpleFieldComparator@util@protobuf@google@@UEAA@XZ
+  ??1SourceMgr@llvm@@QEAA@XZ
   ??1SourceMgrDiagnosticHandler@mlir@@QEAA@XZ
   ??1SparseCoreTableLayout@tpu@tensorflow@@UEAA@XZ
   ??1SparseCoreTableLayouts@tpu@tensorflow@@UEAA@XZ
@@ -197,7 +199,7 @@ EXPORTS
   ?AddMesh@dtensor@tensorflow@@YAXAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAX_NPEAUTSL_Status@@@Z
   ?AddRegisterer@gradients@tensorflow@@YAPEAVGradientFunction@12@AEBUForwardOperation@12@@Z
   ?AddStep@tfprof@tensorflow@@YAN_JPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@11@Z
-  ?AddTable@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J101@Z
+  ?AddTable@SparseCoreLayoutStacker@tpu@tensorflow@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@_J1011@Z
   ?AddV2@ops@tensorflow@@YA?AVStatus@lts_20250814@absl@@PEAVAbstractContext@2@QEAVAbstractTensorHandle@2@1PEAPEAV72@PEBD3@Z
   ?AddWhileInputHack@tensorflow@@YAXPEAUTF_Graph@@UTF_Output@@PEAUTF_Operation@@PEAUTSL_Status@@@Z
   ?AllocateDTensorDevice@dtensor@tensorflow@@YAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@PEAUTFE_CustomDevice@@PEAPEAX_NHPEAUTSL_Status@@@Z
@@ -330,7 +332,7 @@ EXPORTS
   ?FastIntToBuffer@numbers_internal@lts_20250814@absl@@YAPEAD_JPEAD@Z
   ?FastIntToBuffer@numbers_internal@lts_20250814@absl@@YAPEAD_KPEAD@Z
   ?FetchLayout@dtensor@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUTFE_Context@@PEAUTFE_TensorHandle@@PEAXPEAUTSL_Status@@@Z
-  ?FileExists@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
+  ?FileExists@Env@tsl@@QEAA?AVStatus@lts_20250814@absl@@V?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
   ?FileName@EventsWriter@tensorflow@@QEAA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@XZ
   ?Find@ByChar@lts_20250814@absl@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@V45@_K@Z
   ?FindKernelDef@tensorflow@@YA?AVStatus@lts_20250814@absl@@AEBVDeviceType@tsl@@AEBVNodeDef@1@PEAPEBVKernelDef@1@PEAV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z
@@ -552,7 +554,6 @@ EXPORTS
   ?PrintModelAnalysis@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBV34@0000@Z
   ?PrintResult@MetaOptimizer@grappler@tensorflow@@QEAAXXZ
   ?PrintStepStats@StatSummarizer@tensorflow@@QEBAXXZ
-  ?Printf@strings@tsl@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBDZZ
   ?ProcessStepStats@StatSummarizer@tensorflow@@QEAAXAEBVStepStats@2@@Z
   ?Profile@tfprof@tensorflow@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBV34@0@Z
   ?ProfilerFromFile@tfprof@tensorflow@@YAXPEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z

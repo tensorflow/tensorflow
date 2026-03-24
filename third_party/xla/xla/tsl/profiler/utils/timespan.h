@@ -31,20 +31,20 @@ namespace profiler {
 // Events may have duration 0 ("instant events") but duration can't be negative.
 class Timespan {
  public:
-  static Timespan FromEndPoints(uint64 begin_ps, uint64 end_ps) {
+  static Timespan FromEndPoints(uint64_t begin_ps, uint64_t end_ps) {
     if (begin_ps > end_ps) {
       return Timespan(begin_ps, 0);
     }
     return Timespan(begin_ps, end_ps - begin_ps);
   }
 
-  explicit Timespan(uint64 begin_ps = 0, uint64 duration_ps = 0)
+  explicit Timespan(uint64_t begin_ps = 0, uint64_t duration_ps = 0)
       : begin_ps_(begin_ps), duration_ps_(duration_ps) {}
 
-  uint64 begin_ps() const { return begin_ps_; }
-  uint64 middle_ps() const { return begin_ps_ + duration_ps_ / 2; }
-  uint64 end_ps() const { return begin_ps_ + duration_ps_; }
-  uint64 duration_ps() const { return duration_ps_; }
+  uint64_t begin_ps() const { return begin_ps_; }
+  uint64_t middle_ps() const { return begin_ps_ + duration_ps_ / 2; }
+  uint64_t end_ps() const { return begin_ps_ + duration_ps_; }
+  uint64_t duration_ps() const { return duration_ps_; }
 
   // Returns true if the Timespan represents an instant in time (duration 0).
   bool Instant() const { return duration_ps() == 0; }
@@ -72,10 +72,10 @@ class Timespan {
   }
 
   // Returns true if time_ps is within this Timespan.
-  bool Includes(uint64 time_ps) const { return Includes(Timespan(time_ps)); }
+  bool Includes(uint64_t time_ps) const { return Includes(Timespan(time_ps)); }
 
   // Returns the duration in ps that this Timespan overlaps with the other.
-  uint64 OverlappedDurationPs(const Timespan& other) const {
+  uint64_t OverlappedDurationPs(const Timespan& other) const {
     if (!Overlaps(other)) return 0;
     return std::min(end_ps(), other.end_ps()) -
            std::max(begin_ps(), other.begin_ps());
@@ -123,12 +123,12 @@ class Timespan {
   }
 
  private:
-  uint64 begin_ps_;
-  uint64 duration_ps_;  // 0 for an instant event.
+  uint64_t begin_ps_;
+  uint64_t duration_ps_;  // 0 for an instant event.
 };
 
 // Creates a Timespan from endpoints in picoseconds.
-inline Timespan PicoSpan(uint64 start_ps, uint64 end_ps) {
+inline Timespan PicoSpan(uint64_t start_ps, uint64_t end_ps) {
   return Timespan::FromEndPoints(start_ps, end_ps);
 }
 

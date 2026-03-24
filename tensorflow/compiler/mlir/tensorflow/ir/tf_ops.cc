@@ -15,16 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-#include <algorithm>
-#include <cstdint>
 #include <functional>
-#include <limits>
-#include <numeric>
-#include <string>
-#include <tuple>
-#include <type_traits>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -194,8 +188,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
     if (!mlir::isa<TensorType>(result_type) ||
         !mlir::isa<TensorType>(input.getType()))
       return nullptr;
-    return builder.create<TF::CastOp>(conversion_loc, result_type, input,
-                                      /*truncate=*/builder.getBoolAttr(false));
+    return TF::CastOp::create(builder, conversion_loc, result_type, input,
+                              /*truncate=*/builder.getBoolAttr(false));
   }
 
   void processInlinedCallBlocks(
@@ -220,6 +214,22 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 //===----------------------------------------------------------------------===//
 // TF Dialect
 //===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// RecordEventMetricForTensor
+//===----------------------------------------------------------------------===//
+
+void RecordEventMetricForTensorOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>&
+        effects) {
+  // Modeling as a Read rather than a Write prevents XLA from
+  // forcefully serializing every streamz op against one another (which hangs
+  // the TPU execution due to synchronous host callbacks), while still modeling
+  // a side-effect footprint to avoid aggressive compilation errors.
+  effects.reserve(1);
+  effects.emplace_back(MemoryEffects::Read::get(),
+                       ResourceEffects::RecordEventMetricForTensor::get());
+}
 
 // Returns true if the op can be duplicated.
 bool TensorFlowDialect::CanDuplicate(Operation *op) {
@@ -351,7 +361,7 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
 Operation *TensorFlowDialect::materializeConstant(OpBuilder &builder,
                                                   Attribute value, Type type,
                                                   Location loc) {
-  return builder.create<ConstOp>(loc, type, value);
+  return ConstOp::create(builder, loc, type, value);
 }
 
 }  // namespace TF

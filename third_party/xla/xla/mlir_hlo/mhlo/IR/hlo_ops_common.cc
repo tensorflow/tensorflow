@@ -16,6 +16,9 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops_common.h"
 
 #include <array>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <utility>
 #include <vector>

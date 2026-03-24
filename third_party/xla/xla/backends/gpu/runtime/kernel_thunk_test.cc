@@ -25,12 +25,15 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
-#include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
@@ -41,9 +44,10 @@ limitations under the License.
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
@@ -85,7 +89,8 @@ TEST(KernelThunkTest, CreateWithDefaultValues) {
   EXPECT_EQ(thunk.cluster_dim(), se::ClusterDim(1, 1, 1));
   EXPECT_EQ(thunk.shmem_bytes(), 0);
   EXPECT_EQ(thunk.ToString(0),
-            ", kernel = , launch dimensions = blocks: {1, 1, 1}, "
+            ", kernel = , profile_annotation = , launch dimensions = blocks: "
+            "{1, 1, 1}, "
             "threads/block: {1, 1, 1}, cluster_dim = ClusterDim{1, 1, 1}");
 }
 
@@ -120,7 +125,8 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   EXPECT_EQ(thunk.kind(), Kind::kKernel);
   EXPECT_EQ(thunk.kernel_name(), "kernel123");
   EXPECT_EQ(thunk.arguments(),
-            std::vector<BufferAllocation::Slice>({slice0, slice1}));
+            std::vector<ShapedSlice>(
+                {{slice0, arg0.shape()}, {slice1, arg1.shape()}}));
   EXPECT_EQ(thunk.written(), std::vector<bool>({false, true}));
   EXPECT_EQ(thunk.launch_dimensions().block_counts(), se::BlockDim(32, 31, 30));
   EXPECT_EQ(thunk.launch_dimensions().thread_counts_per_block(),
@@ -129,7 +135,8 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   EXPECT_EQ(thunk.shmem_bytes(), 1024);
   EXPECT_EQ(
       thunk.ToString(0),
-      ", kernel = kernel123, launch dimensions = blocks: {32, 31, 30}, "
+      ", kernel = kernel123, profile_annotation = DotGeneral, launch "
+      "dimensions = blocks: {32, 31, 30}, "
       "threads/block: {256, 255, 254}, cluster_dim = ClusterDim{8, 7, 6}");
 }
 
@@ -171,7 +178,9 @@ TEST(KernelThunkTest, ToProto) {
                     /*launch_dimensions=*/launch_dimensions,
                     /*cluster_dim=*/se::ClusterDim(8, 7, 6),
                     /*shmem_bytes=*/1024,
-                    /*tma_metadata=*/tma_metadata);
+                    /*tma_metadata=*/tma_metadata,
+                    /*zeroed_output_buffer_indices=*/{},
+                    /*use_pdl=*/true);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(
       proto, EqualsProto(R"pb(
@@ -179,6 +188,18 @@ TEST(KernelThunkTest, ToProto) {
         kernel_thunk {
           args { size: 1024 }
           args { size: 256 }
+          args_shape {
+            element_type: F32
+            dimensions: 1024
+            layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            is_dynamic_dimension: false
+          }
+          args_shape {
+            element_type: F32
+            dimensions: 256
+            layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+            is_dynamic_dimension: false
+          }
           written: false
           written: true
           kernel_name: "kernel123"
@@ -188,6 +209,7 @@ TEST(KernelThunkTest, ToProto) {
           }
           cluster_dim { coordinates { x: 8 y: 7 z: 6 } }
           shmem_bytes: 1024
+          use_pdl: true
           tma_metadata {
             arg_index_to_tma_info {
               key: 0
@@ -253,7 +275,8 @@ TEST(KernelThunkTest, ToAndFromProto) {
 
   KernelThunk thunk(thunk_info, std::string{kKernelName}, kernel_arguments,
                     launch_dimensions, cluster_dim, kSharedMemoryBytes,
-                    tma_metadata);
+                    tma_metadata, /*zeroed_output_buffer_indices=*/{},
+                    /*use_pdl=*/true);
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   ASSERT_TRUE(proto.has_kernel_thunk());
   TF_ASSERT_OK_AND_ASSIGN(
@@ -267,16 +290,57 @@ TEST(KernelThunkTest, ToAndFromProto) {
   EXPECT_THAT(reconstructed_thunk->written(),
               ::testing::ElementsAre(false, true));
   EXPECT_THAT(reconstructed_thunk->arguments(),
-              ::testing::ElementsAre(slice0, slice1));
+              ::testing::ElementsAre(ShapedSlice{slice0, arg0.shape()},
+                                     ShapedSlice{slice1, arg1.shape()}));
   EXPECT_THAT(reconstructed_thunk->tma_metadata(), tma_metadata);
+  EXPECT_TRUE(reconstructed_thunk->use_pdl());
+}
+
+TEST(KernelThunkTest, ConvertToCommandsPropagatesUsePdl) {
+  BufferAllocation allocation(/*index=*/0, /*size=*/1024, /*color=*/0);
+  BufferAllocation::Slice slice(&allocation, /*offset=*/0, /*size=*/1024);
+
+  emitters::KernelArgument arg(ShapeUtil::MakeShape(F32, {256}), slice);
+  arg.set_written(true);
+
+  auto kernel_thunk = std::make_unique<KernelThunk>(
+      Thunk::ThunkInfo(),
+      /*kernel_name=*/"kernel",
+      /*kernel_arguments=*/
+      emitters::KernelArguments(std::vector<emitters::KernelArgument>{arg}),
+      /*launch_dimensions=*/LaunchDimensions(),
+      /*cluster_dim=*/se::ClusterDim(),
+      /*shmem_bytes=*/0,
+      /*tma_metadata=*/se::gpu::TmaMetadata(),
+      /*zeroed_output_buffer_indices=*/std::vector<int64_t>{},
+      /*use_pdl=*/true);
+
+  ThunkSequence thunks;
+  thunks.push_back(std::move(kernel_thunk));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandExecutor commands,
+      ConvertToCommands(thunks, ConvertToCommandsOptions()));
+
+  bool found_launch_cmd = false;
+  TF_ASSERT_OK(commands.Walk([&](const Command* command) {
+    if (auto* launch_cmd = dynamic_cast<const LaunchCmd*>(command);
+        launch_cmd != nullptr) {
+      found_launch_cmd = true;
+      EXPECT_TRUE(launch_cmd->use_pdl());
+    }
+    return absl::OkStatus();
+  }));
+  EXPECT_TRUE(found_launch_cmd);
 }
 
 TEST(KernelThunkTest, BufferUsesReturnsCorrectBuffers) {
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {512});
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/512);
   BufferAllocation::Slice slice1(&alloc, /*offset=*/512, /*size=*/512);
-  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {512}), slice0);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {512}), slice1);
+  emitters::KernelArgument arg0(arg_shape, slice0);
+  emitters::KernelArgument arg1(arg_shape, slice1);
   arg0.set_written(false);
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
@@ -286,68 +350,24 @@ TEST(KernelThunkTest, BufferUsesReturnsCorrectBuffers) {
 
   Thunk::BufferUses buffers = thunk.buffer_uses();
 
-  ASSERT_THAT(buffers, testing::UnorderedElementsAre(BufferUse::Read(slice0),
-                                                     BufferUse::Write(slice1)));
+  ASSERT_THAT(buffers, testing::UnorderedElementsAre(
+                           BufferUse::Read(slice0, arg_shape),
+                           BufferUse::Write(slice1, arg_shape)));
 }
 
 TEST(KernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {512});
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/512);
   BufferAllocation::Slice slice1(&alloc, /*offset=*/512, /*size=*/512);
-  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {512}), slice0);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {512}), slice1);
+  emitters::KernelArgument arg0(arg_shape, slice0);
+  emitters::KernelArgument arg1(arg_shape, slice1);
   arg0.set_written(false);
   arg1.set_written(true);
   emitters::KernelArguments kernel_arguments({arg0, arg1});
   KernelThunk thunk(Thunk::ThunkInfo(), "kernel", kernel_arguments,
                     LaunchDimensions(), se::ClusterDim(), /*shmem_bytes=*/0,
                     se::gpu::TmaMetadata());
-
-  Thunk::BufferUses buffers1 = thunk.buffer_uses();
-  Thunk::BufferUses buffers2 = thunk.buffer_uses();
-
-  ASSERT_THAT(buffers1, testing::ContainerEq(buffers2));
-}
-
-TEST(CustomKernelThunkTest, BufferUsesReturnsCorrectBuffers) {
-  CustomKernel kernel(
-      /*name=*/"",
-      se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-          /*ptx=*/"", /*kernel_name=*/"", /*arity=*/0),
-      se::BlockDim(), se::ThreadDim(), /*shared_memory_bytes=*/0);
-  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
-  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/512);
-  BufferAllocation::Slice slice1(&alloc, /*offset=*/512, /*size=*/512);
-  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {512}), slice0);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {512}), slice1);
-  arg0.set_written(false);
-  arg1.set_written(true);
-  emitters::KernelArguments kernel_arguments({arg0, arg1});
-  auto hlo = HloInstruction::CreateConstant(Literal());
-  CustomKernelThunk thunk(hlo.get(), kernel, kernel_arguments, ThunkId{0});
-
-  Thunk::BufferUses buffers = thunk.buffer_uses();
-
-  ASSERT_THAT(buffers, testing::UnorderedElementsAre(BufferUse::Read(slice0),
-                                                     BufferUse::Write(slice1)));
-}
-
-TEST(CustomKernelThunkTest, BufferUsesReturnsBuffersInConsistentOrder) {
-  CustomKernel kernel(
-      /*name=*/"",
-      se::KernelLoaderSpec::CreateCudaPtxInMemorySpec(
-          /*ptx=*/"", /*kernel_name=*/"", /*arity=*/0),
-      se::BlockDim(), se::ThreadDim(), /*shared_memory_bytes=*/0);
-  BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
-  BufferAllocation::Slice slice0(&alloc, /*offset=*/0, /*size=*/512);
-  BufferAllocation::Slice slice1(&alloc, /*offset=*/512, /*size=*/512);
-  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {512}), slice0);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {512}), slice1);
-  arg0.set_written(false);
-  arg1.set_written(true);
-  emitters::KernelArguments kernel_arguments({arg0, arg1});
-  auto hlo = HloInstruction::CreateConstant(Literal());
-  CustomKernelThunk thunk(hlo.get(), kernel, kernel_arguments, ThunkId{0});
 
   Thunk::BufferUses buffers1 = thunk.buffer_uses();
   Thunk::BufferUses buffers2 = thunk.buffer_uses();
@@ -364,6 +384,24 @@ class KernelThunkTmaPTXTest : public ::testing::TestWithParam<bool> {
         args { size: 1048576 buffer_allocation_index: 0 }
         args { size: 1048576 offset: 1048576 }
         args { size: 4194304 offset: 2097152 }
+        args_shape {
+          element_type: F32
+          dimensions: 262144
+          layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+          is_dynamic_dimension: false
+        }
+        args_shape {
+          element_type: F32
+          dimensions: 262144
+          layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+          is_dynamic_dimension: false
+        }
+        args_shape {
+          element_type: F32
+          dimensions: 1048576
+          layout { minor_to_major: 0 tail_padding_alignment_in_elements: 1 }
+          is_dynamic_dimension: false
+        }
         written: false
         written: false
         written: true
@@ -441,8 +479,13 @@ class KernelThunkTmaPTXTest : public ::testing::TestWithParam<bool> {
 };
 
 TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
+  auto name = absl::AsciiStrToUpper(
+      xla::PlatformUtil::CanonicalPlatformName("gpu").value());
+  if (name == "ROCM") {
+    GTEST_SKIP() << "TmaPTX cannot run on ROCm.";
+  }
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          se::PlatformManager::PlatformWithName("cuda"));
+                          se::PlatformManager::PlatformWithName(name));
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor,
                           platform->ExecutorForDevice(0));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
@@ -474,9 +517,9 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
   ServiceExecutableRunOptions run_options;
   run_options.mutable_run_options()->set_stream(stream.get());
 
-  auto execute_params =
-      Thunk::ExecuteParams::Create(run_options, buffer_allocations,
-                                   stream.get(), nullptr, nullptr, nullptr, {});
+  auto execute_params = Thunk::ExecuteParams::Create(
+      run_options, buffer_allocations, stream.get(), nullptr, nullptr, nullptr,
+      nullptr, {});
 
   const bool use_command_buffer = GetParam();
 
@@ -487,7 +530,7 @@ TEST_P(KernelThunkTmaPTXTest, TmaPTX) {
     thunk_sequence.push_back(std::move(kernel_thunk));
 
     TF_ASSERT_OK_AND_ASSIGN(
-        CommandBufferCmdExecutor cmds,
+        CommandExecutor cmds,
         ConvertToCommands(thunk_sequence, ConvertToCommandsOptions()));
     auto sequential_thunk = std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo(), std::move(thunk_sequence));

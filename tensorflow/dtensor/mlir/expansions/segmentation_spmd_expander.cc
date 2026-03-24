@@ -122,9 +122,9 @@ StatusOr<mlir::Operation*> UnsortedSegmentSumSPMDExpander::ExpandOp(
       EmitRelayout(segment_ids, segment_ids_layout, new_segment_ids_layout));
 
   mlir::OpBuilder builder(op);
-  mlir::Operation* new_sum_op = builder.create<mlir::TF::UnsortedSegmentSumOp>(
-      op->getLoc(), sum_op.getOutput().getType(), data, new_segment_ids,
-      sum_op.getNumSegments());
+  mlir::Operation* new_sum_op = mlir::TF::UnsortedSegmentSumOp::create(
+      builder, op->getLoc(), sum_op.getOutput().getType(), data,
+      new_segment_ids, sum_op.getNumSegments());
 
   InferSPMDExpandedLocalShape(new_sum_op);
 

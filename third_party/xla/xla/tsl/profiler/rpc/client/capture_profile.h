@@ -34,11 +34,25 @@ absl::Status ExportToTensorBoard(const tensorflow::profiler::XSpace& xspace,
                                  const std::string& logdir,
                                  bool also_export_trace_json = false);
 
+// The run is the directory which contains the xplane.pb files.
+absl::Status ExportToTensorBoard(const tensorflow::profiler::XSpace& xspace,
+                                 const std::string& logdir,
+                                 const std::string& run,
+                                 bool also_export_trace_json = false);
+
 // Collects one sample of monitoring profile and shows user-friendly metrics.
 // If timestamp flag is true, timestamp will be displayed in "%H:%M:%S" format.
 absl::Status Monitor(const std::string& service_addr, int duration_ms,
                      int monitoring_level, bool display_timestamp,
                      std::string* result);
+
+absl::Status StartContinuousProfiling(
+    const char* service_addr,
+    const tensorflow::RemoteProfilerSessionManagerOptions& opts);
+
+absl::Status StopContinuousProfiling(const char* service_addr);
+
+absl::Status GetSnapshot(const char* service_addr, const char* logdir);
 
 // Starts tracing on a single or multiple hosts. Each host will save the result
 // in the given logdir. If no trace was collected, retries tracing for

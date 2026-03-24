@@ -155,6 +155,12 @@ struct TfrtPipelineOptions
           "prioritized batching function using this number of global threads."),
       llvm::cl::init(0)};
 
+  Option<bool> enable_priority_aware_batch_scheduler{
+      *this, "tfrt-enable-priority-aware-batch-scheduler",
+      llvm::cl::desc("If true, the queue implementation will have a separate "
+                     "subqueue for each criticality."),
+      llvm::cl::init(false)};
+
   Option<std::string> batch_padding_policy{
       *this, "tfrt-batch-padding-policy",
       llvm::cl::desc("The policy used when padding (or splitting) batches."),
@@ -191,6 +197,12 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, streams with inter data depenedencies will be "
                      "preferred to be merged for inline execution."),
       llvm::cl::init(false)};
+  Option<bool> allow_xla_cpu{
+      *this,
+      "allow-xla-cpu",
+      llvm::cl::desc("If true, allow XLA:CPU for CPU computations."),
+      llvm::cl::init(true),
+  };
 };
 
 }  // namespace tensorflow

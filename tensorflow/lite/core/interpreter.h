@@ -1069,6 +1069,14 @@ class Interpreter {
   static constexpr char kPlaceholderSignatureDefKey[] =
       "<placeholder signature>";
 
+  // Placeholder input names to use when the model has with no signatures & no
+  // tensor names.
+  std::vector<std::string> placeholder_input_names_;
+
+  // Placeholder output names to use when the model has with no signatures & no
+  // tensor names.
+  std::vector<std::string> placeholder_output_names_;
+
   // Placeholder SignatureDef for legacy models with no signatures.
   std::unique_ptr<internal::SignatureDef> placeholder_signature_def_;
 

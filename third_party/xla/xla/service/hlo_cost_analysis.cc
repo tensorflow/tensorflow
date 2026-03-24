@@ -18,7 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <functional>
-#include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -36,7 +37,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/lib/gtl/map_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "tsl/platform/errors.h"
@@ -62,8 +63,12 @@ absl::Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
   // The default number of bytes accessed for an instruction is the sum of the
   // sizes of the inputs and outputs. The default ShapeUtil::ByteSizeOf does not
   // handle opaque types.
-  float bytes_accessed = GetShapeSize(hlo->shape());
-  current_properties_.set_output_bytes_accessed(GetShapeSize(hlo->shape()));
+  float bytes_accessed = 0;
+  ShapeUtil::ForEachLeafShape(
+      hlo->shape(), [&](const Shape& sub_shape, const ShapeIndex& index) {
+        bytes_accessed += GetShapeSize(sub_shape);
+      });
+  current_properties_.set_output_bytes_accessed(bytes_accessed);
   for (int64_t i = 0; i < hlo->operand_count(); ++i) {
     const HloInstruction* operand = hlo->operand(i);
     bytes_accessed += GetShapeSize(operand->shape());
@@ -150,6 +155,7 @@ absl::Status HloCostAnalysis::HandleElementwiseOp(
       opcode == HloOpcode::kAcos ||
       opcode == HloOpcode::kAcosh ||
       opcode == HloOpcode::kAsin ||
+      opcode == HloOpcode::kAsinh ||
       opcode == HloOpcode::kAtan2 ||
       opcode == HloOpcode::kAtanh ||
       opcode == HloOpcode::kCbrt ||
@@ -575,6 +581,23 @@ absl::Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   sub_properties.ForEach([&](absl::string_view key, float val) {
     if (KeyToCopyFromSubcomputation(key)) {
       current_properties_[key] = val * reduction_count;
+    }
+  });
+  return absl::OkStatus();
+}
+
+absl::Status HloCostAnalysis::HandleScan(const HloInstruction* scan) {
+  HloComputation* function = scan->to_apply();
+  // Compute the cost of the user function.
+  TF_ASSIGN_OR_RETURN(const Properties sub_properties,
+                      ProcessSubcomputation(function));
+
+  // Compute the cost of all elements for this Scan operation.
+  auto input = scan->operand(1);
+  int64_t element_count = ShapeUtil::ElementsIn(input->shape());
+  sub_properties.ForEach([&](absl::string_view key, float val) {
+    if (KeyToCopyFromSubcomputation(key)) {
+      current_properties_[key] = val * element_count;
     }
   });
   return absl::OkStatus();
@@ -1469,23 +1492,42 @@ HloCostAnalysis::Properties HloCostAnalysis::properties(
   return it->second;
 }
 
+// A very simple implementation of the saturate cast to handle overflow of
+// target type.
+template <typename T, typename U>
+constexpr T saturate_cast(U f) {
+  if (std::isnan(f)) {
+    return 0;
+  }
+  if (f >= static_cast<U>(std::numeric_limits<T>::max())) {
+    return std::numeric_limits<T>::max();
+  }
+  if (f <= static_cast<U>(std::numeric_limits<T>::min())) {
+    return std::numeric_limits<T>::min();
+  }
+  return static_cast<T>(f);
+}
+
 int64_t HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kFlopsKey, hlo_properties_);
+  return saturate_cast<int64_t>(
+      GetPropertyForHlo(hlo, kFlopsKey, hlo_properties_));
 }
 
 int64_t HloCostAnalysis::transcendental_count(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kTranscendentalsKey, hlo_properties_);
+  return saturate_cast<int64_t>(
+      GetPropertyForHlo(hlo, kTranscendentalsKey, hlo_properties_));
 }
 
 int64_t HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_);
+  return saturate_cast<int64_t>(
+      GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_));
 }
 
 int64_t HloCostAnalysis::operand_bytes_accessed(const HloInstruction& hlo,
                                                 int64_t operand_num,
                                                 const ShapeIndex& index) const {
-  return GetPropertyForHlo(hlo, GetOperandBytesAccessedKey(operand_num, index),
-                           hlo_properties_);
+  return saturate_cast<int64_t>(GetPropertyForHlo(
+      hlo, GetOperandBytesAccessedKey(operand_num, index), hlo_properties_));
 }
 
 float HloCostAnalysis::operand_utilization(const HloInstruction& hlo,
@@ -1497,8 +1539,8 @@ float HloCostAnalysis::operand_utilization(const HloInstruction& hlo,
 
 int64_t HloCostAnalysis::output_bytes_accessed(const HloInstruction& hlo,
                                                ShapeIndex index) const {
-  return GetPropertyForHlo(hlo, GetOutputBytesAccessedKey(index),
-                           hlo_properties_);
+  return saturate_cast<int64_t>(GetPropertyForHlo(
+      hlo, GetOutputBytesAccessedKey(index), hlo_properties_));
 }
 
 float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {

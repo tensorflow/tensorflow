@@ -41,9 +41,9 @@ ComputeEngineMetadataClient::ComputeEngineMetadataClient(
       retry_config_(config) {}
 
 absl::Status ComputeEngineMetadataClient::GetMetadata(
-    const string& path, std::vector<char>* response_buffer) {
+    const std::string& path, std::vector<char>* response_buffer) {
   const auto get_metadata_from_gce = [path, response_buffer, this]() {
-    string metadata_url;
+    std::string metadata_url;
     const char* metadata_url_override = std::getenv(kGceMetadataHost);
     if (metadata_url_override) {
       metadata_url = absl::StrCat("http://", metadata_url_override,

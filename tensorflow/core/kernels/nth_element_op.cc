@@ -43,7 +43,7 @@ class NthElementOp : public OpKernel {
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(n_in.shape()),
         errors::InvalidArgument("N must be scalar but has rank ", n_in.dims()));
-    int n = n_in.scalar<int32>()();
+    int n = n_in.scalar<int32_t>()();
     OP_REQUIRES(context, n >= 0,
                 errors::InvalidArgument("n must be non-negative but is ", n));
 

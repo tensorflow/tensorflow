@@ -34,8 +34,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static std::unique_ptr<Device> NewDevice(const string& type,
-                                         const string& name) {
+static std::unique_ptr<Device> NewDevice(const std::string& type,
+                                         const std::string& name) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
@@ -54,15 +54,16 @@ class FakeCache : public TestWorkerCache {
  public:
   // Override the Locality methods to actually pass through to the
   // worker.
-  bool GetDeviceLocalityNonBlocking(const string& device,
+  bool GetDeviceLocalityNonBlocking(const std::string& device,
                                     DeviceLocality* locality) override {
     return false;
   }
 
-  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+  void GetDeviceLocalityAsync(const std::string& device,
+                              DeviceLocality* locality,
                               StatusCallback done) override {
-    string task_name;
-    string dev_part;
+    std::string task_name;
+    std::string dev_part;
     if (!DeviceNameUtils::SplitDeviceName(device, &task_name, &dev_part)) {
       done(errors::Internal("failed to parse device name"));
       return;
@@ -94,7 +95,9 @@ class FakeCache : public TestWorkerCache {
 class FakeNcclCommunicator : public NcclCommunicatorInterface {
  public:
   // We only need to define GenerateCommunicatorKey().
-  string GenerateCommunicatorKey() override { return "mock-communicator-key"; }
+  std::string GenerateCommunicatorKey() override {
+    return "mock-communicator-key";
+  }
 
   void Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
                StatusCallback done) override {
@@ -114,15 +117,16 @@ class DeviceResDistTest : public ::testing::Test {
 
  protected:
   void DefineWorkers(int num_workers, int num_devices,
-                     const string& device_type, bool nccl) {
+                     const std::string& device_type, bool nccl) {
     for (int w = 0; w < num_workers; ++w) {
-      string name = absl::StrCat("/job:worker/replica:0/task:", w);
+      std::string name = absl::StrCat("/job:worker/replica:0/task:", w);
       DefineWorker(name, device_type, num_devices, nccl);
     }
   }
 
-  void DefineWorker(const string& worker_name, const string& device_type,
-                    int num_devices, bool nccl) {
+  void DefineWorker(const std::string& worker_name,
+                    const std::string& device_type, int num_devices,
+                    bool nccl) {
     ConfigProto config;
     config.mutable_experimental()->set_collective_group_leader(
         "/job:worker/replica:0/task:0");
@@ -136,7 +140,7 @@ class DeviceResDistTest : public ::testing::Test {
     }
     device_mgrs_[worker_name] =
         std::make_unique<StaticDeviceMgr>(std::move(devices));
-    std::vector<string>* dv = &dev_by_task_[worker_name];
+    std::vector<std::string>* dv = &dev_by_task_[worker_name];
     dv->clear();
     for (auto* d : device_mgrs_[worker_name]->ListDevices()) {
       dv->push_back(d->name());
@@ -160,14 +164,14 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   void DefineCollectiveParams(int num_workers, int num_devices,
-                              const string& device_type,
+                              const std::string& device_type,
                               CollectiveType coll_type = REDUCTION_COLLECTIVE,
                               int source_rank = 0) {
     for (int wi = 0; wi < num_workers; ++wi) {
-      string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
+      std::string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
       for (int di = 0; di < num_devices; ++di) {
         int idx = wi * num_devices + di;
-        string device_name =
+        std::string device_name =
             strings::StrCat(task_name, "/device:", device_type, ":", di);
         cp_[device_name] =
             CreateCollectiveParams(num_workers, num_devices, device_type,
@@ -177,7 +181,7 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   CollectiveParams* CreateCollectiveParams(int num_workers, int num_devices,
-                                           const string& device_type,
+                                           const std::string& device_type,
                                            CollectiveType coll_type,
                                            bool is_source) {
     const int kGroupKey = 5;
@@ -203,16 +207,16 @@ class DeviceResDistTest : public ::testing::Test {
     }
     int group_size = num_workers * num_devices;
     for (int wi = 0; wi < num_workers; ++wi) {
-      string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
+      std::string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
       for (int di = 0; di < num_devices; ++di) {
-        string device_name = absl::StrCat(task_name, "/device:CPU:", di);
+        std::string device_name = absl::StrCat(task_name, "/device:CPU:", di);
         IssueRequest(task_name, device_name, group_size);
       }
     }
   }
 
-  void IssueRequest(const string& task_name, const string& device_name,
-                    int group_size) {
+  void IssueRequest(const std::string& task_name,
+                    const std::string& device_name, int group_size) {
     Device* device = nullptr;
     TF_CHECK_OK(device_mgrs_[task_name]->LookupDevice(device_name, &device));
     CollectiveParams* cp = cp_[device_name];
@@ -243,11 +247,11 @@ class DeviceResDistTest : public ::testing::Test {
     // Verify that all cp_ values get the same set of task and device
     // names, with unique default_rank in the expected order.
     const int dev_count = num_workers * num_devices;
-    string dev0 = "/job:worker/replica:0/task:0/device:CPU:0";
+    std::string dev0 = "/job:worker/replica:0/task:0/device:CPU:0";
     for (int wi = 0; wi < num_workers; ++wi) {
-      string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
+      std::string task_name = absl::StrCat("/job:worker/replica:0/task:", wi);
       for (int di = 0; di < num_devices; ++di) {
-        string device_name = absl::StrCat(task_name, "/device:CPU:", di);
+        std::string device_name = absl::StrCat(task_name, "/device:CPU:", di);
         int idx = wi * num_devices + di;
         TF_ASSERT_OK(status_[device_name]);
         EXPECT_EQ(cp_[device_name]->default_rank, idx);
@@ -270,7 +274,8 @@ class DeviceResDistTest : public ::testing::Test {
     }
   }
 
-  void ValidateDeviceResolver(const CollectiveParams& cp, const string& task) {
+  void ValidateDeviceResolver(const CollectiveParams& cp,
+                              const std::string& task) {
     for (const CollGroupMember& member : cp.group.members) {
       DeviceAttributes attributes;
       TF_ASSERT_OK(dev_resolvers_[task]->GetDeviceAttributes(
@@ -279,14 +284,14 @@ class DeviceResDistTest : public ::testing::Test {
   }
 
   void RestartWorker(int worker_idx, int num_workers, int num_devices,
-                     const string& device_type, bool nccl,
+                     const std::string& device_type, bool nccl,
                      CollectiveType coll_type = REDUCTION_COLLECTIVE,
                      bool is_source = false) {
-    string worker_name =
+    std::string worker_name =
         absl::StrCat("/job:worker/replica:0/task:", worker_idx);
     DefineWorker(worker_name, device_type, num_devices, nccl);
     for (int i = 0; i < num_devices; ++i) {
-      string device_name =
+      std::string device_name =
           strings::StrCat(worker_name, "/device:", device_type, ":", i);
       if (cp_.find(device_name) != cp_.end()) {
         cp_[device_name]->Unref();
@@ -301,18 +306,18 @@ class DeviceResDistTest : public ::testing::Test {
   FakeNcclCommunicator nccl_communicator_;
   CancellationManager cm_;
   // Below are keyed by task names.
-  absl::flat_hash_map<string, std::unique_ptr<DeviceMgr>> device_mgrs_;
-  absl::flat_hash_map<string, std::unique_ptr<DeviceResolverDistributed>>
+  absl::flat_hash_map<std::string, std::unique_ptr<DeviceMgr>> device_mgrs_;
+  absl::flat_hash_map<std::string, std::unique_ptr<DeviceResolverDistributed>>
       dev_resolvers_;
-  absl::flat_hash_map<string,
+  absl::flat_hash_map<std::string,
                       std::unique_ptr<CollectiveParamResolverDistributed>>
       cp_resolvers_;
-  absl::flat_hash_map<string, std::vector<string>> dev_by_task_;
-  absl::flat_hash_map<string, std::unique_ptr<WorkerEnv>> worker_envs_;
-  absl::flat_hash_map<string, std::unique_ptr<Worker>> workers_;
+  absl::flat_hash_map<std::string, std::vector<std::string>> dev_by_task_;
+  absl::flat_hash_map<std::string, std::unique_ptr<WorkerEnv>> worker_envs_;
+  absl::flat_hash_map<std::string, std::unique_ptr<Worker>> workers_;
   // Below are keyed by device names;
-  absl::flat_hash_map<string, CollectiveParams*> cp_;
-  absl::flat_hash_map<string, absl::Status> status_;
+  absl::flat_hash_map<std::string, CollectiveParams*> cp_;
+  absl::flat_hash_map<std::string, absl::Status> status_;
   mutex mu_;
   int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
@@ -343,8 +348,8 @@ TEST_F(DeviceResDistTest, DifferentIncarnation) {
   DefineCollectiveParams(num_workers, num_devices, "CPU");
   IssueRequests(num_workers, num_devices);
   RestartWorker(1, num_workers, num_devices, "CPU", /*nccl*/ false);
-  const string task_name = "/job:worker/replica:0/task:1";
-  const string device_name = absl::StrCat(task_name, "/device:CPU:0");
+  const std::string task_name = "/job:worker/replica:0/task:1";
+  const std::string device_name = absl::StrCat(task_name, "/device:CPU:0");
   IssueRequest(task_name, device_name, num_workers * num_devices);
   EXPECT_TRUE(absl::IsFailedPrecondition(status_[device_name]));
 }

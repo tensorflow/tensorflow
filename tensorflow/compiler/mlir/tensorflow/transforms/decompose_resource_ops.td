@@ -27,7 +27,7 @@ def EmptyList: NativeCodeCall<"llvm::SmallVector<mlir::Value>{}">;
 // Creates a tf.ReadVariable op that reads a resource `$2` that has the same
 // element type as `$1`. The op created will use location of `$0`.
 def CreateTFReadVariableOp : NativeCodeCall<
-    "$_builder.create<TF::ReadVariableOp>("
+    "TF::ReadVariableOp::create($_builder, "
     "  $0.getLoc(),"
     "  GetResourceSubtypeOrDefault("
     "    $2, llvm::cast<TensorType>($1.getType()).getElementType()),"
@@ -39,19 +39,19 @@ def CheckHasResourceSubtype : Constraint<CPred<"HasResourceSubtype($0)">>;
 def CreateConstBoolAttrFalse : NativeCodeCall<"$_builder.getBoolAttr(false)">;
 
 def CreateTensorScatterAddOp : NativeCodeCall<
-    "$_builder.create<TF::TensorScatterAddOp>("
+    "TF::TensorScatterAddOp::create($_builder, "
     "$0.getLoc(), $0.getType(), $0, $1, $2, $_builder.getStringAttr(\"\"))">;
 
 def CreateTensorScatterUpdateOp : NativeCodeCall<
-    "$_builder.create<TF::TensorScatterUpdateOp>("
+    "TF::TensorScatterUpdateOp::create($_builder, "
     "$0.getLoc(), $0.getType(), $0, $1, $2, $_builder.getStringAttr(\"\"))">;
 
 def CreateTFReadVariableOpFromResourceHandle : NativeCodeCall<
-    "$_builder.create<TF::ReadVariableOp>("
+    "TF::ReadVariableOp::create($_builder, "
     "$0.getLoc(), GetResourceSubtype($1), $1)">;
 
 def CreateTFSelectOp: NativeCodeCall<
-    "$_builder.create<TF::SelectOp>("
+    "TF::SelectOp::create($_builder, "
     "$0.getLoc(), $3.getType(), $1, $2, $3)">;
 
 def ConstAttrIfThenElse: NativeCodeCall<
@@ -59,7 +59,7 @@ def ConstAttrIfThenElse: NativeCodeCall<
 
 // Convert clamp(lo, x, hi) to clipbyvalue(x, lo, hi).
 def Clamp: NativeCodeCall<
-    "$_builder.create<TF::ClipByValueOp>("
+    "TF::ClipByValueOp::create($_builder, "
     "  $0.getLoc(),"
     "  $2.getType(), $2, $1, $3)">;
 

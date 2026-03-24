@@ -50,6 +50,7 @@ message GemmConfigProto {
   bool grad_x = 11;
   bool grad_y = 12;
   xla.BlasComputationTypeProto compute_type = 13;
+  int32 scale_mode = 14;
 }
 
 enum BlasLtEpilogueProto {

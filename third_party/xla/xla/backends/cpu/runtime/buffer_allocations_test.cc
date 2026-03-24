@@ -18,7 +18,7 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/thunk_testlib.h"
 #include "xla/literal_util.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -34,11 +34,11 @@ TEST(BufferAllocationsTest, GetDeviceAddress) {
 
   BufferAllocations allocations = CreateBufferAllocations(data);
 
-  TF_ASSERT_OK_AND_ASSIGN(se::DeviceMemoryBase alloc_mem,
+  TF_ASSERT_OK_AND_ASSIGN(se::DeviceAddressBase alloc_mem,
                           allocations.GetDeviceAddress(0));
   EXPECT_EQ(alloc_mem.opaque(), &data.data<float>()[0]);
 
-  TF_ASSERT_OK_AND_ASSIGN(se::DeviceMemoryBase slice_mem,
+  TF_ASSERT_OK_AND_ASSIGN(se::DeviceAddressBase slice_mem,
                           allocations.GetDeviceAddress(slice));
   EXPECT_EQ(slice_mem.opaque(), &data.data<float>()[2]);
 }
@@ -52,10 +52,11 @@ TEST(BufferAllocationsTest, GetDeviceAddressUnchecked) {
 
   BufferAllocations allocations = CreateBufferAllocations(data);
 
-  se::DeviceMemoryBase alloc_mem = allocations.GetDeviceAddressUnchecked(0);
+  se::DeviceAddressBase alloc_mem = allocations.GetDeviceAddressUnchecked(0);
   EXPECT_EQ(alloc_mem.opaque(), &data.data<float>()[0]);
 
-  se::DeviceMemoryBase slice_mem = allocations.GetDeviceAddressUnchecked(slice);
+  se::DeviceAddressBase slice_mem =
+      allocations.GetDeviceAddressUnchecked(slice);
   EXPECT_EQ(slice_mem.opaque(), &data.data<float>()[2]);
 }
 

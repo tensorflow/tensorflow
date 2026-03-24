@@ -152,9 +152,3 @@ CheckOptions:
     value: 'absl/strings/match.h'
   - key: 'abseil-string-find-str-contains.StringLikeClasses'
     value: '::std::basic_string_view;::absl::string_view;::basic_string;::std::basic_string;'
-  - key: 'readability-function-cognitive-complexity.Threshold'
-    value: 15
-  - key: 'readability-function-cognitive-complexity.DescribeBasicIncrements'
-    value: false
-  - key: 'readability-function-cognitive-complexity.IgnoreMacros'
-    value: true

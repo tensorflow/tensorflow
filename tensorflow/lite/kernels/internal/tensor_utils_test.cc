@@ -2149,6 +2149,44 @@ TEST(uKernels, UnpackInt2OddLength) {
               testing::Pointwise(testing::Eq(), expected_output));
 }
 
+TEST(uKernels, PackInt4Basic) {
+  const int8_t input[4] = {-8, 3, -2, -5};
+  const int8_t expected_output[2] = {0x38, static_cast<int8_t>(0xBE)};
+  int8_t actual_output[2];
+  PackInt8IntoDenseInt(input, 4, 4, actual_output);
+  EXPECT_THAT(actual_output,
+              testing::Pointwise(testing::Eq(), expected_output));
+}
+
+TEST(uKernels, PackInt4OddLength) {
+  // `num_elements` is odd, so the last element 0x4 should be ignored
+  const int8_t input[3] = {1, 2, 3};
+  const int8_t expected_output[2] = {0x21, 0x03};
+  int8_t actual_output[2];
+  PackInt8IntoDenseInt(input, 3, 4, actual_output);
+  EXPECT_THAT(actual_output,
+              testing::Pointwise(testing::Eq(), expected_output));
+}
+
+TEST(uKernels, PackInt2Basic) {
+  const int8_t input[4] = {0, -1, -2, 1};
+  const int8_t expected_output[1] = {0x6C};
+  int8_t actual_output[1];
+  PackInt8IntoDenseInt(input, 4, 2, actual_output);
+  EXPECT_THAT(actual_output,
+              testing::Pointwise(testing::Eq(), expected_output));
+}
+
+TEST(uKernels, PackInt2OddLength) {
+  // `num_elements` is odd
+  const int8_t input[3] = {0, -2, 1};
+  const int8_t expected_output[1] = {0x18};
+  int8_t actual_output[1];
+  PackInt8IntoDenseInt(input, 3, 2, actual_output);
+  EXPECT_THAT(actual_output,
+              testing::Pointwise(testing::Eq(), expected_output));
+}
+
 }  // namespace tensor_utils
 }  // namespace tflite
 

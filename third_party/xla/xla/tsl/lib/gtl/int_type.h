@@ -154,11 +154,13 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <cstdint>
 #include <functional>
 #include <iosfwd>
 #include <ostream>  // NOLINT
 #include <unordered_map>
 
+#include "absl/strings/str_format.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 
@@ -288,6 +290,21 @@ template <typename IntTypeName, typename ValueType>
 std::ostream& operator<<(std::ostream& os,  // NOLINT
                          IntType<IntTypeName, ValueType> arg) {
   return os << arg.value();
+}
+
+template <typename Sink, typename... T>
+void AbslStringify(Sink& sink, IntType<T...> arg) {
+  using ValueType = typename decltype(arg)::ValueType;
+
+  // int8_t/uint8_t are not supported by the "%v" specifier due to it being
+  // ambiguous whether an integer or character should be printed.
+  if constexpr (std::is_same_v<ValueType, int8_t>) {
+    absl::Format(&sink, "%d", arg.value());
+  } else if constexpr (std::is_same_v<ValueType, uint8_t>) {
+    absl::Format(&sink, "%u", arg.value());
+  } else {
+    absl::Format(&sink, "%v", arg.value());
+  }
 }
 
 // -- NON-MEMBER ARITHMETIC OPERATORS ------------------------------------------

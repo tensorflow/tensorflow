@@ -138,6 +138,7 @@ cc_library(
     deps = [
         ":hlo_function_importer",
         ":module_attributes_importer",
+        "//xla:debug_options_flags",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -225,7 +226,6 @@ cc_library(
         "stack_location_utils",
         ":hlo_utils",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir_hlo:unregistered_attributes",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -274,7 +274,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

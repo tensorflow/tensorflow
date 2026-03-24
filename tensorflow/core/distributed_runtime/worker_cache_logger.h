@@ -57,20 +57,22 @@ class WorkerCacheLogger {
   // Generates a NodeExecStats record with the given data, and saves for
   // later retrieval by RetrieveLogs().
   void RecordRecvTensor(int64_t step_id, int64_t start_usecs, int64_t end_usecs,
-                        const string& tensor_name, const string& src_device,
-                        const string& dst_device, int64_t bytes);
+                        const std::string& tensor_name,
+                        const std::string& src_device,
+                        const std::string& dst_device, int64_t bytes);
 
   // Generates a NodeExecStats record with the given data, and saves for
   // later retrieval by RetrieveLogs().
   void RecordDataTransfer(int64_t step_id, int64_t start_usecs,
-                          int64_t end_usecs, const string& tensor_name,
-                          const string& src_device, const string& dst_device,
-                          int64_t bytes, const string& details,
-                          const string& transfer_method_name);
+                          int64_t end_usecs, const std::string& tensor_name,
+                          const std::string& src_device,
+                          const std::string& dst_device, int64_t bytes,
+                          const std::string& details,
+                          const std::string& transfer_method_name);
 
  private:
   mutex count_mu_;
-  int32 want_logging_count_ TF_GUARDED_BY(count_mu_) = 0;
+  int32_t want_logging_count_ TF_GUARDED_BY(count_mu_) = 0;
 
   struct StepLog {
     StepStats step_stats;
@@ -81,7 +83,7 @@ class WorkerCacheLogger {
   LogMap log_map_ TF_GUARDED_BY(mu_);
 
   // Records "ns" in log_map_ under the given device and step.
-  void Save(const string& device, int64_t step_id, NodeExecStats* ns);
+  void Save(const std::string& device, int64_t step_id, NodeExecStats* ns);
 
   void ClearLogsWithLock() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 };

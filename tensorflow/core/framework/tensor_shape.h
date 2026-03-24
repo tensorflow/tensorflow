@@ -91,10 +91,10 @@ class TensorShapeRep {
   // For PartialTensorShape, a dimension of static_cast<uint??>(-1) is unknown.
   // This value is not allowed in TensorShape either for format compatibility.
   struct Rep16 {
-    uint16 dims_[6];
+    uint16_t dims_[6];
   };
   struct Rep32 {
-    uint32 dims_[3];
+    uint32_t dims_[3];
   };
   struct Rep64 {
     absl::InlinedVector<int64_t, 4UL>* dims_;
@@ -102,10 +102,12 @@ class TensorShapeRep {
 
   // We use the max value of uint16 or uint32 to represent unknown shapes, so
   // the maximum representable valid shape in these representations is one less.
-  static constexpr int64_t kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
-  static constexpr int64_t kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
-  static constexpr uint16 kUnknownRep16 = std::numeric_limits<uint16>::max();
-  static constexpr uint32 kUnknownRep32 = std::numeric_limits<uint32>::max();
+  static constexpr int64_t kMaxRep16 = std::numeric_limits<uint16_t>::max() - 1;
+  static constexpr int64_t kMaxRep32 = std::numeric_limits<uint32_t>::max() - 1;
+  static constexpr uint16_t kUnknownRep16 =
+      std::numeric_limits<uint16_t>::max();
+  static constexpr uint32_t kUnknownRep32 =
+      std::numeric_limits<uint32_t>::max();
 
   Rep16* as16() { return reinterpret_cast<Rep16*>(buf()); }
   Rep32* as32() { return reinterpret_cast<Rep32*>(buf()); }
@@ -126,19 +128,19 @@ class TensorShapeRep {
   DataType data_type() const { return static_cast<DataType>(buf()[13]); }
   void set_data_type(DataType dt) {
     // We only have 8 bits available to store DataType, so make sure it fits
-    DCHECK_LT(static_cast<uint32>(dt), 256u);
-    buf()[13] = static_cast<uint8>(dt);
+    DCHECK_LT(static_cast<uint32_t>(dt), 256u);
+    buf()[13] = static_cast<uint8_t>(dt);
   }
 
   // We store the number of dimensions in byte 14, and the RepTag in byte 15.
   // Bytes [0..13] vary depending on the representation.
   // A value of 255 indicates unknown rank in the PartialTensorShape case.
-  static constexpr uint8 kUnknownRank = 255;
-  uint8 ndims_byte() const { return buf()[14]; }
-  void set_ndims_byte(uint8 nd) { buf()[14] = nd; }
+  static constexpr uint8_t kUnknownRank = 255;
+  uint8_t ndims_byte() const { return buf()[14]; }
+  void set_ndims_byte(uint8_t nd) { buf()[14] = nd; }
 
   RepTag tag() const { return static_cast<RepTag>(buf()[15]); }
-  void set_tag(RepTag tag) { buf()[15] = static_cast<uint8>(tag); }
+  void set_tag(RepTag tag) { buf()[15] = static_cast<uint8_t>(tag); }
 
   void set_num_elements(int64_t n) { num_elements_ = n; }
 
@@ -146,11 +148,11 @@ class TensorShapeRep {
   void DestructorOutOfLine();
   void SlowCopyFrom(const TensorShapeRep& b);
 
-  uint8* buf() { return &u_.buf[0]; }
-  const uint8* buf() const { return &u_.buf[0]; }
+  uint8_t* buf() { return &u_.buf[0]; }
+  const uint8_t* buf() const { return &u_.buf[0]; }
 
   union {
-    uint8 buf[16];
+    uint8_t buf[16];
     // Force data to be aligned enough for a pointer.
     Rep64* unused_aligner;
   } u_;
@@ -290,7 +292,7 @@ class TensorShapeBase : public TensorShapeRep {
   /// Return the number of dimensions in the tensor.
   /// Can be -1 meaning unknown rank for PartialTensorShape.
   int dims() const {
-    uint8 dims = ndims_byte();
+    uint8_t dims = ndims_byte();
     return kIsPartial && dims == kUnknownRank ? -1 : dims;
   }
 
@@ -507,18 +509,19 @@ class TensorShapeUtils {
 
   /// \brief Returns a `TensorShape` whose dimensions are
   /// `dims[0]`, `dims[1]`, ..., `dims[n-1]`.
-  static absl::Status MakeShape(const int32* dims, int64_t n, TensorShape* out);
+  static absl::Status MakeShape(const int32_t* dims, int64_t n,
+                                TensorShape* out);
   static absl::Status MakeShape(const int64_t* dims, int64_t n,
                                 TensorShape* out);
-  static absl::Status MakeShape(absl::Span<const int32> shape,
+  static absl::Status MakeShape(absl::Span<const int32_t> shape,
                                 TensorShape* out);
   static absl::Status MakeShape(absl::Span<const int64_t> shape,
                                 TensorShape* out);
-  static absl::Status MakeShape(const int32* dims, int64_t n,
+  static absl::Status MakeShape(const int32_t* dims, int64_t n,
                                 PartialTensorShape* out);
   static absl::Status MakeShape(const int64_t* dims, int64_t n,
                                 PartialTensorShape* out);
-  static absl::Status MakeShape(absl::Span<const int32> shape,
+  static absl::Status MakeShape(absl::Span<const int32_t> shape,
                                 PartialTensorShape* out);
   static absl::Status MakeShape(absl::Span<const int64_t> shape,
                                 PartialTensorShape* out);
@@ -774,7 +777,7 @@ inline TensorShapeBase<Shape>::TensorShapeBase(DataType dt) {
   // Optimized implementation of InitDims() where the shape is statically known
   // to be {0}.
   set_ndims_byte(1);
-  uint16* dst = as16()->dims_;
+  uint16_t* dst = as16()->dims_;
   *dst = 0;
   set_num_elements(0);
 }

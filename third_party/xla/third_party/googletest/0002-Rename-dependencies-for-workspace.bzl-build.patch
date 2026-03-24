@@ -1,0 +1,30 @@
+From 21affdb9aaa50767264c13d607d47cb2104c4e4a Mon Sep 17 00:00:00 2001
+From: Marcin Radomski <dextero@google.com>
+Date: Tue, 9 Dec 2025 18:23:26 +0000
+Subject: [PATCH 2/2] Rename dependencies for workspace.bzl build
+
+Must be separate from googletest.patch, because:
+- Tensorflow applies googletest.patch only
+- XLA bzlmod build applies patch that adds assert macros only, and
+  needs different repository name in deps
+- XLA workspace.bzl build applies everything
+---
+ BUILD.bazel | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/BUILD.bazel b/BUILD.bazel
+index 32d2a22c..a122fa28 100644
+--- a/BUILD.bazel
++++ b/BUILD.bazel
+@@ -164,6 +164,6 @@ cc_library(
+         "//conditions:default": [],
+     }) + [
+-        "@abseil-cpp//absl/status",
+-        "@abseil-cpp//absl/status:statusor",
++        "@com_google_absl//absl/status",
++        "@com_google_absl//absl/status:statusor",
+     ],
+ )
+-- 
+2.52.0.223.gf5cc29aaa4-goog
+

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_performance_model.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <memory>
 #include <optional>
 
 #include "absl/log/check.h"
@@ -227,7 +227,11 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     const HloInstruction* producer, const GpuHloCostAnalysis* cost_analysis,
     absl::Span<const HloInstruction* const> fused_consumers) {
   auto cache_result = gpu_performance_model_cache_.Get(*producer);
-  CHECK(cache_result.has_value());
+  CHECK(cache_result.has_value())
+      << "Producer `" << producer->name()
+      << "` not found in cache. This should never happen! HLO module name: "
+      << producer->GetModule()->name()
+      << " HLO Instruction: " << producer->ToString();
   EstimateRunTimeData producer_runtime = *cache_result;
 
   absl::Duration time_unfused =
@@ -240,7 +244,11 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     VLOG(8) << "Fused consumer: " << fused_consumer->name();
 
     auto cache_result = gpu_performance_model_cache_.Get(*fused_consumer);
-    CHECK(cache_result.has_value());
+    CHECK(cache_result.has_value())
+        << "Consumer `" << fused_consumer->name()
+        << "` not found in cache. This should never happen! HLO module name: "
+        << fused_consumer->GetModule()->name()
+        << " HLO Instruction: " << fused_consumer->ToString();
     EstimateRunTimeData consumer_runtime = *cache_result;
 
     time_unfused += consumer_runtime.exec_time;
@@ -297,7 +305,7 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
       absl::ToDoubleNanoseconds(data.exec_time) * device_info_.clock_rate_ghz();
 
   auto gpu_config = instruction->backend_config<GpuBackendConfig>();
-  TF_CHECK_OK(gpu_config.status()) << instruction->ToString();
+  CHECK_OK(gpu_config.status()) << instruction->ToString();
   auto reification_cost = gpu_config->add_reification_cost();
   reification_cost->set_end_to_end_cycles(cycles);
   reification_cost->set_compute_time_us(
@@ -306,11 +314,10 @@ void GpuPerformanceModel::RecordEstimatedRunTime(
       absl::ToDoubleMicroseconds(data.read_time + data.write_time));
   reification_cost->set_exec_time_us(
       absl::ToDoubleMicroseconds(data.exec_time));
-  TF_CHECK_OK(instruction->set_backend_config(*gpu_config));
+  CHECK_OK(instruction->set_backend_config(*gpu_config));
 
   VLOG(8) << "RecordEstimatedRunTime: " << instruction->ToString();
 }
-
 
 }  // namespace gpu
 }  // namespace xla

@@ -124,23 +124,24 @@ class TestWorkerCache : public WorkerCacheInterface {
  public:
   virtual ~TestWorkerCache() {}
 
-  void AddWorker(const string& target, WorkerInterface* wi) {
+  void AddWorker(const std::string& target, WorkerInterface* wi) {
     workers_[target] = wi;
   }
 
-  void AddDevice(const string& device_name, const DeviceLocality& dev_loc) {
+  void AddDevice(const std::string& device_name,
+                 const DeviceLocality& dev_loc) {
     localities_[device_name] = dev_loc;
   }
 
-  void ListWorkers(std::vector<string>* workers) const override {
+  void ListWorkers(std::vector<std::string>* workers) const override {
     workers->clear();
     for (auto it : workers_) {
       workers->push_back(it.first);
     }
   }
 
-  void ListWorkersInJob(const string& job_name,
-                        std::vector<string>* workers) const override {
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) const override {
     workers->clear();
     for (auto it : workers_) {
       DeviceNameUtils::ParsedName device_name;
@@ -152,7 +153,7 @@ class TestWorkerCache : public WorkerCacheInterface {
     }
   }
 
-  WorkerInterface* GetOrCreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const std::string& target) override {
     auto it = workers_.find(target);
     if (it != workers_.end()) {
       return it->second;
@@ -160,7 +161,8 @@ class TestWorkerCache : public WorkerCacheInterface {
     return nullptr;
   }
 
-  void ReleaseWorker(const string& target, WorkerInterface* worker) override {}
+  void ReleaseWorker(const std::string& target,
+                     WorkerInterface* worker) override {}
 
   absl::Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
@@ -172,7 +174,7 @@ class TestWorkerCache : public WorkerCacheInterface {
     return errors::Unimplemented("Unimplemented.");
   }
 
-  bool GetDeviceLocalityNonBlocking(const string& device,
+  bool GetDeviceLocalityNonBlocking(const std::string& device,
                                     DeviceLocality* locality) override {
     auto it = localities_.find(device);
     if (it != localities_.end()) {
@@ -182,7 +184,8 @@ class TestWorkerCache : public WorkerCacheInterface {
     return false;
   }
 
-  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+  void GetDeviceLocalityAsync(const std::string& device,
+                              DeviceLocality* locality,
                               StatusCallback done) override {
     auto it = localities_.find(device);
     if (it != localities_.end()) {
@@ -194,8 +197,8 @@ class TestWorkerCache : public WorkerCacheInterface {
   }
 
  protected:
-  std::unordered_map<string, WorkerInterface*> workers_;
-  std::unordered_map<string, DeviceLocality> localities_;
+  std::unordered_map<std::string, WorkerInterface*> workers_;
+  std::unordered_map<std::string, DeviceLocality> localities_;
 };
 
 }  // namespace tensorflow

@@ -18,19 +18,22 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace {
 
 TEST(BufferUseTest, Equality) {
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
-  BufferAllocation::Slice slice0(&alloc, 0, 10);
+  Shape slice0_shape = ShapeUtil::MakeShape(F32, {2});
+  BufferAllocation::Slice slice0(&alloc, 0, 8);
 
-  BufferUse use_read0 = BufferUse::Read(slice0);
-  BufferUse use_read1 = BufferUse::Read(slice0);
-  BufferUse use_write = BufferUse::Write(slice0);
-  BufferUse use_scratch = BufferUse::Scratch(slice0);
-  BufferUse use_consume = BufferUse::Consume(slice0);
+  BufferUse use_read0 = BufferUse::Read(slice0, slice0_shape);
+  BufferUse use_read1 = BufferUse::Read(slice0, slice0_shape);
+  BufferUse use_write = BufferUse::Write(slice0, slice0_shape);
+  BufferUse use_scratch = BufferUse::Scratch(slice0, slice0_shape);
+  BufferUse use_consume = BufferUse::Consume(slice0, slice0_shape);
 
   EXPECT_EQ(use_read0, use_read1);
   EXPECT_NE(use_read0, use_write);
@@ -45,41 +48,43 @@ TEST(BufferUseTest, Equality) {
 
 TEST(BufferUseTest, HasDefinedContents) {
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
-  BufferAllocation::Slice slice(&alloc, 0, 10);
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {2});
+  BufferAllocation::Slice slice(&alloc, 0, 8);
 
-  BufferUse read = BufferUse::Read(slice);
+  BufferUse read = BufferUse::Read(slice, slice_shape);
   EXPECT_TRUE(read.HasDefinedContentsOnInput());
   EXPECT_TRUE(read.HasDefinedContentsOnOutput());
 
-  BufferUse write = BufferUse::Write(slice);
+  BufferUse write = BufferUse::Write(slice, slice_shape);
   EXPECT_FALSE(write.HasDefinedContentsOnInput());
   EXPECT_TRUE(write.HasDefinedContentsOnOutput());
 
-  BufferUse scratch = BufferUse::Scratch(slice);
+  BufferUse scratch = BufferUse::Scratch(slice, slice_shape);
   EXPECT_FALSE(scratch.HasDefinedContentsOnInput());
   EXPECT_FALSE(scratch.HasDefinedContentsOnOutput());
 
-  BufferUse consume = BufferUse::Consume(slice);
+  BufferUse consume = BufferUse::Consume(slice, slice_shape);
   EXPECT_TRUE(consume.HasDefinedContentsOnInput());
   EXPECT_FALSE(consume.HasDefinedContentsOnOutput());
 }
 
 TEST(BufferUseTest, AbslStringify) {
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
-  BufferAllocation::Slice slice(&alloc, 0, 10);
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {2});
+  BufferAllocation::Slice slice(&alloc, 0, 8);
 
   EXPECT_EQ(
-      absl::StrCat(BufferUse::Read(slice)),
-      "{slice: {index:0, offset:0, size:10}, access: R, content_validity: IO}");
+      absl::StrCat(BufferUse::Read(slice, slice_shape)),
+      "{slice: {index:0, offset:0, size:8}, access: R, content_validity: IO}");
   EXPECT_EQ(
-      absl::StrCat(BufferUse::Write(slice)),
-      "{slice: {index:0, offset:0, size:10}, access: W, content_validity: O}");
+      absl::StrCat(BufferUse::Write(slice, slice_shape)),
+      "{slice: {index:0, offset:0, size:8}, access: W, content_validity: O}");
   EXPECT_EQ(
-      absl::StrCat(BufferUse::Scratch(slice)),
-      "{slice: {index:0, offset:0, size:10}, access: W, content_validity: }");
+      absl::StrCat(BufferUse::Scratch(slice, slice_shape)),
+      "{slice: {index:0, offset:0, size:8}, access: W, content_validity: }");
   EXPECT_EQ(
-      absl::StrCat(BufferUse::Consume(slice)),
-      "{slice: {index:0, offset:0, size:10}, access: W, content_validity: I}");
+      absl::StrCat(BufferUse::Consume(slice, slice_shape)),
+      "{slice: {index:0, offset:0, size:8}, access: W, content_validity: I}");
 }
 
 TEST(BufferUseTest, ReadWriteSet) {
@@ -87,17 +92,18 @@ TEST(BufferUseTest, ReadWriteSet) {
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
 
-  BufferAllocation::Slice slice0(&alloc, 0, 10);
-  BufferAllocation::Slice slice1(&alloc, 5, 10);
-  BufferAllocation::Slice slice2(&alloc, 10, 10);
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {2});
+  BufferAllocation::Slice slice0(&alloc, 0, 8);
+  BufferAllocation::Slice slice1(&alloc, 4, 8);
+  BufferAllocation::Slice slice2(&alloc, 8, 8);
 
-  rwset.Add(BufferUse::Read(slice0));
-  EXPECT_FALSE(rwset.HasConflicts({BufferUse::Read(slice1)}));
-  EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice1)}));
-  EXPECT_FALSE(rwset.HasConflicts({BufferUse::Write(slice2)}));
+  rwset.Add(BufferUse::Read(slice0, slice_shape));
+  EXPECT_FALSE(rwset.HasConflicts({BufferUse::Read(slice1, slice_shape)}));
+  EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice1, slice_shape)}));
+  EXPECT_FALSE(rwset.HasConflicts({BufferUse::Write(slice2, slice_shape)}));
 
-  rwset.Add(BufferUse::Read(slice1));
-  EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice2)}));
+  rwset.Add(BufferUse::Read(slice1, slice_shape));
+  EXPECT_TRUE(rwset.HasConflicts({BufferUse::Write(slice2, slice_shape)}));
 }
 
 }  // namespace

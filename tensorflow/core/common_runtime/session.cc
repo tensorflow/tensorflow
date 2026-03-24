@@ -36,27 +36,29 @@ Session::Session() {}
 
 Session::~Session() {}
 
-absl::Status Session::Run(const RunOptions& run_options,
-                          const std::vector<std::pair<string, Tensor> >& inputs,
-                          const std::vector<string>& output_tensor_names,
-                          const std::vector<string>& target_tensor_names,
-                          std::vector<Tensor>* outputs,
-                          RunMetadata* run_metadata) {
+absl::Status Session::Run(
+    const RunOptions& run_options,
+    const std::vector<std::pair<std::string, Tensor> >& inputs,
+    const std::vector<std::string>& output_tensor_names,
+    const std::vector<std::string>& target_tensor_names,
+    std::vector<Tensor>* outputs, RunMetadata* run_metadata) {
   return errors::Unimplemented(
       "Run with options is not supported for this session.");
 }
 
-absl::Status Session::PRunSetup(const std::vector<string>& input_names,
-                                const std::vector<string>& output_names,
-                                const std::vector<string>& target_nodes,
-                                string* handle) {
+absl::Status Session::PRunSetup(const std::vector<std::string>& input_names,
+                                const std::vector<std::string>& output_names,
+                                const std::vector<std::string>& target_nodes,
+                                std::string* handle) {
   return errors::Unimplemented(
       "Partial run is not supported for this session.");
 }
 
 absl::Status Session::PRun(
-    const string& handle, const std::vector<std::pair<string, Tensor> >& inputs,
-    const std::vector<string>& output_names, std::vector<Tensor>* outputs) {
+    const std::string& handle,
+    const std::vector<std::pair<std::string, Tensor> >& inputs,
+    const std::vector<std::string>& output_names,
+    std::vector<Tensor>* outputs) {
   return errors::Unimplemented(
       "Partial run is not supported for this session.");
 }
@@ -96,7 +98,7 @@ absl::Status NewSession(const SessionOptions& options, Session** out_session) {
 }
 
 absl::Status Reset(const SessionOptions& options,
-                   const std::vector<string>& containers) {
+                   const std::vector<std::string>& containers) {
   SessionFactory* factory;
   TF_RETURN_IF_ERROR(SessionFactory::GetFactory(options, &factory));
   return factory->Reset(options, containers);

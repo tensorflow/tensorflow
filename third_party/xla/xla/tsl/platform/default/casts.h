@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <assert.h>  // for use with down_cast<>
 
+#include <memory>
 #include <type_traits>
 
 namespace tensorflow {
@@ -91,6 +92,6 @@ inline To down_cast(From& f) {
 
 namespace tsl {
 using ::tensorflow::down_cast;
-}
+}  // namespace tsl
 
 #endif  // XLA_TSL_PLATFORM_DEFAULT_CASTS_H_

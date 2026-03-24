@@ -18,9 +18,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_file_statistics.h"
 #include "tensorflow/c/tf_status.h"
@@ -34,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 struct TF_StringStream {
-  std::vector<::tensorflow::string>* list;
+  std::vector<std::string>* list;
   size_t position;
 };
 
@@ -134,7 +136,7 @@ void TF_StringStreamDone(TF_StringStream* list) {
   delete list;
 }
 TF_StringStream* TF_GetChildren(const char* dirname, TF_Status* status) {
-  auto* children = new std::vector<::tensorflow::string>;
+  auto* children = new std::vector<std::string>;
 
   TF_SetStatus(status, TF_OK, "");
   ::tensorflow::Set_TF_Status_from_Status(
@@ -147,7 +149,7 @@ TF_StringStream* TF_GetChildren(const char* dirname, TF_Status* status) {
 }
 
 TF_StringStream* TF_GetLocalTempDirectories() {
-  auto* tmpdirs = new std::vector<::tensorflow::string>;
+  auto* tmpdirs = new std::vector<std::string>;
 
   ::tensorflow::Env::Default()->GetLocalTempDirectories(tmpdirs);
 

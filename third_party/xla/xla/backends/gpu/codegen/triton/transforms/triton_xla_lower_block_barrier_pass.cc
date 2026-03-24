@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
+#include "triton/Dialect/TritonGPU/IR/Attributes.h"
+#include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
 namespace mlir::triton::xla {
 
@@ -54,17 +56,18 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
   constexpr int32_t kGlobalAddressSpace = 1;
 
   const mlir::TypedValue<mlir::Type> world_size_op =
-      builder.create<mlir::arith::ConstantOp>(
-          builder.getI32IntegerAttr(world_size));
+      mlir::arith::ConstantOp::create(builder,
+                                      builder.getI32IntegerAttr(world_size));
   const mlir::TypedValue<mlir::IntegerType> thread_id =
-      builder.create<triton::xla::GetTidOp>();
+      triton::xla::GetTidOp::create(builder);
   const mlir::TypedValue<mlir::IntegerType> block_id =
-      builder.create<triton::GetProgramIdOp>(0);
-  auto tid_is_lt_world_size = builder.create<mlir::arith::CmpIOp>(
-      mlir::arith::CmpIPredicate::ult, thread_id, world_size_op);
+      triton::GetProgramIdOp::create(builder, 0);
+  auto tid_is_lt_world_size = mlir::arith::CmpIOp::create(
+      builder, mlir::arith::CmpIPredicate::ult, thread_id, world_size_op);
 
   // Only the first `world_size` threads will execute this block.
-  builder.create<mlir::scf::IfOp>(
+  mlir::scf::IfOp::create(
+      builder,
       /*cond=*/tid_is_lt_world_size,
       // Inside if block so tid must be less than world_size.
       /*thenBuilder=*/
@@ -95,45 +98,46 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
         // Triton seems to fail to do pointer arithmetic on pointer of
         // pointers. So we cast the inner one to i64.
         // -> !tt.ptr<i64>
-        auto signal_buffers_i64 = builder.create<mlir::triton::BitcastOp>(
-            ptr_to_i64_type, signal_buffers_arg);
+        auto signal_buffers_i64 = mlir::triton::BitcastOp::create(
+            builder, ptr_to_i64_type, signal_buffers_arg);
         // SignalBuffers[WorldSize][BlockSize][WorldSize]
         // -> tensor<world_size x !tt.ptr<i64>>
-        auto signal_buffers_tensor = builder.create<mlir::triton::SplatOp>(
-            tensor_of_i64_ptr_type, signal_buffers_i64);
+        auto signal_buffers_tensor = mlir::triton::SplatOp::create(
+            builder, tensor_of_i64_ptr_type, signal_buffers_i64);
         // -> tensor<world_size x i32>
-        auto all_ranks = builder.create<mlir::triton::MakeRangeOp>(
-            i32_tensor_type, 0, world_size);
+        auto all_ranks = mlir::triton::MakeRangeOp::create(
+            builder, i32_tensor_type, 0, world_size);
         // Pointer to SignalBuffers[0..WorldSize]
         // -> tensor<world_size x !tt.ptr<i64>>
-        auto signal_buffer_ptr = builder.create<mlir::triton::AddPtrOp>(
-            tensor_of_i64_ptr_type, signal_buffers_tensor, all_ranks);
+        auto signal_buffer_ptr = mlir::triton::AddPtrOp::create(
+            builder, tensor_of_i64_ptr_type, signal_buffers_tensor, all_ranks);
         // SignalBuffers[0..WorldSize]
         // -> tensor<world_size x i64>
-        auto signal_buffer_i64 = builder.create<mlir::triton::LoadOp>(
+        auto signal_buffer_i64 = mlir::triton::LoadOp::create(
+            builder,
             /*ptr=*/signal_buffer_ptr,
             /*cache=*/mlir::triton::CacheModifier::NONE,
             /*evict=*/mlir::triton::EvictionPolicy::NORMAL,
             /*isVolatile=*/false);
         // -> tensor<world_size x !tt.ptr<i32>>
-        auto signal_buffer = builder.create<mlir::triton::IntToPtrOp>(
-            tensor_of_ptr_to_i32_type, signal_buffer_i64);
-        auto block_offset = builder.create<mlir::arith::MulIOp>(
-            i32_type, block_id, world_size_op);
+        auto signal_buffer = mlir::triton::IntToPtrOp::create(
+            builder, tensor_of_ptr_to_i32_type, signal_buffer_i64);
+        auto block_offset = mlir::arith::MulIOp::create(
+            builder, i32_type, block_id, world_size_op);
         auto block_offset_plus_rank =
-            builder.create<mlir::arith::AddIOp>(i32_type, block_offset, rank);
+            mlir::arith::AddIOp::create(builder, i32_type, block_offset, rank);
         // -> tensor<world_size x i32>
-        auto block_offset_plus_rank_tensor =
-            builder.create<mlir::triton::SplatOp>(i32_tensor_type,
-                                                  block_offset_plus_rank);
+        auto block_offset_plus_rank_tensor = mlir::triton::SplatOp::create(
+            builder, i32_tensor_type, block_offset_plus_rank);
         // SignalBuffers[0..WorldSize][block_id][rank]
         // -> tensor<world_size x !tt.ptr<i32>>
-        auto signal_addresses = builder.create<mlir::triton::AddPtrOp>(
-            tensor_of_ptr_to_i32_type, signal_buffer,
+        auto signal_addresses = mlir::triton::AddPtrOp::create(
+            builder, tensor_of_ptr_to_i32_type, signal_buffer,
             block_offset_plus_rank_tensor);
         // Signal all ranks on the same block id.
-        builder.create<mlir::triton::xla::AtomicWriteOp>(
-            /*result_types=*/mlir::TypeRange{},
+        mlir::triton::xla::AtomicWriteOp::create(
+            builder,
+            /*resultTypes=*/mlir::TypeRange{},
             /*ptr=*/signal_addresses,
             /*signal_value=*/signal_value,
             /*mask=*/mlir::Value{},
@@ -141,35 +145,36 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             /*sem=*/mlir::triton::MemSemantic::RELEASE);
         // Pointer to SignalBuffers[rank]
         // -> !tt.ptr<i64>
-        auto read_address_ptr_to_i64 = builder.create<mlir::triton::AddPtrOp>(
-            signal_buffers_i64.getType(), signal_buffers_i64, rank);
+        auto read_address_ptr_to_i64 = mlir::triton::AddPtrOp::create(
+            builder, signal_buffers_i64.getType(), signal_buffers_i64, rank);
         // SignalBuffers[rank]
         // -> i64
-        auto read_address_i64 = builder.create<mlir::triton::LoadOp>(
+        auto read_address_i64 = mlir::triton::LoadOp::create(
+            builder,
             /*ptr=*/read_address_ptr_to_i64,
             /*cache=*/mlir::triton::CacheModifier::NONE,
             /*evict=*/mlir::triton::EvictionPolicy::NORMAL,
             /*isVolatile=*/false);
         // -> !tt.ptr<i32>
-        auto read_address = builder.create<mlir::triton::IntToPtrOp>(
-            ptr_to_i32_type, read_address_i64);
+        auto read_address = mlir::triton::IntToPtrOp::create(
+            builder, ptr_to_i32_type, read_address_i64);
         // Pointer to SignalBuffers[rank][block_id]
         // -> !tt.ptr<i32>
-        auto read_address_at_block_offset =
-            builder.create<mlir::triton::AddPtrOp>(ptr_to_i32_type,
-                                                   read_address, block_offset);
+        auto read_address_at_block_offset = mlir::triton::AddPtrOp::create(
+            builder, ptr_to_i32_type, read_address, block_offset);
         // -> tensor<world_size x !tt.ptr<i32>>
         auto read_address_at_block_offset_tensor =
-            builder.create<mlir::triton::SplatOp>(tensor_of_ptr_to_i32_type,
-                                                  read_address_at_block_offset);
+            mlir::triton::SplatOp::create(builder, tensor_of_ptr_to_i32_type,
+                                          read_address_at_block_offset);
         // SignalBuffers[rank][block_id][0..WorldSize]
         // -> tensor<world_size x !tt.ptr<i32>>
-        auto wait_addresses = builder.create<mlir::triton::AddPtrOp>(
-            tensor_of_ptr_to_i32_type, read_address_at_block_offset_tensor,
-            all_ranks);
+        auto wait_addresses = mlir::triton::AddPtrOp::create(
+            builder, tensor_of_ptr_to_i32_type,
+            read_address_at_block_offset_tensor, all_ranks);
         // Wait for all ranks on the same block id to signal.
-        builder.create<mlir::triton::xla::AtomicSpinWaitOp>(
-            /*result_types=*/mlir::TypeRange{},
+        mlir::triton::xla::AtomicSpinWaitOp::create(
+            builder,
+            /*resultTypes=*/mlir::TypeRange{},
             /*ptr=*/wait_addresses,
             /*expected=*/signal_value,
             /*mask=*/mlir::Value{},
@@ -177,8 +182,9 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
             /*sem=*/mlir::triton::MemSemantic::ACQUIRE,
             /*comparator=*/Comparator::LT);
         // Terminate the block.
-        builder.create<mlir::scf::YieldOp>();
+        mlir::scf::YieldOp::create(builder);
       });
+  builder.create<mlir::triton::gpu::BarrierOp>(triton::gpu::AddrSpace::Local);
   rewriter.eraseOp(block_barrier);
   return success();
 }

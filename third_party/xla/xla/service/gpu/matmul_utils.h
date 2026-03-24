@@ -32,9 +32,10 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -123,7 +124,8 @@ struct GemmConfig : public se::gpu::GemmConfig {
       double alpha_real, double alpha_imag, double beta,
       PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-      bool grad_y, const se::GpuComputeCapability& gpu_version);
+      bool grad_y, se::gpu::ScaleMode scale_mode,
+      const se::GpuComputeCapability& gpu_version);
 
   // As above with additional `c_shape` and `bias_shape_ptr` parameter, both
   // which are only necessarily for F8 gemms.
@@ -136,7 +138,8 @@ struct GemmConfig : public se::gpu::GemmConfig {
       double alpha_imag, double beta,
       PrecisionConfig::Algorithm precision_algorithm,
       std::optional<int64_t> algorithm, int64_t compute_precision, bool grad_x,
-      bool grad_y, const se::GpuComputeCapability& gpu_version);
+      bool grad_y, se::gpu::ScaleMode scale_mode,
+      const se::GpuComputeCapability& gpu_version);
 
   struct DescriptorsTuple {
     se::gpu::MatrixDescriptor lhs;
@@ -145,18 +148,27 @@ struct GemmConfig : public se::gpu::GemmConfig {
     bool operands_swapped;
   };
   absl::StatusOr<DescriptorsTuple> GetMatrixDescriptors(
-      se::DeviceMemoryBase lhs_buf, se::DeviceMemoryBase rhs_buf,
-      se::DeviceMemoryBase out_buf) const;
+      se::DeviceAddressBase lhs_buf, se::DeviceAddressBase rhs_buf,
+      se::DeviceAddressBase out_buf,
+      const se::GpuComputeCapability& gpu_version) const;
 };
+
+/* Temporary code due to split PRs */
+struct GroupedGemmConfig {
+  // For legacy Gemm operations XLA:GPU allocates its own workspace and passes
+  // it to all BLAS API calls.
+  static constexpr int64_t kUserArgsSizeBytes = 196;
+};
+/* End of temporary code due to split PRs */
 
 // Run the given GEMM instruction `gemm` subject to the configuration
 // in `gemm_config` and the passed buffers.
 //
 // If `algorithm` is provided, it overrides the one specified in `config`.
 absl::Status RunGemm(
-    const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
-    se::DeviceMemoryBase rhs_buffer, se::DeviceMemoryBase output_buffer,
-    se::DeviceMemoryBase workspace_buffer, bool deterministic_ops,
+    const GemmConfig& config, se::DeviceAddressBase lhs_buffer,
+    se::DeviceAddressBase rhs_buffer, se::DeviceAddressBase output_buffer,
+    se::DeviceAddressBase workspace_buffer, bool deterministic_ops,
     se::Stream* stream,
     std::optional<se::blas::AlgorithmType> algorithm = std::nullopt,
     se::blas::ProfileResult* profile_result = nullptr);
@@ -179,7 +191,8 @@ struct TritonGemmConfig {
   constexpr TritonGemmConfig() = default;
   constexpr TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
                              int num_stages, int num_warps, int num_ctas = 1,
-                             bool is_tma_allowed = false)
+                             bool is_tma_allowed = false,
+                             bool is_warp_specialization_allowed = false)
       : block_m(block_m),
         block_n(block_n),
         block_k(block_k),
@@ -187,7 +200,9 @@ struct TritonGemmConfig {
         num_stages(num_stages),
         num_warps(num_warps),
         num_ctas(num_ctas),
-        is_tma_allowed(is_tma_allowed) {}
+        is_tma_allowed(is_tma_allowed),
+        is_warp_specialization_allowed(is_warp_specialization_allowed) {}
+  // LINT.IfChange
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
@@ -198,6 +213,9 @@ struct TritonGemmConfig {
   int num_ctas = 0;
   // Allow/disallow TMA usage for all arguments of the kernel (where possible).
   bool is_tma_allowed = false;
+  // Allow/disallow automatic warp specialization.
+  bool is_warp_specialization_allowed = false;
+  // LINT.ThenChange(//tensorflow/compiler/xla/autotuning.proto)
 
   // When adding new members, please update all methods, such as ToTuple,
   // FromProto, ToProto, ToString, etc. Updating ToTuple is not enough.
@@ -209,7 +227,8 @@ struct TritonGemmConfig {
  private:
   auto ToTuple() const {
     return std::make_tuple(block_m, block_n, block_k, split_k, num_stages,
-                           num_warps, num_ctas, is_tma_allowed);
+                           num_warps, num_ctas, is_tma_allowed,
+                           is_warp_specialization_allowed);
   }
 
  public:

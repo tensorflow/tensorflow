@@ -53,9 +53,7 @@ TEST(TileAssignmentTest, Maximal) {
   EXPECT_EQ(tile(0), 5);
   EXPECT_EQ(tile({0}), 5);
   EXPECT_FALSE(tile.iota());
-  EXPECT_TRUE(tile.UsesDevice(5));
   EXPECT_EQ(tile.first(), 5);
-  EXPECT_FALSE(tile.UsesDevice(0));
   EXPECT_THAT(ToVectorUsingEach(tile), ElementsAre(5));
 }
 
@@ -132,9 +130,6 @@ TEST_P(FormattedTileAssignmentTest, TrivialIotaTile) {
   EXPECT_EQ(tile(0, 0, 0), 0);
   EXPECT_EQ(tile({3, 2, 1}), 29);
   EXPECT_EQ(tile.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(tile.UsesDevice(0));
-  EXPECT_TRUE(tile.UsesDevice(31));
-  EXPECT_FALSE(tile.UsesDevice(32));
   EXPECT_THAT(
       ToVectorUsingEach(tile),
       ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
@@ -155,9 +150,6 @@ TEST_P(FormattedTileAssignmentTest, TransposedIotaTile) {
   EXPECT_EQ(tile(0, 0, 0), 0);
   EXPECT_EQ(tile({3, 2, 1}), 27);
   EXPECT_EQ(tile.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(tile.UsesDevice(0));
-  EXPECT_TRUE(tile.UsesDevice(31));
-  EXPECT_FALSE(tile.UsesDevice(32));
   EXPECT_THAT(
       ToVectorUsingEach(tile),
       ElementsAre(0, 16, 4, 20, 8, 24, 12, 28, 1, 17, 5, 21, 9, 25, 13, 29, 2,
@@ -177,9 +169,6 @@ TEST_P(FormattedTileAssignmentTest, NonCanonicalTransposedIotaTile) {
   EXPECT_EQ(tile(0, 0), 0);
   EXPECT_EQ(tile({3, 2}), 13);
   EXPECT_EQ(tile.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(tile.UsesDevice(0));
-  EXPECT_TRUE(tile.UsesDevice(31));
-  EXPECT_FALSE(tile.UsesDevice(32));
   EXPECT_THAT(
       ToVectorUsingEach(tile),
       ElementsAre(0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23, 8, 24,
@@ -201,9 +190,6 @@ TEST_P(FormattedTileAssignmentTest, ReshapeTrivalIotaTile) {
   EXPECT_EQ(reshaped(0, 0, 0), 0);
   EXPECT_EQ(reshaped({1, 3, 1}), 23);
   EXPECT_EQ(reshaped.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(reshaped.UsesDevice(0));
-  EXPECT_TRUE(reshaped.UsesDevice(31));
-  EXPECT_FALSE(reshaped.UsesDevice(32));
   EXPECT_THAT(
       ToVectorUsingEach(reshaped),
       ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
@@ -226,9 +212,6 @@ TEST_P(FormattedTileAssignmentTest, ReshapeTransposedIotaTile) {
   EXPECT_EQ(reshaped(0, 0, 0, 0), 0);
   EXPECT_EQ(reshaped({1, 1, 2, 1}), 27);
   EXPECT_EQ(reshaped.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(reshaped.UsesDevice(0));
-  EXPECT_TRUE(reshaped.UsesDevice(31));
-  EXPECT_FALSE(reshaped.UsesDevice(32));
   EXPECT_THAT(
       ToVectorUsingEach(reshaped),
       ElementsAre(0, 16, 4, 20, 8, 24, 12, 28, 1, 17, 5, 21, 9, 25, 13, 29, 2,
@@ -250,9 +233,6 @@ TEST_P(FormattedTileAssignmentTest, TransposeTrivalIotaTile) {
   EXPECT_EQ(xposed(0, 0, 0), 0);
   EXPECT_EQ(xposed({1, 3, 1}), 27);
   EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(31));
-  EXPECT_FALSE(xposed.UsesDevice(32));
   EXPECT_THAT(
       ToVectorUsingEach(xposed),
       ElementsAre(0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 1,
@@ -274,9 +254,6 @@ TEST_P(FormattedTileAssignmentTest, TransposeTransposedIotaTile) {
   EXPECT_EQ(xposed(0, 0, 0), 0);
   EXPECT_EQ(xposed({3, 0, 3}), 15);
   EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(31));
-  EXPECT_FALSE(xposed.UsesDevice(32));
   EXPECT_THAT(
       ToVectorUsingEach(xposed),
       ElementsAre(0, 4, 8, 12, 16, 20, 24, 28, 1, 5, 9, 13, 17, 21, 25, 29, 2,
@@ -298,9 +275,6 @@ TEST_P(FormattedTileAssignmentTest, TransposeIotaTileWithDegernateDims) {
   EXPECT_EQ(xposed(0, 0, 0), 0);
   EXPECT_EQ(xposed({2, 0, 3}), 11);
   EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(15));
-  EXPECT_FALSE(xposed.UsesDevice(16));
   EXPECT_THAT(
       ToVectorUsingEach(xposed),
       ElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15));
@@ -322,9 +296,6 @@ TEST_P(FormattedTileAssignmentTest,
   EXPECT_EQ(xposed(0, 0, 0), 0);
   EXPECT_EQ(xposed({2, 7, 1}), 117);
   EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(255));
-  EXPECT_FALSE(xposed.UsesDevice(256));
   EXPECT_THAT(
       ToVectorUsingEach(xposed),
       ElementsAre(
@@ -363,9 +334,6 @@ TEST_P(FormattedTileAssignmentTest,
   EXPECT_EQ(xposed(0, 0, 0), 0);
   EXPECT_EQ(xposed({2, 11, 3}), 201);
   EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(209));
-  EXPECT_FALSE(xposed.UsesDevice(210));
   EXPECT_THAT(
       ToVectorUsingEach(xposed),
       ElementsAre(
@@ -401,9 +369,6 @@ TEST_P(FormattedTileAssignmentTest,
   EXPECT_EQ(xposed(0, 0, 0), 0);
   EXPECT_EQ(xposed({7, 0, 3}), 31);
   EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(63));
-  EXPECT_FALSE(xposed.UsesDevice(64));
   EXPECT_THAT(ToVectorUsingEach(xposed),
               ElementsAre(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15,
                           16, 20, 24, 28, 17, 21, 25, 29, 18, 22, 26, 30, 19,
@@ -425,9 +390,6 @@ TEST_P(FormattedTileAssignmentTest, TransposeNoopIotaTile) {
   EXPECT_EQ(xposed(0, 0), 0);
   EXPECT_EQ(xposed({2, 3}), 14);
   EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(15));
-  EXPECT_FALSE(xposed.UsesDevice(16));
   EXPECT_THAT(
       ToVectorUsingEach(xposed),
       ElementsAre(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15));
@@ -450,9 +412,6 @@ TEST_P(FormattedTileAssignmentTest, TransposeNoopIotaTileWithDegernateDims) {
   EXPECT_EQ(xposed(0, 0, 0, 0, 0, 0), 0);
   EXPECT_EQ(xposed({2, 0, 0, 3, 0, 0}), 14);
   EXPECT_EQ(xposed.iota().has_value(), !ShouldConvertToV1());
-  EXPECT_TRUE(xposed.UsesDevice(0));
-  EXPECT_TRUE(xposed.UsesDevice(15));
-  EXPECT_FALSE(xposed.UsesDevice(16));
   EXPECT_THAT(
       ToVectorUsingEach(xposed),
       ElementsAre(0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15));

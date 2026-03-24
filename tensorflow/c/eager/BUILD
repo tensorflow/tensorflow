@@ -95,7 +95,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
-        "@local_xla//xla/tsl/c:tsl_status_internal",
+        "@xla//xla/tsl/c:tsl_status_internal",
     ],
     alwayslink = 1,
 )
@@ -215,6 +215,7 @@ cc_library(
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -913,8 +914,8 @@ tf_cuda_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_xla//xla/tsl/c:tsl_status_internal",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@xla//xla/tsl/c:tsl_status_internal",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
     ],
     alwayslink = 1,
 )

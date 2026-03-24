@@ -40,15 +40,10 @@ void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
                          dnnl::stream& onednn_stream,
                          OneDnnResources& resources);
 
-extern "C" {
-extern void __xla_cpu_runtime_OneDnnMatMul(void* result, void* scratch,
-                                           void** args);
-extern void __xla_cpu_runtime_OneDnnMatMulReorder(void* result, void** args);
-}  // extern "C"
-
 template <>
 struct PrimitiveTrait<kOnednnMatmulConfig> {
   using pointer_type = xla::cpu::OneDnnMatMulConfig*;
+  using primitive_desc = dnnl::matmul::primitive_desc;
   static const BackendConfigOneofCase kConfigVal = kOnednnMatmulConfig;
 };
 

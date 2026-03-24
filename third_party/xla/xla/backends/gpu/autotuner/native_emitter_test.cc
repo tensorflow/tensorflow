@@ -30,12 +30,12 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -91,17 +91,17 @@ ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32
 class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
  protected:
   NativeEmitterBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
-                             .value()
-                             ->ExecutorForDevice(0)
-                             .value()),
+      : platform_(PlatformUtil::GetDefaultPlatform().value()),
+        stream_executor_(platform_->ExecutorForDevice(0).value()),
         target_config_(stream_executor_),
-        backend_(&debug_options_, &compiler_, &target_config_) {}
+        compiler_(Compiler::GetForPlatform(platform_->id()).value()),
+        backend_(&debug_options_, compiler_.get(), &target_config_) {}
 
   DebugOptions debug_options_;
-  NVPTXCompiler compiler_;
+  se::Platform* platform_;
   se::StreamExecutor* stream_executor_;
-  Compiler::TargetConfig target_config_;
+  Compiler::GpuTargetConfig target_config_;
+  std::unique_ptr<Compiler> compiler_;
   NativeEmitterBackend backend_;
 };
 
@@ -202,12 +202,11 @@ class MockCompiler : public Compiler {
                std::vector<se::StreamExecutor*> stream_execs,
                const CompileOptions& options),
               (override));
-  MOCK_METHOD(
-      absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>,
-      CompileAheadOfTime,
-      (std::unique_ptr<HloModule> hlo_module,
-       const AotCompilationOptions& options),
-      (override));
+  MOCK_METHOD(absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>,
+              CompileAheadOfTime,
+              (std::unique_ptr<HloModule> hlo_module,
+               const AotCompilationOptions& options),
+              (override));
   MOCK_METHOD(HloCostAnalysis::ShapeSizeFunction, ShapeSizeBytesFunction, (),
               (const, override));
 };
@@ -226,8 +225,7 @@ TEST_F(NativeEmitterBackendTest, CompileSetsIsAutotuningCompilationOption) {
       mock_compiler,
       RunBackend(
           testing::_, testing::_,
-          testing::Field(&Compiler::CompileOptions::is_autotuning_compilation,
-                         true)))
+          testing::Field(&Compiler::CompileOptions::embed_hlo_module, false)))
       .WillOnce(testing::Return(std::unique_ptr<Executable>()));
   // Attempt to compile the fusion using the retrieved backend config.
   EXPECT_THAT(backend.Compile(*fusion, *config), absl_testing::IsOk());

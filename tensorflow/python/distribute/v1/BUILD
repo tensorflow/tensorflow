@@ -1,5 +1,5 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -46,11 +46,12 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "all_reduce",
     srcs = [
         "all_reduce.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:device",
         "//tensorflow/python/framework:ops",

@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 
@@ -36,7 +36,7 @@ namespace {
 
 namespace m = ::xla::match;
 
-class AutoShardingTest : public HloTestBase {
+class AutoShardingTest : public HloTestBaseLegacy {
  protected:
   const char* const dot_hlo_string_ = R"(
 HloModule module

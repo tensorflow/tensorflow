@@ -20,13 +20,14 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #if defined(PLATFORM_GOOGLE)
 #include "thread/executor.h"
 #include "thread/signal.h"
@@ -80,7 +81,7 @@ void SigtermNotifier::StartListenerThread() {
             // 1) Cancel any pending callbacks and blocking WillBePreemptedAt()
             // calls.
             NotifyRegisteredListeners(
-                errors::Cancelled("Preemption notifier is being deleted."));
+                absl::CancelledError("Preemption notifier is being deleted."));
             // 2) Exit listener thread.
             return;
           }

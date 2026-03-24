@@ -42,7 +42,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/rendezvous.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -242,8 +242,8 @@ absl::Status ReduceScatter(ReductionKind reduction_kind,
 
 struct AllReduceParticipant {
   size_t rank;
-  se::DeviceMemoryBase src;
-  se::DeviceMemoryBase dest;
+  se::DeviceAddressBase src;
+  se::DeviceAddressBase dest;
 };
 
 static absl::Status AllReduceOp(
@@ -265,7 +265,7 @@ static absl::Status AllReduceOp(
   if (chunk_count == 0) return absl::OkStatus();
 
   // Returns a pointer to the chunk of data for the given participant rank.
-  auto chunk_ptr = [&](se::DeviceMemoryBase mem) -> void* {
+  auto chunk_ptr = [&](se::DeviceAddressBase mem) -> void* {
     std::byte* ptr = static_cast<std::byte*>(mem.opaque());
     return ptr + rank * chunk_size * primitive_util::ByteWidth(primitive_type);
   };
@@ -302,8 +302,8 @@ static absl::Status AllReduceOp(
 
 struct ReduceScatterParticipant {
   size_t rank;
-  se::DeviceMemoryBase src;
-  se::DeviceMemoryBase dest;
+  se::DeviceAddressBase src;
+  se::DeviceAddressBase dest;
 };
 
 static absl::Status ReduceScatterOp(
@@ -345,8 +345,8 @@ static absl::Status ReduceScatterOp(
 
 struct AllGatherParticipant {
   size_t rank;
-  se::DeviceMemoryBase src;
-  se::DeviceMemoryBase dest;
+  se::DeviceAddressBase src;
+  se::DeviceAddressBase dest;
 };
 
 static absl::Status AllGatherOp(
@@ -366,8 +366,8 @@ static absl::Status AllGatherOp(
 struct AllToAllParticipant {
   size_t rank;
 
-  std::vector<se::DeviceMemoryBase> src;
-  std::vector<se::DeviceMemoryBase> dest;
+  std::vector<se::DeviceAddressBase> src;
+  std::vector<se::DeviceAddressBase> dest;
 };
 
 static absl::Status AllToAllOp(
@@ -388,8 +388,8 @@ struct CollectivePermuteParticipant {
   size_t rank;
   std::optional<RankId> src_rank;
 
-  se::DeviceMemoryBase src;
-  se::DeviceMemoryBase dest;
+  se::DeviceAddressBase src;
+  se::DeviceAddressBase dest;
 };
 
 static absl::Status CollectivePermuteOp(
@@ -415,8 +415,8 @@ static absl::Status CollectivePermuteOp(
 InProcessCommunicator::InProcessCommunicator(size_t rank, size_t num_ranks)
     : rank_(rank), num_ranks_(num_ranks) {}
 
-Future<> InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
-                                          se::DeviceMemoryBase recv_buffer,
+Future<> InProcessCommunicator::AllReduce(se::DeviceAddressBase send_buffer,
+                                          se::DeviceAddressBase recv_buffer,
                                           PrimitiveType dtype, size_t count,
                                           ReductionKind reduction_kind,
                                           const Executor& executor) {
@@ -438,8 +438,8 @@ Future<> InProcessCommunicator::AllReduce(se::DeviceMemoryBase send_buffer,
   return Future<>(absl::OkStatus());
 }
 
-Future<> InProcessCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
-                                              se::DeviceMemoryBase recv_buffer,
+Future<> InProcessCommunicator::ReduceScatter(se::DeviceAddressBase send_buffer,
+                                              se::DeviceAddressBase recv_buffer,
                                               PrimitiveType dtype, size_t count,
                                               ReductionKind reduction_kind,
                                               const Executor& executor) {
@@ -462,7 +462,7 @@ Future<> InProcessCommunicator::ReduceScatter(se::DeviceMemoryBase send_buffer,
 }
 
 Future<> InProcessCommunicator::CollectivePermute(
-    se::DeviceMemoryBase send_buffer, se::DeviceMemoryBase recv_buffer,
+    se::DeviceAddressBase send_buffer, se::DeviceAddressBase recv_buffer,
     PrimitiveType dtype, size_t count, std::optional<RankId> source_rank,
     absl::Span<const RankId> target_ranks, const Executor& executor) {
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
@@ -486,8 +486,8 @@ Future<> InProcessCommunicator::CollectivePermute(
 }
 
 Future<> InProcessCommunicator::AllToAll(
-    absl::InlinedVector<se::DeviceMemoryBase, 4> send_buffers,
-    absl::InlinedVector<se::DeviceMemoryBase, 4> recv_buffers,
+    absl::InlinedVector<se::DeviceAddressBase, 4> send_buffers,
+    absl::InlinedVector<se::DeviceAddressBase, 4> recv_buffers,
     PrimitiveType dtype, size_t count, const Executor& executor) {
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));
   const RendezvousKey& key = cpu_executor->rendezvous_key();
@@ -510,8 +510,8 @@ Future<> InProcessCommunicator::AllToAll(
   return Future<>(absl::OkStatus());
 }
 
-Future<> InProcessCommunicator::AllGather(se::DeviceMemoryBase send_buffer,
-                                          se::DeviceMemoryBase recv_buffer,
+Future<> InProcessCommunicator::AllGather(se::DeviceAddressBase send_buffer,
+                                          se::DeviceAddressBase recv_buffer,
                                           PrimitiveType dtype, size_t count,
                                           const Executor& executor) {
   TF_ASSIGN_OR_RETURN(auto cpu_executor, CpuCollectives::TryCast(&executor));

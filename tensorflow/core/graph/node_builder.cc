@@ -108,7 +108,7 @@ NodeBuilder& NodeBuilder::Device(absl::string_view device_spec) {
 }
 
 NodeBuilder& NodeBuilder::AssignedDevice(absl::string_view device) {
-  assigned_device_ = string(device);
+  assigned_device_ = std::string(device);
   return *this;
 }
 

@@ -68,6 +68,21 @@ class QuantizeOpModel : public SingleOpModel {
     return unpacked_output;
   }
 
+  std::vector<int8_t> GetOutputUnpackedUInt4() {
+    TfLiteTensor* t = interpreter_->tensor(output_);
+    int num_elements = NumElements(t);
+    std::vector<int8_t> unpacked_output(num_elements);
+    const int8_t* src_buffer = t->data.int8;
+    for (int i = 0; i < num_elements; i += 2) {
+      int8_t src_val = src_buffer[i / 2];
+      unpacked_output[i] = src_val & 0x0F;
+      if (i + 1 < num_elements) {
+        unpacked_output[i + 1] = (src_val >> 4) & 0x0F;
+      }
+    }
+    return unpacked_output;
+  }
+
  protected:
   int input_;
   int output_;
@@ -146,6 +161,18 @@ TEST(QuantizeOpTest, INT4) {
   // Range of int4 is [-8, 7]. Values over the range are clamped to the range.
   EXPECT_THAT(m.GetOutputUnpackedInt4(),
               ElementsAreArray({-8, -6, -5, -4, -3, 4, 5, 6, 7, 7}));
+}
+
+TEST(QuantizeOpTest, UINT4) {
+  // [-4, 3.5] -> scale=0.5, zero_point=8 for UINT4
+  QuantizeOpModel m({TensorType_FLOAT32, {1, 8}},
+                    {TensorType_UINT4, {1, 8}, 0, 0, 0.5, 8});
+
+  m.SetInput({-4.5, -4, -3.5, 0, 0.5, 3, 3.5, 4});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Range of uint4 is [0, 15]. Values over the range are clamped to the range.
+  EXPECT_THAT(m.GetOutputUnpackedUInt4(),
+              ElementsAreArray({0, 0, 1, 8, 9, 14, 15, 15}));
 }
 
 // Per-channel quantization tests.
@@ -681,6 +708,30 @@ TEST(QuantizeOpTest, Int16Int32SmallerScale) {
   m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int32_t>(),
+              ElementsAreArray({2, 4, 6, 8, 10, 12, 14, 16, 18, 20}));
+}
+
+// Input scale 0.5, output scale 0.5, input zeropoint -1, output zeropoint 0
+TEST(QuantizeOpTest, Int8Int16SameScale) {
+  QuantizeOpModel m({TensorType_INT8, {1, 1, 2, 5}, 0, 0, 0.5, -1},
+                    {TensorType_INT16, {1, 1, 2, 5}, 0, 0, 0.5, 0});
+
+  // Input will quantized to {1,3,5,7,9,11,13,15,17,19}.
+  m.SetInputAndQuantize<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({2, 4, 6, 8, 10, 12, 14, 16, 18, 20}));
+}
+
+// Input scale 0.5, output scale 0.5, input zeropoint 127, output zeropoint 0
+TEST(QuantizeOpTest, UInt8Int16SameScale) {
+  QuantizeOpModel m({TensorType_UINT8, {1, 1, 2, 5}, 0, 0, 0.5, 127},
+                    {TensorType_INT16, {1, 1, 2, 5}, 0, 0, 0.5, 0});
+
+  // Input will quantized to {129,131,133,135,137,139,141,143,145,147}.
+  m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray({2, 4, 6, 8, 10, 12, 14, 16, 18, 20}));
 }
 

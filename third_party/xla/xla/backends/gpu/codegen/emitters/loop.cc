@@ -27,7 +27,6 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
@@ -50,6 +49,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::mlir::MLIRContext;
+
 const Shape& GetIndexShape(const Shape& shape) {
   return shape.IsTuple() ? shape.tuple_shapes(0) : shape;
 }
@@ -57,24 +58,24 @@ const Shape& GetIndexShape(const Shape& shape) {
 }  // namespace
 
 std::optional<IndexingMap> LoopFusion::ComputeThreadIdToOutputIndexing(
-    int64_t root_index, mlir::MLIRContext* ctx) const {
+    int64_t root_index, MLIRContext* mlir_context) const {
   return emitters::LoopFusionKernelEmitter::ComputeWorkItemIdToOutputIndexing(
       GetWorkDimensions(),
-      GetIndexShape(analysis_.fusion_root(root_index).shape()), ctx);
+      GetIndexShape(analysis_.fusion_root(root_index).shape()), mlir_context);
 }
 
 std::optional<std::vector<IndexingMap>>
 LoopFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
-                                           mlir::MLIRContext* ctx) const {
+                                           MLIRContext* mlir_context) const {
   std::optional<IndexingMap> thread_id_to_output_indexing =
-      ComputeThreadIdToOutputIndexing(root_index, ctx);
+      ComputeThreadIdToOutputIndexing(root_index, mlir_context);
   if (!thread_id_to_output_indexing.has_value()) {
     return std::nullopt;
   }
   const HloInstruction* fusion_root =
       &analysis_.fusion_root(root_index).instruction();
   auto output_to_input_indexing =
-      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, ctx);
+      ComputeOutputToInputIndexing(fusion_root, /*output_id=*/0, mlir_context);
   std::vector<IndexingMap> result;
   result.reserve(fusion_root->operand_count());
   for (int64_t operand_index = 0; operand_index < fusion_root->operand_count();
@@ -96,8 +97,21 @@ LoopFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
 LaunchDimensions LoopFusion::launch_dimensions() const {
   Shape indexing_shape = emitters::LoopFusionKernelEmitter::GetIndexingShape(
       analysis_.fusion_spec());
-  return CalculateLaunchDimensions(indexing_shape, analysis_.device_info(),
-                                   config_);
+  auto dims = CalculateLaunchDimensions(indexing_shape, analysis_.device_info(),
+                                        config_);
+  const auto& blocks = dims.block_counts();
+  auto split_x = MaybeSplitGridDimensionX(dims.thread_counts_per_block().x,
+                                          blocks.x, analysis_.device_info());
+  if (split_x[0] != blocks.x) {  // dim X has been split
+    if (blocks.z != 1) {
+      LOG(FATAL) << "Unable to split launch dimensions since block.z ("
+                 << blocks.z << ") != 1";
+    }
+    // split blocks.x into x and y, move blocks.y -> blocks.z
+    return LaunchDimensions(se::BlockDim(split_x[0], split_x[1], blocks.y),
+                            dims.thread_counts_per_block());
+  }
+  return dims;
 }
 
 WorkDimensions LoopFusion::GetWorkDimensions() const {
@@ -107,17 +121,16 @@ WorkDimensions LoopFusion::GetWorkDimensions() const {
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoopFusion::CreateMLIRModule(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
   emitters::LoopFusionKernelEmitter emitter(
-      context, fusion, analysis_.fusion_spec(), buffer_assignment,
+      mlir_context, fusion, analysis_.fusion_spec(), buffer_assignment,
       GetDefaultBufferAlignment(), GetWorkDimensions(), entry_function_name,
       BackendKind::kGpu);
 
   TF_ASSIGN_OR_RETURN(auto kernel_definition, emitter.EmitKernelDefinition());
-  auto [spec, source] = std::move(kernel_definition).ReleaseStorage();
-  return std::move(source).ReleaseStorage().module;
+  return std::move(kernel_definition).TakeSource().TakeModule();
 }
 
 absl::Status LoopFusion::EmitEntryFunction(

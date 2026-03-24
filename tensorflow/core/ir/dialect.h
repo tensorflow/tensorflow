@@ -41,6 +41,7 @@ using mlir::tf_type::FloatRefType;              // NOLINT
 using mlir::tf_type::FuncAttr;                  // NOLINT
 using mlir::tf_type::HalfRefType;               // NOLINT
 using mlir::tf_type::Int16RefType;              // NOLINT
+using mlir::tf_type::Int2RefType;               // NOLINT
 using mlir::tf_type::Int32RefType;              // NOLINT
 using mlir::tf_type::Int4RefType;               // NOLINT
 using mlir::tf_type::Int64RefType;              // NOLINT
@@ -63,6 +64,7 @@ using mlir::tf_type::ShapeAttr;                 // NOLINT
 using mlir::tf_type::StringRefType;             // NOLINT
 using mlir::tf_type::StringType;                // NOLINT
 using mlir::tf_type::Uint16RefType;             // NOLINT
+using mlir::tf_type::Uint2RefType;              // NOLINT
 using mlir::tf_type::Uint32RefType;             // NOLINT
 using mlir::tf_type::Uint4RefType;              // NOLINT
 using mlir::tf_type::Uint64RefType;             // NOLINT

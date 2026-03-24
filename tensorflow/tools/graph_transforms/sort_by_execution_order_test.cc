@@ -30,7 +30,7 @@ namespace graph_transforms {
 
 class SortByExecutionOrderTest : public ::testing::Test {
  protected:
-  void GetOrder(const GraphDef& graph_def, std::map<string, int>* order) {
+  void GetOrder(const GraphDef& graph_def, std::map<std::string, int>* order) {
     for (int i = 0; i < graph_def.node_size(); ++i) {
       const NodeDef& node = graph_def.node(i);
       (*order)[node.name()] = i;
@@ -56,7 +56,7 @@ class SortByExecutionOrderTest : public ::testing::Test {
     GraphDef result;
     TF_ASSERT_OK(SortByExecutionOrder(graph_def, &result));
 
-    std::map<string, int> order;
+    std::map<std::string, int> order;
     GetOrder(result, &order);
     EXPECT_EQ(2, order["add_node"]);
     EXPECT_GT(2, order["a_node"]);
@@ -88,7 +88,7 @@ class SortByExecutionOrderTest : public ::testing::Test {
     GraphDef result;
     TF_ASSERT_OK(SortByExecutionOrder(graph_def, &result));
 
-    std::map<string, int> order;
+    std::map<std::string, int> order;
     GetOrder(result, &order);
     EXPECT_EQ(3, order["negative_node"]);
     EXPECT_EQ(2, order["sqrt_node"]);
@@ -136,7 +136,7 @@ class SortByExecutionOrderTest : public ::testing::Test {
     GraphDef result;
     TF_ASSERT_OK(SortByExecutionOrder(graph_def, &result));
 
-    std::map<string, int> order;
+    std::map<std::string, int> order;
     GetOrder(result, &order);
     EXPECT_EQ(6, order["add_node1"]);
     EXPECT_GT(6, order["add_node2"]);
@@ -183,7 +183,7 @@ class SortByExecutionOrderTest : public ::testing::Test {
     GraphDef result;
     TF_ASSERT_OK(SortByExecutionOrder(graph_def, &result));
 
-    std::map<string, int> order;
+    std::map<std::string, int> order;
     GetOrder(result, &order);
     EXPECT_EQ(5, order["add_node1"]);
     EXPECT_GT(5, order["add_node2"]);

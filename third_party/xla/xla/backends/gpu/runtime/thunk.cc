@@ -16,168 +16,43 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
-#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/backends/gpu/collectives/gpu_cliques.h"
-#include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/core/collectives/communicator.h"
-#include "xla/core/collectives/rank_id.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/tsl/platform/status_macros.h"
 
-namespace xla {
-namespace gpu {
-
-//===----------------------------------------------------------------------===//
-// Thunk::CollectiveCliques
-//===----------------------------------------------------------------------===//
-
-Thunk::CollectiveCliques::CollectiveCliques(AcquiredCliquesMap cliques_map,
-                                            int32_t num_transient_cliques)
-    : cliques_map_(std::move(cliques_map)),
-      num_transient_cliques_(num_transient_cliques) {}
-
-absl::StatusOr<Communicator*> Thunk::CollectiveCliques::GetComm(
-    const GpuCliqueKey& clique_key, RankId rank) const {
-  // Check that we locked access to a clique for `clique_key`.
-  auto clique = cliques_map_.find(clique_key);
-  if (clique == cliques_map_.end()) {
-    return absl::NotFoundError(absl::StrCat("No clique found for clique key: ",
-                                            clique_key.ToString()));
-  }
-
-  // Check that clique has a communicator for our rank.
-  auto communicator = (*clique->second)->comm(rank);
-  if (!communicator.has_value()) {
-    return absl::InternalError(
-        absl::StrCat("Communicator for rank ", rank.value(),
-                     " not found in a NCCL clique ", clique_key.ToString()));
-  }
-
-  return *communicator;
-}
-
-absl::StatusOr<bool> Thunk::CollectiveCliques::peer_access_enabled(
-    const GpuCliqueKey& clique_key) const {
-  // Check that we locked access to a clique for `clique_key`.
-  auto clique = cliques_map_.find(clique_key);
-  if (clique == cliques_map_.end()) {
-    return absl::NotFoundError(absl::StrCat("No clique found for clique key: ",
-                                            clique_key.ToString()));
-  }
-
-  return (*clique->second)->peer_access_enabled();
-}
-
-//===----------------------------------------------------------------------===//
-// Thunk::CollectiveExecuteParams
-//===----------------------------------------------------------------------===//
-
-using GlobalDeviceIdMap = Thunk::CollectiveExecuteParams::GlobalDeviceIdMap;
-
-// Returns global device id for a local device ordinal or an error if global
-// device id map is misconfigured and missing an entry for a local device.
-static absl::StatusOr<GlobalDeviceId> GetGlobalDeviceId(
-    const GlobalDeviceIdMap* device_id_map, int64_t local_device_ordinal) {
-  // No local -> global mapping was provided; assume the identity mapping.
-  if (!device_id_map) {
-    return GlobalDeviceId(local_device_ordinal);
-  }
-
-  // Find a global device id in a global device id map.
-  auto it = device_id_map->find(local_device_ordinal);
-  if (it == device_id_map->end()) {
-    return absl::NotFoundError(
-        absl::StrCat("No global device id found for local device ordinal: ",
-                     local_device_ordinal));
-  }
-
-  return it->second;
-}
-
-absl::StatusOr<Thunk::CollectiveExecuteParams>
-Thunk::CollectiveExecuteParams::Create(
-    const ServiceExecutableRunOptions& run_options,
-    absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
-    int64_t collective_max_nchannels, int64_t p2p_max_nchannels) {
-  const GpuExecutableRunOptions* gpu_options =
-      run_options.run_options().gpu_executable_run_options();
-
-  auto* collectives = gpu_options && gpu_options->collectives()
-                          ? gpu_options->collectives()
-                          : GpuCollectives::Default();
-
-  auto* device_id_map = gpu_options && gpu_options->gpu_global_device_ids()
-                            ? &*gpu_options->gpu_global_device_ids()
-                            : nullptr;
-
-  auto* clique_id_callback = gpu_options && gpu_options->clique_id_callback()
-                                 ? &gpu_options->clique_id_callback()
-                                 : nullptr;
-
-  auto* incarnations = gpu_options && gpu_options->incarnations().has_value()
-                           ? &*gpu_options->incarnations()
-                           : nullptr;
-
-  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
-                      GetGlobalDeviceId(device_id_map, local_device_ordinal));
-
-  return CollectiveExecuteParams(
-      collectives, run_options.stream()->parent(),
-      run_options.run_options().run_id(), async_streams, local_device_ordinal,
-      global_device_id, run_options.run_options().device_assignment(),
-      device_id_map, clique_id_callback, incarnations, collective_max_nchannels,
-      p2p_max_nchannels);
-}
-
-Thunk::CollectiveExecuteParams::CollectiveExecuteParams(
-    GpuCollectives* collectives, se::StreamExecutor* executor, RunId run_id,
-    absl::Span<se::Stream* const> async_streams, int64_t local_device_ordinal,
-    GlobalDeviceId global_device_id, const DeviceAssignment* device_assn,
-    const GlobalDeviceIdMap* global_device_id_map,
-    const CliqueIdCallback* nccl_clique_id_callback,
-    const absl::flat_hash_map<GlobalDeviceId, IncarnationId>* incarnations,
-    int64_t collective_max_nchannels, int64_t p2p_max_nchannels)
-    : collectives(collectives),
-      executor(executor),
-      run_id(run_id),
-      async_streams(async_streams.begin(), async_streams.end()),
-      local_device_ordinal(local_device_ordinal),
-      global_device_id(global_device_id),
-      device_assn(device_assn),
-      global_device_id_map(global_device_id_map),
-      nccl_clique_id_callback(nccl_clique_id_callback),
-      incarnations(incarnations),
-      collective_max_nchannels(collective_max_nchannels),
-      p2p_max_nchannels(p2p_max_nchannels) {}
+namespace xla::gpu {
 
 //===----------------------------------------------------------------------===//
 // Thunk::ExecuteParams
@@ -187,17 +62,18 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     const ServiceExecutableRunOptions& run_options,
     const BufferAllocations& buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
-    CollectiveExecuteParams* collective_params,
-    CollectiveCliques* collective_cliques,
-    ExecutionStreamIdMap additional_compute_streams) {
+    CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
+    CollectiveMemory* collective_memory,
+    ExecutionStreamIdMap additional_compute_streams,
+    ExecutionScopedState* execution_scoped_state) {
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
-                       collective_params, collective_cliques,
+                       collective_params, collective_cliques, collective_memory,
                        run_options.run_options().device_to_host_stream(),
                        run_options.run_options().host_to_device_stream(),
                        run_options.run_options().send_device_memory_function(),
                        run_options.run_options().recv_device_memory_function(),
                        run_options.run_options().ffi_execution_context(),
-                       additional_compute_streams,
+                       additional_compute_streams, execution_scoped_state,
                        run_options.run_options().gpu_executable_run_options()
                            ? run_options.run_options()
                                  .gpu_executable_run_options()
@@ -212,37 +88,359 @@ Thunk::ExecuteParams Thunk::ExecuteParams::CloneWithNewAllocations(
   return ExecuteParams(
       &buffer_allocations, params.stream, params.command_buffer_trace_stream,
       params.collective_params, params.collective_cliques,
-      params.device_to_host_stream, params.host_to_device_stream,
-      params.send_device_memory_function, params.recv_device_memory_function,
-      params.ffi_execution_context, params.additional_compute_streams);
+      params.collective_memory, params.device_to_host_stream,
+      params.host_to_device_stream, params.send_device_memory_function,
+      params.recv_device_memory_function, params.ffi_execution_context,
+      params.additional_compute_streams);
+}
+
+Thunk::ExecuteParams Thunk::ExecuteParams::WithComputeStream(
+    se::Stream* stream) const {
+  return ExecuteParams(buffer_allocations, stream, command_buffer_trace_stream,
+                       collective_params, collective_cliques, collective_memory,
+                       device_to_host_stream, host_to_device_stream,
+                       send_device_memory_function, recv_device_memory_function,
+                       ffi_execution_context, additional_compute_streams,
+                       execution_scoped_state, mock_collectives, execution_id);
 }
 
 Thunk::ExecuteParams::ExecuteParams(
     const BufferAllocations* buffer_allocations, se::Stream* stream,
     se::Stream* command_buffer_trace_stream,
-    CollectiveExecuteParams* collective_params,
-    CollectiveCliques* collective_cliques, se::Stream* device_to_host_stream,
+    CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
+    CollectiveMemory* collective_memory, se::Stream* device_to_host_stream,
     se::Stream* host_to_device_stream,
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams, bool mock_collectives,
+    ExecutionStreamIdMap additional_compute_streams,
+    ExecutionScopedState* execution_scoped_state, bool mock_collectives,
     int64_t execution_id)
     : buffer_allocations(buffer_allocations),
       stream(stream),
       command_buffer_trace_stream(command_buffer_trace_stream),
       collective_params(collective_params),
       collective_cliques(collective_cliques),
+      collective_memory(collective_memory),
       device_to_host_stream(device_to_host_stream),
       host_to_device_stream(host_to_device_stream),
       send_device_memory_function(send_device_memory_function),
       recv_device_memory_function(recv_device_memory_function),
       ffi_execution_context(ffi_execution_context),
       additional_compute_streams(additional_compute_streams),
+      execution_scoped_state(execution_scoped_state),
       mock_collectives(mock_collectives),
       execution_id(execution_id) {}
 
 //===----------------------------------------------------------------------===//
+
+ThunkKindProto Thunk::KindToProto(Kind kind) {
+  switch (kind) {
+    case kAllGather:
+      return THUNK_KIND_ALL_GATHER;
+    case kAllGatherDone:
+      return THUNK_KIND_ALL_GATHER_DONE;
+    case kAllGatherStart:
+      return THUNK_KIND_ALL_GATHER_START;
+    case kAllReduce:
+      return THUNK_KIND_ALL_REDUCE;
+    case kAllReduceDone:
+      return THUNK_KIND_ALL_REDUCE_DONE;
+    case kAllReduceStart:
+      return THUNK_KIND_ALL_REDUCE_START;
+    case kAllToAll:
+      return THUNK_KIND_ALL_TO_ALL;
+    case kAllToAllDone:
+      return THUNK_KIND_ALL_TO_ALL_DONE;
+    case kAllToAllStart:
+      return THUNK_KIND_ALL_TO_ALL_START;
+    case kAsyncDone:
+      return THUNK_KIND_ASYNC_DONE;
+    case kAsyncStart:
+      return THUNK_KIND_ASYNC_START;
+    case kBuffersDebugChecksum:
+      return THUNK_KIND_BUFFERS_DEBUG_CHECKSUM;
+    case kBuffersDebugFloatCheck:
+      return THUNK_KIND_BUFFERS_DEBUG_FLOAT_CHECK;
+    case kCollectiveBroadcast:
+      return THUNK_KIND_COLLECTIVE_BROADCAST;
+    case kCollectiveBroadcastDone:
+      return THUNK_KIND_COLLECTIVE_BROADCAST_DONE;
+    case kCollectiveBroadcastStart:
+      return THUNK_KIND_COLLECTIVE_BROADCAST_START;
+    case kCollectiveKernel:
+      return THUNK_KIND_COLLECTIVE_KERNEL;
+    case kCollectiveMetadata:
+      return THUNK_KIND_COLLECTIVE_METADATA;
+    case kCollectivePermute:
+      return THUNK_KIND_COLLECTIVE_PERMUTE;
+    case kCollectivePermuteDone:
+      return THUNK_KIND_COLLECTIVE_PERMUTE_DONE;
+    case kCollectivePermuteStart:
+      return THUNK_KIND_COLLECTIVE_PERMUTE_START;
+    case kCommandBuffer:
+      return THUNK_KIND_COMMAND_BUFFER;
+    case kConditional:
+      return THUNK_KIND_CONDITIONAL;
+    case kConvolution:
+      return THUNK_KIND_CONVOLUTION;
+    case kConvolutionReorder:
+      return THUNK_KIND_CONVOLUTION_REORDER;
+    case kCopy:
+      return THUNK_KIND_COPY;
+    case kCopyDone:
+      return THUNK_KIND_COPY_DONE;
+    case kCuDnn:
+      return THUNK_KIND_CU_DNN;
+    case kCublasLtMatmul:
+      return THUNK_KIND_CUBLAS_LT_MATMUL;
+    case kCustomCall:
+      return THUNK_KIND_CUSTOM_CALL;
+    case kCustomKernel:
+      return THUNK_KIND_CUSTOM_KERNEL;
+    case kDynamicSlice:
+      return THUNK_KIND_DYNAMIC_SLICE;
+    case kFft:
+      return THUNK_KIND_FFT;
+    case kGemm:
+      return THUNK_KIND_GEMM;
+    case kGroupDone:
+      return THUNK_KIND_GROUP_DONE;
+    case kGroupStart:
+      return THUNK_KIND_GROUP_START;
+    case kHostExecuteDone:
+      return THUNK_KIND_HOST_EXECUTE_DONE;
+    case kHostExecuteStart:
+      return THUNK_KIND_HOST_EXECUTE_START;
+    case kHostRecv:
+      return THUNK_KIND_HOST_RECV;
+    case kHostRecvDone:
+      return THUNK_KIND_HOST_RECV_DONE;
+    case kHostSend:
+      return THUNK_KIND_HOST_SEND;
+    case kHostSendDone:
+      return THUNK_KIND_HOST_SEND_DONE;
+    case kInfeed:
+      return THUNK_KIND_INFEED;
+    case kKernel:
+      return THUNK_KIND_KERNEL;
+    case kMemset32BitValue:
+      return THUNK_KIND_MEMSET32_BIT_VALUE;
+    case kMemzero:
+      return THUNK_KIND_MEMZERO;
+    case kNorm:
+      return THUNK_KIND_NORM;
+    case kNvshmemAllReduceDone:
+      return THUNK_KIND_NVSHMEM_ALL_REDUCE_DONE;
+    case kNvshmemAllReduceStart:
+      return THUNK_KIND_NVSHMEM_ALL_REDUCE_START;
+    case kNvshmemCollectivePermute:
+      return THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE;
+    case kNvshmemCollectivePermuteDone:
+      return THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE_DONE;
+    case kNvshmemCollectivePermuteStart:
+      return THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE_START;
+    case kNvshmemRecv:
+      return THUNK_KIND_NVSHMEM_RECV;
+    case kNvshmemRecvDone:
+      return THUNK_KIND_NVSHMEM_RECV_DONE;
+    case kNvshmemSend:
+      return THUNK_KIND_NVSHMEM_SEND;
+    case kNvshmemSendDone:
+      return THUNK_KIND_NVSHMEM_SEND_DONE;
+    case kOutfeed:
+      return THUNK_KIND_OUTFEED;
+    case kPartitionId:
+      return THUNK_KIND_PARTITION_ID;
+    case kRaggedAllToAll:
+      return THUNK_KIND_RAGGED_ALL_TO_ALL;
+    case kRaggedAllToAllDone:
+      return THUNK_KIND_RAGGED_ALL_TO_ALL_DONE;
+    case kRaggedAllToAllStart:
+      return THUNK_KIND_RAGGED_ALL_TO_ALL_START;
+    case kRecv:
+      return THUNK_KIND_RECV;
+    case kRecvDone:
+      return THUNK_KIND_RECV_DONE;
+    case kReduceScatter:
+      return THUNK_KIND_REDUCE_SCATTER;
+    case kReduceScatterDone:
+      return THUNK_KIND_REDUCE_SCATTER_DONE;
+    case kReduceScatterStart:
+      return THUNK_KIND_REDUCE_SCATTER_START;
+    case kReplicaId:
+      return THUNK_KIND_REPLICA_ID;
+    case kSelectK:
+      return THUNK_KIND_SELECT_K;
+    case kSend:
+      return THUNK_KIND_SEND;
+    case kSendDone:
+      return THUNK_KIND_SEND_DONE;
+    case kSequential:
+      return THUNK_KIND_SEQUENTIAL;
+    case kTriangularSolve:
+      return THUNK_KIND_TRIANGULAR_SOLVE;
+    case kWaitForStreams:
+      return THUNK_KIND_WAIT_FOR_STREAMS;
+    case kWhile:
+      return THUNK_KIND_WHILE;
+  };
+}
+
+absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
+  switch (kind) {
+    case THUNK_KIND_ALL_GATHER:
+      return kAllGather;
+    case THUNK_KIND_ALL_GATHER_DONE:
+      return kAllGatherDone;
+    case THUNK_KIND_ALL_GATHER_START:
+      return kAllGatherStart;
+    case THUNK_KIND_ALL_REDUCE:
+      return kAllReduce;
+    case THUNK_KIND_ALL_REDUCE_DONE:
+      return kAllReduceDone;
+    case THUNK_KIND_ALL_REDUCE_START:
+      return kAllReduceStart;
+    case THUNK_KIND_ALL_TO_ALL:
+      return kAllToAll;
+    case THUNK_KIND_ALL_TO_ALL_DONE:
+      return kAllToAllDone;
+    case THUNK_KIND_ALL_TO_ALL_START:
+      return kAllToAllStart;
+    case THUNK_KIND_ASYNC_DONE:
+      return kAsyncDone;
+    case THUNK_KIND_ASYNC_START:
+      return kAsyncStart;
+    case THUNK_KIND_BUFFERS_DEBUG_CHECKSUM:
+      return kBuffersDebugChecksum;
+    case THUNK_KIND_BUFFERS_DEBUG_FLOAT_CHECK:
+      return kBuffersDebugFloatCheck;
+    case THUNK_KIND_COLLECTIVE_BROADCAST:
+      return kCollectiveBroadcast;
+    case THUNK_KIND_COLLECTIVE_BROADCAST_DONE:
+      return kCollectiveBroadcastDone;
+    case THUNK_KIND_COLLECTIVE_BROADCAST_START:
+      return kCollectiveBroadcastStart;
+    case THUNK_KIND_COLLECTIVE_KERNEL:
+      return kCollectiveKernel;
+    case THUNK_KIND_COLLECTIVE_METADATA:
+      return kCollectiveMetadata;
+    case THUNK_KIND_COLLECTIVE_PERMUTE:
+      return kCollectivePermute;
+    case THUNK_KIND_COLLECTIVE_PERMUTE_DONE:
+      return kCollectivePermuteDone;
+    case THUNK_KIND_COLLECTIVE_PERMUTE_START:
+      return kCollectivePermuteStart;
+    case THUNK_KIND_COMMAND_BUFFER:
+      return kCommandBuffer;
+    case THUNK_KIND_CONDITIONAL:
+      return kConditional;
+    case THUNK_KIND_CONVOLUTION:
+      return kConvolution;
+    case THUNK_KIND_CONVOLUTION_REORDER:
+      return kConvolutionReorder;
+    case THUNK_KIND_COPY:
+      return kCopy;
+    case THUNK_KIND_COPY_DONE:
+      return kCopyDone;
+    case THUNK_KIND_CU_DNN:
+      return kCuDnn;
+    case THUNK_KIND_CUBLAS_LT_MATMUL:
+      return kCublasLtMatmul;
+    case THUNK_KIND_CUSTOM_CALL:
+      return kCustomCall;
+    case THUNK_KIND_CUSTOM_KERNEL:
+      return kCustomKernel;
+    case THUNK_KIND_DYNAMIC_SLICE:
+      return kDynamicSlice;
+    case THUNK_KIND_FFT:
+      return kFft;
+    case THUNK_KIND_GEMM:
+      return kGemm;
+    case THUNK_KIND_GROUP_DONE:
+      return kGroupDone;
+    case THUNK_KIND_GROUP_START:
+      return kGroupStart;
+    case THUNK_KIND_HOST_EXECUTE_DONE:
+      return kHostExecuteDone;
+    case THUNK_KIND_HOST_EXECUTE_START:
+      return kHostExecuteStart;
+    case THUNK_KIND_HOST_RECV:
+      return kHostRecv;
+    case THUNK_KIND_HOST_RECV_DONE:
+      return kHostRecvDone;
+    case THUNK_KIND_HOST_SEND:
+      return kHostSend;
+    case THUNK_KIND_HOST_SEND_DONE:
+      return kHostSendDone;
+    case THUNK_KIND_INFEED:
+      return kInfeed;
+    case THUNK_KIND_KERNEL:
+      return kKernel;
+    case THUNK_KIND_MEMSET32_BIT_VALUE:
+      return kMemset32BitValue;
+    case THUNK_KIND_MEMZERO:
+      return kMemzero;
+    case THUNK_KIND_NORM:
+      return kNorm;
+    case THUNK_KIND_NVSHMEM_ALL_REDUCE_DONE:
+      return kNvshmemAllReduceDone;
+    case THUNK_KIND_NVSHMEM_ALL_REDUCE_START:
+      return kNvshmemAllReduceStart;
+    case THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE:
+      return kNvshmemCollectivePermute;
+    case THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE_DONE:
+      return kNvshmemCollectivePermuteDone;
+    case THUNK_KIND_NVSHMEM_COLLECTIVE_PERMUTE_START:
+      return kNvshmemCollectivePermuteStart;
+    case THUNK_KIND_NVSHMEM_RECV:
+      return kNvshmemRecv;
+    case THUNK_KIND_NVSHMEM_RECV_DONE:
+      return kNvshmemRecvDone;
+    case THUNK_KIND_NVSHMEM_SEND:
+      return kNvshmemSend;
+    case THUNK_KIND_NVSHMEM_SEND_DONE:
+      return kNvshmemSendDone;
+    case THUNK_KIND_OUTFEED:
+      return kOutfeed;
+    case THUNK_KIND_PARTITION_ID:
+      return kPartitionId;
+    case THUNK_KIND_RAGGED_ALL_TO_ALL:
+      return kRaggedAllToAll;
+    case THUNK_KIND_RAGGED_ALL_TO_ALL_DONE:
+      return kRaggedAllToAllDone;
+    case THUNK_KIND_RAGGED_ALL_TO_ALL_START:
+      return kRaggedAllToAllStart;
+    case THUNK_KIND_RECV:
+      return kRecv;
+    case THUNK_KIND_RECV_DONE:
+      return kRecvDone;
+    case THUNK_KIND_REDUCE_SCATTER:
+      return kReduceScatter;
+    case THUNK_KIND_REDUCE_SCATTER_DONE:
+      return kReduceScatterDone;
+    case THUNK_KIND_REDUCE_SCATTER_START:
+      return kReduceScatterStart;
+    case THUNK_KIND_REPLICA_ID:
+      return kReplicaId;
+    case THUNK_KIND_SELECT_K:
+      return kSelectK;
+    case THUNK_KIND_SEND:
+      return kSend;
+    case THUNK_KIND_SEND_DONE:
+      return kSendDone;
+    case THUNK_KIND_SEQUENTIAL:
+      return kSequential;
+    case THUNK_KIND_TRIANGULAR_SOLVE:
+      return kTriangularSolve;
+    case THUNK_KIND_WAIT_FOR_STREAMS:
+      return kWaitForStreams;
+    case THUNK_KIND_WHILE:
+      return kWhile;
+    default:
+      return absl::InternalError(absl::StrCat("Unknown ThunkKindProto:", kind));
+  };
+}
 
 /*static*/ absl::string_view Thunk::KindToString(Thunk::Kind kind) {
 #define CASE(x)  \
@@ -259,11 +457,15 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kAllToAll);
     CASE(kAllToAllDone);
     CASE(kAllToAllStart);
-    CASE(kCholesky);
+    CASE(kAsyncDone);
+    CASE(kAsyncStart);
+    CASE(kBuffersDebugChecksum);
+    CASE(kBuffersDebugFloatCheck);
     CASE(kCollectiveBroadcast);
     CASE(kCollectiveBroadcastDone);
     CASE(kCollectiveBroadcastStart);
     CASE(kCollectiveKernel);
+    CASE(kCollectiveMetadata);
     CASE(kCollectivePermute);
     CASE(kCollectivePermuteDone);
     CASE(kCollectivePermuteStart);
@@ -274,7 +476,6 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kCopy);
     CASE(kCopyDone);
     CASE(kCuDnn);
-    CASE(kCubSort);
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
     CASE(kCustomKernel);
@@ -325,7 +526,6 @@ Thunk::ExecuteParams::ExecuteParams(
   }
 }
 
-/*static*/
 absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
     ExecutionStreamId stream_id, const ExecuteParams& params) {
   if (stream_id == kDefaultExecutionStreamId) {
@@ -333,7 +533,12 @@ absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
   }
   auto iter = params.additional_compute_streams.find(stream_id);
   if (iter == params.additional_compute_streams.end()) {
-    return absl::InvalidArgumentError("Invalid execution stream id.");
+    return InvalidArgument(
+        "Invalid execution stream id: %v; available streams: [%s]", stream_id,
+        absl::StrJoin(params.additional_compute_streams, ",",
+                      [](std::string* out, auto pair) {
+                        absl::StrAppendFormat(out, "%v", pair.first);
+                      }));
   }
   return iter->second;
 }
@@ -412,14 +617,6 @@ bool Thunk::IsCollective() const {
   }
 }
 
-void Thunk::ForAllThunks(absl::FunctionRef<void(const Thunk*)> fn) const {
-  fn(this);
-}
-
-void Thunk::ForAllThunksMutable(absl::FunctionRef<void(Thunk*)> fn) {
-  fn(this);
-}
-
 absl::StatusOr<ThunkProto> Thunk::ToProto() const {
   return absl::UnimplementedError(absl::StrFormat(
       "Proto serialization for thunk of type %s is not implemented",
@@ -434,20 +631,14 @@ ThunkMetadataProto Thunk::ToMetadataProto() const {
 }
 
 ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
-    const Thunk& root_thunk) {
+    const ThunkSequence& thunk_sequence) {
   ThunkMetadataListProto metadata_list_proto;
-  root_thunk.ForAllThunks([&metadata_list_proto](const Thunk* thunk) {
-    *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
-  });
-  return metadata_list_proto;
-}
-
-absl::StatusOr<GpuCollectives* absl_nonnull> Thunk::GetGpuCollectives(
-    CollectiveExecuteParams const& params) {
-  if (params.collectives == nullptr) {
-    return Internal("Collectives API is not provided");
+  for (auto& thunk : thunk_sequence) {
+    thunk->Walk([&metadata_list_proto](const Thunk* thunk) {
+      *metadata_list_proto.add_thunk_metadata() = thunk->ToMetadataProto();
+    });
   }
-  return params.collectives;
+  return metadata_list_proto;
 }
 
 ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
@@ -458,23 +649,116 @@ ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   return proto;
 }
 
-absl::StatusOr<ShapedSlice> ShapedSlice::FromProto(
-    const ShapedSliceProto& proto,
-    absl::Span<const BufferAllocation> buffer_allocations) {
-  ShapedSlice shaped_slice;
-  TF_ASSIGN_OR_RETURN(
-      shaped_slice.slice,
-      BufferAllocation::Slice::FromProto(proto.slice(), buffer_allocations));
-  TF_ASSIGN_OR_RETURN(shaped_slice.shape, Shape::FromProto(proto.shape()));
-  return shaped_slice;
+//===----------------------------------------------------------------------===//
+// ThunkSequence implementation.
+//===----------------------------------------------------------------------===//
+
+// Returns index of the nearest thunk before `i` that conflicts on buffers.
+static std::optional<int64_t> PrevDep(
+    absl::Span<const BufferUse::ReadWriteSet> rw_sets, int64_t i) {
+  for (int64_t j = i - 1; j >= 0; --j) {
+    if (rw_sets[j].HasConflicts(rw_sets[i])) {
+      return j;
+    }
+  }
+  return std::nullopt;
 }
 
-absl::StatusOr<ShapedSliceProto> ShapedSlice::ToProto() const {
-  ShapedSliceProto proto;
-  TF_ASSIGN_OR_RETURN(*proto.mutable_slice(), slice.ToProto());
-  *proto.mutable_shape() = shape.ToProto();
-  return proto;
+// Returns index of the nearest thunk after `i` that conflicts on buffers.
+static std::optional<int64_t> NextDep(
+    absl::Span<const BufferUse::ReadWriteSet> rw_sets, int64_t i) {
+  for (int64_t j = i + 1; j < rw_sets.size(); ++j) {
+    if (rw_sets[j].HasConflicts(rw_sets[i])) {
+      return j;
+    }
+  }
+  return std::nullopt;
 }
 
-}  // namespace gpu
-}  // namespace xla
+absl::Status ThunkSequence::WalkNested(Thunk::Walker callback) {
+  for (auto& thunk : *this) {
+    RETURN_IF_ERROR(thunk->Walk(callback));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ThunkSequence::TransformNested(Thunk::Transformer callback) {
+  for (std::unique_ptr<Thunk>& thunk : *this) {
+    RETURN_IF_ERROR(thunk->TransformNested(callback));
+    ASSIGN_OR_RETURN(thunk, callback(std::move(thunk)));
+  }
+  return absl::OkStatus();
+}
+
+// Format: one line per thunk, columns aligned:
+//
+//   ID:  KIND [prev=PPP (D) | next=NNN (D)] DESCRIPTION
+//
+//   ID:   three-digit thunk id
+//   KIND: thunk kind, padded to the width of the longest kind
+//   PPP:  thunk id of the nearest preceding thunk with a buffer conflict,
+//         or "source" if there is no preceding conflict
+//   NNN:  thunk id of the nearest following thunk with a buffer conflict,
+//         or "sink" if there is no following conflict
+//   D:    distance (in thunks) to that conflict
+//
+// Example:
+//   001: kReplicaId      [source       | next=002 (1)] ...
+//   002: kAllReduceStart [prev=001 (1) | next=003 (1)] ...
+//   003: kAllReduceDone  [prev=002 (1) | sink        ] ...
+std::string ThunkSequence::ToString(int indent) const {
+  std::string indent_str(indent * 2, ' ');
+
+  if (empty()) {
+    return absl::StrCat(indent_str, "No thunks.");
+  }
+
+  // Pre-compute buffer read-write sets for all thunks in this sequence.
+  std::vector<BufferUse::ReadWriteSet> rw_sets(size());
+  for (size_t i = 0; i < size(); ++i) {
+    at(i)->Walk([&](auto* thunk) { rw_sets[i].AddAll(thunk->buffer_uses()); });
+  }
+
+  // Find a thunk with a longest kind string representation.
+  size_t max_thunk_kind_len = 0;
+  for (const auto& thunk : *this) {
+    max_thunk_kind_len = std::max(max_thunk_kind_len,
+                                  Thunk::KindToString(thunk->kind()).length());
+  }
+
+  // Pre-compute prev/next dependency strings and find max column widths.
+  std::vector<std::string> prev_strs(size()), next_strs(size());
+  size_t max_prev_len = 0, max_next_len = 0;
+  for (int64_t i = 0; i < size(); ++i) {
+    std::optional<int64_t> prev = PrevDep(rw_sets, i);
+    std::optional<int64_t> next = NextDep(rw_sets, i);
+    prev_strs[i] =
+        prev.has_value()
+            ? absl::StrFormat("prev=%03d (%d)",
+                              at(*prev)->thunk_info().thunk_id.value(),
+                              i - *prev)
+            : "source";
+    next_strs[i] =
+        next.has_value()
+            ? absl::StrFormat("next=%03d (%d)",
+                              at(*next)->thunk_info().thunk_id.value(),
+                              *next - i)
+            : "sink";
+    max_prev_len = std::max(max_prev_len, prev_strs[i].size());
+    max_next_len = std::max(max_next_len, next_strs[i].size());
+  }
+
+  std::string result;
+  for (int64_t i = 0; i < size(); ++i) {
+    const std::unique_ptr<Thunk>& thunk = at(i);
+    absl::StrAppendFormat(
+        &result, "%s%03d: %-*s [%-*s | %-*s] %s\n", indent_str,
+        thunk->thunk_info().thunk_id.value(), max_thunk_kind_len,
+        Thunk::KindToString(thunk->kind()), max_prev_len, prev_strs[i],
+        max_next_len, next_strs[i], thunk->ToString(indent + 1));
+  }
+
+  return result;
+}
+
+}  // namespace xla::gpu

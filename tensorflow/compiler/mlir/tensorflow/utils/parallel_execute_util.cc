@@ -25,15 +25,15 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
     tf_device::ClusterFuncOp cluster_func, OpBuilder* builder) {
   const auto output_types = cluster_func.getResultTypes();
   builder->setInsertionPoint(cluster_func);
-  auto parallel_execute = builder->create<tf_device::ParallelExecuteOp>(
-      cluster_func.getLoc(), 1, output_types);
+  auto parallel_execute = tf_device::ParallelExecuteOp::create(
+      *builder, cluster_func.getLoc(), 1, output_types);
   cluster_func->remove();
   auto& block = parallel_execute.GetRegionBlockWithIndex(0);
   builder->setInsertionPointToEnd(&block);
   builder->insert(cluster_func);
   cluster_func.replaceAllUsesWith(parallel_execute);
-  builder->create<tf_device::ReturnOp>(block.getParent()->getLoc(),
-                                       cluster_func.getResults());
+  tf_device::ReturnOp::create(*builder, block.getParent()->getLoc(),
+                              cluster_func.getResults());
   return parallel_execute;
 }
 

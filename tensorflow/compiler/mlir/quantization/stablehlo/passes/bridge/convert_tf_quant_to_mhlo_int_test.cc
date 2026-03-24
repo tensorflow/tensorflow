@@ -48,6 +48,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
@@ -125,9 +126,9 @@ class ConvertTfQuantToMhloIntTest : public Test {
       // can't lower tf.Const.
       Value cst;
       if (use_mhlo_const) {
-        cst = builder.create<mhlo::ConstantOp>(func_op->getLoc(), attrs);
+        cst = mhlo::ConstantOp::create(builder, func_op->getLoc(), attrs);
       } else {
-        cst = builder.create<TF::ConstOp>(func_op->getLoc(), attrs);
+        cst = TF::ConstOp::create(builder, func_op->getLoc(), attrs);
       }
       func_op.getArgument(i).replaceAllUsesWith(cst);
     }
@@ -180,7 +181,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
             /*byte_strides=*/std::nullopt, host_buffer_semantics,
             /*on_done_with_host_buffer=*/nullptr,
             *device_->default_memory_space(), /*device_layout=*/nullptr));
-    return buffer->ToLiteralSync();
+    return buffer->ToLiteral().Await();
   }
 
   absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileProgram(
@@ -199,7 +200,9 @@ class ConvertTfQuantToMhloIntTest : public Test {
     AddQuantizationLoweringPasses(pm);
     CHECK(succeeded(pm.run(module_op.get())));
     // Compile the program.
-    return pjrt_client_->CompileAndLoad(*module_op, xla::CompileOptions{});
+    return pjrt_client_->CompileAndLoad(
+        xla::MaybeOwningMlirModule(std::move(module_op)),
+        xla::CompileOptions{});
   }
 
   absl::StatusOr<std::shared_ptr<xla::Literal>>
@@ -220,7 +223,7 @@ class ConvertTfQuantToMhloIntTest : public Test {
     TF_ASSIGN_OR_RETURN(auto result,
                         executable->Execute({buffer_ptrs}, /*options=*/{}));
     CHECK(result.size() == 1 && result[0].size() == 1);
-    return result[0][0]->ToLiteralSync();
+    return result[0][0]->ToLiteral().Await();
   }
 
   void ExecuteAndCompareResultsWithTfKernel(
@@ -246,8 +249,8 @@ class ConvertTfQuantToMhloIntTest : public Test {
     // Convert to double for comparison. This is needed for comparing integers
     // since it LiteralTestUtil asserts different integers even if it is within
     // error_spec.
-    TF_ASSERT_OK_AND_ASSIGN(auto expected_double, expected->Convert(xla::F64))
-    TF_ASSERT_OK_AND_ASSIGN(auto result_double, result->Convert(xla::F64))
+    TF_ASSERT_OK_AND_ASSIGN(auto expected_double, expected->Convert(xla::F64));
+    TF_ASSERT_OK_AND_ASSIGN(auto result_double, result->Convert(xla::F64));
     EXPECT_TRUE(xla::LiteralTestUtil::Near(expected_double, result_double,
                                            xla::ErrorSpec(error_tolerance)));
   }

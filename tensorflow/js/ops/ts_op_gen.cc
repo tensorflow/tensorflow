@@ -57,13 +57,13 @@ class GenTypeScriptOp {
   ~GenTypeScriptOp();
 
   // Returns the generated code as a string:
-  string Code();
+  std::string Code();
 
  private:
   void ProcessArgs();
   void ProcessAttrs();
-  void AddAttrForArg(const string& attr, int arg_index);
-  string InputForAttr(const OpDef::AttrDef& op_def_attr);
+  void AddAttrForArg(const std::string& attr, int arg_index);
+  std::string InputForAttr(const OpDef::AttrDef& op_def_attr);
 
   void AddMethodSignature();
   void AddOpAttrs();
@@ -73,7 +73,7 @@ class GenTypeScriptOp {
   const ApiDef& api_def_;
 
   // Placeholder string for all generated code:
-  string result_;
+  std::string result_;
 
   // Holds in-order vector of Op inputs:
   std::vector<ArgDefs> input_op_args_;
@@ -82,7 +82,7 @@ class GenTypeScriptOp {
   std::vector<OpAttrs> op_attrs_;
 
   // Stores attributes-to-arguments by name:
-  typedef std::unordered_map<string, std::vector<int>> AttrArgIdxMap;
+  typedef std::unordered_map<std::string, std::vector<int>> AttrArgIdxMap;
   AttrArgIdxMap attr_arg_idx_map_;
 
   // Holds number of outputs:
@@ -94,7 +94,7 @@ GenTypeScriptOp::GenTypeScriptOp(const OpDef& op_def, const ApiDef& api_def)
 
 GenTypeScriptOp::~GenTypeScriptOp() = default;
 
-string GenTypeScriptOp::Code() {
+std::string GenTypeScriptOp::Code() {
   ProcessArgs();
   ProcessAttrs();
 
@@ -144,7 +144,7 @@ void GenTypeScriptOp::ProcessAttrs() {
   }
 }
 
-void GenTypeScriptOp::AddAttrForArg(const string& attr, int arg_index) {
+void GenTypeScriptOp::AddAttrForArg(const std::string& attr, int arg_index) {
   // Keep track of attributes-to-arguments by name. These will be used for
   // construction Op attributes that require information about the inputs.
   auto iter = attr_arg_idx_map_.find(attr);
@@ -155,8 +155,8 @@ void GenTypeScriptOp::AddAttrForArg(const string& attr, int arg_index) {
   }
 }
 
-string GenTypeScriptOp::InputForAttr(const OpDef::AttrDef& op_def_attr) {
-  string inputs;
+std::string GenTypeScriptOp::InputForAttr(const OpDef::AttrDef& op_def_attr) {
+  std::string inputs;
   auto arg_list = attr_arg_idx_map_.find(op_def_attr.name());
   if (arg_list != attr_arg_idx_map_.end()) {
     for (auto iter = arg_list->second.begin(); iter != arg_list->second.end();
@@ -235,7 +235,7 @@ void WriteTSOp(const OpDef& op_def, const ApiDef& api_def, WritableFile* ts) {
 }
 
 void StartFile(WritableFile* ts_file) {
-  const string header =
+  const std::string header =
       R"header(/**
  * @license
  * Copyright 2018 Google Inc. All Rights Reserved.
@@ -266,7 +266,7 @@ import {createTensorsTypeOpAttr, nodeBackend} from './op_utils';
 }  // namespace
 
 void WriteTSOps(const OpList& ops, const ApiDefMap& api_def_map,
-                const string& ts_filename) {
+                const std::string& ts_filename) {
   Env* env = Env::Default();
 
   std::unique_ptr<WritableFile> ts_file = nullptr;

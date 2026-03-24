@@ -322,8 +322,8 @@ LogicalResult ConvertIfLikeOp<IfLikeOp, IfLikeRegionOp>::matchAndRewrite(
   // Create the region-based op, passing in the required attributes.
   ValueRange args, ctls;
   std::tie(args, ctls) = this->SplitControl(op.getArgs());
-  auto region_op = rewriter.create<IfLikeRegionOp>(
-      op.getLoc(), op.getResultTypes(), op.getCond(), ctls,
+  auto region_op = IfLikeRegionOp::create(
+      rewriter, op.getLoc(), op.getResultTypes(), op.getCond(), ctls,
       op.getThenBranch().getAttrs(), op.getElseBranch().getAttrs(),
       PreserveAttributes(then_func, /*drop_args=*/true),
       PreserveAttributes(else_func, /*drop_args=*/true));
@@ -390,8 +390,8 @@ LogicalResult ConvertCaseLikeOp<CaseLikeOp, CaseLikeRegionOp>::matchAndRewrite(
   // Create the region-based op, passing in the required attributes.
   ValueRange args, ctls;
   std::tie(args, ctls) = this->SplitControl(op.getArgs());
-  auto region_op = rewriter.create<CaseLikeRegionOp>(
-      op.getLoc(), op.getResultTypes(), op.getBranchIndex(), ctls,
+  auto region_op = CaseLikeRegionOp::create(
+      rewriter, op.getLoc(), op.getResultTypes(), op.getBranchIndex(), ctls,
       rewriter.getArrayAttr(branch_attrs), region_attrs,
       op.getBranches().size());
   util::ForwardNonIntrinsicAttributes(op, region_op);
@@ -440,8 +440,8 @@ ConvertWhileLikeOp<WhileLikeOp, WhileLikeRegionOp>::matchAndRewrite(
   // TODO(jeffniu): Change this to call the infer return types builder.
   ValueRange init, ctls;
   std::tie(init, ctls) = this->SplitControl(op.getArgs());
-  auto region_op = rewriter.create<WhileLikeRegionOp>(
-      op.getLoc(), op.getResultTypes(), init, ctls,
+  auto region_op = WhileLikeRegionOp::create(
+      rewriter, op.getLoc(), op.getResultTypes(), init, ctls,
       op.getParallelIterationsAttr(), op.getCond().getAttrs(),
       op.getBody().getAttrs(), PreserveAttributes(cond_func),
       PreserveAttributes(body_func));
@@ -482,8 +482,8 @@ LogicalResult ConvertForOp::matchAndRewrite(tfg::ForOp op,
   // `ForRegion` does. We will need to insert casts.
   ValueRange init, ctls;
   std::tie(init, ctls) = SplitControl(op.getArgs());
-  auto region_op = rewriter.create<ForRegionOp>(
-      op.getLoc(), op.getResultTypes(), op.getStart(), op.getLimit(),
+  auto region_op = ForRegionOp::create(
+      rewriter, op.getLoc(), op.getResultTypes(), op.getStart(), op.getLimit(),
       op.getDelta(), init, ctls, op.getBody().getAttrs(),
       PreserveAttributes(body_func));
   util::ForwardNonIntrinsicAttributes(op, region_op);

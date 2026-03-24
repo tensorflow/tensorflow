@@ -30,23 +30,28 @@ class MetadataXPlaneBuilder {
   explicit MetadataXPlaneBuilder(tsl::profiler::XPlane* raw_plane)
       : plane_(raw_plane),
         hlo_proto_stat_(plane_.GetOrCreateStatMetadata(
-            GetStatTypeStr(tsl::profiler::StatType::kHloProto))) {}
+            GetStatTypeStr(tsl::profiler::StatType::kHloProto))),
+        program_id_stat_(plane_.GetOrCreateStatMetadata(
+            GetStatTypeStr(tsl::profiler::StatType::kProgramId))) {}
 
   void AddHloProto(uint64_t program_id, const xla::HloProto& hlo_proto) {
+    auto name = tsl::profiler::HloModuleNameWithProgramId(
+        hlo_proto.hlo_module().name(), program_id);
     tsl::profiler::XEventMetadata* event_metadata =
-        plane_.GetOrCreateEventMetadata(program_id);
-    if (event_metadata->name().empty()) {
-      event_metadata->set_name(tsl::profiler::HloModuleNameWithProgramId(
-          hlo_proto.hlo_module().name(), program_id));
+        plane_.GetOrCreateEventMetadata(name);
+    if (event_metadata->display_name().empty()) {
+      event_metadata->set_display_name(name);
       tsl::profiler::XStatsBuilder<tsl::profiler::XEventMetadata> event_stats(
           event_metadata, &plane_);
       event_stats.AddStatValue(*hlo_proto_stat_, hlo_proto);
+      event_stats.AddStatValue(*program_id_stat_, program_id);
     }
   }
 
  private:
   tsl::profiler::XPlaneBuilder plane_;
   const tsl::profiler::XStatMetadata* hlo_proto_stat_ = nullptr;
+  const tsl::profiler::XStatMetadata* program_id_stat_ = nullptr;
 };
 
 }  // namespace profiler

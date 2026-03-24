@@ -36,17 +36,18 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_buffer.h"
+#include "xla/pjrt/gpu/tfrt/thread_checker.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
 #include "xla/pjrt/semaphore.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/transfer_manager.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -66,8 +67,8 @@ class TfrtGpuDevice final : public PjRtDevice {
     int32_t process_index;
     int32_t process_index_in_partition;
     int partition_index;
-    PjRtLocalDeviceId local_device_id;
-    PjRtLocalHardwareId local_hardware_id;
+    LocalDeviceId local_device_id;
+    LocalChipId local_hardware_id;
     se::StreamExecutor* executor;
     int max_inflight_computations;
     std::string platform_version;
@@ -92,14 +93,10 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   int id() const override { return id_; }
 
-  PjRtLocalDeviceId local_device_id() const override {
-    return local_device_id_;
-  }
+  LocalDeviceId local_device_id() const override { return local_device_id_; }
 
   // Used as `device_ordinal`.
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return local_hardware_id_;
-  }
+  LocalChipId local_hardware_id() const override { return local_hardware_id_; }
 
   absl::Status TransferToInfeed(const LiteralSlice& literal) override;
 
@@ -132,11 +129,20 @@ class TfrtGpuDevice final : public PjRtDevice {
   // Returns a fresh, PRNG-generated random seed for an XLA computation.
   int GetNewPrngSeed();
 
-  se::Stream* stream() const { return stream_.get(); }
+  se::Stream* stream() const {
+    TfrtGpuThreadChecker::AssertCudaCallAllowedOnThisThread();
+    return stream_.get();
+  }
 
-  se::Stream* d2h_stream() const { return d2h_stream_.get(); }
+  se::Stream* d2h_stream() const {
+    TfrtGpuThreadChecker::AssertCudaCallAllowedOnThisThread();
+    return d2h_stream_.get();
+  }
 
-  se::StreamExecutor* executor() const { return executor_; }
+  se::StreamExecutor* executor() const {
+    TfrtGpuThreadChecker::AssertCudaCallAllowedOnThisThread();
+    return executor_;
+  }
 
   tsl::AsyncValueRef<GpuEvent> SetLastCollectiveLaunchEvent(
       tsl::AsyncValueRef<GpuEvent> event);
@@ -150,8 +156,8 @@ class TfrtGpuDevice final : public PjRtDevice {
 
   int id_;
   TfrtGpuClient* client_ = nullptr;
-  const PjRtLocalDeviceId local_device_id_;
-  const PjRtLocalHardwareId local_hardware_id_;
+  const LocalDeviceId local_device_id_;
+  const LocalChipId local_hardware_id_;
   se::StreamExecutor* executor_;
   std::unique_ptr<se::Stream> stream_;
   std::unique_ptr<se::Stream> d2h_stream_;

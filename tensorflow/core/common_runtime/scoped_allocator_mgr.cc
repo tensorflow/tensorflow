@@ -14,13 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
 absl::Status ScopedAllocatorContainer::AddScopedAllocator(
-    const Tensor& backing_tensor, int32_t scope_id, const string& scope_name,
+    const Tensor& backing_tensor, int32_t scope_id,
+    const std::string& scope_name,
     const absl::Span<const ScopedAllocator::Field>& fields,
     int32_t expected_call_count) {
   VLOG(1) << "AddScopedAllocator " << mgr_->device_name()
@@ -152,7 +163,7 @@ ScopedAllocatorContainer* ScopedAllocatorMgr::GetContainer(int64_t step_id) {
 
 absl::Status ScopedAllocatorMgr::AddScopedAllocator(
     const Tensor& backing_tensor, int64_t step_id, int32_t scope_id,
-    const string& scope_name,
+    const std::string& scope_name,
     const absl::Span<const ScopedAllocator::Field>& fields,
     int32_t expected_call_count) {
   ScopedAllocatorContainer* sac = GetContainer(step_id);
@@ -164,7 +175,7 @@ absl::Status ScopedAllocatorMgr::AddScopedAllocator(
 size_t ScopedAllocatorMgr::PopulateFields(
     int32_t scope_id, const absl::Span<const TensorShape>& shapes,
     const DataType dtype, std::vector<ScopedAllocator::Field>* fields) {
-  const int32_t num_fields = static_cast<int32>(shapes.size());
+  const int32_t num_fields = static_cast<int32_t>(shapes.size());
   fields->resize(num_fields);
   // At the end of iteration `i`, `offset` points to the offset from the start
   // of the backing buffer until the end of `field[i].bytes_allocated`.  This

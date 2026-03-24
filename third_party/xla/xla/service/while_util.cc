@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/while_util.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -613,6 +614,72 @@ absl::Status WhileUtil::IncrementWhileLoopTripCount(
       HloInstruction::CreateBinary(induction_var->shape(), HloOpcode::kAdd,
                                    induction_var, trip_count_increment));
   return induction_var->ReplaceAllUsesWith(decremented_induction_var);
+}
+
+void AppendToWhileLoopOriginalValue(
+    HloInstruction* while_instr,
+    const HloInstruction::InstructionVector& new_while_input_tuple_elements) {
+  auto append_to_original_value = [&](HloInstruction* instr,
+                                      int64_t next_index) {
+    std::shared_ptr<OriginalValue> old_original_value = instr->original_value();
+    if (old_original_value != nullptr &&
+        old_original_value->IsCompatibleWith(instr->shape())) {
+      return;
+    }
+
+    // Returns if neither the instruction nor any of its new tuple elements have
+    // an original value.
+    if (old_original_value == nullptr) {
+      bool has_original_value = false;
+      std::for_each(new_while_input_tuple_elements.begin(),
+                    new_while_input_tuple_elements.end(),
+                    [&has_original_value](const HloInstruction* instr) {
+                      has_original_value |=
+                          (instr->original_value() != nullptr &&
+                           !instr->original_value()->IsEmpty());
+                    });
+      if (!has_original_value) {
+        return;
+      }
+    }
+
+    std::shared_ptr<OriginalValue> new_original_value =
+        std::make_shared<OriginalValue>(instr->shape());
+    if (old_original_value != nullptr) {
+      if (!old_original_value->IsTuple()) {
+        new_original_value->mutable_tree()->CopySubtreeFrom(
+            old_original_value->tree(), {}, {0});
+      } else {
+        for (auto& [shape_index, original_array] : old_original_value->tree()) {
+          *new_original_value->mutable_original_array(shape_index) =
+              original_array;
+        }
+      }
+    }
+
+    for (int64_t i = 0; i < new_while_input_tuple_elements.size(); ++i) {
+      if (new_while_input_tuple_elements[i]->original_value() != nullptr) {
+        new_original_value->mutable_tree()->CopySubtreeFrom(
+            new_while_input_tuple_elements[i]->original_value()->tree(), {},
+            {next_index + i});
+      }
+    }
+    instr->set_original_value(new_original_value);
+  };
+
+  if (while_instr->opcode() != HloOpcode::kWhile) {
+    return;
+  }
+  const Shape& while_shape = while_instr->shape();
+  if (!while_shape.IsTuple()) {
+    return;
+  }
+  // Calculates the start index for the new tuple elements in the new original
+  // value.
+  int64_t next_index =
+      while_shape.tuple_shapes().size() - new_while_input_tuple_elements.size();
+  append_to_original_value(while_instr->while_init(), next_index);
+  append_to_original_value(while_instr, next_index);
 }
 
 }  // namespace xla

@@ -52,8 +52,8 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@local_xla//xla/tsl/lib/strings:proto_serialization",
-        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
+        "@xla//xla/tsl/lib/strings:proto_serialization",
+        "@xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -65,8 +65,8 @@ tf_cc_test(
         ":conv_map_wrapper",
         ":conv_parameters_proto_cc",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/platform:statusor",
-        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
+        "@xla//xla/tsl/platform:statusor",
+        "@xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -77,7 +77,7 @@ tf_proto_library(
     ],
     protodeps = [
         "//tensorflow/core/framework:types_proto",
-        "@local_xla//xla/tsl/protobuf:dnn_proto",
+        "@xla//xla/tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -116,15 +116,17 @@ tf_cuda_library(
         "conv_parameters.h",
     ],
     cuda_deps = [
-        "@local_xla//xla/tsl/lib/strings:proto_serialization",
+        "@xla//xla/tsl/lib/strings:proto_serialization",
     ],
     deps = [
         ":conv_parameters_proto_cc",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
+        "@tsl//tsl/platform:regexp",
     ],
 )
 
@@ -135,7 +137,7 @@ tf_proto_library(
     ],
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
-        "@local_xla//xla/tsl/protobuf:dnn_proto",
+        "@xla//xla/tsl/protobuf:dnn_proto",
     ],
     visibility = [
         "//waymo/ml/deploy/benchmark:__subpackages__",
@@ -177,12 +179,12 @@ tf_cuda_library(
         "//tensorflow/core/platform:str_util",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
-        "@local_xla//xla:status_macros",
-        "@local_xla//xla/stream_executor:dnn",
-        "@local_xla//xla/stream_executor:platform_manager",
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
-        "@local_xla//xla/tsl/lib/strings:proto_serialization",
-        "@local_xla//xla/tsl/protobuf:dnn_proto_cc",
+        "@xla//xla:status_macros",
+        "@xla//xla/stream_executor:dnn",
+        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/stream_executor/gpu:gpu_init",
+        "@xla//xla/tsl/lib/strings:proto_serialization",
+        "@xla//xla/tsl/protobuf:dnn_proto_cc",
     ],
 )
 
@@ -200,6 +202,19 @@ tf_cuda_only_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@xla//xla/stream_executor/gpu:gpu_init",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "conv_parameters_test",
+    size = "small",
+    srcs = ["conv_parameters_test.cc"],
+    features = ["-layering_check"],
+    tags = ["no_rocm"],
+    deps = [
+        ":conv_parameters",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )

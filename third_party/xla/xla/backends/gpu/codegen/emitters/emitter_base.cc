@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
@@ -88,15 +90,16 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/kernel_api_builder.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/ir_printing.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
@@ -124,9 +127,18 @@ namespace gpu {
 namespace {
 
 using llvm::SmallVector;
+using mlir::MLIRContext;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::func::FuncOp;
+
+bool EnablePDL(const HloModule& module, const se::DeviceDescription& device) {
+  return module.config().debug_options().xla_gpu_enable_pdl() &&
+         device.gpu_compute_capability().IsCuda() &&
+         device.gpu_compute_capability()
+             .cuda_compute_capability()
+             ->IsAtLeastHopper();
+}
 
 void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
                llvm::Module* module) {
@@ -175,14 +187,10 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
 absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
                              mlir::PassManager& pm,
                              absl::string_view entry_function_name) {
-  bool should_dump_mlir_passes =
-      DumpingEnabledForHloModule(hlo_module) &&
-      DumpingEnabledForHloPass("mlir-fusion-emitter",
-                               hlo_module.config().debug_options());
+  bool should_dump_mlir_passes = ShouldLogMLIRFusionPasses(&hlo_module);
 
   std::string mlir_passes_dump_result;
   llvm::raw_string_ostream log_stream(mlir_passes_dump_result);
-  mlir::interpreter::MlirCompilationTrace trace;
 
   if (should_dump_mlir_passes) {
     module.getContext()->disableMultithreading();
@@ -196,57 +204,83 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
                         /*opPrintingFlags=*/{});
     pm.printAsTextualPipeline(log_stream);
     log_stream.write("\n\n", 2);
-
-    pm.addInstrumentation(
-        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-            trace));
   }
 
   tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
   (void)pm.run(module);
 
   if (should_dump_mlir_passes) {
-    DumpPerModuleProtobufToFile(
-        hlo_module, trace, hlo_module.config().debug_options(),
-        absl::StrCat(entry_function_name, ".mlir-trace"));
-
     DumpToFileInDirOrStdout(
         hlo_module, "", absl::StrCat(entry_function_name, ".mlir-passes.log"),
         mlir_passes_dump_result);
   }
-
   return diagnostic_handler.consumeStatus();
 }
 
 }  // namespace
 
+/* static */ std::array<uint64_t, 2> EmitterBase::MaybeSplitGridDimensionX(
+    uint64_t num_threads_x, uint64_t num_blocks_x,
+    const se::DeviceDescription& info) {
+  const se::BlockDim& limit = info.block_dim_limit();
+  constexpr uint64_t rocm_limit = std::numeric_limits<uint32_t>::max();
+
+  bool is_rocm = info.gpu_compute_capability().IsRocm();
+  // Add an extra condition for ROCM backend
+  if (num_blocks_x <= limit.x &&
+      (!is_rocm || num_blocks_x * num_threads_x <= rocm_limit)) {
+    return {num_blocks_x, 1};
+  }
+
+  uint64_t dimx = 0, dimy = 0;
+  // We assume that num_blocks_x is most likely of the form: 2^N * K
+  for (uint64_t nzeros = 1; nzeros < 64u; nzeros++) {
+    dimy = 1ULL << nzeros;
+    if (dimy > limit.y) {
+      // We could not find the proper power-of-two dim Y => use max gridY
+      dimy = limit.y;
+      dimx = CeilOfRatio(num_blocks_x, dimy);
+      break;
+    }
+    // num_blocks_x might not be divided evenly by dimy, so we round up.
+    dimx = (num_blocks_x + dimy - 1) >> nzeros;
+    if (dimx <= limit.x) {
+      // We have an extra requirement on ROCM to check
+      if (!is_rocm || dimx * num_threads_x <= rocm_limit) break;
+    }
+  }
+  VLOG(1) << num_blocks_x << " splitting as: " << dimx << "x" << dimy
+          << " wasted blocks: " << (dimx * dimy - num_blocks_x);
+  return {dimx, dimy};
+}
+
 Value EmitterBase::EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
                                    WorkGroupDimension dim) const {
-  const auto& counts = launch_dimensions().block_counts();
+  const auto counts = launch_dimensions().block_counts();
   int64_t count = dim == WorkGroupDimension::x   ? counts.x
                   : dim == WorkGroupDimension::y ? counts.y
                                                  : counts.z;
-  auto block_id = builder.create<WorkGroupIdOp>(dim);
+  auto block_id = WorkGroupIdOp::create(builder, dim);
   block_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
   return block_id;
 }
 
 Value EmitterBase::EmitBlockId(mlir::ImplicitLocOpBuilder& builder,
                                int dim) const {
-  const auto& counts = launch_dimensions().block_counts();
+  const auto counts = launch_dimensions().block_counts();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
-  auto block_id = builder.create<mlir::gpu::BlockIdOp>(
-      static_cast<mlir::gpu::Dimension>(dim));
+  auto block_id = mlir::gpu::BlockIdOp::create(
+      builder, static_cast<mlir::gpu::Dimension>(dim));
   block_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
   return block_id;
 }
 
 Value EmitterBase::EmitThreadId(mlir::ImplicitLocOpBuilder& builder,
                                 int dim) const {
-  const auto& counts = launch_dimensions().thread_counts_per_block();
+  const auto counts = launch_dimensions().thread_counts_per_block();
   int64_t count = dim == 0 ? counts.x : dim == 1 ? counts.y : counts.z;
-  auto thread_id = builder.create<mlir::gpu::ThreadIdOp>(
-      static_cast<mlir::gpu::Dimension>(dim));
+  auto thread_id = mlir::gpu::ThreadIdOp::create(
+      builder, static_cast<mlir::gpu::Dimension>(dim));
   thread_id->setAttr("xla.range", builder.getIndexArrayAttr({0, count - 1}));
   return thread_id;
 }
@@ -266,47 +300,46 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
                                      ir_emitter_context.buffer_assignment(),
                                      GetDefaultBufferAlignment(), &fusion));
   auto launch_dims = launch_dimensions();
+  mlir::MLIRContext& mlir_context = *ir_emitter_context.mlir_context();
+  std::unique_ptr<llvm::Module> module;
   auto [status_or_entry, cached] =
       ir_emitter_context.kernel_cache().GetWithStatus(
           fusion.fused_instructions_computation(), args.args(),
           /*discriminator=*/"",
           [&]() -> absl::StatusOr<KernelReuseCache::Entry> {
-            std::string kernel_name =
-                ir_emitter_context.name_uniquer()->GetUniqueName(
-                    llvm_ir::SanitizeFunctionName(std::string(fusion.name())));
+            std::string kernel_name = ir_emitter_context.GetSanitizedUniqueName(
+                std::string(fusion.name()));
             if (ir_emitter_context.emit_kernels()) {
+              mlir_context.appendDialectRegistry(GetDialectRegistry());
+              mlir_context.loadAllAvailableDialects();
+              RegisterSymbolicExprStorage(&mlir_context);
               TF_ASSIGN_OR_RETURN(
-                  auto module,
+                  module,
                   CreateLLVMModule(
-                      *ir_emitter_context.mlir_context(),
-                      ir_emitter_context.llvm_module()->getContext(),
+                      mlir_context, *ir_emitter_context.llvm_context(),
                       ir_emitter_context.gpu_device_info(), fusion, kernel_name,
                       &ir_emitter_context.buffer_assignment()));
               auto* kernel_func = module->getFunction(kernel_name);
               AddRanges(kernel_func, launch_dims, module.get());
 
-              auto* target = ir_emitter_context.llvm_module();
-              module->setDataLayout(target->getDataLayout());
-              module->setTargetTriple(target->getTargetTriple());
+              module->setDataLayout(ir_emitter_context.data_layout());
+              module->setTargetTriple(ir_emitter_context.target_triple());
 
               llvm::IRBuilder<> builder(module->getContext());
               AnnotateFunctionAsGpuKernel(module.get(), kernel_func, &builder);
               TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
                   ir_emitter_context.gpu_device_info(), launch_dims,
                   kernel_func, module.get()));
-
-              // Use override flag because libdevice functions can be present in
-              // both.
-              CHECK(!llvm::Linker::linkModules(
-                  *target, std::move(module),
-                  llvm::Linker::Flags::OverrideFromSrc));
             } else {
               VLOG(3) << "Skipped kernel compilation.";
             }
 
-            return KernelReuseCache::Entry{kernel_name, launch_dims,
-                                           std::nullopt,
-                                           /*shmem_bytes=*/0};
+            KernelReuseCache::Entry entry{kernel_name, launch_dims,
+                                          std::nullopt,
+                                          /*shmem_bytes=*/0};
+            entry.use_pdl = EnablePDL(*fusion.GetModule(),
+                                      ir_emitter_context.gpu_device_info());
+            return entry;
           });
   TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
 
@@ -315,12 +348,14 @@ absl::StatusOr<FusionEmissionResult> EmitterBase::Emit(
   }
 
   FusionEmissionResult result;
+  result.module = std::move(module);
   result.thunks.emplace_back(std::make_unique<KernelThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
       entry->kernel_name, args, launch_dims, entry->cluster_dim,
       entry->shmem_bytes,
-      /*tma_metadata=*/se::gpu::TmaMetadata()));
+      /*tma_metadata=*/se::gpu::TmaMetadata(),
+      /*zeroed_output_buffer_indices=*/std::vector<int64_t>{}, entry->use_pdl));
   return result;
 }
 
@@ -329,19 +364,30 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
     const se::DeviceDescription& device, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  mlir_context.appendDialectRegistry(GetDialectRegistry());
-  mlir_context.loadAllAvailableDialects();
   TF_ASSIGN_OR_RETURN(
       auto module, CreateMLIRModule(mlir_context, fusion, entry_function_name,
                                     buffer_assignment));
 
   mlir::PassManager pm(&mlir_context);
+  // Only enable verifier in debug builds.
+  bool should_verify = (fusion.GetModule()
+                            ->config()
+                            .debug_options()
+                            .xla_gpu_llvm_verification_level() >= 1);
+#ifndef NDEBUG
+  should_verify = true;
+#endif
+  pm.enableVerifier(should_verify);
+
   emitters::RegisterOptimizationPasses(pm);
-  AddLoopTransformationPasses(pm, device);
+  AddLoopTransformationPasses(pm, device, unroll_factor());
+  if (EnablePDL(*fusion.GetModule(), device)) {
+    pm.addPass(CreateInsertPDLPass());
+  }
   AddLoweringPasses(pm, device);
 
-  auto pipeline_status = RunPassPipeline(module.get(), *fusion.GetModule(), pm,
-                                         entry_function_name);
+  TF_RETURN_IF_ERROR(RunPassPipeline(module.get(), *fusion.GetModule(), pm,
+                                     entry_function_name));
 
   auto llvm_module = mlir::translateModuleToLLVMIR(module.get(), llvm_context);
   TF_RET_CHECK(llvm_module != nullptr)
@@ -351,10 +397,10 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> EmitterBase::CreateLLVMModule(
 }
 
 absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
-    mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const std::string& entry_function_name,
     const BufferAssignment* buffer_assignment) const {
-  mlir::OpBuilder builder(&context);
+  mlir::OpBuilder builder(&mlir_context);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion.name()));
   mlir::OwningOpRef<mlir::ModuleOp> module = llvm_ir::CreateMlirModuleOp(loc);
 
@@ -362,9 +408,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> EmitterBase::CreateMLIRModule(
                       emitters::EmitKernelApi(
                           *module, fusion, buffer_assignment,
                           GetDefaultBufferAlignment(), entry_function_name));
-  SetBackendKind(&context, entry_func, BackendKind::kGpu);
+  SetBackendKind(&mlir_context, entry_func, BackendKind::kGpu);
 
-  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion));
+  TF_RETURN_IF_ERROR(EmitMlir(module.get(), entry_func, fusion, mlir_context));
   return module;
 }
 
@@ -372,7 +418,7 @@ emitters::EpilogueSpecification EmitterBase::GetEpilogueForOutputIndexing(
     const HloFusionAnalysis& analysis,
     const std::vector<const HloInstruction*>& heroes,
     const std::vector<const HloInstruction*>& roots,
-    mlir::MLIRContext* mlir_context) const {
+    MLIRContext* mlir_context) const {
   emitters::EpilogueSpecification result;
 
   absl::flat_hash_map<const HloInstruction*, const HloInstruction*>
@@ -430,11 +476,12 @@ mlir::DialectRegistry EmitterBase::GetDialectRegistry() {
 }
 
 absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
-                                   const HloFusionInstruction& fusion) const {
+                                   const HloFusionInstruction& fusion,
+                                   MLIRContext& mlir_context) const {
   std::vector<emitters::EpilogueSpecification> epilogues =
-      GetEpilogues(fusion, module->getContext());
+      GetEpilogues(fusion, &mlir_context);
   emitters::PartitionedComputations computations(
-      fusion.fused_instructions_computation(), module->getContext(), epilogues);
+      fusion.fused_instructions_computation(), &mlir_context, epilogues);
 
   TF_ASSIGN_OR_RETURN(auto call_targets, emitters::EmitPartitionedComputations(
                                              module, computations));
@@ -445,7 +492,8 @@ absl::Status EmitterBase::EmitMlir(mlir::ModuleOp module, FuncOp entry_function,
 }
 
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
-                                 const se::DeviceDescription& device) {
+                                 const se::DeviceDescription& device,
+                                 int max_unroll_factor) {
   pm.addNestedPass<FuncOp>(CreateLowerXlaSharedPass());
   pm.addNestedPass<FuncOp>(
       emitters::CreateLowerXlaToScfPass(device.threads_per_warp()));
@@ -469,7 +517,7 @@ void AddLoopTransformationPasses(mlir::OpPassManager& pm,
   // instructions over ifs.
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addNestedPass<FuncOp>(emitters::CreateVectorizeLoadsAndStoresPass(device));
-  pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass());
+  pm.addNestedPass<FuncOp>(CreateOptimizeLoopsPass(max_unroll_factor));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 }
@@ -478,6 +526,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
                        const se::DeviceDescription& device) {
   pm.addNestedPass<FuncOp>(emitters::CreateConvertPureCallOpsPass());
   pm.addPass(emitters::CreateLowerTensorsPass(device));
+  pm.addPass(emitters::CreateLowerPdlWaitPass());
   pm.addPass(mlir::createConvertComplexToStandardPass());
   pm.addPass(emitters::CreateMergePointersToSameSlicePass());
 
@@ -497,15 +546,14 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
 
   // This pass has to run before `ExpandFloatOpsPass`.
-  if (auto* cc = std::get_if<se::CudaComputeCapability>(
-          &device.gpu_compute_capability())) {
+  if (auto* cc = device.gpu_compute_capability().cuda_compute_capability()) {
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
             device.runtime_version());
     pm.addPass(CreateConvertFloatNvidiaPass(
         cc->major, cc->minor, ptx_version.major(), ptx_version.minor()));
-  } else if (auto* cc = std::get_if<se::RocmComputeCapability>(
-                 &device.gpu_compute_capability())) {
+  } else if (auto* cc =
+                 device.gpu_compute_capability().rocm_compute_capability()) {
     if (cc->has_fp8_support()) {
       pm.addPass(CreateConvertFloatAMDPass(*cc));
     }
@@ -515,7 +563,7 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
   pm.addPass(emitters::CreateExpandFloatOpsPass());
   pm.addPass(mlir::createLowerAffinePass());
   pm.addPass(mlir::createSCFToControlFlowPass());
-  pm.addPass(emitters::CreateLowerToLLVMPass(device));
+  pm.addPass(emitters::CreateLowerToLLVMGPUPass(device));
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 }
 

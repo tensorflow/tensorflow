@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_CONCURRENCY_EXECUTOR_H_
 #define XLA_TSL_CONCURRENCY_EXECUTOR_H_
 
+#include <utility>
+
+#include "absl/base/no_destructor.h"
 #include "absl/functional/any_invocable.h"
 
 namespace tsl {
@@ -36,6 +39,18 @@ class Executor {
   virtual ~Executor() = default;
 
   virtual void Execute(Task task) = 0;
+};
+
+// Executor that executes tasks inline in the caller thread.
+class InlineExecutor final : public Executor {
+ public:
+  // Returns a singleton instance of the inline executor.
+  static InlineExecutor& Instance() {
+    static absl::NoDestructor<InlineExecutor> executor;
+    return *executor;
+  }
+
+  void Execute(Task task) final { std::move(task)(); }
 };
 
 }  // namespace tsl

@@ -136,7 +136,7 @@ struct XlaResourceUpdate {
   bool modified;
 
   // If the resource is a TensorArray, the set of gradients read or written.
-  std::set<string> tensor_array_gradients_accessed;
+  std::set<std::string> tensor_array_gradients_accessed;
 };
 
 struct XlaCompilationResult {

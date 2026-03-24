@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <iterator>
 #include <optional>
 #include <ostream>
@@ -31,13 +30,13 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_split.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/utils/hlo_longest_prefix.h"
 #include "xla/printer.h"
-#include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
@@ -171,10 +170,10 @@ class SourceLocationVisitor : public ConstDfsHloVisitorWithDefault {
     if (!op_name.empty() && op_name.front() == '/') {
       op_name = op_name.substr(1);
     }
-    if (int frame_id = meta.stack_frame_id(); frame_id != 0) {
+    if (StackFrameId frame_id{meta.stack_frame_id()}; frame_id.valid()) {
       std::vector<StackFrame> call_stack{};
       HloModule const* const hlo_module = inst->parent()->parent();
-      while (frame_id != 0) {
+      while (frame_id.valid()) {
         HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
         if (frame.empty()) {
           break;

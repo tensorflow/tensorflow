@@ -3198,6 +3198,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<ReLUOperationParser>(0, 0);
     case kTfLiteBuiltinRelu6:
       return std::make_unique<ReLUOperationParser>(0, 6);
+    case kTfLiteBuiltinRelu0To1:
+      return std::make_unique<ReLUOperationParser>(0.0, 1.0);
     case kTfLiteBuiltinReluN1To1:
       return std::make_unique<ReLUOperationParser>(-1.0, 1.0);
     case kTfLiteBuiltinLeakyRelu:

@@ -33,7 +33,7 @@ class Checker {
  public:
   virtual ~Checker() = default;
 
-  virtual string name() const = 0;
+  virtual std::string name() const = 0;
 
   AdviceProto::Checker Run(const AdvisorOptionsProto::CheckerOption& options,
                            const TFStats* stats) {

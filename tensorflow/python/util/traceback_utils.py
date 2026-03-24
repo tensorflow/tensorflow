@@ -97,6 +97,20 @@ def disable_traceback_filtering():
 
 
 def include_frame(fname):
+  """Determines whether a frame should be included in filtered tracebacks.
+
+  This function checks if the given filename contains any of the excluded
+  paths. Frames from excluded paths (typically TensorFlow internal code) are
+  filtered out from stack traces to make them more readable for end users.
+
+  Args:
+    fname: A string representing the filename of the frame to check.
+
+  Returns:
+    True if the frame should be included in the traceback (i.e., it's not
+    from an excluded path), False otherwise.
+  """
+
   for exclusion in _EXCLUDED_PATHS:
     if exclusion in fname:
       return False

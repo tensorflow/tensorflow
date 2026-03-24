@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -51,6 +52,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
@@ -847,6 +849,39 @@ TEST_F(HloInstructionTest, MultiOutputCallOp) {
   EXPECT_THAT(add->operand(1)->operands(), ElementsAre(call));
 }
 
+// Tests that a side-effecting instruction with no users can be appended into
+// a called computation with add_output=true.
+TEST_F(HloInstructionTest, KeepSideEffectingInstruction) {
+  HloComputation::Builder builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.1f)));
+
+  // side_effect is added before exp so that exp (not side_effect) becomes
+  // the computation root. This ensures side_effect has no users and is not
+  // root. We must keep it, however, as it has a side effect.
+  auto side_effect = builder.AddInstruction(
+      HloInstruction::CreateCustomCall(r0f32_, {constant}, "my_side_effect"));
+  Cast<HloCustomCallInstruction>(side_effect)
+      ->set_custom_call_has_side_effect(true);
+
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, constant));
+
+  auto module = CreateNewVerifiedModule();
+  auto* computation = module->AddEntryComputation(builder.Build());
+  auto* call = computation->CreateCallInstruction({exp});
+
+  call->AppendInstructionIntoCalledComputation(side_effect,
+                                               /*add_output=*/true);
+
+  // side_effect is still in the called computation and has side effects.
+  EXPECT_TRUE(absl::c_any_of(
+      Cast<HloCallableInstruction>(call)
+          ->called_computation()
+          ->MakeInstructionPostOrder(),
+      [](const HloInstruction* i) { return i->HasSideEffect(); }));
+}
+
 TEST_F(HloInstructionTest, AsyncOp) {
   HloComputation::Builder builder(TestName());
   // Create a call instruction containing a single binary operation.
@@ -973,7 +1008,7 @@ TEST_F(HloInstructionTest, PreserveTupleShapeThroughClone) {
 }
 
 TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
@@ -995,7 +1030,7 @@ TEST_F(HloInstructionTest, PreserveShardingThroughCompatibleClone) {
 
 TEST_F(HloInstructionTest,
        DoNotPreserveShardingThroughTupleTreeIncompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
@@ -1015,7 +1050,7 @@ TEST_F(HloInstructionTest,
 
 TEST_F(HloInstructionTest,
        DoNotPreserveShardingThroughLeafRankIncompatibleClone) {
-  HloSharding sharding = HloSharding::AssignDevice(5);
+  HloSharding sharding = HloSharding::SingleDevice(5);
   HloComputation::Builder builder(TestName());
   auto* constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR2<float>({
@@ -2066,8 +2101,9 @@ TEST_F(HloInstructionTest, StringifyAsyncOpsWithReduceScatter) {
     HloInstruction* param = async_builder.AddInstruction(
         HloInstruction::CreateParameter(0, rs_input_shape, "pasync"));
     async_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-        rs_output_shape, {param}, add_computation.get(), CollectiveDeviceList(),
-        false, std::nullopt, false, 0));
+        rs_output_shape, {param}, add_computation.get(),
+        std::make_shared<CollectiveDeviceList>(), false, std::nullopt, false,
+        0));
     async_computation = async_builder.Build();
   }
 
@@ -2586,8 +2622,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
   HloInstruction* param = main_builder.AddInstruction(
       HloInstruction::CreateParameter(0, rs_input_shape, "input"));
   main_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-      rs_output_shape, {param}, add_computation.get(), CollectiveDeviceList(),
-      false, std::nullopt, false, 0));
+      rs_output_shape, {param}, add_computation.get(),
+      std::make_shared<CollectiveDeviceList>(), false, std::nullopt, false, 0));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(main_builder.Build());
@@ -2623,8 +2659,8 @@ TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToAllReduce) {
   HloInstruction* param = main_builder.AddInstruction(
       HloInstruction::CreateParameter(0, ar_input_shape, "input"));
   main_builder.AddInstruction(HloInstruction::CreateAllReduce(
-      ar_input_shape, {param}, add_computation.get(), CollectiveDeviceList(),
-      false, std::nullopt, false));
+      ar_input_shape, {param}, add_computation.get(),
+      std::make_shared<CollectiveDeviceList>(), false, std::nullopt, false));
 
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(main_builder.Build());
@@ -3379,6 +3415,40 @@ TEST_F(HloInstructionTest, DifferentResultAccuracy) {
   result_accuracy_rtol.mutable_tolerance()->set_rtol(0.4);
   exp2->set_result_accuracy(result_accuracy_rtol);
   EXPECT_FALSE(exp1->equal_result_accuracy(exp2));
+}
+
+TEST_F(HloInstructionTest, FusionPermuteOperandsTest) {
+  constexpr char kHloString[] = R"(
+  HloModule test_module
+  fusion_computation {
+    p0 = f32[] parameter(0)
+    p1 = f32[32] parameter(1)
+    p2 = f32[32,32] parameter(2)
+    bcast0 = f32[32,32] broadcast(p0), dimensions={}
+    bcast1 = f32[32,32] broadcast(p1), dimensions={0}
+    sub = f32[32,32] subtract(bcast0, bcast1)
+    ROOT add = f32[32,32] add(sub, p2)
+  }
+
+  ENTRY reduce {
+    p0 = f32[] parameter(0)
+    p1 = f32[32] parameter(1)
+    p2 = f32[32,32] parameter(2)
+    ROOT root = f32[32,32] fusion(p0, p1, p2), kind=kLoop, calls=fusion_computation
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  HloFusionInstruction* fusion = Cast<HloFusionInstruction>(
+      module->entry_computation()->root_instruction());
+  EXPECT_OK(fusion->PermuteFusionOperands({1, 2, 0}));
+
+  EXPECT_THAT(fusion, GmockMatch(m::Fusion(m::Parameter(2), m::Parameter(0),
+                                           m::Parameter(1))));
+  HloComputation* fusion_computation = fusion->fused_instructions_computation();
+  EXPECT_THAT(fusion_computation->root_instruction(),
+              GmockMatch(m::Add(m::Subtract(m::Broadcast(m::Parameter(1)),
+                                            m::Broadcast(m::Parameter(2))),
+                                m::Parameter(0))));
 }
 
 }  // namespace

@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> WhileLoopTripCountAnnotator::Run(
+absl::StatusOr<bool> WhileLoopTripCountAnnotator::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -43,6 +43,13 @@ absl::StatusOr<bool> WhileLoopTripCountAnnotator::Run(
       if (auto induction_variable_index = GetLoopInductionVarTupleIdx(instr)) {
         // The following analyses all need the induction variable index.
         WhileLoopBackendConfig config;
+
+        // Preserve existing backend config data
+        if (auto existing_config =
+                instr->backend_config<WhileLoopBackendConfig>();
+            existing_config.ok()) {
+          config = *existing_config;
+        }
 
         config.mutable_known_induction_variable()->set_tuple_index(
             *induction_variable_index);

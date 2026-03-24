@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/future.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
@@ -105,6 +104,13 @@ class PjRtDeviceEventPromise : public PjRtDeviceEventOrPromise {
 
   // Mark the event as ready.
   virtual void SetReady() = 0;
+};
+
+// A collection of events. This is not an event itself because we may want to
+// add events in the future.
+class PjRtDeviceEventSet {
+ public:
+  virtual ~PjRtDeviceEventSet() = default;
 };
 
 }  // namespace xla

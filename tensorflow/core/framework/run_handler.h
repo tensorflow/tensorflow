@@ -115,11 +115,11 @@ class RunHandlerEnvironment {
   struct TaskImpl {
     std::function<void()> f;
     Context context;
-    uint64 trace_id;
+    uint64_t trace_id;
   };
   Env* const env_;
   const ThreadOptions thread_options_;
-  const string name_;
+  const std::string name_;
 
  public:
   struct Task {
@@ -127,7 +127,7 @@ class RunHandlerEnvironment {
   };
 
   RunHandlerEnvironment(Env* env, const ThreadOptions& thread_options,
-                        const string& name);
+                        const std::string& name);
 
   EnvThread* CreateThread(std::function<void()> f,
                           const std::string& thread_name);
@@ -174,7 +174,7 @@ class ThreadWorkSource {
 
   void SetTracemeId(int64_t value);
 
-  void SetWaiter(uint64 version, Waiter* waiter, mutex* mutex);
+  void SetWaiter(uint64_t version, Waiter* waiter, mutex* mutex);
 
   int64_t GetInflightTaskCount(bool is_blocking);
 
@@ -193,7 +193,7 @@ class ThreadWorkSource {
     Queue queue;
   };
 
-  int32 non_blocking_work_sharding_factor_;
+  int32_t non_blocking_work_sharding_factor_;
   Eigen::MaxSizeVector<NonBlockingQueue*> non_blocking_work_queues_;
 
   std::atomic<int64_t> blocking_inflight_;
@@ -207,7 +207,7 @@ class ThreadWorkSource {
   std::atomic<int64_t> traceme_id_;
 
   mutex run_handler_waiter_mu_;
-  uint64 version_ TF_GUARDED_BY(run_handler_waiter_mu_);
+  uint64_t version_ TF_GUARDED_BY(run_handler_waiter_mu_);
   mutex* sub_thread_pool_waiter_mu_ TF_GUARDED_BY(run_handler_waiter_mu_);
   Waiter* sub_thread_pool_waiter_ TF_GUARDED_BY(run_handler_waiter_mu_);
 };
@@ -222,7 +222,7 @@ class RunHandlerThreadPool {
 
   RunHandlerThreadPool(int num_blocking_threads, int num_non_blocking_threads,
                        Env* env, const ThreadOptions& thread_options,
-                       const string& name,
+                       const std::string& name,
                        Eigen::MaxSizeVector<mutex>* waiters_mu,
                        Eigen::MaxSizeVector<Waiter>* queue_waiters);
 
@@ -239,7 +239,7 @@ class RunHandlerThreadPool {
   // The request with start_request_idx will be attempted first. Other requests
   // will be attempted in FIFO order based on their arrival time.
   void SetThreadWorkSources(
-      int tid, int start_request_idx, uint64 version,
+      int tid, int start_request_idx, uint64_t version,
       const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources);
 
   PerThread* GetPerThread();
@@ -273,14 +273,14 @@ class RunHandlerThreadPool {
   struct ThreadData {
     ThreadData();
     mutex mu;
-    uint64 new_version;
+    uint64_t new_version;
     condition_variable sources_not_empty;
     std::unique_ptr<Thread> thread;
     int current_index;
     std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
         new_thread_work_sources TF_GUARDED_BY(mu);
 
-    uint64 current_version;
+    uint64_t current_version;
     // Should only be accessed by one thread.
     std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
         current_thread_work_sources;
@@ -294,7 +294,7 @@ class RunHandlerThreadPool {
   Eigen::MaxSizeVector<ThreadData> thread_data_;
   internal::RunHandlerEnvironment env_;
   std::atomic<bool> cancelled_;
-  string name_;
+  std::string name_;
   Eigen::MaxSizeVector<mutex>* waiters_mu_;
   Eigen::MaxSizeVector<Waiter>* queue_waiters_;
 

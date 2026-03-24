@@ -6,4 +6,6 @@ fusion {
   p0 = bf16[30,16,30] parameter(0)
   ROOT transpose = bf16[30,16,30] transpose(p0), dimensions={2,1,0}
 }
+// CHECK: #indexing_map{{.*}}domain:{{.*}}th_x in [0, [[N_THREADS:[0-9]+]]]
+// CHECK: %thread_id_x = gpu.thread_id  x {xla.range = [0 : index, [[N_THREADS]] : index]}
 // CHECK:  xla_gpu.allocate_shared : tensor<64x64xbf16>

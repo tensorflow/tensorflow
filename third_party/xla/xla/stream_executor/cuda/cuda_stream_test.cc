@@ -26,20 +26,20 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace stream_executor {
@@ -49,7 +49,6 @@ namespace {
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
-using ::tsl::testing::IsOk;
 
 class CudaStreamTest : public ::testing::Test {
  public:
@@ -68,7 +67,7 @@ class CudaStreamTest : public ::testing::Test {
 
 TEST_F(CudaStreamTest, Memset32) {
   constexpr int kBufferNumElements = 42;
-  DeviceMemory<uint32_t> buffer =
+  DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
@@ -81,7 +80,7 @@ TEST_F(CudaStreamTest, Memset32) {
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 
   // Should fail due to the non-4-byte-aligned pointer.
-  DeviceMemoryBase unaligned_pointer =
+  DeviceAddressBase unaligned_pointer =
       buffer.GetByteSlice(/*offset_bytes=*/1, /*size_bytes=*/0);
   EXPECT_THAT(stream->Memset32(&unaligned_pointer, 0xDEADBEEF,
                                kBufferNumElements * sizeof(uint32_t) + 1),
@@ -102,7 +101,7 @@ TEST_F(CudaStreamTest, Memset32) {
 
 TEST_F(CudaStreamTest, MemZero) {
   constexpr int kBufferNumElements = 42;
-  DeviceMemory<uint32_t> buffer =
+  DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
@@ -135,7 +134,7 @@ TEST_F(CudaStreamTest, MemZero) {
 
 TEST_F(CudaStreamTest, MemcpyHostToDeviceAndBack) {
   constexpr int kBufferNumElements = 42;
-  DeviceMemory<uint32_t> buffer =
+  DeviceAddress<uint32_t> buffer =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
@@ -159,9 +158,9 @@ TEST_F(CudaStreamTest, MemcpyHostToDeviceAndBack) {
 
 TEST_F(CudaStreamTest, MemcpyDeviceToDevice) {
   constexpr int kBufferNumElements = 42;
-  DeviceMemory<uint32_t> buffer1 =
+  DeviceAddress<uint32_t> buffer1 =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
-  DeviceMemory<uint32_t> buffer2 =
+  DeviceAddress<uint32_t> buffer2 =
       executor_->AllocateArray<uint32_t>(kBufferNumElements, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
@@ -208,9 +207,9 @@ TEST_F(CudaStreamTest, LaunchKernel) {
   constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
 
   // Prepare arguments: a=1, b=2, c=0
-  DeviceMemory<int32_t> a = executor_->AllocateArray<int32_t>(kLength, 0);
-  DeviceMemory<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
-  DeviceMemory<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
+  DeviceAddress<int32_t> a = executor_->AllocateArray<int32_t>(kLength, 0);
+  DeviceAddress<int32_t> b = executor_->AllocateArray<int32_t>(kLength, 0);
+  DeviceAddress<int32_t> c = executor_->AllocateArray<int32_t>(kLength, 0);
 
   EXPECT_THAT(stream->Memset32(&a, 1, kByteLength), absl_testing::IsOk());
   EXPECT_THAT(stream->Memset32(&b, 2, kByteLength), absl_testing::IsOk());

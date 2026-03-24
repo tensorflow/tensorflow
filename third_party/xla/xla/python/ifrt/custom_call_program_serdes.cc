@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/sharding.pb.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -69,12 +70,12 @@ class CustomCallProgramSerDes
     // generates `absl::Cord` support on all platforms.
     absl::CopyCordToString(program.serialized_program_text,
                            proto.mutable_serialized_program_text());
-    *proto.mutable_devices() = program.devices->ToProto(version);
+    program.devices->ToProto(*proto.mutable_devices(), version);
     for (const ArraySpec& spec : program.input_specs) {
-      TF_ASSIGN_OR_RETURN(*proto.add_input_specs(), spec.ToProto(version));
+      TF_RETURN_IF_ERROR(spec.ToProto(*proto.add_input_specs(), version));
     }
     for (const ArraySpec& spec : program.output_specs) {
-      TF_ASSIGN_OR_RETURN(*proto.add_output_specs(), spec.ToProto(version));
+      TF_RETURN_IF_ERROR(spec.ToProto(*proto.add_output_specs(), version));
     }
     return proto.SerializeAsString();
   }
@@ -83,7 +84,11 @@ class CustomCallProgramSerDes
       const std::string& serialized,
       std::unique_ptr<DeserializeOptions> options) override {
     const auto* deserialize_program_options =
-        llvm::cast<DeserializeProgramOptions>(options.get());
+        llvm::dyn_cast_or_null<DeserializeProgramOptions>(options.get());
+    if (deserialize_program_options == nullptr) {
+      return absl::InvalidArgumentError(
+          "DeserializeProgramOptions must be provided");
+    }
 
     CustomCallProgramProto proto;
     if (!proto.ParseFromString(serialized)) {

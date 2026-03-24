@@ -567,14 +567,46 @@ class MklConvCustomBackpropInputOp
         << "ConvBackpropInput: input should not be in MKL Layout";
   }
 
+  // Handle dynamic shape of input tensor.
+  template <typename TShape>
+  std::vector<int64> HandleDynamicShape(const Tensor& input_tensor,
+                                        OpKernelContext* context) {
+    // Returns a vector with the explicit shape if dynamic, or an empty vector
+    // otherwise.
+    std::vector<int64> explicit_shape;
+    auto shape_vec = input_tensor.flat<TShape>();
+
+    if (shape_vec(0) == -1) {
+      const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
+      int64 batch_size = diff_dst_tensor.dim_size(0);
+      for (int i = 0; i < input_tensor.NumElements(); i++) {
+        TShape val = shape_vec(i);
+        explicit_shape.push_back(val == -1 ? batch_size : val);
+      }
+    }
+    return explicit_shape;
+  }
+
   // Get TensorFlow shape of input tensor.
   TensorShape MakeInputTfShape(OpKernelContext* context,
                                const Tensor& input_tensor) {
     TensorShape input_tf_shape;
     CHECK_EQ(TensorShapeUtils::IsVector(input_tensor.shape()), true);
-    // Conv[2D|3D]BackpropInputV2 supports both DT_INT32 and DT_INT64
-    // output_shape tensor::MakeShape is able to handle both DT_INT32 and
-    // DT_INT64 for input_tensor.
+
+    if (input_tensor.NumElements() > 0) {
+      std::vector<int64> explicit_shape;
+
+      if (input_tensor.dtype() == DT_INT32) {
+        explicit_shape = HandleDynamicShape<int32>(input_tensor, context);
+      } else if (input_tensor.dtype() == DT_INT64) {
+        explicit_shape = HandleDynamicShape<int64>(input_tensor, context);
+      }
+
+      if (!explicit_shape.empty()) {
+        return TensorShape(explicit_shape);
+      }
+    }
+
     TF_CHECK_OK(tensor::MakeShape(input_tensor, &input_tf_shape));
     return input_tf_shape;
   }

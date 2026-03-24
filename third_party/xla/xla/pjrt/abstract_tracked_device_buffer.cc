@@ -289,7 +289,7 @@ absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
   TF_ASSIGN_OR_RETURN(
       auto device_event,
       std::move(scoped_acquire)(
-          device_buffer.buffer()->GetRawBuffer(memory_space_),
+          device_buffer.buffer()->raw_buffer(),
           device_buffer.buffer()->GetAsyncValueDefinitionEvents()));
   device_buffer.ConvertUsageHold(std::move(device_event));
   return absl::OkStatus();

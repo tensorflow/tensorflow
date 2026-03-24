@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/all_reduce.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -26,32 +28,34 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/platform_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/collective_kernel_metadata.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
@@ -63,7 +67,6 @@ namespace {
 
 using ::stream_executor::gpu::AllReduceStrategy;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 se::StreamExecutor* GetGpuExecutor(int64_t device_ordinal) {
   auto* platform =
@@ -76,14 +79,11 @@ struct TestParams {
   int64_t num_elements;
 };
 
-template <typename T>
-std::vector<T> ToVector(const Array<T>& array) {
-  std::vector<T> result;
-  result.reserve(array.num_elements());
-  array.Each(
-      [&](absl::Span<const int64_t> indices, T val) { result.push_back(val); });
-  return result;
-}
+struct PtrFormatter {
+  void operator()(std::string* out, const void* ptr) const {
+    absl::StrAppend(out, absl::StrFormat("%p", ptr));
+  }
+};
 
 class AllReduceKernelTest : public ::testing::Test,
                             public ::testing::WithParamInterface<TestParams> {
@@ -103,11 +103,24 @@ class AllReduceKernelTest : public ::testing::Test,
     TF_RETURN_IF_ERROR(executors[0]->EnablePeerAccessTo(executors[1]));
     TF_RETURN_IF_ERROR(executors[1]->EnablePeerAccessTo(executors[0]));
 
+    std::unique_ptr<se::gpu::MulticastMemory> multicast_memory;
+    if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
+      TF_ASSIGN_OR_RETURN(
+          multicast_memory,
+          dynamic_cast<se::gpu::GpuExecutor*>(executors[0])
+              ->CreateMulticastMemory(num_elements * sizeof(T), num_ranks));
+
+      for (int i = 0; i < num_ranks; ++i) {
+        TF_RETURN_IF_ERROR(multicast_memory->SubscribeDevice(i));
+      }
+    }
+
     std::vector<std::unique_ptr<se::Stream>> streams;
-    std::vector<se::DeviceMemoryBase> allocated_buffers;
-    std::vector<se::DeviceMemoryBase> local_input_buffers;
-    std::vector<se::DeviceMemoryBase> data_buffers;
-    std::vector<se::DeviceMemoryBase> signal_flags_buffers;
+    std::vector<se::DeviceAddressBase> allocated_buffers;
+    std::vector<se::DeviceAddressBase> input_buffers;
+    std::vector<se::DeviceAddressBase> output_buffers;
+    std::vector<se::DeviceAddressBase> symmetric_input_buffers;
+    std::vector<se::DeviceAddressBase> signal_flags_buffers;
 
     uint64_t input_size = num_elements * sizeof(T);
     uint64_t aligned_input_size =
@@ -121,43 +134,123 @@ class AllReduceKernelTest : public ::testing::Test,
       streams.push_back(executor->CreateStream().value());
 
       uint64_t total_size =
-          /*local_input_buffer_size=*/aligned_input_size +
-          /*data_buffer_size=*/aligned_input_size +
+          /*input_buffer_size=*/aligned_input_size +
+          /*symmetric_input_buffer_size=*/aligned_input_size +
+          /*output_buffer_size=*/aligned_input_size +
           /*signal_buffer_size=*/aligned_signal_size;
-      allocated_buffers.emplace_back(executor->AllocateArray<T>(total_size));
-      local_input_buffers.emplace_back(
+      allocated_buffers.emplace_back(executor->AllocateArray<T>(
+          total_size,
+          static_cast<int64_t>(stream_executor::MemorySpace::kP2P)));
+      input_buffers.emplace_back(
           allocated_buffers[i].GetByteSlice(0, aligned_input_size));
-      TF_RET_CHECK(!local_input_buffers[i].is_null());
+      TF_RET_CHECK(!input_buffers[i].is_null());
 
-      data_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
+      symmetric_input_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
           aligned_input_size, aligned_input_size));
-      TF_RET_CHECK(!data_buffers[i].is_null());
+      TF_RET_CHECK(!symmetric_input_buffers[i].is_null());
+
+      output_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
+          2 * aligned_input_size, aligned_input_size));
+      TF_RET_CHECK(!output_buffers[i].is_null());
+      TF_RETURN_IF_ERROR(
+          executor->SynchronousMemZero(&output_buffers[i], aligned_input_size));
 
       signal_flags_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
-          2 * aligned_input_size, aligned_signal_size));
+          3 * aligned_input_size, aligned_signal_size));
       TF_RET_CHECK(!signal_flags_buffers[i].is_null());
       TF_RETURN_IF_ERROR(executor->SynchronousMemZero(&signal_flags_buffers[i],
                                                       aligned_signal_size));
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&local_input_buffers[i],
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&input_buffers[i],
                                             input_data[i].data(), input_size));
+      XLA_VLOG_DEVICE(1, i)
+          << "Allocated buffer: " << allocated_buffers[i].opaque()
+          << ", Input buffer: " << input_buffers[i].opaque()
+          << ", Symmetric input buffer: " << symmetric_input_buffers[i].opaque()
+          << ", Output buffer: " << output_buffers[i].opaque()
+          << ", Signal buffer: " << signal_flags_buffers[i].opaque();
     }
 
-    std::vector<se::DeviceMemoryBase> metadata_buffers;
-
+    std::vector<se::DeviceAddressBase> metadata_buffers;
     for (int i = 0; i < num_ranks; ++i) {
       CollectiveKernelMetadata metadata;
       metadata.rank = i;
+      std::vector<void*> param_to_peers_ptrs;
 
-      for (int j = 0; j < num_ranks; ++j) {
-        // One-Shot all-reduce doesn't use an input buffer from the peers.
-        metadata.buffer_root_ptrs[j] = 0;
-        metadata.local_buffer_root_ptrs[j] =
-            (uint64_t)allocated_buffers[j].opaque();
+      if (params_.all_reduce_strategy == AllReduceStrategy::kMultimem) {
+        // Multimem also need to have an output buffer.
+        constexpr int kNumPeerParameters = 3;
+        // Multimem needs to address input and output buffers on the peer
+        // devices. Also an offset between the root exchanged pointer and
+        // the multimem address space should be the same.
+        for (int buffer_id = 0; buffer_id < kNumPeerParameters; ++buffer_id) {
+          for (int rank = 0; rank < num_ranks; ++rank) {
+            param_to_peers_ptrs.push_back(allocated_buffers[rank].opaque());
+          }
+        }
+
+        se::gpu::GpuExecutor* gpu_executor =
+            dynamic_cast<se::gpu::GpuExecutor*>(executors[i]);
+        TF_RET_CHECK(gpu_executor != nullptr);
+        TF_ASSIGN_OR_RETURN(
+            void* mapped_memory,
+            multicast_memory->MapMemory(allocated_buffers[i], gpu_executor));
+        std::vector<void*> param_to_multimem_addresses =
+            std::vector<void*>(kNumPeerParameters, mapped_memory);
+
+        const size_t param_to_peers_size =
+            sizeof(void*) * param_to_peers_ptrs.size();
+        const size_t param_to_multimem_addresses_byte_size =
+            sizeof(void*) * param_to_multimem_addresses.size();
+        // First map from parameter to peer ptrs and then metadata.
+        metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
+            sizeof(CollectiveKernelMetadata) + param_to_peers_size +
+            param_to_multimem_addresses_byte_size));
+
+        se::DeviceAddressBase param_to_multimem_addresses_buffer =
+            metadata_buffers[i].GetByteSlice(
+                sizeof(CollectiveKernelMetadata) + param_to_peers_size,
+                param_to_multimem_addresses_byte_size);
+        metadata.param_to_multimem_addresses = reinterpret_cast<void**>(
+            param_to_multimem_addresses_buffer.opaque());
+        TF_RETURN_IF_ERROR(
+            streams[i]->Memcpy(&param_to_multimem_addresses_buffer,
+                               param_to_multimem_addresses.data(),
+                               param_to_multimem_addresses_byte_size));
+        XLA_VLOG_DEVICE(1, i)
+            << "Constructed device state {"
+            << " metadata rank: " << metadata.rank << ", param_to_peers: ("
+            << absl::StrJoin(param_to_peers_ptrs, ", ", PtrFormatter{})
+            << "), multimem_addresses: ("
+            << absl::StrJoin(param_to_multimem_addresses, ", ", PtrFormatter{})
+            << ")}";
+      } else {
+        for (const se::DeviceAddressBase& input_buffer : input_buffers) {
+          param_to_peers_ptrs.push_back(input_buffer.opaque());
+        }
+        for (const se::DeviceAddressBase& signal_flags_buffer :
+             signal_flags_buffers) {
+          param_to_peers_ptrs.push_back(signal_flags_buffer.opaque());
+        }
+        metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
+            sizeof(CollectiveKernelMetadata) +
+            param_to_peers_ptrs.size() * sizeof(void*)));
+
+        XLA_VLOG_DEVICE(1, executors[i]->device_ordinal())
+            << "Constructed device state {"
+            << " metadata rank: " << metadata.rank << ", param_to_peers: ("
+            << absl::StrJoin(param_to_peers_ptrs, ", ", PtrFormatter{}) << ")}";
       }
 
-      metadata_buffers.emplace_back(executors[i]->AllocateArray<uint64_t>(
-          sizeof(CollectiveKernelMetadata)));
-
+      const size_t param_to_peers_size_bytes =
+          param_to_peers_ptrs.size() * sizeof(void*);
+      se::DeviceAddressBase param_to_peers_ptrs_buffer =
+          metadata_buffers[i].GetByteSlice(sizeof(CollectiveKernelMetadata),
+                                           param_to_peers_size_bytes);
+      metadata.param_to_peers =
+          reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(&param_to_peers_ptrs_buffer,
+                                            param_to_peers_ptrs.data(),
+                                            param_to_peers_size_bytes));
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(&metadata_buffers[i], &metadata,
                                             sizeof(CollectiveKernelMetadata)));
     }
@@ -173,11 +266,11 @@ class AllReduceKernelTest : public ::testing::Test,
           primitive_util::NativeToPrimitiveType<T>(),
           /*reduction_kind=*/reduction_kind,
           /*all_reduce_strategy=*/params_.all_reduce_strategy,
-          /*symmetric_input_buffer=*/data_buffers[i],
+          /*symmetric_input_buffer=*/symmetric_input_buffers[i],
           // Memory is aliased for both input and output (similar to what nccl
           // would do).
-          /*local_input_buffer=*/local_input_buffers[i],
-          /*output_buffer=*/local_input_buffers[i],
+          /*local_input_buffer=*/input_buffers[i],
+          /*output_buffer=*/output_buffers[i],
           /*rank=*/RankId(i), /*num_ranks=*/num_ranks,
           /*num_elements=*/num_elements,
           /*symmetric_signal_buffer=*/signal_flags_buffers[i],
@@ -190,12 +283,10 @@ class AllReduceKernelTest : public ::testing::Test,
     }
 
     std::vector<Array<T>> results;
-
     for (int i = 0; i < num_ranks; ++i) {
       Array<T> output_results({num_elements});
-      TF_RETURN_IF_ERROR(streams[i]->Memcpy(output_results.data(),
-                                            local_input_buffers[i],
-                                            num_elements * sizeof(T)));
+      TF_RETURN_IF_ERROR(streams[i]->Memcpy(
+          output_results.data(), output_buffers[i], num_elements * sizeof(T)));
 
       results.push_back(std::move(output_results));
     }
@@ -204,6 +295,8 @@ class AllReduceKernelTest : public ::testing::Test,
   }
 
   int64_t num_elements() const { return params_.num_elements; }
+
+  AllReduceStrategy strategy() const { return params_.all_reduce_strategy; }
 
  private:
   TestParams params_;
@@ -214,6 +307,11 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
 
   std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
                                                 GetGpuExecutor(1)};
+  if (strategy() == AllReduceStrategy::kMultimem &&
+      !dynamic_cast<se::gpu::GpuExecutor*>(executors[0])
+           ->is_multicast_supported()) {
+    GTEST_SKIP() << "Multimem not supported on this device.";
+  }
 
   if (!executors[0]->CanEnablePeerAccessTo(executors[1])) {
     GTEST_SKIP() << "Test requires direct peer memory access between devices.";
@@ -247,6 +345,9 @@ TEST_P(AllReduceKernelTest, KernelTestAddF32) {
 }
 
 TEST_P(AllReduceKernelTest, KernelTestAddBF16) {
+  if (strategy() == AllReduceStrategy::kMultimem) {
+    GTEST_SKIP() << "Multimem does not support BF16.";
+  }
   constexpr int64_t kNumRanks = 2;
 
   std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
@@ -280,6 +381,9 @@ TEST_P(AllReduceKernelTest, KernelTestAddBF16) {
 }
 
 TEST_P(AllReduceKernelTest, KernelTestOrPred) {
+  if (strategy() == AllReduceStrategy::kMultimem) {
+    GTEST_SKIP() << "Multimem does not support predicates.";
+  }
   constexpr int64_t kNumRanks = 2;
 
   std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
@@ -314,6 +418,9 @@ TEST_P(AllReduceKernelTest, KernelTestOrPred) {
 }
 
 TEST_P(AllReduceKernelTest, KernelTestAddPred_Unsupported) {
+  if (strategy() == AllReduceStrategy::kMultimem) {
+    GTEST_SKIP() << "Multimem does not support predicates.";
+  }
   constexpr int64_t kNumRanks = 2;
   std::vector<se::StreamExecutor*> executors = {GetGpuExecutor(0),
                                                 GetGpuExecutor(1)};
@@ -336,7 +443,8 @@ INSTANTIATE_TEST_SUITE_P(
     AllReduceKernelTest, AllReduceKernelTest,
     ::testing::ConvertGenerator(
         ::testing::Combine(::testing::Values(AllReduceStrategy::kOneShot,
-                                             AllReduceStrategy::kTwoShot),
+                                             AllReduceStrategy::kTwoShot,
+                                             AllReduceStrategy::kMultimem),
                            ::testing::Values(128000, 124000)),
         [](const std::tuple<AllReduceStrategy, int64_t>& params) {
           return TestParams{std::get<0>(params), std::get<1>(params)};
@@ -346,11 +454,11 @@ INSTANTIATE_TEST_SUITE_P(
                              info.param.num_elements);
     });
 
-class AllReduceHloTest : public HloHardwareIndependentTestBase {};
+class AllReduceHloTest : public HloPjRtTestBase {};
 
-TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
-  // xla::HloRunner passes a null device assignment to the XLA executable.
-  // Test this returns an error gracefully.
+TEST_F(AllReduceHloTest, DefaultDeviceAssnWithHloRunner) {
+  // xla::HloRunnerPjRt passes a single device assignment. Test this returns an
+  // error gracefully.
   const char* const hlo_string = R"(
     HloModule module, replica_count=2
 
@@ -368,15 +476,13 @@ TEST_F(AllReduceHloTest, NullDeviceAssnWithHloRunner) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  HloRunner runner(PlatformUtil::GetDefaultPlatform().value());
   Literal input = LiteralUtil::CreateR1<float>(std::vector<float>(1, 2));
 
-  EXPECT_THAT(
-      runner.Execute(std::move(module), {std::move(input)}),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          HasSubstr("Device assignment is null, but must be specified when "
-                    "running a collective thunk.")));
+  EXPECT_THAT(test_runner().Execute(std::move(module), {std::move(input)}),
+              absl_testing::StatusIs(
+                  absl::StatusCode::kInvalidArgument,
+                  HasSubstr("Mismatched number of replicas for device "
+                            "assignment and computation (1 vs 2).")));
 }
 
 }  // namespace

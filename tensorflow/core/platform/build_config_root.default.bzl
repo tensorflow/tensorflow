@@ -1,11 +1,11 @@
 """TODO(jakeharmon): Write module docstring."""
 
-load("@local_xla//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
+load("@xla//third_party/py/rules_pywrap:pywrap.default.bzl", "use_pywrap_rules")
 
 # unused in TSL
 def tf_additional_plugin_deps():
     return select({
-        str(Label("@local_xla//xla/tsl:with_xla_support")): [
+        str(Label("@xla//xla/tsl:with_xla_support")): [
             str(Label("//tensorflow/compiler/jit")),
         ],
         "//conditions:default": [],

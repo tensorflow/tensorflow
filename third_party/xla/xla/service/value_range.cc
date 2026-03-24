@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/constant_value.h"
 #include "xla/service/hlo_value.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -121,6 +122,17 @@ Range RecursivelyIdentifyRange(
     }
   }
   switch (instr->opcode()) {
+    case HloOpcode::kParameter: {
+      // handle a case when we get kParameter inside fusion
+      if (instr->parent()->IsFusionComputation()) {
+        return RecursivelyIdentifyRange(
+            instr->parent()->FusionInstruction()->operand(
+                instr->parameter_number()),
+            known_ranges, dataflow_analysis);
+      }
+      // TODO(b/489052441): possibly handle other parameters.
+      return Range{};
+    }
     case HloOpcode::kGetTupleElement: {
       if (dataflow_analysis != nullptr) {
         auto value_set = dataflow_analysis->GetFlattenedValueSet(instr);

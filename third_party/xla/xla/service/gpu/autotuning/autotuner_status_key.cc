@@ -17,9 +17,4 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 
-namespace xla::gpu {
-
-constexpr absl::string_view kAutotuneCacheRequiredErrorPayloadKey =
-    "https://openxla.org/gpu/autotune_cache_hit_required/";
-
-}  // namespace xla::gpu
+namespace xla::gpu {}  // namespace xla::gpu

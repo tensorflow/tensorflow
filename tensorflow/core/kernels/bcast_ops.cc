@@ -120,11 +120,11 @@ class BCastGradArgsOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
-                        BCastArgsOp<int32>);
+                        BCastArgsOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("T")
@@ -134,11 +134,11 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                         BCastArgsOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0"),
-                        BCastArgsOp<int32>);
+                        BCastArgsOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int64_t>("T")
@@ -149,12 +149,12 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastArgs")
 
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0")
                             .HostMemory("r1"),
-                        BCastGradArgsOp<int32>);
+                        BCastGradArgsOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64_t>("T")
@@ -165,12 +165,12 @@ REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                         BCastGradArgsOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("s0")
                             .HostMemory("s1")
                             .HostMemory("r0")
                             .HostMemory("r1"),
-                        BCastGradArgsOp<int32>);
+                        BCastGradArgsOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("BroadcastGradientArgs")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int64_t>("T")

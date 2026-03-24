@@ -34,12 +34,12 @@ class SimplePhilox {
   explicit SimplePhilox(PhiloxRandom* gen) : single_(gen) {}
 
   // 32 random bits
-  PHILOX_DEVICE_INLINE uint32 Rand32() { return single_(); }
+  PHILOX_DEVICE_INLINE uint32_t Rand32() { return single_(); }
 
   // 64 random bits
-  PHILOX_DEVICE_INLINE uint64 Rand64() {
-    const uint32 lo = single_(), hi = single_();
-    return lo | static_cast<uint64>(hi) << 32;
+  PHILOX_DEVICE_INLINE uint64_t Rand64() {
+    const uint32_t lo = single_(), hi = single_();
+    return lo | static_cast<uint64_t>(hi) << 32;
   }
 
   // Uniform float in [0, 1)
@@ -47,25 +47,25 @@ class SimplePhilox {
 
   // Uniform double in [0, 1)
   PHILOX_DEVICE_INLINE double RandDouble() {
-    const uint32 x0 = single_(), x1 = single_();
+    const uint32_t x0 = single_(), x1 = single_();
     return Uint64ToDouble(x0, x1);
   }
 
   // Uniform integer in [0, n).
   // Uses rejection sampling, so may need more than one 32-bit sample.
-  uint32 Uniform(uint32 n);
+  uint32_t Uniform(uint32_t n);
 
   // Approximately uniform integer in [0, n).
   // Uses rejection sampling, so may need more than one 64-bit sample.
-  uint64 Uniform64(uint64 n);
+  uint64_t Uniform64(uint64_t n);
 
   // True with probability 1/n.
-  bool OneIn(uint32 n) { return Uniform(n) == 0; }
+  bool OneIn(uint32_t n) { return Uniform(n) == 0; }
 
   // Skewed: pick "base" uniformly from range [0,max_log] and then
   // return "base" random bits.  The effect is to pick a number in the
   // range [0,2^max_log-1] with bias towards smaller numbers.
-  uint32 Skewed(int max_log);
+  uint32_t Skewed(int max_log);
 
  private:
   SingleSampleAdapter<PhiloxRandom> single_;

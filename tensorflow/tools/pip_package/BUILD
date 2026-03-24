@@ -4,18 +4,18 @@
 load("@cuda_cudart//:version.bzl", _cudart_version = "VERSION")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
+load("@nvidia_wheel_versions//:versions.bzl", "NVIDIA_WHEEL_VERSIONS")
 load(
-    "@local_xla//third_party/py:py_import.bzl",
+    "@xla//third_party/py:py_import.bzl",
     "py_import",
 )
 load(
-    "@local_xla//third_party/py:py_manylinux_compliance_test.bzl",
+    "@xla//third_party/py:py_manylinux_compliance_test.bzl",
     "verify_manylinux_compliance_test",
 )
-load("@local_xla//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
-load("@local_xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
-load("@nvidia_wheel_versions//:versions.bzl", "NVIDIA_WHEEL_VERSIONS")
-load("//tensorflow:py.default.bzl", "py_binary", "py_test")
+load("@xla//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_binary", "py_test")
+load("@xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow:tf_version.bzl", "TF_SEMANTIC_VERSION_SUFFIX", "TF_VERSION")
 load(
@@ -62,7 +62,7 @@ transitive_hdrs(
         "//tensorflow/c/experimental/grappler:grappler_hdrs",
         "//tensorflow/c:kernels_hdrs",
         "//tensorflow/c:ops_hdrs",
-        "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",
+        "@xla//xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/core/common_runtime/next_pluggable_device/c:plugin_c_api_hdrs",
         # TODO(rostam): Revisit these after cc_shared_library everywhere
         "//tensorflow/cc:client_session",
@@ -108,13 +108,13 @@ filegroup(
         "@ducc//:LICENSE",
         "@flatbuffers//:LICENSE",
         "@gemmlowp//:LICENSE",
+        "@jpegxl//:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
         "@local_config_tensorrt//:LICENSE",
         "@ml_dtypes_py//:LICENSE",
         "@org_brotli//:LICENSE",
-        "@pasta//:LICENSE",
         "@png//:LICENSE",
         "@ruy//:LICENSE",
         "@snappy//:COPYING",
@@ -131,8 +131,8 @@ filegroup(
     }) + if_cuda([
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
-        "@local_xla//third_party/mkl_dnn:LICENSE",
-    ]) + if_enable_mkl(["@local_xla//xla/tsl/mkl:LICENSE"]) + if_not_system_lib(
+        "@xla//third_party/mkl_dnn:LICENSE",
+    ]) + if_enable_mkl(["@xla//xla/tsl/mkl:LICENSE"]) + if_not_system_lib(
         "absl_py",
         [
             "@absl_py//:LICENSE",
@@ -226,7 +226,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
     "//tensorflow/tools/docs:tf_doctest_lib",
-    "@local_tsl//tsl/profiler/protobuf:trace_events_proto_py",
+    "@tsl//tsl/profiler/protobuf:trace_events_proto_py",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
@@ -248,8 +248,8 @@ py_binary(
     main = "build_pip_package.py",
     deps = [
         "//tensorflow/tools/pip_package/utils:py_utils",
-        "@pypi_setuptools//:pkg",
-        "@pypi_wheel//:pkg",
+        "@pypi//setuptools",
+        "@pypi//wheel",
     ],
 )
 
@@ -277,7 +277,7 @@ py_binary(
         "modify_setup_py.py",
     ],
     main = "modify_setup_py.py",
-    deps = ["@local_xla//third_party/py:setup_py_nvidia_dependencies_util"],
+    deps = ["@xla//third_party/py:setup_py_nvidia_dependencies_util"],
 )
 
 genrule(
@@ -312,6 +312,39 @@ py_binary(
 
 tf_wheel(
     name = "wheel",
+    # Explicitly list all external repositories that are needed in build_pip_package.py
+    external_repos = [
+        "com_google_absl",
+        "eigen_archive",
+        "jsoncpp_git",
+        "com_google_protobuf",
+        "xla",
+        "tsl",
+        "llvm-project",
+        "cpuinfo",
+        "FXdiv",
+        "net_zstd",
+        "org_brotli",
+        "pthreadpool",
+        "riegeli",
+        "XNNPACK",
+        "local_config_cuda",
+        "local_config_tensorrt",
+        "cuda_cccl",
+        "cuda_cublas",
+        "cuda_cudart",
+        "cuda_cudnn",
+        "cuda_cufft",
+        "cuda_cupti",
+        "cuda_curand",
+        "cuda_cusolver",
+        "cuda_cusparse",
+        "cuda_nvcc",
+        "cuda_nvml",
+        "cuda_nvrtc",
+        "cuda_nvtx",
+        "cuda_nvjitlink",
+    ],
     headers = [
         ":included_headers",
         ":licenses",
@@ -360,7 +393,7 @@ tf_wheel(
                 "//tensorflow/python:pywrap_tensorflow_binaries",
             ],
         ),
-    }) + if_mkl_ml(["@local_xla//xla/tsl/mkl:intel_binary_blob"]),
+    }) + if_mkl_ml(["@xla//xla/tsl/mkl:intel_binary_blob"]),
     xla_aot_compiled = [
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
         ":xla_cmake",
@@ -385,7 +418,7 @@ py_test(
         "manual",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()) + [
-        "@pypi_absl_py//:pkg",
+        "@pypi//absl_py",
     ],
 )
 
@@ -405,7 +438,7 @@ py_test(
         "manual",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()) + [
-        "@pypi_absl_py//:pkg",
+        "@pypi//absl_py",
     ],
 )
 
@@ -419,6 +452,7 @@ py_test(
     ],
     deps = [
         ":tf_py_import",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
 
@@ -436,12 +470,13 @@ py_test(
     ],
     deps = [
         ":tf_py_import",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
 
 verify_manylinux_compliance_test(
     name = "manylinux_compliance_test",
-    aarch64_compliance_tag = "manylinux_2_17_aarch64",
+    aarch64_compliance_tag = "manylinux_2_27_aarch64",
     ppc64le_compliance_tag = "manylinux_2_17_ppc64le",
     test_tags = [
         "manual",
@@ -454,33 +489,33 @@ py_import(
     name = "tf_py_import",
     wheel = ":wheel",
     wheel_deps = if_cuda([
-        "@pypi_nvidia_cublas_cu12//:pkg",
-        "@pypi_nvidia_cuda_cupti_cu12//:pkg",
-        "@pypi_nvidia_cuda_nvcc_cu12//:pkg",
-        "@pypi_nvidia_cuda_nvrtc_cu12//:pkg",
-        "@pypi_nvidia_cuda_runtime_cu12//:pkg",
-        "@pypi_nvidia_cudnn_cu12//:pkg",
-        "@pypi_nvidia_cufft_cu12//:pkg",
-        "@pypi_nvidia_curand_cu12//:pkg",
-        "@pypi_nvidia_cusolver_cu12//:pkg",
-        "@pypi_nvidia_cusparse_cu12//:pkg",
-        "@pypi_nvidia_nccl_cu12//:pkg",
-        "@pypi_nvidia_nvjitlink_cu12//:pkg",
-        "@pypi_nvidia_nvshmem_cu12//:pkg",
+        "@pypi//nvidia_cublas_cu12",
+        "@pypi//nvidia_cuda_cupti_cu12",
+        "@pypi//nvidia_cuda_nvcc_cu12",
+        "@pypi//nvidia_cuda_nvrtc_cu12",
+        "@pypi//nvidia_cuda_runtime_cu12",
+        "@pypi//nvidia_cudnn_cu12",
+        "@pypi//nvidia_cufft_cu12",
+        "@pypi//nvidia_curand_cu12",
+        "@pypi//nvidia_cusolver_cu12",
+        "@pypi//nvidia_cusparse_cu12",
+        "@pypi//nvidia_nccl_cu12",
+        "@pypi//nvidia_nvjitlink_cu12",
+        "@pypi//nvidia_nvshmem_cu12",
     ]),
     deps = [
-        "@pypi_absl_py//:pkg",
-        "@pypi_astunparse//:pkg",
-        "@pypi_flatbuffers//:pkg",
-        "@pypi_gast//:pkg",
-        "@pypi_ml_dtypes//:pkg",
-        "@pypi_numpy//:pkg",
-        "@pypi_opt_einsum//:pkg",
-        "@pypi_packaging//:pkg",
-        "@pypi_protobuf//:pkg",
-        "@pypi_requests//:pkg",
-        "@pypi_termcolor//:pkg",
-        "@pypi_typing_extensions//:pkg",
-        "@pypi_wrapt//:pkg",
+        "@pypi//absl_py",
+        "@pypi//astunparse",
+        "@pypi//flatbuffers",
+        "@pypi//gast",
+        "@pypi//ml_dtypes",
+        "@pypi//numpy",
+        "@pypi//opt_einsum",
+        "@pypi//packaging",
+        "@pypi//protobuf",
+        "@pypi//requests",
+        "@pypi//termcolor",
+        "@pypi//typing_extensions",
+        "@pypi//wrapt",
     ],
 )

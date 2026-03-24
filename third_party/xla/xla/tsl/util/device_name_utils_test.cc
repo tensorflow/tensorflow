@@ -29,20 +29,22 @@ namespace tsl {
 
 namespace {
 
-bool RoundTripParsedName(const string& original, const string& expected) {
+bool RoundTripParsedName(const std::string& original,
+                         const std::string& expected) {
   DeviceNameUtils::ParsedName p;
   if (!DeviceNameUtils::ParseFullName(original, &p)) {
     return false;
   }
-  string round_tripped = DeviceNameUtils::ParsedNameToString(p);
+  std::string round_tripped = DeviceNameUtils::ParsedNameToString(p);
   return (round_tripped == expected);
 }
 
 enum NamePart { kJob = 0x01, kReplica = 0x02, kTask = 0x04, kDevice = 0x08 };
 
-bool RoundTripPartialName(int parts_to_test, const std::vector<string>& parts,
+bool RoundTripPartialName(int parts_to_test,
+                          const std::vector<std::string>& parts,
                           bool explicitDevice) {
-  string original, expected;
+  std::string original, expected;
   if (parts_to_test & kJob) {
     absl::StrAppend(&original, "/job:", parts[0]);
     absl::StrAppend(&expected, "/job:", parts[0]);
@@ -370,8 +372,8 @@ TEST(DeviceNameUtilsTest, IsSpecification) {
 }
 
 TEST(DeviceNameUtilsTest, SplitDeviceName) {
-  string task;
-  string device;
+  std::string task;
+  std::string device;
   EXPECT_TRUE(DeviceNameUtils::SplitDeviceName(
       "/job:foo/replica:1/task:2/cpu:1", &task, &device));
   EXPECT_EQ("/job:foo/replica:1/task:2", task);
@@ -393,14 +395,15 @@ TEST(DeviceNameUtilsTest, SplitDeviceName) {
   EXPECT_EQ("myspecialdevice:3", device);
 }
 
-static DeviceNameUtils::ParsedName Name(const string& str) {
+static DeviceNameUtils::ParsedName Name(const std::string& str) {
   DeviceNameUtils::ParsedName ret;
   CHECK(DeviceNameUtils::ParseFullName(str, &ret)) << "Invalid name: " << str;
   return ret;
 }
 
-static void MergeDevNamesHelperImpl(const string& name_a, const string& name_b,
-                                    const string& expected_merge_name,
+static void MergeDevNamesHelperImpl(const std::string& name_a,
+                                    const std::string& name_b,
+                                    const std::string& expected_merge_name,
                                     bool allow_soft_placement) {
   DeviceNameUtils::ParsedName target_a = Name(name_a);
   TF_EXPECT_OK(DeviceNameUtils::MergeDevNames(&target_a, Name(name_b),
@@ -413,27 +416,30 @@ static void MergeDevNamesHelperImpl(const string& name_a, const string& name_b,
   EXPECT_EQ(target_b, Name(expected_merge_name));
 }
 
-static void MergeDevNamesHelper(const string& name_a, const string& name_b,
-                                const string& expected_merge_name) {
+static void MergeDevNamesHelper(const std::string& name_a,
+                                const std::string& name_b,
+                                const std::string& expected_merge_name) {
   MergeDevNamesHelperImpl(name_a, name_b, expected_merge_name, false);
 }
 
 static void MergeDevNamesHelperAllowSoftPlacement(
-    const string& name_a, const string& name_b,
-    const string& expected_merge_name) {
+    const std::string& name_a, const std::string& name_b,
+    const std::string& expected_merge_name) {
   MergeDevNamesHelperImpl(name_a, name_b, expected_merge_name, true);
 }
 
-static void MergeDevNamesError(const string& name_a, const string& name_b,
-                               const string& expected_error_substr) {
+static void MergeDevNamesError(const std::string& name_a,
+                               const std::string& name_b,
+                               const std::string& expected_error_substr) {
   DeviceNameUtils::ParsedName target_a = Name(name_a);
   absl::Status s = DeviceNameUtils::MergeDevNames(&target_a, Name(name_b));
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(absl::StrContains(s.message(), expected_error_substr)) << s;
 }
 
-static void MergeOverrideHelper(const string& target, const string& name,
-                                const string& expected_merge_name) {
+static void MergeOverrideHelper(const std::string& target,
+                                const std::string& name,
+                                const std::string& expected_merge_name) {
   DeviceNameUtils::ParsedName parsed_target = Name(target);
   TF_EXPECT_OK(
       DeviceNameUtils::MergeOverrideDevNames(&parsed_target, Name(name)));
@@ -445,9 +451,10 @@ static void MergeOverrideHelper(const string& target, const string& name,
       << DeviceNameUtils::ParsedNameToString(parsed_expected);
 }
 
-static void MergeUnsetDevNamesHelper(const string& name_a, const string& name_b,
-                                     const string& expected_merge_name_ab,
-                                     const string& expected_merge_name_ba) {
+static void MergeUnsetDevNamesHelper(
+    const std::string& name_a, const std::string& name_b,
+    const std::string& expected_merge_name_ab,
+    const std::string& expected_merge_name_ba) {
   DeviceNameUtils::ParsedName target_a = Name(name_a);
   DeviceNameUtils::MergeUnsetDevNames(&target_a, Name(name_b));
   EXPECT_EQ(target_a, Name(expected_merge_name_ab));
@@ -592,10 +599,10 @@ TEST(DeviceNameUtilsTest, GetNamesForDeviceMappings) {
 }
 
 TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
-  string canonical_name;
+  std::string canonical_name;
   {
     // Good basename.
-    string basename = "/job:foo/replica:10/task:0/device:CPU:0";
+    std::string basename = "/job:foo/replica:10/task:0/device:CPU:0";
     TF_EXPECT_OK(DeviceNameUtils::CanonicalizeDeviceName(
         "/job:foo/replica:10/task:0/device:CPU:1", basename, &canonical_name));
     EXPECT_EQ("/job:foo/replica:10/task:0/device:CPU:1", canonical_name);
@@ -616,7 +623,7 @@ TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
 
   {
     // Try out malformed basenames.
-    string fullname = "/device:CPU:0";
+    std::string fullname = "/device:CPU:0";
 
     absl::Status s = DeviceNameUtils::CanonicalizeDeviceName(
         fullname, "/device:CPU:0", &canonical_name);

@@ -39,13 +39,14 @@ class XlaCompilationAllocator : public Allocator {
   XlaCompilationAllocator() {}
   ~XlaCompilationAllocator() override {}
 
-  string Name() override { return "xla_compilation"; }
+  std::string Name() override { return "xla_compilation"; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     // Regardless of the size requested, always allocates an XlaExpression.
     // Respects the alignment request because there is alignment checking even
     // for Tensors whose data is never accessed.
-    void* p = port::AlignedMalloc(sizeof(XlaExpression), alignment);
+    void* p = tsl::port::AlignedMalloc(
+        sizeof(XlaExpression), static_cast<std::align_val_t>(alignment));
     XlaExpression* expression = reinterpret_cast<XlaExpression*>(p);
     new (expression) XlaExpression();
     return expression;

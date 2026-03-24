@@ -31,25 +31,26 @@ limitations under the License.
 #include <unordered_set>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/IR/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"             // from @llvm-project
+#include "mlir/Dialect/Quant/IR/QuantTypes.h"         // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"             // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"  // from @llvm-project
-#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
+#include "mlir/IR/Block.h"                       // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"           // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"       // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"                // from @llvm-project
+#include "mlir/IR/MLIRContext.h"                 // from @llvm-project
+#include "mlir/IR/Matchers.h"                    // from @llvm-project
+#include "mlir/IR/PatternMatch.h"                // from @llvm-project
+#include "mlir/IR/Region.h"                      // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"               // from @llvm-project
+#include "mlir/IR/Types.h"                       // from @llvm-project
+#include "mlir/IR/Value.h"                       // from @llvm-project
+#include "mlir/IR/ValueRange.h"                  // from @llvm-project
+#include "mlir/Support/LLVM.h"                   // from @llvm-project
+#include "mlir/Support/LogicalResult.h"          // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -359,7 +360,8 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
   auto element_type = input_type.getElementType();
   if (auto quant_type =
           dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
-    element_type = quant_type.getStorageType();
+    element_type =
+        tosa::getStorageElementTypeFromQuantized(quant_type);
   }
 
   mlir::Attribute min_val, max_val;
@@ -429,7 +431,7 @@ LogicalResult ConvertTFLRelu1Op::matchAndRewrite(
   auto element_type = input_type.getElementType();
   if (auto quant_type =
           dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
-    element_type = quant_type.getStorageType();
+    element_type = tosa::getStorageElementTypeFromQuantized(quant_type);
   }
 
   mlir::Attribute min_val, max_val;
@@ -496,7 +498,7 @@ LogicalResult ConvertTFLRelu0To1Op::matchAndRewrite(
   auto element_type = input_type.getElementType();
   if (auto quant_type =
           dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
-    element_type = quant_type.getStorageType();
+    element_type = tosa::getStorageElementTypeFromQuantized(quant_type);
   }
 
   mlir::Attribute min_val, max_val;
@@ -563,7 +565,7 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
   auto element_type = input_type.getElementType();
   if (auto quant_type =
           dyn_cast<mlir::quant::UniformQuantizedType>(element_type)) {
-    element_type = quant_type.getStorageType();
+    element_type = tosa::getStorageElementTypeFromQuantized(quant_type);
   }
 
   mlir::Attribute min_val, max_val;
@@ -1405,7 +1407,8 @@ RankedTensorType getTypeForSlice(RankedTensorType type, int64_t slice_dim,
         per_channel_qtype.getZeroPoints().begin() + offset,
         per_channel_qtype.getZeroPoints().begin() + offset + slice_size);
     auto output_per_channel_qtype = quant::UniformQuantizedPerAxisType::get(
-        per_channel_qtype.getFlags(), per_channel_qtype.getStorageType(),
+        per_channel_qtype.getFlags(),
+        tosa::getStorageElementTypeFromQuantized(per_channel_qtype),
         per_channel_qtype.getExpressedType(), output_scale_arr, output_zp_arr,
         per_channel_qtype.getQuantizedDimension(),
         per_channel_qtype.getStorageTypeMin(),
@@ -2333,7 +2336,10 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
   // shape[1].
   if (input_type.getRank() != 2) {
     int64_t num_elems = filter_type.getShape()[1];
-    int64_t num_batch = input_type.getNumElements() / num_elems;
+    int64_t num_batch = ShapedType::kDynamic;
+    if (input_type.hasStaticShape()) {
+      num_batch = input_type.getNumElements() / num_elems;
+    }
     SmallVector<int64_t, 2> shape_vals({num_batch, num_elems});
 
     RankedTensorType reshape_type =
@@ -3006,7 +3012,7 @@ LogicalResult ConvertTFLTileOp::matchAndRewrite(
     multiples_vals.push_back(
         multiples_elems.getValues<APInt>()[i].getSExtValue());
 
-  auto multiples = getTosaConstShape(rewriter, op, multiples_vals);
+  auto multiples = getTosaConstShape(rewriter, op->getLoc(), multiples_vals);
 
   CreateReplaceOpAndInfer<tosa::TileOp>(rewriter, op, output_type,
                                         tfl_tile_op.getInput(), multiples);
@@ -4336,14 +4342,6 @@ LogicalResult ConvertConstantOp::matchAndRewrite(
   ElementsAttr attr = dyn_cast<ElementsAttr>(tfl_const_op.getValueAttr());
 
   auto e_type = output_type.getElementType();
-  // TOSA only support up to 48-bits
-  // If source is higher than that, it's not representabble.
-  // For data type like 64 bits, we need to truncate them into 48 bits.
-  if (e_type.isInteger(64)) {
-    e_type = rewriter.getIntegerType(48);
-    attr = mlir::cast<DenseIntOrFPElementsAttr>(attr).mapValues(
-        e_type, [](const APInt& x) -> APInt { return x.trunc(48); });
-  }
 
   if (!output_type.hasRank()) {
     if (auto attr_type = dyn_cast<ShapedType>(attr.getType())) {

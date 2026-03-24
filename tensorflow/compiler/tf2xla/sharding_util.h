@@ -34,9 +34,9 @@ namespace tensorflow {
 // Otherwise, returns either:
 // - explicit_sharding if explicit_sharding.has_value()
 // - a non-value if there is no assigned core or
-// - a sharding set as per xla::sharding_builder::AssignDevice.
+// - a sharding set as per xla::sharding_builder::SingleDevice.
 absl::StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
-    const string& device_name, int num_cores_per_replica,
+    const std::string& device_name, int num_cores_per_replica,
     std::optional<xla::OpSharding> explicit_sharding = std::nullopt,
     std::optional<xla::OpMetadata> metadata = std::nullopt);
 

@@ -40,20 +40,20 @@ class GuaranteeConstOpTest : public OpsTestBase {
 
 TEST_F(GuaranteeConstOpTest, Int32Success_6) {
   TF_ASSERT_OK(Init(DT_INT32));
-  AddInputFromArray<int32>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
+  AddInputFromArray<int32_t>(TensorShape({6}), {1, 2, 3, 4, 5, 6});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({6}));
-  test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
-  test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
+  test::FillValues<int32_t>(&expected, {1, 2, 3, 4, 5, 6});
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
 }
 
 TEST_F(GuaranteeConstOpTest, Int32Success_2_3) {
   TF_ASSERT_OK(Init(DT_INT32));
-  AddInputFromArray<int32>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
+  AddInputFromArray<int32_t>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_INT32, TensorShape({2, 3}));
-  test::FillValues<int32>(&expected, {1, 2, 3, 4, 5, 6});
-  test::ExpectTensorEqual<int32>(expected, *GetOutput(0));
+  test::FillValues<int32_t>(&expected, {1, 2, 3, 4, 5, 6});
+  test::ExpectTensorEqual<int32_t>(expected, *GetOutput(0));
 }
 
 TEST_F(GuaranteeConstOpTest, StringSuccess) {

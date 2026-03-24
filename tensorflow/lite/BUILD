@@ -15,7 +15,7 @@ package_group(
 )
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -413,12 +413,12 @@ cc_library(
 #         "//base:addressmap",
 #         "//base:low_level_alloc",
 #         "//base:malloc_hook",
-#         "@local_xla//xla/tsl/profiler/backends/cpu:traceme_recorder",
+#         "@xla//xla/tsl/profiler/backends/cpu:traceme_recorder",
 #         "//tensorflow/lite/core/c:common",
 #         "//tensorflow/lite/kernels:kernel_util",
-#         "@local_tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
-#         "@local_tsl//tsl/profiler/lib:traceme",
-#         "@local_tsl//tsl/profiler/lib:traceme_encode",
+#         "@tsl//tsl/profiler/lib:scoped_memory_debug_annotation",
+#         "@tsl//tsl/profiler/lib:traceme",
+#         "@tsl//tsl/profiler/lib:traceme_encode",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/base:core_headers",
 #         "@com_google_absl//absl/debugging:stacktrace",
@@ -767,7 +767,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//tensorflow/lite/core:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
     ],
 )
 
@@ -1043,8 +1043,8 @@ cc_test(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/types:half",
         "@com_google_googletest//:gtest_main",
-        "@eigen_archive//:eigen3",
     ],
 )
 

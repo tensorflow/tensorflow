@@ -33,6 +33,7 @@ class CudaEvent : public Event {
  public:
   Event::Status PollForStatus() override;
   absl::Status WaitForEventOnExternalStream(std::intptr_t stream) override;
+  absl::Status Synchronize() override;
 
   // Creates a new CudaEvent. If allow_timing is false, the event will not
   // support timing, which is cheaper to create.

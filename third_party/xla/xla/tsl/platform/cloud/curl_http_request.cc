@@ -16,14 +16,26 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
 
-#include "xla/tsl/lib/gtl/map_util.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
+#include "tsl/platform/strcat.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 
@@ -32,7 +44,7 @@ namespace tsl {
 namespace {
 
 // Set to 1 to enable verbose debug output from curl.
-constexpr uint64 kVerboseOutput = 0;
+constexpr uint64_t kVerboseOutput = 0;
 
 // Proxy to the real libcurl implementation.
 class LibCurlProxy : public LibCurl {
@@ -48,7 +60,7 @@ class LibCurlProxy : public LibCurl {
   CURL* curl_easy_init() override { return ::curl_easy_init(); }
 
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                            uint64 param) override {
+                            uint64_t param) override {
     return ::curl_easy_setopt(curl, option, param);
   }
 
@@ -86,7 +98,7 @@ class LibCurlProxy : public LibCurl {
   }
 
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                             uint64* value) override {
+                             uint64_t* value) override {
     return ::curl_easy_getinfo(curl, info, value);
   }
 
@@ -129,7 +141,7 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   //   It can be customized with the CURL_CA_BUNDLE environment variable.
   //   See also: https://curl.haxx.se/libcurl/c/CURLOPT_CAINFO.html.
   std::string value = "";
-  TF_CHECK_OK(ReadStringFromEnvVar("CURL_CA_BUNDLE", "", &value));
+  CHECK_OK(ReadStringFromEnvVar("CURL_CA_BUNDLE", "", &value));
   if (!value.empty()) {
     CHECK_CURL_OK(
         libcurl_->curl_easy_setopt(curl_, CURLOPT_CAINFO, value.c_str()));
@@ -146,7 +158,7 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
 
   // Set up the progress meter.
   CHECK_CURL_OK(
-      libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, uint64{0}));
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, uint64_t{0}));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
                                            &CurlHttpRequest::ProgressCallback));
@@ -173,34 +185,36 @@ CurlHttpRequest::~CurlHttpRequest() {
   }
 }
 
-string CurlHttpRequest::EscapeString(const string& str) {
+std::string CurlHttpRequest::EscapeString(const std::string& str) {
   char* out_char_str = libcurl_->curl_easy_escape(curl_, str.c_str(), 0);
-  string out_str(out_char_str);
+  std::string out_str(out_char_str);
   libcurl_->curl_free(out_char_str);
   return out_str;
 }
 
-void CurlHttpRequest::SetUri(const string& uri) {
+void CurlHttpRequest::SetUri(const std::string& uri) {
   CheckNotSent();
   is_uri_set_ = true;
   uri_ = uri;
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_URL, uri.c_str()));
 }
 
-void CurlHttpRequest::SetRange(uint64 start, uint64 end) {
+void CurlHttpRequest::SetRange(uint64_t start, uint64_t end) {
   CheckNotSent();
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(
       curl_, CURLOPT_RANGE, absl::StrCat(start, "-", end).c_str()));
 }
 
-void CurlHttpRequest::AddHeader(const string& name, const string& value) {
+void CurlHttpRequest::AddHeader(const std::string& name,
+                                const std::string& value) {
   CheckNotSent();
   curl_headers_ = libcurl_->curl_slist_append(
       curl_headers_, absl::StrCat(name, ": ", value).c_str());
 }
 
-void CurlHttpRequest::AddResolveOverride(const string& hostname, int64_t port,
-                                         const string& ip_addr) {
+void CurlHttpRequest::AddResolveOverride(const std::string& hostname,
+                                         int64_t port,
+                                         const std::string& ip_addr) {
   CheckNotSent();
   // Resolve values are hostname:port:IP.add.ress
   resolve_list_ = libcurl_->curl_slist_append(
@@ -208,7 +222,7 @@ void CurlHttpRequest::AddResolveOverride(const string& hostname, int64_t port,
       strings::StrCat(hostname, ":", port, ":", ip_addr).c_str());
 }
 
-void CurlHttpRequest::AddAuthBearerHeader(const string& auth_token) {
+void CurlHttpRequest::AddAuthBearerHeader(const std::string& auth_token) {
   CheckNotSent();
   if (!auth_token.empty()) {
     AddHeader("Authorization", absl::StrCat("Bearer ", auth_token));
@@ -230,7 +244,7 @@ void CurlHttpRequest::SetDeleteRequest() {
       libcurl_->curl_easy_setopt(curl_, CURLOPT_CUSTOMREQUEST, "DELETE"));
 }
 
-absl::Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
+absl::Status CurlHttpRequest::SetPutFromFile(const std::string& body_filepath,
                                              size_t offset) {
   CheckNotSent();
   CheckMethodNotSet();
@@ -243,8 +257,8 @@ absl::Status CurlHttpRequest::SetPutFromFile(const string& body_filepath,
   }
   put_body_ = fopen(body_filepath.c_str(), "r");
   if (!put_body_) {
-    return errors::InvalidArgument("Couldn't open the specified file: " +
-                                   body_filepath);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Couldn't open the specified file: ", body_filepath));
   }
   fseek(put_body_, 0, SEEK_END);
   const auto size = ftell(put_body_) - offset;
@@ -359,8 +373,8 @@ size_t CurlHttpRequest::GetResultBufferDirectBytesTransferred() {
   return direct_response_.bytes_transferred_;
 }
 
-void CurlHttpRequest::SetTimeouts(uint32 connection, uint32 inactivity,
-                                  uint32 total) {
+void CurlHttpRequest::SetTimeouts(uint32_t connection, uint32_t inactivity,
+                                  uint32_t total) {
   CheckNotSent();
   connect_timeout_secs_ = connection;
   inactivity_timeout_secs_ = inactivity;
@@ -405,9 +419,9 @@ size_t CurlHttpRequest::HeaderCallback(const void* ptr, size_t size,
           .StopCapture()
           .OneLiteral(": ")
           .GetResult(&value, &name)) {
-    string str_value(value);
+    std::string str_value(value);
     absl::StripTrailingAsciiWhitespace(&str_value);
-    that->response_headers_[string(name)] = str_value;
+    that->response_headers_[std::string(name)] = str_value;
   }
   return size * nmemb;
 }
@@ -454,8 +468,8 @@ absl::Status CurlHttpRequest::Send() {
   CHECK_CURL_OK(libcurl_->curl_easy_getinfo(curl_, CURLINFO_RESPONSE_CODE,
                                             &response_code_));
 
-  auto get_error_message = [this]() -> string {
-    string error_message = absl::StrCat(
+  auto get_error_message = [this]() -> std::string {
+    std::string error_message = absl::StrCat(
         "Error executing an HTTP request: HTTP response code ", response_code_);
     absl::string_view body = GetResponse();
     if (!body.empty()) {
@@ -493,20 +507,20 @@ absl::Status CurlHttpRequest::Send() {
     case 406:  // Not Acceptable
     case 411:  // Length Required
     case 414:  // URI Too Long
-      result = errors::InvalidArgument(get_error_message());
+      result = absl::InvalidArgumentError(get_error_message());
       break;
 
     // PERMISSION_DENIED indicates an authentication or an authorization issue.
     case 401:  // Unauthorized
     case 403:  // Forbidden
     case 407:  // Proxy Authorization Required
-      result = errors::PermissionDenied(get_error_message());
+      result = absl::PermissionDeniedError(get_error_message());
       break;
 
     // NOT_FOUND indicates that the requested resource does not exist.
     case 404:  // Not found
     case 410:  // Gone
-      result = errors::NotFound(get_error_message());
+      result = absl::NotFoundError(get_error_message());
       break;
 
     // FAILED_PRECONDITION indicates that the request failed because some
@@ -518,7 +532,7 @@ absl::Status CurlHttpRequest::Send() {
     case 307:  // Temporary Redirect
     case 412:  // Precondition Failed
     case 413:  // Payload Too Large
-      result = errors::FailedPrecondition(get_error_message());
+      result = absl::FailedPreconditionError(get_error_message());
       break;
 
     // UNAVAILABLE indicates a problem that can go away if the request
@@ -534,7 +548,7 @@ absl::Status CurlHttpRequest::Send() {
     case 502:  // Bad Gateway
     case 503:  // Service Unavailable
     default:   // All other HTTP response codes also should be retried.
-      result = errors::Unavailable(get_error_message());
+      result = absl::UnavailableError(get_error_message());
       break;
   }
   if (!result.ok()) {
@@ -568,12 +582,12 @@ absl::string_view CurlHttpRequest::GetResponse() const {
   return response;
 }
 
-string CurlHttpRequest::GetResponseHeader(const string& name) const {
+std::string CurlHttpRequest::GetResponseHeader(const std::string& name) const {
   const auto& header = response_headers_.find(name);
   return header != response_headers_.end() ? header->second : "";
 }
 
-uint64 CurlHttpRequest::GetResponseCode() const { return response_code_; }
+uint64_t CurlHttpRequest::GetResponseCode() const { return response_code_; }
 
 // Cancels the transmission if no progress has been made for too long.
 int CurlHttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
@@ -633,16 +647,16 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
   if (code == CURLE_OK) {
     return absl::OkStatus();
   }
-  string error_message = strings::StrCat(
+  std::string error_message = strings::StrCat(
       "Error executing an HTTP request: libcurl code ", code, " meaning '",
       curl_easy_strerror(code), "', error details: ");
   // Special-case response-too-large errors as FAILED_PRECONDITION.
   if (code == CURLE_WRITE_ERROR && IsDirectResponse() &&
       direct_response_.bytes_received_ > direct_response_.buffer_size_) {
-    string overflow_message = strings::StrCat(
+    std::string overflow_message = strings::StrCat(
         "Received ", direct_response_.bytes_received_, " response bytes ",
         "for a ", direct_response_.buffer_size_, "-byte buffer");
-    uint64 response_code = 0;
+    uint64_t response_code = 0;
     const CURLcode get_response_result = libcurl_->curl_easy_getinfo(
         curl_, CURLINFO_RESPONSE_CODE, &response_code);
     // Special-case 416 Range Not Satisfied responses; they sometimes have
@@ -651,19 +665,19 @@ absl::Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     if (get_response_result == CURLE_OK && response_code == 416) {
       return absl::OkStatus();
     }
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat(error_message, overflow_message));
   }
   // Domain resolution errors and certificate problems aren't going to improve
   // on retry, so we return a FailedPrecondition (as the caller must take action
   // before this can succeed).
   if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         absl::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.
-  return errors::Unavailable(
+  return absl::UnavailableError(
       absl::StrCat(error_message, *error_buffer ? error_buffer : "(none)"));
 }
 

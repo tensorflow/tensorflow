@@ -208,7 +208,7 @@ class FixedUnigramSampler : public RangeSampler {
                       int32_t num_shards, int32_t shard);
   // The vocab_file is assumed to be a CSV, with the last entry of each row a
   // value representing the counts or probabilities for the corresponding ID.
-  absl::Status SetDistributionSampler(Env* env, const string& vocab_file);
+  absl::Status SetDistributionSampler(Env* env, const std::string& vocab_file);
   absl::Status SetDistributionSampler(const std::vector<float>& unigrams);
   float Probability(int64_t value) const override;
 
@@ -225,14 +225,14 @@ class FixedUnigramSampler : public RangeSampler {
   // Sharding information of the sampler. The whole vocabulary is sharded
   // into num_shards_ smaller ranges and each sampler is responsible for one
   // such smaller range, identified by the shard number.
-  int32 num_shards_;
-  int32 shard_;
+  int32_t num_shards_;
+  int32_t shard_;
   float distortion_;
   // Fill the sampler with the appropriate number of reserved IDs.
   void FillReservedIds(int32_t num_reserved_ids);
   // Load IDs to sample from a CSV file. It is assumed that the last item of
   // each row contains a count or probability for the corresponding ID.
-  absl::Status LoadFromFile(Env* env, const string& vocab_file,
+  absl::Status LoadFromFile(Env* env, const std::string& vocab_file,
                             float distortion);
   // Load from an in-memory array.
   void LoadFromUnigrams(const std::vector<float>& unigrams, float distortion);

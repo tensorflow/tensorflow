@@ -75,8 +75,15 @@ using UserContextRef = tsl::RCReference<UserContext>;
 class AnnotatedUserContext
     : public llvm::RTTIExtends<AnnotatedUserContext, UserContext> {
  public:
+  // `DebugString()` will contain `msg` appended to `user_context`'s
+  // debug string (with no delimiter in between).
   static absl_nonnull UserContextRef Create(UserContextRef user_context,
                                             std::string msg);
+
+  // Like the above, but `DebugString()` prepends `msg` to
+  // `user_context`'s debug string.
+  static absl_nonnull UserContextRef Create(std::string msg,
+                                            UserContextRef user_context);
 
   const UserContextRef& user_context() const { return user_context_; }
   absl::string_view msg() const { return msg_; }
@@ -92,11 +99,19 @@ class AnnotatedUserContext
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
 
-  explicit AnnotatedUserContext(UserContextRef user_context, std::string msg);
+  enum MessagePosition {
+    kBefore,
+    kAfter,
+  };
+
+  explicit AnnotatedUserContext(UserContextRef user_context, std::string msg,
+                                MessagePosition msg_position);
 
   UserContextId id_;
   UserContextRef user_context_;
   std::string msg_;
+
+  MessagePosition msg_position_;
 };
 
 // `ChainedUserContext` represents a chain of `UserContext`s of the operations,

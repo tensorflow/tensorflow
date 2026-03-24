@@ -121,6 +121,10 @@ bool IsIdentityPermutation(const Container& permutation) {
   return true;
 }
 
+// Moves the element at `from` to `to` in the permutation.
+void MoveSingleElement(absl::Span<int64_t> permutation, int64_t from,
+                       int64_t to);
+
 }  // namespace xla
 
 #endif  // XLA_PERMUTATION_UTIL_H_

@@ -60,10 +60,6 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/xla_data.pb.h"
 
-#ifdef XLA_ONEDNN
-#include "xla/service/cpu/onednn_memory_util.h"
-#endif  // XLA_ONEDNN
-
 namespace xla {
 namespace cpu {
 
@@ -336,15 +332,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);
   absl::Status HandleAllReduceMultipleReplica(HloInstruction* crs);
-#ifdef XLA_ONEDNN
-  std::vector<StackAlloca> EmitOneDnnOperandsAlloca(HloInstruction* custom_call,
-                                                    llvm::Value*& args_val,
-                                                    int& arg_indx);
-  std::pair<llvm::Value*, StackAlloca> GetPtrAndAllocaFromBufferSlice(
-      const BufferAllocation::Slice& slice, const Shape& shape);
-  absl::Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
-                                       std::string runtime_symbol_name);
-#endif  // XLA_ONEDNN
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const std::string& function_name);
 
@@ -585,7 +572,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits a call to a non-variadic function `func_name` with arguments
   // `arguments` assuming C calling convention.
   llvm::Value* EmitCallToFunc(
-      std::string func_name, const std::vector<llvm::Value*>& arguments,
+      absl::string_view func_name, const std::vector<llvm::Value*>& arguments,
       llvm::Type* return_type, bool does_not_throw = true,
       bool only_accesses_arg_memory = false,
       bool only_accesses_inaccessible_mem_or_arg_mem = false);

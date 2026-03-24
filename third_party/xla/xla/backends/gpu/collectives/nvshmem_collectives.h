@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NVSHMEM_COLLECTIVES_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NVSHMEM_COLLECTIVES_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -31,7 +30,6 @@ limitations under the License.
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 
 namespace xla::gpu {
 
@@ -41,11 +39,8 @@ class NvshmemCollectives : public GpuCollectives {
   ~NvshmemCollectives() override;
 
   static NvshmemCollectives* Default();
-  bool IsInitialized() { return initialized_; }
 
-  void SetEnvInfo(int process_id, size_t num_processes,
-                  size_t device_count_per_process,
-                  std::weak_ptr<KeyValueStoreInterface> kv_store);
+  bool IsInitialized() const;
 
   absl::StatusOr<void*> Allocate(uint64_t bytes) final;
 
@@ -56,13 +51,6 @@ class NvshmemCollectives : public GpuCollectives {
   }
 
   bool IsImplemented() const final { return true; }
-
-  bool IsGlobalConfig() const final { return false; }
-
-  absl::StatusOr<const CliqueIdCallback*> GetCliqueIdCallback(
-      const CliqueIdCallback* clique_id_callback, bool is_local) final {
-    return absl::UnimplementedError("Not implemented.");
-  }
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>>
   CreateCommunicators(const CliqueKey& clique_key,
@@ -76,24 +64,13 @@ class NvshmemCollectives : public GpuCollectives {
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const RankId> keys, const Collectives::Config& config) final {
+      absl::Span<const RankId> keys, const Collectives::Config& config,
+      absl::Span<const DeviceRank> ranks) final {
     return absl::UnimplementedError("Not implemented.");
   }
 
-  absl::Status InitializeTopology(Topology topology) final;
-
- private:
-  absl::Status InitializeOnce();
-
-  void Finalize();
-
-  int process_id_ = -1;
-  size_t num_processes_ = 0;
-  size_t device_count_per_process_ = 0;
-  std::weak_ptr<KeyValueStoreInterface> kv_store_;
-  bool initialized_ = false;
-
-  static constexpr char kKvStoreKey[] = "nvshmem_global_init";
+  absl::StatusOr<CliqueIdCallback> InitializeTopology(
+      const Topology& topology) final;
 };
 
 }  // namespace xla::gpu

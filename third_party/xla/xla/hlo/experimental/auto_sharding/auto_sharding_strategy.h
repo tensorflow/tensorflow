@@ -93,13 +93,11 @@ struct InputShardings {
         absl::StrAppend(&str, "[R],");
       } else {
         if (s->ReplicateOnLastTileDim()) {
-          absl::StrAppend(
-              &str, "[", absl::StrJoin(s->tile_assignment().dimensions(), ", "),
-              "]last_tile_dim_replicate,");
+          absl::StrAppend(&str, "[", absl::StrJoin(s->dimensions(), ", "),
+                          "]last_tile_dim_replicate,");
         } else {
-          absl::StrAppend(
-              &str, "[", absl::StrJoin(s->tile_assignment().dimensions(), ", "),
-              "],");
+          absl::StrAppend(&str, "[", absl::StrJoin(s->dimensions(), ", "),
+                          "],");
         }
       }
     }

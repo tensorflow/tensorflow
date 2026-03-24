@@ -127,7 +127,7 @@ class GrpcEagerClientThread : public core::RefCounted {
 class GrpcEagerClient : public EagerClient {
  public:
   GrpcEagerClient(const tensorflow::SharedGrpcChannelPtr& channel,
-                  GrpcEagerClientThread* thread, const string& target)
+                  GrpcEagerClientThread* thread, const std::string& target)
       : stub_(channel), thread_(thread), target_(target) {
     // Hold a reference to make sure the corresponding EagerClientThread
     // outlives the client.
@@ -266,13 +266,13 @@ class GrpcEagerClient : public EagerClient {
  private:
   ::grpc::GenericStub stub_;
   const GrpcEagerClientThread* thread_;
-  const string target_;
+  const std::string target_;
 
   ::grpc::CompletionQueue* cq_;
 
   mutable mutex mu_;
 
-  std::unordered_map<uint64, StreamingRPCDispatcher<EnqueueResponse>>
+  std::unordered_map<uint64_t, StreamingRPCDispatcher<EnqueueResponse>>
       enqueue_dispatchers_ TF_GUARDED_BY(mu_);
 
   StatusCallback callback_wrapper(StatusCallback done) {
@@ -313,7 +313,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   ~GrpcEagerClientCache() override { threads_.clear(); }
 
-  absl::Status GetClient(const string& target,
+  absl::Status GetClient(const std::string& target,
                          core::RefCountPtr<EagerClient>* client) override {
     mutex_lock l(clients_mu_);
     auto it = clients_.find(target);
@@ -342,7 +342,7 @@ class GrpcEagerClientCache : public EagerClientCache {
       TF_GUARDED_BY(assignment_mu_);
   size_t next_round_robin_assignment_ TF_GUARDED_BY(assignment_mu_);
 
-  size_t AssignClientToThread(const string& target) {
+  size_t AssignClientToThread(const std::string& target) {
     // Round-robin target assignment, but keeps the same target on the same
     // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
@@ -358,7 +358,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   std::shared_ptr<tensorflow::GrpcChannelCache> cache_;
   mutable mutex clients_mu_;
-  std::unordered_map<string, core::RefCountPtr<EagerClient>> clients_
+  std::unordered_map<std::string, core::RefCountPtr<EagerClient>> clients_
       TF_GUARDED_BY(clients_mu_);
   std::vector<core::RefCountPtr<GrpcEagerClientThread>> threads_;
 };

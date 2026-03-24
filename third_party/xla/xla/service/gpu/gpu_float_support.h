@@ -28,7 +28,7 @@ namespace gpu {
 
 class GpuFloatSupport : public FloatSupport {
  public:
-  explicit GpuFloatSupport(se::GpuComputeCapability cc,
+  explicit GpuFloatSupport(const se::GpuComputeCapability& cc,
                            PrimitiveType low_precision_type,
                            PrimitiveType high_precision_type = F32)
       : FloatSupport(low_precision_type, high_precision_type),

@@ -26,8 +26,8 @@ namespace tensorflow {
 namespace grappler {
 namespace internal {
 // Try and find an appropriate Host device in `devices` given `device`.
-string TryFindHostDevice(const gtl::FlatSet<string>& devices,
-                         bool has_device_cpu, const string& device);
+std::string TryFindHostDevice(const gtl::FlatSet<std::string>& devices,
+                              bool has_device_cpu, const std::string& device);
 }  // end namespace internal
 
 // Optimize TensorFlow ops that should be swapped into the CPU to avoid
@@ -43,7 +43,7 @@ class PinToHostOptimizer : public GraphOptimizer {
 
   ~PinToHostOptimizer() override {}
 
-  string name() const override { return "pin_to_host_optimizer"; };
+  std::string name() const override { return "pin_to_host_optimizer"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 

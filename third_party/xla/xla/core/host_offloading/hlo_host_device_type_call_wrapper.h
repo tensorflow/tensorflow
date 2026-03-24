@@ -47,10 +47,6 @@ class HloHostDeviceTypeCallWrapper : public HloModulePass {
     return "hlo_host_device_type_call_wrapper";
   }
 
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Materializes constants on the host computation to avoid unnecessary device
   // to host transfers.
   //
@@ -65,6 +61,11 @@ class HloHostDeviceTypeCallWrapper : public HloModulePass {
   // contain tuple parameters/operands.
   static absl::StatusOr<HloCallInstruction*> RemoveTupleParameters(
       HloCallInstruction* call);
+
+ protected:
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   Options options_;

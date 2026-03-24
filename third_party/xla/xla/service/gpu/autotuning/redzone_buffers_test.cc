@@ -58,7 +58,8 @@ TEST_F(RedzoneBuffersTest, VerifyOutputNotATuple) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -111,7 +112,8 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleOneElement) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -163,7 +165,8 @@ TEST_F(RedzoneBuffersTest, VerifyOutputTupleTwoElements) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -216,7 +219,8 @@ TEST_F(RedzoneBuffersTest, FromExecutable) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   HloComputation* computation = module->entry_computation();
@@ -247,7 +251,8 @@ TEST_F(RedzoneBuffersTest, FromProgramShape) {
   TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor,
                           platform->ExecutorForDevice(0));
   auto allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
   TF_ASSERT_OK_AND_ASSIGN(se::Stream * stream, allocator->GetStream(0));
 
   TF_ASSERT_OK_AND_ASSIGN(

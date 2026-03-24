@@ -311,7 +311,7 @@ inline int GetFilterTensorOutputChannelsDimIndex(int num_dims,
 // If 'format' is NCHW_VECT_C and 'dimension' is 'C', returns the index of
 // the outer channel dimension (i.e. 1).
 template <int NUM_SPATIAL_DIMS>
-inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
+inline int32_t GetTensorDimIndex(TensorFormat format, char dimension) {
   if (format == FORMAT_NHWC || format == FORMAT_NHWC_VECT_W) {
     // clang-format off
     switch (dimension) {
@@ -416,12 +416,12 @@ inline int GetFilterDimIndex(FilterTensorFormat filter_tensor_format,
   // clang-format on
 }
 
-inline int32 GetTensorDimIndex(TensorFormat format, char dimension) {
+inline int32_t GetTensorDimIndex(TensorFormat format, char dimension) {
   return GetTensorDimIndex<2>(format, dimension);
 }
 
-inline int32 GetTensorDimIndex(TensorFormat format, char dimension,
-                               int num_total_dims) {
+inline int32_t GetTensorDimIndex(TensorFormat format, char dimension,
+                                 int num_total_dims) {
   int32_t index = (GetTensorSpatialDims(num_total_dims, format) == 3)
                       ? GetTensorDimIndex<3>(format, dimension)
                       : GetTensorDimIndex<2>(format, dimension);

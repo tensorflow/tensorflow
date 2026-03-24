@@ -28,6 +28,7 @@ limitations under the License.
 #include <stdio.h>
 
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -38,6 +39,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -436,7 +438,7 @@ void DoExtractCommand(const HloModule& module,
 
   std::string outfile_name =
       tsl::io::GetTempFilename(absl::StrCat(node_name, "-extracted.hlo"));
-  TF_CHECK_OK(
+  CHECK_OK(
       tsl::WriteStringToFile(tsl::Env::Default(), outfile_name, module_str));
   std::cout << outfile_name << std::endl;
 }
@@ -754,7 +756,7 @@ void RealMain(const Options& opts) {
   std::unique_ptr<HloModule> module;
   if (!opts.hlo_snapshot.empty()) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(
+    CHECK_OK(
         tsl::ReadBinaryProto(tsl::Env::Default(), opts.hlo_snapshot, &snapshot))
         << "Can't open, read, or parse HloSnapshot proto at "
         << opts.hlo_snapshot;
@@ -790,7 +792,7 @@ void RealMain(const Options& opts) {
 
     se::StreamExecutor* executor =
         platform->ExecutorForDevice(/*ordinal=*/0).value();
-    auto compiler = Compiler::GetForPlatform(platform).value();
+    auto compiler = Compiler::GetForPlatform(platform->id()).value();
     module = compiler
                  ->RunHloPasses(std::move(module), executor,
                                 /*device_allocator=*/nullptr)

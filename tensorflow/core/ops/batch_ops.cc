@@ -102,6 +102,9 @@ REGISTER_OP("BatchFunction")
     // NOTE: Support for `enable_large_batch_splitting == true` is still
     // developed in progress.
     .Attr("enable_large_batch_splitting: bool = false")
+    // If true, the queue implementation will have a separate subqueue for each
+    // criticality.
+    .Attr("enable_priority_aware_batch_scheduler: bool = false")
     // TODO(apassos): Fix this shape inference function. It requires shape
     // inference of function calls.
     .SetShapeFn(shape_inference::UnknownShape)

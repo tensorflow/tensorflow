@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -33,26 +34,24 @@ namespace {
 
 bool DimensionRequiresPadding(const int64_t size, const PrimitiveType data_type,
                               const se::GpuComputeCapability& gpu_cc) {
-  return std::visit(
-      absl::Overload(
-          [&](const se::CudaComputeCapability& cc) {
-            for (const auto& req : CublasPaddingRequirements) {
-              if (cc.SupportsAllFeaturesOf(req.min_compute_capability) &&
-                  data_type == req.data_type && size % req.multiple_of != 0) {
-                return true;
-              }
-            }
-            return false;
-          },
-          [&](const se::RocmComputeCapability& cc) {
-            for (const auto& req : HipblasPaddingRequirements) {
-              if (data_type == req.data_type && size % req.multiple_of != 0) {
-                return true;
-              }
-            }
-            return false;
-          }),
-      gpu_cc);
+  if (const se::CudaComputeCapability* cc = gpu_cc.cuda_compute_capability()) {
+    for (const auto& req : CublasPaddingRequirements) {
+      if (cc->SupportsAllFeaturesOf(req.min_compute_capability) &&
+          data_type == req.data_type && size % req.multiple_of != 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+  if (const se::RocmComputeCapability* cc = gpu_cc.rocm_compute_capability()) {
+    for (const auto& req : HipblasPaddingRequirements) {
+      if (data_type == req.data_type && size % req.multiple_of != 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+  return false;
 }
 
 bool ShapeRequiresPadding(const Shape& shape, int batch_dimensions_size,

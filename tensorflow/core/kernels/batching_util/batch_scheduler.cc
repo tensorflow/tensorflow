@@ -40,5 +40,23 @@ absl::StatusOr<MixedPriorityBatchingPolicy> GetMixedPriorityBatchingPolicy(
       "Unknown mixed priority batching policy: %s", attr_value));
 }
 
+absl::StatusOr<absl::string_view> GetMixedPriorityBatchingPolicyString(
+    MixedPriorityBatchingPolicy policy) {
+  switch (policy) {
+    case MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize:
+      return kLowPriorityPaddingWithMaxBatchSizeAttrValue;
+    case MixedPriorityBatchingPolicy::
+        kLowPriorityPaddingWithNextAllowedBatchSize:
+      return kLowPriorityPaddingWithNextAllowedBatchSizeAttrValue;
+    case MixedPriorityBatchingPolicy::kPriorityIsolation:
+      return kPriorityIsolationAttrValue;
+    case MixedPriorityBatchingPolicy::kPriorityMerge:
+      return kPriorityMergeAttrValue;
+    default:
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Unknown mixed priority batching policy: %d", policy));
+  }
+}
+
 }  // namespace serving
 }  // namespace tensorflow

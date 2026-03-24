@@ -34,14 +34,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/while_util.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -122,6 +121,9 @@ absl::StatusOr<HloInstruction*> AppendToWhileState(
   TF_RETURN_IF_ERROR(
       UpdateWhileUsesWithTuple(while_instr, while_input->operand_count() - 1));
   *while_instr->mutable_shape() = while_input->shape();
+  // The new body root tuple element has the same value as the new operand.
+  AppendToWhileLoopOriginalValue(while_instr, {new_operand});
+
   return new_gte;
 }
 
@@ -164,6 +166,8 @@ std::vector<int64_t> GetLoopShapeCoveringWriteIndices(
   return loop_indices;
 }
 
+}  // namespace
+
 // Returns true if the given instruction is monotonic, i.e. it is either
 // monotonically increasing or decreasing. This is not an exhaustive list of
 // monotonic operations.
@@ -172,20 +176,14 @@ bool IsMonotonic(HloInstruction* instr) {
          instr->opcode() == HloOpcode::kSubtract;
 }
 
-// The idea is that certain constant-initialized buffers can be left as
-// uninitialized if all the elements of the buffer are written to in the loop
-// body. This way, we eliminate the need to initialize the buffer (with
-// broadcast) in the critical path of the program. To summarize, the conditions
-// to apply this optimization are:
-// 1. The buffer is a constant-initialized buffer.
-// 2. All the elements of the buffer are written to in the loop body.
-// 3. The iteration variable of the loop is monotonically increasing or
-// decreasing.
-// The optimization is applied by creating a select between the initial value
-// and the value in the body. The select is guarded by a predicate that checks
-// if the loop iteration variable is equal to the first iteration value.
-absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
+absl::StatusOr<bool>
+WhileLoopFusibleSinking::TryRewritingBroadcastAsAllocateBuffer(
     HloInstruction* while_instr) {
+  // Don't try to mutate unflattened while loop computations.
+  if (call_counts_[while_instr->while_body()] > 1 ||
+      call_counts_[while_instr->while_condition()] > 1) {
+    return false;
+  }
   std::optional<int64_t> induction_var_tuple_index =
       GetLoopInductionVarTupleIdx(while_instr);
   if (!induction_var_tuple_index.has_value() ||
@@ -288,7 +286,6 @@ absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
   }
   return changed;
 }
-}  // namespace
 
 bool WhileLoopFusibleSinking::IsSinkableFusion(HloInstruction* while_operand) {
   absl::InlinedVector<HloInstruction*, 8> worklist;
@@ -459,6 +456,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
     HloInstruction* parameter = while_body->parameter_instruction(0);
     int64_t next_index = init_value->operand_count();
     new_operands.resize(fusion->operand_count());
+
     for (int64_t i = 0; i < fusion->operand_count(); ++i) {
       init_value->AppendOperand(fusion->mutable_operand(i));
       parameter->mutable_shape()->mutable_tuple_shapes()->push_back(
@@ -469,9 +467,14 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
     }
     *(init_value->mutable_shape()) = parameter->shape();
     *(while_instr->mutable_shape()) = parameter->shape();
+    //
+    // The new body root tuple elements have the same value as the fusion
+    // operands.
+    AppendToWhileLoopOriginalValue(while_instr, fusion->operands());
     *(while_cond->parameter_instruction(0)->mutable_shape()) =
         parameter->shape();
     *(root->mutable_shape()) = parameter->shape();
+
     auto cloned_fusion = while_body->AddInstruction(
         fusion->CloneWithNewOperands(fusion->shape(), new_operands));
     TF_RETURN_IF_ERROR(fusion->parent()->RemoveInstruction(fusion));
@@ -482,7 +485,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::TrySinkingFusiblesIntoWhileLoop(
   return changed;
 }
 
-absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
+absl::StatusOr<bool> WhileLoopFusibleSinking::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(5) << "Before WhileLoopFusibleSinking " << module->unique_id();
@@ -516,6 +519,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
                     HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
+  // TODO(b/260601110): Handle non-flat graphs properly here.
   for (HloInstruction* while_instr : while_instrs) {
     call_counts_[while_instr->while_body()]++;
     call_counts_[while_instr->while_condition()]++;
@@ -539,6 +543,7 @@ absl::StatusOr<bool> WhileLoopFusibleSinking::Run(
       }
     }
   }
+
   return changed;
 }
 }  // namespace xla

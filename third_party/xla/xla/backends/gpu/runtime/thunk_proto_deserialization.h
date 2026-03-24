@@ -16,21 +16,39 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_
 #define XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_
 
-#include <memory>
+#include <optional>
 
+#include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/kernel_spec.h"
 
 namespace xla::gpu {
 
-// Deserializes the given `thunk_proto` into a Thunk.
-absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProto(
-    const ThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations);
-
+// Deserializes the given `thunk_sequence_proto` into a ThunkSequence.
+// - `buffer_allocations` is used to deserialize buffer slices.
+// - `hlo_module` is used to deserialize thunks that reference HLO instructions.
+// - `platform_name` is used to look up platform-specific kernels in the
+//   GpuKernelRegistry.
+// - `symbol_resolver` is used to deserialize custom kernels where the kernel is
+//   not inlined in the proto, but rather loaded at runtime via symbol
+//   resolution.
+absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
+    const ThunkSequenceProto& thunk_sequence_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
+    const se::GpuComputeCapability& gpu_compute_capability,
+    const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
+        symbol_resolver = std::nullopt,
+    const xla::cpu::TargetMachineOptions* absl_nullable
+        cpu_target_machine_options = nullptr);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_

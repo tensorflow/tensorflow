@@ -18,9 +18,9 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <cfloat>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/range_sampler.h"
@@ -110,8 +110,8 @@ class BaseCandidateSamplerOp : public OpKernel {
   void set_sampler(RangeSampler* sampler) { sampler_.reset(sampler); }
 
  private:
-  int32 num_true_;
-  int32 num_sampled_;
+  int32_t num_true_;
+  int32_t num_sampled_;
   bool unique_;
   std::unique_ptr<RangeSampler> sampler_;
   GuardedPhiloxRandom generator_;
@@ -161,7 +161,7 @@ class FixedUnigramCandidateSamplerOp : public BaseCandidateSamplerOp {
       : BaseCandidateSamplerOp(context) {
     int64_t range_max;
     OP_REQUIRES_OK(context, context->GetAttr("range_max", &range_max));
-    string vocab_file;
+    std::string vocab_file;
     OP_REQUIRES_OK(context, context->GetAttr("vocab_file", &vocab_file));
     std::vector<float> unigrams;
     OP_REQUIRES_OK(context, context->GetAttr("unigrams", &unigrams));
@@ -219,8 +219,10 @@ class ComputeAccidentalHitsOp : public OpKernel {
                     "sampled_candidates must be a vector, which is typically "
                     "an output from CandidateSampler"));
 
-    std::unordered_map<int64_t, int> sampled_candidate_to_pos;
-    for (int64_t i = 0; i < in_sampled_candidates.dim_size(0); ++i) {
+    const int64_t num_sampled = in_sampled_candidates.dim_size(0);
+    absl::flat_hash_map<int64_t, int> sampled_candidate_to_pos;
+    sampled_candidate_to_pos.reserve(num_sampled);
+    for (int64_t i = 0; i < num_sampled; ++i) {
       sampled_candidate_to_pos[in_sampled_candidates.vec<int64_t>()(i)] = i;
     }
 
@@ -258,7 +260,7 @@ class ComputeAccidentalHitsOp : public OpKernel {
             2, TensorShape({static_cast<int>(weights.size())}), &out_weights));
 
     for (size_t i = 0; i < indices.size(); ++i) {
-      out_indices->vec<int32>()(i) = indices[i];
+      out_indices->vec<int32_t>()(i) = indices[i];
       out_ids->vec<int64_t>()(i) = ids[i];
       out_weights->vec<float>()(i) = weights[i];
     }

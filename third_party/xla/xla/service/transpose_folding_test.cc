@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "xla/service/transpose_folding.h"
 
+#include <cstdint>
 #include <memory>
-#include <vector>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -29,19 +33,17 @@ limitations under the License.
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
-#include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/literal_util.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using ::tsl::testing::IsOkAndHolds;
 
 using TransposeFoldingTest = HloHardwareIndependentTestBase;
 
@@ -255,13 +257,13 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
   }
   absl::StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, dnums,
+      /*batch_group_count=*/1, window, dnums, SparsityConfig(),
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       conv_shape.value(), x, transpose_y,
       /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
-      DefaultPrecisionConfig(2)));
+      DefaultPrecisionConfig(2), SparsityConfig()));
 
   auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
@@ -314,7 +316,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
   }
   absl::StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, dnums,
+      /*batch_group_count=*/1, window, dnums, SparsityConfig(),
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
@@ -379,6 +381,7 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
   absl::StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
+      /*sparsity_config=*/SparsityConfig(),
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
@@ -449,6 +452,7 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
   absl::StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
       transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
       /*batch_group_count=*/1, window, dnums,
+      /*sparsity_config=*/SparsityConfig(),
       /*preferred_element_type=*/std::nullopt);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(

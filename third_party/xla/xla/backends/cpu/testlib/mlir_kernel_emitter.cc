@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/cpu/testlib/mlir_kernel_emitter.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -26,12 +27,14 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/fusion_compiler.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/runtime/work_group.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::cpu {
 MlirTestKernelEmitter::MlirTestKernelEmitter(absl::string_view mlir,
@@ -48,7 +51,7 @@ MlirTestKernelEmitter::MlirTestKernelEmitter(absl::string_view mlir,
   }
 }
 
-absl::StatusOr<MlirKernelDefinition>
+absl::StatusOr<MlirTestKernelEmitter::KernelDefinition>
 MlirTestKernelEmitter::EmitKernelDefinition() {
   std::unique_ptr<mlir::MLIRContext> context = FusionCompiler::CreateContext();
 
@@ -62,16 +65,18 @@ MlirTestKernelEmitter::EmitKernelDefinition() {
 
   for (const auto& [arg, allocation] : llvm::zip(args_, buffer_allocations_)) {
     BufferAllocation::Slice slice(&allocation, 0, arg.size_bytes);
+    Shape shape =
+        ShapeUtil::MakeShape(U8, {static_cast<int64_t>(arg.size_bytes)});
     if (arg.memory_access == BufferUse::MemoryAccess::kRead) {
-      argument_buffers.push_back(slice);
+      argument_buffers.push_back({slice, shape});
     } else {
-      result_buffers.push_back(slice);
+      result_buffers.push_back({slice, shape});
     }
   }
 
   KernelSpec kernel_spec(kernel_name_, num_workgroups_,
                          std::move(argument_buffers), std::move(result_buffers),
                          /*invariant_arguments=*/{});
-  return MlirKernelDefinition(std::move(kernel_spec), std::move(source));
+  return KernelDefinition(std::move(kernel_spec), std::move(source));
 }
 }  // namespace xla::cpu

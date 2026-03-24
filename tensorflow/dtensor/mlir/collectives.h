@@ -84,7 +84,7 @@ StatusOr<mlir::Operation*> EmitAllReduce(
 StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
                                                      mlir::Location loc,
                                                      const Mesh& mesh,
-                                                     int32 value);
+                                                     int32_t value);
 
 // Given input `tensor` that is sharded across spatial dimensions, conduct
 // halo exchange such that each spatially sharded input blocks exchange

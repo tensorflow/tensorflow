@@ -49,14 +49,14 @@ class TFAssertOpConverter : public OpConversionPattern<TFAssertOp> {
     auto func = op->getParentOfType<func::FuncOp>();
     Block *error_reporting_block =
         rewriter.createBlock(&func.getRegion(), {}, {});
-    rewriter.create<ReportErrorOp>(loc, adaptor.getCtx(),
-                                   adaptor.getErrorCode(), adaptor.getMsg());
+    ReportErrorOp::create(rewriter, loc, adaptor.getCtx(),
+                          adaptor.getErrorCode(), adaptor.getMsg());
 
     SmallVector<Value, 2> null_memrefs;
     for (auto type : func.getFunctionType().getResults()) {
-      null_memrefs.push_back(rewriter.create<NullMemRefOp>(loc, type));
+      null_memrefs.push_back(NullMemRefOp::create(rewriter, loc, type));
     }
-    rewriter.create<func::ReturnOp>(loc, null_memrefs);
+    func::ReturnOp::create(rewriter, loc, null_memrefs);
 
     rewriter.restoreInsertionPoint(ip);
     rewriter.replaceOpWithNewOp<cf::CondBranchOp>(

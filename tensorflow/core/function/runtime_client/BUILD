@@ -1,7 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
@@ -80,8 +79,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/coordination:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
-        "@local_xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
+        "@xla//xla/tsl/distributed_runtime:pywrap_required_hdrs",
+        "@xla//xla/tsl/distributed_runtime/coordination:pywrap_required_hdrs",
     ],
 )
 
@@ -128,14 +127,14 @@ tf_python_pybind_extension(
             "//tensorflow/core/protobuf:eager_service_proto_cc",
             "//tensorflow/core/protobuf:master_proto_cc",
             "//tensorflow/core/protobuf:worker_proto_cc",
-            "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
+            "@xla//xla/tsl/protobuf:coordination_service_proto_cc",
         ],
         otherwise = [
             "//tensorflow/core/framework:function_proto_cc_headers_only",
             "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
             "//tensorflow/core/protobuf:master_proto_cc_headers_only",
             "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-            "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc_headers_only",
+            "@xla//xla/tsl/protobuf:coordination_service_proto_cc_headers_only",
         ],
     ),
 )
@@ -158,10 +157,11 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "runtime_client_py_test",
     srcs = ["runtime_client_test.py"],
     main = "runtime_client_test.py",
+    strict_deps = True,
     tags = ["no_oss"],  # TODO(b/219089812)
     deps = [
         ":runtime_client_py",

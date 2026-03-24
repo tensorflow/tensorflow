@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "xla/stream_executor/dnn.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
@@ -42,7 +42,6 @@ namespace gpu {
 namespace {
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOk;
 
 class DenylistTest : public HloHardwareIndependentTestBase {
  protected:

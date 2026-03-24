@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -27,15 +28,33 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_device_description.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
+#include "xla/runtime/device_id.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
+
+/*static*/ PjRtPlatformId CpuPlatformId() { return xla::CpuId(); }
+
+/*static*/ absl::string_view CpuPlatformName() { return xla::CpuName(); }
+
+/*static*/ absl::string_view CpuPlatformVersion() { return xla::CpuName(); }
+
+CpuTopologyDescription::CpuTopologyDescription(
+    PjRtPlatformId platform_id, absl::string_view platform_name,
+    absl::string_view platform_version, const CpuTopology& cpu_topology)
+    : platform_id_(platform_id),
+      platform_name_(platform_name),
+      platform_version_(platform_version),
+      cpu_topology_(cpu_topology) {}
 
 absl::StatusOr<Layout> CpuTopologyDescription::GetDefaultLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dims) const {
@@ -49,6 +68,12 @@ absl::StatusOr<std::string> CpuTopologyDescription::Serialize() const {
     return absl::InternalError("Failed to serialize cpu_topology");
   }
   return result;
+}
+
+absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+CpuTopologyDescription::ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+    GlobalDeviceId device_id) const {
+  return std::make_pair(PjRtDeviceDimensions{0, 0, device_id.value()}, 0);
 }
 
 std::vector<std::unique_ptr<const PjRtDeviceDescription>>
@@ -90,14 +115,12 @@ CpuTopologyDescription::FromProto(
   }
   CpuTopologyProto cpu_topology_proto;
   proto.platform_specific_topology().UnpackTo(&cpu_topology_proto);
-  auto cpu_topology = std::shared_ptr<const CpuTopology>(
-      CpuTopology::FromProto(cpu_topology_proto));
+  ASSIGN_OR_RETURN(auto cpu_topology,
+                   CpuTopology::FromProto(cpu_topology_proto));
   std::vector<xla::CpuTopology::CpuDevice> cpu_devices;
-  cpu_devices.assign(cpu_topology->devices().begin(),
-                     cpu_topology->devices().end());
   return std::make_unique<CpuTopologyDescription>(
       proto.platform_id(), proto.platform_name(), proto.platform_version(),
-      cpu_devices, cpu_topology->machine_attributes());
+      *cpu_topology);
 }
 
 }  // namespace xla

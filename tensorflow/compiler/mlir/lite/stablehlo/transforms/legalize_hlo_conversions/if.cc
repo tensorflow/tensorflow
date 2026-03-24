@@ -33,8 +33,8 @@ class LegalizeIfOp : public OpConversionPattern<mhlo::IfOp> {
   LogicalResult matchAndRewrite(
       mhlo::IfOp if_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
-    auto new_op = rewriter.create<TFL::IfOp>(
-        if_op.getLoc(), if_op.getResultTypes(), if_op.getPred());
+    auto new_op = TFL::IfOp::create(rewriter, if_op.getLoc(),
+                                    if_op.getResultTypes(), if_op.getPred());
 
     new_op.getThenRegion().takeBody(if_op.getTrueBranch());
     new_op.getElseRegion().takeBody(if_op.getFalseBranch());

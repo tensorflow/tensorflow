@@ -19,6 +19,9 @@ limitations under the License.
 #include <sys/socket.h>
 
 #include <atomic>
+#include <cstdint>
+#include <deque>
+#include <optional>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -26,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -164,6 +168,89 @@ TEST(EventLoopTest, TestScheduleAt) {
       wake_time, [&done_notify]() { done_notify.Notify(); });
   done_notify.WaitForNotification();
   ASSERT_GE(absl::Now(), wake_time);
+}
+
+class TestSocketFdPacketState : public SocketFdPacketState {
+ public:
+  void HandlePacket(absl::string_view packet) override {
+    absl::MutexLock l(mu_);
+    messages_.push_back(std::string(packet));
+  }
+
+  void ConnectFailed() override { LOG(FATAL) << "Not tested."; }
+
+  void RecvClosed(absl::Status error) override {
+    absl::MutexLock l(mu_);
+    recv_closed_status_ = error;
+  }
+
+  void SendClosed(absl::Status error) override {
+    absl::MutexLock l(mu_);
+    send_closed_status_ = error;
+  }
+
+  std::string ReadMessage() {
+    absl::MutexLock l(mu_);
+    auto cond = [this]() -> bool { return !messages_.empty(); };
+    mu_.Await(absl::Condition(&cond));
+    auto out = messages_.front();
+    messages_.pop_front();
+    return out;
+  }
+
+  absl::Status WaitForRecvClosed() {
+    absl::MutexLock l(mu_);
+    auto cond = [this]() -> bool { return recv_closed_status_.has_value(); };
+    mu_.Await(absl::Condition(&cond));
+    return *recv_closed_status_;
+  }
+
+  absl::Status WaitForSendClosed() {
+    absl::MutexLock l(mu_);
+    auto cond = [this]() -> bool { return send_closed_status_.has_value(); };
+    mu_.Await(absl::Condition(&cond));
+    return *send_closed_status_;
+  }
+
+ private:
+  absl::Mutex mu_;
+  std::deque<std::string> messages_;
+  std::optional<absl::Status> recv_closed_status_;
+  std::optional<absl::Status> send_closed_status_;
+};
+
+std::string MakeTestMessage(std::string msg) {
+  uint32_t len = static_cast<uint32_t>(msg.size());
+  return std::string(reinterpret_cast<const char*>(&len), sizeof(len)) + msg;
+}
+
+TEST(EventLoopTest, SocketFdPacketState) {
+  int fd[2];
+  ASSERT_NE(-1, socketpair(PF_LOCAL, SOCK_STREAM | SOCK_NONBLOCK, 0, fd))
+      << strerror(errno) << " " << errno;
+  auto* conn1 = new TestSocketFdPacketState();
+  auto* conn2 = new TestSocketFdPacketState();
+  conn2->RegisterFd(fd[1], /*start_connected=*/true);
+
+  conn1->SendRawFrame(MakeTestMessage("secret"));
+  conn1->RegisterFd(fd[0], /*start_connected=*/true);
+
+  EXPECT_EQ(conn2->ReadMessage(), "secret");
+  conn2->Shutdown(SHUT_RDWR);
+
+  EXPECT_TRUE(conn1->WaitForRecvClosed().ok());
+  EXPECT_TRUE(conn1->WaitForSendClosed().ok());
+  EXPECT_TRUE(conn2->WaitForRecvClosed().ok());
+  EXPECT_TRUE(conn2->WaitForSendClosed().ok());
+  PollEventLoop::GetDefault()->SendWake(conn1);
+  PollEventLoop::GetDefault()->SendWake(conn2);
+  delete conn1;
+  delete conn2;
+  // Wakes are safe.
+  absl::Notification done_notify;
+  PollEventLoop::GetDefault()->Schedule(
+      [&done_notify]() { done_notify.Notify(); });
+  done_notify.WaitForNotification();
 }
 
 }  // namespace

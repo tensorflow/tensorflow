@@ -1138,7 +1138,8 @@ to be batched.}]>:$captured_tensors,
     DefaultValuedOptionalAttr<I64Attr, "0">:$low_priority_max_enqueued_batches,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["low_priority_padding_with_max_batch_size", "low_priority_padding_with_next_allowed_batch_size", "priority_isolation", "priority_merge"]>, "\"low_priority_padding_with_max_batch_size\"">:$mixed_priority_policy,
     DefaultValuedOptionalAttr<TF_AnyStrAttrOf<["PAD_UP", "BATCH_DOWN", "MINIMIZE_TPU_COST_PER_REQUEST"]>, "\"PAD_UP\"">:$batch_padding_policy,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_large_batch_splitting,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$enable_priority_aware_batch_scheduler
   );
 
   let results = (outs
@@ -11497,6 +11498,26 @@ representation of that entry.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_PostProcessPredictionOp : TF_Op<"PostProcessPrediction", []> {
+  let summary = [{
+Performs post-processing on prediction inputs. This op has no tensor outputs.
+  }];
+
+  let description = [{
+Send an rpc to the external service that builds rpc payload based on prediction result.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing steps.}]>:$steps,
+    Arg<TF_Int64Tensor, [{Scalar int64 tensor representing the GAIA ID.}]>:$gaia_id,
+    Arg<TF_Uint64Tensor, [{1-D uint64 tensor representing a list of video IDs.}]>:$video_id,
+
+    StrAttr:$op_config
+  );
+
+  let results = (outs);
+}
+
 def TF_PowOp : TF_Op<"Pow", [Pure, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Computes the power of one value to another.";
@@ -12066,7 +12087,7 @@ the dimension is padded with zeros.
   }];
 
   let arguments = (ins
-    Arg<TF_F32OrF64Tensor, [{A float32 tensor.}]>:$input,
+    Arg<TF_F32OrF64Tensor, [{A float32 or float64 tensor.}]>:$input,
     Arg<TF_Int32Tensor, [{An int32 tensor of shape [1]. The FFT length.}]>:$fft_length
   );
 
@@ -12102,7 +12123,7 @@ the dimension is padded with zeros.
   }];
 
   let arguments = (ins
-    Arg<TF_F32OrF64Tensor, [{A float32 tensor.}]>:$input,
+    Arg<TF_F32OrF64Tensor, [{A float32 or float64 tensor.}]>:$input,
     Arg<TF_Int32Tensor, [{An int32 tensor of shape [2]. The FFT length for each dimension.}]>:$fft_length
   );
 
@@ -12139,7 +12160,7 @@ the dimension is padded with zeros.
   }];
 
   let arguments = (ins
-    Arg<TF_F32OrF64Tensor, [{A float32 tensor.}]>:$input,
+    Arg<TF_F32OrF64Tensor, [{A float32 or float64 tensor.}]>:$input,
     Arg<TF_Int32Tensor, [{An int32 tensor of shape [3]. The FFT length for each dimension.}]>:$fft_length
   );
 
@@ -12738,6 +12759,27 @@ is the corresponding input gradient.
       return ArraysAreCastCompatible(inferred, actual);
     }
   }];
+}
+
+def TF_RecordEventMetricForTensorOp : TF_Op<"RecordEventMetricForTensor", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
+  let summary = [{
+Records an event to a streamz RecordEventMetric (i.e. distribution) for all the
+  }];
+
+  let description = [{
+values of the input tensors. The streamz can be found at
+/video/youtube/discovery/tensorflow/ops/streamz/events.
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{The tensor to be recorded when this op runs.}]>:$value,
+
+    StrAttr:$label
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_RecvOp : TF_Op<"Recv", [TF_RecvSideEffect]> {

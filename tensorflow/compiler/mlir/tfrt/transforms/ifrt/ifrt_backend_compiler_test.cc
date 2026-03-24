@@ -22,6 +22,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "tensorflow/core/platform/resource_loader.h"
@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -74,17 +75,20 @@ class IfrtBackendCompilerTest : public ::testing::Test {
 
     core_selector_ = std::make_unique<IfrtServingCoreSelector>(
         &mock_serving_device_selector_, client_->addressable_device_count());
+    h2d_transfer_executor_factory_ =
+        std::make_unique<H2DTransferExecutorFactory>();
 
     runtime_context_.resource_context().CreateResource<IfrtModelContext>(
         "IfrtModelContext", client_, core_selector_.get(), &GetThreadPool(),
-        /*compilation_environment_proto=*/nullptr);
+        /*compilation_environment_proto=*/nullptr,
+        /*h2d_transfer_executor_factory=*/h2d_transfer_executor_factory_.get());
   }
 
   void verifyModules() {
-    absl::MutexLock l(&ServingExecutableRegistry::mu_);
+    absl::MutexLock l(ServingExecutableRegistry::mu_);
     for (const auto& [_, executable] :
          *ServingExecutableRegistry::executables_) {
-      absl::MutexLock l(&executable->mutex_);
+      absl::MutexLock l(executable->mutex_);
       executable->module_->walk([](mlir::func::FuncOp func) {
         ASSERT_FALSE(func->hasAttr("tfrt_ifrt_serving.program_id"));
       });
@@ -106,6 +110,7 @@ class IfrtBackendCompilerTest : public ::testing::Test {
 
   tsl::test_util::MockServingDeviceSelector mock_serving_device_selector_;
   std::unique_ptr<IfrtServingCoreSelector> core_selector_;
+  std::unique_ptr<H2DTransferExecutorFactory> h2d_transfer_executor_factory_;
   IfrtBackendCompiler compiler_;
 };
 

@@ -30,7 +30,7 @@ struct CropAndResize {
   bool operator()(const OpKernelContext* context,
                   typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
-                  typename TTypes<int32, 1>::ConstTensor box_ind,
+                  typename TTypes<int32_t, 1>::ConstTensor box_ind,
                   const std::string& method_name, float extrapolation_value,
                   typename TTypes<float, 4>::Tensor crops);
 };
@@ -41,7 +41,7 @@ struct CropAndResizeBackpropImage {
   bool operator()(const OpKernelContext* context,
                   typename TTypes<float, 4>::ConstTensor grads,
                   typename TTypes<float, 2>::ConstTensor boxes,
-                  typename TTypes<int32, 1>::ConstTensor box_ind,
+                  typename TTypes<int32_t, 1>::ConstTensor box_ind,
                   typename TTypes<T, 4>::Tensor grads_image,
                   const std::string& method_name);
 };
@@ -52,7 +52,7 @@ struct CropAndResizeBackpropBoxes {
   bool operator()(const Device& d, typename TTypes<float, 4>::ConstTensor grads,
                   typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
-                  typename TTypes<int32, 1>::ConstTensor box_ind,
+                  typename TTypes<int32_t, 1>::ConstTensor box_ind,
                   typename TTypes<float, 2>::Tensor grads_boxes);
 };
 
@@ -60,7 +60,7 @@ template <typename Device>
 struct CheckValidBoxIndexHelper {
   // Checks if all values in box_index are in [0, batch).
   void operator()(const Device& d,
-                  typename TTypes<int32, 1>::ConstTensor box_index, int batch,
+                  typename TTypes<int32_t, 1>::ConstTensor box_index, int batch,
                   typename TTypes<bool, 0>::Tensor isvalid) {
     isvalid.device(d) = ((box_index >= 0) && (box_index < batch)).all();
   }

@@ -143,9 +143,9 @@ void GpuPerformanceModelCache::Invalidate(const HloInstruction& instruction) {
 
 /*static*/
 LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
-    const HloFusionAnalysis& fusion_analysis, mlir::MLIRContext* ctx) {
-  auto emitter =
-      GetFusionEmitter(PreBufferAssignmentFusionInfo{fusion_analysis}, ctx);
+    const HloFusionAnalysis& fusion_analysis, mlir::MLIRContext* mlir_context) {
+  auto emitter = GetFusionEmitter(
+      PreBufferAssignmentFusionInfo{fusion_analysis}, mlir_context);
   if (const auto* kernel_emitter =
           dynamic_cast<const KernelFusionInterface*>(emitter.get())) {
     return kernel_emitter->launch_dimensions();
@@ -155,7 +155,7 @@ LaunchDimensions GpuPerformanceModelBase::EstimateFusionLaunchDimensions(
   // launch dimensions only for SoftMax fusions.
   if (const auto* triton_emitter =
           dynamic_cast<const TritonFusion*>(emitter.get())) {
-    if (auto launch_config = triton_emitter->launch_config()) {
+    if (auto launch_config = triton_emitter->GetLaunchConfig()) {
       return launch_config->launch_dimensions;
     }
   }
@@ -345,8 +345,35 @@ int64_t GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
       std::min<int64_t>(num_blocks, gpu_device_info.core_count());
   int64_t fpu_count = n_active_core * n_active_fpus_per_core;
 
-  int64_t flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
+  double flop_per_ns_per_fpu = gpu_device_info.clock_rate_ghz() * /*fma:*/ 2;
   return flop_per_ns_per_fpu * fpu_count;
+}
+
+/*static*/
+int64_t GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+    const se::DeviceDescription& gpu_device_info, xla::PrimitiveType dtype) {
+  const se::ExecutionUnitDescription* caps =
+      gpu_device_info.matrix_unit_description();
+  std::optional<se::ExecutionUnitDescription::RateInfo> dtype_rates;
+
+  if (caps != nullptr) {
+    dtype_rates = caps->GetRateInfo(dtype);
+  }
+
+  if (!dtype_rates.has_value()) {
+    // Fallback to default flops if matrix unit description is not available
+    // or does not support the given dtype.
+    return CalculateEffectiveFlopsPerNs(
+        gpu_device_info, /*num_blocks=*/gpu_device_info.core_count(),
+        /*num_threads_per_block=*/gpu_device_info.fpus_per_core());
+  }
+
+  // FMA is counted as 2 ops.
+  double flops_per_ns_per_unit =
+      dtype_rates->clock_rate_ghz * dtype_rates->ops_per_clock * 2;
+  int64_t n_compute_units =
+      gpu_device_info.core_count() * dtype_rates->units_per_core;
+  return flops_per_ns_per_unit * n_compute_units;
 }
 
 /*static*/

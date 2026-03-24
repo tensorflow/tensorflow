@@ -21,14 +21,20 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "xla/future.h"
+#include "xla/literal.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 class TfrtGpuClient;
@@ -90,6 +96,10 @@ class TfrtGpuBuffer final : public PjRtBuffer {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
+
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
+      PrimitiveType element_type, absl::Span<int64_t const> dims,
+      const Layout* device_layout) override;
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
       Future<> dependency) override;
@@ -197,7 +207,9 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   std::unique_ptr<TrackedGpuDeviceBuffer> ReleaseBufferLocked()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Future<> ToLiteralHelper(Future<MutableLiteralBase*> literal);
+  Future<> ToLiteralHelper(
+      MutableLiteralBase* literal,
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator);
 
   TfrtGpuClient* client_;
   const Shape on_device_shape_;

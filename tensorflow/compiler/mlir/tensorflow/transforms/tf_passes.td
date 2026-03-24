@@ -2211,7 +2211,6 @@ def XlaCallModuleDeserializationPass
   // multi-threaded.
   let dependentDialects = [
     "chlo::ChloDialect",
-    "mhlo::MhloDialect",
     "shape::ShapeDialect",
     "stablehlo::StablehloDialect",
     "vhlo::VhloDialect",

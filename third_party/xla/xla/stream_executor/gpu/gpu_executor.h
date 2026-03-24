@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -25,13 +26,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_common.h"
 
-namespace stream_executor {
-
-namespace gpu {
+namespace stream_executor::gpu {
 
 class GpuStream;
 
@@ -66,6 +66,14 @@ class GpuExecutor : public StreamExecutorCommon {
 
   uint64_t GetArgumentLoggingMode() const { return argument_logging_mode_; }
 
+  virtual absl::StatusOr<std::unique_ptr<MulticastMemory>>
+  CreateMulticastMemory(uint64_t size, int num_devices) const {
+    return absl::UnimplementedError(
+        "CreateMulticastMemory is not implemented.");
+  };
+
+  virtual bool is_multicast_supported() const { return false; }
+
  private:
   // The device ordinal value that this executor was initialized with; recorded
   // for use in getting device metadata. Immutable post-initialization.
@@ -81,7 +89,6 @@ class GpuExecutor : public StreamExecutorCommon {
   void operator=(const GpuExecutor&) = delete;
 };
 
-}  // namespace gpu
-}  // namespace stream_executor
+}  // namespace stream_executor::gpu
 
 #endif  // XLA_STREAM_EXECUTOR_GPU_GPU_EXECUTOR_H_

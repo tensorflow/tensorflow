@@ -44,7 +44,7 @@ CompileOnlyClient::CreateModuleConfig(
                                                execution_options);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 CompileOnlyClient::CompileAheadOfTime(
     const AotXlaComputationInstance& computation,
     const AotCompilationOptions& options,

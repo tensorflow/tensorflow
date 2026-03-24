@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_SYCL_SYCL_PLATFORM_ID_H_
 #define XLA_STREAM_EXECUTOR_SYCL_SYCL_PLATFORM_ID_H_
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor::sycl {
 
@@ -25,7 +25,7 @@ namespace stream_executor::sycl {
 // instantiating a SyclPlatform object.
 // This is broken out here to avoid a circular dependency between SyclPlatform
 // and SyclExecutor.
-extern const Platform::Id kSyclPlatformId;
+extern const PlatformId kSyclPlatformId;
 
 }  // namespace stream_executor::sycl
 

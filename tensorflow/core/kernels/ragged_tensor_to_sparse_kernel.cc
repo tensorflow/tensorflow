@@ -228,8 +228,8 @@ class RaggedTensorToSparseOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int32>("Tsplits"),
-                        RaggedTensorToSparseOp<int32>);
+                            .TypeConstraint<int32_t>("Tsplits"),
+                        RaggedTensorToSparseOp<int32_t>);
 
 REGISTER_KERNEL_BUILDER(Name("RaggedTensorToSparse")
                             .Device(DEVICE_CPU)

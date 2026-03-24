@@ -325,7 +325,7 @@ TfrtGraphExecutionState::CreateOptimizedGraph(
 
 absl::Status TfrtGraphExecutionState::Extend(const GraphDef& graph) {
   std::unique_ptr<GraphExecutionState> new_state;
-  absl::MutexLock lock(&graph_execution_state_mu_);
+  absl::MutexLock lock(graph_execution_state_mu_);
   TF_RETURN_IF_ERROR(graph_execution_state_->Extend(graph, &new_state));
   graph_execution_state_.swap(new_state);
 
@@ -684,7 +684,7 @@ TfrtGraphExecutionState::OptimizeGraph(
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> optimized_flib;
 
   {
-    absl::MutexLock lock(&graph_execution_state_mu_);
+    absl::MutexLock lock(graph_execution_state_mu_);
     // Invoke Grappler to optimize the graph.
     TF_RETURN_IF_ERROR(graph_execution_state_->OptimizeGraph(
         build_graph_options, graph, &graph.flib_def(), &optimized_graph,

@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
-#include "xla/error/debug_me_context_util.h"
 #include "tsl/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
@@ -46,63 +45,60 @@ namespace xla::error {
 //   messages are prefixed with this identifier. Additionally all XLA
 //   documentation is indexed by this identifier.
 // - ErrorCodeName is a canonical name for the error code also present in all
-//   XLA error messsages. Additionally used in the XLA codebase as the ErrorCode
-//   Enum value.
+//   XLA error messages.
 // - absl::StatusCode is the canonical absl::StatusCode that most closely
 //   matches the error code.
-// e.g. For X("E1234", BinaryTooLarge, absl::StatusCode::kResourceExhausted)
-// we generate:
-// - ErrorCode::kBinaryTooLarge enum value
-// - absl::Status BinaryTooLarge(...) factory function.
-// These can be used in the XLA codebase to uniquely identify errors and to
-// generate absl::Status objects with the correct error code respectively.
+// e.g. For a declaration: X("E1234", BinaryTooLarge, absl::kResourceExhausted)
+// the following is automatically generated:
+// - A factory function BinaryTooLarge(...) that can be used as a drop-in
+//   replacement for absl::ResourceExhaustedError(...). This function creates
+//   and returns an absl::Status object with an error message prefixed with
+//   "E1234: BinaryTooLarge" and suffixed with a URL to the XLA documentation
+//   for this error code.
+// - an Enum value ErrorCode::kBinaryTooLarge that can be used in the XLA
+// codebase to uniquely identify error sources.
 
-#define XLA_ERROR_CODE_LIST(X)                                          \
-  /* go/keep-sorted start */                                            \
-  /* E00xx - Generic Error Codes mimicking absl::Status codes. */       \
-  X("E0000", Cancelled, absl::StatusCode::kCancelled)                   \
-  X("E0001", Unknown, absl::StatusCode::kUnknown)                       \
-  X("E0002", InvalidArgument, absl::StatusCode::kInvalidArgument)       \
-  X("E0003", DeadlineExceeded, absl::StatusCode::kDeadlineExceeded)     \
-  X("E0004", NotFound, absl::StatusCode::kNotFound)                     \
-  X("E0005", AlreadyExists, absl::StatusCode::kAlreadyExists)           \
-  X("E0006", PermissionDenied, absl::StatusCode::kPermissionDenied)     \
-  X("E0007", ResourceExhausted, absl::StatusCode::kResourceExhausted)   \
-  X("E0008", FailedPrecondition, absl::StatusCode::kFailedPrecondition) \
-  X("E0009", Aborted, absl::StatusCode::kAborted)                       \
-  X("E0010", OutOfRange, absl::StatusCode::kOutOfRange)                 \
-  X("E0011", Unimplemented, absl::StatusCode::kUnimplemented)           \
-  X("E0012", Internal, absl::StatusCode::kInternal)                     \
-  X("E0013", Unavailable, absl::StatusCode::kUnavailable)               \
-  X("E0014", DataLoss, absl::StatusCode::kDataLoss)                     \
-  X("E0015", Unauthenticated, absl::StatusCode::kUnauthenticated)       \
-                                                                        \
-  /* E1xxx - Compile Time OOM Error Codes */                            \
-                                                                        \
-  /* E2xxx - Compile Time Internal Error Codes */                       \
-                                                                        \
-  /* E3xxx - Compile Time Unimplemented Error Codes */                  \
-                                                                        \
-  /* E41xx - Compile Time Mosaic Internal Error Codes */                \
-                                                                        \
-  /* E42xx - Compile Time Mosaic User Error Codes */                    \
-                                                                        \
-  /* E43xx - Compile Time Mosaic Unimplemented Error Codes */           \
-                                                                        \
-  /* E4xxx - Compile Time Mosaic Deserialization Error Codes */         \
-                                                                        \
-  /* E50xx - Resource Exhausted, Memory Allocation Error Codes */       \
-                                                                        \
-  /* E51xx - Compiler Inserted Scheck(TC)/Assert(SC) Error Codes */     \
-                                                                        \
-  /* E52xx - Hardware Detected Program/User Errors Codes */             \
-                                                                        \
-  /* E53xx - Hardware/Network/Power Fatal Error Codes */                \
-                                                                        \
-  /* E54xx - Runtime Initiated Cancellations Error Codes */             \
-                                                                        \
-  /* E6xxx - Megascale, XLA “extensions” Error Codes */                 \
-                                                                        \
+#define XLA_ERROR_CODE_LIST(X)                                                \
+  /* go/keep-sorted start */                                                  \
+  /* E00xx - Generic Error Codes mimicking absl::Status codes. */             \
+  X("E0000", Cancelled, absl::StatusCode::kCancelled)                         \
+  X("E0001", Unknown, absl::StatusCode::kUnknown)                             \
+  X("E0002", InvalidArgument, absl::StatusCode::kInvalidArgument)             \
+  X("E0003", DeadlineExceeded, absl::StatusCode::kDeadlineExceeded)           \
+  X("E0004", NotFound, absl::StatusCode::kNotFound)                           \
+  X("E0005", AlreadyExists, absl::StatusCode::kAlreadyExists)                 \
+  X("E0006", PermissionDenied, absl::StatusCode::kPermissionDenied)           \
+  X("E0007", ResourceExhausted, absl::StatusCode::kResourceExhausted)         \
+  X("E0008", FailedPrecondition, absl::StatusCode::kFailedPrecondition)       \
+  X("E0009", Aborted, absl::StatusCode::kAborted)                             \
+  X("E0010", OutOfRange, absl::StatusCode::kOutOfRange)                       \
+  X("E0011", Unimplemented, absl::StatusCode::kUnimplemented)                 \
+  X("E0012", Internal, absl::StatusCode::kInternal)                           \
+  X("E0013", Unavailable, absl::StatusCode::kUnavailable)                     \
+  X("E0014", DataLoss, absl::StatusCode::kDataLoss)                           \
+  X("E0015", Unauthenticated, absl::StatusCode::kUnauthenticated)             \
+                                                                              \
+  X("E0100", RuntimeBufferAllocationFailure,                                  \
+    absl::StatusCode::kResourceExhausted)                                     \
+  X("E0101", RuntimeProgramAllocationFailure,                                 \
+    absl::StatusCode::kResourceExhausted)                                     \
+  X("E0102", RuntimeProgramInputMismatch, absl::StatusCode::kInvalidArgument) \
+  X("E0200", RuntimeUnexpectedCoreHalt, absl::StatusCode::kInternal)          \
+  X("E1000", CompileTimeHbmOom, absl::StatusCode::kResourceExhausted)         \
+  X("E1001", CompileTimeScopedVmemOom, absl::StatusCode::kResourceExhausted)  \
+  X("E1200", CompileTimeHostOffloadOutputLocationMismatch,                    \
+    absl::StatusCode::kInvalidArgument)                                       \
+  X("E2001", CompileTimeMosaicUnsupportedRhsType,                             \
+    absl::StatusCode::kUnimplemented)                                         \
+  X("E2002", CompileTimeMosaicMisalignedBlockAndTiling,                       \
+    absl::StatusCode::kInvalidArgument)                                       \
+  X("E2003", CompileTimeMosaicUnprovenMemoryAccessAlignment,                  \
+    absl::StatusCode::kInvalidArgument)                                       \
+  X("E3000", CompileTimeSparseCoreAllocationFailure,                          \
+    absl::StatusCode::kResourceExhausted)                                     \
+  X("E3001", CompileTimeSparseCoreInvalidReplicaCount,                        \
+    absl::StatusCode::kInvalidArgument)                                       \
+                                                                              \
   /* go/keep-sorted end */
 
 // Enum that enumerates all XLA error codes.
@@ -147,10 +143,48 @@ inline std::string GetErrorCodeAndName(ErrorCode code) {
 }
 
 // Generates a URL for the error's documentation page.
-// A string like "https://openxla.org/xla/errors#e0000".
+// A string like "https://openxla.org/xla/errors/error_0000".
 inline std::string GetErrorUrl(ErrorCode code) {
-  return absl::StrCat("https://openxla.org/xla/errors#",
-                      absl::AsciiStrToLower(ErrorCodeToStringIdentifier(code)));
+  absl::string_view id = ErrorCodeToStringIdentifier(code);
+  if (!id.empty() && id.front() == 'E') {
+    id.remove_prefix(1);
+  }
+
+  return absl::StrCat("https://openxla.org/xla/errors/error_", id);
+}
+
+// Returns the error message with the standard XLA Error Code formatting:
+// "EXXXX: ErrorName:\n<Original Message>\nSee <URL> for more details."
+inline std::string FormatMessageWithCode(absl::string_view message,
+                                         ErrorCode code) {
+  return absl::StrCat(GetErrorCodeAndName(code), ": ", message, "\nSee ",
+                      GetErrorUrl(code), " for more details.");
+}
+
+// Wraps an existing status with the standard XLA Error Code formatting:
+// "EXXXX: ErrorName:\n<Original Message>\nSee <URL> for more details."
+inline absl::Status AnnotateWithCode(const absl::Status& original,
+                                     ErrorCode code) {
+  if (original.ok()) {
+    return original;
+  }
+
+  absl::Status new_status(original.code(),
+                          FormatMessageWithCode(original.message(), code));
+
+  // Copy over the payloads and source locations from the original status.
+  original.ForEachPayload(
+      [&new_status](absl::string_view type_url, const absl::Cord& payload) {
+        new_status.SetPayload(type_url, payload);
+      });
+
+#if defined(PLATFORM_GOOGLE)
+  for (const auto& loc : original.GetSourceLocations()) {
+    new_status.AddSourceLocation(loc);
+  }
+#endif  // PLATFORM_GOOGLE
+
+  return new_status;
 }
 
 // The following three macros implement a factory pattern for creating
@@ -181,48 +215,42 @@ inline std::string GetErrorUrl(ErrorCode code) {
   enum_name(const absl::FormatSpec<Args...>&, Args&&...)                      \
       -> enum_name<Args...>;
 
-// Main macro that generates a status factory function for each error code that
-// can be used to create an absl::Status object with an error code and a
-// formatted error message. Additionally attaches a payload with DebugMeContext
-// details if present. e.g. can be used as: error::InvalidArgument("Compilation
-// failed with error: %s", my_message);
+// Generates a factory function e.g. BinaryTooLarge(...) that can be used as a
+// drop-in replacement for absl::ResourceExhaustedError(...).
+// For example: error::BinaryTooLarge("Something was wrong: %s", "My message");
+// returns an absl::Status object with the following error message:
+// "E1234: BinaryTooLarge:
+// Something was wrong: My message
+// See https://openxla.org/xla/errors#e1234 for more details.".
 #if defined(PLATFORM_GOOGLE)
 // This version captures the caller's source location and attaches it to the
 // absl::Status object on platforms that support it.
-#define DEFINE_ERROR_FACTORY_FUNCTION(string_id, enum_name, status_code)      \
-  DEFINE_ERROR_FACTORY_FUNCTION_PREFIX(enum_name)                             \
-  /* NOLINTNEXTLINE(google-explicit-constructor) */                           \
-  enum_name(const absl::FormatSpec<Args...>& format, Args&&... args,          \
-            absl::SourceLocation location = absl::SourceLocation::current())  \
-      : status([&] {                                                          \
-          auto s = absl::Status(                                              \
-              status_code,                                                    \
-              absl::StrCat(                                                   \
-                  GetErrorCodeAndName(ErrorCode::k##enum_name), ":\n",        \
-                  absl::StrFormat(format, std::forward<Args>(args)...), "\n", \
-                  GetErrorUrl(ErrorCode::k##enum_name)),                      \
-              location);                                                      \
-          error::AttachDebugMeContextPayload(s);                              \
-          return s;                                                           \
-        }()) {}                                                               \
+#define DEFINE_ERROR_FACTORY_FUNCTION(string_id, enum_name, status_code)       \
+  DEFINE_ERROR_FACTORY_FUNCTION_PREFIX(enum_name)                              \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                            \
+  enum_name(const absl::FormatSpec<Args...>& format, Args&&... args,           \
+            absl::SourceLocation location = absl::SourceLocation::current())   \
+      : status(                                                                \
+            status_code,                                                       \
+            absl::StrCat(GetErrorCodeAndName(ErrorCode::k##enum_name), ":\n",  \
+                         absl::StrFormat(format, std::forward<Args>(args)...), \
+                         "\nSee ", GetErrorUrl(ErrorCode::k##enum_name),       \
+                         " for more details."),                                \
+            location) {}                                                       \
   DEFINE_ERROR_FACTORY_FUNCTION_SUFFIX(enum_name)
 #else  // !PLATFORM_GOOGLE
 // Absl::SourceLocation is not yet open-source. This version does NOT capture
 // the source location.
-#define DEFINE_ERROR_FACTORY_FUNCTION(string_id, enum_name, status_code)      \
-  DEFINE_ERROR_FACTORY_FUNCTION_PREFIX(enum_name)                             \
-  /* NOLINTNEXTLINE(google-explicit-constructor) */                           \
-  enum_name(const absl::FormatSpec<Args...>& format, Args&&... args)          \
-      : status([&] {                                                          \
-          auto s = absl::Status(                                              \
-              status_code,                                                    \
-              absl::StrCat(                                                   \
-                  GetErrorCodeAndName(ErrorCode::k##enum_name), ":\n",        \
-                  absl::StrFormat(format, std::forward<Args>(args)...), "\n", \
-                  GetErrorUrl(ErrorCode::k##enum_name)));                     \
-          error::AttachDebugMeContextPayload(s);                              \
-          return s;                                                           \
-        }()) {}                                                               \
+#define DEFINE_ERROR_FACTORY_FUNCTION(string_id, enum_name, status_code)       \
+  DEFINE_ERROR_FACTORY_FUNCTION_PREFIX(enum_name)                              \
+  /* NOLINTNEXTLINE(google-explicit-constructor) */                            \
+  enum_name(const absl::FormatSpec<Args...>& format, Args&&... args)           \
+      : status(                                                                \
+            status_code,                                                       \
+            absl::StrCat(GetErrorCodeAndName(ErrorCode::k##enum_name), ":\n",  \
+                         absl::StrFormat(format, std::forward<Args>(args)...), \
+                         "\nSee ", GetErrorUrl(ErrorCode::k##enum_name),       \
+                         " for more details.")) {}                             \
   DEFINE_ERROR_FACTORY_FUNCTION_SUFFIX(enum_name)
 #endif  // PLATFORM_GOOGLE
 

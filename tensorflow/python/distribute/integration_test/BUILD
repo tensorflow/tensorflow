@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
@@ -11,6 +11,12 @@ package(
 distribute_py_strict_test(
     name = "saved_model_test",
     srcs = ["saved_model_test.py"],
+    exec_properties = select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cpp:asan_build": {"mem": "16g"},
+        # copybara:uncomment_end
+        "//conditions:default": None,
+    }),
     tags = [
         "no_windows",  # TODO(b/171350360)
         "nomultivm",  # multi_worker_test_base incompatible with multivm base
@@ -52,9 +58,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "mwms_peer_failure_test_lib",
     srcs = ["mwms_peer_failure_test.py"],
+    strict_deps = True,
     visibility = ["//learning/brain/runtime/python:__pkg__"],
     deps = [
         "//tensorflow:tensorflow_py",

@@ -31,7 +31,7 @@ default_visibility = [
     "//tensorflow/core:__subpackages__",
     "//tensorflow/security/fuzzing:__subpackages__",
     # TODO(pedaveeraiah): to be removed when summary.proto.h deps moves to TSL
-    "@local_xla//xla/tsl/lib:__subpackages__",
+    "@xla//xla/tsl/lib:__subpackages__",
     # copybara:uncomment "//learning/brain/tfrt/aot:__subpackages__",
     # copybara:uncomment "//platforms/xla/megascale/tensorflow:__subpackages__",
     # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/graph_executor:__subpackages__",
@@ -44,11 +44,13 @@ default_visibility = [
     #internal headless cuj tests library,
     #internal nexus library tests,
     "//tensorflow/compiler/jit:__subpackages__",
-    #internal library,
+    #internal library 0,
     # TODO(matthurd): to be removed when summary.proto.h deps moves to TSL
     "@org_xprof//xprof:__subpackages__",
     "//tensorflow/cc/experimental/tfa:__subpackages__",
     "//tensorflow/compiler/mlir/utils:__subpackages__",
+    #internal library 2,
+    #internal library 1,
 ]
 
 package(
@@ -275,7 +277,7 @@ filegroup(
         "versions.h",
         "//tensorflow/core/framework/registration:options.h",
         "//tensorflow/core/framework/registration:registration.h",
-        "@local_xla//xla/tsl/framework:device_type.h",
+        "@xla//xla/tsl/framework:device_type.h",
     ],
 )
 
@@ -358,7 +360,7 @@ filegroup(
         "variant_op_registry.h",
         "variant_tensor_data.cc",
         "variant_tensor_data.h",
-        "@local_xla//xla/tsl/framework:device_type.h",
+        "@xla//xla/tsl/framework:device_type.h",
     ],
 )
 
@@ -508,7 +510,7 @@ cc_library(
         ":type_traits",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
-        "@local_xla//xla/tsl/framework:allocator",
+        "@xla//xla/tsl/framework:allocator",
     ] + if_static(
         extra_deps = [
             ":allocator_registry_impl",
@@ -539,7 +541,7 @@ cc_library(
     name = "allocator_registry_impl",
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
-        "@local_xla//xla/tsl/framework:allocator_registry_impl",
+        "@xla//xla/tsl/framework:allocator_registry_impl",
     ],
     alwayslink = 1,
 )
@@ -673,7 +675,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:types",
-        "@local_xla//xla/tsl/framework:numeric_types",
+        "@xla//xla/tsl/framework:numeric_types",
     ],
 )
 
@@ -712,6 +714,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
@@ -736,7 +740,9 @@ cc_library(
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
         "//waymo/ml/compiler/frontend/kernels:__pkg__",
         "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
+        "//waymo/ml/data/ops:__pkg__",
         "//waymo/ml/woodshed/ops:__pkg__",
+        "//waymo/sim/simulator/sensor/rendering_engine:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -817,7 +823,7 @@ cc_library(
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:types",
-        "@local_xla//xla/tsl/framework:type_traits",
+        "@xla//xla/tsl/framework:type_traits",
     ],
 )
 
@@ -890,9 +896,9 @@ tf_cuda_library(
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:ml_dtypes",
-        "@local_xla//xla/tsl/framework:device_type",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@tsl//tsl/platform:ml_dtypes",
+        "@xla//xla/tsl/framework:device_type",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )
@@ -948,7 +954,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -1129,6 +1135,8 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1240,7 +1248,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "framework_run_handler_test",
-    size = "small",
+    size = "medium",
     srcs = ["run_handler_test.cc"],
     deps = [
         "//tensorflow/core:core_cpu",
@@ -1423,7 +1431,7 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/tsl/profiler/utils:xplane_utils",
+        "@xla//xla/tsl/profiler/utils:xplane_utils",
     ],
 )
 
@@ -1552,7 +1560,7 @@ tf_proto_library(
     name = "log_memory_proto",
     srcs = ["log_memory.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":allocation_description_proto",
         ":tensor_description_proto",
         ":tensor_shape_proto",
@@ -1570,7 +1578,8 @@ tf_proto_library(
     name = "graph_proto",
     srcs = ["graph.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = ["//visibility:public"],
+    deps = [
         ":attr_value_proto",
         ":function_proto",
         ":graph_debug_info_proto",
@@ -1582,14 +1591,13 @@ tf_proto_library(
         ":types_proto",
         ":versions_proto",
     ],
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
     name = "node_def_proto",
     srcs = ["node_def.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":attr_value_proto",
         ":full_type_proto",
         ":resource_handle_proto",
@@ -1621,7 +1629,7 @@ tf_proto_library(
     name = "tensor_description_proto",
     srcs = ["tensor_description.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":allocation_description_proto",
         ":tensor_shape_proto",
         ":types_proto",
@@ -1639,7 +1647,7 @@ tf_proto_library(
     name = "resource_handle_proto",
     srcs = ["resource_handle.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":tensor_shape_proto",
         ":types_proto",
     ],
@@ -1649,7 +1657,7 @@ tf_proto_library(
     name = "step_stats_proto",
     srcs = ["step_stats.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":allocation_description_proto",
         ":tensor_description_proto",
         ":tensor_shape_proto",
@@ -1667,7 +1675,7 @@ tf_proto_library(
     name = "kernel_def_proto",
     srcs = ["kernel_def.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":attr_value_proto",
         ":resource_handle_proto",
         ":tensor_proto",
@@ -1680,7 +1688,11 @@ tf_proto_library(
     name = "op_def_proto",
     srcs = ["op_def.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python:__pkg__",
+    ],
+    deps = [
         ":attr_value_proto",
         ":full_type_proto",
         ":resource_handle_proto",
@@ -1688,29 +1700,25 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/python:__pkg__",
-    ],
 )
 
 tf_proto_library(
     name = "attr_value_proto",
     srcs = ["attr_value.proto"],
     make_default_target_header_only = True,
-    protodeps = [
-        ":resource_handle_proto",
-        ":tensor_proto",
-        ":tensor_shape_proto",
-        ":types_proto",
-    ],
     visibility = [
-        #internal library,
+        #internal library 0,
         "//tensorflow/core:__subpackages__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
         "//waymo/ml/deploy/benchmark:__subpackages__",
+    ],
+    deps = [
+        ":resource_handle_proto",
+        ":tensor_proto",
+        ":tensor_shape_proto",
+        ":types_proto",
     ],
 )
 
@@ -1718,14 +1726,14 @@ tf_proto_library(
     name = "full_type_proto",
     srcs = ["full_type.proto"],
     make_default_target_header_only = True,
-    protodeps = [],
+    deps = [],
 )
 
 tf_proto_library(
     name = "tensor_proto",
     srcs = ["tensor.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":resource_handle_proto",
         ":tensor_shape_proto",
         ":types_proto",
@@ -1742,7 +1750,7 @@ tf_proto_library(
     name = "api_def_proto",
     srcs = ["api_def.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":attr_value_proto",
         ":resource_handle_proto",
         ":tensor_proto",
@@ -1755,7 +1763,7 @@ tf_proto_library(
     name = "cpp_shape_inference_proto",
     srcs = ["cpp_shape_inference.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":full_type_proto",
         ":tensor_shape_proto",
         ":types_proto",
@@ -1772,7 +1780,7 @@ tf_proto_library(
     name = "graph_transfer_info_proto",
     srcs = ["graph_transfer_info.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":types_proto",
     ],
 )
@@ -1794,7 +1802,7 @@ tf_proto_library(
     name = "cost_graph_proto",
     srcs = ["cost_graph.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":tensor_shape_proto",
         ":types_proto",
     ],
@@ -1810,7 +1818,10 @@ tf_proto_library(
     name = "function_proto",
     srcs = ["function.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ] + default_visibility,
+    deps = [
         ":attr_value_proto",
         ":node_def_proto",
         ":op_def_proto",
@@ -1819,9 +1830,6 @@ tf_proto_library(
         ":tensor_shape_proto",
         ":types_proto",
     ],
-    visibility = [
-        "//tensorflow/python:__pkg__",
-    ] + default_visibility,
 )
 
 # copybara:uncomment_begin(google-only)
@@ -1838,14 +1846,14 @@ tf_proto_library(
     name = "summary_proto",
     srcs = ["summary.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    exports = ["@xla//xla/tsl/protobuf:histogram_proto"],
+    deps = [
         ":resource_handle_proto",
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
-        "@local_xla//xla/tsl/protobuf:histogram_proto",
+        "@xla//xla/tsl/protobuf:histogram_proto",
     ],
-    exports = ["@local_xla//xla/tsl/protobuf:histogram_proto"],
 )
 
 tf_proto_library(
@@ -1858,7 +1866,7 @@ tf_proto_library(
     name = "dataset_proto",
     srcs = ["dataset.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
@@ -1875,7 +1883,7 @@ tf_proto_library(
     name = "dataset_options_proto",
     srcs = ["dataset_options.proto"],
     make_default_target_header_only = True,
-    protodeps = [
+    deps = [
         ":model_proto",
     ],
 )
@@ -1884,24 +1892,27 @@ tf_proto_library(
     name = "optimized_function_graph_proto",
     srcs = ["optimized_function_graph.proto"],
     make_default_target_header_only = True,
-    protodeps = [
-        ":types_proto",
+    deps = [
         ":graph_proto",
+        ":types_proto",
     ],
 )
 
 tf_proto_library(
     name = "protos_all",
     make_default_target_header_only = True,
-    protodeps = [
+    tags = [
+        "alt_dep=//third_party/tensorflow/core:protos_all",
+    ],
+    deps = [
         ":allocation_description_proto",
         ":api_def_proto",
-        ":cpp_shape_inference_proto",
         ":attr_value_proto",
         ":cost_graph_proto",
-        ":dataset_proto",
+        ":cpp_shape_inference_proto",
         ":dataset_metadata_proto",
         ":dataset_options_proto",
+        ":dataset_proto",
         ":device_attributes_proto",
         ":full_type_proto",
         ":function_proto",
@@ -1912,8 +1923,8 @@ tf_proto_library(
         ":log_memory_proto",
         ":model_proto",
         ":node_def_proto",
-        ":optimized_function_graph_proto",
         ":op_def_proto",
+        ":optimized_function_graph_proto",
         ":reader_base_proto",
         ":resource_handle_proto",
         ":step_stats_proto",
@@ -1926,9 +1937,6 @@ tf_proto_library(
         ":variable_proto",
         ":versions_proto",
     ],
-    tags = [
-        "alt_dep=//third_party/tensorflow/core:protos_all",
-    ],
 )
 
 tf_cc_fuzz_test(
@@ -1938,7 +1946,7 @@ tf_cc_fuzz_test(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -1952,7 +1960,7 @@ tf_cc_fuzz_test(
         "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_domains",
         "//tensorflow/security/fuzzing/cc/core/framework:tensor_shape_domains",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -1964,5 +1972,26 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "op_kernel_benchmark",
+    srcs = ["op_kernel_benchmark.cc"],
+    tags = ["benchmark"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
+        "@com_google_absl//absl/log:check",
+        "@com_google_benchmark//:benchmark",
+    ],
+)
+
+filegroup(
+    name = "local_rendezvous_test_srcs",
+    srcs = [
+        "local_rendezvous.cc",
     ],
 )

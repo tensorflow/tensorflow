@@ -113,7 +113,7 @@ mlir::LogicalResult rewriteManualComputation(
   if (!resultTypes.empty()) {
     // Same as above, a result of `sdy.manual_computation` can have a
     // dimension of size 0, in which case, the corresponding result of
-    // `@local_xla.sdy.manual_computation_body` call would be replaced with a
+    // `@xla.sdy.manual_computation_body` call would be replaced with a
     // constant. Therefore, we check the first use rather than first result.
     CHECK(!callOp->use_empty());
     localToGlobalShape = mlir::dyn_cast<CustomCallOp>(*callOp->user_begin());
@@ -133,9 +133,8 @@ mlir::LogicalResult rewriteManualComputation(
   sdy::TensorShardingPerValueAttr outShardings =
       sdy::TensorShardingPerValueAttr::get(context, {});
   sdy::ManualAxesAttr manualAxes = sdy::ManualAxesAttr::get(context, {});
-  bool newCodePath = false;
 
-  auto setShardingAttrs = [&newCodePath, &manualAxes](
+  auto setShardingAttrs = [&manualAxes](
                               CustomCallOp customCallOp,
                               sdy::TensorShardingPerValueAttr& shardings,
                               llvm::StringRef shardingAttrName) {
@@ -143,7 +142,6 @@ mlir::LogicalResult rewriteManualComputation(
       return;
     }
     if (mlir::DictionaryAttr frontendAttrs = getFrontendAttrs(customCallOp)) {
-      newCodePath = true;
       shardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
           frontendAttrs, shardingAttrName);
       if (manualAxes.empty()) {
@@ -155,18 +153,6 @@ mlir::LogicalResult rewriteManualComputation(
 
   setShardingAttrs(globalToLocalShape, inShardings, kInShardings);
   setShardingAttrs(localToGlobalShape, outShardings, kOutShardings);
-  // TODO(b/410499196): Code to handle loading an old checkpoint. Remove after
-  // 6 months of cl/745735176 being submitted.
-  mlir::DictionaryAttr callOpFrontendAttrs = getFrontendAttrs(callOp);
-  if (!newCodePath && callOpFrontendAttrs &&
-      callOpFrontendAttrs.contains(kManualAxes)) {
-    inShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
-        callOpFrontendAttrs, kInShardings);
-    outShardings = parseStringAttr<sdy::TensorShardingPerValueAttr>(
-        callOpFrontendAttrs, kOutShardings);
-    manualAxes =
-        parseStringAttr<sdy::ManualAxesAttr>(callOpFrontendAttrs, kManualAxes);
-  }
   auto manualComputationOp =
       rewriter.replaceOpWithNewOp<sdy::ManualComputationOp>(
           callOp, resultTypes, operands, inShardings, outShardings, manualAxes);
@@ -177,6 +163,31 @@ mlir::LogicalResult rewriteManualComputation(
                                 manualComputationOp->getResults());
   }
   return mlir::success();
+}
+
+void cloneManualComputations(
+    ModuleOp moduleOp, SymbolTable& symbolTable,
+    mlir::SymbolTableCollection& symbolTableCollection) {
+  mlir::CallGraph callGraph(moduleOp);
+  llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
+  for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
+    if (node->isExternal()) {
+      continue;
+    }
+    node->getCallableRegion()->walk([&](CallOp callOp) {
+      if (!isManualComputation(callOp)) {
+        return;
+      }
+      // TODO(b/446881697): Clone just the body on demand like in
+      // shardy/stablehlo_round_trip/shard_map_import.cc.
+      FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
+      CHECK(funcOp) << "Failed to lookup function: "
+                    << callOp.getCallee().str();
+      callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
+          funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
+    });
+  }
+  // TODO(enver): Clean up uncalled functions.
 }
 
 class SdyRoundTripShardMapImportPass
@@ -191,22 +202,8 @@ class SdyRoundTripShardMapImportPass
     mlir::SymbolTableCollection symbolTableCollection;
     SymbolTable& symbolTable = symbolTableCollection.getSymbolTable(module);
     mlir::IRRewriter rewriter(module);
-    llvm::SmallDenseSet<StringRef> manualComputationCalleeNames;
 
-    // Clone multiple calls to the same function.
-    module->walk([&](CallOp op) {
-      if (!op.getCallee().contains(kManualComputationFuncName)) {
-        return;
-      }
-      if (manualComputationCalleeNames.insert(op.getCallee()).second) {
-        return;
-      }
-      // TODO(b/446881697): Clone just the body on demand like in
-      // shardy/stablehlo_round_trip/shard_map_import.cc.
-      FuncOp funcOp = symbolTable.lookup<FuncOp>(op.getCallee()).clone();
-      op.setCallee(symbolTable.insert(funcOp));
-      manualComputationCalleeNames.insert(funcOp.getName());
-    });
+    cloneManualComputations(module, symbolTable, symbolTableCollection);
 
     mlir::CallGraph callGraph(module);
     llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
@@ -214,15 +211,16 @@ class SdyRoundTripShardMapImportPass
       if (node->isExternal()) continue;
       if (node->getCallableRegion()
               ->walk([&](CallOp callOp) {
-                if (!callOp.getCallee().contains(kManualComputationFuncName)) {
-                  return mlir::WalkResult::advance();
-                }
-                rewriter.setInsertionPoint(callOp);
-                if (mlir::failed(rewriteManualComputation(callOp, rewriter,
-                                                          symbolTable))) {
-                  callOp.emitError(
-                      "failed to rewrite func.call to manual computation");
-                  return mlir::WalkResult::interrupt();
+                if (isManualComputation(callOp)) {
+                  rewriter.setInsertionPoint(callOp);
+                  if (mlir::failed(rewriteManualComputation(callOp, rewriter,
+                                                            symbolTable))) {
+                    // TODO(enver): Return callOp.emitError direcly here and
+                    // elsewhere.
+                    callOp.emitError(
+                        "failed to rewrite func.call to manual computation");
+                    return mlir::WalkResult::interrupt();
+                  }
                 }
                 return mlir::WalkResult::advance();
               })
@@ -236,7 +234,7 @@ class SdyRoundTripShardMapImportPass
     //
     // NOTE: In addition to the ones that were used by calls, at this point,
     // there may be stray `xla.sdy.GlobalToLocalShape` and
-    // `xla.sdy.LocalToGlobalShape`, if the `@local_xla.sdy.manual_computation_body`
+    // `xla.sdy.LocalToGlobalShape`, if the `@xla.sdy.manual_computation_body`
     // call was eliminated through DCE and the custom call uses were replaced
     // with constants as they had 0 elements, then it's safe to erase.
     module->walk([](CustomCallOp op) {
@@ -247,9 +245,11 @@ class SdyRoundTripShardMapImportPass
       }
     });
 
-    // Erase all manual computation func ops that now have no call ops.
-    for (StringRef calleeName : manualComputationCalleeNames) {
-      symbolTable.erase(symbolTable.lookup(calleeName));
+    // Erase all manual computation func ops as now they have no call ops.
+    for (FuncOp funcOp : llvm::make_early_inc_range(module.getOps<FuncOp>())) {
+      if (isManualComputation(funcOp)) {
+        symbolTable.erase(symbolTable.lookup(funcOp.getName()));
+      }
     }
   }
 
@@ -258,7 +258,7 @@ class SdyRoundTripShardMapImportPass
   }
 
   StringRef getDescription() const override {
-    return "converts a CallOp calling a @local_xla.sdy.manual_computation_body func "
+    return "converts a CallOp calling a @xla.sdy.manual_computation_body func "
            "with in/out shardings and manual axes as frontend attrs, wrapped "
            "with a pair of `CustomCallOps` that change the shape of the "
            "arguments/results, to a ManualComputationOp";

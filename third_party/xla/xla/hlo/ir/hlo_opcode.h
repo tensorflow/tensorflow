@@ -62,6 +62,7 @@ namespace xla {
   V(kAllToAll, "all-to-all", kHloOpcodeIsVariadic)                             \
   V(kAnd, "and", 2)                                                            \
   V(kAsin, "asin", 1)                                                          \
+  V(kAsinh, "asinh", 1)                                                        \
   V(kAsyncDone, "async-done", 1)                                               \
   V(kAsyncStart, "async-start", kHloOpcodeIsVariadic)                          \
   V(kAsyncUpdate, "async-update", 1)                                           \
@@ -152,6 +153,7 @@ namespace xla {
   V(kRoundNearestEven, "round-nearest-even", 1)                                \
   V(kRsqrt, "rsqrt", 1)                                                        \
   V(kScaledDot, "scaled-dot", 4)                                               \
+  V(kScan, "scan", kHloOpcodeIsVariadic)                                       \
   V(kScatter, "scatter", kHloOpcodeIsVariadic)                                 \
   V(kSelect, "select", 3)                                                      \
   V(kSelectAndScatter, "select-and-scatter", 3)                                \

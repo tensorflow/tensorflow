@@ -41,8 +41,8 @@ class DnnPoolingOp {
   typedef GPUDevice Device;
   static void Compute(OpKernelContext* context,
                       se::dnn::PoolingMode pooling_mode,
-                      const std::vector<int32>& size,
-                      const std::vector<int32>& stride, Padding padding,
+                      const std::vector<int32_t>& size,
+                      const std::vector<int32_t>& stride, Padding padding,
                       std::vector<int64_t> explicit_paddings,
                       TensorFormat data_format, const Tensor& tensor_in,
                       const TensorShape& tensor_out_shape, bool propagate_nans);
@@ -57,8 +57,8 @@ class DnnPoolingGradOp {
   typedef GPUDevice Device;
   static void Compute(OpKernelContext* context,
                       se::dnn::PoolingMode pooling_mode,
-                      const std::vector<int32>& size,
-                      const std::vector<int32>& stride, Padding padding,
+                      const std::vector<int32_t>& size,
+                      const std::vector<int32_t>& stride, Padding padding,
                       std::vector<int64_t> explicit_paddings,
                       TensorFormat data_format, const Tensor* tensor_in,
                       const Tensor* tensor_out, const Tensor& out_backprop,

@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef XLA_CODEGEN_TILING_SYMBOLIC_TILE_H_
 #define XLA_CODEGEN_TILING_SYMBOLIC_TILE_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <ostream>
@@ -27,8 +26,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineMap.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/codegen/tiling/constraint_expression.h"
+#include "xla/hlo/analysis/indexing_map.h"
 
 namespace xla {
 

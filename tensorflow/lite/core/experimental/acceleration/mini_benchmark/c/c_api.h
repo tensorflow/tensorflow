@@ -54,7 +54,7 @@ TfLiteMiniBenchmarkCustomValidationInfo*
 TfLiteMiniBenchmarkSettingsCustomValidationInfo(
     TfLiteMiniBenchmarkSettings* settings);
 void TfLiteMiniBenchmarkSettingsSetFlatBufferData(
-    TfLiteMiniBenchmarkSettings* settings, uint8_t* flatbuffer_data,
+    TfLiteMiniBenchmarkSettings* settings, const uint8_t* flatbuffer_data,
     size_t flatbuffer_data_size);
 void TfLiteMiniBenchmarkSettingsSetErrorReporter(
     TfLiteMiniBenchmarkSettings* settings, void* error_reporter_user_data,

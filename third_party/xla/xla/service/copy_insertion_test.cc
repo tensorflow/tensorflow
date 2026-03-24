@@ -46,10 +46,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test_benchmark.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -804,9 +802,9 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
       outer_while_body->AddInstruction(HloInstruction::CreateWhile(
           while_hlo->shape(), while_hlo->while_condition(),
           while_hlo->while_body(), dual_init));
-  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+  CHECK_OK(outer_while_body->ReplaceInstruction(
       outer_while_body->root_instruction(), dual_while));
-  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
   InsertCopies(module_.get());
 }
 
@@ -863,9 +861,9 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
       outer_while_body->AddInstruction(HloInstruction::CreateWhile(
           while_hlo->shape(), while_hlo->while_condition(),
           while_hlo->while_body(), outer_param));
-  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+  CHECK_OK(outer_while_body->ReplaceInstruction(
       outer_while_body->root_instruction(), dual_while));
-  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
   InsertCopies(module_.get());
 }
 
@@ -930,9 +928,9 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s
       outer_while_body->AddInstruction(HloInstruction::CreateWhile(
           while_hlo->shape(), while_hlo->while_condition(),
           while_hlo->while_body(), dual_init));
-  TF_CHECK_OK(outer_while_body->ReplaceInstruction(
+  CHECK_OK(outer_while_body->ReplaceInstruction(
       outer_while_body->root_instruction(), dual_while));
-  TF_CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
+  CHECK_OK(while_hlo->parent()->ReplaceInstruction(while_hlo, outer_while));
   InsertCopies(module_.get());
 }
 
@@ -2921,56 +2919,6 @@ ENTRY main {
       module->entry_computation()->root_instruction(),
       op::Scatter(op::Iota(), op::Copy(op::Iota()), op::Copy(op::Iota()),
                   op::Fusion(), op::Iota(), op::Iota(), op::Iota()));
-}
-
-TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
-  const std::string& hlo_string = R"(
-    HloModule test
-
-    fused_computation {
-      p0 = f32[10,20] parameter(0)
-      p1 = f32[10,20] parameter(1)
-      p2 = f32[10,10] parameter(2)
-      p3 = f32[10,10] parameter(3)
-      add0 = f32[10, 20] add(p0, p1)
-      sub0 = f32[10, 10] subtract(p2, p3)
-      reshape0 = f32[200] reshape(add0)
-      reshape1 = f32[100] reshape(sub0)
-      concat0 = f32[300] concatenate(reshape0, reshape1), dimensions={0}
-      slice0 = f32[200] slice(concat0), slice={[0:200]}
-      slice1 = f32[100] slice(concat0), slice={[200:300]}
-      ROOT tuple = (f32[200], f32[100]) tuple(slice0, slice1)
-    }
-
-    ENTRY test {
-      p0 = f32[10,20] parameter(0)
-      p1 = f32[10,20] parameter(1)
-      p2 = f32[10,10] parameter(2)
-      p3 = f32[10,10] parameter(3)
-      fusion = (f32[200], f32[100]) fusion(p0, p1, p2, p3), kind=kInput, calls=fused_computation
-      gte0 = f32[200] get-tuple-element(fusion), index=0
-      gte1 = f32[100] get-tuple-element(fusion), index=1
-      bitcast0 = f32[10,20] bitcast(gte0)
-      bitcast1 = f32[10,10] bitcast(gte1)
-      ROOT tuple = (f32[10,20], f32[10,10]) tuple(bitcast0, bitcast1)
-    }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0},
-      /*param_number=*/0,
-      /*param_index=*/{}));
-  ASSERT_IS_OK(module->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1},
-      /*param_number=*/3,
-      /*param_index=*/{}));
-
-  InsertCopies(module.get());
-
-  // There should be no copies inserted.
-  EXPECT_EQ(CountCopies(*module), 0);
 }
 
 TEST_F(CopyInsertionTest, NestedWhileAndConditional3) {

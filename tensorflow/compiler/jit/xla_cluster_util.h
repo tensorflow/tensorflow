@@ -106,7 +106,7 @@ absl::StatusOr<std::string> SerializeGraphDeterministic(const Graph& graph);
 // Computes a fingerprint of the given `graph`. The fingerprint can use used to
 // check if two graphs are likely the same but should not be relied on
 // determining if the graphs are identical.
-absl::StatusOr<uint64> FingerprintGraph(const Graph& graph);
+absl::StatusOr<uint64_t> FingerprintGraph(const Graph& graph);
 
 }  // namespace tensorflow
 

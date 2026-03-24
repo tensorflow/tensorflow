@@ -25,7 +25,7 @@ namespace tfprof {
 
 class OperationChecker : public Checker {
  public:
-  string name() const override { return kCheckers[1]; }
+  std::string name() const override { return kCheckers[1]; }
 
  private:
   AdviceProto::Checker Check(const AdvisorOptionsProto::CheckerOption& options,

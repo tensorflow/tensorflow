@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Value.h"
 
@@ -55,6 +56,15 @@ ImplicitArithOpBuilder ImplicitArithOpBuilder::operator*(int64_t rhs) const {
 ImplicitArithOpBuilder ImplicitArithOpBuilder::operator*(
     mlir::Value rhs) const {
   return Binop<mlir::arith::MulIOp>(rhs);
+}
+
+ImplicitArithOpBuilder ImplicitArithOpBuilder::operator/(int64_t rhs) const {
+  return Binop<mlir::arith::DivSIOp>(rhs);
+}
+
+ImplicitArithOpBuilder ImplicitArithOpBuilder::operator/(
+    mlir::Value rhs) const {
+  return Binop<mlir::arith::DivSIOp>(rhs);
 }
 
 ImplicitArithOpBuilder ImplicitArithOpBuilder::operator&(
@@ -137,7 +147,26 @@ ImplicitArithOpBuilder ImplicitArithOpBuilder::operator!=(int64_t rhs) const {
   return cmp(mlir::arith::CmpIPredicate::ne, rhs);
 }
 
+ImplicitArithOpBuilder ImplicitArithOpBuilder::min(mlir::Value rhs) const {
+  return {builder_->create<mlir::arith::MinSIOp>(value_, rhs), builder_};
+}
+
+ImplicitArithOpBuilder ImplicitArithOpBuilder::min(int64_t rhs) const {
+  return min(MakeConstant(rhs));
+}
+
+ImplicitArithOpBuilder ImplicitArithOpBuilder::max(mlir::Value rhs) const {
+  return {builder_->create<mlir::arith::MaxSIOp>(value_, rhs), builder_};
+}
+
+ImplicitArithOpBuilder ImplicitArithOpBuilder::max(int64_t rhs) const {
+  return max(MakeConstant(rhs));
+}
+
 ImplicitArithOpBuilder ImplicitArithOpBuilder::MakeConstant(int64_t c) const {
+  if (mlir::isa<mlir::IndexType>(value_.getType())) {
+    return {builder_->create<mlir::arith::ConstantIndexOp>(c), builder_};
+  }
   return {builder_->create<mlir::arith::ConstantIntOp>(value_.getType(), c),
           builder_};
 }

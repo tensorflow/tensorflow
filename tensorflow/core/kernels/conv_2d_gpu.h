@@ -887,15 +887,15 @@ template <int ElemBytes>
 struct TransposeElemType;
 template <>
 struct TransposeElemType<1> {
-  using type = uint8;
+  using type = uint8_t;
 };
 template <>
 struct TransposeElemType<2> {
-  using type = uint16;
+  using type = uint16_t;
 };
 template <>
 struct TransposeElemType<4> {
-  using type = uint32;
+  using type = uint32_t;
 };
 template <>
 struct TransposeElemType<8> {
@@ -1046,7 +1046,7 @@ template <typename T, bool conjugate>
 struct SwapDimension1And2InTensor3<GPUDevice, T, conjugate> {
   typedef GPUDevice Device;
   void operator()(const Device& d, const T* in,
-                  const gtl::ArraySlice<int64_t>& combined_dims, T* out) {
+                  const absl::Span<const int64_t>& combined_dims, T* out) {
     Dimension<3> input_dims = {static_cast<int>(combined_dims[0]),
                                static_cast<int>(combined_dims[1]),
                                static_cast<int>(combined_dims[2])};
@@ -1060,7 +1060,7 @@ template <typename T, bool conjugate>
 struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
   typedef GPUDevice Device;
   void operator()(const Device& d, const T* in,
-                  const gtl::ArraySlice<int64_t>& combined_dims, T* out) {
+                  const absl::Span<const int64_t>& combined_dims, T* out) {
     Dimension<3> input_dims = {static_cast<int>(combined_dims[0]),
                                static_cast<int>(combined_dims[1]),
                                static_cast<int>(combined_dims[2])};

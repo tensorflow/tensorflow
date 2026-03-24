@@ -15,19 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/quantize_training.h"
 
-#include <map>
+#include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -51,7 +55,7 @@ class QuantizeTrainingTest : public ::testing::Test {
     return test::graph::Constant(g_.get(), test::AsTensor(values, shape));
   }
 
-  absl::Status Placeholder(Graph* g, const string& name, TensorShape shape,
+  absl::Status Placeholder(Graph* g, const std::string& name, TensorShape shape,
                            Node** out) {
     TF_RETURN_IF_ERROR(NodeBuilder(name, "Placeholder")
                            .Attr("dtype", DT_FLOAT)
@@ -60,7 +64,7 @@ class QuantizeTrainingTest : public ::testing::Test {
     return absl::OkStatus();
   }
 
-  absl::Status FindNode(Graph* g, const string& name, Node** out) {
+  absl::Status FindNode(Graph* g, const std::string& name, Node** out) {
     for (Node* node : g->nodes()) {
       if (node->name() == name) {
         *out = node;
@@ -111,15 +115,14 @@ TEST_F(QuantizeTrainingTest, SignedInput) {
   // Quantize_and_dequantize node for identity should have signed_input==true.
   Node* identity_q_node;
   TF_ASSERT_OK(
-      FindNode(g, strings::StrCat(identity->name(), "/QuantizeAndDequantizeV2"),
+      FindNode(g, absl::StrCat(identity->name(), "/QuantizeAndDequantizeV2"),
                &identity_q_node));
   ASSERT_EQ("true",
             SummarizeAttrValue(*identity_q_node->attrs().Find("signed_input")));
   // Quantize_and_dequantize node for relu should have signed_input==false.
   Node* relu_q_node;
-  TF_ASSERT_OK(
-      FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
-               &relu_q_node));
+  TF_ASSERT_OK(FindNode(
+      g, absl::StrCat(relu->name(), "/QuantizeAndDequantizeV2"), &relu_q_node));
   ASSERT_EQ("false",
             SummarizeAttrValue(*relu_q_node->attrs().Find("signed_input")));
 }
@@ -161,16 +164,15 @@ TEST_F(QuantizeTrainingTest, RangeGivenTrue) {
 
   // Quantize_and_dequantize node for relu6 should have range_given==true.
   Node* relu6_q_node;
-  TF_ASSERT_OK(
-      FindNode(g, strings::StrCat(relu6->name(), "/QuantizeAndDequantizeV2"),
-               &relu6_q_node));
+  TF_ASSERT_OK(FindNode(g,
+                        absl::StrCat(relu6->name(), "/QuantizeAndDequantizeV2"),
+                        &relu6_q_node));
   ASSERT_EQ("true",
             SummarizeAttrValue(*relu6_q_node->attrs().Find("range_given")));
   // Quantize_and_dequantize node for relu should have range_given==true.
   Node* relu_q_node;
-  TF_ASSERT_OK(
-      FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
-               &relu_q_node));
+  TF_ASSERT_OK(FindNode(
+      g, absl::StrCat(relu->name(), "/QuantizeAndDequantizeV2"), &relu_q_node));
   ASSERT_EQ("true",
             SummarizeAttrValue(*relu_q_node->attrs().Find("range_given")));
 }
@@ -215,18 +217,17 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_QuantizeAndDequantize) {
   // Ensure that the backwards matmul input was not quantized.
   Node* found_node;
   absl::Status s = FindNode(
-      g, strings::StrCat(d->name(), "/QuantizeAndDequantizeV2"), &found_node);
+      g, absl::StrCat(d->name(), "/QuantizeAndDequantizeV2"), &found_node);
   EXPECT_TRUE(absl::StrContains(s.ToString(), "not found")) << s;
 
   // Ensure that m1 and m2's inputs were quantized.
-  TF_ASSERT_OK(
-      FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
-               &found_node));
-  TF_ASSERT_OK(
-      FindNode(g, strings::StrCat(identity->name(), "/QuantizeAndDequantizeV2"),
-               &found_node));
   TF_ASSERT_OK(FindNode(
-      g, strings::StrCat(c->name(), "/QuantizeAndDequantizeV2"), &found_node));
+      g, absl::StrCat(relu->name(), "/QuantizeAndDequantizeV2"), &found_node));
+  TF_ASSERT_OK(
+      FindNode(g, absl::StrCat(identity->name(), "/QuantizeAndDequantizeV2"),
+               &found_node));
+  TF_ASSERT_OK(FindNode(g, absl::StrCat(c->name(), "/QuantizeAndDequantizeV2"),
+                        &found_node));
 }
 
 TEST_F(QuantizeTrainingTest, WithBackwardNodes_FakeQuant) {
@@ -269,18 +270,17 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_FakeQuant) {
   // Ensure that the backwards matmul input was not quantized.
   Node* found_node;
   absl::Status s = FindNode(
-      g, strings::StrCat(d->name(), "/FakeQuantWithMinMaxVars"), &found_node);
+      g, absl::StrCat(d->name(), "/FakeQuantWithMinMaxVars"), &found_node);
   EXPECT_TRUE(absl::StrContains(s.ToString(), "not found")) << s;
 
   // Ensure that m1 and m2's inputs were quantized.
-  TF_ASSERT_OK(
-      FindNode(g, strings::StrCat(relu->name(), "/FakeQuantWithMinMaxVars"),
-               &found_node));
-  TF_ASSERT_OK(
-      FindNode(g, strings::StrCat(identity->name(), "/FakeQuantWithMinMaxVars"),
-               &found_node));
   TF_ASSERT_OK(FindNode(
-      g, strings::StrCat(c->name(), "/FakeQuantWithMinMaxVars"), &found_node));
+      g, absl::StrCat(relu->name(), "/FakeQuantWithMinMaxVars"), &found_node));
+  TF_ASSERT_OK(
+      FindNode(g, absl::StrCat(identity->name(), "/FakeQuantWithMinMaxVars"),
+               &found_node));
+  TF_ASSERT_OK(FindNode(g, absl::StrCat(c->name(), "/FakeQuantWithMinMaxVars"),
+                        &found_node));
 }
 
 TEST_F(QuantizeTrainingTest, QuantizeSerializedGraphDef) {
@@ -301,10 +301,10 @@ TEST_F(QuantizeTrainingTest, QuantizeSerializedGraphDef) {
   // Convert the graph to the graphdef string.
   GraphDef input_graph;
   graph->ToGraphDef(&input_graph);
-  string input_string;
+  std::string input_string;
   input_graph.SerializeToString(&input_string);
 
-  string result_string;
+  std::string result_string;
   TF_ASSERT_OK(DoQuantizeTrainingOnSerializedGraphDef(
       input_string, num_bits, "QuantizeAndDequantizeV2", &result_string));
 
@@ -400,8 +400,8 @@ TEST_F(QuantizeTrainingTest, FixedRangeAndEMARange_QuantizeAndDequantize) {
 
   // The min and max values of the relu6 quantization should be constant values
   // of 0 and 6.
-  string min_const_name = strings::StrCat(relu6->name(), "/InputMin");
-  string max_const_name = strings::StrCat(relu6->name(), "/InputMax");
+  std::string min_const_name = absl::StrCat(relu6->name(), "/InputMin");
+  std::string max_const_name = absl::StrCat(relu6->name(), "/InputMax");
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(sess->Run({}, {min_const_name, max_const_name}, {}, &outputs));
   EXPECT_EQ(outputs[0].flat<float>()(0), 0.0);
@@ -416,8 +416,8 @@ TEST_F(QuantizeTrainingTest, FixedRangeAndEMARange_QuantizeAndDequantize) {
 
   // The value of the min and max should be set to the min and max of a1 since
   // this is the first run that initializes the EMA variables.
-  string min_var_name = strings::StrCat(relu->name(), "/Min/Variable");
-  string max_var_name = strings::StrCat(relu->name(), "/Max/Variable");
+  std::string min_var_name = absl::StrCat(relu->name(), "/Min/Variable");
+  std::string max_var_name = absl::StrCat(relu->name(), "/Max/Variable");
   TF_ASSERT_OK(sess->Run({}, {min_var_name, max_var_name}, {}, &outputs));
   EXPECT_EQ(outputs[0].flat<float>()(0), 0.0);
   EXPECT_EQ(outputs[1].flat<float>()(0), 3.0);
@@ -494,8 +494,8 @@ TEST_F(QuantizeTrainingTest, FixedRangeAndEMARange_FakeQuant) {
 
   // The min and max values of the relu6 quantization should be constant values
   // of 0 and 6.
-  string min_const_name = strings::StrCat(relu6->name(), "/InputMin");
-  string max_const_name = strings::StrCat(relu6->name(), "/InputMax");
+  std::string min_const_name = absl::StrCat(relu6->name(), "/InputMin");
+  std::string max_const_name = absl::StrCat(relu6->name(), "/InputMax");
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(sess->Run({}, {min_const_name, max_const_name}, {}, &outputs));
   EXPECT_EQ(outputs[0].flat<float>()(0), 0.0);
@@ -510,8 +510,8 @@ TEST_F(QuantizeTrainingTest, FixedRangeAndEMARange_FakeQuant) {
 
   // The value of the min and max should be set to the min and max of a1 since
   // this is the first run that initializes the EMA variables.
-  string min_var_name = strings::StrCat(relu->name(), "/Min/Variable");
-  string max_var_name = strings::StrCat(relu->name(), "/Max/Variable");
+  std::string min_var_name = absl::StrCat(relu->name(), "/Min/Variable");
+  std::string max_var_name = absl::StrCat(relu->name(), "/Max/Variable");
   TF_ASSERT_OK(sess->Run({}, {min_var_name, max_var_name}, {}, &outputs));
   EXPECT_EQ(outputs[0].flat<float>()(0), 0.0);
   EXPECT_EQ(outputs[1].flat<float>()(0), 3.0);

@@ -21,40 +21,48 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/env.h"
 
 namespace xla {
 
-WorkerThread::WorkerThread(tsl::Env* env, const std::string& name) {
-  thread_.reset(
-      env->StartThread(tsl::ThreadOptions(), name, [this]() { WorkLoop(); }));
+WorkerThread::WorkerThread(tsl::Env* env, const std::string& name)
+    : WorkerThread(env, tsl::ThreadOptions(), name) {}
+
+WorkerThread::WorkerThread(tsl::Env* env, const tsl::ThreadOptions& options,
+                           const std::string& name) {
+  thread_.reset(env->StartThread(options, name, [this]() { WorkLoop(); }));
 }
 
 WorkerThread::~WorkerThread() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   work_queue_.push(nullptr);
 }
 
 void WorkerThread::Schedule(absl::AnyInvocable<void() &&> fn) {
   CHECK(fn != nullptr);
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   work_queue_.push(std::move(fn));
 }
 
 bool WorkerThread::WorkAvailable() { return !work_queue_.empty(); }
 
 void WorkerThread::WorkLoop() {
+  absl::MutexLock lock(mu_);
   while (true) {
-    absl::AnyInvocable<void() &&> fn;
+    mu_.Await(absl::Condition(this, &WorkerThread::WorkAvailable));
     {
-      absl::MutexLock lock(&mu_);
-      mu_.Await(absl::Condition(this, &WorkerThread::WorkAvailable));
-      fn = std::move(work_queue_.front());
+      // We must be careful to call fn's dtor when the lock is unlocked.
+      absl::AnyInvocable<void() &&> fn = std::move(work_queue_.front());
       work_queue_.pop();
+      if (!fn) {
+        return;
+      }
+      is_running_ = true;
+      mu_.unlock();
+      std::move(fn)();
     }
-    if (!fn) {
-      return;
-    }
-    std::move(fn)();
+    mu_.lock();
+    is_running_ = false;
   }
 }
 

@@ -20,11 +20,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "mlir/IR/MLIRContext.h"
@@ -68,6 +70,9 @@ class ThunkEmitter {
   };
 
   struct EmittedKernel {
+    EmittedKernel(absl::string_view name, llvm::orc::ThreadSafeModule module)
+        : kernel_name(name), module(std::move(module)) {}
+
     std::string kernel_name;
     llvm::orc::ThreadSafeModule module;
   };
@@ -86,8 +91,8 @@ class ThunkEmitter {
 
  private:
   struct HostKernelAllocationSlices {
-    std::vector<BufferAllocation::Slice> arguments;
-    std::vector<BufferAllocation::Slice> results;
+    std::vector<ShapedSlice> arguments;
+    std::vector<ShapedSlice> results;
   };
 
   std::optional<SortThunk::SortDirection> MatchSortDirection(
@@ -214,6 +219,9 @@ class ThunkEmitter {
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitXnnFusionThunk(
+      const HloInstruction* instruction);
+
+  absl::StatusOr<ThunkSequence> EmitYnnFusionThunk(
       const HloInstruction* instruction);
 
   absl::StatusOr<ThunkSequence> EmitOneDnnFusionThunk(

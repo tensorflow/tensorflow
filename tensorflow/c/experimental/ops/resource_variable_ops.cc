@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/resource_variable_ops.h"
 
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -44,7 +45,7 @@ namespace ops {
 absl::Status VarHandleOp(AbstractContext* ctx, AbstractTensorHandle** resource,
                          DataType dtype, const PartialTensorShape shape,
                          const char* container, const char* shared_name,
-                         absl::Span<string const> allowed_devices,
+                         absl::Span<const std::string> allowed_devices,
                          const char* name, const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(op_ptr->Reset("VarHandleOp", raw_device_name));

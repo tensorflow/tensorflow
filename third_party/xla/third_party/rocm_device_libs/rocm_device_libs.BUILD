@@ -24,6 +24,7 @@ cc_binary(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:config",
     ],
 )
 

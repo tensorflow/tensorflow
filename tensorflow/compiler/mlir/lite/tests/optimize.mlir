@@ -370,14 +370,14 @@ func.func @fuseMulIntoConv2dWithQDQs(%arg0: tensor<256x32x32x3xf32>) -> tensor<2
   %q = "tfl.quantize"(%w) {qtype = tensor<3x3x3x3x!quant.uniform<i8<-127:127>:f32:0,{1.0,2.0,3.0}>>} : (tensor<3x3x3x3xf32>) -> tensor<3x3x3x3x!quant.uniform<i8<-127:127>:f32:0,{1.0,2.0,3.0}>>
   %dq = "tfl.dequantize"(%q) : (tensor<3x3x3x3x!quant.uniform<i8<-127:127>:f32:0,{1.0,2.0,3.0}>>) -> tensor<3x3x3x3xf32>
   %0 = "tfl.conv_2d"(%arg0, %dq, %cst_0) {dilation_h_factor = 2 : i32, dilation_w_factor = 3 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<256x32x32x3xf32>, tensor<3x3x3x3xf32>, tensor<3xf32>) -> tensor<256x8x7x3xf32>
-  %1 = "tfl.mul"(%0, %cst) {fused_activation_function = "NONE"} : (tensor<256x8x7x3xf32>, tensor<3xf32>) -> tensor<256x8x7x3xf32>
+  %1 = "tfl.mul"(%0, %cst) {fused_activation_function = "RELU"} : (tensor<256x8x7x3xf32>, tensor<3xf32>) -> tensor<256x8x7x3xf32>
   func.return %1 : tensor<256x8x7x3xf32>
 
 // CHECK-DAG: %[[w:.*]] = arith.constant{{.*}}dense<3.000000e+00> : tensor<3x3x3x3xf32>
 // CHECK-DAG: %[[cst:.*]] = arith.constant{{.*}}dense<[1.500000e+00, 3.000000e+00, 4.500000e+00]> : tensor<3xf32>
 // CHECK: %[[q:.*]] = "tfl.quantize"(%[[w]]) <{qtype = tensor<3x3x3x3x!quant.uniform<i8<-127:127>:f32:0, {1.500000e+00,3.000000e+00,4.500000e+00}>>}>
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
-// CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]], %[[cst]])
+// CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]], %[[cst]]) {{.*}}fused_activation_function = "RELU"
 // CHECK: return %[[conv]] : tensor<256x8x7x3xf32>
 }
 
@@ -4802,23 +4802,6 @@ func.func @RealDivWithConstDivisor(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
   // CHECK: return %0 : tensor<2x3xf32>
 }
 
-// When the const tensor cst is very large, `1 / cst` div introduced by
-// div->mul conversion may not be folded and the `1 / cst` div may trigger
-// the div->mul conversion again.
-// This test checks the div->mul conversion will not be done infinitively.
-//
-// CHECK-LABEL: @RealDivWithLargeSizeConstDivisor
-func.func @RealDivWithLargeSizeConstDivisor(%arg0: tensor<1x16x4096x4096xf32>) -> tensor<1x16x4096x4096xf32> {
-  %cst = arith.constant dense<5.000000e+01> : tensor<1x16x4096x4096xf32>
-  %1 = tfl.div %arg0, %cst {fused_activation_function = "NONE"} : tensor<1x16x4096x4096xf32>
-  func.return %1 : tensor<1x16x4096x4096xf32>
-  // CHECK-NEXT: %[[CST0:.*]] = arith.constant dense<1.000000e+00> : tensor<f32>
-  // CHECK-NEXT: %[[CST1:.*]] = arith.constant dense<5.000000e+01> : tensor<1x16x4096x4096xf32>
-  // CHECK-NEXT: %[[DIV:.*]] = tfl.div(%[[CST0]], %[[CST1]]) <{fused_activation_function = "NONE"}> : (tensor<f32>, tensor<1x16x4096x4096xf32>) -> tensor<1x16x4096x4096xf32>
-  // CHECK-NEXT: %[[MUL:.*]] = tfl.mul %arg0, %[[DIV]] {fused_activation_function = "NONE"} : tensor<1x16x4096x4096xf32>
-  // CHECK-NEXT: return %[[MUL]] : tensor<1x16x4096x4096xf32>
-}
-
 //CHECK-LABEL: @PushTransposeThroughSqueezeNoDims
 func.func @PushTransposeThroughSqueezeNoDims(%arg0: tensor<1x1x2x3xf32>) -> (tensor<3x2xf32>) {
   %cst = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
@@ -5037,4 +5020,41 @@ func.func public @FCAddToFCWithBiasAndReshape(%arg0: tensor<1x10xf32>) -> tensor
 
   // CHECK: %0 = "tfl.fully_connected"(%arg0, %cst_0, %cst_1) <{asymmetric_quantize_inputs = false, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"}> : (tensor<1x10xf32>, tensor<5x10xf32>, tensor<5xf32>) -> tensor<1x5xf32>
   // CHECK: %1 = "tfl.reshape"(%0, %cst) : (tensor<1x5xf32>, tensor<3xi32>) -> tensor<1x1x5xf32>
+}
+
+// CHECK-LABEL: @EliminateAddZerosLikeRHS
+func.func @EliminateAddZerosLikeRHS(%arg0: tensor<1x5xf32>, %arg1: tensor<1x5xf32>) -> tensor<1x5xf32> {
+  // CHECK-NOT: tfl.zeros_like
+  // CHECK-NOT: tfl.add
+  %0 = "tfl.zeros_like"(%arg1) : (tensor<1x5xf32>) -> tensor<1x5xf32>
+  %1 = tfl.add(%arg0, %0) <{fused_activation_function = "NONE"}> : (tensor<1x5xf32>, tensor<1x5xf32>) -> tensor<1x5xf32>
+  // CHECK: return %arg0 : tensor<1x5xf32>
+  func.return %1 : tensor<1x5xf32>
+}
+
+// CHECK-LABEL: @EliminateAddZerosLikeLHS
+func.func @EliminateAddZerosLikeLHS(%arg0: tensor<4x4xf32>, %arg1: tensor<4x4xf32>) -> tensor<4x4xf32> {
+  // CHECK-NOT: tfl.add
+  %0 = "tfl.zeros_like"(%arg0) : (tensor<4x4xf32>) -> tensor<4x4xf32>
+  %1 = tfl.add(%0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+  // CHECK: return %arg1 : tensor<4x4xf32>
+  func.return %1 : tensor<4x4xf32>
+}
+
+// CHECK-LABEL: @EliminateSubZerosLikeRHS
+func.func @EliminateSubZerosLikeRHS(%arg0: tensor<10xf32>, %arg1: tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK-NOT: tfl.sub
+  %0 = "tfl.zeros_like"(%arg1) : (tensor<10xf32>) -> tensor<10xf32>
+  %1 = tfl.sub(%arg0, %0) <{fused_activation_function = "NONE"}> : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  // CHECK: return %arg0 : tensor<10xf32>
+  func.return %1 : tensor<10xf32>
+}
+
+// CHECK-LABEL: @ConvertSubZerosLikeToNeg
+func.func @ConvertSubZerosLikeToNeg(%arg0: tensor<5x5xf32>, %arg1: tensor<5x5xf32>) -> tensor<5x5xf32> {
+  %0 = "tfl.zeros_like"(%arg0) : (tensor<5x5xf32>) -> tensor<5x5xf32>
+  %1 = tfl.sub(%0, %arg1) <{fused_activation_function = "NONE"}> : (tensor<5x5xf32>, tensor<5x5xf32>) -> tensor<5x5xf32>
+  // CHECK: %[[NEG:.*]] = "tfl.neg"(%arg1) : (tensor<5x5xf32>) -> tensor<5x5xf32> 
+  // CHECK: return %[[NEG]] : tensor<5x5xf32>
+  func.return %1 : tensor<5x5xf32>
 }

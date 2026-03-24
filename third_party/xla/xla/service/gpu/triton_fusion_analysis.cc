@@ -57,6 +57,16 @@ using triton_fusion::GetPropagatedDimOrdersAndRequirements;
 using triton_fusion::kNoSplitRequirement;
 using triton_fusion::TransformDirection;
 
+int64_t GetContractingDimSize(const HloInstruction& dot) {
+  const auto& contracting_dims =
+      ContractingDimensionsForOperand(dot, /*operand_number=*/0);
+  int64_t contracting_dim_size = 1;
+  for (int64_t dim : contracting_dims) {
+    contracting_dim_size *= dot.operand(0)->shape().dimensions(dim);
+  }
+  return contracting_dim_size;
+}
+
 }  // namespace
 
 namespace triton_fusion {
@@ -81,9 +91,13 @@ namespace triton_fusion {
           0) {
     splittable_dimension_index = non_contracting_dimension_index;
   }
-  FusionContext context(DotProperties{non_contracting_dimension_index,
-                                      splittable_dimension_index},
-                        DotRequirements(kNoSplitRequirement));
+
+  int64_t contracting_size = GetContractingDimSize(dot);
+
+  FusionContext context(
+      DotProperties{non_contracting_dimension_index, splittable_dimension_index,
+                    contracting_size},
+      DotRequirements(kNoSplitRequirement));
   context.dim_orders_[dot.operand(operand_number)] =
       DimensionOrder::FromDotOperandOrOutput(*dot.operand(operand_number),
                                              split_k_dimension_index);
@@ -102,9 +116,13 @@ namespace triton_fusion {
     // LHS non-contracting follows (batch is absent in this case).
     splittable_dimension_index = (split_k > 1) ? 1 : 0;
   }
-  FusionContext context(DotProperties{/*noncontracting_dimension=*/-1,
-                                      splittable_dimension_index},
-                        std::move(requirements));
+
+  int64_t contracting_size = GetContractingDimSize(dot);
+
+  FusionContext context(
+      DotProperties{/*noncontracting_dimension=*/-1, splittable_dimension_index,
+                    contracting_size},
+      std::move(requirements));
   context.dim_orders_[&dot] = DimensionOrder::FromDotOperandOrOutput(dot);
   return context;
 }
@@ -284,7 +302,7 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
   DotRequirements lhs_requirements(kNoSplitRequirement);
   for (const Scope scope :
        {Scope::LHS, Scope::RHS, Scope::LHS_SCALE, Scope::RHS_SCALE}) {
-    int operand_number = static_cast<int>(scope);
+    auto operand_number = static_cast<int>(scope);
     if (operand_number >= dot.operand_count()) {
       continue;  // Scale operands are optional.
     }

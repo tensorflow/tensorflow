@@ -115,7 +115,7 @@ class XlaExpression {
   XlaResource* resource() const { return resource_; }
 
   // Returns a human-readable summary of the expression.
-  string HumanString() const;
+  std::string HumanString() const;
 
   // Returns the value of a kValue or kXlaOp as an xla::XlaOp. Returns
   // an erroneous XlaOp if the expression is not a constant or an expression.

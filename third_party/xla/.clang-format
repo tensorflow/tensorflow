@@ -1,6 +1,52 @@
 BasedOnStyle: Google
 Language: Cpp
 PointerBindsToType: true
-SortIncludes: Never
 AlignTrailingComments:
   Kind: Always
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Priority 1: Standard C/C++ headers (angle brackets) - separated by blank line
+  - Regex:    '^<[a-z_]+>$'
+    Priority: 1
+    SortPriority: 1
+  # Priority 2: All other headers (no blank lines between them, sorted by SortPriority)
+  # gtest/gmock headers (angle brackets, but not standard headers)
+  - Regex:    '^<g(test|mock)/.*>$'
+    Priority: 2
+    SortPriority: 2
+  # absl headers
+  - Regex:    '^"absl/.*"$'
+    Priority: 2
+    SortPriority: 3
+  # llvm headers
+  - Regex:    '^"llvm/.*"$'
+    Priority: 2
+    SortPriority: 4
+  # mlir headers
+  - Regex:    '^"mlir/.*"$'
+    Priority: 2
+    SortPriority: 5
+  # third_party libraries
+  - Regex:    '^"third_party/.*"$'
+    Priority: 2
+    SortPriority: 6
+  # google (protobuf, etc.) headers
+  - Regex:    '^"google/.*"$'
+    Priority: 2
+    SortPriority: 7
+  # xla headers (including xla/tsl)
+  - Regex:    '^"xla/.*"$'
+    Priority: 2
+    SortPriority: 100
+  # tsl headers (without xla/ prefix)
+  - Regex:    '^"tsl/.*"$'
+    Priority: 2
+    SortPriority: 101
+  # triton headers
+  - Regex:    '^"triton/.*"$'
+    Priority: 2
+    SortPriority: 102
+  # Default catch-all for any other headers (IMPORTANT: ordered before XLA)
+  - Regex:    '.*'
+    Priority: 2
+    SortPriority: 8

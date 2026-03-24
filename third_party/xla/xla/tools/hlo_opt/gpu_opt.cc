@@ -19,12 +19,28 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
-#include <variant>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
+#include "xla/backends/gpu/transforms/collectives/all_gather_optimizer.h"
+#include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
+#include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
+#include "xla/backends/gpu/transforms/dot_dimension_sorter.h"
+#include "xla/backends/gpu/transforms/dot_normalizer.h"
+#include "xla/backends/gpu/transforms/dot_operand_converter.h"
+#include "xla/backends/gpu/transforms/gemm_broadcast_folding_rewriter.h"
+#include "xla/backends/gpu/transforms/gemm_fusion.h"
+#include "xla/backends/gpu/transforms/gemv_rewriter.h"
+#include "xla/backends/gpu/transforms/reduce_scatter_creator.h"
+#include "xla/backends/gpu/transforms/reduction_degenerate_dim_remover.h"
+#include "xla/backends/gpu/transforms/reduction_dimension_grouper.h"
+#include "xla/backends/gpu/transforms/reduction_layout_normalizer.h"
+#include "xla/backends/gpu/transforms/sanitize_constant_names.h"
+#include "xla/backends/gpu/transforms/topk_specializer.h"
+#include "xla/backends/gpu/transforms/topk_splitter.h"
+#include "xla/backends/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/transforms/host_offloader.h"
@@ -37,29 +53,10 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
-#include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/nvptx_alias_info.h"
-#include "xla/service/gpu/transforms/collectives/all_gather_optimizer.h"
-#include "xla/service/gpu/transforms/cudnn_custom_call_converter.h"
-#include "xla/service/gpu/transforms/dot_algorithm_rewriter.h"
-#include "xla/service/gpu/transforms/dot_dimension_sorter.h"
-#include "xla/service/gpu/transforms/dot_normalizer.h"
-#include "xla/service/gpu/transforms/dot_operand_converter.h"
-#include "xla/service/gpu/transforms/gemm_broadcast_folding_rewriter.h"
-#include "xla/service/gpu/transforms/gemm_fusion.h"
-#include "xla/service/gpu/transforms/gemv_rewriter.h"
-#include "xla/service/gpu/transforms/reduce_scatter_creator.h"
-#include "xla/service/gpu/transforms/reduction_degenerate_dim_remover.h"
-#include "xla/service/gpu/transforms/reduction_dimension_grouper.h"
-#include "xla/service/gpu/transforms/reduction_layout_normalizer.h"
-#include "xla/service/gpu/transforms/sanitize_constant_names.h"
-#include "xla/service/gpu/transforms/topk_specializer.h"
-#include "xla/service/gpu/transforms/topk_splitter.h"
-#include "xla/service/gpu/transforms/transpose_dimension_grouper.h"
-#include "xla/service/gpu/transforms/windowed_einsum_handler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
@@ -89,23 +86,26 @@ class GpuOptProvider : public CompiledOptProvider {
       TF_ASSIGN_OR_RETURN(std::string llvm_ir,
                           LlvmIrBeforeOptimizations(optimized_module.get()));
       return llvm_ir;
-
-    } else if (s == "llvm" || s == "llvm-after-optimizations") {
+    }
+    if (s == "llvm" || s == "llvm-after-optimizations") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())
           ->ir_module_string();
-    } else if (s == "ptx") {
+    }
+    if (s == "ptx") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())->text();
-    } else if (s == "buffer-assignment") {
+    }
+    if (s == "buffer-assignment") {
       TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
                           GetExecutable(std::move(module)));
       auto gpu_executable = static_cast<gpu::GpuExecutable*>(executable.get());
       return gpu_executable->buffer_assignment()->ToVerboseString(
           gpu_executable->alias_info(), 9999);
-    } else {
+    }
+    {
       // Delegate to base class.
       TF_ASSIGN_OR_RETURN(
           std::optional<std::string> out,
@@ -136,8 +136,7 @@ class GpuOptProvider : public CompiledOptProvider {
     se::GpuComputeCapability gpu_compute_capability;
     if (device_description.ok()) {
       gpu_compute_capability = device_description->gpu_compute_capability();
-      if (std::holds_alternative<se::CudaComputeCapability>(
-              gpu_compute_capability)) {
+      if (gpu_compute_capability.IsCuda()) {
         alias_info_ =
             std::make_unique<gpu::NVPTXAliasInfo>(*device_description);
       } else {
@@ -178,7 +177,6 @@ class GpuOptProvider : public CompiledOptProvider {
     RegisterPass<gpu::SanitizeConstantNames>();
     RegisterPass<gpu::TopKSplitter>();
     RegisterPass<gpu::TopkSpecializer>(gpu_compute_capability);
-    RegisterPass<gpu::TransposeDimensionGrouper>();
     RegisterPass<gpu::WindowedEinsumHandler>();
     // go/keep-sorted end
     if (debug_config.xla_gpu_experimental_collective_cse_distance_threshold() >
@@ -194,7 +192,7 @@ class GpuOptProvider : public CompiledOptProvider {
       const HloModule* module) {
     Compiler::CompileOptions opts;
     TF_ASSIGN_OR_RETURN(
-        Compiler::TargetConfig target_config,
+        Compiler::GpuTargetConfig target_config,
         gpu::GpuCompiler::GetTargetConfig(
             opts, module->config().debug_options(), /*executor=*/nullptr));
     return target_config.device_description;
@@ -207,9 +205,13 @@ class GpuOptProvider : public CompiledOptProvider {
     TF_ASSIGN_OR_RETURN(se::Platform * platform,
                         PlatformUtil::GetPlatform(GetPlatformName()));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                        Compiler::GetForPlatform(platform));
+                        Compiler::GetForPlatform(platform->id()));
 
     auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler.get());
+    xla::llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock(
+        gpu_compiler->GetLLVMCommandLineOptions(
+            optimized_module->config().debug_options()));
+
     std::unique_ptr<gpu::GpuAliasInfo> alias_info =
         gpu_compiler->GetAliasInfo(device_description);
     if (!optimized_module->has_schedule()) {
@@ -230,9 +232,16 @@ class GpuOptProvider : public CompiledOptProvider {
         xla::gpu::CompileModuleResults results,
         xla::gpu::CompileModuleToLlvmIr(
             optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
-            gpu_compiler->GetDataLayout(), platform, device_description,
-            alias_info.get(), std::move(buffer_size_bytes_function)));
-    return llvm_ir::DumpToString(results.llvm_module.get());
+            gpu_compiler->GetDataLayout(), platform->id(), device_description,
+            alias_info.get(), std::move(buffer_size_bytes_function),
+            llvm_options_lock));
+
+    if (results.llvm_module_constants) {
+      results.llvm_modules.push_back(std::move(results.llvm_module_constants));
+    }
+    gpu::LinkLlvmModulesInPlace(results.llvm_modules);
+
+    return llvm_ir::DumpToString(results.llvm_modules[0].get());
   }
 };
 

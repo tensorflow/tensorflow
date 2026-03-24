@@ -16,13 +16,20 @@ limitations under the License.
 #include "xla/service/topk_rewriter.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
-#include <memory>
+#include <limits>
 #include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/builder/lib/comparators.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
@@ -35,6 +42,7 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 
@@ -430,7 +438,7 @@ absl::StatusOr<bool> TopkRewriter::TransformToCustomCall(
   return changed;
 }
 
-absl::StatusOr<bool> TopkRewriter::Run(
+absl::StatusOr<bool> TopkRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
@@ -537,7 +545,7 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
   HloPredicate should_decompose_;
 };
 
-absl::StatusOr<bool> TopkDecomposer::Run(
+absl::StatusOr<bool> TopkDecomposer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return TopkDecomposerVisitor(should_decompose_)

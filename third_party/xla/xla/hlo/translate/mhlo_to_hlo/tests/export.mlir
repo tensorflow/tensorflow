@@ -920,6 +920,33 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
       recall_target = 9.492180e-01 : f32,
       reduction_dim = 1 : i64,
       reduction_input_size_override = -1 : i64,
+      top_k = 4 : i64,
+      is_fallback = true
+      },
+    mhlo.frontend_attributes = {_some_attribute = "some_value"}
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// CHECK: ENTRY
+// CHECK: frontend_attributes={_some_attribute="some_value"}
+
+// -----
+
+// CHECK:  HloModule
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
       is_fallback = false,
       top_k = 4 : i64
       }
@@ -3000,8 +3027,7 @@ func.func @main(%operand: tensor<?x784xf32>) -> tensor<?x784xf32> {
 }
 
 //       CHECK: HloModule {{.*}}, entry_computation_layout={(f32[?,784]{1,0})->f32[?,784]{1,0}}
-// CHECK-EMPTY:
-//  CHECK-NEXT: ENTRY {{.*}} ([[ARG0:.*]]: f32[?,784]) -> f32[?,784] {
+//  CHECK:      ENTRY {{.*}} ([[ARG0:.*]]: f32[?,784]) -> f32[?,784] {
 //  CHECK-NEXT:   %[[ARG0]] = f32[?,784] parameter(0)
 //  CHECK-NEXT:   ROOT {{.*}} = f32[?,784] abs(%[[ARG0]]), {{.*}}
 //  CHECK-NEXT: }
@@ -3341,4 +3367,50 @@ func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
       mhlo.return %iterArg0, %1 : tensor<i1>, memref<2xf32>
     }
   func.return %0#1: memref<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tensor<8x6xf32>
+  func.return %0: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstackInterleaved"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstackInterleaved", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tensor<8x6xf32>
+  func.return %0: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", operand_layouts = [dense<[1, 0]> : tensor<2xindex>], result_layout = [dense<[0, 1]> : tensor<2xindex>], result_layouts = [dense<[0, 1]> : tensor<2xindex>], xla_shape = "(f32[8,6]{0,1})"} : (tensor<8x8xf32>) -> tuple<tensor<8x6xf32>>
+  %1 = mhlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>>) -> tensor<8x6xf32>
+  func.return %1: tensor<8x6xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: ENTRY
+func.func @main(%arg0: tensor<8x8xf32>) -> tensor<8x6xf32> {
+  // CHECK: [[RES:%custom.*]] = (f32[8,6], f32[8,6]) custom-call(%{{.*}}), custom_call_target="SparseActivationsUnstack"
+  // CHECK-NEXT: ROOT %[[ROOT:.*]] = f32[8,6] get-tuple-element([[RES]]), index=0
+  %0 = "mhlo.custom_call"(%arg0, %arg0) {call_target_name = "SparseActivationsUnstack", backend_config = "", xla_shape = "(f32[8,6]{0,1}, f32[8,6]{0,1})"} : (tensor<8x8xf32>, tensor<8x8xf32>) -> tuple<tensor<8x6xf32>, tensor<8x6xf32>>
+  %1 = mhlo.get_tuple_element %0[0] : (tuple<tensor<8x6xf32>, tensor<8x6xf32>>) -> tensor<8x6xf32>
+  func.return %1: tensor<8x6xf32>
 }

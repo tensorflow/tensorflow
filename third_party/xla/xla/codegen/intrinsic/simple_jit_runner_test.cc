@@ -165,7 +165,7 @@ TEST(SimpleJitRunnerTest, RunJitVectorizedF32Loop) {
       builder.getInt32Ty(), builder.getInt8Ty()->getPointerTo(), true);
   llvm::Function* PrintfFunc = llvm::Function::Create(
       PrintfFuncType, llvm::Function::ExternalLinkage, "printf", *module);
-  llvm::Value* format_str = builder.CreateGlobalStringPtr("Iterating\n");
+  llvm::Value* format_str = builder.CreateGlobalString("Iterating\n");
   builder.CreateCall(PrintfFunc, {format_str});
 
   builder.CreateRet(result);

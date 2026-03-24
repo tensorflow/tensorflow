@@ -243,5 +243,30 @@ TEST(MMapHandleTest, WorksWithHugeFiles) {
   ASSERT_TRUE(handle.Map(tmp_file.GetCPath(), /*offset=*/0));
 }
 
+TEST(MMapHandleTest, MemoryLockAndUnlock) {
+  const std::string payload = "This is some data to be locked in memory.";
+
+  TempFileDesc tmp_file;
+  ASSERT_TRUE(tmp_file.IsValid());
+  ASSERT_TRUE(tmp_file.Write(payload.c_str(), std::size(payload)));
+  tmp_file.Close();
+
+  MMapHandle handle;
+  ASSERT_TRUE(handle.Map(tmp_file.GetCPath()));
+  ASSERT_TRUE(handle.IsMapped());
+
+  if (handle.LockMemory()) {
+    EXPECT_TRUE(handle.UnlockMemory());
+  } else {
+    // Locking might fail due to resource limits (RLIMIT_MEMLOCK).
+    // In that case, we log a warning but don't fail the test if it's a
+    // permission issue. However, for a small file, it should generally succeed
+    // in a test environment. Let's print the error for debugging purposes.
+    GTEST_SKIP() << "MemoryLock failed with errno: " << errno;
+  }
+
+  EXPECT_THAT(handle, ElementsAreArray(payload));
+}
+
 }  // namespace
 }  // namespace tflite::xnnpack

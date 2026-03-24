@@ -255,6 +255,33 @@ static void BM_ChainOfAddF32(benchmark::State& state,
                            options));
 }
 
+static void BM_TransposeSpillRepro(benchmark::State& state,
+                                   HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule transpose_spill_repro_$d0
+
+    ENTRY main {
+      %arg0 = f32[$d0,$d0] parameter(0)
+      %transpose = f32[$d0,$d0] transpose(%arg0), dimensions={1,0}
+      ROOT %copy = f32[$d0,$d0] copy(%transpose)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F32, {d0, d0});
+  auto p0_status =
+      LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  CHECK_OK(p0_status.status());
+  auto p0 = std::move(*p0_status);
+
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
 XLA_CPU_BENCHMARK(BM_FusionF32)
     ->MeasureProcessCPUTime()
     ->Arg(128)
@@ -296,5 +323,7 @@ XLA_CPU_BENCHMARK(BM_ChainOfAddF32)
     ->Arg(256)
     ->Arg(512)
     ->Arg(1024);
+
+XLA_CPU_BENCHMARK(BM_TransposeSpillRepro)->MeasureProcessCPUTime()->Arg(2048);
 
 }  // namespace xla::cpu

@@ -28,7 +28,7 @@ static Graph* RandomBinomialGraph(double count, double prob, int num_batches,
                                   int samples_per_batch) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor shape_t(DT_INT32, TensorShape({2}));
-  shape_t.flat<int32>().setValues({num_batches, samples_per_batch});
+  shape_t.flat<int32_t>().setValues({num_batches, samples_per_batch});
 
   Tensor counts_t(DT_FLOAT, TensorShape({num_batches}));
   counts_t.flat<float>().setConstant(count);

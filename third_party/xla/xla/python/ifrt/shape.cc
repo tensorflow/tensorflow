@@ -17,17 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <ostream>
-#include <string>
 #include <utility>
 #include <variant>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/shape.pb.h"
 #include "xla/tsl/platform/errors.h"
@@ -70,33 +66,28 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& proto) {
   return Shape(std::move(dims));
 }
 
-ShapeProto Shape::ToProto(SerDesVersion version) const {
+void Shape::ToProto(ShapeProto& proto, SerDesVersion version) const {
   // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
   // graceful error handling.
   CHECK_GE(version.version_number(), SerDesVersionNumber(0))
       << "Unsupported " << version.version_number()
       << " for Shape serialization";
 
-  ShapeProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.mutable_dims()->Reserve(dims().size());
   for (int64_t dim : dims()) {
     proto.mutable_dims()->AddAlreadyReserved(dim);
   }
-  return proto;
 }
 
 int64_t Shape::num_elements() const {
   int64_t count = 1;
-  for (int64_t d : dims_) {
+  for (int64_t d : *dims_) {
     count *= d;
   }
   return count;
-}
-
-std::string Shape::DebugString() const {
-  return absl::StrCat("[", absl::StrJoin(dims_, ","), "]");
 }
 
 absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(
@@ -116,22 +107,21 @@ absl::StatusOr<BoundedDynamicShapeTag> BoundedDynamicShapeTag::FromProto(
   return BoundedDynamicShapeTag(std::move(dynamic_dims));
 }
 
-BoundedDynamicShapeTagProto BoundedDynamicShapeTag::ToProto(
-    SerDesVersion version) const {
+void BoundedDynamicShapeTag::ToProto(BoundedDynamicShapeTagProto& proto,
+                                     SerDesVersion version) const {
   // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
   // graceful error handling.
   CHECK_GE(version.version_number(), SerDesVersionNumber(0))
       << "Unsupported " << version.version_number()
       << " for BoundedDynamicShapeTag serialization";
 
-  BoundedDynamicShapeTagProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.mutable_is_dynamic_dims()->Reserve(dynamic_dims_.size());
   for (bool dynamic_dim : dynamic_dims_) {
     proto.mutable_is_dynamic_dims()->AddAlreadyReserved(dynamic_dim);
   }
-  return proto;
 }
 
 absl::StatusOr<DynamicShape> DynamicShape::Create(Shape shape,
@@ -186,47 +176,33 @@ absl::StatusOr<DynamicShape> DynamicShape::FromProto(
   return InvalidArgument("Only support bounded dynamic shape.");
 }
 
-DynamicShapeProto DynamicShape::ToProto(SerDesVersion version) const {
+void DynamicShape::ToProto(DynamicShapeProto& proto,
+                           SerDesVersion version) const {
   // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
   // graceful error handling.
   CHECK_GE(version.version_number(), SerDesVersionNumber(0))
       << "Unsupported " << version.version_number()
       << " for DynamicShape serialization";
 
-  DynamicShapeProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
-  *proto.mutable_shape() = shape_.ToProto(version);
+  shape_.ToProto(*proto.mutable_shape(), version);
   std::visit(
       overloaded{
           [&proto, version](BoundedDynamicShapeTag tag) {
-            *proto.mutable_bounded_dynamic_shape_tag() = tag.ToProto(version);
+            tag.ToProto(*proto.mutable_bounded_dynamic_shape_tag(), version);
           },
       },
-      tag_);
-  return proto;
-}
-
-std::string DynamicShape::DebugString() const {
-  return std::visit(
-      overloaded{[this](BoundedDynamicShapeTag tag) {
-        absl::InlinedVector<std::string, Shape::kInlineDimensionSize> dim_reps;
-        dim_reps.reserve(shape_.dims().size());
-        for (int i = 0; i < shape_.dims().size(); ++i) {
-          absl::string_view prefix = tag.DynamicDims()[i] ? "<=" : "";
-          dim_reps.push_back(absl::StrCat(prefix, shape_.dims()[i]));
-        }
-        return absl::StrCat("[", absl::StrJoin(dim_reps, ","), "]");
-      }},
       tag_);
 }
 
 std::ostream& operator<<(std::ostream& os, const Shape& shape) {
-  return os << shape.DebugString();
+  return os << absl::StrCat(shape);
 }
 
 std::ostream& operator<<(std::ostream& os, const DynamicShape& dynamic_shape) {
-  return os << dynamic_shape.DebugString();
+  return os << absl::StrCat(dynamic_shape);
 }
 
 }  // namespace ifrt

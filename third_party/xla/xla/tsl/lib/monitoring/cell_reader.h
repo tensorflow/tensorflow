@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -81,9 +80,8 @@ class CellReader {
  public:
   // Constructs a `CellReader` that reads values exported for `metric_name`.
   //
-  // REQUIRES: a tfstreamz with `metric_name` exists. Otherwise, the
-  // `CellReader` will construct without issue, but the `Read` and `Delta` calls
-  // will CHECK-fail.
+  // NOTE: if a tfstreamz with `metric_name` does not exists, the `CellReader`
+  // will construct without issue, but the `Read` calls will CHECK-fail.
   explicit CellReader(const std::string& metric_name);
   virtual ~CellReader() = default;
   CellReader(const CellReader&) = delete;
@@ -100,13 +98,13 @@ class CellReader {
 
   // Returns the difference in the value of this cell since the last time
   // `Delta()` was called for this cell, or when the `CellReader` was created,
-  // whichever was most recent. If the metric has not been modified, it returns
-  // a default value appropriate for `ValueType`. `Delta` is not supported for
-  // string and bool gauges.
+  // whichever was most recent. If tfstreamz does not exist or the metric has
+  // not been modified, it returns a default value appropriate for `ValueType`.
+  // `Delta` is not supported for string and bool gauges.
   //
-  // REQUIRES: The tfstreamz exists, `labels` contains a correct number of
-  // labels per tfstreamz definition, and the ValueType is not string or bool.
-  // Otherwise, it will CHECK-fail.
+  // REQUIRES: `labels` contains a correct number of labels per tfstreamz
+  // definition, and the ValueType is not string or bool. Otherwise, it will
+  // CHECK-fail.
   template <typename... LabelType>
   ValueType Delta(const LabelType&... labels);
 
@@ -149,13 +147,19 @@ ValueType CellReader<ValueType>::Delta(const LabelType&... labels) {
   std::vector<std::string> labels_list{labels...};
   std::unique_ptr<CollectedMetrics> metrics = internal::CollectMetrics();
   ValueType value = internal::GetLatestValueOrDefault<ValueType>(
-      *metrics, metric_name_, labels_list);
-  ValueType initial_value = internal::GetLatestValueOrDefault<ValueType>(
-      *initial_metrics_, metric_name_, labels_list);
-  if (delta_map_.contains(labels_list)) {
-    initial_value = delta_map_[labels_list];
+      *metrics, metric_name_, labels_list,
+      /*return_default_on_not_found=*/true);
+  auto it = delta_map_.find(labels_list);
+  ValueType initial_value;
+  if (it == delta_map_.end()) {
+    initial_value = internal::GetLatestValueOrDefault<ValueType>(
+        *initial_metrics_, metric_name_, labels_list,
+        /*return_default_on_not_found=*/true);
+    delta_map_[labels_list] = value;
+  } else {
+    initial_value = it->second;
+    it->second = value;
   }
-  delta_map_[labels_list] = value;
   return internal::GetDelta<ValueType>(value, initial_value);
 }
 

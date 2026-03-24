@@ -52,7 +52,10 @@ bool DecodeWebPHeader(absl::string_view webp_string, int* width, int* height,
 }
 
 bool DecodeWebPImage(absl::string_view webp_string, uint8_t* output, int width,
-                     int height, int channels) {
+                     int height, int channels, bool use_threads) {
+  // WebP only supports 3- and 4-channel images.
+  if (channels != 3 && channels != 4) return false;
+
   const uint8_t* input_data =
       reinterpret_cast<const uint8_t*>(webp_string.data());
   const size_t input_size = webp_string.size();
@@ -64,28 +67,34 @@ bool DecodeWebPImage(absl::string_view webp_string, uint8_t* output, int width,
     return false;
   }
 
-  switch (channels) {
-    case 3:
-      return ::WebPDecodeRGBInto(input_data, input_size, output, output_size,
-                                 row_stride) != nullptr;
-    case 4:
-      return ::WebPDecodeRGBAInto(input_data, input_size, output, output_size,
-                                  row_stride) != nullptr;
-    default:
-      // Invalid number of channels.
-      return false;
-  }
+  WebPDecoderConfig config;
+  if (!WebPInitDecoderConfig(&config)) return false;
+
+  config.options.use_threads = use_threads ? 1 : 0;
+  config.output.is_external_memory = 1;
+  config.output.u.RGBA.rgba = output;
+  config.output.u.RGBA.stride = row_stride;
+  config.output.u.RGBA.size = output_size;
+  config.output.colorspace = channels == 3 ? MODE_RGB : MODE_RGBA;
+
+  const bool success =
+      WebPDecode(input_data, input_size, &config) == VP8_STATUS_OK;
+  WebPFreeDecBuffer(&config.output);
+  return success;
 }
 
 uint8_t* DecodeWebPAnimation(
     absl::string_view webp_string,
     const std::function<uint8_t*(int, int, int, int)>& allocate_output,
-    std::string* error_string, bool expand_animations) {
+    std::string* error_string, bool expand_animations, bool use_threads) {
   WebPData webp_data = {reinterpret_cast<const uint8_t*>(webp_string.data()),
                         webp_string.size()};
 
-  // Use the default decoder options, which is single-threaded RGBA decode.
-  WebPAnimDecoder* decoder = WebPAnimDecoderNew(&webp_data, nullptr);
+  WebPAnimDecoderOptions dec_options;
+  WebPAnimDecoderOptionsInit(&dec_options);
+  dec_options.use_threads = use_threads ? 1 : 0;
+
+  WebPAnimDecoder* decoder = WebPAnimDecoderNew(&webp_data, &dec_options);
   if (decoder == nullptr) {
     *error_string = "failed to decode WebP Animation";
     return nullptr;
@@ -116,8 +125,8 @@ uint8_t* DecodeWebPAnimation(
   size_t frame = 0;
   while (WebPAnimDecoderHasMoreFrames(decoder)) {
     uint8_t* buffer;
-    int timestamp_dummy;
-    if (!WebPAnimDecoderGetNext(decoder, &buffer, &timestamp_dummy)) {
+    int timestamp;
+    if (!WebPAnimDecoderGetNext(decoder, &buffer, &timestamp)) {
       *error_string = absl::StrCat("failed to decode frame: ", frame);
       return nullptr;
     }

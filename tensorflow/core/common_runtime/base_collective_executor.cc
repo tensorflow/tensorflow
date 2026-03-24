@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/config/flag_defs.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -157,7 +158,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
     return Tensor(allocator_, dt_, {ChunkElts(i)}, empty);
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return strings::StrCat(
         "base addr ", reinterpret_cast<int64_t>(DMAHelper::base(&output_)),
         " num_chunks ", num_chunks_, " total_elts ", total_elts_, " chunk_elts",
@@ -165,7 +166,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
         VALUE_IN_DEBUG_STRING ? output_.SummarizeValue(1024) : "<hidden>");
   }
 
-  string TBounds(const Tensor& t) const override {
+  std::string TBounds(const Tensor& t) const override {
     int64_t base_addr = reinterpret_cast<int64_t>(DMAHelper::base(&t));
     return strings::StrCat("(", base_addr, ", ", (base_addr + t.TotalBytes()),
                            ")");
@@ -212,8 +213,8 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                                align_chunks);
       break;
     case DT_INT32:
-      return new CollectiveAdapterImpl<int32>(output, num_chunks, allocator,
-                                              align_chunks);
+      return new CollectiveAdapterImpl<int32_t>(output, num_chunks, allocator,
+                                                align_chunks);
       break;
     case DT_INT64:
       return new CollectiveAdapterImpl<int64_t>(output, num_chunks, allocator,
@@ -229,6 +230,9 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const absl::Status& s) {
+  if (flags::Global().enable_fatal_error_on_collective_abort.value()) {
+    LOG(FATAL) << "BaseCollectiveExecutor::StartAbort: " << s;
+  }
   absl::Status status;
   {
     mutex_lock l(status_mu_);
@@ -270,7 +274,7 @@ absl::Status BaseCollectiveExecutor::GetStatus(const absl::Status& s) {
 
 void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           const CollectiveParams* col_params,
-                                          const string& exec_key,
+                                          const std::string& exec_key,
                                           StatusCallback done) {
   // See CompleteParamsAsync() how done() and the timeout callback interacts.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
@@ -339,7 +343,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     core::ScopedUnref unref(col_impl);
     tsl::profiler::TraceMeConsumer consumer(
         [ctx, col_ctx] {
-          string op =
+          std::string op =
               tsl::profiler::TraceMeOp(ctx->op_kernel().name_view(),
                                        ctx->op_kernel().type_string_view());
           return tsl::profiler::TraceMeEncode(
@@ -486,7 +490,7 @@ void BaseCollectiveExecutor::UnblockDependencies(
     const CollectiveParams& col_params) {
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
-    const string& task_name =
+    const std::string& task_name =
         col_params.group.members[col_params.default_rank].task;
     const int32_t num_devices =
         col_params.group.num_devices_per_task.at(task_name);

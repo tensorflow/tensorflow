@@ -24,11 +24,11 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -44,6 +44,7 @@ limitations under the License.
 #include "xla/shape_util.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -179,6 +180,8 @@ class ShapeUtil {
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
   static int64_t ByteSizeOf(const Shape& shape, int64_t pointer_size = -1);
+
+  static int64_t ByteSizeOfElementsRecursive(const Shape& shape);
 
   // Returns the number of bytes used to store the primitive_type.
   //
@@ -434,6 +437,42 @@ class ShapeUtil {
   // shape has a layout.
   static bool IsEffectivelyMostMajorDimension(const Shape& shape,
                                               int64_t dimension);
+
+  // In this case, we care about transposes that permute dimensions of a shape
+  // that can be viewed as several logical components in the order of major to
+  // minor. As an example, let's consider a 0-2-1 transpose:
+  //
+  // If a shape can be viewed as three logical components 0-1-2 in the order of
+  // major to minor, a 0-2-1-transpose changes the order of such logical
+  // components to 0-2-1. We call the shape being transposed the input shape and
+  // the transposed shape the output shape. The logical view of the input/output
+  // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the
+  // normalized shapes. The original input/output shapes are called unnormalized
+  // shapes.
+  //
+  // 'output_shape' should have the default layout (enforced by the caller).
+  //
+  // 'dimensions' specifies the kind of the unnormalized transpose and defines
+  // the permutation of the input shape that will result in the provided output
+  // shape. So to compute the input shape, we need to apply the inverse
+  // permutation of 'dimensions'.
+  //
+  // 'permutation' is an output parameter and specifies the kind of the
+  // normalized transpose.
+  //
+  // The method returns the dimensions for the normalized transpose shape.
+  //
+  // Example: Suppose the unnormalized output shape is [32, 1, 10, 11], and
+  // 'dimensions' is set to {3, 1, 0, 2}. This means the corresponding input
+  // shape is [10, 1, 11, 32]. The normalized output shape is [32, 110] with
+  // 'permutation' set to {1,0}.
+  // Note: the method fails if the input shape or the output shape has a
+  // non-monotonic layout.
+  static absl::StatusOr<absl::InlinedVector<int64_t, 3>>
+  GetNormalizedLogicalTransposeShape(
+      const Shape& input_shape, const Shape& output_shape,
+      absl::Span<int64_t const> dimensions,
+      absl::InlinedVector<int64_t, 3>& permutation);
 
   // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return Shape(std::vector<Shape>{}); }
@@ -827,6 +866,10 @@ class ShapeUtil {
   // Drops any degenerate dimensions (i.e. dimensions of size 1)
   static Shape DropDegenerateDimensions(const Shape& shape);
 
+  // Permutes the dimensions of `shape` without changing the layout, if present.
+  static Shape PermuteDimensionsIgnoringLayout(
+      absl::Span<const int64_t> permutation, const Shape& shape);
+
   // Permutes the dimensions by the given permutation, so
   // return_value.dimensions[i] = argument.dimensions[permutation[i]].
   //
@@ -1132,10 +1175,17 @@ class ShapeUtil {
 
   // Computes byte strides of an array shape `shape`. `shape` must have a
   // layout. Ignores tiling. `strides` must have size equal to the number of
-  // dimensions of `shape`.
+  // dimensions of `shape`. Ignores element_size_in_bits - uses its default
+  // value, ByteSizeOfPrimitiveType - therefore `unpacked`.
+  static absl::Status UnpackedByteStrides(const Shape& shape,
+                                          absl::Span<int64_t> strides);
+  ABSL_DEPRECATE_AND_INLINE()
   static absl::Status ByteStrides(const Shape& shape,
                                   absl::Span<int64_t> strides);
   // Same as above but returns the stride array, or std::nullopt if error.
+  static std::optional<absl::InlinedVector<int64_t, 4>> UnpackedByteStrides(
+      const Shape& shape);
+  // Same as above but returns std::nullopt if elements are not byte-aligned.
   static std::optional<absl::InlinedVector<int64_t, 4>> ByteStrides(
       const Shape& shape);
 

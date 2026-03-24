@@ -473,7 +473,7 @@ absl::Status EagerOperation::MutableTensorHandleInputs(
 }
 
 absl::Status EagerOperation::SetDeviceName(const char* c_name) {
-  string name(c_name != nullptr ? c_name : "");
+  std::string name(c_name != nullptr ? c_name : "");
   if (name != last_set_device_name_) {
     if (!DeviceNameUtils::ParseFullName(name, &device_parsed_name_)) {
       return errors::InvalidArgument("Malformed device specification '", name,
@@ -498,7 +498,7 @@ bool EagerOperation::IsLocal() const {
          device_parsed_name_.task == host_cpu_name.task;
 }
 
-string VariantDeviceDebugString(VariantDevice device) {
+std::string VariantDeviceDebugString(VariantDevice device) {
   if (device == kVariantDeviceNull) {
     return "[]";
   } else if (std::holds_alternative<CustomDevice*>(device)) {
@@ -513,8 +513,8 @@ void EagerOperation::AddAttrs(const AbstractOpAttrs* op_attrs) {
   attrs_.CopyAttributes(*(down_cast<const AttrBuilder*>(op_attrs)));
 }
 
-string EagerOperation::DebugString() const {
-  string out;
+std::string EagerOperation::DebugString() const {
+  std::string out;
   VLOG(1) << "EagerOperation::DebugString() over " << this;
 
   absl::StrAppend(&out, "Name: ", Name(), "\n");

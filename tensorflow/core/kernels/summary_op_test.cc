@@ -39,7 +39,7 @@ namespace tensorflow {
 namespace {
 
 static void EXPECT_SummaryMatches(const Summary& actual,
-                                  const string& expected_str) {
+                                  const std::string& expected_str) {
   Summary expected;
   CHECK(protobuf::TextFormat::ParseFromString(expected_str, &expected));
   EXPECT_EQ(expected.DebugString(), actual.DebugString());

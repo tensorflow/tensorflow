@@ -28,7 +28,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-ScopeNode* TFScope::CreateParentNode(const string& name) {
+ScopeNode* TFScope::CreateParentNode(const std::string& name) {
   if (nodes_map_.find(name) != nodes_map_.end()) {
     return nodes_map_[name].get();
   }
@@ -42,7 +42,7 @@ ScopeNode* TFScope::CreateParentNode(const string& name) {
 }
 
 void TFScope::AddNode(TFGraphNode* node) {
-  string name = node->name();
+  std::string name = node->name();
   if (nodes_map_.find(node->name()) == nodes_map_.end()) {
     nodes_map_[name] = std::make_unique<ScopeNode>(node);
   }
@@ -65,10 +65,10 @@ void TFScope::Build() {
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     ScopeNode* node = it->second.get();
     auto last_slash = node->name().find_last_of('/');
-    if (last_slash == string::npos) {
+    if (last_slash == std::string::npos) {
       roots.push_back(node);
     } else {
-      const string prefix = node->name().substr(0, last_slash);
+      const std::string prefix = node->name().substr(0, last_slash);
       nodes_map_[prefix]->children.push_back(node);
     }
   }
@@ -107,8 +107,8 @@ const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
   return root;
 }
 
-void TFScope::Format(const std::vector<ScopeNode*> roots, string* display_str,
-                     GraphNodeProto* proto) {
+void TFScope::Format(const std::vector<ScopeNode*> roots,
+                     std::string* display_str, GraphNodeProto* proto) {
   for (ScopeNode* node : roots) {
     display_str->append(node->formatted_str);
     GraphNodeProto* child = proto->add_children();
@@ -118,14 +118,14 @@ void TFScope::Format(const std::vector<ScopeNode*> roots, string* display_str,
 }
 
 std::vector<ScopeNode*> TFScope::SearchRoot(
-    std::vector<ScopeNode*> roots, const std::vector<string>& regexes) {
+    std::vector<ScopeNode*> roots, const std::vector<std::string>& regexes) {
   std::vector<ScopeNode*> res;
   if (roots.empty()) {
     return res;
   }
   for (ScopeNode* root : roots) {
     bool match_start_node = false;
-    for (const string& regex : regexes) {
+    for (const std::string& regex : regexes) {
       if (RE2::FullMatch(root->name(), regex)) {
         res.push_back(root);
         match_start_node = true;
@@ -177,7 +177,7 @@ std::vector<ScopeNode*> TFScope::PrintScope(const std::vector<ScopeNode*> roots,
       if (opts.select.find(kShown[4]) != opts.select.end()) {
         std::unique_ptr<TFProfTensor> tfprof_tensor;
         if (LookUpCheckPoint(node->name(), &tfprof_tensor)) {
-          string value_str;
+          std::string value_str;
           tfprof_tensor->Display(&value_str,
                                  node->mutable_proto()->mutable_tensor_value());
           node->formatted_str += value_str;

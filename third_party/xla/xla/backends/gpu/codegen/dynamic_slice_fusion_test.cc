@@ -23,15 +23,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
+#include "xla/backends/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/hlo/builder/lib/constants.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -40,16 +43,18 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/transforms/dynamic_slice_fusion_rewriter.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -65,6 +70,13 @@ std::string GetPlatformName() {
       PlatformUtil::CanonicalPlatformName("gpu").value());
 }
 
+stream_executor::Platform::Id GetPlatformId() {
+  auto platform_id =
+      PlatformUtil::GetPlatformIdFromCanonicalName(GetPlatformName());
+  CHECK_OK(platform_id);
+  return platform_id.value();
+}
+
 using ::testing::ElementsAre;
 using ::testing::Optional;
 using ::testing::VariantWith;
@@ -73,11 +85,79 @@ MATCHER_P(ThunkKindIs, kind, "") {
   return ExplainMatchResult(::testing::Eq(kind), arg->kind(), result_listener);
 }
 
-class DynamicSliceFusionTest : public HloTestBase {
+se::StreamExecutor* GpuExecutor() {
+  auto name =
+      absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value());
+  auto* platform = se::PlatformManager::PlatformWithName(name).value();
+  return platform->ExecutorForDevice(0).value();
+}
+
+bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
+  const auto& device_description = stream_executor->GetDeviceDescription();
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
+  if (cuda_cc != nullptr) {
+    if (device_description.driver_version() >=
+            stream_executor::SemanticVersion(12, 9, 0) &&
+        device_description.runtime_version() >=
+            stream_executor::SemanticVersion(12, 9, 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+class DynamicSliceFusionTest : public HloTestBaseLegacy {
  public:
   HloModuleConfig GetModuleConfigWithoutCommandBuffer() {
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.clear_xla_gpu_enable_command_buffer();
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return config;
+  }
+
+  HloModuleConfig GetModuleConfigWithCommandBuffer() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_cublas_fallback(true);
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+    debug_options.add_xla_gpu_enable_command_buffer(
+        DebugOptions::DYNAMIC_SLICE_FUSION);
+    HloModuleConfig config;
+    config.set_debug_options(debug_options);
+    return config;
+  }
+
+  HloModuleConfig GetModuleConfigWithCommandBufferUnrollLoops() {
+    DebugOptions debug_options = GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
+    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    debug_options.set_xla_gpu_enable_cublaslt(false);
+    debug_options.set_xla_gpu_cublas_fallback(true);
+    debug_options.set_xla_gpu_graph_min_graph_size(1);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
+    debug_options.add_xla_gpu_enable_command_buffer(
+        DebugOptions::DYNAMIC_SLICE_FUSION);
+    debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
     HloModuleConfig config;
     config.set_debug_options(debug_options);
     return config;
@@ -950,8 +1030,8 @@ TEST_F(DynamicSliceFusionTest, SlicedOperandAliasingOutput) {
 
 static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
                            ffi::Result<ffi::AnyBuffer> dst) {
-  se::DeviceMemoryBase dst_mem = dst->device_memory();
-  se::DeviceMemoryBase src_mem = src.device_memory();
+  se::DeviceAddressBase dst_mem = dst->device_memory();
+  se::DeviceAddressBase src_mem = src.device_memory();
   return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
 }
 
@@ -993,7 +1073,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallSimple) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1026,13 +1106,13 @@ static absl::Status SubBuffers(
   //  dst5:  result at tuple index {4}, shape f32[3,128]
   //  dst6:  result at tuple index {5}, shape f32[96]
 
-  se::DeviceMemoryBase dst0_mem = dst0->device_memory();
-  se::DeviceMemoryBase dst1_mem = dst1->device_memory();
-  se::DeviceMemoryBase dst2_mem = dst2->device_memory();
-  se::DeviceMemoryBase dst3_mem = dst3->device_memory();
-  se::DeviceMemoryBase dst4_mem = dst4->device_memory();
-  se::DeviceMemoryBase dst5_mem = dst5->device_memory();
-  se::DeviceMemoryBase dst6_mem = dst6->device_memory();
+  se::DeviceAddressBase dst0_mem = dst0->device_memory();
+  se::DeviceAddressBase dst1_mem = dst1->device_memory();
+  se::DeviceAddressBase dst2_mem = dst2->device_memory();
+  se::DeviceAddressBase dst3_mem = dst3->device_memory();
+  se::DeviceAddressBase dst4_mem = dst4->device_memory();
+  se::DeviceAddressBase dst5_mem = dst5->device_memory();
+  se::DeviceAddressBase dst6_mem = dst6->device_memory();
 
   TF_RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst0_mem, src3.device_memory(), 8 * sizeof(float)));
@@ -1048,7 +1128,7 @@ static absl::Status SubBuffers(
                                        3 * 128 * sizeof(float)));
   TF_RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst6_mem, src6.device_memory(), 64 * sizeof(float)));
-  stream_executor::DeviceMemoryBase slice =
+  stream_executor::DeviceAddressBase slice =
       dst6_mem.GetByteSlice(64 * sizeof(float), 32 * sizeof(float));
   TF_RETURN_IF_ERROR(
       stream->MemcpyD2D(&slice, src6.device_memory(), 32 * sizeof(float)));
@@ -1143,7 +1223,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -1196,7 +1276,7 @@ TEST_F(DynamicSliceFusionTest, NilTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2513,7 +2593,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallSimple) {
                                             computation.proto(), hlo_config));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2586,7 +2666,7 @@ TEST_F(DynamicSliceFusionTest, DynamicCustomCallWithTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
   EXPECT_TRUE(*RunFileCheck(hlo_opt->ToString(), R"(
@@ -2626,13 +2706,13 @@ static absl::Status SubBuffers2(
   //  dst5:  result at tuple index {4, 0}, shape f32[5,128]
   //  dst6:  result at tuple index {4, 1}, shape f32[3,128]
 
-  se::DeviceMemoryBase dst0_mem = dst0->device_memory();
-  se::DeviceMemoryBase dst1_mem = dst1->device_memory();
-  se::DeviceMemoryBase dst2_mem = dst2->device_memory();
-  se::DeviceMemoryBase dst3_mem = dst3->device_memory();
-  se::DeviceMemoryBase dst4_mem = dst4->device_memory();
-  se::DeviceMemoryBase dst5_mem = dst5->device_memory();
-  se::DeviceMemoryBase dst6_mem = dst6->device_memory();
+  se::DeviceAddressBase dst0_mem = dst0->device_memory();
+  se::DeviceAddressBase dst1_mem = dst1->device_memory();
+  se::DeviceAddressBase dst2_mem = dst2->device_memory();
+  se::DeviceAddressBase dst3_mem = dst3->device_memory();
+  se::DeviceAddressBase dst4_mem = dst4->device_memory();
+  se::DeviceAddressBase dst5_mem = dst5->device_memory();
+  se::DeviceAddressBase dst6_mem = dst6->device_memory();
 
   TF_RETURN_IF_ERROR(
       stream->MemcpyD2D(&dst0_mem, src3.device_memory(), 8 * sizeof(float)));
@@ -2763,7 +2843,7 @@ TEST_F(DynamicSliceFusionTest, CustomCallDUSTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_opt, xla::HloModule::CreateFromProto(
                                             computation.proto(), hlo_config));
 
-  DynamicSliceFusionRewriter pass(GetPlatformName());
+  DynamicSliceFusionRewriter pass(GetPlatformId());
   TF_ASSERT_OK_AND_ASSIGN(auto changed, this->RunHloPass(&pass, hlo_opt.get()));
   EXPECT_TRUE(changed);
 
@@ -2815,7 +2895,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSConstant) {
     %param_1.1 = f16[128,128]{1,0} parameter(1)
     %constant_20 = u32[] constant(20)
     %constant_0 = u32[] constant(0)
-    ROOT %dynamic-slice-fusion = f16[128,128]{1,0} fusion(%param_0.1, %param_1.1, %constant_20, %constant_0), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
+    ROOT %dynamic-slice-fusion = f16[128,128]{1,0} fusion(%param_0.1, %param_1.1, %constant_20, %constant_0), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
   })";
 
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
@@ -2866,7 +2946,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDUSParameterOffset) {
     %param_1 = f16[128,128]{1,0} parameter(1)
     %param_2 = u32[] parameter(2)
     %constant_0 = u32[] constant(0)
-    ROOT %dynamic-slice-fusion = f16[128,128]{1,0} fusion(%param_0, %param_1, %param_2, %constant_0), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
+    ROOT %dynamic-slice-fusion = f16[128,128]{1,0} fusion(%param_0, %param_1, %param_2, %constant_0), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"dynamic_address_computation"}},"force_earliest_schedule":false}
   })";
 
   ErrorSpec error_spec{/*aabs=*/1e-3, /*arel=*/1e-3};
@@ -2985,7 +3065,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
   )";
 
   HloModuleConfig config;
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsForTest();
   options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
@@ -3018,17 +3098,19 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
   // The pattern we have here is a static slice along with reduce-scatter
   // operation. With this pattern, we can compute the offset at compile time and
   // we do not need to emit a dynamic slice thunk to compute the offset at
-  // runtime. So, we expect to see kNcclReduceScatterStart and
-  // kNcclReduceScatterDone thunks. We also expect to see surrounding
-  // kWaitsForStreams thunks because dynamic slice fusion with a collective hero
-  // is converted into an async operation. The kWaitForStreams thunks are
-  // expected because of the async operation.
-  ASSERT_EQ(gpu_exec->GetThunk().thunks().size(), 4ul);
-  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
-                                     ThunkKindIs(Thunk::kReduceScatterStart),
-                                     ThunkKindIs(Thunk::kReduceScatterDone),
-                                     ThunkKindIs(Thunk::kWaitForStreams)));
+  // runtime. The reduce-scatter runs synchronously inside the AsyncStart
+  // region, and AsyncDone handles the stream synchronization.
+  ASSERT_EQ(gpu_exec->thunk_executor().thunks().size(), 2ul);
+  EXPECT_THAT(gpu_exec->thunk_executor().thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kAsyncStart),
+                                     ThunkKindIs(Thunk::kAsyncDone)));
+
+  // Check that the async start thunk wraps a synchronous reduce-scatter.
+  auto* async_start_thunk = dynamic_cast<AsyncStartThunk*>(
+      gpu_exec->thunk_executor().thunks()[0].get());
+  ASSERT_NE(async_start_thunk, nullptr);
+  EXPECT_THAT(async_start_thunk->thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kReduceScatterStart)));
 
   ErrorSpec error{/*aabs=*/1e-3, /*arel=*/1e-3};
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(module_ref_opt),
@@ -3056,7 +3138,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterDynamicSlice) {
   })";
 
   HloModuleConfig config;
-  DebugOptions options;
+  DebugOptions options = GetDebugOptionsForTest();
   options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   options.clear_xla_gpu_enable_command_buffer();
   config.set_debug_options(options);
@@ -3145,7 +3227,7 @@ TEST_F(DynamicSliceFusionTest,
                               wrapped_executable.get()));
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec);
   ASSERT_NE(gpu_exec, nullptr);
-  const SequentialThunk& thunk = gpu_exec->GetThunk();
+  const ThunkExecutor& thunk = gpu_exec->thunk_executor();
   auto dynamic_slice_thunk =
       absl::c_find_if(thunk.thunks(), [](const std::unique_ptr<Thunk>& thunk) {
         return thunk->kind() == Thunk::kDynamicSlice;
@@ -3210,29 +3292,26 @@ TEST_F(DynamicSliceFusionTest,
                           test_runner_as_hlo_runner().ExecutableFromWrapped(
                               std::move(wrapped_exec)));
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
-  const ThunkSequence& thunks = gpu_exec->GetThunk().thunks();
+  const ThunkSequence& thunks = gpu_exec->thunk_executor().thunks();
 
   // This is only needed to ensure that the next checks don't fail.
-  ASSERT_EQ(thunks.size(), 6);
+  ASSERT_EQ(thunks.size(), 4);
 
   // In the following checks, only the order of the thunks matter.
-  EXPECT_THAT(thunks,
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kCopy),
-                                     ThunkKindIs(Thunk::kWaitForStreams),
-                                     ThunkKindIs(Thunk::kDynamicSlice),
-                                     ThunkKindIs(Thunk::kKernel),
-                                     ThunkKindIs(Thunk::kReduceScatterDone),
-                                     ThunkKindIs(Thunk::kWaitForStreams)));
+  EXPECT_THAT(thunks, ::testing::ElementsAre(ThunkKindIs(Thunk::kCopy),
+                                             ThunkKindIs(Thunk::kAsyncStart),
+                                             ThunkKindIs(Thunk::kKernel),
+                                             ThunkKindIs(Thunk::kAsyncDone)));
 
-  // Check that the dynamic slice thunk only produces a start thunk, and not a
-  // done thunk.
+  // Check that the async start thunk wraps a dynamic slice thunk which runs
+  // the reduce-scatter synchronously inside the async region.
+  auto* async_start_thunk = dynamic_cast<AsyncStartThunk*>(thunks[1].get());
+  ASSERT_NE(async_start_thunk, nullptr);
+  ASSERT_EQ(async_start_thunk->thunks().size(), 1);
   DynamicSliceThunk* dynamic_slice_thunk =
-      dynamic_cast<DynamicSliceThunk*>(thunks[2].get());
+      dynamic_cast<DynamicSliceThunk*>(async_start_thunk->thunks()[0].get());
   ASSERT_NE(dynamic_slice_thunk, nullptr);
-  const SequentialThunk* embedded_thunk = dynamic_cast<const SequentialThunk*>(
-      dynamic_slice_thunk->embedded_thunk());
-  ASSERT_NE(embedded_thunk, nullptr);
-  EXPECT_THAT(embedded_thunk->thunks(),
+  EXPECT_THAT(dynamic_slice_thunk->get_embedded_executor().thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kReduceScatterStart)));
 
   // Check that the offsets were propagated as constants, and not as device
@@ -3340,8 +3419,10 @@ TEST_F(DynamicSliceFusionTest,
       ROOT while = (s32[], s32[32,32], s32[32,32]) while(tuple), body=body, condition=condition
     }
   )";
+  HloModuleConfig config = GetModuleConfigWithoutCommandBuffer();
+  config.mutable_debug_options().set_xla_gpu_enable_dynamic_slice_fusion(true);
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> fused_module,
-                          ParseAndReturnVerifiedModule(hlo_fused));
+                          ParseAndReturnVerifiedModule(hlo_fused, config));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> wrapped_exec,
                           CreateExecutable(fused_module->Clone(), false));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> exec,
@@ -3350,19 +3431,19 @@ TEST_F(DynamicSliceFusionTest,
   GpuExecutable* gpu_exec = dynamic_cast<GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
 
-  auto while_thunk = absl::c_find_if(gpu_exec->GetThunk().thunks(),
+  auto while_thunk = absl::c_find_if(gpu_exec->thunk_executor().thunks(),
                                      [](const std::unique_ptr<Thunk>& thunk) {
                                        return thunk->kind() == Thunk::kWhile;
                                      });
-  ASSERT_NE(while_thunk, gpu_exec->GetThunk().thunks().end());
+  ASSERT_NE(while_thunk, gpu_exec->thunk_executor().thunks().end());
   WhileThunk* while_thunk_ptr = dynamic_cast<WhileThunk*>(while_thunk->get());
 
   auto ds_thunk =
-      absl::c_find_if(while_thunk_ptr->body_thunk_sequence()->thunks(),
+      absl::c_find_if(while_thunk_ptr->body_executor().thunks(),
                       [](const std::unique_ptr<Thunk>& thunk) {
                         return thunk->kind() == Thunk::kDynamicSlice;
                       });
-  ASSERT_NE(ds_thunk, while_thunk_ptr->body_thunk_sequence()->thunks().end());
+  ASSERT_NE(ds_thunk, while_thunk_ptr->body_executor().thunks().end());
   DynamicSliceThunk* ds_thunk_ptr =
       dynamic_cast<DynamicSliceThunk*>(ds_thunk->get());
   std::vector<std::optional<std::vector<DynamicSliceThunk::Offset>>> offsets =
@@ -3387,6 +3468,71 @@ TEST_F(DynamicSliceFusionTest,
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(
       std::move(fused_module), std::move(unfused_module),
       /*run_hlo_passes=*/false, /*use_threads=*/true, std::nullopt));
+}
+
+TEST_F(DynamicSliceFusionTest,
+       OffsetAsFunctionOfInductionVariableShouldUseOffsetModulesWithCmdBuffer) {
+  const char* hlo = R"(
+  HloModule test
+
+  %Body {
+    param = (f32[1,8,8]{2,1,0}, f32[1,8,8]{2,1,0}, f32[4,8,8]{2,1,0}, u32[]) parameter(0)
+    p0 = get-tuple-element(param), index=0
+    p1 = get-tuple-element(param), index=1
+    p2 = get-tuple-element(param), index=2
+    loop_iter = get-tuple-element(param), index=3
+
+    bitcast.41 = f32[8,8]{1,0} reshape(p0)
+    bitcast.42 = f32[8,8]{1,0} reshape(p1)
+    dot.1 = f32[8,8]{1,0} dot(bitcast.41, bitcast.42), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    bitcast.43 = f32[1,8,8]{2,1,0} reshape(dot.1)
+    c0 = u32[] constant(0)
+    c_trip_count = u32[] constant(11)
+    compare = pred[] compare(loop_iter, c0), direction=LT
+    add = u32[] add(loop_iter, c_trip_count)
+    offset = u32[] select(compare, add, loop_iter)
+    dus = f32[4,8,8]{2,1,0} dynamic-update-slice(p2, bitcast.43, offset, c0, c0)
+    c1 = u32[] constant(1)
+    add2 = u32[] add(loop_iter, c1)
+    ROOT tuple = tuple(p0, p1, dus, u32[] add2)
+  }
+
+  %Cond {
+    %param.1 = (f32[1,8,8]{2,1,0}, f32[1,8,8]{2,1,0}, f32[4,8,8]{2,1,0}, u32[]) parameter(0)
+    %i.1 = u32[] get-tuple-element(%param.1), index=3
+    %trip_count = u32[] constant(11)
+    ROOT %done = pred[] compare(u32[] %i.1, u32[] %trip_count), direction=LT
+  }
+
+  ENTRY %test {
+    %p0.1 = f32[1,8,8]{2,1,0} parameter(0)
+    %p1.1 = f32[1,8,8]{2,1,0} parameter(1)
+    %p2.1 = f32[4,8,8]{2,1,0} parameter(2)
+    %c0.1 = u32[] constant(0)
+    %initial_tuple = tuple(%p0.1, %p1.1, %p2.1, u32[] %c0.1)
+    ROOT %while = while(%initial_tuple), condition=%Cond, body=%Body, backend_config={"known_trip_count":{"n":"11"}}
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> cmd_buffer_module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> no_cmd_buffer_module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  ErrorSpec error_spec(1e-5, 1e-5);
+  EXPECT_TRUE(
+      RunAndCompareTwoModules(hlo, hlo, GetModuleConfigWithCommandBuffer(),
+                              GetModuleConfigWithoutCommandBuffer(), error_spec,
+                              /*run_hlo_passes=*/true));
+
+  se::StreamExecutor* stream_executor = GpuExecutor();
+  if (!IsAtLeastCuda12900(stream_executor)) {
+    GTEST_SKIP() << "While loop unrolling is not supported for CUDA < 12.9";
+  }
+  EXPECT_TRUE(RunAndCompareTwoModules(
+      hlo, hlo, GetModuleConfigWithCommandBufferUnrollLoops(),
+      GetModuleConfigWithoutCommandBuffer(), error_spec,
+      /*run_hlo_passes=*/true));
 }
 
 TEST_F(DynamicSliceFusionTest, MultipleOffsetsAsFunctionOfInductionVariable) {

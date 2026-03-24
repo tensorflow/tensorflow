@@ -62,7 +62,7 @@ class GPUUtil {
   // For debugging purpose, given a "device" and a "tensor" allocated
   // on the device, return a string printing each byte in the tensor
   // (up to a limit).  "device" can be either a CPU or a GPU device.
-  static string MemoryDebugString(const Device* device, Tensor* tensor);
+  static std::string MemoryDebugString(const Device* device, Tensor* tensor);
 
   // Map a Tensor as a DeviceMemory object wrapping the given typed
   // buffer.
@@ -72,18 +72,19 @@ class GPUUtil {
   template <typename T>
   static se::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
     T* ptr = reinterpret_cast<T*>(const_cast<void*>(DMAHelper::base(&t)));
-    return se::DeviceMemory<T>(se::DeviceMemoryBase(ptr, t.TotalBytes()));
+    return se::DeviceMemory<T>(
+        stream_executor::DeviceAddressBase(ptr, t.TotalBytes()));
   }
 
   // Computes a checksum over the contents of "tensor", which is allocated
   // on "gpu_device".
-  static uint64 Checksum(Device* gpu_device,
-                         const DeviceContext* device_context,
-                         const Tensor& tensor);
+  static uint64_t Checksum(Device* gpu_device,
+                           const DeviceContext* device_context,
+                           const Tensor& tensor);
 
   // Computes a checksum over the contents of "tensor", which is allocated
   // in local CPU RAM.
-  static uint64 Checksum(const Tensor& tensor);
+  static uint64_t Checksum(const Tensor& tensor);
 
   static void CopyCPUTensorToGPU(const Tensor* cpu_tensor,
                                  const DeviceContext* device_context,

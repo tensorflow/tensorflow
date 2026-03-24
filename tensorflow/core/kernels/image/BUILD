@@ -131,6 +131,7 @@ IMAGE_DEPS = [
     "//tensorflow/core:jpeg_internal",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
+    "//tensorflow/core/lib/jxl:jxl_io",
     "//tensorflow/core/lib/png:png_io",
     "//tensorflow/core/lib/webp:webp_io",
     "//tensorflow/core:protos_all_cc",
@@ -205,8 +206,10 @@ tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
     deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
 )
 
@@ -228,7 +231,7 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:mutex",
+        "@tsl//tsl/platform:mutex",
     ],
 )
 
@@ -327,7 +330,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "image_ops",
     prefix = "image_ops",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(
@@ -415,8 +418,8 @@ tf_cc_test(
     deps = [
         ":scale_and_translate_op",
         "@com_google_benchmark//:benchmark",
-        "@local_tsl//tsl/platform:test_benchmark",
-        "@local_xla//xla/tsl/platform:test_main",
+        "@tsl//tsl/platform:test_benchmark",
+        "@xla//xla/tsl/platform:test_main",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -458,19 +461,26 @@ cc_library(
     linkopts = ["-ldl"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:tensor_types",
         "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/jxl:jxl_io",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//xla/tsl/util:byte_swap_array",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@xla//xla/tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )

@@ -21,22 +21,19 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/service/hlo_module_config.h"
-#include "tsl/platform/macros.h"
 // The source_location.h is not available in open source.
 #if defined(PLATFORM_GOOGLE)
 #include "absl/types/source_location.h"
 #endif  // PLATFORM_GOOGLE
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -54,6 +51,29 @@ struct InPlaceFusionOptions {
   bool relax_multiple_non_elementwise_ops = false;
 };
 
+// A holder for the source location. absl::SourceLocation is not available in
+// open source, so we have a stub implementation to limit
+// #if define(PLATFORM_GOOGLE).
+class SourceLocationHolder {
+ public:
+#if defined(PLATFORM_GOOGLE)
+  explicit constexpr SourceLocationHolder(
+      absl::SourceLocation source_location = absl::SourceLocation::current())
+      : source_location_(source_location) {}
+
+  std::string ToString() const {
+    return absl::StrCat(" at: ", source_location_.file_name(), ":",
+                        source_location_.line());
+  }
+
+ private:
+  absl::SourceLocation source_location_;
+#else
+  SourceLocationHolder() = default;
+  std::string ToString() const { return ""; }
+#endif  // PLATFORM_GOOGLE
+};
+
 // Propagating explanation of fusion decisions: if something could not be fused,
 // explain the reason.
 class FusionDecision {
@@ -61,34 +81,29 @@ class FusionDecision {
   static FusionDecision Allow() { return FusionDecision(); }
   FusionDecision(const FusionDecision& decision) = default;
 
-#if defined(PLATFORM_GOOGLE)
-  static std::string LocToString(absl::SourceLocation source_location) {
-    return absl::StrCat(" at: ", source_location.file_name(), ":",
-                        source_location.line());
-  }
   static FusionDecision Forbid(
       absl::string_view explanation,
-      absl::SourceLocation source_location = absl::SourceLocation::current()) {
-    return FusionDecision(
-        absl::StrCat(explanation, LocToString(source_location)));
+      SourceLocationHolder source_location = SourceLocationHolder()) {
+    return FusionDecision(false, explanation, source_location);
   }
 
   // If condition is `true` means that we CAN fuse. In that case, explanation is
   // discarded.
   FusionDecision(
       bool condition, absl::string_view explanation,
-      absl::SourceLocation source_location = absl::SourceLocation::current()) {
+      SourceLocationHolder source_location = SourceLocationHolder()) {
     if (!condition) {
-      explanation_ = absl::StrCat(explanation, LocToString(source_location));
+      explanation_ = explanation;
+      source_location_ = source_location;
     }
   }
 
   explicit FusionDecision(
       absl::Status status,
-      absl::SourceLocation source_location = absl::SourceLocation::current()) {
+      SourceLocationHolder source_location = SourceLocationHolder()) {
     if (!status.ok()) {
-      explanation_ =
-          absl::StrCat(status.message(), LocToString(source_location));
+      explanation_ = status.message();
+      source_location_ = source_location;
     }
   }
 
@@ -97,25 +112,8 @@ class FusionDecision {
   // provide explicit explanation.
   FusionDecision(  // NOLINT
       bool decision,
-      absl::SourceLocation source_location = absl::SourceLocation::current());
-#else
-  // If condition is `true` means that we CAN fuse. In that case, explanation is
-  // discarded.
-  FusionDecision(bool condition, absl::string_view explanation) {
-    if (!condition) {
-      explanation_ = std::string(explanation);
-    }
-  }
-  static FusionDecision Forbid(absl::string_view explanation) {
-    return FusionDecision(explanation);
-  }
-  explicit FusionDecision(absl::Status status) {
-    if (!status.ok()) {
-      explanation_ = status.message();
-    }
-  }
-
-#endif  // PLATFORM_GOOGLE
+      SourceLocationHolder source_location = SourceLocationHolder())
+      : FusionDecision(decision, "Not fusing", source_location) {}
 
   // Returns whether it can be fused.
   explicit operator bool() const { return CanFuse(); }
@@ -130,8 +128,7 @@ class FusionDecision {
     if (CanFuse() || decision.CanFuse()) {
       return Allow();
     }
-    return Forbid(
-        absl::StrCat(explanation_.value_or(""), " ; ", decision.Explain()));
+    return Forbid(absl::StrCat(Explain(), " ; ", decision.Explain()));
   }
 
   // Connects two fusion decision with a conjunction. Unlike disjunction,
@@ -150,30 +147,30 @@ class FusionDecision {
 
   // Appends to explanation, or turns the decision negative.
   FusionDecision operator<<(absl::string_view explanation) const {
-    return Forbid(absl::StrCat(explanation_.value_or(""), explanation));
+    return Forbid(absl::StrCat(explanation_.value_or(""), explanation),
+                  source_location_);
   }
 
   // Appends to explanation, or turns the decision negative.
   FusionDecision operator<<(int64_t explanation) const {
-    return Forbid(absl::StrCat(explanation_.value_or(""), explanation));
+    return Forbid(absl::StrCat(explanation_.value_or(""), explanation),
+                  source_location_);
   }
 
   // Explains why the fusion could not be performed, or that it can be.
   std::string Explain() const {
-    return explanation_.value_or("Actually, we can fuse it.");
+    if (explanation_.has_value()) {
+      return absl::StrCat(explanation_.value(), source_location_.ToString());
+    }
+    return "Actually, we can fuse it.";
   }
 
  private:
   // Empty IFF fusion is possible (explanation provided for negative cases).
   std::optional<std::string> explanation_;
+  SourceLocationHolder source_location_;
 
   FusionDecision() = default;
-
-  explicit FusionDecision(absl::string_view explanation)
-      : explanation_(explanation) {}
-
-  explicit FusionDecision(const char* explanation)
-      : explanation_(explanation) {}
 };
 
 #define RETURN_IF_NOT_FUSIBLE(...)                   \
@@ -193,21 +190,15 @@ class InstructionFusion : public HloModulePass {
  public:
   explicit InstructionFusion(
       std::function<bool(const HloInstruction& instruction)> is_expensive,
-      bool may_duplicate = true,
+      const AliasInfo* alias_info, bool may_duplicate = true,
       FusionConfigCollection config_collection_mode =
           FusionConfigCollection::kOff)
-      : is_expensive_(is_expensive),
+      : alias_info_(alias_info),
+        is_expensive_(is_expensive),
         may_duplicate_(may_duplicate),
         config_collection_mode_(config_collection_mode) {}
   ~InstructionFusion() override = default;
   absl::string_view name() const override { return "fusion"; }
-
-  // Run instruction fusion on the given computation. Returns whether the
-  // computation was changed (instructions were fused).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Returns true if the computation of the given instruction is significantly
   // more expensive than just writing all the values of the instructions' result
@@ -221,6 +212,7 @@ class InstructionFusion : public HloModulePass {
   // proven to be the same.
   static FusionDecision ShouldFuseInPlaceOp(
       const HloInstruction* producer, const HloInstruction* consumer,
+      const AliasInfo* alias_info,
       std::optional<const InPlaceFusionOptions> in_place_fusion_options);
 
  protected:
@@ -260,6 +252,7 @@ class InstructionFusion : public HloModulePass {
   virtual FusionDecision ShouldFuse(
       HloInstruction* consumer, int64_t operand_index,
       std::function<FusionDecision(const HloInstruction*, const HloInstruction*,
+                                   const AliasInfo* alias_info,
                                    std::optional<const InPlaceFusionOptions>)>
           inplace_op_fusion_decider,
       bool legality_check_only = false);
@@ -339,6 +332,15 @@ class InstructionFusion : public HloModulePass {
       const HloReachabilityMap& reachability);
 
   bool may_duplicate() const { return may_duplicate_; }
+
+  // Run instruction fusion on the given computation. Returns whether the
+  // computation was changed (instructions were fused).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  // Holds alias information for the module.
+  const AliasInfo* alias_info_;
 
  private:
   // Returns the reused operands of `instruction` from reused_fusion_operands_,

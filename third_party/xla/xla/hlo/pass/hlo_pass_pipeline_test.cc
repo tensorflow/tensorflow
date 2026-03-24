@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -30,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -47,23 +45,16 @@ using ::testing::ElementsAre;
 using ::testing::SizeIs;
 using ::testing::StrEq;
 
-class HloPassPipelineTest : public HloHardwareIndependentTestBase {
- protected:
-  absl::StatusOr<HloModuleGroup> ParseModuleGroup(std::string hlo_string) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_string));
-    return HloModuleGroup(std::move(module));
-  }
-};
+using HloPassPipelineTest = HloHardwareIndependentTestBase;
 
 // A module pass which renames instructions named 'foo' to 'bar'.
 class FooToBarModulePass : public HloModulePass {
   absl::string_view name() const override { return "foo2bar"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -83,10 +74,10 @@ class FooToBarModulePass : public HloModulePass {
 class ReverseStringModulePass : public HloModulePass {
   absl::string_view name() const override { return "reverse"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -104,9 +95,9 @@ class ReverseStringModulePass : public HloModulePass {
 class BazToQuxModulePass : public HloModulePass {
   absl::string_view name() const override { return "baz2qux"; }
 
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     bool changed = false;
     for (HloComputation* computation :
          module->computations(execution_threads)) {
@@ -126,10 +117,10 @@ class BazToQuxModulePass : public HloModulePass {
 class BarBlowerUpper : public HloModulePass {
   absl::string_view name() const override { return "bar-blower-upper"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     for (HloComputation* computation :
          module->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
@@ -265,19 +256,17 @@ ENTRY main {
   ROOT baz = f32[] multiply(a, b)
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(HloModuleGroup module_group,
-                          ParseModuleGroup(module_0_str));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(module_0_str));
 
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModulePass>();
   pipeline.AddPass<FooToBarModulePass>();
 
-  HloInstruction* root0 =
-      module_group.module(0).entry_computation()->root_instruction();
+  HloInstruction* root0 = module->entry_computation()->root_instruction();
   EXPECT_EQ(root0->name(), "baz");
 
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          pipeline.RunOnModuleGroup(&module_group));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, pipeline.Run(module.get()));
   EXPECT_TRUE(changed);
 
   EXPECT_EQ(root0->name(), "qux");
@@ -333,48 +322,42 @@ ENTRY main {
   }
 }
 
-// Test that metadata is set when a module group goes through a pass pipeline.
+// Test that metadata is set when a module goes through a pass pipeline.
 TEST_F(HloPassPipelineTest, SetHloModuleMetadata) {
-  HloModuleGroup module_group(CreateNewVerifiedModule());
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
 
   HloPassPipeline pipeline(TestName());
   pipeline.AddPass<BazToQuxModulePass>();
   pipeline.AddPass<FooToBarModulePass>();
-  TF_ASSERT_OK(pipeline.RunOnModuleGroup(&module_group).status());
-  ASSERT_THAT(module_group.modules(), SizeIs(1));
+  TF_ASSERT_OK(pipeline.Run(module.get()).status());
 
   std::vector<std::string> pass_names = {"pipeline-start", "baz2qux",
                                          "foo2bar"};
   std::string pipeline_name = std::string(pipeline.name());
-  for (const HloModule* module : module_group.modules()) {
-    const HloModuleMetadataProto& metadata = module->metadata().proto();
-    EXPECT_EQ(metadata.canonical_module_id(), module->unique_id());
-    EXPECT_EQ(metadata.module_group_name(), module_group.name());
+  const HloModuleMetadataProto& metadata = module->metadata()->proto();
+  EXPECT_EQ(metadata.canonical_module_id(), module->unique_id());
 
-    ASSERT_THAT(metadata.pass_metadata(), SizeIs(3));
-    for (int pass = 0; pass < metadata.pass_metadata().size(); pass++) {
-      const HloPassMetadata& pass_metadata = metadata.pass_metadata(pass);
-      EXPECT_NE(pass_metadata.pass_id(), 0);
-      EXPECT_THAT(pass_metadata.pass_name(), StrEq(pass_names[pass]));
-      EXPECT_THAT(pass_metadata.pipeline_name(), StrEq(pipeline_name));
-      EXPECT_FALSE(pass_metadata.module_changed());
-      EXPECT_EQ(pass_metadata.module_id(), module->unique_id());
-      EXPECT_THAT(pass_metadata.module_group_module_ids(),
-                  ElementsAre(module_group.module(0).unique_id()));
-      EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
-      EXPECT_LE(pass_metadata.start_timestamp_usec(),
-                pass_metadata.end_timestamp_usec());
-    }
+  ASSERT_THAT(metadata.pass_metadata(), SizeIs(3));
+  for (int pass = 0; pass < metadata.pass_metadata().size(); pass++) {
+    const HloPassMetadata& pass_metadata = metadata.pass_metadata(pass);
+    EXPECT_NE(pass_metadata.pass_id(), 0);
+    EXPECT_THAT(pass_metadata.pass_name(), StrEq(pass_names[pass]));
+    EXPECT_THAT(pass_metadata.pipeline_name(), StrEq(pipeline_name));
+    EXPECT_FALSE(pass_metadata.module_changed());
+    EXPECT_EQ(pass_metadata.module_id(), module->unique_id());
+    EXPECT_GT(pass_metadata.start_timestamp_usec(), 0);
+    EXPECT_LE(pass_metadata.start_timestamp_usec(),
+              pass_metadata.end_timestamp_usec());
   }
 }
 
 class NoOpModulePass : public HloModulePass {
   absl::string_view name() const override { return "noop"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(HloModule* module,
-                           const absl::flat_hash_set<absl::string_view>&
-                               execution_threads) override {
+ protected:
+  absl::StatusOr<bool> RunImpl(HloModule* module,
+                               const absl::flat_hash_set<absl::string_view>&
+                                   execution_threads) override {
     return false;
   }
 };
@@ -400,6 +383,8 @@ ENTRY main {
   absl::Status status = pipeline.Run(module.get()).status();
   TF_EXPECT_OK(status);
 }
+
+// TODO: Add test.
 
 }  // namespace
 }  // namespace xla

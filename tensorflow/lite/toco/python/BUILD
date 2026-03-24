@@ -1,8 +1,8 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 
@@ -59,8 +59,8 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_protobuf//:protobuf_headers",
         "@flatbuffers//:runtime_cc",
-        "@local_tsl//tsl/platform:status",
-        "@local_xla//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
+        "@tsl//tsl/platform:status",
+        "@xla//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.
@@ -73,9 +73,10 @@ cc_library(
 )
 
 # Compatibility stub. Remove when internal customers moved.
-py_strict_library(
+py_library(
     name = "tensorflow_wrap_toco",
     srcs = ["tensorflow_wrap_toco.py"],
+    strict_deps = True,
     visibility = ["//learning/expander/pod/deep_pod/utils:__subpackages__"],
     deps = [
         "//tensorflow/python:_pywrap_toco_api",

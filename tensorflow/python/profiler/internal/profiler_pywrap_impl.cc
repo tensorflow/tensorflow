@@ -45,7 +45,7 @@ absl::Status ProfilerSessionWrapper::Start(
   return session_->Status();
 }
 
-absl::Status ProfilerSessionWrapper::Stop(tensorflow::string* result) {
+absl::Status ProfilerSessionWrapper::Stop(std::string* result) {
   if (session_ != nullptr) {
     tensorflow::profiler::XSpace xspace;
     absl::Status status = session_->CollectData(&xspace);

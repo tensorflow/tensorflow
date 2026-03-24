@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/xnnpack/mmap_handle.h"
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 #include <io.h>
 #include <windows.h>
 #else
@@ -22,31 +22,39 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
+#if defined(__linux__) && !defined(MADV_PAGEOUT)
+#define MADV_PAGEOUT 21
+#endif
+
 #include <fcntl.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
+#include "tensorflow/lite/delegates/xnnpack/macros.h"
 #include "tensorflow/lite/delegates/xnnpack/windows_util.h"
-#include "tensorflow/lite/logger.h"
-#include "tensorflow/lite/minimal_logging.h"
-
-#define XNNPACK_VAR_ARG_HEAD(FIRST, ...) FIRST
-
-#define XNNPACK_RETURN_CHECK(TEST, ...)                              \
-  if (!(TEST)) {                                                     \
-    if (sizeof(XNNPACK_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) { \
-      TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR,                      \
-                      "XNNPack weight cache: " __VA_ARGS__);         \
-    }                                                                \
-    return false;                                                    \
-  }
 
 namespace tflite::xnnpack {
+
+#ifdef _WIN32
+// Helper to split a value in high/low parts to pass to Windows APIs.
+struct HighLow {
+  DWORD high;
+  DWORD low;
+  static HighLow From(uint64_t val) {
+    static_assert(sizeof(val) <= 2 * sizeof(DWORD),
+                  "Value type doesn't fit in two DWORDs.");
+    return {static_cast<DWORD>(val >> CHAR_BIT * sizeof(DWORD)),
+            static_cast<DWORD>(val)};
+  }
+};
+#endif
 
 void swap(MMapHandle& a, MMapHandle& b) {
   using std::swap;
@@ -78,16 +86,17 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
                        "cannot mmap invalid file descriptor %d ('%s').",
                        fd.Value(), path);
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
   struct _stat64 file_stats;
   XNNPACK_RETURN_CHECK(_fstat64(fd.Value(), &file_stats) == 0,
                        "could not access file stats to get size ('%s'): %s.",
                        safe_path, strerror(errno));
 #else
   struct stat file_stats;
-  XNNPACK_RETURN_CHECK(fstat(fd.Value(), &file_stats) == 0,
-                       "could not access file stats to get size ('%s'): %s.",
-                       safe_path, strerror(errno));
+  XNNPACK_RETURN_CHECK(
+      fstat(fd.Value(), &file_stats) == 0,
+      "could not access file descriptor %d stats to get size ('%s'): %s.",
+      fd.Value(), safe_path, strerror(errno));
 #endif
 
   // This will reset data_ and size_ on return until it is deactivated.
@@ -100,32 +109,18 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
   fd.SetPos(offset);
   XNNPACK_RETURN_CHECK(fd.Read(data_, size_), "could not read file ('%s'): %s.",
                        safe_path, strerror(errno));
-#elif defined(_MSC_VER)
+#elif defined(_WIN32)
   HANDLE osf_handle = reinterpret_cast<HANDLE>(_get_osfhandle(fd.Value()));
   XNNPACK_RETURN_CHECK(osf_handle != INVALID_HANDLE_VALUE,
-                       "could not convert file descriptor to file handle.");
+                       "could not convert file descriptor to file handle: %s.",
+                       strerror(errno));
 
-  // Create the handle name, which is either NULL or the path with backslashes
-  // replaced by `_`.
-  std::string name;
-  const char* handle_name = nullptr;
-  if (!path || path[0] == '\0') {
-    name.clear();
-  } else {
-    name = path;
-    for (int i = 0; i < name.size(); ++i) {
-      if (name[i] == '\\') {
-        name[i] = '_';
-      }
-    }
-    handle_name = name.c_str();
-  }
   file_mapping_ =
       CreateFileMappingA(osf_handle, /*lpFileMappingAttributes=*/nullptr,
                          /*flProtect=*/PAGE_READONLY, /*dwMaximumSizeHigh=*/0,
-                         /*dwMaximumSizeLow=*/0, /*lpName=*/handle_name);
-  XNNPACK_RETURN_CHECK(file_mapping_ != INVALID_HANDLE_VALUE,
-                       "could not create a file mapping: %s.",
+                         /*dwMaximumSizeLow=*/0, /*lpName=*/nullptr);
+  XNNPACK_RETURN_CHECK(file_mapping_ != NULL,
+                       "could not create a file mapping: %s",
                        GetLastErrorString().c_str());
 
   SYSTEM_INFO sys_info;
@@ -133,26 +128,24 @@ bool MMapHandle::Map(const FileDescriptorView& fd, const size_t offset,
 
   offset_page_adjustment_ = offset_ % sys_info.dwAllocationGranularity;
 
-  const size_t adjusted_offset = offset - offset_page_adjustment_;
-  const DWORD file_offset_high =
-      sizeof(DWORD) < sizeof(adjusted_offset)
-          ? (adjusted_offset >> CHAR_BIT * sizeof(DWORD))
-          : 0;
-  const DWORD file_offset_low = static_cast<DWORD>(adjusted_offset);
+  const size_t adjusted_offset = offset_ - offset_page_adjustment_;
+  const size_t adjusted_size = size_ + offset_page_adjustment_;
+  HighLow file_offset = HighLow::From(adjusted_offset);
 
-  data_ = static_cast<uint8_t*>(MapViewOfFile(file_mapping_, FILE_MAP_READ,
-                                              file_offset_high, file_offset_low,
-                                              /*dwNumberOfBytesToMap=*/0));
+  data_ = static_cast<uint8_t*>(MapViewOfFile(
+      file_mapping_, FILE_MAP_READ, file_offset.high, file_offset.low,
+      /*dwNumberOfBytesToMap=*/adjusted_size));
 
-  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s.",
+  XNNPACK_RETURN_CHECK(data_ != nullptr, "could not map file (%s): %s",
                        safe_path, GetLastErrorString().c_str());
 #else
   offset_page_adjustment_ = offset_ % getpagesize();
   data_ = static_cast<uint8_t*>(
       mmap(/*addr=*/nullptr, size_ + offset_page_adjustment_, PROT_READ,
            MAP_SHARED, fd.Value(), offset_ - offset_page_adjustment_));
-  XNNPACK_RETURN_CHECK(data_ != MAP_FAILED, "could not mmap file (%s): %s.",
-                       safe_path, strerror(errno));
+  XNNPACK_RETURN_CHECK(data_ != MAP_FAILED,
+                       "could not mmap file descriptor %d (%s): %s.",
+                       fd.Value(), safe_path, strerror(errno));
 #endif
   unmap_on_error.Deactivate();
   return true;
@@ -182,7 +175,7 @@ void MMapHandle::UnMap() {
   if (data_) {
 #if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
     delete[] data_;
-#elif defined(_MSC_VER)
+#elif defined(_WIN32)
     UnmapViewOfFile(data_);
     CloseHandle(file_mapping_);
 #else
@@ -193,6 +186,57 @@ void MMapHandle::UnMap() {
   offset_ = 0;
   offset_page_adjustment_ = 0;
   size_ = 0;
+}
+
+bool MMapHandle::LockMemory() {
+#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+  return true;
+#elif defined(_WIN32)
+  return VirtualLock(data_, size_) != 0;
+#else
+  return mlock(data_, size_ + offset_page_adjustment_) == 0;
+#endif
+}
+
+bool MMapHandle::UnlockMemory() {
+#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+  return true;
+#elif defined(_WIN32)
+  return VirtualUnlock(data_, size_) != 0;
+#else
+  return munlock(data_, size_ + offset_page_adjustment_) == 0;
+#endif
+}
+
+bool MarkMemoryNotNeeded(void* data, size_t size) {
+  // We don't mark memory chunks that are too small.
+  constexpr const size_t size_threshold = 1024 * 1024;
+#if defined(_WIN32)
+  SYSTEM_INFO sysInfo;
+  GetSystemInfo(&sysInfo);
+  DWORD page_size = sysInfo.dwPageSize;
+#else
+  size_t page_size = getpagesize();
+#endif
+
+  if (size > size_threshold) {
+    // We align the data buffer to the next page boundary and the size to be a
+    // multiple of the page size.
+    //
+    // - Windows will unlock all pages that contain at least a byte of the given
+    // range, which we want to avoid.
+    // - Linux requires the address to be on a page boundary.
+    void* aligned_data = std::align(page_size, page_size, data, size);
+    size -= size % page_size;
+    if (aligned_data) {
+#if defined(_WIN32)
+      return VirtualUnlock(aligned_data, size);
+#elif defined(__ANDROID__) || defined(__linux__)
+      return madvise(aligned_data, size, MADV_PAGEOUT) == 0;
+#endif
+    }
+  }
+  return true;
 }
 
 }  // namespace tflite::xnnpack

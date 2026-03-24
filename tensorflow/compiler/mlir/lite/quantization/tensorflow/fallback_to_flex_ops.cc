@@ -252,9 +252,9 @@ bool FallbackToFlexOps::ConvertToFlexOp(Operation *op) {
   std::string flex_op_name = std::string(kFlexOpNamePrefix) + op_name;
   std::string custom_option_buffer;
   CreateFlexOpCustomOptions(op_name, node_def_str, custom_option_buffer);
-  auto flex_op = builder.create<TFL::CustomOp>(
-      op->getLoc(), op->getResultTypes(), op->getOperands(), flex_op_name,
-      CustomOptionForFlexOp(&builder, custom_option_buffer));
+  auto flex_op = TFL::CustomOp::create(
+      builder, op->getLoc(), op->getResultTypes(), op->getOperands(),
+      flex_op_name, CustomOptionForFlexOp(&builder, custom_option_buffer));
   op->replaceAllUsesWith(flex_op);
   op->erase();
   return true;

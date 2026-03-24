@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 
 namespace xla {
 namespace {
@@ -593,8 +594,8 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughSummationOfSymbols) {
   //   reduce_0 = f32[9] reduce(bitcast), dimensions={1}
   //   reduce_1 = f32[] reduce(reduce_0), dimensions={0}
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("()[s0, s1] -> (s1 * 2 + s0)", &symbolic_expr_context_),
-      {}, {2, 9});
+      ParseSymbolicMap("()[s0, s1] -> (s1 * 2 + s0)", &mlir_context_), {},
+      {2, 9});
 
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
               Optional(MatchSymbolicTileString(R"(
@@ -611,9 +612,9 @@ TEST_F(SymbolicTileTest, CanPropagateTileModAndFloorDiv) {
   //   p0 = f32[3,5,7]{2,1,0} parameter(0)
   //   bitcast = f32[105]{0} bitcast(p0)
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap(
+      ParseSymbolicMap(
           "(d0) -> (d0 floordiv 35, (d0 floordiv 7) mod 5, d0 mod 7)",
-          &symbolic_expr_context_),
+          &mlir_context_),
       {105}, {});
 
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
@@ -783,13 +784,14 @@ TEST_F(SymbolicTileTest,
   // The example is from
   // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
-                     &symbolic_expr_context_),
+      ParseSymbolicMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
+                       &mlir_context_),
       {4, 2048, 50304}, {50304});
   // This constraint is redundant, because it can be derived from the domains of
   // the dimension variables.
   indexing_map.AddConstraint(
-      ParseAffineExpr("d0 * 2048 + d1", &symbolic_expr_context_),
+      ParseSymbolicExpr("d0 * 2048 + d1", &mlir_context_,
+                        indexing_map.GetDimensionCount()),
       Interval{0, 8191});
 
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
@@ -805,14 +807,15 @@ TEST_F(SymbolicTileTest,
 TEST_F(SymbolicTileTest,
        CanDeriveTileWhenPreexistingConstraintsModelRightPadding) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
-                     &symbolic_expr_context_),
+      ParseSymbolicMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
+                       &mlir_context_),
       {4, 2048, 50304}, {50304});
   // This constraint is not redundant, but it doesn't prevent us from deriving
   // a valid tile (although that tile will need to be interpreted as containing
   // high padding).
   indexing_map.AddConstraint(
-      ParseAffineExpr("d0 * 2048 + d1", &symbolic_expr_context_),
+      ParseSymbolicExpr("d0 * 2048 + d1", &mlir_context_,
+                        indexing_map.GetDimensionCount()),
       Interval{0, 4096});
 
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
@@ -828,12 +831,13 @@ TEST_F(SymbolicTileTest,
 TEST_F(SymbolicTileTest,
        BailsOutOnDerivingTileWhenPreexistingConstraintsModelLeftPadding) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
-                     &symbolic_expr_context_),
+      ParseSymbolicMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
+                       &mlir_context_),
       {4, 2048, 50304}, {50304});
   // This constraint models left padding, which we do not handle for now.
   indexing_map.AddConstraint(
-      ParseAffineExpr("d0 * 2048 + d1", &symbolic_expr_context_),
+      ParseSymbolicExpr("d0 * 2048 + d1", &mlir_context_,
+                        indexing_map.GetDimensionCount()),
       Interval{2, 4096});
 
   EXPECT_FALSE(SymbolicTile::FromIndexingMap(indexing_map).has_value());
@@ -842,14 +846,16 @@ TEST_F(SymbolicTileTest,
 TEST_F(SymbolicTileTest,
        BailsOutOnDerivingTileWhenPreexistingConstraintsDoesNotApplyToResult) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
-                     &symbolic_expr_context_),
+      ParseSymbolicMap("(d0, d1, d2)[s0] -> (d0 * 2048 + d1, s0)",
+                       &mlir_context_),
       {4, 2048, 50304}, {50304});
   // This constraint does not apply to a result, and actually models dilation
   // across `d1`. Figuring out how to handle such cases holistically is
   // difficult, and we bail out for now.
   indexing_map.AddConstraint(
-      ParseAffineExpr("d1 mod 5", &symbolic_expr_context_), Interval{0, 0});
+      ParseSymbolicExpr("d1 mod 5", &mlir_context_,
+                        indexing_map.GetDimensionCount()),
+      Interval{0, 0});
 
   EXPECT_FALSE(SymbolicTile::FromIndexingMap(indexing_map).has_value());
 }
@@ -858,8 +864,8 @@ TEST_F(SymbolicTileTest, CanDeriveTileWhenTheIndexingMapHasSymbolsInASum) {
   // The example is from
   // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1, d2)[s0] -> (d0, d1, d2 * 128 + s0)",
-                     &symbolic_expr_context_),
+      ParseSymbolicMap("(d0, d1, d2)[s0] -> (d0, d1, d2 * 128 + s0)",
+                       &mlir_context_),
       {4, 2048, 393}, {128});
 
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
@@ -875,8 +881,8 @@ TEST_F(SymbolicTileTest, ResultingConstraintsAreSimplifiedAway) {
   // The example is from
   // https://github.com/google/paxml/blob/91893818862645f5e9f23b84f530e611551745f6/paxml/contrib/gpu/scripts_gpu/configs.py#L107-L120.
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0, d1, d2)[s0] -> (d0, d1, d2 * 128 + s0)",
-                     &symbolic_expr_context_),
+      ParseSymbolicMap("(d0, d1, d2)[s0] -> (d0, d1, d2 * 128 + s0)",
+                       &mlir_context_),
       {4, 2048, 393}, {128});
 
   EXPECT_THAT(SymbolicTile::FromIndexingMap(indexing_map),
@@ -890,7 +896,7 @@ TEST_F(SymbolicTileTest, ResultingConstraintsAreSimplifiedAway) {
 
 TEST_F(SymbolicTileTest, PointDimensionsAreNotSimplified) {
   IndexingMap indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0)", &symbolic_expr_context_),
+      ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
       /*dim_upper_bounds=*/{1},
       /*symbol_upper_bounds=*/{});
 

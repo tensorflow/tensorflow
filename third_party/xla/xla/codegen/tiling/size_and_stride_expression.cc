@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
-#include <iterator>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -25,6 +24,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/log/vlog_is_on.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -34,8 +34,8 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/tiling/constraint_expression.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/interval.h"
 
 namespace xla {
 namespace {
@@ -264,20 +264,18 @@ AffineExpr IfNeqOne(AffineExpr eq_param, AffineExpr true_expr,
   return condition * false_expr + (1 - condition) * true_expr;
 }
 
-// Sorts a list of `SizeAndStrideExpression`s by stride. There is a precondition
-// that all strides are constant.
-void SortByStride(std::vector<SizeAndStrideExpression>& sizes_and_strides,
-                  bool reverse = false) {
+// Sorts a list of `SizeAndStrideExpression`s by stride in descending order.
+//
+// There is a precondition that all strides are constant.
+void SortByStrideInDescendingOrder(
+    std::vector<SizeAndStrideExpression>& sizes_and_strides) {
   absl::c_sort(sizes_and_strides, [&](const SizeAndStrideExpression& sas1,
                                       const SizeAndStrideExpression& sas2) {
     int64_t stride1 =
         std::abs(llvm::cast<AffineConstantExpr>(sas1.stride).getValue());
     int64_t stride2 =
         std::abs(llvm::cast<AffineConstantExpr>(sas2.stride).getValue());
-    if (reverse) {
-      return stride1 > stride2;
-    }
-    return stride1 < stride2;
+    return stride1 > stride2;
   });
 }
 
@@ -361,9 +359,19 @@ std::optional<AffineExpr> CombineStrides(
     }
   }
 
-  SortByStride(sizes_and_strides);
+  SortByStrideInDescendingOrder(sizes_and_strides);
 
   for (auto [dim_id, size_and_stride] : llvm::enumerate(sizes_and_strides)) {
+    if (dim_id == 0) {
+      continue;
+    }
+
+    std::optional<int64_t> size_expression_range_size =
+        TryGetSizeExpressionRangeSize(size_and_stride.size,
+                                      dimension_intervals);
+    if (!size_expression_range_size.has_value()) {
+      return std::nullopt;
+    }
     int64_t stride =
         llvm::cast<AffineConstantExpr>(size_and_stride.stride).getValue();
 
@@ -374,38 +382,29 @@ std::optional<AffineExpr> CombineStrides(
     //
     // For simplicity, we assume that each size expression captures a single
     // dimension parameter.
-    if (dim_id > 0) {
-      const SizeAndStrideExpression& previous_size_and_stride =
-          sizes_and_strides[dim_id - 1];
-      std::optional<int64_t> previous_size_expression_range_size =
-          TryGetSizeExpressionRangeSize(previous_size_and_stride.size,
-                                        dimension_intervals);
-      if (!previous_size_expression_range_size.has_value()) {
-        return std::nullopt;
-      }
+    const SizeAndStrideExpression& previous_size_and_stride =
+        sizes_and_strides[dim_id - 1];
 
-      int64_t previous_stride =
-          llvm::cast<AffineConstantExpr>(previous_size_and_stride.stride)
-              .getValue();
+    int64_t previous_stride =
+        llvm::cast<AffineConstantExpr>(previous_size_and_stride.stride)
+            .getValue();
 
-      if (*previous_size_expression_range_size * std::abs(previous_stride) !=
-          std::abs(stride)) {
-        VLOG(1) << "Attempted to combine strides but stride did not grow "
-                << "exactly as expected: got "
-                << *previous_size_expression_range_size << " * "
-                << previous_stride << " != " << stride;
-        return std::nullopt;
-      }
+    if (*size_expression_range_size * std::abs(stride) !=
+        std::abs(previous_stride)) {
+      VLOG(1) << "Attempted to combine strides but stride did not grow exactly "
+                 "as expected: got "
+              << *size_expression_range_size << " * " << stride
+              << " != " << previous_stride;
+      return std::nullopt;
     }
   }
 
   // Produce a nested if statement as described in the function's documentation.
   MLIRContext* ctx = sizes_and_strides[0].stride.getContext();
   AffineExpr nested_if = getAffineConstantExpr(0, ctx);
-  for (auto size_and_stride_it = sizes_and_strides.rbegin();
-       size_and_stride_it != sizes_and_strides.rend(); ++size_and_stride_it) {
-    AffineExpr size = size_and_stride_it->size;
-    AffineExpr stride = size_and_stride_it->stride;
+  for (const SizeAndStrideExpression& size_and_stride : sizes_and_strides) {
+    AffineExpr size = size_and_stride.size;
+    AffineExpr stride = size_and_stride.stride;
     std::optional<int64_t> size_expression_range_size =
         TryGetSizeExpressionRangeSize(size, dimension_intervals);
     if (!size_expression_range_size.has_value()) {
@@ -503,7 +502,7 @@ TryConstructSingleConjointConstraintForDestructuredSummation(
 ConstraintExpression ConstructConstraintExpressionForDestructuredSummation(
     std::vector<SizeAndStrideExpression> sizes_and_strides,
     absl::Span<Interval const> dimension_intervals) {
-  SortByStride(sizes_and_strides, /*reverse=*/true);
+  SortByStrideInDescendingOrder(sizes_and_strides);
   ConstraintExpression result = ConstraintExpression::GetUnsatisfiable();
 
   int64_t num_components = sizes_and_strides.size();

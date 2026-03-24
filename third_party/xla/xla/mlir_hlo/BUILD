@@ -681,8 +681,8 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
-        "@llvm-project//mlir:X86VectorDialect",
-        "@llvm-project//mlir:X86VectorTransforms",
+        "@llvm-project//mlir:X86Dialect",
+        "@llvm-project//mlir:X86Transforms",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -980,6 +980,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     strip_include_prefix = ".",
+    visibility = internal_visibility(["//learning/brain/mlir:stablehlo_friends"]),
     deps = [
         ":shape_component_analysis",
         ":stablehlo_extension_base",
@@ -995,6 +996,7 @@ cc_library(
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",

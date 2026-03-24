@@ -63,7 +63,7 @@ namespace eager {
 class RemoteCopyNode : public AsyncEagerNode {
  public:
   RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor, TensorHandle* src,
-                 TensorHandle* dst, Device* recv_device, uint64 recv_op_id);
+                 TensorHandle* dst, Device* recv_device, uint64_t recv_op_id);
 
   ~RemoteCopyNode() override;
 
@@ -73,8 +73,8 @@ class RemoteCopyNode : public AsyncEagerNode {
 
   void Abort(absl::Status status) override;
 
-  string DebugString() const override {
-    string out = "[RemoteCopyNode]";
+  std::string DebugString() const override {
+    std::string out = "[RemoteCopyNode]";
     absl::StrAppend(&out, " send_device: ", send_device_->name());
     absl::StrAppend(&out, ", recv_device: ", recv_device_->name());
     absl::StrAppend(&out, ", send_tensor: ", src_->DebugString());
@@ -167,8 +167,8 @@ class RemoteCopyNode : public AsyncEagerNode {
   EagerExecutor* const executor_;
   Device* const send_device_;
   Device* const recv_device_;
-  const string wire_id_;
-  const uint64 recv_op_id_;
+  const std::string wire_id_;
+  const uint64_t recv_op_id_;
 
   std::shared_ptr<CapturedSharedState> captured_state_;
   bool started_;

@@ -320,7 +320,11 @@ class CoordinationServiceAgent {
   // has failed and that every task calls GetAliveTasks([A, B, C, D]). The
   // invocation will return tasks [A, B, C]. The GetAliveTasks call acts as a
   // barrier across tasks A, B, and C. Task D, which failed, is ignored.
-  absl::StatusOr<std::vector<tensorflow::CoordinatedTask>> GetAliveTasks(
+  struct AliveTask {
+    int task_id;
+    IncarnationId incarnation_id;
+  };
+  absl::StatusOr<std::vector<AliveTask>> GetAliveTasks(
       const std::vector<tensorflow::CoordinatedTask>& tasks);
 
   // Returns the latest known set of incarnation ids for every task. Incarnation

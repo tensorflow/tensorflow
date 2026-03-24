@@ -979,5 +979,40 @@ dangling_computation {
   EXPECT_EQ(module->GetComputationWithName("dangling_computation"), nullptr);
 }
 
+TEST_F(HloDceTest, RemoveDeadEntryParametersAndLayout) {
+  constexpr absl::string_view kHlo = R"(
+HloModule test_module, entry_computation_layout={(f32[2,3]{1,0}, f32[4,5]{1,0}, f32[2,3]{1,0})->f32[2,3]{1,0}}
+
+ENTRY entry_computation {
+  p0 = f32[2,3]{1,0} parameter(0)
+  p1 = f32[4,5]{1,0} parameter(1) // dead parameter
+  p2 = f32[2,3]{1,0} parameter(2)
+  ROOT add = f32[2,3]{1,0} add(p0, p2)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloComputation* computation = module->entry_computation();
+
+  EXPECT_EQ(computation->num_parameters(), 3);
+  EXPECT_EQ(computation->instruction_count(), 4);
+  EXPECT_EQ(module->entry_computation_layout().parameter_count(), 3);
+
+  HloDCE dce;
+  dce.set_remove_dead_parameters_from_entry_computation(true);
+  EXPECT_TRUE(dce.Run(module.get()).value());
+
+  EXPECT_EQ(computation->num_parameters(), 2);
+  const Shape p0_p2_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  EXPECT_TRUE(computation->parameter_instruction(0)->shape() == p0_p2_shape);
+  EXPECT_TRUE(computation->parameter_instruction(1)->shape() == p0_p2_shape);
+
+  EXPECT_EQ(module->entry_computation_layout().parameter_count(), 2);
+  EXPECT_TRUE(module->entry_computation_layout().parameter_layout(0) ==
+              ShapeLayout(p0_p2_shape));
+  EXPECT_TRUE(module->entry_computation_layout().parameter_layout(1) ==
+              ShapeLayout(p0_p2_shape));
+}
+
 }  // namespace
 }  // namespace xla

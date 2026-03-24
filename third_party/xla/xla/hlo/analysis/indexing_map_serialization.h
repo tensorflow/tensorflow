@@ -32,7 +32,7 @@ namespace xla {
 
 // Parses the given string into an IndexingMap.
 std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
-                                            mlir::MLIRContext* context);
+                                            mlir::MLIRContext* mlir_context);
 
 // Prints AffineExpr using the default (d0, d1, ..., s0, s1, ...) variable
 // names.

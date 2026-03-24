@@ -85,7 +85,7 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const OpMetadata* metadata = nullptr,
+    const SparsityConfig& sparsity_config, const OpMetadata* metadata = nullptr,
     const FrontendAttributes* frontend_attributes = nullptr);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
@@ -441,6 +441,11 @@ std::unique_ptr<HloInstruction> MakeScalarConstantWithShape(const Shape& shape,
 absl::StatusOr<HloInstruction*> MakeWithinBounds(HloInstruction* inst,
                                                  HloInstruction* lower_bound,
                                                  HloInstruction* upper_bound);
+
+// Creates a new module with a single computation that contains a fusion of the
+// given instruction with the given fusion kind.
+std::unique_ptr<HloModule> NewModuleWithFusion(
+    const HloInstruction* instruction, HloInstruction::FusionKind fusion_kind);
 
 }  // namespace xla
 

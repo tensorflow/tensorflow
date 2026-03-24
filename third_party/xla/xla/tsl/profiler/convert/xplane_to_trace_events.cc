@@ -39,7 +39,7 @@ namespace {
 
 using tensorflow::profiler::XSpace;
 
-void BuildDeviceAndResources(uint32 device_id, const XPlaneVisitor& plane,
+void BuildDeviceAndResources(uint32_t device_id, const XPlaneVisitor& plane,
                              Device* device) {
   device->set_name(std::string(plane.Name()));
   device->set_device_id(device_id);
@@ -47,7 +47,7 @@ void BuildDeviceAndResources(uint32 device_id, const XPlaneVisitor& plane,
   bool sort_by_ordinal = (device_id == kHostThreadsDeviceId);
   int ordinal = 0;
   plane.ForEachLine([&](const XLineVisitor& line) {
-    uint32 resource_id = line.DisplayId();
+    uint32_t resource_id = line.DisplayId();
     Resource& resource = (*device->mutable_resources())[resource_id];
     resource.set_resource_id(resource_id);
     resource.set_name(std::string(line.DisplayName()));
@@ -59,7 +59,7 @@ void BuildDeviceAndResources(uint32 device_id, const XPlaneVisitor& plane,
   });
 }
 
-void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
+void ConvertXPlaneToTraceEvents(uint32_t device_id, const XPlaneVisitor& xplane,
                                 TraceContainer& container) {
   // Convert devices and resources.
   BuildDeviceAndResources(device_id, xplane,
@@ -67,7 +67,7 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
 
   // Convert events.
   xplane.ForEachLine([device_id, &container](const XLineVisitor& xline) {
-    uint32 resource_id = xline.DisplayId();
+    uint32_t resource_id = xline.DisplayId();
     if (xline.DisplayName() == tsl::profiler::kXlaAsyncOpLineName) {
       return;
     }
@@ -106,8 +106,8 @@ void ConvertXPlaneToTraceEvents(uint32 device_id, const XPlaneVisitor& xplane,
 
 }  // namespace
 
-uint64 GetTraceViewerMaxEvents() {
-  constexpr uint64 kMaxEvents = 1000000;
+uint64_t GetTraceViewerMaxEvents() {
+  constexpr uint64_t kMaxEvents = 1000000;
   // Testing only env variable, not recommended for use
   char* max_events = getenv("TF_PROFILER_TRACE_VIEWER_MAX_EVENTS");
   if (max_events != nullptr) {
@@ -136,12 +136,12 @@ TraceContainer ConvertXSpaceToTraceContainer(const XSpace& xspace) {
   }
   for (const XPlane* device_plane : device_planes) {
     XPlaneVisitor xplane = CreateTfXPlaneVisitor(device_plane);
-    uint32 device_id = kFirstDeviceId + xplane.Id();
+    uint32_t device_id = kFirstDeviceId + xplane.Id();
     ConvertXPlaneToTraceEvents(device_id, xplane, container);
   }
   // Trace viewer (non-streaming) has scalability issues, we need to drop
   // events to avoid loading failure for trace viewer.
-  uint64 viewer_max_events = GetTraceViewerMaxEvents();
+  uint64_t viewer_max_events = GetTraceViewerMaxEvents();
   container.CapEvents(viewer_max_events);
   return container;
 }

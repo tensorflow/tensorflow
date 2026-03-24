@@ -38,7 +38,7 @@ class ImmutableConstantOp : public OpKernel {
   static constexpr char const* kMemoryRegionNameAttr = "memory_region_name";
 
  private:
-  string region_name_;
+  std::string region_name_;
   DataType dtype_;
   TensorShape shape_;
   ImmutableConstantOp(const ImmutableConstantOp&) = delete;

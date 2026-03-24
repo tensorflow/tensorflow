@@ -22,6 +22,19 @@ limitations under the License.
 // This macro helps to ensure that migration test base classes are not used in
 // conjunction with ClientLibraryTestBase.
 // TODO: b/408276009 - Remove these macros once all tests have been migrated.
+#include <functional>
+#include <optional>
+#include <utility>
+
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "xla/array.h"
+#include "xla/client/local_client.h"
+#include "xla/error_spec.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/platform.h"
 #define XLA_TEST_NOT_MIGRATED_TO_HLO_RUNNER_PJRT
 #ifdef XLA_TEST_MIGRATED_TO_HLO_RUNNER_PJRT
 static_assert(false,
@@ -46,15 +59,10 @@ static_assert(false,
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/client_library_test_runner_utils.h"
-#include "xla/tests/literal_test_util.h"
-#include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/ml_dtypes.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 
@@ -215,11 +223,10 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Creates an array of pseudorandom values lying between the given minimum and
   // maximum values.
   template <typename NativeT>
-  std::vector<NativeT> CreatePseudorandomR1(const int width, NativeT min_value,
+  std::vector<NativeT> CreatePseudorandomR1(int width, NativeT min_value,
                                             NativeT max_value, uint32_t seed);
   template <typename NativeT>
-  std::unique_ptr<Array2D<NativeT>> CreatePseudorandomR2(const int rows,
-                                                         const int cols,
+  std::unique_ptr<Array2D<NativeT>> CreatePseudorandomR2(int rows, int cols,
                                                          NativeT min_value,
                                                          NativeT max_value,
                                                          uint32_t seed);
@@ -233,16 +240,14 @@ class ClientLibraryTestBase : public ::testing::Test {
   //
   // If provided, offset is added uniformly to every element (e.g. an offset of
   // 64 would cause 0 in the above to be 64, 1 to be 65, 1000 to be 1064, etc.)
-  std::unique_ptr<Array2D<float>> CreatePatternedMatrix(const int rows,
-                                                        const int cols,
+  std::unique_ptr<Array2D<float>> CreatePatternedMatrix(int rows, int cols,
                                                         float offset = 0.0);
 
   // Creates a (rows x cols) array as above, padded out to
   // (rows_padded x cols_padded) with zeroes.  Requires rows_padded >= rows
   // and cols_padded > cols.
   std::unique_ptr<Array2D<float>> CreatePatternedMatrixWithZeroPadding(
-      const int rows, const int cols, const int rows_padded,
-      const int cols_padded);
+      int rows, int cols, int rows_padded, int cols_padded);
 
   // Creates a parameter instruction, transfers the literal for the parameter to
   // server, then stores into "data_handle" the global handle for that
@@ -412,6 +417,24 @@ class ClientLibraryTestBase : public ::testing::Test {
           verify_output);
   // Converts an f32 shape to test_type_.
   Shape MaybeConvertShapeToTestType(const Shape& shape);
+
+  // Helper function to prepare arguments, moving transfer logic out of the main
+  // function.
+  absl::StatusOr<std::vector<GlobalData*>> PrepareArguments(
+      absl::Span<GlobalData* const> arguments_passed_in,
+      std::vector<std::unique_ptr<GlobalData>>& owning_arguments);
+
+  struct LiteralWithShape {
+    std::optional<Literal> literal;
+    std::optional<Shape> shape;
+  };
+
+  // Converts the expected literal and the shape with layout to test_type_.
+  // If the test_type_ is not F32, the expected literal will be converted to
+  // test_type_. If the shape_with_layout is not nullptr and the test_type_ is
+  // not F32, the shape_with_layout will be converted to test_type_.
+  LiteralWithShape PrepareExpectedLiteralAndShape(
+      const Literal& expected, const Shape* shape_with_layout);
 
   // Type to use when running tests. By default, we use F32 for historical
   // reasons and we rely on the underlying tests to change it.

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
+#include <string>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -37,7 +39,7 @@ class XlaSvdOp : public XlaOpKernel {
   explicit XlaSvdOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("max_iter", &max_iter_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
-    string precision_config_attr;
+    std::string precision_config_attr;
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("precision_config", &precision_config_attr));
     OP_REQUIRES(ctx,
@@ -57,7 +59,7 @@ class XlaSvdOp : public XlaOpKernel {
   }
 
  private:
-  int32 max_iter_;
+  int32_t max_iter_;
   float epsilon_;
   xla::PrecisionConfig precision_config_;
 };

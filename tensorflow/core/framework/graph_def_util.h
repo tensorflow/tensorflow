@@ -29,7 +29,7 @@ class NodeDef;
 
 // Produce a human-readable version of a GraphDef that is more concise
 // than a text-format proto.
-string SummarizeGraphDef(const GraphDef& graph_def);
+std::string SummarizeGraphDef(const GraphDef& graph_def);
 
 // Validates the syntax of a GraphDef provided externally.
 //
@@ -97,7 +97,7 @@ absl::Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 absl::Status RemoveNewDefaultAttrsFromGraphDef(
     GraphDef* graph_def, const OpRegistryInterface& consumer_op_registry,
     const OpRegistryInterface& producer_op_registry,
-    std::set<std::pair<string, string>>* op_attr_removed);
+    std::set<std::pair<std::string, std::string>>* op_attr_removed);
 
 // Goes over the `nodes` and removes attributes that are set to their
 // default values according to op_registry.
@@ -115,7 +115,7 @@ void StripDefaultAttributes(const OpRegistryInterface& op_registry,
 //
 // This returns the ops used as a set of strings.
 void OpsUsedByGraph(const GraphDef& graph_def,
-                    std::set<string>* ops_used_in_graph);
+                    std::set<std::string>* ops_used_in_graph);
 
 // This function computes the stripped_op_list field of MetaGraphDef
 // and similar protos.  The op_registry should contain the ops used to

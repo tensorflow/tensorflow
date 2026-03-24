@@ -218,7 +218,7 @@ absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunOnComputation(
   return true;
 }
 
-absl::StatusOr<bool> ConvertAsyncCollectivesToSync::Run(
+absl::StatusOr<bool> ConvertAsyncCollectivesToSync::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!module->has_schedule()) {

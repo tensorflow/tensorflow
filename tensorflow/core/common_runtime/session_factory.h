@@ -61,12 +61,13 @@ class SessionFactory {
   //
   // Sessions that support resource containers should override this function.
   virtual absl::Status Reset(const SessionOptions& options,
-                             const std::vector<string>& containers) {
+                             const std::vector<std::string>& containers) {
     return errors::Unimplemented("Reset()");
   }
 
   virtual ~SessionFactory() {}
-  static void Register(const string& runtime_type, SessionFactory* factory);
+  static void Register(const std::string& runtime_type,
+                       SessionFactory* factory);
   static absl::Status GetFactory(const SessionOptions& options,
                                  SessionFactory** out_factory);
 };

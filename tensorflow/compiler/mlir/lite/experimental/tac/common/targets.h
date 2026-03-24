@@ -45,6 +45,9 @@ constexpr char kSkipTargetAnnotation[] = "tac.skip_target_annotation";
 // Custom options fingerprint to apply different options for different filters.
 constexpr char kCustomOptionsFingerprint[] = "tac.custom_options_fingerprint";
 
+// Delegate compiler stack version.
+constexpr char kDelegateCompilerVersion[] = "tac.delegate_compiler_version";
+
 // TODO(renjieliu): Add more inference types.
 enum InferenceType {
   UNKNOWN = 0,

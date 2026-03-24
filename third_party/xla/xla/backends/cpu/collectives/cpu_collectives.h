@@ -64,7 +64,8 @@ class CpuCollectives : public Collectives {
 
   absl::StatusOr<std::vector<std::unique_ptr<Communicator>>> SplitCommunicators(
       absl::Span<const Communicator* const> comms, int32_t color,
-      absl::Span<const RankId> keys, const Config& config) final {
+      absl::Span<const RankId> keys, const Config& config,
+      absl::Span<const DeviceRank> ranks) final {
     return Unimplemented(
         "CPU collectives do not support communicator splitting");
   }

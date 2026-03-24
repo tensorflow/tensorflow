@@ -26,6 +26,9 @@ inline constexpr absl::string_view kXlaGpuAssertCustomCallTag =
 inline constexpr absl::string_view kXlaGpuDebugPrintCustomCallTag =
     "__xla_gpu_debug_print";
 
+inline constexpr absl::string_view kXlaGpuAppendToFileCustomCallTag =
+    "__xla_gpu_append_to_file";
+
 }  // namespace xla
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_RUNTIME_INTRINSICS_H_

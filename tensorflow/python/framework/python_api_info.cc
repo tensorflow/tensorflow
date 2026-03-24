@@ -66,7 +66,7 @@ struct DataTypeFormatter {
 
 // Populates `param_names` and `defaults_tuple` based on the given OpDef.
 void GetOpDefNamesAndDefaults(const tensorflow::OpDef& op_def,
-                              std::vector<string>& param_names,
+                              std::vector<std::string>& param_names,
                               Safe_PyObjectPtr& defaults_tuple) {
   param_names.reserve(op_def.input_arg_size() + op_def.attr_size());
   std::set<std::string> inferred_attrs;
@@ -118,9 +118,9 @@ void GetOpDefNamesAndDefaults(const tensorflow::OpDef& op_def,
 PythonAPIInfo::PythonAPIInfo(const std::string& api_name)
     : api_name_(InternPyString(api_name)) {}
 
-absl::Status PythonAPIInfo::Initialize(const OpDef& op_def,
-                                       const std::vector<string> param_names,
-                                       PyObject* defaults_tuple) {
+absl::Status PythonAPIInfo::Initialize(
+    const OpDef& op_def, const std::vector<std::string> param_names,
+    PyObject* defaults_tuple) {
   // Intern the parameter names.
   param_names_.reserve(param_names.size());
   for (const auto& param_name : param_names) {
@@ -208,7 +208,7 @@ absl::Status PythonAPIInfo::InitializeFromRegisteredOp(
 absl::Status PythonAPIInfo::InitializeFromParamSpecs(
     const std::map<std::string, std::string>& input_specs,
     const std::map<std::string, std::string>& attr_specs,
-    const std::vector<string> param_names, PyObject* defaults_tuple) {
+    const std::vector<std::string> param_names, PyObject* defaults_tuple) {
   OpDefBuilder op_def_builder(api_name_);
   op_def_builder.AllowAttrTypeAny();
   for (const auto& attr_spec : attr_specs) {
@@ -365,7 +365,7 @@ absl::Status PythonAPIInfo::InitializeInput(
 }
 
 PythonAPIInfo::InputsWithTypeAttr* PythonAPIInfo::FindInputsWithTypeAttr(
-    const string& name) {
+    const std::string& name) {
   for (auto& input : inputs_with_type_attrs_) {
     if (name == input.type_attr->name) {
       return &input;
@@ -375,7 +375,7 @@ PythonAPIInfo::InputsWithTypeAttr* PythonAPIInfo::FindInputsWithTypeAttr(
 }
 
 PythonAPIInfo::InputsWithTypeListAttr*
-PythonAPIInfo::FindInputsWithTypeListAttr(const string& name) {
+PythonAPIInfo::FindInputsWithTypeListAttr(const std::string& name) {
   for (auto& input : inputs_with_type_list_attrs_) {
     if (name == input.type_list_attr->name) {
       return &input;
@@ -385,7 +385,7 @@ PythonAPIInfo::FindInputsWithTypeListAttr(const string& name) {
 }
 
 PythonAPIInfo::InputsWithNumberAttr* PythonAPIInfo::FindInputsWithNumberAttr(
-    const string& name) {
+    const std::string& name) {
   for (auto& input : inputs_with_number_attrs_) {
     if (name == input.number_attr->name) {
       return &input;
@@ -394,8 +394,8 @@ PythonAPIInfo::InputsWithNumberAttr* PythonAPIInfo::FindInputsWithNumberAttr(
   return nullptr;
 }
 
-string PythonAPIInfo::DebugInfo() const {
-  string s = absl::StrCat("DebugInfo for ", api_name_, ":\n");
+std::string PythonAPIInfo::DebugInfo() const {
+  std::string s = absl::StrCat("DebugInfo for ", api_name_, ":\n");
   absl::StrAppend(&s, "  param_names=[", absl::StrJoin(param_names_, ", "),
                   "]\n");
   Safe_PyObjectPtr defaults_repr(PyObject_Repr(defaults_tuple_.get()));

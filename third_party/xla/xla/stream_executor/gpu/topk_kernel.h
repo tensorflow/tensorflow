@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 namespace stream_executor::gpu {
 
@@ -32,9 +32,9 @@ static constexpr size_t kTopKMaxThreadsPerBlock = 1024;
 template <size_t K, typename KT, typename VT>
 struct TopKKernel {
   using KernelType =
-      stream_executor::TypedKernel<stream_executor::DeviceMemory<KT>, size_t,
-                                   stream_executor::DeviceMemory<KT>,
-                                   stream_executor::DeviceMemory<uint32_t>,
+      stream_executor::TypedKernel<stream_executor::DeviceAddress<KT>, size_t,
+                                   stream_executor::DeviceAddress<KT>,
+                                   stream_executor::DeviceAddress<uint32_t>,
                                    size_t>;
 };
 

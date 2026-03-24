@@ -184,6 +184,31 @@ bool ConstraintExpression::IsSatisfiedBy(
       });
 }
 
+void ConstraintExpression::PrintUnsatisfiedConstraints(
+    absl::Span<const int64_t> dim_values, std::ostream& out) const {
+  auto is_conjunction_satisfied = [&](const auto& conjunction) {
+    return absl::c_all_of(conjunction, [&](const Constraint& constraint) {
+      int64_t value = EvaluateAffineExpr(constraint.expr, dim_values);
+      return constraint.interval.Contains(value);
+    });
+  };
+
+  for (const auto& [i, conjunction] :
+       llvm::enumerate(disjoint_conjoint_constraints_)) {
+    if (is_conjunction_satisfied(conjunction)) {
+      continue;
+    }
+    out << "Unsatisfied conjunction: #" << i << "\n";
+    for (const Constraint& constraint : conjunction) {
+      int64_t value = EvaluateAffineExpr(constraint.expr, dim_values);
+      if (!constraint.interval.Contains(value)) {
+        out << " -- " << constraint.expr << " in "
+            << constraint.interval.ToString() << ". Value: " << value << "\n";
+      }
+    }
+  }
+}
+
 std::string ConstraintExpression::ToString() const {
   std::stringstream ss;
   Print(ss);
@@ -204,10 +229,10 @@ void ConstraintExpression::Print(std::ostream& out) const {
   // order and to get deterministic output.
   std::vector<std::string> conjunction_strings;
   conjunction_strings.reserve(disjoint_conjoint_constraints_.size());
-  for (const auto& disjunction : disjoint_conjoint_constraints_) {
+  for (const auto& conjunction : disjoint_conjoint_constraints_) {
     std::vector<std::string> constraint_strings;
-    constraint_strings.reserve(disjunction.size());
-    for (const auto& [expr, interval] : disjunction) {
+    constraint_strings.reserve(conjunction.size());
+    for (const auto& [expr, interval] : conjunction) {
       constraint_strings.push_back(
           absl::StrCat(xla::ToString(expr), " in ", interval.ToString()));
     }

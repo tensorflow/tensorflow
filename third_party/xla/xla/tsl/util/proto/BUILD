@@ -31,14 +31,15 @@ cc_library(
     srcs = ["proto_matchers.cc"],
     hdrs = ["proto_matchers.h"],
     visibility = [
-        "//learning/pathways:__subpackages__",  # For OSS
+        "//learning/pathways:__subpackages__",
+        "//third_party/pathways:__subpackages__",  # For OSS
         "//xla:__subpackages__",
     ],
     deps = [
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_for_library",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -56,7 +57,7 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 

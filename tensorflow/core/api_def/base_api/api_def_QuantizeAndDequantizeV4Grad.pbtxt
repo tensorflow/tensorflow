@@ -1,5 +1,19 @@
 op {
   graph_op_name: "QuantizeAndDequantizeV4Grad"
+  in_arg {
+    name: "input_min"
+    description: <<END
+If `axis` is specified, the shape of the minimum input tensor
+must be rank 1.
+END
+  }
+  in_arg {
+    name: "input_max"
+    description: <<END
+If `axis` is specified, the shape of the maximum input tensor
+must be rank 1.
+END
+  }
   summary: "Returns the gradient of `QuantizeAndDequantizeV4`."
   description: <<END
 Returns a gradient of 1 for inputs that are within the quantization range,

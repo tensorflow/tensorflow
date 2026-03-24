@@ -15,6 +15,7 @@
 #include "xla/python/ifrt_proxy/server/grpc_server.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -23,7 +24,6 @@
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -33,14 +33,16 @@ namespace proxy {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 // A fake IFRT service that fails all the Session creation attempts.
 class FakeIfrtService : public grpc::GrpcIfrtService::Service {};
 
+std::string MakeServerAddress() {
+  return absl::StrCat("localhost:", tsl::testing::PickUnusedPortOrDie());
+}
+
 TEST(GrpcServerTest, CreationTest) {
-  auto addr = absl::StrCat("[::1]:", tsl::testing::PickUnusedPortOrDie());
+  auto addr = MakeServerAddress();
   auto grpc_service_impl = std::make_unique<FakeIfrtService>();
   ASSERT_THAT(GrpcServer::Create(addr, std::move(grpc_service_impl)),
               absl_testing::IsOk());
@@ -48,7 +50,7 @@ TEST(GrpcServerTest, CreationTest) {
 }
 
 TEST(GrpcServerTest, CreationFailsIfImplIsNullptr) {
-  auto addr = absl::StrCat("[::1]:", tsl::testing::PickUnusedPortOrDie());
+  auto addr = MakeServerAddress();
   EXPECT_THAT(GrpcServer::Create(addr, nullptr),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
 }
@@ -61,7 +63,7 @@ TEST(GrpcServerTest, CreationFailsWithInvalidAddress) {
 }
 
 TEST(GrpcServerTest, RetrievingServerAddressWorks) {
-  auto addr = absl::StrCat("[::1]:", tsl::testing::PickUnusedPortOrDie());
+  auto addr = MakeServerAddress();
   auto grpc_service_impl = std::make_unique<FakeIfrtService>();
   TF_ASSERT_OK_AND_ASSIGN(
       auto grpc_server, GrpcServer::Create(addr, std::move(grpc_service_impl)));

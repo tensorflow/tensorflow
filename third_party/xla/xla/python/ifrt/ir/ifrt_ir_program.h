@@ -19,13 +19,16 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -35,12 +38,15 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/python/ifrt/compiler.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/ir/ifrt_ir_compile_options.pb.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace xla {
 namespace ifrt {
@@ -58,6 +64,15 @@ struct IfrtIRProgram : llvm::RTTIExtends<IfrtIRProgram, Program> {
   static absl::string_view type_name() { return "xla::ifrt::IfrtIRProgram"; }
 
   mlir::ModuleOp mlir_module;
+
+  // Returns true if the program exclusively owns the MLIR context.
+  bool OwnsMlirContext() const { return mlir_context != nullptr; }
+
+  // Key for the `fill_all_statuses` attribute in the custom_options attribute
+  // map. If set to true, all executables will have their status filled if
+  // `options.fill_status` is set. Otherwise, only leaf executables will have
+  // their status filled.
+  static constexpr absl::string_view kFillAllStatuses = "fill_all_statuses";
 
   static char ID;  // NOLINT
 
@@ -99,13 +114,23 @@ struct SerializeIfrtIRProgramOptions
 // deserialization will use the provided MLIR context and the returned program
 // will not own a MLIR context.
 struct DeserializeIfrtIRProgramOptions
-    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions, DeserializeOptions> {
+    : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
+                        DeserializeExecutableOptions> {
   explicit DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context)
       : context(context) {}
+  DeserializeIfrtIRProgramOptions(mlir::MLIRContext* context,
+                                  std::optional<DeviceListRef> device_list,
+                                  absl::Span<Device* const> device_assignments)
+      : llvm::RTTIExtends<DeserializeIfrtIRProgramOptions,
+                          DeserializeExecutableOptions>(device_list),
+        context(context),
+        device_assignments(device_assignments.begin(),
+                           device_assignments.end()) {}
 
   static char ID;  // NOLINT
 
   mlir::MLIRContext* context;
+  std::vector<Device*> device_assignments;
 };
 
 // CompileOptions for an IFRT IR program.
@@ -116,19 +141,18 @@ struct IfrtIRCompileOptions
       std::vector<DeviceId> device_assignments,
       absl::flat_hash_map<std::string, LoadedExecutableRef>
           loaded_exec_binding = {},
-      std::shared_ptr<absl::flat_hash_map<
-          std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
+      std::shared_ptr<
+          absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
           compile_options_overrides = {},
-      bool propagate_shardings = false, std::string mlir_dump_to = "",
-      std::string mlir_dump_pass_re = "", std::string mlir_dump_func_re = ".*",
-      bool mlir_enable_timing = false, std::string dot_graph_dump_to = "",
+      std::string mlir_dump_to = "", std::string mlir_dump_pass_re = "",
+      std::string mlir_dump_func_re = ".*", bool mlir_enable_timing = false,
+      std::string dot_graph_dump_to = "",
       int64_t dot_graph_min_executable_peak_memory_bytes = 0,
       float dot_graph_min_executable_flops = 0.0,
       int64_t dot_graph_min_per_device_transfer_size_bytes = 0)
       : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)),
         compile_options_overrides(std::move(compile_options_overrides)),
-        propagate_shardings(propagate_shardings),
         mlir_dump_to(std::move(mlir_dump_to)),
         mlir_dump_pass_re(std::move(mlir_dump_pass_re)),
         mlir_dump_func_re(std::move(mlir_dump_func_re)),
@@ -152,21 +176,26 @@ struct IfrtIRCompileOptions
   // Mapping from values of `ifrt.compile_option_key` attribute of a `CallOp` to
   // compile options. If a `CallOp` does not have have the attribute set or does
   // not have an entry in this map then default compile options are used.
-  std::shared_ptr<absl::flat_hash_map<
-      std::string, std::unique_ptr<xla::ifrt::CompileOptions>>>
+  std::shared_ptr<
+      absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
       compile_options_overrides;
 
   // Constructs `IfrtIRCompileOptions` from `IfrtIrCompileOptionsProto`.
   static absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> FromProto(
       const IfrtIrCompileOptionsProto& proto);
 
-  // Returns a `IfrtIrCompileOptionsProto` representation.
-  absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
+  // Converts the compile options to a protobuf.
+  absl::Status ToProto(
+      IfrtIrCompileOptionsProto& proto,
       SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const;
 
-  // Whether to propagate shardings from atom program executables for
-  // unspecified shardings.
-  bool propagate_shardings;
+  // Returns a `IfrtIrCompileOptionsProto` representation.
+  absl::StatusOr<IfrtIrCompileOptionsProto> ToProto(
+      SerDesVersion version = SerDesDefaultVersionAccessor::Get()) const {
+    IfrtIrCompileOptionsProto proto;
+    TF_RETURN_IF_ERROR(ToProto(proto, version));
+    return proto;
+  }
 
   std::string mlir_dump_to;
   std::string mlir_dump_pass_re;
@@ -186,7 +215,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
 llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
                               std::shared_ptr<IfrtIRCompileOptions> options);
 
-// Gets `xla::ifrt::IfrtIRCompileOptions` from `xla::ifrt::CompileOptions`.
+// Gets `IfrtIRCompileOptions` from `CompileOptions`.
 absl::StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
     std::unique_ptr<CompileOptions> options);
 

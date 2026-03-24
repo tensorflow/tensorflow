@@ -28,13 +28,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/service/copy_insertion.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
-using ScanLoopAccumulatorInputUnificationTest = HloTestBase;
+using ScanLoopAccumulatorInputUnificationTest = HloPjRtTestBase;
 
 HloInstruction* GetTopLevelWhileInstruction(HloModule* module) {
   for (HloInstruction* instr :
@@ -578,6 +578,103 @@ TEST_F(ScanLoopAccumulatorInputUnificationTest,
   EXPECT_NE(
       while_instruction->while_body()->root_instruction()->operand(2)->opcode(),
       HloOpcode::kCopy);
+}
+
+TEST_F(ScanLoopAccumulatorInputUnificationTest, SharedLoopBody) {
+  constexpr char kModule[] = R"(
+  HloModule shared_body
+
+  body {
+    p = (s32[], s32[], s32[8], s32[8]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    acc = s32[] get-tuple-element(p), index=1
+    out_arr = s32[8] get-tuple-element(p), index=2
+    in_arr = s32[8] get-tuple-element(p), index=3
+
+    ds = s32[1] dynamic-slice(in_arr, iter), dynamic_slice_sizes={1}
+    rs = s32[] reshape(ds)
+    sum = s32[] add(acc, rs)
+    rs_sum = s32[1] reshape(sum)
+    dus = s32[8] dynamic-update-slice(out_arr, rs_sum, iter)
+
+    const1 = s32[] constant(1)
+    next_iter = s32[] add(iter, const1)
+    ROOT t = (s32[], s32[], s32[8], s32[8]) tuple(next_iter, sum, dus, in_arr)
+  }
+
+  cond {
+    p = (s32[], s32[], s32[8], s32[8]) parameter(0)
+    iter = s32[] get-tuple-element(p), index=0
+    limit = s32[] constant(8)
+    ROOT cmp = pred[] compare(iter, limit), direction=LT
+  }
+
+  outer_body_1 {
+    op = (s32[], s32[], s32[8]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_init = s32[] get-tuple-element(op), index=1
+    o_arr = s32[8] get-tuple-element(op), index=2
+
+    c0 = s32[] constant(0)
+    init_arr = s32[8] constant({0,0,0,0,0,0,0,0})
+    t_init = (s32[], s32[], s32[8], s32[8]) tuple(c0, o_init, init_arr, o_arr)
+
+    w1 = (s32[], s32[], s32[8], s32[8]) while(t_init), condition=cond, body=body
+
+    out_arr = s32[8] get-tuple-element(w1), index=2
+    const1 = s32[] constant(1)
+    next_o_iter = s32[] add(o_iter, const1)
+    ROOT out_t = (s32[], s32[], s32[8]) tuple(next_o_iter, o_init, out_arr)
+  }
+
+  outer_cond_1 {
+    op = (s32[], s32[], s32[8]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT o_cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  outer_body_2 {
+    op = (s32[], s32[], s32[8]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    o_init = s32[] get-tuple-element(op), index=1
+    o_arr = s32[8] get-tuple-element(op), index=2
+
+    c0 = s32[] constant(0)
+    init_arr = s32[8] constant({0,0,0,0,0,0,0,0})
+    t_init = (s32[], s32[], s32[8], s32[8]) tuple(c0, o_init, init_arr, o_arr)
+
+    w2 = (s32[], s32[], s32[8], s32[8]) while(t_init), condition=cond, body=body
+
+    out_arr = s32[8] get-tuple-element(w2), index=2
+    const1 = s32[] constant(1)
+    next_o_iter = s32[] add(o_iter, const1)
+    ROOT out_t = (s32[], s32[], s32[8]) tuple(next_o_iter, o_init, out_arr)
+  }
+
+  outer_cond_2 {
+    op = (s32[], s32[], s32[8]) parameter(0)
+    o_iter = s32[] get-tuple-element(op), index=0
+    limit = s32[] constant(2)
+    ROOT o_cmp = pred[] compare(o_iter, limit), direction=LT
+  }
+
+  ENTRY main {
+    c0 = s32[] constant(0)
+    arr = s32[8] constant({1,2,3,4,5,6,7,8})
+    o_init = (s32[], s32[], s32[8]) tuple(c0, c0, arr)
+    w_out1 = (s32[], s32[], s32[8]) while(o_init), condition=outer_cond_1, body=outer_body_1
+    w_out2 = (s32[], s32[], s32[8]) while(o_init), condition=outer_cond_2, body=outer_body_2
+    out_arr1 = s32[8] get-tuple-element(w_out1), index=2
+    out_arr2 = s32[8] get-tuple-element(w_out2), index=2
+    ROOT res = s32[8] add(out_arr1, out_arr2)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kModule));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ScanLoopAccumulatorInputUnification().Run(module.get()));
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

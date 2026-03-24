@@ -84,6 +84,7 @@ struct ReconfigBatchOpPassOptions {
   llvm::ArrayRef<int64_t> allowed_batch_sizes = {};
   int64_t max_enqueued_batches = 0;
   int64_t batch_queue_global_prioritization_num_threads = 0;
+  bool enable_priority_aware_batch_scheduler = false;
 };
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateReconfigBatchOpPass(
     ReconfigBatchOpPassOptions options);

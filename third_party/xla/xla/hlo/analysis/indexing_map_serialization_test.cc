@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -33,6 +34,9 @@ using ::testing::HasSubstr;
 
 class IndexingMapSerializationTest : public HloHardwareIndependentTestBase {
  public:
+  IndexingMapSerializationTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
   mlir::MLIRContext mlir_context_;
   void ParseAndCheck(absl::string_view indexing_map_str) {
     auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);

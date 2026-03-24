@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -28,7 +29,7 @@ namespace {
 class GatherOp : public XlaOpKernel {
  public:
   explicit GatherOp(OpKernelConstruction* context) : XlaOpKernel(context) {
-    string dnums_attr;
+    std::string dnums_attr;
     OP_REQUIRES_OK(context, context->GetAttr("dimension_numbers", &dnums_attr));
     OP_REQUIRES(
         context, dnums_.ParsePartialFromString(dnums_attr),
@@ -60,7 +61,7 @@ class ScatterOp : public XlaOpKernel {
   explicit ScatterOp(OpKernelConstruction* context) : XlaOpKernel(context) {
     OP_REQUIRES_OK(
         context, context->GetAttr("update_computation", &update_computation_));
-    string dnums_attr;
+    std::string dnums_attr;
     OP_REQUIRES_OK(context, context->GetAttr("dimension_numbers", &dnums_attr));
     OP_REQUIRES(
         context, dnums_.ParsePartialFromString(dnums_attr),

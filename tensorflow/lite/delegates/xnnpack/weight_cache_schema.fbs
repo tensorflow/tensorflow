@@ -32,11 +32,14 @@ table Buffer {
 }
 
 table BufferList {
+  /// A list of packing fingerprints. All of these need to be checked when
+  /// loading the cache to ensure that it is compatible.
+  fingerprints: [uint64];
   /// A list of buffers.
   buffers: [Buffer];
   /// Defines the base offset for the data in the file. That offset
   /// may be needed to guarantee data alignment.
-  base_offset:uint64;
+  base_offset: uint64;
 }
 
 root_type BufferList;

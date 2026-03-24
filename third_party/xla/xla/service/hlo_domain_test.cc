@@ -116,9 +116,9 @@ class OpNameDomainCreator {
     if (instruction->metadata().op_name() == root->metadata().op_name()) {
       return nullptr;
     }
-    std::unique_ptr<DomainMetadata> operand_side_metadata =
+    auto operand_side_metadata =
         std::make_unique<OpNameMetadata>(root->metadata().op_name());
-    std::unique_ptr<DomainMetadata> user_side_metadata =
+    auto user_side_metadata =
         std::make_unique<OpNameMetadata>(instruction->metadata().op_name());
     return operand->parent()->AddInstruction(HloInstruction::CreateDomain(
         operand->shape(), operand, std::move(operand_side_metadata),
@@ -309,7 +309,7 @@ ENTRY entry {
 
   HloInstruction* call0 =
       module->entry_computation()->GetInstructionWithName("call0");
-  EXPECT_EQ(call0->sharding(), HloSharding::AssignDevice(1));
+  EXPECT_EQ(call0->sharding(), HloSharding::SingleDevice(1));
   HloInstruction* call1 =
       module->entry_computation()->GetInstructionWithName("call1");
   EXPECT_EQ(call1->sharding(), HloSharding::Replicate());
@@ -432,16 +432,16 @@ TEST_F(HloDomainTest, CheckNoDomainAddedOnPureIOComputation) {
 HloModule Module
 
 ENTRY entry {
-  token0 = token[] after-all(), sharding={maximal device=-1}
+  token0 = token[] after-all(), sharding={maximal device=1}
   a = (f32[4], u32[], token[]) recv(token0), channel_id=1,
-        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
+        sharding={{maximal device=1},{maximal device=1},{maximal device=1}}
   b = (f32[4], token[]) recv-done(a), channel_id=1,
-        sharding={{maximal device=-1},{maximal device=-1}}
-  b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=-1}
-  c = f32[4] add(b_element, b_element), sharding={maximal device=-1}
+        sharding={{maximal device=1},{maximal device=1}}
+  b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=1}
+  c = f32[4] add(b_element, b_element), sharding={maximal device=1}
   d = (f32[4], u32[], token[]) send(c, token0), channel_id=2,
-        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
-  ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=-1}
+        sharding={{maximal device=1},{maximal device=1},{maximal device=1}}
+  ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=1}
 }
 )";
 
@@ -632,8 +632,8 @@ ENTRY entry {
   EXPECT_TRUE(new_tuple->has_sharding());
   EXPECT_EQ(
       new_tuple->sharding(),
-      HloSharding::Tuple(new_tuple->shape(), {HloSharding::AssignDevice(1),
-                                              HloSharding::AssignDevice(0)}));
+      HloSharding::Tuple(new_tuple->shape(), {HloSharding::SingleDevice(1),
+                                              HloSharding::SingleDevice(0)}));
 }
 
 TEST_F(HloDomainTest, EmptyRootDomain) {
@@ -672,7 +672,7 @@ ENTRY entry {
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_TRUE(root->has_sharding());
-  EXPECT_EQ(root->sharding(), HloSharding::AssignDevice(1));
+  EXPECT_EQ(root->sharding(), HloSharding::SingleDevice(1));
 }
 
 // Tests that text dumps of domain instructions can be parsed back, in the
@@ -727,8 +727,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
-  EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::AssignDevice(1),
-                                              HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::SingleDevice(1),
+                                              HloSharding::SingleDevice(0)}),
             tpl->sharding());
 }
 
@@ -865,14 +865,14 @@ ENTRY entry {
   EXPECT_TRUE(remover_changed);
 
   EXPECT_TRUE(tuple0->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(tuple0->shape(), {HloSharding::AssignDevice(1),
-                                                 HloSharding::AssignDevice(1),
-                                                 HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(tuple0->shape(), {HloSharding::SingleDevice(1),
+                                                 HloSharding::SingleDevice(1),
+                                                 HloSharding::SingleDevice(0)}),
             tuple0->sharding());
 
   EXPECT_TRUE(copy0->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(copy0->shape(), {HloSharding::AssignDevice(1),
-                                                HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(copy0->shape(), {HloSharding::SingleDevice(1),
+                                                HloSharding::SingleDevice(0)}),
             copy0->sharding());
 
   // copy1 has partial information only from gte.0, so in the end it gets no
@@ -881,16 +881,16 @@ ENTRY entry {
   EXPECT_FALSE(copy1->has_sharding());
 
   EXPECT_TRUE(gte0->has_sharding());
-  EXPECT_EQ(HloSharding::AssignDevice(1), gte0->sharding());
+  EXPECT_EQ(HloSharding::SingleDevice(1), gte0->sharding());
 
   EXPECT_TRUE(gte1->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(gte1->shape(), {HloSharding::AssignDevice(1),
-                                               HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(gte1->shape(), {HloSharding::SingleDevice(1),
+                                               HloSharding::SingleDevice(0)}),
             gte1->sharding());
 
   EXPECT_TRUE(copy2->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(copy2->shape(), {HloSharding::AssignDevice(1),
-                                                HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(copy2->shape(), {HloSharding::SingleDevice(1),
+                                                HloSharding::SingleDevice(0)}),
             copy2->sharding());
 
   EXPECT_TRUE(tuple1->has_sharding());

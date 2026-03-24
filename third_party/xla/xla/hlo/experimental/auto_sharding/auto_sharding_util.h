@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <utility>
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace spmd {
@@ -212,7 +212,7 @@ inline void ReplaceOperand(HloInstruction* inst,
                            HloInstruction* new_operand) {
   for (int i = 0; i < inst->operand_count(); ++i) {
     if (inst->operand(i) == old_operand) {
-      TF_CHECK_OK(inst->ReplaceOperandWith(i, new_operand));
+      CHECK_OK(inst->ReplaceOperandWith(i, new_operand));
     }
   }
 }
@@ -331,7 +331,7 @@ inline std::string ToStringSimple(const HloSharding& spec) {
   if (spec.IsReplicated()) {
     return "R";
   }
-  return ToString(spec.tile_assignment().dimensions());
+  return ToString(spec.dimensions());
 }
 
 // Insert a copy of the operand to force the sharding of the operand.
@@ -344,12 +344,12 @@ inline void ForceOperandSharding(HloInstruction* inst, int operand_num,
   HloInstruction* replace_with = inst->parent()->AddInstruction(
       HloInstruction::CreateReshape(operand->shape(), operand));
   replace_with->set_sharding(sharding);
-  TF_CHECK_OK(inst->ReplaceOperandWith(operand_num, replace_with));
+  CHECK_OK(inst->ReplaceOperandWith(operand_num, replace_with));
 }
 
 // Return whether the sharding is fully tiled.
 inline bool IsFullyTiled(const HloSharding& sharding) {
-  return sharding.NumTiles() == sharding.tile_assignment().num_elements();
+  return sharding.NumTiles() == sharding.num_devices();
 }
 
 // The sharding is replicated or the total number of tiles is over or equal to

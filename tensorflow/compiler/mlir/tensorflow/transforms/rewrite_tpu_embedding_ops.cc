@@ -45,8 +45,8 @@ OpT AddOperandAndRewriteAs(Operation* op, Value operand, NamedAttrList attr,
   builder->setInsertionPoint(op);
   auto operands = llvm::to_vector<4>(op->getOperands());
   operands.push_back(operand);
-  auto new_op = builder->create<OpT>(op->getLoc(), op->getResultTypes(),
-                                     operands, attr.getAttrs());
+  auto new_op = OpT::create(*builder, op->getLoc(), op->getResultTypes(),
+                            operands, attr.getAttrs());
   op->replaceAllUsesWith(new_op.getOperation()->getResults());
   op->erase();
   return new_op;
@@ -82,8 +82,8 @@ LogicalResult RunOnRegion(Region* region) {
   OpBuilder builder(region);
   auto output_ty =
       RankedTensorType::get({}, VariantType::get(region->getContext()));
-  auto dedup_op = builder.create<XlaRecvTPUEmbeddingDeduplicationDataOp>(
-      loc, output_ty, config);
+  auto dedup_op = XlaRecvTPUEmbeddingDeduplicationDataOp::create(
+      builder, loc, output_ty, config);
 
   // Rewrite RecvTPUEmbeddingActivations op to the corresponding internal op.
   if (recv_op)

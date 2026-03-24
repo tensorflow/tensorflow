@@ -67,7 +67,7 @@ class EmitterBase : public KernelFusionInterface {
   // Visible for testing. `buffer_assignment` is optional for testing (assigns
   // a different buffer to each tensor).
   virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(
-      mlir::MLIRContext& context, const HloFusionInstruction& fusion,
+      mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
       const std::string& entry_function_name,
       const BufferAssignment* buffer_assignment) const;
 
@@ -97,6 +97,10 @@ class EmitterBase : public KernelFusionInterface {
       mlir::func::FuncOp entry_function,
       const HloFusionInstruction& fusion) const = 0;
 
+  static std::array<uint64_t, 2> MaybeSplitGridDimensionX(
+      uint64_t num_threads_x, uint64_t num_blocks_x,
+      const se::DeviceDescription& info);
+
   mlir::Value EmitWorkGroupId(mlir::ImplicitLocOpBuilder& builder,
                               WorkGroupDimension dim) const;
   mlir::Value EmitBlockId(mlir::ImplicitLocOpBuilder& builder, int dim) const;
@@ -110,13 +114,15 @@ class EmitterBase : public KernelFusionInterface {
   // The fuson outputs may only be used with `tensor.insert` ops.a
   absl::Status EmitMlir(mlir::ModuleOp module,
                         mlir::func::FuncOp entry_function,
-                        const HloFusionInstruction& fusion) const;
+                        const HloFusionInstruction& fusion,
+                        mlir::MLIRContext& mlir_context) const;
 };
 
 // Adds passes that transform XLA_GPU and SCF loops, e.g. peel, pipeline,
 // vectorize.
 void AddLoopTransformationPasses(mlir::OpPassManager& pm,
-                                 const se::DeviceDescription& device);
+                                 const se::DeviceDescription& device,
+                                 int max_unroll_factor = 0);
 
 // Adds passes that lower transformed loops to LLVM.
 void AddLoweringPasses(mlir::OpPassManager& pm,

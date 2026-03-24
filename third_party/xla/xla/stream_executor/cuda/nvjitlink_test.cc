@@ -31,6 +31,8 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/nvjitlink_support.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/kernel_stats.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace {
 
@@ -197,11 +199,16 @@ TEST_F(NvJitLinkTest, CancelsOnRegSpill) {
               absl_testing::StatusIs(absl::StatusCode::kCancelled));
 
   // We also test the converse to ensure our test case isn't broken.
-  EXPECT_THAT(CompileAndLinkHelper(kDefaultComputeCapability,
-                                   {dependent_ptx.c_str(), kDependeePtx},
-                                   /*disable_gpuasm_optimizations=*/true,
-                                   /*cancel_if_reg_spill=*/false),
-              absl_testing::IsOk());
+  TF_ASSERT_OK_AND_ASSIGN(
+      stream_executor::cuda::Assembly assembly,
+      CompileAndLinkHelper(kDefaultComputeCapability,
+                           {dependent_ptx.c_str(), kDependeePtx},
+                           /*disable_gpuasm_optimizations=*/true,
+                           /*cancel_if_reg_spill=*/false));
+  ASSERT_EQ(assembly.module_stats.size(), 1);
+  KernelStats kernel_stats = assembly.module_stats.begin()->second;
+  EXPECT_GT(kernel_stats.store_bytes_spilled, 0);
+  EXPECT_GT(kernel_stats.load_bytes_spilled, 0);
 }
 
 }  // namespace

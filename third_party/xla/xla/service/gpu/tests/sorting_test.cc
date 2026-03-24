@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "Eigen/Core"
+#include "xla/backends/gpu/transforms/sort_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -36,9 +37,10 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
@@ -47,8 +49,9 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class TypeSupportTest : public GpuCodegenTest,
-                        public ::testing::WithParamInterface<PrimitiveType> {};
+class TypeSupportTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>,
+      public ::testing::WithParamInterface<PrimitiveType> {};
 
 TEST_P(TypeSupportTest, SortSupportsType) {
   constexpr char kHloTemplate[] = R"(
@@ -60,11 +63,21 @@ ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 
 ENTRY test {
 p0 = $0[32]{0} parameter(0)
-ROOT sort = $0[32]{0} sort(p0), dimensions={0}, is_stable=true,
+ROOT sort = $0[32]{0} sort(p0), dimensions={0}, is_stable=false,
 to_apply=compare
 })";
+  // It's OK to set kAlways, because we want to check support, not heuristics.
+  // kAlways does not change what's supported, it only forces the rewrite to
+  // happen if it is supported.
+  SortRewriter::SetSortModeForTestingOnly(SortRewriter::Mode::kAlways);
   std::string hlo = absl::Substitute(
       kHloTemplate, primitive_util::LowercasePrimitiveTypeName(GetParam()));
+  // We expect that all types except PRED and F8 types are rewritten to a custom
+  // call.
+  bool rewrite = GetParam() != PRED && GetParam() != S4 && GetParam() != U4 &&
+                 !primitive_util::IsF8Type(GetParam());
+  std::string check = rewrite ? "CHECK: custom-call" : "CHECK-NOT: custom-call";
+  MatchOptimizedHlo(hlo, check);
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{0, 0}));
 }
 
@@ -73,9 +86,9 @@ INSTANTIATE_TEST_SUITE_P(
     // 4bit types like U4, S4, or F4E2M1FN are currently not supported.
     // F8E8M0FNU cannot represent NaNs and fails the test below.
     ::testing::ValuesIn({
-        PRED,                               // boolean
-        S8,         S16,    S32,      S64,  // signed
-        U8,         U16,    U32,      U64,  // unsigned
+        PRED,                                              // boolean
+        S4,         S8,     S16,      S32,           S64,  // signed
+        U4,         U8,     U16,      U32,           U64,  // unsigned
         F8E5M2,     F8E4M3, F8E4M3FN, F8E4M3B11FNUZ, F8E3M4, F8E5M2FNUZ,
         F8E4M3FNUZ, F16,    BF16,     F32,           F64  // floating point
     }),
@@ -83,7 +96,7 @@ INSTANTIATE_TEST_SUITE_P(
       return primitive_util::LowercasePrimitiveTypeName(info.param);
     });
 
-class SortingTest : public GpuCodegenTest {
+class SortingTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  protected:
   SortingTest() {}
 };
@@ -108,6 +121,90 @@ ENTRY TestComputation {
 
 )";
 
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(SortingTest, PackedElementType) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_update_0 = s4[] parameter(2)
+      %rhs_update_0 = s4[] parameter(3)
+      %lhs_permutation = s32[] parameter(4)
+      %rhs_permutation = s32[] parameter(5)
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      ROOT %compare.2 = pred[] compare(%lhs_key, %rhs_key), direction=LT
+    }
+
+    ENTRY main {
+      p0 = s32[16384]{0} parameter(0)
+      p1 = s4[16384]{0} parameter(1)
+      iota = s32[16384]{0} iota(), iota_dimension=0
+      ROOT sort = (s32[16384]{0}, s4[16384]{0}, s32[16384]{0}) sort(p0, p1, iota), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(SortingTest, SortFusionWithIotaOperand) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      %lhs_index = s32[] parameter(2)
+      %rhs_index = s32[] parameter(3)
+      %lt_key = pred[] compare(%lhs_key, %rhs_key), direction=LT
+      %gt_key = pred[] compare(%rhs_key, %lhs_key), direction=LT
+      %eq_key = pred[] compare(%lt_key, %gt_key), direction=EQ
+      %lt_index = pred[] compare(%lhs_index, %rhs_index), direction=LT
+      ROOT res = pred[] select(%eq_key, %lt_index, %lt_key)
+    }
+
+    sort_fusion {
+      p0 = s32[16384]{0} parameter(0)
+      iota = s32[16384]{0} iota(), iota_dimension=0
+      ROOT sort = (s32[16384]{0}, s32[16384]{0}) sort(p0, iota), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+
+    ENTRY main {
+      p = s32[16384]{0} parameter(0)
+      ROOT fusion = (s32[16384]{0}, s32[16384]{0}) fusion(p), kind=kCustom, calls=sort_fusion
+    }
+  )";
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
+TEST_F(SortingTest, SortFusionWithIotaOperandTinySortDim) {
+  const char* hlo_text = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      %lhs_index = s32[] parameter(2)
+      %rhs_index = s32[] parameter(3)
+      %lt_key = pred[] compare(%lhs_key, %rhs_key), direction=LT
+      %gt_key = pred[] compare(%rhs_key, %lhs_key), direction=LT
+      %eq_key = pred[] compare(%lt_key, %gt_key), direction=EQ
+      %lt_index = pred[] compare(%lhs_index, %rhs_index), direction=LT
+      ROOT res = pred[] select(%eq_key, %lt_index, %lt_key)
+    }
+
+    sort_fusion {
+      p0 = s32[2]{0} parameter(0)
+      iota = s32[2]{0} iota(), iota_dimension=0
+      ROOT sort = (s32[2]{0}, s32[2]{0}) sort(p0, iota), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+
+    ENTRY main {
+      p = s32[2]{0} parameter(0)
+      ROOT fusion = (s32[2]{0}, s32[2]{0}) fusion(p), kind=kCustom, calls=sort_fusion
+    }
+  )";
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
@@ -188,7 +285,7 @@ std::string GetTypeName(PrimitiveType type) {
 }
 
 // Test cub::DeviceRadixSort::SortKeys in XLA
-class CubSortKeysTest : public GpuCodegenTest,
+class CubSortKeysTest : public HloPjRtTestBase,
                         public ::testing::WithParamInterface<
                             std::tuple<std::shared_ptr<Literal>, bool>> {};
 
@@ -199,8 +296,9 @@ HloModule TestModule
 ENTRY %main {
   %input = $0[$1] parameter(0)
   %sort = ($0[$1], u8[$2]) custom-call(%input),
-      custom_call_target="__cub$$DeviceRadixSort",
-      backend_config="{\"descending\": $3}"
+      custom_call_target="xla.gpu.ext.cub_sort_keys",
+      api_version=API_VERSION_TYPED_FFI,
+      backend_config={descending = $3, batch_size = 1 : i64}
   ROOT %gte = get-tuple-element(%sort), index=0
 }
 )";
@@ -226,23 +324,11 @@ ENTRY %main {
 
 // Test cub::DeviceRadixSort::SortPairs in XLA
 class CubSortPairsTest
-    : public GpuCodegenTest,
+    : public HloPjRtTestBase,
       public ::testing::WithParamInterface<
           std::tuple<std::shared_ptr<Literal>, PrimitiveType, bool>> {};
 
 TEST_P(CubSortPairsTest, SortPairs) {
-  // TODO(b/380814507): Remove the disabling part once fixed.
-  auto cc = backend()
-                .default_stream_executor()
-                ->GetDeviceDescription()
-                .cuda_compute_capability();
-  if (cc.IsAtLeastHopper() &&
-      std::get<0>(GetParam())->shape().element_type() == U16 &&
-      std::get<1>(GetParam()) == F64) {
-    GTEST_SKIP()
-        << "CUB sort does not work for pair sorting (U16, F64) on Hopper.";
-  }
-
   constexpr char kHloTemplate[] = R"(
 HloModule TestModule
 
@@ -250,8 +336,9 @@ ENTRY %main {
   %keys = $0[$2] parameter(0)
   %values = $1[$2] convert(%keys)
   ROOT %sort = ($0[$2], $1[$2], u8[$3]) custom-call(%keys, %values),
-      custom_call_target="__cub$$DeviceRadixSort",
-      backend_config="{\"descending\": $4}"
+      custom_call_target="xla.gpu.ext.cub_sort_pairs",
+      api_version=API_VERSION_TYPED_FFI,
+      backend_config={descending = $4, batch_size = 1 : i64}
 }
 )";
 
@@ -318,6 +405,7 @@ INSTANTIATE_TEST_SUITE_P(
     TestRadixSort, CubSortPairsTest,
     ::testing::Combine(
         ::testing::Values(CreateRandomLiteral<U16, uint16_t>(32768, 1000),
+                          CreateRandomLiteral<S32, int32_t>(32768, 1000),
                           CreateRandomLiteral<U32, uint32_t>(32768, 1000),
                           CreateRandomLiteral<U64, uint64_t>(32768, 1000)),
         ::testing::Values(F16, F32, F64), ::testing::Bool()),

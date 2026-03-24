@@ -235,25 +235,25 @@ ENTRY entry {
                   /*generation=*/1,
                   /*height=*/3, /*subgraph_fingerprint=*/10174981490612213786U,
                   /*fingerprint=*/7968662072287666665U,
-                  /*canonical_fingerprint=*/962574172336760684U));
+                  /*canonical_fingerprint=*/7968662072287666665U));
   EXPECT_THAT(entry->children[0]->props,
               FieldsAre(
                   /*generation=*/2,
                   /*height=*/2, /*subgraph_fingerprint=*/12866517545790127195U,
                   /*fingerprint=*/7968662072287666665U,
-                  /*canonical_fingerprint=*/962574172336760684U));
+                  /*canonical_fingerprint=*/7968662072287666665U));
   EXPECT_THAT(entry->children[1]->props,
               FieldsAre(
                   /*generation=*/3,
                   /*height=*/1, /*subgraph_fingerprint=*/3741348072536313129U,
                   /*fingerprint=*/3741348072536313129U,
-                  /*canonical_fingerprint=*/12841472793063608770U));
+                  /*canonical_fingerprint=*/3741348072536313129U));
   EXPECT_THAT(entry->children[0]->children[0]->props,
               FieldsAre(
                   /*generation=*/3,
                   /*height=*/1, /*subgraph_fingerprint=*/856105463456541506U,
                   /*fingerprint=*/856105463456541506U,
-                  /*canonical_fingerprint=*/1668459129586447343U));
+                  /*canonical_fingerprint=*/856105463456541506U));
 
   EXPECT_THAT(
       graph->AllComputationProps(),
@@ -603,6 +603,33 @@ ENTRY entry {
                           HloGumgraph::Create(second_module.get()));
 
   EXPECT_FALSE(FingerprintEqualTo(*first_graph, *second_graph));
+}
+
+TEST_F(HloGumgraphTest, CreateWithTwoOperandCollectivePermuteStartWorks) {
+  // This test ensures that HloValueTracing (called via HloGumgraph::Create)
+  // correctly handles collective-permute-start instructions with 2 operands.
+  const char* const kModuleStr = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}) parameter(0)
+  p1 = (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}) parameter(1)
+
+  cp-start = (
+      ((s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}), (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0})),
+      ((s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}), (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}))
+    )
+    collective-permute-start(p0, p1), channel_id=395,
+    source_target_pairs={{4,2},{5,3},{7,4}}
+
+  ROOT cp-done = ((s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}), (s8[1,256,4,256]{3,2,1,0}, f32[1,256,4,1]{2,1,3,0}))
+    collective-permute-done(cp-start)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_OK(HloGumgraph::Create(module.get()).status());
 }
 
 }  // namespace

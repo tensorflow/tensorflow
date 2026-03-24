@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeRange.h"
@@ -398,18 +399,18 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
       hloAttrs.push_back({stablehloAttr.getName(), hloAttr});
     }
 
-    // Convert the StableHLO operation to a MHLO equivalent.
-    // This can almost be done in a generic fashion, except for mhlo.case
-    // that uses a variadic number of regions which means an additional argument
-    // for the generic builder.
+    // Convert the StableHLO operation to a MHLO equivalent. This can almost be
+    // done in a generic fashion, except for ops with a variadic number of
+    // regions which means an additional argument for the generic builder.
     StablehloToHloOp<StablehloOpTy> hloOp;
-    if constexpr (std::is_same<StablehloOpTy, stablehlo::CaseOp>::value) {
-      hloOp = rewriter.create<mhlo::CaseOp>(stablehloOp.getLoc(), hloTypes,
-                                            hloOperands, hloAttrs,
-                                            stablehloOp.getBranches().size());
+    if constexpr (StablehloOpTy::template hasTrait<
+                      OpTrait::VariadicRegions>()) {
+      hloOp = StablehloToHloOp<StablehloOpTy>::create(
+          rewriter, stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs,
+          stablehloOp.getNumRegions());
     } else {
-      hloOp = rewriter.create<StablehloToHloOp<StablehloOpTy>>(
-          stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs);
+      hloOp = StablehloToHloOp<StablehloOpTy>::create(
+          rewriter, stablehloOp.getLoc(), hloTypes, hloOperands, hloAttrs);
     }
 
     // For backward compatibility, fix custom call with mhlo.backend_config
@@ -420,7 +421,7 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     // Finally, populate the regions while converting argument types
     // and nested operations.
     for (auto [stablehloRegion, hloRegion] :
-         llvm::zip(stablehloOp->getRegions(), hloOp->getRegions())) {
+         llvm::zip_equal(stablehloOp->getRegions(), hloOp->getRegions())) {
       rewriter.inlineRegionBefore(stablehloRegion, hloRegion, hloRegion.end());
       if (failed(rewriter.convertRegionTypes(&hloRegion, *typeConverter,
                                              /*entryConversion=*/nullptr)))

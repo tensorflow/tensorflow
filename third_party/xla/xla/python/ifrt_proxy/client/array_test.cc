@@ -25,6 +25,7 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "google/protobuf/text_format.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
@@ -43,23 +44,21 @@
 #include "xla/python/ifrt_proxy/client/mock_client_session.h"
 #include "xla/python/ifrt_proxy/client/mock_host_buffer.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
 #include "xla/python/ifrt_proxy/common/types.h"
 #include "xla/python/ifrt_proxy/common/types.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/protobuf.h"
 
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::Return;
 using ::tsl::protobuf::TextFormat;
-using ::tsl::testing::IsOk;
 
 namespace xla {
 namespace ifrt {
@@ -68,7 +67,7 @@ namespace {
 
 IfrtProxyVersion Version() {
   IfrtProxyVersion version;
-  version.set_protocol_version(kClientMaxVersion);
+  version.set_protocol_version(protocol_version::kClientMax);
   version.set_ifrt_serdes_version_number(
       SerDesVersion::current().version_number().value());
   return version;
@@ -82,6 +81,8 @@ class ArrayTest : public ::testing::Test {
         rpc_helper_(std::make_shared<RpcHelper>(Version(), session_)),
         mock_client_(std::make_shared<xla::ifrt::MockClient>()),
         mock_device_(std::make_shared<xla::ifrt::MockDevice>()),
+        // Dummy layouts; they are not used in a consistent way to actual shard
+        // shapes, but as placeholders.
         kLayout1(std::make_shared<xla::PjRtLayout>(
             xla::LayoutUtil::MakeDescendingLayout(1))),
         kLayout2(std::make_shared<xla::PjRtLayout>(
@@ -161,14 +162,11 @@ TEST_F(ArrayTest, FullyReplicatedShard) {
 }
 
 TEST_F(ArrayTest, GetDefaultPjRtLayoutSuccess) {
-  ON_CALL(*mock_client_, GetDefaultPjRtLayout).WillByDefault(Return(kLayout1));
-
   auto array = tsl::MakeRef<Array>(
       mock_client_.get(), rpc_helper_, DType(DType::Kind::kBF16), Shape({}),
       sharding_, ArrayHandle{1234}, /*layout=*/nullptr);
   TF_ASSERT_OK_AND_ASSIGN(auto layout_1, array->pjrt_layout());
-  ASSERT_NE(layout_1, nullptr);
-  EXPECT_EQ(*layout_1, *kLayout1);
+  EXPECT_EQ(layout_1, nullptr);
 }
 
 TEST_F(ArrayTest, GetCustomLayoutSuccess) {
@@ -306,8 +304,7 @@ TEST_F(ArrayTest, AssembleArrayFromSingleDeviceArraysDefaultPjRtLayoutSuccess) {
       SingleDeviceShardSemantics::kAllShards);
   TF_ASSERT_OK(result.status());
   TF_ASSERT_OK_AND_ASSIGN(auto layout, result.value()->pjrt_layout());
-  ASSERT_NE(layout, nullptr);
-  EXPECT_EQ(*layout, *kLayout1);
+  EXPECT_EQ(layout, nullptr);
 }
 
 TEST_F(ArrayTest, RemapArraysSuccess) {
@@ -357,6 +354,36 @@ TEST_F(ArrayTest, RemapArraysSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(auto layout_2, result.value().at(1)->pjrt_layout());
   ASSERT_NE(layout_2, nullptr);
   EXPECT_EQ(*layout_2, *kLayout1);
+}
+
+TEST_F(ArrayTest, BitcastArraysSuccess) {
+  IfrtResponse response;
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(response_metadata {}
+           bitcast_arrays_response { array_handles: 1 array_handles: 2 })pb",
+      &response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kBitcastArraysRequest)))
+      .WillOnce(MockClientSessionReturnResponse(response));
+
+  auto src_array = tsl::MakeRef<Array>(mock_client_.get(), rpc_helper_,
+                                       DType(DType::Kind::kF32), Shape({}),
+                                       sharding_, ArrayHandle{1234}, kLayout1);
+  std::vector<tsl::RCReference<xla::ifrt::Array>> src_arrays{{src_array}};
+
+  std::vector<xla::ifrt::ArraySpec> specs = {xla::ifrt::ArraySpec{
+      DType(DType::Kind::kF32), Shape({1}), sharding_, kLayout2}};
+
+  auto result = Array::BitcastArrays(mock_client_.get(), rpc_helper_,
+                                     absl::MakeSpan(src_arrays), specs,
+                                     ArrayCopySemantics::kDonateInput);
+
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(result.value().at(0)->dtype(), DType(DType::Kind::kF32));
+  EXPECT_EQ(result.value().at(0)->shape(), Shape({1}));
+  TF_ASSERT_OK_AND_ASSIGN(auto new_layout, result.value().at(0)->pjrt_layout());
+  ASSERT_NE(new_layout, nullptr);
+  EXPECT_EQ(*new_layout, *kLayout2);
 }
 
 }  // namespace

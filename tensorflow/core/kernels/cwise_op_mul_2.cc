@@ -22,8 +22,8 @@ namespace tensorflow {
 // sharded files, only make its register calls when not __ANDROID_TYPES_SLIM__.
 #if !defined(__ANDROID_TYPES_SLIM__)
 
-REGISTER8(BinaryOp, CPU, "Mul", functor::mul, int8, uint16, uint32, uint64,
-          int16, int64_t, complex64, complex128);
+REGISTER8(BinaryOp, CPU, "Mul", functor::mul, int8_t, uint16_t, uint32_t,
+          uint64_t, int16_t, int64_t, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER8(BinaryOp, GPU, "Mul", functor::mul, int8, uint16, uint32, uint64,

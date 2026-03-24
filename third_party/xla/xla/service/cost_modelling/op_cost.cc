@@ -125,12 +125,11 @@ CostMetricId::CostMetricId(MetricType type, const HloInstruction& instruction,
 std::string CostMetricId::Identifier() const {
   std::string result;
 
-  absl::Base64Escape(
+  result = absl::Base64Escape(
       absl::StrJoin({absl::StrCat(static_cast<uint8_t>(type_)), ModuleName(),
                      absl::StrCat(instruction_->unique_id()), OperandNumStr(),
                      ShapeIndexStr()},
-                    ","),
-      &result);
+                    ","));
 
   return result;
 }

@@ -131,9 +131,11 @@ bool Needs64BitIndices(const HloComputation* computation) {
 
 using mlir::AffineExpr;
 
-IndexingMap GetDefaultIndexingMap(absl::Span<const int64_t> thread_tile_sizes,
-                                  absl::Span<const int64_t> shape,
-                                  mlir::MLIRContext* mlir_context) {
+IndexingMap GetDefaultIndexingMap(
+    absl::Span<const int64_t> thread_tile_sizes,
+    absl::Span<const int64_t> shape,
+    // TODO: b/451959933 - Use reference or absl_nullable pointer.
+    mlir::MLIRContext* mlir_context) {
   CHECK_EQ(thread_tile_sizes.size(), shape.size())
       << "thread_tile_sizes and shape must have the same size";
   SmallVector<int64_t> thread_tile_counts;
@@ -225,8 +227,8 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   }
 
   builder.setInsertionPointToStart(fusion_module.getBody());
-  auto entry_func = builder.create<FuncOp>(
-      loc, entry_function_name,
+  auto entry_func = FuncOp::create(
+      builder, loc, entry_function_name,
       mlir::FunctionType::get(context, param_types, result_types),
       /*sym_visibility=*/mlir::StringAttr{},
       mlir::ArrayAttr::get(context, arg_attrs),
@@ -238,7 +240,6 @@ absl::StatusOr<mlir::func::FuncOp> EmitEntryFunctionApi(
   return entry_func;
 }
 
-// NOLINTNEXTLINE(readability-function-cognitive-complexity)
 absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     mlir::ModuleOp module, const HloFusionInstruction& fusion,
     const emitters::PartitionedComputations& computations,
@@ -272,7 +273,8 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     for (const auto& subgraph : comp.subgraphs()) {
       if (subgraph_to_mlir_fn.contains(&subgraph)) {
         TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
-            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets));
+            comp, subgraph, subgraph_to_mlir_fn[&subgraph], call_targets,
+            computations.mlir_context()));
       }
     }
   }
@@ -281,7 +283,8 @@ absl::StatusOr<emitters::CallTargetProvider> EmitCallTargets(
     TF_RETURN_IF_ERROR(emitters::SubgraphToMlirFunction(
         computations.FindPartitionedComputation(
             fusion.fused_instructions_computation()),
-        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets));
+        epilogue, subgraph_to_mlir_fn[&epilogue], call_targets,
+        computations.mlir_context()));
   }
 
   return call_targets;

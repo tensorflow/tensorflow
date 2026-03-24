@@ -15,17 +15,24 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/replicate_per_replica_nodes.h"
 
+#include <cstdint>
 #include <map>
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -40,7 +47,7 @@ class GraphHelper {
     }
   }
 
-  Node* GetNodeByName(const string& name) {
+  Node* GetNodeByName(const std::string& name) {
     const auto it = nodes_by_name_.find(name);
     if (it != nodes_by_name_.end()) {
       return it->second;
@@ -53,7 +60,8 @@ class GraphHelper {
     return nullptr;
   }
 
-  void SetAssignedDevice(const string& node_name, const string& device_name) {
+  void SetAssignedDevice(const std::string& node_name,
+                         const std::string& device_name) {
     CHECK_NOTNULL(GetNodeByName(node_name))
         ->set_assigned_device_name(device_name);
   }
@@ -68,14 +76,14 @@ class GraphHelper {
     EXPECT_EQ(arg_num, expected_num);
   }
 
-  void CheckAssignedDevice(const string& node_name,
-                           const string& expected_device_name) {
+  void CheckAssignedDevice(const std::string& node_name,
+                           const std::string& expected_device_name) {
     EXPECT_EQ(expected_device_name,
               CHECK_NOTNULL(GetNodeByName(node_name))->assigned_device_name());
   }
 
-  void CheckAssignedDevicePrefix(const string& node_name,
-                                 const string& expected_device_name) {
+  void CheckAssignedDevicePrefix(const std::string& node_name,
+                                 const std::string& expected_device_name) {
     auto assigned =
         CHECK_NOTNULL(GetNodeByName(node_name))->assigned_device_name();
     EXPECT_EQ(assigned.rfind(expected_device_name, 0), 0);
@@ -85,21 +93,21 @@ class GraphHelper {
   const Graph& graph_;
   // Maps from a node name to a Node* in the graph. We use an ordered map here
   // to ensure stability of GetNodeByName().
-  std::map<string, Node*> nodes_by_name_;
+  std::map<std::string, Node*> nodes_by_name_;
 };
 
 TEST(ReplicatePerReplicaNodesTest, SingleCompositeDevice) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   Output arg = ops::_Arg(scope.WithOpName("arg"), DT_RESOURCE, 0);
   auto read = ops::ReadVariableOp(scope.WithOpName("read"), arg, DT_INT32);
-  auto one = ops::Const<int32>(scope.WithOpName("one"), 1);
+  auto one = ops::Const<int32_t>(scope.WithOpName("one"), 1);
   auto write = ops::AssignVariableOp(scope.WithOpName("write"), arg, one);
   auto ret = ops::_Retval(
       scope.WithOpName("ret").WithControlDependencies({write}), read, 0);
 
-  const std::vector<string> underlying_devices = {"/device:TPU:0",
-                                                  "/device:TPU:1"};
-  const absl::flat_hash_map<string, const std::vector<string>*>
+  const std::vector<std::string> underlying_devices = {"/device:TPU:0",
+                                                       "/device:TPU:1"};
+  const absl::flat_hash_map<std::string, const std::vector<std::string>*>
       composite_devices = {{"/device:TPU_COMPOSITE:0", &underlying_devices}};
 
   Graph graph(OpRegistry::Global());
@@ -143,8 +151,8 @@ TEST(ReplicatePerReplicaNodesTest, SingleCompositeDeviceToSingleDevice) {
   auto read = ops::ReadVariableOp(scope.WithOpName("read"), arg, DT_INT32);
   auto ret = ops::_Retval(scope.WithOpName("ret"), read, 0);
 
-  const std::vector<string> underlying_devices = {"/device:TPU:0"};
-  const absl::flat_hash_map<string, const std::vector<string>*>
+  const std::vector<std::string> underlying_devices = {"/device:TPU:0"};
+  const absl::flat_hash_map<std::string, const std::vector<std::string>*>
       composite_devices = {{"/device:TPU_COMPOSITE:0", &underlying_devices}};
 
   Graph graph(OpRegistry::Global());
@@ -183,11 +191,11 @@ TEST(ReplicatePerReplicaNodesTest, MultipleCompositeDevices) {
   auto add = ops::Add(scope.WithOpName("add"), identity0, identity1);
   auto ret = ops::_Retval(scope.WithOpName("ret"), add, 0);
 
-  const std::vector<string> underlying_devices_0 = {"/device:TPU:0",
-                                                    "/device:TPU:1"};
-  const std::vector<string> underlying_devices_1 = {"/device:TPU:2",
-                                                    "/device:TPU:3"};
-  const absl::flat_hash_map<string, const std::vector<string>*>
+  const std::vector<std::string> underlying_devices_0 = {"/device:TPU:0",
+                                                         "/device:TPU:1"};
+  const std::vector<std::string> underlying_devices_1 = {"/device:TPU:2",
+                                                         "/device:TPU:3"};
+  const absl::flat_hash_map<std::string, const std::vector<std::string>*>
       composite_devices = {{"/device:TPU_COMPOSITE:0", &underlying_devices_0},
                            {"/device:TPU_COMPOSITE:1", &underlying_devices_1}};
 
@@ -232,9 +240,9 @@ TEST(ReplicatePerReplicaNodesTest, MultipleCompositeDevices) {
 }
 
 TEST(ReplicatePerReplicaNodesTest, NestedFunctions) {
-  const std::vector<string> underlying_devices = {"/device:TPU:0",
-                                                  "/device:TPU:1"};
-  const absl::flat_hash_map<string, const std::vector<string>*>
+  const std::vector<std::string> underlying_devices = {"/device:TPU:0",
+                                                       "/device:TPU:1"};
+  const absl::flat_hash_map<std::string, const std::vector<std::string>*>
       composite_devices = {{"/device:TPU_COMPOSITE:0", &underlying_devices}};
 
   FunctionDefLibrary fdef_lib;
@@ -311,9 +319,9 @@ TEST(ReplicatePerReplicaNodesTest, DeadArgNodes) {
   auto read = ops::ReadVariableOp(scope.WithOpName("read"), arg, DT_INT32);
   auto ret = ops::_Retval(scope.WithOpName("ret"), read, 0);
 
-  const std::vector<string> underlying_devices = {"/device:TPU:0",
-                                                  "/device:TPU:1"};
-  const absl::flat_hash_map<string, const std::vector<string>*>
+  const std::vector<std::string> underlying_devices = {"/device:TPU:0",
+                                                       "/device:TPU:1"};
+  const absl::flat_hash_map<std::string, const std::vector<std::string>*>
       composite_devices = {{"/device:TPU_COMPOSITE:0", &underlying_devices}};
 
   Graph graph(OpRegistry::Global());

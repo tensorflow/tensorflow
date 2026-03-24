@@ -18,9 +18,10 @@ limitations under the License.
 
 #include <cstdint>
 #include <ostream>
-#include <string>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/logging.h"
 
@@ -89,12 +90,9 @@ class Index {
     return *this = *this * multiplier;
   }
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  std::string DebugString() const;
-
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Index& index) {
-    sink.Append(index.DebugString());
+    sink.Append(absl::StrCat("[", absl::StrJoin(index.elements_, ","), "]"));
   }
 
  private:

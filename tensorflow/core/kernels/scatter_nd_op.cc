@@ -1040,10 +1040,10 @@ absl::Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
 // and the GPU implementation is not. Tensor inputs to this function must be on
 // the GPU.
 template <typename T, typename Index, scatter_nd_op::UpdateOp Op>
-Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
-                        const Tensor& updates, const TensorShape& shape,
-                        Tensor* out, bool allocate,
-                        BadIndicesPolicy bad_indices_policy) {
+absl::Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
+                              const Tensor& updates, const TensorShape& shape,
+                              Tensor* out, bool allocate,
+                              BadIndicesPolicy bad_indices_policy) {
   AllocatorAttributes alloc_attr;
   alloc_attr.set_on_host(true);
   alloc_attr.set_gpu_compatible(true);
@@ -1053,7 +1053,7 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
   Tensor host_indices;
   TF_RETURN_IF_ERROR(c->allocate_temp(indices.dtype(), indices.shape(),
                                       &host_indices, alloc_attr));
-  se::DeviceMemoryBase indices_ptr(
+  stream_executor::DeviceAddressBase indices_ptr(
       const_cast<Tensor&>(indices).flat<Index>().data(),
       indices.flat<Index>().size() * sizeof(Index));
   TF_RETURN_IF_ERROR(stream->Memcpy(host_indices.flat<Index>().data(),
@@ -1063,7 +1063,7 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
   Tensor host_updates;
   TF_RETURN_IF_ERROR(c->allocate_temp(updates.dtype(), updates.shape(),
                                       &host_updates, alloc_attr));
-  se::DeviceMemoryBase updates_ptr(
+  stream_executor::DeviceAddressBase updates_ptr(
       const_cast<Tensor&>(updates).flat<T>().data(),
       updates.flat<T>().size() * sizeof(T));
   TF_RETURN_IF_ERROR(stream->Memcpy(host_updates.flat<T>().data(), updates_ptr,
@@ -1078,8 +1078,8 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
     fill(c->eigen_device<CPUDevice>(), host_out.flat<T>());
   } else {
     CHECK_NOTNULL(out);  // Crash OK
-    se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
-                                 out->flat<T>().size() * sizeof(T));
+    stream_executor::DeviceAddressBase out_ptr(
+        out->flat<T>().data(), out->flat<T>().size() * sizeof(T));
     TF_RETURN_IF_ERROR(stream->Memcpy(host_out.flat<T>().data(), out_ptr,
                                       host_out.NumElements() * sizeof(T)));
   }
@@ -1090,13 +1090,13 @@ Status DoScatterNdOnCpu(OpKernelContext* c, const Tensor& indices,
       bad_indices_policy));
 
   // Copy 'host_out' to device.
-  se::DeviceMemoryBase out_ptr(out->flat<T>().data(),
-                               out->flat<T>().size() * sizeof(T));
+  stream_executor::DeviceAddressBase out_ptr(out->flat<T>().data(),
+                                             out->flat<T>().size() * sizeof(T));
   TF_RETURN_IF_ERROR(stream->Memcpy(&out_ptr, host_out.flat<T>().data(),
                                     host_out.NumElements() * sizeof(T)));
   // Block host, since 'host_out' cannot be destructed until the copy is done.
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

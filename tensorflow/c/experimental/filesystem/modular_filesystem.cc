@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
 #include "tensorflow/c/tf_file_statistics.h"
@@ -133,7 +134,7 @@ Status ModularFileSystem::NewReadOnlyMemoryRegionFromFile(
   return StatusFromTF_Status(plugin_status.get());
 }
 
-Status ModularFileSystem::FileExists(const std::string& fname,
+Status ModularFileSystem::FileExists(absl::string_view fname,
                                      TransactionToken* token) {
   if (ops_->path_exists == nullptr)
     return errors::Unimplemented(tensorflow::strings::StrCat(
@@ -391,10 +392,10 @@ Status ModularFileSystem::CopyFile(const std::string& src,
   return StatusFromTF_Status(plugin_status.get());
 }
 
-std::string ModularFileSystem::TranslateName(const std::string& name) const {
+std::string ModularFileSystem::TranslateName(absl::string_view name) const {
   if (ops_->translate_name == nullptr) return FileSystem::TranslateName(name);
 
-  char* p = ops_->translate_name(filesystem_.get(), name.c_str());
+  char* p = ops_->translate_name(filesystem_.get(), std::string(name).c_str());
   CHECK(p != nullptr) << "TranslateName(" << name << ") returned nullptr";
 
   std::string ret(p);

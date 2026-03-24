@@ -36,11 +36,11 @@ namespace functor {
 
 template <typename Tidx, typename T>
 struct BincountFunctor<GPUDevice, Tidx, T, false> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 1>::ConstTensor& arr,
-                        const typename TTypes<T, 1>::ConstTensor& weights,
-                        typename TTypes<T, 1>::Tensor& output,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 1>::ConstTensor& arr,
+                              const typename TTypes<T, 1>::ConstTensor& weights,
+                              typename TTypes<T, 1>::Tensor& output,
+                              const Tidx num_bins) {
     if (weights.size() != 0) {
       return errors::Unimplemented(
           "Weights are not yet supported by the GPU implementation of Bincount."
@@ -48,7 +48,7 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
           " tf.function(jit_compile=True).");
     }
     if (output.size() == 0) {
-      return OkStatus();
+      return absl::OkStatus();
     }
     if (tensorflow::OpDeterminismRequired()) {
       // TODO(reedwm): Is this really nondeterministic?
@@ -88,11 +88,11 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
     }
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        DataTypeToEnum<int8>::value,
+        DataTypeToEnum<int8_t>::value,
         TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
         &temp_storage));
 
-    void* d_temp_storage = temp_storage.flat<int8>().data();
+    void* d_temp_storage = temp_storage.flat<int8_t>().data();
     // The second HistogramEven is to actual run with d_temp_storage
     // allocated with temp_storage_bytes.
     err = gpuprim::DeviceHistogram::HistogramEven(
@@ -109,7 +109,7 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
       return errors::Internal(
           "Could not launch HistogramEven: ", GpuGetErrorString(err), ".");
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -126,11 +126,11 @@ __global__ void BincountReduceKernel(const Tidx* in, T* out, const int nthreads,
 
 template <typename Tidx, typename T>
 struct BincountFunctor<GPUDevice, Tidx, T, true> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 1>::ConstTensor& arr,
-                        const typename TTypes<T, 1>::ConstTensor& weights,
-                        typename TTypes<T, 1>::Tensor& output,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 1>::ConstTensor& arr,
+                              const typename TTypes<T, 1>::ConstTensor& weights,
+                              typename TTypes<T, 1>::Tensor& output,
+                              const Tidx num_bins) {
     const int nthreads = arr.dimension(0);
 
     auto d = context->eigen_gpu_device();
@@ -206,11 +206,11 @@ __global__ void BincountColReduceSharedKernel(const Tidx* in, const T* weights,
 
 template <typename Tidx, typename T, bool binary_count>
 struct BincountReduceFunctor<GPUDevice, Tidx, T, binary_count> {
-  static Status Compute(OpKernelContext* context,
-                        const typename TTypes<Tidx, 2>::ConstTensor& in,
-                        const typename TTypes<T, 2>::ConstTensor& weights,
-                        typename TTypes<T, 2>::Tensor& out,
-                        const Tidx num_bins) {
+  static absl::Status Compute(OpKernelContext* context,
+                              const typename TTypes<Tidx, 2>::ConstTensor& in,
+                              const typename TTypes<T, 2>::ConstTensor& weights,
+                              typename TTypes<T, 2>::Tensor& out,
+                              const Tidx num_bins) {
     const int num_rows = in.dimension(0);
     const int num_cols = in.dimension(1);
 

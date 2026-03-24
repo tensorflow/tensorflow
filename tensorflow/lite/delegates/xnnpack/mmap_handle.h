@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_MMAP_HANDLE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_MMAP_HANDLE_H_
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 #include <windows.h>
 #endif
 
@@ -104,6 +104,21 @@ class MMapHandle {
   // Returns true if a mapping exists.
   bool IsMapped() const { return data_ != nullptr; }
 
+  // Tries to lock the mapping in memory.
+  //
+  // Only applicable when the OS supports memory locking.
+  //
+  // WARNING: expects `IsMapped()` to be true.
+  [[nodiscard /*Locking a file can fail.*/]]
+  bool LockMemory();
+
+  // Tries to unlock the mapping in memory.
+  //
+  // Only applicable when the OS supports memory locking.
+  //
+  // WARNING: expects `IsMapped()` to be true.
+  bool UnlockMemory();
+
   // Returns the mapping buffer.
   uint8_t* data() { return data_ + offset_page_adjustment_; }
 
@@ -130,10 +145,24 @@ class MMapHandle {
   size_t offset_ = 0;
   size_t offset_page_adjustment_ = 0;
   uint8_t* data_ = nullptr;
-#if defined(_MSC_VER)
+#if defined(_WIN32)
   HANDLE file_mapping_ = 0;
 #endif
 };
+
+// Marks a region of memory as not needed.
+//
+// That memory can be reclaimed by the system. Note that the given region will
+// be shrunk to the memory pages that fully hold a subset of it.
+//
+// ```
+//         <--  page   -->
+//         |             |
+//     [***xxxxxxxxxxxxxxx*****] <--- buffer
+//     ^^^^               ^^^^^
+//   ignored             ignored
+// ```
+bool MarkMemoryNotNeeded(void* data, size_t size);
 
 }  // namespace tflite::xnnpack
 

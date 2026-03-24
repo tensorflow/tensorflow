@@ -27,10 +27,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
+
+// Returns true if the instruction's fusion backend config kind matches the
+// given one.
+bool IsGpuFusionKind(const HloInstruction& hlo, absl::string_view kind);
 
 class HloFusionAnalysis {
  public:
@@ -45,6 +50,7 @@ class HloFusionAnalysis {
     kScatter,
     kCuDnn,
     kDynamicMemcpy,
+    kSort,
   };
 
   // Precomputed information about inputs (arguments) and outputs (roots) of the

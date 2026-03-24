@@ -28,28 +28,33 @@ namespace xla {
 namespace {
 
 TEST(CollectiveOpGroupModeTest, ToString) {
-  EXPECT_EQ(CollectiveOpGroupModeToString(CollectiveOpGroupMode::kCrossReplica),
+  EXPECT_EQ(CollectiveOpGroupModeToString(
+                CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA),
             "cross_replica");
   EXPECT_EQ(
-      CollectiveOpGroupModeToString(CollectiveOpGroupMode::kCrossPartition),
+      CollectiveOpGroupModeToString(
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION),
       "cross_partition");
   EXPECT_EQ(CollectiveOpGroupModeToString(
-                CollectiveOpGroupMode::kCrossReplicaAndPartition),
+                CollectiveOpGroupMode::
+                    COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION),
             "cross_replica_and_partition");
-  EXPECT_EQ(CollectiveOpGroupModeToString(CollectiveOpGroupMode::kFlattenedID),
+  EXPECT_EQ(CollectiveOpGroupModeToString(
+                CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID),
             "flattened_id");
 }
 
 TEST(CollectiveOpGroupModeTest, FromString) {
   EXPECT_EQ(StringToCollectiveOpGroupMode("cross_replica").value(),
-            CollectiveOpGroupMode::kCrossReplica);
+            CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA);
   EXPECT_EQ(StringToCollectiveOpGroupMode("cross_partition").value(),
-            CollectiveOpGroupMode::kCrossPartition);
+            CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION);
   EXPECT_EQ(
       StringToCollectiveOpGroupMode("cross_replica_and_partition").value(),
-      CollectiveOpGroupMode::kCrossReplicaAndPartition);
+      CollectiveOpGroupMode::
+          COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION);
   EXPECT_EQ(StringToCollectiveOpGroupMode("flattened_id").value(),
-            CollectiveOpGroupMode::kFlattenedID);
+            CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID);
 }
 
 // Tests for GetCollectOpGroupMode
@@ -72,14 +77,20 @@ struct TestCase {
 
 std::vector<TestCase> GetTestCases() {
   const std::vector<TestCase> test_cases = {
-      // clang-format off
       // has_channel_id, use_global_device_ids, expected mode
-      {false, std::nullopt,  CollectiveOpGroupMode::kCrossReplica},
-      {false, false,         CollectiveOpGroupMode::kCrossReplica},
-      {false, true,          std::nullopt},
-      {true,  std::nullopt,  CollectiveOpGroupMode::kCrossPartition},
-      {true,  false,         CollectiveOpGroupMode::kCrossReplicaAndPartition},
-      {true,  true,          CollectiveOpGroupMode::kFlattenedID},
+      // clang-format off
+      {false, std::nullopt,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {false, false,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA},
+      {false, true, std::nullopt},
+      {true, std::nullopt,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION},
+      {true, false,
+       CollectiveOpGroupMode::
+           COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION},
+      {true, true,
+       CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID},
       // clang-format on
   };
   return test_cases;

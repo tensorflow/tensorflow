@@ -35,12 +35,12 @@ namespace tensorflow {
 namespace grappler {
 
 VirtualCluster::VirtualCluster(
-    const std::unordered_map<string, DeviceProperties>& devices)
+    const std::unordered_map<std::string, DeviceProperties>& devices)
     : VirtualCluster(devices, std::make_unique<OpLevelCostEstimator>(),
                      ReadyNodeManagerFactory("FirstReady")) {}
 
 VirtualCluster::VirtualCluster(
-    const std::unordered_map<string, DeviceProperties>& devices,
+    const std::unordered_map<std::string, DeviceProperties>& devices,
     std::unique_ptr<OpLevelCostEstimator> node_estimator,
     std::unique_ptr<ReadyNodeManager> node_manager)
     : Cluster(0) {
@@ -54,7 +54,7 @@ VirtualCluster::VirtualCluster(
 }
 
 VirtualCluster::VirtualCluster(const DeviceSet* device_set)
-    : VirtualCluster(std::unordered_map<string, DeviceProperties>()) {
+    : VirtualCluster(std::unordered_map<std::string, DeviceProperties>()) {
   device_set_ = device_set;
   for (const auto& device : device_set_->devices()) {
     DeviceProperties props = GetDeviceInfo(device->parsed_name());
@@ -74,8 +74,9 @@ absl::Status VirtualCluster::Initialize(const GrapplerItem& item) {
 }
 
 absl::Status VirtualCluster::Run(
-    const GraphDef& graph, const std::vector<std::pair<string, Tensor>>& feed,
-    const std::vector<string>& fetch, RunMetadata* metadata) {
+    const GraphDef& graph,
+    const std::vector<std::pair<std::string, Tensor>>& feed,
+    const std::vector<std::string>& fetch, RunMetadata* metadata) {
   GrapplerItem item;
   item.graph = graph;
   item.feed = feed;
@@ -98,11 +99,12 @@ absl::Status VirtualCluster::Run(const GrapplerItem& item,
   TF_RETURN_IF_ERROR(
       estimator_->PredictCosts(item.graph, metadata, /*cost=*/nullptr));
 
-  const std::unordered_map<string, DeviceProperties>& device = GetDevices();
-  std::unordered_map<string, int64_t> peak_mem_usage =
+  const std::unordered_map<std::string, DeviceProperties>& device =
+      GetDevices();
+  std::unordered_map<std::string, int64_t> peak_mem_usage =
       estimator_->GetScheduler()->GetPeakMemoryUsage();
   for (const auto& mem_usage : peak_mem_usage) {
-    const string& device_name = mem_usage.first;
+    const std::string& device_name = mem_usage.first;
     auto it = device.find(device_name);
     if (it == device.end()) {
       // It's probably the fake send/recv device. Eventually we'll need to

@@ -15,21 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/graph/tensor_id.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
 
 TensorId::TensorId(const SafeTensorId& id) : TensorId(id.first, id.second) {}
 
 SafeTensorId::SafeTensorId(const TensorId& id)
-    : SafeTensorId(string(id.first), id.second) {}
-
-TensorId ParseTensorName(const string& name) {
-  return ParseTensorName(absl::string_view(name.data(), name.size()));
-}
+    : SafeTensorId(std::string(id.first), id.second) {}
 
 TensorId ParseTensorName(absl::string_view name) {
   // Parse either a name, ^name, or name:digits.  To do so, we go backwards from
@@ -38,28 +38,19 @@ TensorId ParseTensorName(absl::string_view name) {
   // see if the name starts with '^', indicating a control edge. If we find
   // neither ':' nor '^' characters, the output index is implicitly 0, and the
   // whole name string forms the first part of the tensor name.
-  const char* base = name.data();
-  const char* p = base + name.size() - 1;
-  unsigned int index = 0;
-  unsigned int mul = 1;
-  while (p > base && (*p >= '0' && *p <= '9')) {
-    index += ((*p - '0') * mul);
-    mul *= 10;
-    p--;
+  size_t colon_pos = name.rfind(':');
+  if (colon_pos != absl::string_view::npos) {
+    absl::string_view prefix = name.substr(0, colon_pos);
+    absl::string_view suffix = name.substr(colon_pos + 1);
+    uint64_t index;
+    if (str_util::ConsumeLeadingDigits(&suffix, &index) && suffix.empty()) {
+      return TensorId(prefix, index);
+    }
   }
-  TensorId id;
-  if (p > base && *p == ':' && mul > 1) {
-    id.first = absl::string_view(base, p - base);
-    id.second = index;
-  } else if (absl::StartsWith(name, "^")) {
-    // Control edge
-    id.first = absl::string_view(base + 1);
-    id.second = Graph::kControlSlot;
-  } else {
-    id.first = name;
-    id.second = 0;
+  if (absl::ConsumePrefix(&name, "^")) {
+    return TensorId(name, Graph::kControlSlot);
   }
-  return id;
+  return TensorId(name, 0);
 }
 
 bool IsTensorIdControl(const TensorId& tensor_id) {

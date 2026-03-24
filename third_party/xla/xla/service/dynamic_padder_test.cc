@@ -46,14 +46,14 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/dynamic_dimension_inference.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/llvm_irgen_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "xla/util.h"
@@ -96,9 +96,9 @@ bool CustomCallDynamicDimensionInference(
   return false;
 }
 
-class DynamicPadderTest : public HloTestBase {
+class DynamicPadderTest : public HloPjRtTestBase {
  protected:
-  DynamicPadderTest() : HloTestBase() { module_ = CreateNewVerifiedModule(); }
+  DynamicPadderTest() { module_ = CreateNewVerifiedModule(); }
 
   std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
@@ -150,7 +150,8 @@ class DynamicPadderTest : public HloTestBase {
   const Shape scalar_shape_ = ShapeUtil::MakeShape(S32, {});
 };
 
-class MemoryAlignmentTest : public HloTestBase {};
+class MemoryAlignmentTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 // Test that dynamic padder will not cause memory misalignment in CUDA
 // when the read or write address is not aligned with 32 bits.
@@ -395,8 +396,7 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
 
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       zx_shape, a_param, b_param, /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, dnums,
-      HloTestBase::DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -438,8 +438,7 @@ TEST_F(DynamicPadderTest, ConvolutionNoPad) {
 
   auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
       zx_shape, a_param, b_param, /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, dnums,
-      HloTestBase::DefaultPrecisionConfig(2)));
+      /*batch_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
   module_->AddEntryComputation(builder.Build());
 
@@ -746,7 +745,7 @@ ENTRY main {
 }
 
 // Test that dynamic padder has the same result as if not padded.
-class ExecutionTest : public HloTestBase {
+class ExecutionTest : public HloPjRtTestBase {
  protected:
   std::unique_ptr<HloModule> GetHloModule(const std::string& hlo_text) {
     std::unique_ptr<HloModule> module =
@@ -766,9 +765,9 @@ class ExecutionTest : public HloTestBase {
     DynamicPadderOptions options;
     options.slice_dynamic_output = slice_dynamic_output;
     DynamicPadder padder(options);
-    TF_CHECK_OK(padder.Run(module.get()).status());
+    CHECK_OK(padder.Run(module.get()).status());
     HloDCE dce;
-    TF_CHECK_OK(dce.Run(module.get()).status());
+    CHECK_OK(dce.Run(module.get()).status());
     return Execute(std::move(module), {arguments});
   }
 };
@@ -825,7 +824,7 @@ ENTRY main {
   Literal updates_padded = LiteralUtil::CreateR2<int32_t>(
       {{10, 20, 30}, {70, 80, 90}, {30, 22, 11}, {-1, 20, -1}});
   DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  CHECK_OK(padder.Run(module_padded.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(Literal padded,
                           PadAndExecute(std::move(module_padded),
                                         {&operand, &scatter_indices_padded,
@@ -917,7 +916,7 @@ ENTRY main {
 
   auto module_padded = GetHloModule(hlo_text);
   DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  CHECK_OK(padder.Run(module_padded.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(
       Literal not_padded,
       PadAndExecute(std::move(module_padded),
@@ -973,7 +972,7 @@ ENTRY main {
       LiteralUtil::CreateR3<int32_t>({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
   auto module = GetHloModule(hlo_text);
   DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module.get()).status());
+  CHECK_OK(padder.Run(module.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(Literal result,
                           PadAndExecute(std::move(module), {&operand}));
 
@@ -1025,7 +1024,7 @@ ENTRY main {
   Literal operand_padded = LiteralUtil::CreateR2<int32_t>(
       {{1, 2, 3, 4}, {4, 5, 6, 7}, {1, 2, 3, 4}, {4, 5, 6, 7}});
   DynamicPadder padder;
-  TF_CHECK_OK(padder.Run(module_padded.get()).status());
+  CHECK_OK(padder.Run(module_padded.get()).status());
   TF_ASSERT_OK_AND_ASSIGN(Literal padded,
                           PadAndExecute(std::move(module_padded),
                                         {&operand_padded, &dynamic_size}));
@@ -1426,37 +1425,6 @@ ENTRY main {
   Literal expected = LiteralUtil::CreateR3<float>({{{15}}});
 
   EXPECT_EQ(result, expected);
-}
-
-TEST_F(LlvmIrGenTestBase, LargeDynamicInput) {
-  if (!test::DeviceTypeIs(test::kGpu)) {
-    GTEST_SKIP();
-  }
-  const std::string hlo_text = R"( // NOLINT: Will be executed for GPU.
-HloModule LargeDynamicInput
-
-add (lhs: f32[], rhs: f32[]) -> f32[] {
-  lhs = f32[] parameter(0)
-  rhs = f32[] parameter(1)
-  ROOT add = f32[] add(lhs, rhs)
-}
-
-ENTRY main {
-  param = f32[<=20,<=20,<=20,<=20,<=20,<=20,<=20,<=20] parameter(0)
-  zero = f32[] constant(0)
-  ROOT out = reduce(param, zero), to_apply=add, dimensions={0,1,2,3,4,5,6,7}
-}
-)";
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_autotune_level(0);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text, config));
-  CompileAndVerifyIr(std::move(module), R"(
-CHECK: ret void
-)",
-                     /*match_optimized_ir=*/true);
 }
 
 TEST_F(ExecutionTest, DynamicDimensionReshapeUnchanged) {
@@ -2335,7 +2303,7 @@ ENTRY main {
 
 namespace op = xla::testing::opcode_matchers;
 
-class HloDimensionSizeLegalizerTest : public HloTestBase {
+class HloDimensionSizeLegalizerTest : public HloPjRtTestBase {
  protected:
   HloDimensionSizeLegalizerTest() {}
 };
@@ -2398,7 +2366,7 @@ ENTRY gds {
   EXPECT_FALSE(pass.Run(module.get()).ok());
 }
 
-class SizeCheckTest : public HloTestBase {
+class SizeCheckTest : public HloPjRtTestBase {
  protected:
   SizeCheckTest() {}
 };

@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -40,14 +39,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla {
-
-int GetBitwidth(PrimitiveType type) {
-  if (type == PRED) {
-    return 8;
-  }
-  return primitive_util::BitWidth(type);
-}
-
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count) {
   // Number of operands should be in range [1, allowed_operand_count].
   if (instr->operand_count() == 0 ||

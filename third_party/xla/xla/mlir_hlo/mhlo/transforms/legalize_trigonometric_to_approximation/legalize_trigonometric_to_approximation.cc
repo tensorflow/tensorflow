@@ -17,6 +17,8 @@ limitations under the License.
 // approximations.
 
 #include <array>
+#include <cassert>
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -63,7 +65,7 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
       if (argTy.isF64()) return failure();
 
       if (argTy.isF16())
-        arg = rewriter.create<arith::ExtFOp>(loc, rewriter.getF32Type(), arg);
+        arg = arith::ExtFOp::create(rewriter, loc, rewriter.getF32Type(), arg);
 
       // If we still do not have f32, fail.
       if (!arg.getType().isF32()) return failure();
@@ -77,7 +79,7 @@ class ApproximateOnExtendedF32Lowering : public OpRewritePattern<OpTy> {
     // Truncate back if needed.
     if (op.getType().isF16()) {
       result =
-          rewriter.create<arith::TruncFOp>(loc, rewriter.getF16Type(), result);
+          arith::TruncFOp::create(rewriter, loc, rewriter.getF16Type(), result);
     }
 
     rewriter.replaceOp(op, {result});
@@ -108,59 +110,62 @@ class ApproximateTanhLowering
         4.89352518554385e-03f};
 
     // Materialize polynomial approximation.
-    Value inputSquared = rewriter.create<arith::MulFOp>(loc, input, input);
-    Value numerator = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getF32FloatAttr(numeratorCoeffs[0]));
+    Value inputSquared = arith::MulFOp::create(rewriter, loc, input, input);
+    Value numerator = arith::ConstantOp::create(
+        rewriter, loc, rewriter.getF32FloatAttr(numeratorCoeffs[0]));
     for (int64_t i = 1; i < static_cast<int64_t>(numeratorCoeffs.size()); i++) {
-      numerator = rewriter.create<arith::AddFOp>(
-          loc, rewriter.create<arith::MulFOp>(loc, inputSquared, numerator),
-          rewriter.create<arith::ConstantOp>(
-              loc, rewriter.getF32FloatAttr(numeratorCoeffs[i])));
+      numerator = arith::AddFOp::create(
+          rewriter, loc,
+          arith::MulFOp::create(rewriter, loc, inputSquared, numerator),
+          arith::ConstantOp::create(
+              rewriter, loc, rewriter.getF32FloatAttr(numeratorCoeffs[i])));
     }
-    numerator = rewriter.create<arith::MulFOp>(loc, input, numerator);
-    Value denominator = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getF32FloatAttr(denominatorCoeffs[0]));
+    numerator = arith::MulFOp::create(rewriter, loc, input, numerator);
+    Value denominator = arith::ConstantOp::create(
+        rewriter, loc, rewriter.getF32FloatAttr(denominatorCoeffs[0]));
     for (int64_t i = 1; i < static_cast<int64_t>(denominatorCoeffs.size());
          i++) {
-      denominator = rewriter.create<arith::AddFOp>(
-          loc, rewriter.create<arith::MulFOp>(loc, inputSquared, denominator),
-          rewriter.create<arith::ConstantOp>(
-              loc, rewriter.getF32FloatAttr(denominatorCoeffs[i])));
+      denominator = arith::AddFOp::create(
+          rewriter, loc,
+          arith::MulFOp::create(rewriter, loc, inputSquared, denominator),
+          arith::ConstantOp::create(
+              rewriter, loc, rewriter.getF32FloatAttr(denominatorCoeffs[i])));
     }
-    Value approx = rewriter.create<arith::DivFOp>(loc, numerator, denominator);
+    Value approx = arith::DivFOp::create(rewriter, loc, numerator, denominator);
 
     // For small values of |x|, we can approximate tanh(x) = x. For extremely
     // small values of x (|x| < 1e-37), the other approximation would evaluate
     // tanh(x) = 0.
     constexpr float kUseIdentityApprox = 0.0004;
-    Value absInput = rewriter.create<math::AbsFOp>(loc, input);
-    Value useIdentityApprox = rewriter.create<arith::CmpFOp>(
-        loc, arith::CmpFPredicate::OLT, absInput,
-        rewriter.create<arith::ConstantOp>(
-            loc, rewriter.getF32FloatAttr(kUseIdentityApprox)));
-    approx =
-        rewriter.create<arith::SelectOp>(loc, useIdentityApprox, input, approx);
+    Value absInput = math::AbsFOp::create(rewriter, loc, input);
+    Value useIdentityApprox = arith::CmpFOp::create(
+        rewriter, loc, arith::CmpFPredicate::OLT, absInput,
+        arith::ConstantOp::create(
+            rewriter, loc, rewriter.getF32FloatAttr(kUseIdentityApprox)));
+    approx = arith::SelectOp::create(rewriter, loc, useIdentityApprox, input,
+                                     approx);
 
     // For very small/large values, use a constant approximation -1/1.
-    Value tooLargeInput = rewriter.create<arith::CmpFOp>(
-        loc, arith::CmpFPredicate::UGT, input,
-        rewriter.create<arith::ConstantOp>(
-            loc, rewriter.getF32FloatAttr(7.90531110763549805f)));
-    Value tooSmallInput = rewriter.create<arith::CmpFOp>(
-        loc, arith::CmpFPredicate::ULT, input,
-        rewriter.create<arith::ConstantOp>(
-            loc, rewriter.getF32FloatAttr(-7.90531110763549805f)));
-    Value inputIsNan = rewriter.create<arith::CmpFOp>(
-        loc, arith::CmpFPredicate::UNE, input, input);
-    approx = rewriter.create<arith::SelectOp>(
-        loc, tooLargeInput,
-        rewriter.create<arith::ConstantOp>(loc, rewriter.getF32FloatAttr(1.0)),
+    Value tooLargeInput = arith::CmpFOp::create(
+        rewriter, loc, arith::CmpFPredicate::UGT, input,
+        arith::ConstantOp::create(
+            rewriter, loc, rewriter.getF32FloatAttr(7.90531110763549805f)));
+    Value tooSmallInput = arith::CmpFOp::create(
+        rewriter, loc, arith::CmpFPredicate::ULT, input,
+        arith::ConstantOp::create(
+            rewriter, loc, rewriter.getF32FloatAttr(-7.90531110763549805f)));
+    Value inputIsNan = arith::CmpFOp::create(
+        rewriter, loc, arith::CmpFPredicate::UNE, input, input);
+    approx = arith::SelectOp::create(
+        rewriter, loc, tooLargeInput,
+        arith::ConstantOp::create(rewriter, loc, rewriter.getF32FloatAttr(1.0)),
         approx);
-    approx = rewriter.create<arith::SelectOp>(
-        loc, tooSmallInput,
-        rewriter.create<arith::ConstantOp>(loc, rewriter.getF32FloatAttr(-1.0)),
+    approx = arith::SelectOp::create(
+        rewriter, loc, tooSmallInput,
+        arith::ConstantOp::create(rewriter, loc,
+                                  rewriter.getF32FloatAttr(-1.0)),
         approx);
-    approx = rewriter.create<arith::SelectOp>(loc, inputIsNan, input, approx);
+    approx = arith::SelectOp::create(rewriter, loc, inputIsNan, input, approx);
 
     return approx;
   }

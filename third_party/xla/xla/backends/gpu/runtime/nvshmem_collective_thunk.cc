@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
@@ -27,26 +28,33 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
-#include "xla/core/collectives/communicator.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
-static constexpr CollectiveStreamId kNoStreamId = CollectiveStreamId(0);
 
 bool IsTypeSupportedByNvshmem(PrimitiveType element_type,
                               Thunk::Kind reduction_op) {
@@ -90,15 +98,28 @@ absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
   return tsl::down_cast<xla::gpu::GpuCollectives*>(collectives);
 }
 
-absl::Status NvshmemCollectiveThunk::Prepare(
-    const PrepareParams& params, ResourceRequestsInterface& resource_requests) {
-  TF_ASSIGN_OR_RETURN(GpuCollectives * collectives, GetGpuCollectives(params));
+absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
+  TF_RET_CHECK(params.collective_params &&
+               params.collective_params->device_assn);
+
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
-      GetGpuCliqueKey(collectives, *params.collective_params,
-                      config().replica_groups, config().group_mode,
-                      GetAsyncStreamKind(), /*use_nccl= */ false));
-  return resource_requests.AddClique(clique_key);
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode, /*is_p2p=*/false));
+
+  TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
+                      GetParticipatingDevicesGroups(
+                          *params.collective_params->device_assn,
+                          config().replica_groups, config().group_mode));
+
+  // Any NVSHMEM collective will need to require a barrier at the end of
+  // graph execution to make sure all reads and writes to symmetrics buffers
+  // are finished and ready for the next iteration of executable.
+  CollectiveCliqueRequests::CliqueRequirements clique_reqs;
+  clique_reqs.barrier_reqs = CollectiveCliqueRequests::BarrierRequirements{
+      /*module_execution_barrier=*/true};
+  return params.collective_clique_requests->RequestClique(
+      clique_key, std::move(device_groups), clique_reqs);
 }
 
 absl::Status NvshmemCollectiveThunk::Initialize(
@@ -106,10 +127,6 @@ absl::Status NvshmemCollectiveThunk::Initialize(
   if (async_events_) {
     TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
   }
-  // Any nvshmem collective will need to require a barrier at the end of
-  // graph execution to make sure all reads and writes to symmetrics buffers
-  // are finished and ready for the next iteration of executable.
-  params.collective_params->need_barrier = true;
   return absl::OkStatus();
 }
 
@@ -144,11 +161,43 @@ absl::Status NvshmemCollectiveThunk::ExecuteOnStream(
 
 NvshmemCollectiveDoneThunk::NvshmemCollectiveDoneThunk(
     Thunk::Kind kind, ThunkInfo thunk_info,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-    AsyncStreamKind async_stream_kind)
-    : Thunk(kind, std::move(thunk_info)),
-      async_events_(async_events),
-      async_stream_kind_(async_stream_kind) {}
+    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {}
+
+absl::StatusOr<ThunkProto> NvshmemCollectiveDoneThunk::ToProto() const {
+  ThunkProto thunk_proto;
+  *thunk_proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  NvshmemCollectiveDoneThunkProto* nvshmem_proto =
+      thunk_proto.mutable_nvshmem_collective_done_thunk();
+  nvshmem_proto->set_thunk_kind(Thunk::KindToProto(kind()));
+  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
+  if (async_events_id.has_value()) {
+    nvshmem_proto->set_async_events_unique_id(async_events_id->value());
+  }
+  return thunk_proto;
+}
+
+absl::StatusOr<std::unique_ptr<NvshmemCollectiveDoneThunk>>
+NvshmemCollectiveDoneThunk::FromProto(
+    ThunkInfo thunk_info, const NvshmemCollectiveDoneThunkProto& thunk_proto,
+    CollectiveThunk::AsyncEventsMap& async_events_map) {
+  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
+  if (thunk_proto.has_async_events_unique_id()) {
+    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
+        async_events_map[AsyncEventsUniqueId{
+            thunk_proto.async_events_unique_id()}];
+    if (!events) {
+      events = std::make_shared<CollectiveThunk::AsyncEvents>();
+    }
+    async_events = events;
+  }
+
+  ASSIGN_OR_RETURN(Thunk::Kind kind,
+                   Thunk::KindFromProto(thunk_proto.thunk_kind()));
+  return std::make_unique<NvshmemCollectiveDoneThunk>(
+      kind, std::move(thunk_info), async_events);
+}
 
 absl::Status NvshmemCollectiveDoneThunk::ExecuteOnStream(
     const ExecuteParams& params) {

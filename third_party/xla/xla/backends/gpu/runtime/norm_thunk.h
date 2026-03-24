@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/stream_executor/stream.h"
@@ -53,6 +54,8 @@ class NormThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
+
+  BufferUses buffer_uses() const override;
 
   static absl::StatusOr<std::unique_ptr<NormThunk>> FromProto(
       ThunkInfo thunk_info, const NormThunkProto& proto,

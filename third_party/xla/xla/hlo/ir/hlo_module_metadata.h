@@ -22,9 +22,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
+#include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/env.h"
@@ -34,12 +38,73 @@ limitations under the License.
 
 namespace xla {
 
+// This is a temporary define to solve a versioning problem with the XLA and
+// xprof repositories. It may be removed after xprof syncs XLA past Feb 16,
+// 2026.
+#define XLA_HAVE_STACK_FRAME_ID 1
+
+// Strong typedef for stack frame IDs.
+struct StackFrameId {
+  int value = 0;  // 0 is reserved for "not present".
+  bool operator==(StackFrameId other) const { return value == other.value; }
+  bool operator!=(StackFrameId other) const { return value != other.value; }
+  bool valid() const { return value != 0; }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, StackFrameId id) {
+    absl::Format(&sink, "%d", id.value);
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, StackFrameId id) {
+    return H::combine(std::move(h), id.value);
+  }
+};
+
+// Describes a stack frame.
+struct HloStackFrame {
+  absl::string_view file_name;
+  absl::string_view function_name;
+  int line = 0;
+  int column = 0;
+  int end_line = 0;
+  int end_column = 0;
+
+  // Index of the parent frame. An invalid (0) value indicates the root.
+  StackFrameId parent_frame_id;
+
+  bool empty() const {
+    return line == 0 && column == 0 && end_line == 0 && end_column == 0 &&
+           file_name.empty() && function_name.empty();
+  }
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const HloStackFrame& frame) {
+    absl::Format(&sink, "%s:%d", frame.file_name, frame.line);
+    if (frame.column != 0) {
+      absl::Format(&sink, ":%d", frame.column);
+    }
+    if (!frame.function_name.empty()) {
+      absl::Format(&sink, " [%s]", frame.function_name);
+    }
+  }
+};
+
 // Wrapper class for HloModuleMetadataProto to avoid allowing callers to mutate
 // arbitrary fields. Specifically, callers cannot set timestamps or ids or
 // set the fields of any pass not currently running.
 class HloModuleMetadata {
  public:
   explicit HloModuleMetadata(tsl::Env* env) : env_(env) {}
+
+  HloModuleMetadata(const HloModuleMetadata& other) { CopyFrom(other); }
+
+  HloModuleMetadata& operator=(const HloModuleMetadata& other) {
+    if (this != &other) {
+      CopyFrom(other);
+    }
+    return *this;
+  }
 
   const HloModuleMetadataProto& proto() const { return module_metadata_; }
 
@@ -127,6 +192,23 @@ class HloModuleMetadata {
   // finds the deepest one still running. Returns NotFound if metadata for the
   // currently running pass cannot be found.
   absl::StatusOr<HloPassMetadata*> GetCurrentHloPassMetadata();
+
+  void CopyFrom(const HloModuleMetadata& other) {
+    module_metadata_ = other.module_metadata_;
+    env_ = other.env_;
+    next_pass_id_ = other.next_pass_id_;
+    absl::flat_hash_map<const HloPassMetadata*, int64_t> ptr_to_index;
+    for (int64_t i = 0; i < other.module_metadata_.pass_metadata().size();
+         ++i) {
+      ptr_to_index[&other.module_metadata_.pass_metadata(i)] = i;
+    }
+    running_passes_.reserve(other.running_passes_.size());
+    for (HloPassMetadata* pass_metadata : other.running_passes_) {
+      running_passes_.push_back(
+          module_metadata_.mutable_pass_metadata(ptr_to_index[pass_metadata]));
+    }
+    prepartitioning_metadata_ = other.prepartitioning_metadata_;
+  }
 
   absl::Status MutateCurrentHloPassMetadata(
       absl::FunctionRef<void(HloPassMetadata*)> mutator);

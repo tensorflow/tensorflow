@@ -264,10 +264,12 @@ absl::Status LinkAndOptimizeModule(
   llvm::ModuleAnalysisManager mam;
 
   xla::codegen::intrinsics::DeviceType device_type;
-  if (std::holds_alternative<se::CudaComputeCapability>(gpu_version)) {
+  if (gpu_version.IsCuda()) {
     device_type = xla::codegen::intrinsics::DeviceType::kNvidiaGpu;
-  } else if (std::holds_alternative<se::RocmComputeCapability>(gpu_version)) {
+  } else if (gpu_version.IsRocm()) {
     device_type = xla::codegen::intrinsics::DeviceType::kAmdGpu;
+  } else if (gpu_version.IsOneAPI()) {
+    device_type = xla::codegen::intrinsics::DeviceType::kIntelGpu;
   } else {
     LOG(FATAL) << "Unsupported GPU type";
   }

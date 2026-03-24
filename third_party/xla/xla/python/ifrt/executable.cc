@@ -31,15 +31,15 @@ char Executable::ID = 0;
 char LoadedExecutable::ID = 0;
 [[maybe_unused]] char ExecutableVersion::ID = 0;
 
-absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto(
-    SerDesVersion version) const {
+absl::Status ExecuteOptions::ToProto(ExecuteOptionsProto& proto,
+                                     SerDesVersion version) const {
   if (version.version_number() < SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for ExecuteOptions serialization"));
   }
 
-  ExecuteOptionsProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.set_launch_id(launch_id);
@@ -48,10 +48,10 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto(
   proto.set_fill_status(fill_status);
   proto.set_execution_stream_id(execution_stream_id);
   if (custom_options.has_value()) {
-    *proto.mutable_custom_options() = custom_options->ToProto(version);
+    custom_options->ToProto(*proto.mutable_custom_options(), version);
   }
 
-  return proto;
+  return absl::OkStatus();
 }
 
 absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(

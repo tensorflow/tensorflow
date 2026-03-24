@@ -237,7 +237,7 @@ tstring* GetStringBackingBuffer(const Tensor& val) {
 
 absl::Status ParseEntryProto(absl::string_view key, absl::string_view value,
                              protobuf::MessageLite* out) {
-  if (!out->ParseFromArray(value.data(), value.size())) {
+  if (!out->ParseFromString(value)) {
     return errors::DataLoss("Entry for key ", key, " not parseable.");
   }
   return absl::OkStatus();
@@ -439,9 +439,9 @@ BundleWriter::BundleWriter(Env* env, absl::string_view prefix,
   data_path_ = DataFilename(prefix_, 0, 1);
   metadata_path_ = MetaFilename(prefix_);
   if (use_temp_file_) {
-    data_path_ = strings::StrCat(data_path_, ".tempstate", random::New64());
+    data_path_ = absl::StrCat(data_path_, ".tempstate", random::New64());
     metadata_path_ =
-        strings::StrCat(metadata_path_, ".tempstate", random::New64());
+        absl::StrCat(metadata_path_, ".tempstate", random::New64());
   }
 
   status_ = env_->CreateDir(string(io::Dirname(prefix_)));
@@ -1225,12 +1225,12 @@ string BundleReader::DebugString() {
   BundleEntryProto entry;
   Seek(kHeaderEntryKey);
   for (Next(); Valid(); Next()) {
-    CHECK(entry.ParseFromArray(value().data(), value().size()));
+    CHECK(entry.ParseFromString(value()));
     if (entry.slices_size() > 0) continue;  // Slice of some partitioned var.
 
     strings::StrAppend(&shape_str, key(), " (", DataType_Name(entry.dtype()),
                        ") ", TensorShape(entry.shape()).DebugString());
-    strings::StrAppend(&shape_str, "\n");
+    absl::StrAppend(&shape_str, "\n");
   }
   return shape_str;
 }

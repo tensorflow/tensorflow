@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_device_utils.h"
 
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -61,8 +62,9 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedIfrtDevices(
   // device assignment attribute to ifrt devices.
   bool no_device_coordinates = false;
   for (auto* device : ifrt_client.devices()) {
-    if (!device->Attributes().map().contains("coords") ||
-        !device->Attributes().map().contains("core_on_chip")) {
+    auto coords_attr = device->Attributes().Get<std::vector<int64_t>>("coords");
+    auto core_on_chip_attr = device->Attributes().Get<int64_t>("core_on_chip");
+    if (!coords_attr.ok() || !core_on_chip_attr.ok()) {
       no_device_coordinates = true;
       break;
     }
@@ -133,24 +135,20 @@ absl::StatusOr<std::vector<xla::ifrt::Device*>> GetAssignedIfrtDevices(
 
   for (auto* device : ifrt_client.devices()) {
     GridCoords grid;
-    auto coords_it = device->Attributes().map().find("coords");
-    auto core_on_chip_it = device->Attributes().map().find("core_on_chip");
-    if (coords_it != device->Attributes().map().end() &&
-        core_on_chip_it != device->Attributes().map().end()) {
+    auto coords_attr = device->Attributes().Get<std::vector<int64_t>>("coords");
+    auto core_on_chip_attr = device->Attributes().Get<int64_t>("core_on_chip");
+    if (coords_attr.ok() && core_on_chip_attr.ok()) {
       VLOG(3) << "Adding coords and core_on_chip attributes:"
               << device->DebugString();
-      auto coords_list =
-          std::get<xla::ifrt::AttributeMap::Int64ListValue>(coords_it->second);
-      auto core_on_chip = std::get<xla::ifrt::AttributeMap::Int64Value>(
-          core_on_chip_it->second);
+      auto coords = *coords_attr;
+      auto core_on_chip = *core_on_chip_attr;
 
-      if (coords_list.value.size() != 3) {
-        return absl::InternalError(absl::StrCat(
-            "Expected coords to be of size 3, but got ",
-            coords_list.value.size(), " for device ", device->DebugString()));
+      if (coords.size() != 3) {
+        return absl::InternalError(
+            absl::StrCat("Expected coords to be of size 3, but got ",
+                         coords.size(), " for device ", device->DebugString()));
       }
-      grid = GridCoords(coords_list.value[0], coords_list.value[1],
-                        coords_list.value[2], core_on_chip.value);
+      grid = GridCoords(coords[0], coords[1], coords[2], core_on_chip);
     } else {
       return absl::InternalError(
           absl::StrCat("Device ", device->DebugString(),

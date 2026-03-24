@@ -54,8 +54,8 @@ class DynamicPartitionOp : public XlaOpKernel {
   xla::XlaOp CountS32(XlaOpKernelContext* ctx, xla::XlaOp input,
                       int64_t target) {
     xla::XlaOp equal_dim =
-        xla::Compare(input, xla::ConstantR0<int32>(ctx->builder(), target), {},
-                     xla::ComparisonDirection::kEq);
+        xla::Compare(input, xla::ConstantR0<int32_t>(ctx->builder(), target),
+                     {}, xla::ComparisonDirection::kEq);
     xla::XlaOp casted = xla::ConvertElementType(equal_dim, xla::S32);
     return xla::ReduceAll(
         casted, xla::Zero(ctx->builder(), xla::S32),
@@ -178,8 +178,9 @@ class DynamicPartitionOp : public XlaOpKernel {
       } else {
         xla::XlaOp length;
         if (count_diff != 0) {
-          length = xla::Div(partition_length[i],
-                            xla::ConstantR0<int32>(ctx->builder(), count_diff));
+          length =
+              xla::Div(partition_length[i],
+                       xla::ConstantR0<int32_t>(ctx->builder(), count_diff));
         } else {
           length = CountS32(ctx, ctx->Input(1), /*target=*/i);
         }

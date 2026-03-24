@@ -52,9 +52,9 @@ TEST(LiteralUtil, LiteralToHostTensor) {
 template <class T>
 using LiteralUtilTest = ::testing::Test;
 using Types =
-    ::testing::Types<std::pair<int8, qint8>, std::pair<uint8, quint8>,
-                     std::pair<int16, qint16>, std::pair<uint16, quint16>,
-                     std::pair<int32, qint32>>;
+    ::testing::Types<std::pair<int8_t, qint8>, std::pair<uint8_t, quint8>,
+                     std::pair<int16_t, qint16>, std::pair<uint16_t, quint16>,
+                     std::pair<int32_t, qint32>>;
 
 TYPED_TEST_SUITE(LiteralUtilTest, Types);
 

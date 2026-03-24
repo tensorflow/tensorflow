@@ -46,7 +46,7 @@ namespace {
 
 // Returns the names of the "then" and "else" functions for the If node in a
 // graph.
-absl::Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
+absl::Status FindIfThenAndElse(const GraphDef& graph, std::string* op_name,
                                NameAttrList* then_fn, NameAttrList* else_fn) {
   for (const NodeDef& node : graph.node()) {
     if (node.op() == "If") {
@@ -97,7 +97,7 @@ INSTANTIATE_TEST_SUITE_P(
            info) {
       bool restrict_to_tpu_nodes = std::get<0>(info.param);
       bool wrap_cond_in_function = std::get<1>(info.param);
-      string name =
+      std::string name =
           absl::StrCat(restrict_to_tpu_nodes ? "with_filter" : "without_filter",
                        wrap_cond_in_function ? "_in_function" : "_in_graph");
       return name;
@@ -114,7 +114,7 @@ void ConditionalTestFixture::BuildCondGraph(Graph* cond_graph) {
 
     auto identity_t =
         ops::Identity(scope.WithOpName("cond/Identity"), switch_1.output_true);
-    auto seventeen = ops::Const<int32>(
+    auto seventeen = ops::Const<int32_t>(
         scope.WithOpName("cond").WithControlDependencies(identity_t), 17);
     auto switch_2 = ops::Switch(scope.WithOpName("cond/Switch"), y, less);
     auto mul = ops::Multiply(scope.WithOpName("cond/Mul"), switch_2.output_true,
@@ -122,7 +122,7 @@ void ConditionalTestFixture::BuildCondGraph(Graph* cond_graph) {
 
     auto identity_f =
         ops::Identity(scope.WithOpName("cond/Identity"), switch_1.output_false);
-    auto twenty_three = ops::Const<int32>(
+    auto twenty_three = ops::Const<int32_t>(
         scope.WithOpName("cond").WithControlDependencies(identity_f), 23);
     auto switch_3 = ops::Switch(scope.WithOpName("cond/Switch"), x, less);
     auto add = ops::Add(scope.WithOpName("cond/false/add"),
@@ -146,7 +146,7 @@ void ConditionalTestFixture::BuildCondGraph(Graph* cond_graph) {
 
 void ConditionalTestFixture::CheckGraphDef(
     const GraphDef& graph_def, const FunctionLibraryDefinition& library) {
-  string op_name;
+  std::string op_name;
   NameAttrList then_fn;
   NameAttrList else_fn;
   TF_EXPECT_OK(FindIfThenAndElse(graph_def, &op_name, &then_fn, &else_fn));
@@ -285,7 +285,7 @@ void ConditionalTestFixture::RunTest() {
     FunctionLibraryRuntime::Handle handle;
 
     // Functionalized function name is the type string of `cond_node`.
-    string func_name;
+    std::string func_name;
     for (Node* n : graph.nodes()) {
       if (n->name() == "cond_node") {
         func_name = n->type_string();
@@ -341,7 +341,7 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
         ops::internal::Enter(scope.WithOpName("while/Enter2"), source, "aloop");
     auto merge = ops::Merge(scope.WithOpName("while/Merge"),
                             std::initializer_list<Input>{enter, dummy});
-    auto ten = ops::Const<int32>(
+    auto ten = ops::Const<int32_t>(
         scope.WithOpName("while/Less/y").WithControlDependencies(merge.output),
         10);
     auto less = ops::Less(scope.WithOpName("while/Less"), merge.output, ten);
@@ -352,7 +352,7 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
                                     switch_.output_false);
     auto identity =
         ops::Identity(scope.WithOpName("while/Identity"), switch_.output_true);
-    auto one = ops::Const<int32>(
+    auto one = ops::Const<int32_t>(
         scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
     auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
     auto next_iteration =
@@ -405,7 +405,7 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
       auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
-      auto ten = ops::Const<int32>(
+      auto ten = ops::Const<int32_t>(
           scope.WithOpName("while/Less/y").WithControlDependencies(arg), 10);
       auto less = ops::Less(scope.WithOpName("while/Less"), arg, ten);
       auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less, 0);
@@ -427,7 +427,7 @@ TEST(FunctionalizeControlFlow, OneLoopVar) {
       Scope scope = Scope::NewRootScope().ExitOnError();
       auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
       auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
-      auto one = ops::Const<int32>(
+      auto one = ops::Const<int32_t>(
           scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
       auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
       auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), add, 0);
@@ -463,7 +463,8 @@ FunctionDef GetNoinlineFunctionDef() {
 //   return [x + 1]
 // Define the above function, and add it to the given graph. It's used as the
 // while loop body in NoinlineLoopBody test.
-absl::Status AddNoinlineFunctionToGraph(const string& node_name, Graph* graph) {
+absl::Status AddNoinlineFunctionToGraph(const std::string& node_name,
+                                        Graph* graph) {
   FunctionDefLibrary fdef_lib;
   *(fdef_lib.add_function()) = GetNoinlineFunctionDef();
   TF_RETURN_IF_ERROR(graph->AddFunctionLibrary(fdef_lib));
@@ -481,7 +482,7 @@ absl::Status AddNoinlineFunctionToGraph(const string& node_name, Graph* graph) {
 // x = array_ops.placeholder(dtypes.int32)
 // y = control_flow_ops.while_loop(lambda i: i < 10, increment_fn, [x])
 TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
-  const string& noinline_node_name = "while/increment_fn";
+  const std::string& noinline_node_name = "while/increment_fn";
   Graph graph(OpRegistry::Global());
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
@@ -491,7 +492,7 @@ TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
                                       "while/while_context");
     auto merge = ops::Merge(scope.WithOpName("while/Merge"),
                             std::initializer_list<Input>{enter, dummy});
-    auto ten = ops::Const<int32>(
+    auto ten = ops::Const<int32_t>(
         scope.WithOpName("while/Less/y").WithControlDependencies(merge.output),
         10);
     auto less = ops::Less(scope.WithOpName("while/Less"), merge.output, ten);
@@ -585,7 +586,7 @@ TEST(FunctionalizeControlFlow, NoinlineLoopBody) {
 }
 
 TEST(FunctionalizeControlFlow, MissingFunctionDefInLibrary) {
-  const string& noinline_node_name = "while/increment_fn";
+  const std::string& noinline_node_name = "while/increment_fn";
   Graph graph(OpRegistry::Global());
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
@@ -622,7 +623,7 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
         ops::internal::Enter(scope.WithOpName("while/Enter"), source, "aloop");
     auto merge = ops::Merge(scope.WithOpName("while/Merge"),
                             std::initializer_list<Input>{enter, dummy});
-    auto ten = ops::Const<int32>(
+    auto ten = ops::Const<int32_t>(
         scope.WithOpName("while/Less/y").WithControlDependencies(merge.output),
         10);
     auto less = ops::Less(scope.WithOpName("while/Less"), merge.output, ten);
@@ -631,7 +632,7 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
         ops::Switch(scope.WithOpName("while/Switch"), merge.output, loop_cond);
     auto identity =
         ops::Identity(scope.WithOpName("while/Identity"), switch_.output_true);
-    auto one = ops::Const<int32>(
+    auto one = ops::Const<int32_t>(
         scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
     auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
     auto next_iteration =
@@ -673,7 +674,7 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
     {
       Scope scope = Scope::NewRootScope().ExitOnError();
       auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
-      auto ten = ops::Const<int32>(
+      auto ten = ops::Const<int32_t>(
           scope.WithOpName("while/Less/y").WithControlDependencies(arg), 10);
       auto less = ops::Less(scope.WithOpName("while/Less"), arg, ten);
       auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less, 0);
@@ -695,7 +696,7 @@ TEST(FunctionalizeControlFlow, OneLoopVarWithoutExit) {
       Scope scope = Scope::NewRootScope().ExitOnError();
       auto arg = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
       auto identity = ops::Identity(scope.WithOpName("while/Identity"), arg);
-      auto one = ops::Const<int32>(
+      auto one = ops::Const<int32_t>(
           scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
       auto add = ops::Add(scope.WithOpName("while/add"), identity, one);
       auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), add, 0);
@@ -739,14 +740,15 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
                               std::initializer_list<Input>{enter_y, dummy});
 
     // Loop condition
-    auto three = ops::Const<int32>(scope.WithOpName("while/cond/three")
-                                       .WithControlDependencies(merge_x.output),
-                                   3);
+    auto three =
+        ops::Const<int32_t>(scope.WithOpName("while/cond/three")
+                                .WithControlDependencies(merge_x.output),
+                            3);
     auto cond_add =
         ops::Add(scope.WithOpName("while/cond/Add"), merge_x.output, three);
-    auto ten = ops::Const<int32>(scope.WithOpName("while/cond/ten")
-                                     .WithControlDependencies(merge_x.output),
-                                 10);
+    auto ten = ops::Const<int32_t>(scope.WithOpName("while/cond/ten")
+                                       .WithControlDependencies(merge_x.output),
+                                   10);
     auto less = ops::Less(scope.WithOpName("while/cond/Less"), cond_add, ten);
     auto loop_cond = ops::LoopCond(scope.WithOpName("while/LoopCond"), less);
 
@@ -765,10 +767,10 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
     auto identity_y = ops::Identity(scope.WithOpName("while/Identity/y"),
                                     switch_y.output_true);
 
-    auto one = ops::Const<int32>(
+    auto one = ops::Const<int32_t>(
         scope.WithOpName("while/add/one").WithControlDependencies(identity_x),
         1);
-    auto two = ops::Const<int32>(
+    auto two = ops::Const<int32_t>(
         scope.WithOpName("while/mul/two").WithControlDependencies(identity_x),
         2);
 
@@ -825,14 +827,15 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
       Scope scope = Scope::NewRootScope().ExitOnError();
       auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
       auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
-      auto three = ops::Const<int32>(scope.WithOpName("while/cond/three")
-                                         .WithControlDependencies(arg0.output),
-                                     3);
+      auto three =
+          ops::Const<int32_t>(scope.WithOpName("while/cond/three")
+                                  .WithControlDependencies(arg0.output),
+                              3);
       auto cond_add =
           ops::Add(scope.WithOpName("while/cond/Add"), arg0.output, three);
-      auto ten = ops::Const<int32>(scope.WithOpName("while/cond/ten")
-                                       .WithControlDependencies(arg0.output),
-                                   10);
+      auto ten = ops::Const<int32_t>(scope.WithOpName("while/cond/ten")
+                                         .WithControlDependencies(arg0.output),
+                                     10);
       auto less = ops::Less(scope.WithOpName("while/cond/Less"), cond_add, ten);
       auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less, 0);
 
@@ -859,10 +862,10 @@ TEST(FunctionalizeControlFlow, TwoLoopVars) {
       auto identity_y =
           ops::Identity(scope.WithOpName("while/Identity/y"), arg1);
 
-      auto one = ops::Const<int32>(
+      auto one = ops::Const<int32_t>(
           scope.WithOpName("while/add/one").WithControlDependencies(identity_x),
           1);
-      auto two = ops::Const<int32>(
+      auto two = ops::Const<int32_t>(
           scope.WithOpName("while/mul/two").WithControlDependencies(identity_x),
           2);
 
@@ -922,7 +925,7 @@ INSTANTIATE_TEST_SUITE_P(
       bool mark_inner_loop_tpu = std::get<1>(info.param);
       bool mark_outer_loop_tpu = std::get<2>(info.param);
 
-      string node_string;
+      std::string node_string;
       if (mark_inner_loop_tpu && mark_outer_loop_tpu)
         node_string = "both_loops_tpu";
       else if (!mark_inner_loop_tpu && !mark_outer_loop_tpu)
@@ -930,7 +933,7 @@ INSTANTIATE_TEST_SUITE_P(
       else
         node_string = mark_inner_loop_tpu ? "inner_loop_tpu" : "outer_loop_tpu";
 
-      string name = absl::StrCat(
+      std::string name = absl::StrCat(
           restrict_to_tpu_nodes ? "restricted_" : "unrestricted_", node_string);
       return name;
     });
@@ -961,21 +964,21 @@ void ComplexTestFixture::RunTest() {
     auto dummy = ops::Placeholder(scope.WithOpName("Dummy"), DT_INT32);
 
     auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
-    auto three = ops::Const<int32>(scope.WithOpName("three"), 3);
+    auto three = ops::Const<int32_t>(scope.WithOpName("three"), 3);
     auto y = ops::Add(scope.WithOpName("y"), x, three);
 
     auto var = ops::VarHandleOp(scope.WithOpName("Variable"), DT_INT32,
                                 TensorShape({}));
 
     // Outer loop
-    auto zero = ops::Const<int32>(scope.WithOpName("outer/Const"), 0);
+    auto zero = ops::Const<int32_t>(scope.WithOpName("outer/Const"), 0);
     auto enter_i =
         ops::internal::Enter(scope.WithOpName("outer/Enter_i"), zero, "outer");
     auto merge_i = ops::Merge(scope.WithOpName("outer/Merge_i"),
                               std::initializer_list<Input>{enter_i, dummy});
-    auto ten = ops::Const<int32>(scope.WithOpName("outer/Less/y")
-                                     .WithControlDependencies(merge_i.output),
-                                 10);
+    auto ten = ops::Const<int32_t>(scope.WithOpName("outer/Less/y")
+                                       .WithControlDependencies(merge_i.output),
+                                   10);
     auto less_i =
         ops::Less(scope.WithOpName("outer/Less_i"), merge_i.output, ten);
     auto outer_loop_cond =
@@ -998,7 +1001,7 @@ void ComplexTestFixture::RunTest() {
                              ops::internal::Enter::Attrs().IsConstant(true));
 
     // Inner loop
-    auto one_j = ops::Const<int32>(
+    auto one_j = ops::Const<int32_t>(
         scope.WithOpName("outer/j").WithControlDependencies(identity_i), 1);
     auto enter_j = ops::internal::Enter(scope.WithOpName("outer/inner/Enter_j"),
                                         one_j, "inner");
@@ -1018,9 +1021,10 @@ void ComplexTestFixture::RunTest() {
     auto merge_k = ops::Merge(scope.WithOpName("outer/inner/Merge_k"),
                               std::initializer_list<Input>{enter_k, dummy});
 
-    auto five = ops::Const<int32>(scope.WithOpName("outer/inner/Five")
-                                      .WithControlDependencies(merge_j.output),
-                                  5);
+    auto five =
+        ops::Const<int32_t>(scope.WithOpName("outer/inner/Five")
+                                .WithControlDependencies(merge_j.output),
+                            5);
     auto less_j =
         ops::Less(scope.WithOpName("outer/inner/Less_j"), merge_j.output, five);
     auto loop_cond =
@@ -1047,7 +1051,7 @@ void ComplexTestFixture::RunTest() {
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), enter_var, add_jkx);
 
-    auto one = ops::Const<int32>(
+    auto one = ops::Const<int32_t>(
         scope.WithOpName("outer/inner/One")
             .WithControlDependencies(
                 absl::Span<const Operation>{assign.operation}),
@@ -1061,7 +1065,7 @@ void ComplexTestFixture::RunTest() {
         scope.WithOpName("outer/inner/NextIteration_k"), identity_k);
 
     // Body and backedge for outer loop.
-    auto one_outer = ops::Const<int32>(
+    auto one_outer = ops::Const<int32_t>(
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
@@ -1086,9 +1090,10 @@ void ComplexTestFixture::RunTest() {
   }
   // Add '_tpu_replicate' attributes as specified.
   for (Node* n : graph.nodes()) {
-    string name = n->name();
-    bool is_inner_node = name.find("outer/inner/") != string::npos;
-    bool is_outer_node = !is_inner_node && name.find("outer/") != string::npos;
+    std::string name = n->name();
+    bool is_inner_node = name.find("outer/inner/") != std::string::npos;
+    bool is_outer_node =
+        !is_inner_node && name.find("outer/") != std::string::npos;
     if ((is_inner_node && mark_inner_loop_tpu_) ||
         (is_outer_node && mark_outer_loop_tpu_)) {
       n->AddAttr("_tpu_replicate", "cluster");
@@ -1159,13 +1164,13 @@ void ComplexTestFixture::CheckOuterNodesFunctionalized(
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
     auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
-    auto three = ops::Const<int32>(scope.WithOpName("three"), 3);
+    auto three = ops::Const<int32_t>(scope.WithOpName("three"), 3);
     auto y = ops::Add(scope.WithOpName("y"), x, three);
 
     auto var = ops::VarHandleOp(scope.WithOpName("Variable"), DT_INT32,
                                 TensorShape({}));
 
-    auto zero = ops::Const<int32>(scope.WithOpName("outer/Const"), 0);
+    auto zero = ops::Const<int32_t>(scope.WithOpName("outer/Const"), 0);
 
     auto while_op = ops::While(scope.WithOpName("outer/LoopCond"),
                                std::initializer_list<Input>{zero, y, x, var},
@@ -1184,7 +1189,7 @@ void ComplexTestFixture::CheckOuterNodesFunctionalized(
     auto arg2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
     auto arg3 = ops::_Arg(scope.WithOpName("arg3"), DT_RESOURCE, 3);
 
-    auto ten = ops::Const<int32>(
+    auto ten = ops::Const<int32_t>(
         scope.WithOpName("outer/Less/y").WithControlDependencies(arg0.output),
         10);
     auto less = ops::Less(scope.WithOpName("outer/Less_i"), arg0, ten);
@@ -1220,14 +1225,14 @@ void ComplexTestFixture::CheckOuterNodesFunctionalized(
     auto arg3 = ops::_Arg(scope.WithOpName("arg3"), DT_RESOURCE, 3);
 
     auto identity_i = ops::Identity(scope.WithOpName("outer/Identity"), arg0);
-    auto one_j = ops::Const<int32>(
+    auto one_j = ops::Const<int32_t>(
         scope.WithOpName("outer/j").WithControlDependencies(identity_i), 1);
     auto while_op =
         ops::While(scope.WithOpName("outer/inner/LoopCond"),
                    std::initializer_list<Input>{one_j, arg1, arg2, arg3},
                    inner_cond_fn, inner_body_fn);
 
-    auto one_outer = ops::Const<int32>(
+    auto one_outer = ops::Const<int32_t>(
         scope.WithOpName("outer/add/y").WithControlDependencies(identity_i), 1);
     auto add_i =
         ops::Add(scope.WithOpName("outer/add")
@@ -1262,7 +1267,7 @@ void ComplexTestFixture::CheckInnerNodesFunctionalized(
     auto arg2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
     auto arg3 = ops::_Arg(scope.WithOpName("arg3"), DT_RESOURCE, 3);
 
-    auto five = ops::Const<int32>(
+    auto five = ops::Const<int32_t>(
         scope.WithOpName("outer/inner/Five").WithControlDependencies(arg0), 5);
     auto less_j = ops::Less(scope.WithOpName("outer/inner/Less_j"), arg0, five);
     auto retval = ops::_Retval(scope.WithOpName("retval0_RetVal"), less_j, 0);
@@ -1299,7 +1304,7 @@ void ComplexTestFixture::CheckInnerNodesFunctionalized(
     auto assign = ops::AssignAddVariableOp(
         scope.WithOpName("outer/inner/assign_add"), arg3, add_jkx);
 
-    auto one = ops::Const<int32>(
+    auto one = ops::Const<int32_t>(
         scope.WithOpName("outer/inner/One")
             .WithControlDependencies(
                 absl::Span<const Operation>{assign.operation}),

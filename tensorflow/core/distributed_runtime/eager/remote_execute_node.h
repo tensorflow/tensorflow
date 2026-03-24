@@ -40,7 +40,7 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
  public:
   RemoteExecuteNode(EagerContext* eager_context,
                     std::unique_ptr<EnqueueRequest> request, Device* device,
-                    uint64 context_view_id, EagerClient* eager_client,
+                    uint64_t context_view_id, EagerClient* eager_client,
                     CancellationManager* cancellation_manager,
                     const NodeDef& ndef,
                     const FunctionLibraryDefinition* lib_def,
@@ -118,8 +118,8 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
     return eager_client_->allow_multiple_pending_requests();
   }
 
-  string DebugString() const override {
-    string out = "[RemoteExecuteNode]";
+  std::string DebugString() const override {
+    std::string out = "[RemoteExecuteNode]";
     absl::StrAppend(&out, " request: ", request_->DebugString());
     absl::StrAppend(&out, ", target_device: ", device_->name());
     return out;
@@ -129,7 +129,7 @@ class RemoteExecuteNode : public AsyncRemoteExecuteNode {
   EagerContext* eager_context_;  // Not owned, and must outlive this node.
   std::unique_ptr<EnqueueRequest> request_;
   Device* device_;             // Not owned
-  uint64 context_view_id_;
+  uint64_t context_view_id_;
   bool needs_remote_inputs_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
   CancellationManager* cancellation_manager_;

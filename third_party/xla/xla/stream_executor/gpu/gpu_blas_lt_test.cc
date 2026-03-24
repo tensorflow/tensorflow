@@ -59,6 +59,7 @@ void ExpectGemmConfigEq(const GemmConfig& lhs, const GemmConfig& rhs) {
   EXPECT_EQ(lhs.algorithm, rhs.algorithm);
   EXPECT_EQ(lhs.grad_x, rhs.grad_x);
   EXPECT_EQ(lhs.grad_y, rhs.grad_y);
+  EXPECT_EQ(lhs.scale_mode, rhs.scale_mode);
   EXPECT_EQ(lhs.compute_type, rhs.compute_type);
 }
 
@@ -77,6 +78,7 @@ TEST(GemmConfigTest, ProtoConversion) {
       std::nullopt,                     // algorithm
       false,                            // grad_x
       false,                            // grad_y
+      ScaleMode::kNone,                 // scale_mode
       std::nullopt                      // compute_type
   };
 
@@ -110,6 +112,7 @@ TEST(GemmConfigTest, ProtoConversionWithOptionals) {
       7,                                          // algorithm
       true,                                       // grad_x
       false,                                      // grad_y
+      ScaleMode::kNone,                           // scale_mode
       blas::ComputationType::kTF32AsF32           // compute_type
   };
 

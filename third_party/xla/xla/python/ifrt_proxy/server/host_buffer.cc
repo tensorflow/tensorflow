@@ -63,7 +63,7 @@ absl::Status HostBufferStore::Store(uint64_t handle, std::string data) {
 
 absl::Status HostBufferStore::ReadFromDisk(uint64_t handle) {
   std::optional<std::string> file_path = LargeTransferFilePath(handle);
-  CHECK(file_path != std::nullopt) << absl::NotFoundError(
+  CHECK(file_path.has_value()) << absl::NotFoundError(
       "IFRT proxy: cannot retrieve file path for ReadFromDisk().");
   VLOG(3) << "HostBuffer::StoreViaFilePath " << handle << " " << *file_path;
 

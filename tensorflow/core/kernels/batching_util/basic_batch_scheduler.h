@@ -161,7 +161,7 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
     // To share a thread pool (2) create a scheduler and pass it in.
 
     // The name to use for the pool of batch threads.
-    string thread_pool_name = {"batch_threads"};
+    std::string thread_pool_name = {"batch_threads"};
 
     // The number of threads to use to process batches.
     // Must be >= 1, and should be tuned carefully.

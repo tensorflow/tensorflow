@@ -65,7 +65,6 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
-#include "xla/service/compilation_environments.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
@@ -74,7 +73,6 @@ limitations under the License.
 namespace xla::ifrt::mpmd {
 namespace {
 
-using llvm::DenseMap;
 using mlir::ArrayRef;
 using mlir::Attribute;
 using mlir::BlockArgument;
@@ -234,10 +232,6 @@ class FragmentCallOpPattern final : public OpConversionPattern<FragmentCallOp> {
     // per-mesh compile options users might have provided.
     ifrt_call_op->setAttr(kIfrtMeshNameAttrName,
                           rewriter.getStringAttr(mesh_name));
-    if (op->hasAttr(mpmd::kIsSdyPartitioned)) {
-      ifrt_call_op->setAttr(xla::ifrt::kIsSdyPartitioned,
-                            rewriter.getUnitAttr());
-    }
     rewriter.replaceOp(op, ifrt_call_op.getOutputs());
     return success();
   }
@@ -433,39 +427,6 @@ class LowerToIfrtPass
   }
 };
 
-class AddCtrlDependenciesPass
-    : public PassWrapper<AddCtrlDependenciesPass,
-                         mlir::OperationPass<mlir::func::FuncOp>> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(AddCtrlDependenciesPass)
-
- private:
-  void runOnOperation() override {
-    FuncOp func_op = getOperation();
-    // Mapping between a hash of devices used by the CallOp and the control
-    // output of the last IFRT CallOp encountered that uses the same devices.
-    DenseMap<llvm::ArrayRef<int>, TypedValue<IfrtControlType>>
-        call_op_to_control_output;
-    func_op.walk([&](xla::ifrt::CallOp call_op) {
-      llvm::ArrayRef<int> devices = call_op.getDevices();
-      if (TypedValue<IfrtControlType> ctrl_input =
-              call_op_to_control_output.lookup(devices)) {
-        call_op.getControlInputsMutable().append(ctrl_input);
-      }
-      call_op_to_control_output[devices] = call_op.getControlOutput();
-      return WalkResult::skip();
-    });
-  }
-
-  StringRef getArgument() const override {
-    return "mpmd-ifrt-add-ctrl-dependencies";
-  }
-
-  StringRef getDescription() const override {
-    return "Adds IFRT IR control dependencies to IFRT CallOps.";
-  }
-};
-
 class BuildCompileOptionsPass
     : public PassWrapper<BuildCompileOptionsPass,
                          mlir::OperationPass<ModuleOp>> {
@@ -511,9 +472,7 @@ class BuildCompileOptionsPass
       }
       exec_build_options.set_device_assignment(device_assignment);
       exec_build_options.set_use_spmd_partitioning(true);
-      if (call_op->hasAttr(xla::ifrt::kIsSdyPartitioned)) {
-        exec_build_options.set_use_shardy_partitioner(true);
-      }
+      exec_build_options.set_use_shardy_partitioner(true);
       FuncOp callee = call_op.getCalleeOp(symbol_table);
       if (auto reserved_hbm_bytes =
               callee->getAttrOfType<IntegerAttr>(kReservedHbmBytes)) {
@@ -567,10 +526,6 @@ std::unique_ptr<Pass> CreateLowerToIfrtPass() {
   return std::make_unique<LowerToIfrtPass>();
 }
 
-std::unique_ptr<Pass> CreateAddCtrlDependenciesPass() {
-  return std::make_unique<AddCtrlDependenciesPass>();
-}
-
 std::unique_ptr<Pass> CreateBuildCompileOptionsPass(
     CompileOptionsMap& compile_options_map,
     const absl::flat_hash_map<std::string, const EnvOptionsOverride>&
@@ -583,36 +538,26 @@ std::unique_ptr<Pass> CreateBuildCompileOptionsPass(
       threshold_for_argument_tupling, set_reserved_bytes);
 }
 
-void AddLowerToIfrtPasses(mlir::OpPassManager& pm,
-                          bool add_control_dependencies) {
+void AddLowerToIfrtPasses(mlir::OpPassManager& pm) {
+  // TODO(icgog): We do not enable hlo sharding v3 yet because it does not
+  // interplay well with the per-mesh compile options. These passes run at
+  // lowering time/export time, but a compile time a different value might be
+  // given to 'xla_enable_hlo_sharding_v3' is needed.
+  xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
+                                          /*enableHloShardingV3=*/false);
   pm.addPass(CreateLowerToIfrtPass());
-  // IfrtMergeReshardsPass doesn't handle control dependencies, so we need to
-  // run it before adding the control dependencies.
-  pm.addNestedPass<mlir::func::FuncOp>(
-      xla::ifrt::createIfrtMergeReshardsPass());
-  if (add_control_dependencies) {
-    pm.addNestedPass<FuncOp>(CreateAddCtrlDependenciesPass());
-  }
-  // Outline the IFRT atom programs to modules.
-  xla::ifrt::IfrtToOutlinedAtomProgramsPipelineOptions outline_pipeline_options;
-  outline_pipeline_options.propagate_shardings = false;
-  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm,
-                                                      outline_pipeline_options);
+  xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
 }
 
 void RegisterLowerToIfrtPasses() {
   mlir::registerPass(CreateLowerToIfrtPass);
-  mlir::registerPass(xla::ifrt::createIfrtMergeReshardsPass);
-  mlir::registerPass(CreateAddCtrlDependenciesPass);
 
   mlir::PassPipelineRegistration<> mpmd_lower_to_ifrt_pipeline(
       "ifrt-mpmd-lower-to-ifrt-pipeline", "Run the passes for lowering to ifrt",
-      [](mlir::OpPassManager& pm) {
-        AddLowerToIfrtPasses(pm, /*add_control_dependencies=*/true);
-      });
+      [](mlir::OpPassManager& pm) { AddLowerToIfrtPasses(pm); });
 }
 
-absl::Status LowerToIfrt(mlir::ModuleOp module, bool add_control_dependencies) {
+absl::Status LowerToIfrt(mlir::ModuleOp module) {
   FuncOp main_func = GetMainFunction(module);
   if (!mpmd::IsMpmdFunction(main_func)) {
     return absl::InvalidArgumentError("MLIR module is not an MPMD module.");
@@ -621,11 +566,8 @@ absl::Status LowerToIfrt(mlir::ModuleOp module, bool add_control_dependencies) {
   InitPassManager(pm, "mpmd-lower-to-ifrt");
   pm.enableVerifier();
 
-  // If we are lowered with SDY, we need to run the SDY round trip pipeline.
-  if (mlir::mpmd::IsLoweredWithSdy(module)) {
-    xla::sdy::addSdyRoundTripExportPipeline(pm);
-  }
-  AddLowerToIfrtPasses(pm, add_control_dependencies);
+  CHECK(mlir::mpmd::IsLoweredWithSdy(module));
+  AddLowerToIfrtPasses(pm);
   StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
   if (mlir::failed(pm.run(module))) {
     return diagnostic_handler.ConsumeStatus();

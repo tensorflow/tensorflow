@@ -25,13 +25,15 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {
 
-class DynamicallyQuantizedTransposeConvTester {
+class DynamicallyQuantizedTransposeConvTester
+    : public ModelCache<DynamicallyQuantizedTransposeConvTester> {
  public:
   DynamicallyQuantizedTransposeConvTester() = default;
   DynamicallyQuantizedTransposeConvTester(
@@ -163,7 +165,7 @@ class DynamicallyQuantizedTransposeConvTester {
     return *this;
   }
 
-  void Test(TfLiteDelegate* delegate) const;
+  void Test(TfLiteDelegate* delegate);
 
  private:
   int32_t ComputeInputSize(int32_t output_size, int32_t kernel_size,
@@ -185,10 +187,7 @@ class DynamicallyQuantizedTransposeConvTester {
   std::vector<int8_t> GenerateKernelData() const;
   std::vector<float> GenerateBiasData() const;
   std::vector<float> GenerateKernelScaleData() const;
-  std::vector<char> CreateTfLiteModel(
-      const std::vector<int8_t>& filter_data,
-      const std::vector<float>& bias_data,
-      const std::vector<float>& kernel_scale) const;
+  std::vector<char> CreateTfLiteModel() const override;
 
   int32_t batch_size_ = 1;
   int32_t input_channels_ = 1;

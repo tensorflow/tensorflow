@@ -17,6 +17,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -476,12 +477,12 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(GetSizeOfType(context, input->type, &im2col_type_size));
   // Note that we intentionally promote the first multiplicand (i.e. 'batches')
   // to 'size_t' to avoid integer overflow here.
-  const size_t im2col_bytes = static_cast<size_t>(batches) * out_height *
-                              out_width * channels_in * filter_height *
-                              filter_width * im2col_type_size;
+  const size_t im2col_elements = static_cast<size_t>(batches) * out_height *
+                                 out_width * channels_in * filter_height *
+                                 filter_width;
   TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(
       context, node, is_hybrid, data->is_hybrid_per_channel, kernel_type,
-      im2col_bytes));
+      /*im2col_bytes=*/im2col_elements * im2col_type_size));
 
   TF_LITE_ENSURE(context, has_bias);
 
@@ -519,6 +520,15 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   if (output_status != kTfLiteOk) return output_status;
 
   if (data->need_im2col) {
+    // Protect downstream kernels (Im2col, TransposeIm2col) that rely
+    // on 32-bit signed integers for their FlatSize() and pointer arithmetic.
+    if (im2col_elements > std::numeric_limits<int32_t>::max()) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Conv im2col elements (%zu) exceed the 32-bit integer limit.",
+          im2col_elements);
+      return kTfLiteError;
+    }
     node->temporaries->data[data->im2col_index] = data->im2col_id;
 
     TfLiteIntArray* im2col_size = TfLiteIntArrayCreate(4);

@@ -24,4 +24,5 @@ message ShardingParamProto {
   repeated int64 dim_shards = 1;
   repeated int32 permutation = 2;
   repeated int32 axis_sizes = 3;
+  repeated int32 unreduced_axes = 5;
 }

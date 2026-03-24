@@ -17,56 +17,44 @@ limitations under the License.
 #define XLA_SERVICE_COLLECTIVE_OPS_UTILS_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/literal.h"
-#include "xla/service/collective_permute_cycle.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/global_device_id.h"
-#include "xla/service/pattern_matcher.h"
 #include "xla/service/source_target_pairs.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
-
-enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
-
-constexpr absl::string_view ReductionKindToString(
-    ReductionKind reduction_kind) {
-  switch (reduction_kind) {
-    case ReductionKind::SUM:
-      return "sum";
-    case ReductionKind::PRODUCT:
-      return "prod";
-    case ReductionKind::MIN:
-      return "min";
-    case ReductionKind::MAX:
-      return "max";
-  }
-}
 
 absl::StatusOr<ReductionKind> StringToReductionKind(
     absl::string_view reduction_kind);
 
-// Attempts to match instruction to one of the possible cases for ReductionKind.
+// Returns the ReductionKind corresponding to the given HloOpcode and
+// PrimitiveType.
+// Returns std::nullopt if the HloOpcode cannot be mapped to a ReductionKind.
+std::optional<ReductionKind> OpcodeToReductionKind(HloOpcode hlo_opcode,
+                                                   PrimitiveType type);
+
+// Attempts to match instruction to one of the possible cases for
+// ReductionKind.
 std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
 
@@ -79,7 +67,11 @@ std::unique_ptr<HloComputation> MakeReductionComputation(
     ReductionKind reduction_kind, PrimitiveType element_type);
 
 // Returns the HloOpcode corresponding to the given ReductionKind.
-std::optional<HloOpcode> ReductionKindToOpcode(ReductionKind reduction_kind);
+// Certain reduction kinds can map to different opcodes depending on the
+// element type (e.g. ReductionKind::MIN maps to kMinimum for numeric types and
+// kAnd for PRED).
+HloOpcode ReductionKindToOpcode(ReductionKind reduction_kind,
+                                PrimitiveType element_type);
 
 // Returns the reduction identity value for a certain ReductionKind and
 // PrimitiveType.
@@ -98,11 +90,6 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 // Returns the replica groups for the given async collective instruction.
 absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
     const HloInstruction* instruction);
-
-const CollectiveDeviceList& GetCollectiveDeviceList(const HloInstruction* hlo);
-
-const std::vector<ReplicaGroup>& GetCollectiveReplicaGroups(
-    const HloInstruction* hlo);
 
 // Returns the group formation mode of instr, assuming that instr is, or is
 // derived from on the following instructions:
@@ -148,24 +135,23 @@ GetParticipatingDevicesGroups(const HloInstruction* collective);
 
 // Same as above, except that it returns the flattened id in the replica groups
 // instead of device id.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
     const DeviceAssignment& device_assignment,
-    const CollectiveDeviceList& collective_device_list,
+    const CollectiveDeviceListBase& collective_device_list,
     CollectiveOpGroupMode group_mode);
 
 // Same as above, but take replica/partition count instead of device assignment.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const CollectiveDeviceList& collective_device_list,
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(
+    const CollectiveDeviceListBase& collective_device_list,
     CollectiveOpGroupMode group_mode, int replica_count, int partition_count);
 
 // Same as above, with collective group mode determined by the collective
 // instruction.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const HloInstruction* hlo, const DeviceAssignment& device_assignment);
-
-// Same as above, used for cases where static_device_assignment is not present.
-absl::StatusOr<CollectiveDeviceList> GetParticipatingFlattenedIdGroups(
-    const HloInstruction* hlo, int replica_count, int partition_count);
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+GetParticipatingFlattenedIdGroups(const HloInstruction* hlo,
+                                  const DeviceAssignment& device_assignment);
 
 // Figures out which devices are participating in the collective subgroup.
 absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -292,7 +278,7 @@ struct RendezvousKey {
     return absl::StrFormat(
         "RendezvousKey{run_id=%s, global_devices=[%s], "
         "num_local_participants=%d, collective_op_kind=%s, op_id=%d}",
-        run_id.ToString(), GlobalDeviceIdsToString(global_devices),
+        run_id.ToString(), absl::StrJoin(global_devices, ", "),
         num_local_participants, CollectiveOpKindString(), op_id);
   }
 
@@ -313,28 +299,7 @@ inline bool MayPipelineSendRecvChannel(int64_t channel_id) {
 // When a Send or Recv is annotated with frontend attribute
 // _xla_send_recv_pipeline="1", asynchronous stream kP2P1 is used to execute the
 // Send or Recv. For all other cases, asynchronous stream kP2P0 is used.
-constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
-
-// This frontend attribute conveys the following information:
-// (1) _xla_send_recv_validation="invalid": the runtime should skip sending or
-// receiving data when the instruction is executed.
-// (2) the absent of the attribute: the runtime should faithfully perform the
-// Send or Recv operation when the instruction is executed.
-// (3) _xla_send_recv_validation={list-of-bounds}: the list-of-bounds
-// corresponds to the value of _xla_send_recv_source_target_pairs, and specifies
-// the execution instances for which the runtime should faithfully perform the
-// Send or Recv operation. Here is an example:
-//   _xla_send_recv_source_target_pairs={{0,1}, {1,2}}
-//   _xla_send_recv_validation={{2,3}, {5,7}}
-// The Send or Recv instruction with the above two attributes have the
-// following semantics:
-// The communication between device 0 and 1 will only send or receive data
-// for execution instances 2 and 3 of the instruction on devices 0 and 1.
-// For execution instances 0, 1, and beyond 3, the runtime should skip sending
-// or receiving any data.
-// Similarly, the communication between device 1 and 2 will only send or
-// receive data on execution instances 5 and 7.
-constexpr char kSendRecvValidationAttr[] = "_xla_send_recv_validation";
+inline constexpr char kSendRecvPipelineAttr[] = "_xla_send_recv_pipeline";
 
 // Attribute to indicate that collective operations should be issued on a
 // dedicated p2p stream. This is a hint and there is no guarantee that this will

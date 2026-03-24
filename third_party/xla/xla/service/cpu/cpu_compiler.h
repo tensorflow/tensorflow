@@ -73,7 +73,7 @@ class CpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
                      const AotCompilationOptions& options) override;
 
@@ -81,13 +81,13 @@ class CpuCompiler : public LLVMCompiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>> Export(
-      Executable* executable) const override;
+  absl::StatusOr<std::unique_ptr<CompiledModule>> Export(
+      Executable* executable) override;
 
   // Returns a (deserialized) AotCompilationResult from a serialized
   // AotCompilationResult.
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  LoadAotCompilationResult(const std::string& serialized_aot_result) override;
+  absl::StatusOr<std::unique_ptr<CompiledModule>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override;
 
   absl::StatusOr<HloSchedule> CreateHloSchedule(
       const HloModule& hlo_module) const;
@@ -123,8 +123,7 @@ class CpuCompiler : public LLVMCompiler {
       const llvm::PICLevel::Level& pic_level = llvm::PICLevel::NotPIC,
       const llvm::PIELevel::Level& pie_level = llvm::PIELevel::Default);
 
-  absl::StatusOr<std::unique_ptr<AotCompilationResult>>
-  CompileAheadOfTimeThunks(
+  absl::StatusOr<std::unique_ptr<CompiledModule>> CompileAheadOfTimeThunks(
       std::unique_ptr<HloModule> module,
       IrCompiler::TargetMachineBuilder target_machine_builder,
       const CpuAotCompilationOptions& aot_options, const llvm::Triple& triple,

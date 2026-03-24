@@ -18,9 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <set>
 #include <string>
@@ -41,7 +39,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
@@ -64,16 +61,15 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 
 namespace xla {
@@ -163,9 +159,21 @@ Service::Service(const ServiceOptions& options,
     for (int i = 0; i < execute_backend_->device_count(); ++i) {
       se::StreamExecutor* executor = stream_executors.at(i);
       const auto& description = executor->GetDeviceDescription();
-      LOG(INFO) << StrFormat("  StreamExecutor device (%d): %s, %s", i,
-                             description.name(),
-                             description.platform_version());
+
+      std::string driver_version = description.driver_version().ToString();
+      se::SemanticVersion kernel_driver =
+          description.kernel_mode_driver_version();
+      if (kernel_driver.IsValid()) {
+        absl::StrAppend(&driver_version, "[", kernel_driver.ToString(), "]");
+      }
+
+      LOG(INFO) << StrFormat(
+          "  StreamExecutor [%d]: %s, %s"
+          " (Driver: %v; Runtime: %v; Toolkit: %v; DNN: %v)",
+          i, description.name(), description.platform_version(), driver_version,
+          description.runtime_version(),
+          description.compile_time_toolkit_version(),
+          description.dnn_version());
     }
   } else {
     VLOG(1) << "XLA compile-only service constructed";
@@ -291,7 +299,7 @@ Service::BuildExecutables(const HloModuleProto* module_proto,
   return std::move(executables);
 }
 
-absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
 Service::BuildAotResults(
     const HloModuleProto* module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
@@ -312,7 +320,7 @@ Service::BuildAotResults(
   aot_options.set_run_backend_only(run_backend_only);
 
   TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
+      std::vector<std::unique_ptr<CompiledModule>> aot_results,
       backend->compiler()->CompileAheadOfTime(std::move(module), aot_options));
   return std::move(aot_results);
 }
@@ -321,7 +329,7 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
     absl::Span<const std::vector<const ShapedBuffer*>> arguments,
     Backend* backend, const DeviceHandle& device_handle,
-    const std::string& result_tag, ExecutionProfile* profile) {
+    absl::string_view result_tag, ExecutionProfile* profile) {
   // Set up streams.
   std::vector<StreamPool::Ptr> streams;
 
@@ -541,6 +549,7 @@ absl::StatusOr<std::vector<std::unique_ptr<GlobalData>>> Service::ExecuteGraph(
   TF_RETURN_IF_ERROR(execution_status);
 
   std::vector<std::unique_ptr<GlobalData>> out;
+  out.reserve(outputs.size());
   for (GlobalDataHandle& output : outputs) {
     out.push_back(std::make_unique<GlobalData>(this, output));
   }
@@ -902,7 +911,7 @@ absl::StatusOr<Literal> Service::ComputeConstantGraph(
   TF_ASSIGN_OR_RETURN(
       ProgramShape program_shape,
       ProgramShape::FromProto(computation.proto().host_program_shape()));
-  TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
+  DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
   if (output_layout) {
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(

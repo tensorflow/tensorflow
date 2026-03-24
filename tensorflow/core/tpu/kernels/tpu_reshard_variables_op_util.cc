@@ -55,7 +55,7 @@ absl::Status FlushProgramMemory(se::Platform* platform, int device_ordinal) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<tpu::TpuNodeContext> node_interfaces,
                       tpu::TpuNodeContext::Create(device_ordinal));
 
-  auto* executor = tensorflow::down_cast<tpu::TpuExecutorInterface*>(
+  auto* executor = absl::down_cast<TpuExecutorInterface*>(
       node_interfaces->stream_executor());
   return executor->UnloadAllPrograms();
 }
@@ -80,7 +80,7 @@ bool IsDefaultKey(const Tensor& key) { return key.vec<tstring>()(0).empty(); }
 // Looks up the input `key` in the compilation cache, populating
 // `*rendezvous_key_base` and `*entry`.
 absl::Status GetComputationCacheEntry(
-    const Tensor& key, string* rendezvous_key_base,
+    const Tensor& key, std::string* rendezvous_key_base,
     std::unique_ptr<tpu::CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
   tsl::profiler::TraceMe trace_me("TPUReshardVariablesOpKernel::LookupProto",
@@ -99,7 +99,7 @@ absl::Status GetComputationCacheEntry(
 }
 
 // Builds an InputBuffers object that describes the inputs to the computation.
-absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
+absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceAddress>> BuildInputBuffers(
     OpKernelContext* context, const std::vector<VariableInfo>& variables,
     const xla::Shape& input_host_shape, xla::Backend* backend,
     int device_ordinal, se::Stream* stream) {
@@ -150,10 +150,11 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
         validate_shape(variables[i].index(), *variables[i].var()->tensor()));
   }
 
-  se::DeviceMemoryAllocator* const allocator = backend->memory_allocator();
+  stream_executor::DeviceAddressAllocator* const allocator =
+      backend->memory_allocator();
   xla::TransferManager* const transfer_manager = backend->transfer_manager();
 
-  xla::ShapeTree<xla::MaybeOwningDeviceMemory> input_buffers(
+  xla::ShapeTree<xla::MaybeOwningDeviceAddress> input_buffers(
       transfer_manager->HostShapeToDeviceShape(input_host_shape));
 
   // Allocates a buffer for the root tuple.
@@ -165,15 +166,17 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
   auto set_input_buffers_helper = [&](int arg_index, xla::ShapedBuffer* buffers,
                                       bool owning = false) {
     buffers->buffers().ForEachMutableElement(
-        [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+        [&](const xla::ShapeIndex& index,
+            stream_executor::DeviceAddressBase* buffer) {
           xla::ShapeIndex in_index = {arg_index};
           for (int64_t j : index) {
             in_index.push_back(j);
           }
           if (owning) {
             *input_buffers.mutable_element(in_index) =
-                se::OwningDeviceMemory(*buffer, device_ordinal, allocator);
-            *buffer = se::DeviceMemoryBase();
+                stream_executor::ScopedDeviceAddress<uint8_t>(
+                    *buffer, device_ordinal, allocator);
+            *buffer = stream_executor::DeviceAddressBase();
           } else {
             *input_buffers.mutable_element(in_index) = *buffer;
           }
@@ -214,7 +217,7 @@ absl::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
 // Perform a compaction to reduce fragmentation.
 absl::Status PerformCompaction(stream_executor::Stream* stream) {
   tsl::profiler::TraceMe trace_me("PerformCompaction", /*level=*/2);
-  auto* ds_executor = down_cast<tpu::TpuExecutorInterface*>(stream->parent());
+  auto* ds_executor = absl::down_cast<TpuExecutorInterface*>(stream->parent());
   TF_RETURN_IF_ERROR(ds_executor->EnqueueCompactionOnStreamForHbm(stream));
   // LoadProgram and GetOrCreateConstantHandle are not managed by stream
   // dependencies but they write to shared memory, so we need to block here to
@@ -268,7 +271,8 @@ absl::Status UpdateOutputVariables(
   TF_RET_CHECK(result_buffers.on_host_shape().IsTuple());
   TF_RET_CHECK(!xla::ShapeUtil::IsNestedTuple(result_buffers.on_host_shape()));
 
-  se::DeviceMemoryAllocator* const allocator = backend->memory_allocator();
+  stream_executor::DeviceAddressAllocator* const allocator =
+      backend->memory_allocator();
 
   auto output_buffers = result_buffers.release();
   const xla::Shape& output_host_shape = output_buffers.on_host_shape();
@@ -285,7 +289,8 @@ absl::Status UpdateOutputVariables(
       xla::ScopedShapedBuffer shaped_buffer(host_shape, device_shape, allocator,
                                             device_ordinal);
       shaped_buffer.buffers().ForEachMutableElement(
-          [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+          [&](const xla::ShapeIndex& index,
+              stream_executor::DeviceAddressBase* buffer) {
             xla::ShapeIndex out_index = {i};
             for (int64_t j : index) {
               out_index.push_back(j);

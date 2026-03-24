@@ -14,23 +14,39 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/error_spec.h"
+#include "xla/ffi/ffi.h"
+#include "xla/ffi/ffi_api.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
+#include "xla/tests/test_utils.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -47,8 +63,8 @@ se::StreamExecutor* GpuExecutor() {
 
 bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
     if (device_description.driver_version() >=
             stream_executor::SemanticVersion(12, 9, 0) &&
@@ -65,10 +81,108 @@ class CommandBufferTest
       public ::testing::WithParamInterface<
           DebugOptions::CommandBufferSchedulingMode> {
  protected:
+  bool IsRocm() {
+    return test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm);
+  }
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_command_buffer_scheduling_mode(GetParam());
     return debug_options;
+  }
+
+  // Execute compiled module three times to exercise warm-up, create, and
+  // update paths. Third run uses cloned arguments to encourage device buffer
+  // address changes.
+  void ExecuteThreePhasesAndExpect(std::unique_ptr<HloModule> module,
+                                   absl::Span<const Literal* const> arguments,
+                                   const Literal& expected,
+                                   bool run_hlo_passes) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<OpaqueExecutable> executable,
+        CreateExecutable(std::move(module), run_hlo_passes));
+
+    // 1) Warm-up (may run thunks)
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal result1,
+        test_runner().ExecuteWithExecutable(executable.get(), arguments));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result1));
+
+    // 2) Create (record and execute command buffer)
+    TF_ASSERT_OK_AND_ASSIGN(
+        Literal result2,
+        test_runner().ExecuteWithExecutable(executable.get(), arguments));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result2));
+
+    // 3) Update (execute with cloned arguments to attempt buffer changes)
+    std::vector<Literal> cloned_args_storage;
+    cloned_args_storage.reserve(arguments.size());
+    std::vector<const Literal*> cloned_args;
+    cloned_args.reserve(arguments.size());
+    for (const Literal* arg : arguments) {
+      cloned_args_storage.push_back(arg->Clone());
+      cloned_args.push_back(&cloned_args_storage.back());
+    }
+
+    TF_ASSERT_OK_AND_ASSIGN(Literal result3,
+                            test_runner().ExecuteWithExecutable(
+                                executable.get(), absl::MakeSpan(cloned_args)));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result3));
+  }
+
+  // Same as above, but generates fake inputs and compares results to a
+  // reference execution. Useful for tests originally using RunAndCompare.
+  void RunAndCompareThreeIterations(std::unique_ptr<HloModule> module,
+                                    bool run_hlo_passes,
+                                    const std::optional<ErrorSpec>& error) {
+    // Verify module then clone for reference.
+    CHECK_OK(this->verifier().Run(module.get()).status());
+    std::unique_ptr<HloModule> reference_module = module->Clone();
+
+    // Prepare fake args for both runners.
+    TF_ASSERT_OK_AND_ASSIGN(auto fake_args, MakeFakeArguments(module.get()));
+    auto arg_ptrs = LiteralUtil::MakePointers(fake_args);
+
+    // Store input_layouts and untuple_results before the module is consumed
+    // by CreateExecutable.
+    auto input_layouts = module->entry_computation_layout().parameter_layouts();
+    bool untuple_results = module->result_shape().IsTuple();
+
+    // Reference once.
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto reference,
+        reference_runner().Execute(std::move(reference_module),
+                                   absl::MakeSpan(arg_ptrs), run_hlo_passes));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto exec, CreateExecutable(std::move(module), run_hlo_passes));
+
+    auto* pjrt_runner = tsl::down_cast<HloRunnerPjRt*>(&test_runner());
+    ASSERT_TRUE(pjrt_runner != nullptr);
+
+    // Create two copies of device buffers to make sure command buffer saved
+    // pointers really get updated during the last "update run".
+    enum BufferSet { kInitial = 0, kUpdated = 1 };
+    std::array<std::vector<std::unique_ptr<PjRtBuffer>>, 2> argument_handles;
+    for (auto& handle : argument_handles) {
+      TF_ASSERT_OK_AND_ASSIGN(handle,
+                              pjrt_runner->TransferLiteralsToDefaultDevice(
+                                  input_layouts, absl::MakeSpan(arg_ptrs)));
+    }
+
+    static constexpr absl::string_view kPhases[] = {"warm-up", "create",
+                                                    "update"};
+    for (size_t i = 0; i < std::size(kPhases); i++) {
+      BufferSet current_set = (i < 2) ? kInitial : kUpdated;
+      TF_ASSERT_OK_AND_ASSIGN(auto output_buffers,
+                              pjrt_runner->ExecuteWithDeviceBuffers(
+                                  exec.get(), argument_handles[current_set]));
+
+      TF_ASSERT_OK_AND_ASSIGN(auto result,
+                              pjrt_runner->TransferLiteralsFromDevice(
+                                  output_buffers, untuple_results));
+      EXPECT_TRUE(LiteralTestUtil::NearOrEqual(reference, result, error))
+          << "Mismatch on " << kPhases[i] << " run (iteration " << i << ")";
+    }  // for
   }
 };
 
@@ -119,13 +233,133 @@ TEST_P(CommandBufferTest, Fusions) {
   Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   Literal expected = LiteralUtil::CreateR2<float>({{3.0, 8.0}, {15.0, 24.0}});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
+}
+
+static absl::Status Memcpy(se::Stream* stream, ffi::AnyBuffer src,
+                           ffi::Result<ffi::AnyBuffer> dst) {
+  se::DeviceAddressBase dst_mem = dst->device_memory();
+  se::DeviceAddressBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemcpyExecuteNoState, Memcpy,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Arg<ffi::AnyBuffer>()   // src
+                           .Ret<ffi::AnyBuffer>(),  // dst
+                       {ffi::Traits::kCmdBufferCompatible});
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$memcpy", "gpu",
+                         kMemcpyExecuteNoState);
+
+TEST_P(CommandBufferTest, TracedCustomCalls) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule m, is_scheduled=true
+
+  command_buffer {
+    p0 = f32[2,2] parameter(0)
+    ROOT f3 = f32[2,2] custom-call(p0),
+      custom_call_target="__xla_test$$memcpy",
+      api_version=API_VERSION_TYPED_FFI
+  }
+
+  ENTRY main {
+    p0 = f32[2,2] parameter(0)
+    ROOT call = f32[2,2] call(p0), to_apply=command_buffer
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal expected = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
+}
+
+// Empty memcpy state to test stateful custom calls.
+struct MemcpyState {};
+
+static absl::StatusOr<std::unique_ptr<MemcpyState>> MemcpyInstantiate() {
+  return std::make_unique<MemcpyState>();
+}
+
+static absl::StatusOr<std::unique_ptr<MemcpyState>> MemcpyInitialize() {
+  return std::make_unique<MemcpyState>();
+}
+
+static absl::Status StatefulMemcpy(
+    se::Stream* stream, const xla::gpu::CollectiveParams* collective_params,
+    const xla::gpu::CollectiveMemory* collective_memory, MemcpyState* state,
+    MemcpyState* device_state,
+
+    ffi::AnyBuffer src, ffi::Result<ffi::AnyBuffer> dst) {
+  EXPECT_NE(state, nullptr);
+  EXPECT_NE(device_state, nullptr);
+  EXPECT_NE(collective_params, nullptr);
+  EXPECT_NE(collective_memory, nullptr);
+  se::DeviceAddressBase dst_mem = dst->device_memory();
+  se::DeviceAddressBase src_mem = src.device_memory();
+  return stream->MemcpyD2D(&dst_mem, src_mem, src_mem.size());
+}
+
+XLA_FFI_DEFINE_HANDLER(kMemcpyInstantiate, MemcpyInstantiate,
+                       ffi::Ffi::BindInstantiate());
+
+XLA_FFI_DEFINE_HANDLER(kMemcpyInitialize, MemcpyInitialize,
+                       ffi::Ffi::BindInitialize());
+
+XLA_FFI_DEFINE_HANDLER(kMemcpyExecute, StatefulMemcpy,
+                       ffi::Ffi::Bind()
+                           .Ctx<ffi::Stream>()
+                           .Ctx<ffi::CollectiveParams>()
+                           .Ctx<ffi::CollectiveMemory>()
+                           .Ctx<ffi::Initialized<MemcpyState>>()
+                           .Ctx<ffi::State<MemcpyState>>()
+                           .Arg<ffi::AnyBuffer>()   // src
+                           .Ret<ffi::AnyBuffer>(),  // dst
+                       {ffi::Traits::kCmdBufferCompatible});
+
+XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "__xla_test$$stateful_memcpy",
+                         "gpu",
+                         {
+                             /*instantiate=*/kMemcpyInstantiate,
+                             /*prepare=*/nullptr,
+                             /*initialize=*/kMemcpyInitialize,
+                             /*execute=*/kMemcpyExecute,
+                         });
+
+TEST_P(CommandBufferTest, TracedStatefulCustomCalls) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule m, is_scheduled=true
+
+  command_buffer {
+    p0 = f32[2,2] parameter(0)
+    ROOT f3 = f32[2,2] custom-call(p0),
+      custom_call_target="__xla_test$$stateful_memcpy",
+      api_version=API_VERSION_TYPED_FFI
+  }
+
+  ENTRY main {
+    p0 = f32[2,2] parameter(0)
+    ROOT call = f32[2,2] call(p0), to_apply=command_buffer
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal argument = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal expected = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
 }
 
 TEST_P(CommandBufferTest, TrueFalseConditional) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -170,9 +404,8 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 
     Literal pred = LiteralUtil::CreateR0<bool>(true);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&pred, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&pred, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `false` branch.
@@ -180,13 +413,15 @@ TEST_P(CommandBufferTest, TrueFalseConditional) {
 
     Literal pred = LiteralUtil::CreateR0<bool>(false);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&pred, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&pred, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 }
 
 TEST_P(CommandBufferTest, IndexConditional) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -230,9 +465,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(0);
     Literal expected = LiteralUtil::CreateR2<float>({{2.0, 4.0}, {6.0, 8.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `1` branch.
@@ -240,9 +474,8 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 
   {  // Execute `1024` branch (our of bound index executes N-1 branch).
@@ -250,13 +483,15 @@ TEST_P(CommandBufferTest, IndexConditional) {
 
     Literal index = LiteralUtil::CreateR0<int32_t>(1024);
     Literal expected = LiteralUtil::CreateR2<float>({{1.0, 4.0}, {9.0, 16.0}});
-    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(m), {&index, &p1},
-                                                    /*run_hlo_passes=*/false));
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+    ExecuteThreePhasesAndExpect(std::move(m), {&index, &p1}, expected,
+                                /*run_hlo_passes=*/false);
   }
 }
 
 TEST_P(CommandBufferTest, WhileLoop) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "Graph conditionals are not yet supported on HIP graphs";
+  }
   constexpr absl::string_view hlo_text = R"(
   HloModule m, is_scheduled=true
 
@@ -313,10 +548,8 @@ TEST_P(CommandBufferTest, WhileLoop) {
   Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
   Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
 }
 
 TEST_P(CommandBufferTest, ControlDependencyTest) {
@@ -459,6 +692,10 @@ ENTRY main.49 {
 }
 
 TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
+  if (GpuExecutor() != nullptr) {
+    GTEST_SKIP() << "This test leads to segfault in CommandBuffer #36087";
+  }
+
   constexpr absl::string_view hlo_text = R"(
     dynamic_slice {
       p0 = s32[4,8,8]{2,1,0} parameter(0)
@@ -574,8 +811,30 @@ TEST_P(CommandBufferTest, DynamicSliceCopyFusionCmd) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
 
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-3, 2e-3}));
+  RunAndCompareThreeIterations(std::move(module), /*run_hlo_passes=*/false,
+                               ErrorSpec{1e-3, 2e-3});
+
+  if (!IsAtLeastCuda12900(GpuExecutor())) {
+    GTEST_SKIP() << "While loop unrolling is not supported for CUDA < 12.9";
+  }
+
+  debug_options.add_xla_gpu_enable_command_buffer(
+      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
+  debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::WHILE);
+  debug_options.set_xla_gpu_command_buffer_unroll_loops(true);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unrolled_module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+
+  RunAndCompareThreeIterations(std::move(unrolled_module),
+                               /*run_hlo_passes=*/false, ErrorSpec{1e-3, 2e-3});
 }
 
 TEST_P(CommandBufferUnrollTest, WhileLoop) {
@@ -641,10 +900,8 @@ TEST_P(CommandBufferUnrollTest, WhileLoop) {
   Literal expected_value = LiteralUtil::CreateR0<float>(20.0);
   Literal expected = LiteralUtil::MakeTuple({&expected_cnt, &expected_value});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      Literal result,
-      Execute(std::move(module), {&argument}, /*run_hlo_passes=*/false));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  ExecuteThreePhasesAndExpect(std::move(module), {&argument}, expected,
+                              /*run_hlo_passes=*/false);
 }
 
 TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
@@ -726,7 +983,7 @@ TEST_P(CommandBufferUnrollTest, WhileLoopMultiDevice) {
   // Flatten tuple parameter into individual leaves for PJRT replicated execute.
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_replicas=*/2,
+      ExecuteReplicated(std::move(module), {&cnt, &value}, /*num_devices=*/2,
                         /*use_threads=*/true, /*run_hlo_passes=*/false));
   ASSERT_EQ(results.size(), 2);
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, results[0]));

@@ -46,7 +46,7 @@ const char* const kXlaClusterOutput = "XlaClusterOutput";
 
 bool IsCpuGpuCompile(const Graph* graph) {
   for (Node* n : graph->nodes()) {
-    string name;
+    std::string name;
     // Only consider nodes being compiled.
     if (!TryGetNodeAttr(n->attrs(), kXlaClusterIdAttr, &name)) continue;
     // Early return for any node with a device that is not a CPU or GPU.
@@ -185,7 +185,7 @@ absl::Status RewriteSubgraph(
   // Uniquify the function name by computing a fingerprint of the function.
   // Nondeterminism in serialization would not lead to incorrect results, but
   // may cause spurious cache misses.
-  TF_ASSIGN_OR_RETURN(uint64 fingerprint, FingerprintGraph(*graph));
+  TF_ASSIGN_OR_RETURN(uint64_t fingerprint, FingerprintGraph(*graph));
   VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
   return absl::OkStatus();
@@ -360,7 +360,8 @@ absl::Status RewriteSubgraph(
 /*static*/ absl::Status EncapsulateXlaComputationsPass::BuildXlaLaunchOps(
     Graph* graph) {
   const auto is_xla_launch_node = [](const Node& node) -> absl::StatusOr<bool> {
-    const string& name = GetNodeAttrString(node.attrs(), kXlaClusterIdAttr);
+    const std::string& name =
+        GetNodeAttrString(node.attrs(), kXlaClusterIdAttr);
     return !name.empty();
   };
 

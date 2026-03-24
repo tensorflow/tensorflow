@@ -68,21 +68,23 @@ using ::testing::Ne;
 
 const char gpu_device[] = "/job:a/replica:0/task:0/device:GPU:0";
 
-string SplitByDevice(const Node* node) { return node->assigned_device_name(); }
+std::string SplitByDevice(const Node* node) {
+  return node->assigned_device_name();
+}
 
-string DeviceName(const Node* node) {
+std::string DeviceName(const Node* node) {
   char first = node->name()[0];
   if (first == 'G') {
     return gpu_device;
   } else {
-    const string cpu_prefix = "/job:a/replica:0/task:0/cpu:";
+    const std::string cpu_prefix = "/job:a/replica:0/task:0/cpu:";
     int index = first - 'A';
     return absl::StrCat(cpu_prefix, index);
   }
 }
 
 void Partition(const GraphDef& graph_def,
-               std::unordered_map<string, GraphDef>* partitions) {
+               std::unordered_map<std::string, GraphDef>* partitions) {
   Graph g(OpRegistry::Global());
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &g));
@@ -90,16 +92,18 @@ void Partition(const GraphDef& graph_def,
   // Assigns devices to each node. Uses 1st letter of the node name as the
   // device index if no device is specified.
   for (Node* node : g.nodes()) {
-    string device_name = !node->requested_device().empty()
-                             ? node->requested_device()
-                             : DeviceName(node);
+    std::string device_name = !node->requested_device().empty()
+                                  ? node->requested_device()
+                                  : DeviceName(node);
     node->set_assigned_device_name(device_name);
   }
 
   PartitionOptions popts;
   popts.node_to_loc = SplitByDevice;
-  popts.new_name = [&g](const string& prefix) { return g.NewName(prefix); };
-  popts.get_incarnation = [](const string& name) {
+  popts.new_name = [&g](const std::string& prefix) {
+    return g.NewName(prefix);
+  };
+  popts.get_incarnation = [](const std::string& name) {
     return (name[0] - 'A') + 100;
   };
   absl::Status s = Partition(popts, &g, partitions);
@@ -116,7 +120,7 @@ void Partition(const GraphDef& graph_def,
 }
 
 void CheckLoopConstruction(const GraphDef& graph_def) {
-  std::unordered_map<string, GraphDef> partitions;
+  std::unordered_map<std::string, GraphDef> partitions;
   Partition(graph_def, &partitions);
   for (const auto& kv : partitions) {
     const GraphDef& gdef = kv.second;
@@ -128,7 +132,7 @@ void CheckLoopConstruction(const GraphDef& graph_def) {
       // _recvs must have a control input
       if (ndef.op() == "_Recv") {
         bool has_control = false;
-        for (const string& input_name : ndef.input()) {
+        for (const std::string& input_name : ndef.input()) {
           if (absl::StartsWith(input_name, "^")) {
             has_control = true;
             break;
@@ -171,10 +175,10 @@ REGISTER_OP("Combine")
     .Output("o: float")
     .SetShapeFn(shape_inference::UnknownShape);
 
-Output ConstructOp(const Scope& scope, const string& op_type,
+Output ConstructOp(const Scope& scope, const std::string& op_type,
                    const absl::Span<const Input> inputs) {
   if (!scope.ok()) return Output();
-  const string unique_name = scope.GetUniqueNameForOp(op_type);
+  const std::string unique_name = scope.GetUniqueNameForOp(op_type);
   auto builder =
       NodeBuilder(unique_name, op_type, scope.graph()->op_registry());
   for (auto const& input : inputs) {
@@ -230,20 +234,20 @@ class GraphPartitionTest : public ::testing::Test {
   void ExpectMatchA() {
     GraphDef graph_def;
     TF_EXPECT_OK(scope_a_.ToGraphDef(&graph_def));
-    string a = "/job:a/replica:0/task:0/cpu:0";
+    std::string a = "/job:a/replica:0/task:0/cpu:0";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[a]);
   }
 
   void ExpectMatchB() {
     GraphDef graph_def;
     TF_EXPECT_OK(scope_b_.ToGraphDef(&graph_def));
-    string b = "/job:a/replica:0/task:0/cpu:1";
+    std::string b = "/job:a/replica:0/task:0/cpu:1";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[b]);
   }
 
   void ExpectFunctions(const FunctionDefLibrary& library,
-                       const std::set<string>& expected_names) {
-    std::set<string> actual_names;
+                       const std::set<std::string>& expected_names) {
+    std::set<std::string> actual_names;
     for (const FunctionDef& fdef : library.function()) {
       actual_names.insert(fdef.signature().name());
     }
@@ -254,7 +258,7 @@ class GraphPartitionTest : public ::testing::Test {
   GraphDef in_graph_def_;
   Scope scope_a_;
   Scope scope_b_;
-  std::unordered_map<string, GraphDef> partitions_;
+  std::unordered_map<std::string, GraphDef> partitions_;
 };
 
 TEST_F(GraphPartitionTest, SingleDevice) {
@@ -277,8 +281,8 @@ TEST_F(GraphPartitionTest, CrossDeviceData) {
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
-  string a = "/job:a/replica:0/task:0/cpu:0";
-  string b = "/job:a/replica:0/task:0/cpu:1";
+  std::string a = "/job:a/replica:0/task:0/cpu:0";
+  std::string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
   ExpectMatchA();
@@ -298,8 +302,8 @@ TEST_F(GraphPartitionTest, CrossDeviceControl) {
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
-  string a = "/job:a/replica:0/task:0/cpu:0";
-  string b = "/job:a/replica:0/task:0/cpu:1";
+  std::string a = "/job:a/replica:0/task:0/cpu:0";
+  std::string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   auto c =
       Const(scope_a_.WithOpName("A1/ctrl/_0").WithControlDependencies(a1), {});
@@ -323,8 +327,8 @@ TEST_F(GraphPartitionTest, CrossDeviceData_MultiUse) {
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
-  string a = "/job:a/replica:0/task:0/cpu:0";
-  string b = "/job:a/replica:0/task:0/cpu:1";
+  std::string a = "/job:a/replica:0/task:0/cpu:0";
+  std::string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
   ExpectMatchA();
@@ -346,8 +350,8 @@ TEST_F(GraphPartitionTest, CrossDeviceControl_MultiUse) {
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
-  string a = "/job:a/replica:0/task:0/cpu:0";
-  string b = "/job:a/replica:0/task:0/cpu:1";
+  std::string a = "/job:a/replica:0/task:0/cpu:0";
+  std::string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   auto c =
       Const(scope_a_.WithOpName("A1/ctrl/_0").WithControlDependencies(a1), {});
@@ -372,8 +376,8 @@ TEST_F(GraphPartitionTest, CrossDevice_DataControl) {
   Partition(ToGraphDef(), &partitions_);
   EXPECT_EQ(2, partitions_.size());
 
-  string a = "/job:a/replica:0/task:0/cpu:0";
-  string b = "/job:a/replica:0/task:0/cpu:1";
+  std::string a = "/job:a/replica:0/task:0/cpu:0";
+  std::string b = "/job:a/replica:0/task:0/cpu:1";
   a1 = FloatInput(scope_a_.WithOpName("A1"));
   _Send(scope_a_.WithOpName("A1/_0"), a1, "edge_1_A1", a, 82, b);
   auto c =
@@ -417,7 +421,7 @@ TEST_F(GraphPartitionTest, CrossDeviceLoopSimple1) {
   auto b1 = Identity(in_.WithOpName("B1"), a3);
   NextIteration(in_.WithOpName("B5"), b1);
 
-  std::unordered_map<string, GraphDef> partitions;
+  std::unordered_map<std::string, GraphDef> partitions;
   Partition(ToGraphDef(), &partitions);
   for (const auto& kv : partitions) {
     const GraphDef& gdef = kv.second;
@@ -471,10 +475,12 @@ TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {
 
   PartitionOptions popts;
   popts.node_to_loc = SplitByDevice;
-  popts.new_name = [&g](const string& prefix) { return g.NewName(prefix); };
-  popts.get_incarnation = [](const string&) { return 1; };
+  popts.new_name = [&g](const std::string& prefix) {
+    return g.NewName(prefix);
+  };
+  popts.get_incarnation = [](const std::string&) { return 1; };
 
-  std::unordered_map<string, GraphDef> partitions;
+  std::unordered_map<std::string, GraphDef> partitions;
   status = Partition(popts, &g, &partitions);
   // Partitioning should fail, but not crash like it did before the
   // changes that accompanied the addition of this test.
@@ -498,8 +504,8 @@ TEST_F(GraphPartitionTest, Functions) {
   EXPECT_EQ(2, partitions_.size());
 
   // Test that partition graphs inherit function library from original graph.
-  string a = "/job:a/replica:0/task:0/cpu:0";
-  string b = "/job:a/replica:0/task:0/cpu:1";
+  std::string a = "/job:a/replica:0/task:0/cpu:0";
+  std::string b = "/job:a/replica:0/task:0/cpu:1";
 
   // Node "A2" is placed in part `a`, and uses only "XTimesTwo".
   ExpectFunctions(partitions_[a].library(), {"XTimesTwo"});
@@ -602,7 +608,7 @@ TEST_F(GraphPartitionTest, GraphDebugInfo) {
 
   // Expect each partitioned graph to contain the stack traces for its nodes.
   // A stack trace for A1 should be in the A partition (".../cpu:0").
-  string a = "/job:a/replica:0/task:0/cpu:0";
+  std::string a = "/job:a/replica:0/task:0/cpu:0";
   const GraphDebugInfo& a_debug_info = partitions_[a].debug_info();
   StackTracesMap traces = LoadTracesFromDebugInfo(a_debug_info);
   const auto& a_it = traces.find("A1");
@@ -611,7 +617,7 @@ TEST_F(GraphPartitionTest, GraphDebugInfo) {
               ::testing::ContainsRegex("alpha.cc.*30"));
 
   // Stack traces for B1 and B2 should be in the B partition (".../cpu:1").
-  string b = "/job:a/replica:0/task:0/cpu:1";
+  std::string b = "/job:a/replica:0/task:0/cpu:1";
   const GraphDebugInfo& b_debug_info = partitions_[b].debug_info();
   traces = LoadTracesFromDebugInfo(b_debug_info);
   const auto& b1_it = traces.find("B1");

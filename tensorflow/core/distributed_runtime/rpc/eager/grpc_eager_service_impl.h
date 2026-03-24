@@ -50,8 +50,7 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
   virtual ~GrpcEagerServiceImpl() {}
 
   // Create a master context in eager service.
-  absl::Status CreateMasterContext(tensorflow::uint64 context_id,
-                                   EagerContext* context);
+  absl::Status CreateMasterContext(uint64_t context_id, EagerContext* context);
 
   void HandleRPCsLoop() override;
   void Shutdown() override;
@@ -136,7 +135,7 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
       // streaming connection.
       absl::Status status = local_impl_.Enqueue(
           /*call_opts=*/nullptr, &call->request(), call->mutable_response(),
-          reinterpret_cast<uint64>(static_cast<void*>(call)));
+          reinterpret_cast<uint64_t>(static_cast<void*>(call)));
 
       if (status.ok()) {
         VLOG(1) << "local_impl_.Enqueue completed successfully";

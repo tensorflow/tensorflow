@@ -44,12 +44,12 @@ this directory:
 
 ```bash
 DOCKER_BUILDKIT=1 docker build \
-  --build-arg PYTHON_VERSION=python3.9 --target=devel -t my-tf-devel .
+  --build-arg PYTHON_VERSION=python3.10 --target=devel -t my-tf-devel .
 ```
 
 It will take a long time to build devtoolset and install CUDA packages. After
 it's done, you can use the commands below to test your changes. Just replace
-`tensorflow/build:latest-python3.9` with `my-tf-devel` to use your image
+`tensorflow/build:latest-python3.10` with `my-tf-devel` to use your image
 instead.
 
 ### Automatic GCR.io Builds for Presubmits
@@ -98,16 +98,16 @@ Now let's build `tf-nightly`.
    Hub](https://hub.docker.com/r/tensorflow/build/tags). The options for the
    `master` branch are:
 
+    - `tensorflow/build:latest-python3.12`
     - `tensorflow/build:latest-python3.11`
     - `tensorflow/build:latest-python3.10`
-    - `tensorflow/build:latest-python3.9`
 
-    For this example we'll use `tensorflow/build:latest-python3.9`.
+    For this example we'll use `tensorflow/build:latest-python3.10`.
 
 3. Pull the container you decided to use.
 
     ```bash
-    docker pull tensorflow/build:latest-python3.9
+    docker pull tensorflow/build:latest-python3.10
     ```
 
 4. Start a backgrounded Docker container with the three folders mounted.
@@ -130,11 +130,11 @@ Now let's build `tf-nightly`.
 
     ```bash
     docker run --name tf -w /tf/tensorflow -it -d \
-      --env TF_PYTHON_VERSION=3.9 \
+      --env TF_PYTHON_VERSION=3.10 \
       -v "/tmp/packages:/tf/pkg" \
       -v "/tmp/tensorflow:/tf/tensorflow" \
       -v "/tmp/bazelcache:/tf/cache" \
-      tensorflow/build:latest-python3.9 \
+      tensorflow/build:latest-python3.10 \
       bash
     ```
 

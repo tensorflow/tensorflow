@@ -175,9 +175,6 @@ struct HloVerifierOpts {
   // cloned (".clone" suffix) or rematted (".remat");
   bool verify_instruction_name_unchanged = false;
 
-  // Check if channel instructions all have unique channel ids.
-  bool verify_unique_channel_ids = true;
-
   // Check if a shape has a host memory space color
   bool verify_no_host_memory_space = false;
 
@@ -253,6 +250,7 @@ class ShapeVerifier : public DfsHloVisitor {
   absl::Status HandleGetTupleElement(
       HloInstruction* get_tuple_element) override;
   absl::Status HandleReduce(HloInstruction* reduce) override;
+  absl::Status HandleScan(HloInstruction* scan) override;
   absl::Status HandleBitcast(HloInstruction* bitcast) override;
   absl::Status HandleBroadcast(HloInstruction* broadcast) override;
   absl::Status HandleReshape(HloInstruction* reshape) override;
@@ -490,9 +488,8 @@ class HloVerifier : public HloModulePass {
   absl::string_view name() const override { return "hlo-verifier"; }
 
   // Never returns true; no instructions are ever modified by this pass.
-  using HloPassInterface::Run;
-  using HloPassInterface::RunOnModuleGroup;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 

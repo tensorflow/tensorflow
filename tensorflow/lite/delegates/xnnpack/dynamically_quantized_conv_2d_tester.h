@@ -21,13 +21,15 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {
 
-class DynamicallyQuantizedConv2DTester {
+class DynamicallyQuantizedConv2DTester
+    : public ModelCache<DynamicallyQuantizedConv2DTester> {
  public:
   DynamicallyQuantizedConv2DTester() = default;
   DynamicallyQuantizedConv2DTester(const DynamicallyQuantizedConv2DTester&) =
@@ -209,9 +211,9 @@ class DynamicallyQuantizedConv2DTester {
     return *this;
   }
 
-  void Test(TfLiteDelegate* delegate) const;
+  void Test(TfLiteDelegate* delegate);
 
-  std::vector<char> CreateTfLiteModel() const;
+  std::vector<char> CreateTfLiteModel() const override;
 
  private:
   inline ::tflite::Padding Padding() const { return padding_; }

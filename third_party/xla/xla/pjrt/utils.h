@@ -40,6 +40,14 @@ limitations under the License.
 namespace xla {
 
 using MemorySpaceColor = int;
+// Make sure to choose a delimiter that will never show up in the attribute
+// strings (e.g., Layout or Memory Space strings).
+inline constexpr absl::string_view kAttrValueDelimiter = ";";
+
+inline constexpr absl::string_view kArgLayoutModesAttr = "arg_layout_modes";
+inline constexpr absl::string_view kOutLayoutModesAttr = "out_layout_modes";
+inline constexpr absl::string_view kArgMemorySpacesAttr = "arg_memory_spaces";
+inline constexpr absl::string_view kOutMemorySpacesAttr = "out_memory_spaces";
 
 // Returns the num_replicas, num_partitions and device assignment given a
 // ExecutableBuildOptions and whether we want a portable executable.
@@ -137,6 +145,9 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 // executable was compiled with.
 absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     const HloModule& hlo_module, bool tuple_inputs);
+absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+    const HloInputOutputAliasConfig& config, int num_parameters,
+    bool tuple_inputs);
 
 // Return max parallelism level.
 int DefaultThreadPoolSize();

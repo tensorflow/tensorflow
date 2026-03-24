@@ -59,10 +59,10 @@ class LoadedExecutable final
  public:
   LoadedExecutable(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper, uint64_t handle,
-                   std::string name, int num_devices, DeviceListRef devices,
+                   std::string name, int num_devices,
+                   std::optional<DeviceListRef> devices,
                    std::vector<xla::ifrt::Device*> addressable_devices,
                    absl::StatusOr<std::optional<std::string>> fingerprint,
-                   tsl::Future<> ready_future,
                    std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
                        loaded_host_callbacks,
                    std::vector<uint64_t> loaded_host_callback_handles);
@@ -72,7 +72,7 @@ class LoadedExecutable final
   xla::ifrt::Client* client() const override;
   absl::string_view name() const override;
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
-  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
   executable_version() const override {
     return absl::UnimplementedError("Not implemented");
   }
@@ -81,7 +81,6 @@ class LoadedExecutable final
   xla::ifrt::UserContextRef user_context() const override {
     return user_context_;
   }
-  tsl::Future<> GetReadyFuture() const override;
 
   int num_devices() const override;
   int64_t SizeOfGeneratedCodeInBytes() const override;
@@ -111,8 +110,10 @@ class LoadedExecutable final
       absl::Span<xla::ifrt::ArrayRef> args, const ExecuteOptions& options,
       std::optional<xla::ifrt::DeviceListRef> devices) override;
 
-  const DeviceListRef& devices() const override;
+  std::optional<DeviceListRef> devices() const override;
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
+
+  void SetDeleteOptions(const DeleteOptions& options) override;
 
   static char ID;  // NOLINT
 
@@ -142,16 +143,18 @@ class LoadedExecutable final
     int64_t size_of_generated_code_in_bytes;
   };
 
+  tsl::Future<> FetchExecuteResult(uint64_t status_handle,
+                                   std::optional<uint64_t> device_time_key);
+
   xla::ifrt::Client* client_;
   std::shared_ptr<RpcHelper> rpc_helper_;
 
   const uint64_t handle_;
   const std::string name_;
   const int num_devices_;
-  const DeviceListRef devices_;
+  const std::optional<DeviceListRef> devices_;
   const std::vector<xla::ifrt::Device*> addressable_devices_;
   const absl::StatusOr<std::optional<std::string>> fingerprint_;
-  const tsl::Future<> ready_future_;
   const xla::ifrt::UserContextRef user_context_;
 
   class OutputSpecCache;
@@ -175,6 +178,10 @@ class LoadedExecutable final
   mutable std::optional<absl::StatusOr<std::string>>
       human_readable_program_text_
           ABSL_GUARDED_BY(human_readable_program_text_mu_);
+
+  absl::Mutex delete_options_mu_;
+  std::optional<DeleteOptions> delete_options_
+      ABSL_GUARDED_BY(delete_options_mu_);
 };
 
 }  // namespace proxy

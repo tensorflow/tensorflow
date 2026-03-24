@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <tuple>
+#include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape.h"
 
 namespace xla {
 
@@ -31,6 +32,8 @@ namespace xla {
 //   conflicts. Synchronization primitives are specific to the target backend.
 // - Determine whether a buffer has defined contents before/after we execute a
 //   thunk. This is used to detect non-deterministic behavior via checksumming.
+// - We also use shape to know how the bytes in the slice are reinterpreted by
+//   thunks. Shape can be used by rewriters in ThunkPassPipeline.
 class BufferUse {
  public:
   enum class MemoryAccess {
@@ -56,33 +59,38 @@ class BufferUse {
     kDefinedOnInputAndOutput = kDefinedOnInput | kDefinedOnOutput,
   };
 
-  BufferUse(BufferAllocation::Slice slice, MemoryAccess access)
+  BufferUse(BufferAllocation::Slice slice, MemoryAccess access, Shape shape)
       : BufferUse(slice, access,
                   access == MemoryAccess::kRead
                       ? ContentValidity::kDefinedOnInputAndOutput
-                      : ContentValidity::kDefinedOnOutput) {}
+                      : ContentValidity::kDefinedOnOutput,
+                  shape) {}
 
   BufferUse(BufferAllocation::Slice slice, MemoryAccess access,
-            ContentValidity content_validity)
-      : slice_(slice), access_(access), content_validity_(content_validity) {}
+            ContentValidity content_validity, Shape shape)
+      : slice_(slice),
+        shape_(shape),
+        access_(access),
+        content_validity_(content_validity) {}
 
-  static BufferUse Read(BufferAllocation::Slice slice) {
+  static BufferUse Read(BufferAllocation::Slice slice, Shape shape) {
     return BufferUse(slice, MemoryAccess::kRead,
-                     ContentValidity::kDefinedOnInputAndOutput);
+                     ContentValidity::kDefinedOnInputAndOutput, shape);
   }
 
-  static BufferUse Write(BufferAllocation::Slice slice) {
+  static BufferUse Write(BufferAllocation::Slice slice, Shape shape) {
     return BufferUse(slice, MemoryAccess::kWrite,
-                     ContentValidity::kDefinedOnOutput);
+                     ContentValidity::kDefinedOnOutput, shape);
   }
 
-  static BufferUse Scratch(BufferAllocation::Slice slice) {
-    return BufferUse(slice, MemoryAccess::kWrite, ContentValidity::kUndefined);
+  static BufferUse Scratch(BufferAllocation::Slice slice, Shape shape) {
+    return BufferUse(slice, MemoryAccess::kWrite, ContentValidity::kUndefined,
+                     shape);
   }
 
-  static BufferUse Consume(BufferAllocation::Slice slice) {
+  static BufferUse Consume(BufferAllocation::Slice slice, Shape shape) {
     return BufferUse(slice, MemoryAccess::kWrite,
-                     ContentValidity::kDefinedOnInput);
+                     ContentValidity::kDefinedOnInput, shape);
   }
 
   // Returns true if the buffer contains initialized data when thunk starts
@@ -105,19 +113,19 @@ class BufferUse {
     ReadWriteSet();
 
     void Add(BufferUse use);
-    void AddRead(BufferAllocation::Slice slice);
-    void AddWrite(BufferAllocation::Slice slice);
+    void AddRead(const BufferUse& use);
+    void AddWrite(const BufferUse& use);
 
     void AddAll(absl::Span<const BufferUse> uses);
 
     // Returns true if any of the buffer use(s) has a conflict with tracked
     // buffer slice reads or writes.
     bool HasConflicts(const BufferUse& use) const;
-    bool HasConflicts(const ReadWriteSet& other);
+    bool HasConflicts(const ReadWriteSet& other) const;
 
    private:
-    absl::flat_hash_set<BufferAllocation::Slice> read_;
-    absl::flat_hash_set<BufferAllocation::Slice> write_;
+    std::vector<BufferUse> read_;
+    std::vector<BufferUse> write_;
   };
 
   bool operator==(const BufferUse& other) const {
@@ -144,8 +152,11 @@ class BufferUse {
                  use.HasDefinedContentsOnOutput() ? "O" : "");
   }
 
+  const Shape& shape() const { return shape_; }
+
  private:
   BufferAllocation::Slice slice_;
+  Shape shape_;
   MemoryAccess access_;
   ContentValidity content_validity_;
 };

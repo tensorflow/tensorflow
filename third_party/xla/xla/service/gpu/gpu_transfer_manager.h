@@ -31,7 +31,7 @@ limitations under the License.
 #include "xla/service/gpu/outfeed_manager.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/platform.h"
@@ -89,13 +89,13 @@ class GpuTransferManager : public GenericTransferManager {
       se::StreamExecutor* executor);
 
   absl::Status TransferBufferFromDevice(se::Stream* stream,
-                                        const se::DeviceMemoryBase& source,
+                                        const se::DeviceAddressBase& source,
                                         int64_t size,
                                         void* destination) override;
 
   absl::Status TransferBufferToDevice(
       se::Stream* stream, int64_t size, const void* source,
-      se::DeviceMemoryBase* destination) override;
+      se::DeviceAddressBase* destination) override;
 
   // TODO(ezhulenev): Unify this with staged buffers for transfering literals.
 

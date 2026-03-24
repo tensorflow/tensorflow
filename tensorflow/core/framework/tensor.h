@@ -217,11 +217,11 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int32_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint32 scalar_value)
+  explicit Tensor(uint32_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint16 scalar_value)
+  explicit Tensor(uint16_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint8 scalar_value)
+  explicit Tensor(uint8_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int16_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -235,7 +235,7 @@ class Tensor {
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(int64_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
-  explicit Tensor(uint64 scalar_value)
+  explicit Tensor(uint64_t scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
   explicit Tensor(bool scalar_value)
       : Tensor(scalar_value, host_scalar_tag{}) {}
@@ -1095,9 +1095,10 @@ void Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer::operator delete(
 
 template <typename T>
 Tensor::Tensor(T value, host_scalar_tag tag) {
-  auto* value_and_buf = static_cast<Tensor::ValueAndTensorBuffer<T>*>(
-      port::AlignedMalloc(sizeof(typename Tensor::ValueAndTensorBuffer<T>),
-                          EIGEN_MAX_ALIGN_BYTES));
+  auto* value_and_buf =
+      static_cast<Tensor::ValueAndTensorBuffer<T>*>(tsl::port::AlignedMalloc(
+          sizeof(typename Tensor::ValueAndTensorBuffer<T>),
+          static_cast<std::align_val_t>(EIGEN_MAX_ALIGN_BYTES)));
   new (&value_and_buf->value) T(std::move(value));
   new (&value_and_buf->tensor_buffer)
       typename Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer(

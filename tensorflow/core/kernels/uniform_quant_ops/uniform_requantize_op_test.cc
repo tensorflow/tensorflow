@@ -82,9 +82,9 @@ TEST_F(UniformRequantizeOpTest, RequantizeInvalidQuantizationAxis) {
 
   AddInputFromArray<qint32>(TensorShape({2, 3}), {0, 0, 0, 0, 0, 0});
   AddInputFromArray<float>(TensorShape({}), {1.0});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<float>(TensorShape({}), {1.0});
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
 
   // input_quantization_axis >= input tensor rank.
   EXPECT_TRUE(absl::IsInvalidArgument(RunOpKernel()));
@@ -109,9 +109,9 @@ TEST_F(UniformRequantizeOpTest, PerTensorToPerTensorReQuantize) {
 
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-28, -21, -1, 0, 4, 9});
   AddInputFromArray<float>(TensorShape({}), {0.5});
-  AddInputFromArray<int32>(TensorShape({}), {-1});
+  AddInputFromArray<int32_t>(TensorShape({}), {-1});
   AddInputFromArray<float>(TensorShape({}), {0.125});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT8, TensorShape({2, 3}));
@@ -142,9 +142,9 @@ TEST_F(UniformRequantizeOpTest, PerChannelToPerTensorReQuantize) {
 
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-28, -21, -1, -1, 3, 8});
   AddInputFromArray<float>(TensorShape({2}), {0.5, 0.6});
-  AddInputFromArray<int32>(TensorShape({2}), {-1, -2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {-1, -2});
   AddInputFromArray<float>(TensorShape({}), {0.125});
-  AddInputFromArray<int32>(TensorShape({}), {-20});
+  AddInputFromArray<int32_t>(TensorShape({}), {-20});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT8, TensorShape({2, 3}));
@@ -175,9 +175,9 @@ TEST_F(UniformRequantizeOpTest, PerTensorToPerChannelReQuantize) {
 
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-28, -21, -1, -1, 3, 8});
   AddInputFromArray<float>(TensorShape({}), {0.5});
-  AddInputFromArray<int32>(TensorShape({}), {-1});
+  AddInputFromArray<int32_t>(TensorShape({}), {-1});
   AddInputFromArray<float>(TensorShape({2}), {0.125, 0.3});
-  AddInputFromArray<int32>(TensorShape({2}), {-20, -10});
+  AddInputFromArray<int32_t>(TensorShape({2}), {-20, -10});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT8, TensorShape({2, 3}));
@@ -208,9 +208,9 @@ TEST_F(UniformRequantizeOpTest, PerChannelToPerChannelReQuantize) {
 
   AddInputFromArray<qint32>(TensorShape({2, 3}), {-28, -21, -1, -1, 3, 8});
   AddInputFromArray<float>(TensorShape({2}), {0.5, 0.6});
-  AddInputFromArray<int32>(TensorShape({2}), {-1, -2});
+  AddInputFromArray<int32_t>(TensorShape({2}), {-1, -2});
   AddInputFromArray<float>(TensorShape({2}), {0.125, 0.3});
-  AddInputFromArray<int32>(TensorShape({2}), {-20, -10});
+  AddInputFromArray<int32_t>(TensorShape({2}), {-20, -10});
 
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QINT8, TensorShape({2, 3}));

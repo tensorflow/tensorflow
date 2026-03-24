@@ -57,9 +57,9 @@ struct CudaComputeCapability {
             // a higher compute capability. Example: sm_90
     kAcceleratedFeatures,  // Enables features that only work on GPUs with the
                            // same compute capability. Example: sm_90a
-    kForwardCompatibleFeatures  // Enables features that only work on GPUs
-                                // within the same major version and a later
-                                // minor version. Example: sm_100f
+    kFamilyCompatibleFeatures  // Enables features that only work on GPUs
+                               // within the same major version and a later
+                               // minor version. Example: sm_100f
   };
   FeatureExtension feature_extension = FeatureExtension::kNone;
 
@@ -70,7 +70,8 @@ struct CudaComputeCapability {
     kAmpere = 8,
     kHopper = 9,
     kBlackwell = 10,
-    kBlackwellPro = 12
+    kBlackwell_11 = 11,
+    kBlackwell_12 = 12
   };
 
   constexpr CudaComputeCapability() = default;
@@ -104,7 +105,7 @@ struct CudaComputeCapability {
   // Includes all GPUs with compute capability 9.0, notably H100, H200, and
   // GH200. When comparing with `IsAtLeast` this will only be true for GPUs with
   // compute capability 9.0.
-  constexpr static CudaComputeCapability H100Family() {
+  constexpr static CudaComputeCapability H100Accelerated() {
     return CudaComputeCapability{kHopper, 0,
                                  FeatureExtension::kAcceleratedFeatures};
   }
@@ -119,7 +120,7 @@ struct CudaComputeCapability {
   // Includes all GPUs with compute capability 10.0, notably B200 and GB200.
   // When comparing with `IsAtLeast` this will only be true for GPUs with
   // compute capability 10.0.
-  constexpr static CudaComputeCapability B200Family() {
+  constexpr static CudaComputeCapability B200Accelerated() {
     return CudaComputeCapability{kBlackwell, 0,
                                  FeatureExtension::kAcceleratedFeatures};
   }
@@ -133,23 +134,9 @@ struct CudaComputeCapability {
   // Includes all GPUs with compute capability 10.x. When comparing with
   // `IsAtLeast` this will true for all 10.x compute capabilities but not for
   // compute capabilities with a higher major version.
-  constexpr static CudaComputeCapability BlackwellGenerationOnly() {
+  constexpr static CudaComputeCapability BlackwellFamily() {
     return CudaComputeCapability{kBlackwell, 0,
-                                 FeatureExtension::kForwardCompatibleFeatures};
-  }
-
-  // Includes all GPUs with compute capability 12.x. When comparing with
-  // `IsAtLeast` this will true for all compute capabilities of 12.0 or higher.
-  constexpr static CudaComputeCapability BlackwellPro() {
-    return CudaComputeCapability{kBlackwellPro, 0, FeatureExtension::kNone};
-  }
-
-  // Includes all GPUs with compute capability 12.x. When comparing with
-  // `IsAtLeast` this will true for all 12.x compute capabilities but not for
-  // compute capabilities with a higher major version.
-  constexpr static CudaComputeCapability BlackwellProGenerationOnly() {
-    return CudaComputeCapability{kBlackwellPro, 0,
-                                 FeatureExtension::kForwardCompatibleFeatures};
+                                 FeatureExtension::kFamilyCompatibleFeatures};
   }
 
   // Returns true if the compute capability is at least
@@ -183,10 +170,6 @@ struct CudaComputeCapability {
     return major >= CudaComputeCapabilities::kBlackwell;
   }
 
-  bool IsAtLeastBlackwellPro() const {
-    return major >= CudaComputeCapabilities::kBlackwellPro;
-  }
-
   bool IsPascal() const { return major == CudaComputeCapabilities::kPascal; }
 
   bool IsVolta() const { return major == CudaComputeCapabilities::kVolta; }
@@ -204,10 +187,6 @@ struct CudaComputeCapability {
     return major == CudaComputeCapabilities::kBlackwell;
   }
 
-  bool IsBlackwellPro() const {
-    return major == CudaComputeCapabilities::kBlackwellPro;
-  }
-
   // Returns true if a kernel compiled for compute capability `other` can be run
   // on a GPU with compute capability `this`.
   bool SupportsAllFeaturesOf(const CudaComputeCapability& other) const {
@@ -216,7 +195,7 @@ struct CudaComputeCapability {
         return std::tie(major, minor) >= std::tie(other.major, other.minor);
       case FeatureExtension::kAcceleratedFeatures:
         return std::tie(major, minor) == std::tie(other.major, other.minor);
-      case FeatureExtension::kForwardCompatibleFeatures:
+      case FeatureExtension::kFamilyCompatibleFeatures:
         return major == other.major && minor >= other.minor;
     }
   }

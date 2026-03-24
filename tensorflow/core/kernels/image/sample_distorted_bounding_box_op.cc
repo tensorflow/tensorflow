@@ -270,16 +270,19 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
                                         image_size.shape().DebugString()));
 
     // Note image_size_data(2) is the depth and unused.
-    const uint64 height_raw = internal::SubtleMustCopy(image_size.flat<T>()(0));
-    const uint64 width_raw = internal::SubtleMustCopy(image_size.flat<T>()(1));
+    const uint64_t height_raw =
+        internal::SubtleMustCopy(image_size.flat<T>()(0));
+    const uint64_t width_raw =
+        internal::SubtleMustCopy(image_size.flat<T>()(1));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(height_raw, std::numeric_limits<int32_t>::max()),
+        errors::InvalidArgument("image height cannot be >= int32 max"));
     OP_REQUIRES(context,
-                FastBoundsCheck(height_raw, std::numeric_limits<int32>::max()),
-                errors::InvalidArgument("image height cannot be >= int32 max"));
-    OP_REQUIRES(context,
-                FastBoundsCheck(width_raw, std::numeric_limits<int32>::max()),
+                FastBoundsCheck(width_raw, std::numeric_limits<int32_t>::max()),
                 errors::InvalidArgument("image width cannot be >= int32 max"));
-    const int32_t height = static_cast<int32>(height_raw);
-    const int32_t width = static_cast<int32>(width_raw);
+    const int32_t height = static_cast<int32_t>(height_raw);
+    const int32_t width = static_cast<int32_t>(width_raw);
 
     // Ensure that the supplied bounding boxes are sane and convert them to
     // Rectangles.
@@ -328,10 +331,10 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
                                       boxes(b, i)));
         }
 
-        const int32_t x_min = static_cast<int32>(boxes(b, 1) * width);
-        const int32_t y_min = static_cast<int32>(boxes(b, 0) * height);
-        const int32_t x_max = static_cast<int32>(boxes(b, 3) * width);
-        const int32_t y_max = static_cast<int32>(boxes(b, 2) * height);
+        const int32_t x_min = static_cast<int32_t>(boxes(b, 1) * width);
+        const int32_t y_min = static_cast<int32_t>(boxes(b, 0) * height);
+        const int32_t x_max = static_cast<int32_t>(boxes(b, 3) * width);
+        const int32_t y_max = static_cast<int32_t>(boxes(b, 2) * height);
 
         bounding_boxes.push_back(Rectangle(x_min, y_min, x_max, y_max));
       }
@@ -432,7 +435,7 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
   }
 
  protected:
-  int32 max_attempts_;
+  int32_t max_attempts_;
   std::vector<float> area_range_;
   std::vector<float> aspect_ratio_range_;
   float min_object_covered_;

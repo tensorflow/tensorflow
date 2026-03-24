@@ -25,12 +25,20 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_value.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
+
+using ::testing::Eq;
+using ::testing::IsTrue;
+using ::testing::NotNull;
+using ::testing::SizeIs;
 
 class GpuMemorySpaceAssignmentTest : public HloHardwareIndependentTestBase {};
 
@@ -43,10 +51,10 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestDefaultColorAssignment) {
     }
   )";
 
-  HloModuleConfig config;
-  auto colorer = CreateColorer(DebugOptions());
+  HloModuleConfig config = GetModuleConfigForTest();
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -94,14 +102,15 @@ TEST_P(GpuCollectiveMemorySpaceAssignmentTest,
     }
   )";
 
-  HloModuleConfig config;
-  DebugOptions debug_options;
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
   debug_options.set_xla_gpu_enable_nccl_user_buffers(UseNcclUserBuffers());
   debug_options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(
       UseNcclSymmetricBuffers());
-  auto colorer = CreateColorer(debug_options);
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -188,12 +197,13 @@ TEST_P(GpuMosaicMemorySpaceAssignmentTest, TestMosaicMemorySpaceAssignment) {
   const absl::string_view kHloModule =
       MosaicContainsNvshmem() ? kMosaicNvshmemModule : kMosaicModule;
 
-  HloModuleConfig config;
-  DebugOptions debug_options;
+  HloModuleConfig config = GetModuleConfigForTest();
+  DebugOptions debug_options = config.debug_options();
   debug_options.set_xla_gpu_experimental_enable_nvshmem(UseNvshmem());
-  auto colorer = CreateColorer(debug_options);
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -210,8 +220,13 @@ TEST_P(GpuMosaicMemorySpaceAssignmentTest, TestMosaicMemorySpaceAssignment) {
       EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->has_color(), true);
       EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->color(),
                 (int)(MosaicContainsNvshmem()
-                          ? (UseNvshmem() ? MemorySpaceColor::kCollective
-                                          : MemorySpaceColor::kDefault)
+                          ? ((UseNvshmem() && !alias_analysis->buffers()[i]
+                                                   .values()[0]
+                                                   ->defining_position()
+                                                   .shape()
+                                                   .IsTuple())
+                                 ? MemorySpaceColor::kCollective
+                                 : MemorySpaceColor::kDefault)
                           : MemorySpaceColor::kDefault));
     }
   }
@@ -247,12 +262,13 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestNvshmemMemorySpaceAssignment) {
     }
   )";
 
-  HloModuleConfig config;
-  auto debug_options = DebugOptions();
+  HloModuleConfig config = GetModuleConfigForTest();
+  auto debug_options = config.debug_options();
   debug_options.set_xla_gpu_experimental_enable_nvshmem(true);
-  auto colorer = CreateColorer(debug_options);
+  config.set_debug_options(debug_options);
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kHloModule, config));
   AliasInfo alias_info;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -277,6 +293,41 @@ TEST_F(GpuMemorySpaceAssignmentTest, TestNvshmemMemorySpaceAssignment) {
     EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->has_color(), true);
     EXPECT_EQ(alias_analysis->buffers()[i].values()[0]->color(),
               (int)MemorySpaceColor::kCollective);
+  }
+}
+
+TEST_F(GpuMemorySpaceAssignmentTest, TestMultimemMosaicMemorySpaceAssignment) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule m
+
+    ENTRY main {
+      ROOT %custom-call.9 = (f16[8], f16[8]) custom-call(), custom_call_target="mosaic_gpu_v2", backend_config={"xla_multimem_parameters"}
+    }
+  )";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  BufferAssigner::Colorer colorer = CreateColorer(config.debug_options());
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+  AliasInfo alias_info;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
+                          HloAliasAnalysis::Run(module.get(), &alias_info));
+  const DependencyHloOrdering ordering(module.get());
+  TF_EXPECT_OK(colorer(alias_analysis.get(), ordering));
+
+  const int kExpectedBuffersCount = 3;
+  ASSERT_THAT(alias_analysis->buffers(), SizeIs(kExpectedBuffersCount));
+
+  for (int i = 0; i < kExpectedBuffersCount; ++i) {
+    ASSERT_THAT(alias_analysis->buffers()[i].values(), SizeIs(1));
+    const HloValue* value = alias_analysis->buffers()[i].values()[0];
+    ASSERT_THAT(value, NotNull());
+    ASSERT_THAT(value->has_color(), IsTrue());
+    const bool is_tuple = value->defining_position().shape().IsTuple();
+    const int expected_color = (int)(is_tuple ? MemorySpaceColor::kDefault
+                                              : MemorySpaceColor::kCollective);
+    ASSERT_THAT(value->color(), Eq(expected_color));
   }
 }
 }  // namespace

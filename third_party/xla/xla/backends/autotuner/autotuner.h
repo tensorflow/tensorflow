@@ -16,16 +16,17 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNER_H_
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/functional/function_ref.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
@@ -33,18 +34,21 @@ limitations under the License.
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/executable.h"
 #include "xla/service/shaped_buffer.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/fingerprint.h"
 
-using InstructionFilterFn = absl::FunctionRef<bool(const xla::HloInstruction&)>;
+using InstructionFilterFn = std::function<bool(const xla::HloInstruction&)>;
 
 namespace xla {
 
 struct AutotuneConfig {
   // Whether to check the correctness of the output buffers and OOM reads on
   // Input Buffers.
+  // Correctness check is only performed when a trustable reference output is
+  // available.
   bool check_buffers = true;
   // Relative tolerance for correctness check.
   float relative_tolerance = 1e-6;
@@ -57,7 +61,7 @@ struct AutotuneConfig {
   // scratch_bytes_window_size_us window.
   bool optimize_scratch_bytes = true;
   // Window size in microseconds to consider for scratch bytes optimization.
-  int scratch_bytes_window_size_us = 4;
+  int scratch_bytes_window_size_us = 2;
   // If true, the autotuner will return an error if the best config for a
   // certain instruction is not in the cache.
   bool expect_all_instructions_in_cache = false;
@@ -66,9 +70,9 @@ struct AutotuneConfig {
   std::string dump_logs_to = "";
   // TODO b/446618161 - Remove this when old triton emitter is
   // deprecated.
-  // If true, autotuner will not select cublas configs. We still try cublas
-  // configs as they can be used to check numerical issues with triton but they
-  // are not considered for selection.
+  // If true, autotuner will not select cublas configs for fusions. We still try
+  // the configs as they can be used to check numerical issues with triton but
+  // they are not considered for selection, unless there are no other options.
   bool exclude_cublas_config = false;
   // TODO b/446870267- Remove this option and use default configs rather than
   // the first config.
@@ -81,6 +85,13 @@ struct AutotuneConfig {
   // Note: If cache is provided, the cached config will be used instead of the
   // default config.
   bool use_default_config = false;
+  // If true, dump the autotuned instructions to the modules's xla_dump_to or
+  // to stdout if not set.
+  bool dump_hlos = false;
+  // Whether to allow or discard configs that ptxas warns will spill registers.
+  bool allow_reg_spills = false;
+
+  std::string ToString() const;
 };
 
 class Autotuner {
@@ -103,14 +114,23 @@ class Autotuner {
   absl::Status Autotune(HloModule* module,
                         const InstructionFilterFn& should_autotune);
 
+  // Same as above, but also takes a sharding KV store which helps to shard
+  // the autotuning work across multiple processes.
+  // This is used for distributed autotuning.
+  absl::Status Autotune(HloModule* module,
+                        const InstructionFilterFn& should_autotune,
+                        MultiProcessKeyValueStore& sharding_kv_store);
+
+  AutotunerCacheInterface::CacheStats GetCacheStats();
+
  private:
-  using InstructionsByFingerprint =
-      absl::flat_hash_map<tsl::Fprint128, std::vector<HloInstruction*>,
-                          tsl::Fprint128Hasher>;
+  using InstructionGroup = std::vector<HloInstruction*>;
 
   struct Config {
     CodegenBackend* codegen_backend;
     std::unique_ptr<BackendConfig> backend_config;
+
+    std::string ToString() const;
   };
   struct ExecutableCandidate {
     Config config;
@@ -154,8 +174,16 @@ class Autotuner {
         cache_(std::move(cache)),
         thread_pool_(thread_pool) {}
 
-  InstructionsByFingerprint GetAutotuningCandidates(
+  // Returns a list of instruction groups that can be autotuned. Each group
+  // contains a set of instructions that are equivalent as they have the same
+  // HLO fingerprint.
+  std::vector<InstructionGroup> GetAutotuningCandidates(
       const HloModule* module, const InstructionFilterFn& should_autotune);
+
+  // Gets the best config for each given instruction and errors out if any of
+  // them fails.
+  absl::StatusOr<std::vector<Config>> GetConfigsForAll(
+      const std::vector<InstructionGroup>& instruction_groups);
 
   // Gets the default config for the given instruction.
   absl::StatusOr<Config> GetDefaultConfig(const HloInstruction& instr);
@@ -164,44 +192,58 @@ class Autotuner {
   // cached config is returned. If not in cache and use_default_config is
   // true, default config is returned. Otherwise, tunes all supported configs
   // to find the best config, inserts it into cache and returns it.
-  absl::StatusOr<Config> GetConfig(HloInstruction* instr);
+  tsl::Future<Config> GetConfig(HloInstruction* instr);
   // Gets the best config for the given instruction by compiling and profiling
   // all supported configs.
-  absl::StatusOr<Config> TuneBestConfig(HloInstruction* instr);
+  tsl::Future<Config> TuneBestConfig(HloInstruction* instr);
 
   // TODO: b/407494653 - Directly use cache api when the configs are unified.
   // Translates from Autotuner::Config to AutotunerCacheInterface::Config and
   // the other way around.
   std::optional<Autotuner::Config> LookUp(const HloInstruction* instr);
-  void Insert(const HloInstruction* instr, Autotuner::Config& config);
+  absl::Status Insert(const HloInstruction* instr, Autotuner::Config& config);
 
   absl::StatusOr<std::vector<Config>> GetSupportedConfigs(
       HloInstruction* instr);
-  std::vector<absl::StatusOr<std::unique_ptr<Executable>>> CompileAll(
-      HloInstruction* instr, std::vector<Config>& configs);
+
+  std::optional<std::unique_ptr<Executable>> Compile(HloInstruction* instr,
+                                                     const Config& config);
+
+  tsl::Future<std::vector<
+      std::pair<Config, std::optional<std::unique_ptr<Executable>>>>>
+  CompileAll(HloInstruction* instr, std::vector<Config>& configs);
+
   absl::StatusOr<std::vector<ConfigResult>> ProfileAll(
-      std::vector<ExecutableCandidate>& candidates);
+      std::vector<ExecutableCandidate> candidates);
   absl::StatusOr<ConfigResult> PickBestConfig(
       std::vector<ConfigResult>& results);
 
-  absl::StatusOr<ScopedShapedBuffer> GetReferenceOutput(
-      std::vector<ExecutableCandidate>& candidates,
-      InputBuffers& input_buffers);
+  std::optional<ScopedShapedBuffer> GetReferenceOutput(
+      std::vector<ExecutableCandidate>& candidates, InputBuffers& input_buffers)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
 
   std::optional<Failure> CheckBuffers(InputBuffers& input_buffers,
                                       ScopedShapedBuffer& output,
-                                      ScopedShapedBuffer& reference);
+                                      ScopedShapedBuffer& reference)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(profiler_m_);
+  absl::Status IsValidExecutable(
+      const absl::StatusOr<std::unique_ptr<Executable>>& executable) const;
 
   void LogConfigResults(const HloInstruction& instr,
                         const std::vector<ConfigResult>& results);
   absl::Status DumpLogsToFile();
+  // Dumps HLO before and after applying the config.
+  absl::Status DumpHlo(HloInstruction* instr, const Config& config);
 
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends_;
-  std::unique_ptr<Profiler> profiler_;
+  std::unique_ptr<Profiler> profiler_ ABSL_GUARDED_BY(profiler_m_);
   AutotuneConfig autotune_config_;
   std::unique_ptr<AutotunerCacheInterface> cache_;
   tsl::thread::ThreadPool* thread_pool_;
   AutotuningLogs logs_;
+  int dump_counter_ = 0;
+
+  absl::Mutex profiler_m_;
 };
 }  // namespace xla
 

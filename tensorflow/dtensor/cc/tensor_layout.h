@@ -60,7 +60,7 @@ bool IsDynamicShape(absl::Span<const int64_t> shape);
 // [x:4, y:3, z:2]
 //
 // Must consist of 24 devices placed densely into the corresponding 3D space.
-using DeviceLocation = absl::InlinedVector<int64, 4>;
+using DeviceLocation = absl::InlinedVector<int64_t, 4>;
 
 // A shard refers to a partition of a tensor. Shards are arranged in
 // ShardVectors that contains a list of Shards and a list of integers
@@ -86,12 +86,12 @@ struct ShardVector {
 };
 
 struct MeshDimension {
-  MeshDimension(const std::string& name, int64 size)
+  MeshDimension(const std::string& name, int64_t size)
       : name(std::move(name)), size(size) {}
   MeshDimension() = default;
 
   std::string name;
-  int64 size;
+  int64_t size;
 };
 
 class Mesh {
@@ -172,7 +172,7 @@ class Mesh {
   // Takes an index in the flattened list of devices and returns a location
   // in the mesh.
   StatusOr<const DeviceLocation> device_location(int offset) const;
-  int64 num_devices() const;
+  int64_t num_devices() const;
   absl::Span<const std::string> local_devices() const { return local_devices_; }
   absl::Span<const int64_t> local_device_ids() const {
     return local_device_ids_;
@@ -186,15 +186,15 @@ class Mesh {
 
   // Consumes a location in the mesh and returns its corresponding index in
   // the flattened list of devices.
-  int64 GetFlattenedCoordinate(const DeviceLocation& loc) const;
+  int64_t GetFlattenedCoordinate(const DeviceLocation& loc) const;
 
-  const MeshDimension& dim(int64 index) const { return mesh_dims_[index]; }
+  const MeshDimension& dim(int64_t index) const { return mesh_dims_[index]; }
   std::vector<MeshDimension> dims() const { return mesh_dims_; }
   // Returns size of mesh dimension.
-  StatusOr<int64> dim_size(absl::string_view name) const;
+  StatusOr<int64_t> dim_size(absl::string_view name) const;
   // Returns list of mesh dimension sizes.
-  std::vector<int64> dim_sizes() const;
-  const std::string& dim_name(int64 index) const {
+  std::vector<int64_t> dim_sizes() const;
+  const std::string& dim_name(int64_t index) const {
     return mesh_dims_[index].name;
   }
   int64_t min_global_device_id() const {
@@ -212,7 +212,7 @@ class Mesh {
     return global_devices_;
   }
   // Returns index of given dim_name in the mesh.
-  StatusOr<int32> idx_for_dim(absl::string_view dim_name) const;
+  StatusOr<int32_t> idx_for_dim(absl::string_view dim_name) const;
 
   // Returns the index of MeshDimension in mesh where the mesh dimension name is
   // `mesh_name`.
@@ -220,14 +220,14 @@ class Mesh {
   bool IsMeshDim(const std::string& dim_name) const;
   std::vector<std::string> MeshDimNames() const;
 
-  int64 rank() const;
-  int64 size() const;
+  int64_t rank() const;
+  int64_t size() const;
   bool use_xla_spmd() const { return use_xla_spmd_; }
   const std::string& name() const { return name_; }
   absl::string_view single_device() const { return single_device_; }
 
   // Global unique fingerprint. Same on different workers.
-  uint64 GlobalFingerprint() const;
+  uint64_t GlobalFingerprint() const;
 
   // Uses proto to compare the equality. If any conversion to proto fails,
   // returns false.
@@ -334,10 +334,10 @@ class Layout {
   const Mesh& mesh() const { return mesh_; }
   static Layout ReplicatedOnMesh(const Mesh& mesh, int rank);
   static Layout BatchShardedOnMesh(const Mesh& mesh, int rank,
-                                   const string& mesh_dim, int axis = 0);
+                                   const std::string& mesh_dim, int axis = 0);
   static Layout ReplicatedLike(const Layout& layout);
-  static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
-                                 int axis = 0);
+  static Layout BatchShardedLike(const Layout& layout,
+                                 const std::string& mesh_dim, int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
@@ -385,10 +385,10 @@ class Layout {
   // Truncates a layout at the front or back, depending on the value of end.
   // end = false returns the layout up to the split point,
   // end = true returns the layout from the split point.
-  Layout Truncate(int64 split_point, bool end = false) const;
+  Layout Truncate(int64_t split_point, bool end = false) const;
 
   // Left or right pad the layout to a max rank.
-  Layout LeftPad(int64 rank) const;
+  Layout LeftPad(int64_t rank) const;
 
   // Minimally pads replicated axes on the left, or removes axes on the right,
   // such that the result layout has the provided rank.
@@ -414,9 +414,9 @@ class Layout {
   PartialTensorShape LocalShapeFromGlobalShape(
       const PartialTensorShape& global_shape) const;
 
-  int64 rank() const { return sharding_specs_.size(); }
+  int64_t rank() const { return sharding_specs_.size(); }
   size_t num_shards_for_dim(int) const;
-  std::vector<int32> num_shards() const;
+  std::vector<int32_t> num_shards() const;
 
   // Computes the corresponding shard vector to this layout.
   ShardVector GetShardVector() const;
@@ -424,7 +424,7 @@ class Layout {
   // Returns sharding specs in string form.
   std::vector<std::string> sharding_spec_strs() const;
 
-  int64 num_devices() const { return mesh_.num_devices(); }
+  int64_t num_devices() const { return mesh_.num_devices(); }
 
   // Map hosts to shards.
   std::map<std::string, ShardVector> HostShardMap() const;

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
@@ -124,11 +124,11 @@ class TestCoordinationServiceTaskState {
                  << " is in error status: " << status;
     };
 
-    TF_CHECK_OK(coord_agent_->Initialize(Env::Default(), job_name, task_id,
-                                         coordination_config,
-                                         std::move(coord_client_), error_fn));
-    TF_CHECK_OK(coord_agent_->Connect());
-    TF_CHECK_OK(status_);
+    CHECK_OK(coord_agent_->Initialize(Env::Default(), job_name, task_id,
+                                      coordination_config,
+                                      std::move(coord_client_), error_fn));
+    CHECK_OK(coord_agent_->Connect());
+    CHECK_OK(status_);
   }
 
   CoordinationClient* GetCoordinationClient() { return coord_client_.get(); }

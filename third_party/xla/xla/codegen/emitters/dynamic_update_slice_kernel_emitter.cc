@@ -52,7 +52,6 @@ limitations under the License.
 #include "xla/codegen/hlo_fusion_spec.h"
 #include "xla/codegen/ir_emission_utils.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/mlir_kernel_definition.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
@@ -65,6 +64,7 @@ limitations under the License.
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -73,10 +73,12 @@ limitations under the License.
 
 namespace xla::emitters {
 
+using ::mlir::MLIRContext;
+
 constexpr int kDUSUpdateIndex = 1;
 
 DynamicUpdateSliceKernelEmitter::DynamicUpdateSliceKernelEmitter(
-    mlir::MLIRContext& mlir_context, const HloFusionInstruction& fusion,
+    MLIRContext& mlir_context, const HloFusionInstruction& fusion,
     const HloFusionSpec& fusion_spec, const BufferAssignment* buffer_assignment,
     KernelArguments::BufferAlignment buffer_alignment,
     WorkDimensions work_dimensions, absl::string_view entry_function_name,
@@ -92,7 +94,7 @@ DynamicUpdateSliceKernelEmitter::DynamicUpdateSliceKernelEmitter(
       entry_function_name_(entry_function_name),
       backend_kind_(backend_kind) {}
 
-absl::StatusOr<MlirKernelDefinition>
+absl::StatusOr<DynamicUpdateSliceKernelEmitter::KernelDefinition>
 DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
   mlir::OpBuilder builder(&mlir_context_);
   auto loc = mlir::NameLoc::get(builder.getStringAttr(fusion_.name()));
@@ -118,16 +120,17 @@ DynamicUpdateSliceKernelEmitter::EmitKernelDefinition() {
 
   TF_ASSIGN_OR_RETURN(auto kernel_spec, GetKernelSpec());
 
-  return MlirKernelDefinition(std::move(kernel_spec),
-                              MlirKernelSource(std::move(module)));
+  return KernelDefinition(std::move(kernel_spec),
+                          MlirKernelSource(std::move(module)));
 }
 
 IndexingMap DynamicUpdateSliceKernelEmitter::ComputeWorkItemIdToInputIndexing(
-    mlir::MLIRContext* ctx) const {
+    MLIRContext* mlir_context) const {
   // It is guaranteed that all DUS ops have the same output shape at this point.
   const auto& update_shape =
       dus_ops_.front().GetOperand(kDUSUpdateIndex).shape();
-  return ComputeWorkItemIdToOutputIndexing(work_dimensions_, update_shape, ctx);
+  return ComputeWorkItemIdToOutputIndexing(work_dimensions_, update_shape,
+                                           mlir_context);
 }
 
 Shape DynamicUpdateSliceKernelEmitter::GetIndexingShape(
@@ -139,8 +142,9 @@ Shape DynamicUpdateSliceKernelEmitter::GetIndexingShape(
 
 IndexingMap DynamicUpdateSliceKernelEmitter::ComputeWorkItemIdToOutputIndexing(
     const WorkDimensions& work_dimensions, const Shape& update_shape,
-    mlir::MLIRContext* ctx) {
-  return GetDefaultWorkItemIndexingMap(work_dimensions, update_shape, ctx);
+    MLIRContext* mlir_context) {
+  return GetDefaultWorkItemIndexingMap(work_dimensions, update_shape,
+                                       mlir_context);
 }
 
 absl::StatusOr<KernelSpec> DynamicUpdateSliceKernelEmitter::GetKernelSpec()
@@ -152,11 +156,12 @@ absl::StatusOr<KernelSpec> DynamicUpdateSliceKernelEmitter::GetKernelSpec()
   }
 
   KernelSpec::Buffers result_buffers;
-  for (auto& indexed : ShapeUtil::GetLeafShapes(fusion_.shape())) {
+  for (ShapeUtil::IndexedShape& indexed :
+       ShapeUtil::GetLeafShapes(fusion_.shape())) {
     TF_ASSIGN_OR_RETURN(
         BufferAllocation::Slice slice,
         buffer_assignment_->GetUniqueSlice(&fusion_, indexed.index));
-    result_buffers.push_back(std::move(slice));
+    result_buffers.push_back({slice, indexed.shape});
   }
 
   KernelSpec::Buffers argument_buffers;
@@ -169,15 +174,14 @@ absl::StatusOr<KernelSpec> DynamicUpdateSliceKernelEmitter::GetKernelSpec()
           buffer_assignment_->GetUniqueSlice(operand, indexed.index));
 
       bool invariant = absl::c_none_of(
-          result_buffers,
-          [&slice](const BufferAllocation::Slice& result_slice) {
-            return result_slice.OverlapsWith(slice);
+          result_buffers, [&slice](const ShapedSlice& result_slice) {
+            return result_slice.slice.OverlapsWith(slice);
           });
       if (invariant) {
         invariant_arguments.insert(operand_index);
       }
 
-      argument_buffers.push_back(std::move(slice));
+      argument_buffers.push_back({slice, indexed.shape});
       ++operand_index;
     }
   }
@@ -192,12 +196,10 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
     const emitters::CallTargetProvider& call_targets,
     mlir::func::FuncOp entry_function,
     const HloFusionInstruction& fusion) const {
-  mlir::MLIRContext* context = entry_function.getContext();
-
   mlir::ImplicitLocOpBuilder builder(entry_function.getLoc(), entry_function);
   builder.setInsertionPointToStart(entry_function.addEntryBlock());
 
-  auto indexing = ComputeWorkItemIdToInputIndexing(context);
+  auto indexing = ComputeWorkItemIdToInputIndexing(&mlir_context_);
   indexing.Simplify();
   indexing.RemoveUnusedSymbols();
 
@@ -243,7 +245,7 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
       // Handle bitcasts under the DUS.
       if (dus_instr->shape() != root.shape()) {
         update_indices = ApplyIndexing(
-            GetBitcastMap(dus_instr->shape(), root.shape(), context),
+            GetBitcastMap(dus_instr->shape(), root.shape(), &mlir_context_),
             update_indices, {}, nested_b);
       }
       results.push_back(nested_b.create<mlir::tensor::InsertOp>(
@@ -276,7 +278,8 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
       llvm::SmallVector<mlir::OpFoldResult> offsets(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(0));
       llvm::SmallVector<mlir::OpFoldResult> sizes =
-          mlir::getAsIndexOpFoldResult(context, output_tensor.getShape());
+          mlir::getAsIndexOpFoldResult(&mlir_context_,
+                                       output_tensor.getShape());
       llvm::SmallVector<mlir::OpFoldResult> strides(output_tensor.getRank(),
                                                     nested_b.getIndexAttr(1));
       nested_b.create<mlir::tensor::ParallelInsertSliceOp>(
@@ -286,7 +289,7 @@ absl::Status DynamicUpdateSliceKernelEmitter::EmitEntryFunction(
 
   const NumWorkItems& num_work_items = work_dimensions_.num_work_items;
   llvm::SmallVector<mlir::OpFoldResult> upper_bounds =
-      mlir::getAsIndexOpFoldResult(context,
+      mlir::getAsIndexOpFoldResult(&mlir_context_,
                                    {static_cast<int64_t>(num_work_items.x),
                                     static_cast<int64_t>(num_work_items.y),
                                     static_cast<int64_t>(num_work_items.z)});

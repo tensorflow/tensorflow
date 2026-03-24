@@ -939,7 +939,8 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
                                const char* serialized_function_def, size_t size,
                                TF_Status* status) {
   tensorflow::FunctionDef function_def;
-  if (!function_def.ParseFromArray(serialized_function_def, size)) {
+  if (!function_def.ParseFromString(
+          absl::string_view(serialized_function_def, size))) {
     status->status =
         tensorflow::errors::InvalidArgument("Invalid FunctionDef proto");
     return;

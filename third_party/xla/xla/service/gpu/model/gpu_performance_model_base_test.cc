@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 
+#include <cstdint>
 #include <memory>
 
 #include <gtest/gtest.h>
@@ -30,11 +31,13 @@ limitations under the License.
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::mlir::MLIRContext;
 
 class GpuPerformanceModelBaseTest : public HloHardwareIndependentTestBase {
  public:
@@ -43,7 +46,7 @@ class GpuPerformanceModelBaseTest : public HloHardwareIndependentTestBase {
   // on A6000 by profiling the execution of the HLOs.
   se::DeviceDescription device_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   std::unique_ptr<GpuHloCostAnalysis> analysis_;
-  mlir::MLIRContext mlir_context_;
+  MLIRContext mlir_context_;
 
   GpuPerformanceModelBaseTest() {
     options_.count_multiple_input_accesses = true;
@@ -314,6 +317,38 @@ ENTRY e {
   // EstimateFusionLaunchDimensions returns a default estimate.
   EXPECT_EQ(launch_dimensions.num_blocks(), 64);
   EXPECT_EQ(launch_dimensions.num_threads_per_block(), 128);
+}
+
+TEST_F(GpuPerformanceModelBaseTest,
+       CalculateEffectiveFlopsPerNsForFullOccupancyH100) {
+  se::DeviceDescription h100_device_info =
+      TestGpuDeviceInfo::H100SXMDeviceInfo();
+  int64_t flops_per_ns = GpuPerformanceModelBase::CalculateEffectiveFlopsPerNs(
+      h100_device_info, /*num_blocks=*/h100_device_info.core_count(),
+      /*num_threads_per_block=*/h100_device_info.fpus_per_core());
+  // H100 has a peak of 66.9 TFLOPS/s for TF32.
+  EXPECT_GT(flops_per_ns, 66000);
+  EXPECT_LT(flops_per_ns, 68000);
+}
+
+TEST_F(GpuPerformanceModelBaseTest, CalculatePeakBF16OpsPerNsH100) {
+  se::DeviceDescription h100_device_info =
+      TestGpuDeviceInfo::H100SXMDeviceInfo();
+  int64_t flops_per_ns = GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+      h100_device_info, xla::PrimitiveType::BF16);
+  // H100 has a peak of 989.4 TFLOPS/s for BF16.
+  EXPECT_GT(flops_per_ns, 988000);
+  EXPECT_LT(flops_per_ns, 991000);
+}
+
+TEST_F(GpuPerformanceModelBaseTest, CalculatePeakF64OpsPerNsH100) {
+  se::DeviceDescription h100_device_info =
+      TestGpuDeviceInfo::H100SXMDeviceInfo();
+  int64_t flops_per_ns = GpuPerformanceModelBase::CalculatePeakMatrixOpsPerNs(
+      h100_device_info, xla::PrimitiveType::F64);
+  // H100 has a peak of 66.8 TFLOPS/s for FP64.
+  EXPECT_GT(flops_per_ns, 66000);
+  EXPECT_LT(flops_per_ns, 68000);
 }
 
 }  // namespace

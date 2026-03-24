@@ -26,8 +26,8 @@ void BM_ScaleAndTranslateOp(benchmark::State& state) {
   Tensor in(DT_FLOAT, TensorShape({1, 768, 768, 3}));
   in.flat<float>().setRandom();
   Tensor size(DT_INT32, TensorShape({2}));
-  size.flat<int32>()(0) = 772;
-  size.flat<int32>()(1) = 772;
+  size.flat<int32_t>()(0) = 772;
+  size.flat<int32_t>()(1) = 772;
   Tensor scale(DT_FLOAT, TensorShape({2}));
   scale.flat<float>()(0) = 1.0052;
   scale.flat<float>()(1) = 1.0052;

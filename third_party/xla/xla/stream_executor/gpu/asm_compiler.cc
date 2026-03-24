@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "tsl/platform/path.h"
 
@@ -83,7 +82,7 @@ absl::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   }
   absl::Cleanup image_files_cleaner = [&image_paths] {
     for (const auto& path : image_paths) {
-      TF_CHECK_OK(tsl::Env::Default()->DeleteFile(path));
+      CHECK_OK(tsl::Env::Default()->DeleteFile(path));
     }
   };
 

@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -45,7 +45,7 @@ InfeedManager::InfeedManager(se::StreamExecutor* executor)
   stream_->SetName("Infeed manager");
 }
 
-static absl::StatusOr<se::DeviceMemoryHandle> CopyBufferToDevice(
+static absl::StatusOr<se::DeviceAddressHandle> CopyBufferToDevice(
     se::Stream* stream, int64_t size, const void* source) {
   if (size > std::numeric_limits<int32_t>::max()) {
     return InvalidArgument("GPU infeed of %d bytes exceeds maximum of %d bytes",
@@ -57,9 +57,9 @@ static absl::StatusOr<se::DeviceMemoryHandle> CopyBufferToDevice(
   }
 
   se::StreamExecutor* executor = stream->parent();
-  se::DeviceMemoryHandle buffer(executor,
-                                executor->AllocateArray<uint8_t>(size));
-  TF_RETURN_IF_ERROR(stream->Memcpy(buffer.memory_ptr(), source, size));
+  se::DeviceAddressHandle buffer(executor,
+                                 executor->AllocateArray<uint8_t>(size));
+  TF_RETURN_IF_ERROR(stream->Memcpy(buffer.address_ptr(), source, size));
 
   return std::move(buffer);
 }
@@ -74,7 +74,7 @@ absl::Status InfeedManager::TransferLiteralToInfeed(
 
   // For a tuple, we transfer each of its elements to the device and enqueue the
   // resulting destination device addresses with the infeed manager.
-  ShapeTree<se::DeviceMemoryHandle> buffer_tree(literal_shape);
+  ShapeTree<se::DeviceAddressHandle> buffer_tree(literal_shape);
   for (auto& leaf : buffer_tree.leaves()) {
     const Shape& sub_shape = ShapeUtil::GetSubshape(literal_shape, leaf.first);
     CHECK(sub_shape.IsArray()) << ShapeUtil::HumanStringWithLayout(sub_shape);

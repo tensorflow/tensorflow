@@ -34,15 +34,16 @@ bool HasResourceInputOrOutput(const OpDef& op_def) {
 }
 
 TEST(ResourceOperationTableTest, HaveAllResourceOps) {
-  absl::flat_hash_map<string, bool> known_resource_ops;
+  absl::flat_hash_map<std::string, bool> known_resource_ops;
   for (absl::string_view known_resource_op :
        resource_op_table_internal::GetKnownResourceOps()) {
     ASSERT_TRUE(
-        known_resource_ops.insert({string(known_resource_op), false}).second);
+        known_resource_ops.insert({std::string(known_resource_op), false})
+            .second);
   }
 
-  std::vector<string> xla_op_names = XlaOpRegistry::GetAllRegisteredOps();
-  for (const string& xla_op_name : xla_op_names) {
+  std::vector<std::string> xla_op_names = XlaOpRegistry::GetAllRegisteredOps();
+  for (const std::string& xla_op_name : xla_op_names) {
     const OpDef* op_def;
     TF_ASSERT_OK(OpRegistry::Global()->LookUpOpDef(xla_op_name, &op_def));
     if (HasResourceInputOrOutput(*op_def)) {
@@ -52,7 +53,7 @@ TEST(ResourceOperationTableTest, HaveAllResourceOps) {
     }
   }
 
-  std::vector<string> unnecessary_resource_ops;
+  std::vector<std::string> unnecessary_resource_ops;
   for (const auto& pair : known_resource_ops) {
     if (!pair.second) {
       unnecessary_resource_ops.push_back(pair.first);

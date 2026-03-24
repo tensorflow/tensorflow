@@ -20,38 +20,43 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/executor_cache.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace stream_executor::sycl {
-
-// Opaque and unique identifier for the SYCL platform plugin.
-// This is needed so that plugins can refer to/identify this platform without
-// instantiating a SyclPlatform object.
-extern const Platform::Id kSyclPlatformId;
 
 // SYCL-specific platform plugin, registered as a singleton value via module
 // initializer.
 class SyclPlatform : public Platform {
  public:
   SyclPlatform();
+
   ~SyclPlatform() override;
 
   // Platform interface implementation:
-  // Returns the same value as kSyclPlatform above.
+  // Returns the same value as kSyclPlatformId above.
   Platform::Id id() const override;
 
+  // Returns the number of visible SYCL devices.
   // Returns -1 as a sentinel on internal failure (and logs the error).
   int VisibleDeviceCount() const override;
 
+  // Returns the name of this platform.
   const std::string& Name() const override;
 
+  // Returns a populated DeviceDescription for the device at the given ordinal.
   absl::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
 
+  // Returns a cached StreamExecutor for the given ordinal, if available.
+  // Otherwise creates and caches a new one. Ownership is not transferred to
+  // the caller.
   absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) override;
+
+  // Returns an existing StreamExecutor for the given ordinal if one exists.
+  absl::StatusOr<StreamExecutor*> FindExisting(int ordinal) override;
 
  private:
   // Returns a device constructed with ordinal without
@@ -66,8 +71,12 @@ class SyclPlatform : public Platform {
   // Cache of created executors.
   ExecutorCache executor_cache_;
 
+  // Move-only: allow move, disallow copy.
+  SyclPlatform(SyclPlatform&& other) = default;
+  SyclPlatform& operator=(SyclPlatform&& other) = default;
+
   SyclPlatform(const SyclPlatform&) = delete;
-  void operator=(const SyclPlatform&) = delete;
+  SyclPlatform& operator=(const SyclPlatform&) = delete;
 };
 
 }  // namespace stream_executor::sycl

@@ -37,6 +37,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/macros.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_print_options.h"
@@ -61,7 +62,6 @@ limitations under the License.
 #include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
-#include "xla/literal_pool.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/mapped_ptr_container_sorter.h"
@@ -222,8 +222,7 @@ static constexpr uintptr_t kInstructionTypeMask = 0b111;
 // HLO is pure (mostly).  It has no concept of mutable state.  Instead, data
 // values are produced by one HLO and flow into consumers across dependency
 // edges.
-// Alignment must be explicitly specified due to ARM 32 platforms.
-class alignas(kInstructionTypeMask + 1) HloInstruction {
+class HloInstruction {
  public:
   // A fusion node computes the same value a call to its fusion computation
   // would compute.  However, the choice of fusion kind dictates codegen
@@ -315,8 +314,9 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   // Creates an instruction from the given proto. Arguments:
   //
   //   proto: the proto to convert from.
-  //   instruction_map: a map from local instruction id to HloInstruction*. This
-  //     map must contain all operands of the newly constructed instruction.
+  //   instruction_map: a map from local instruction id (as defined in the
+  //     proto) to HloInstruction*. This map must contain all operands of the
+  //     newly constructed instruction.
   //   computation_map: a map from computation id to HloComputation*. This map
   //     must contain all computations which the newly constructed instruction
   //     calls.
@@ -324,7 +324,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
       const HloInstructionProto& proto,
       const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map = {},
-      bool prohibit_empty_literal = true);
+      bool prohibit_empty_literal = true,
+      const tsl::protobuf::RepeatedPtrField<std::string>* payloads = nullptr);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(
@@ -420,7 +421,9 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
       int64_t feature_group_count, int64_t batch_group_count,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      const PrecisionConfig& precision_config);
+      const PrecisionConfig& precision_config,
+      const SparsityConfig& sparsity_config = {},
+      ConvolutionKind convolution_kind = CONVOLUTION_KIND_UNSET);
 
   // Creates an FFT op, of the type indicated by fft_type.
   static std::unique_ptr<HloInstruction> CreateFft(
@@ -495,7 +498,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   // order of inputs from different participants.
   static std::unique_ptr<HloInstruction> CreateAllGather(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64_t all_gather_dimension, const CollectiveDeviceList& device_list,
+      int64_t all_gather_dimension,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       bool constrain_layout, const std::optional<int64_t>& channel_id,
       bool use_global_device_ids);
 
@@ -515,7 +519,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   // conjunction of a AllGatherDone op that synchronizes and returns the result.
   static std::unique_ptr<HloInstruction> CreateAllGatherStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      int64_t all_gather_dimension, const CollectiveDeviceList& device_list,
+      int64_t all_gather_dimension,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       bool constrain_layout, const std::optional<int64_t>& channel_id,
       bool use_global_device_ids);
 
@@ -542,8 +547,9 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateAllReduce(
@@ -558,9 +564,9 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReduceScatter(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids,
-      int64_t scatter_dimension);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids, int64_t scatter_dimension);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateReduceScatter(
@@ -586,8 +592,9 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   static std::unique_ptr<HloInstruction> CreateAllReduceStart(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id, bool use_global_device_ids);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
+      bool use_global_device_ids);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateAllReduceStart(
@@ -624,8 +631,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   // performs AllToAll and then concatenates the results into a single array.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id,
       const std::optional<int64_t>& split_dimension = std::nullopt);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -732,7 +739,7 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   //
   static std::unique_ptr<HloInstruction> CreateRaggedAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const CollectiveDeviceList& device_list,
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
       const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
@@ -747,8 +754,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   // on that replica is a tensor consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
       const Shape& shape, absl::Span<HloInstruction* const> operand,
-      const CollectiveDeviceList& device_list, bool constrain_layout,
-      const std::optional<int64_t>& channel_id);
+      std::shared_ptr<CollectiveDeviceListBase> device_list,
+      bool constrain_layout, const std::optional<int64_t>& channel_id);
 
   ABSL_DEPRECATED("Use CollectiveDeviceList instead of list of ReplicaGroup.")
   static std::unique_ptr<HloInstruction> CreateCollectiveBroadcast(
@@ -949,6 +956,12 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloInstruction* const> init_values, const Window& window,
       HloComputation* reduce_computation);
+
+  static std::unique_ptr<HloInstruction> CreateScan(
+      const Shape& shape, absl::Span<HloInstruction* const> inputs,
+      absl::Span<HloInstruction* const> inits, HloComputation* to_apply,
+      int64_t scan_dimension, bool is_reverse,
+      TriState is_associative = TRI_STATE_UNSPECIFIED);
 
   // Creates a batch-norm-training instruction.
   static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
@@ -1654,7 +1667,13 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
                                  CanonicalNameMap* canonical_name_map) const;
 
   // Returns a serialized representation of this instruction.
-  virtual HloInstructionProto ToProto() const;
+  HloInstructionProto ToProto() const {
+    HloInstructionProto proto;
+    ToProto(&proto);
+    return proto;
+  }
+
+  virtual void ToProto(HloInstructionProto* proto) const;
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
@@ -1714,7 +1733,7 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   void set_single_sharding(const HloSharding& sharding);
   // Sets a sharding that assigns the current instruction to device.
   void set_device_sharding(int64_t device) {
-    set_single_sharding(HloSharding::AssignDevice(device));
+    set_single_sharding(HloSharding::SingleDevice(device));
   }
   // Remove any sharding from this operator.
   void clear_sharding() { sharding_ = nullptr; }
@@ -1830,6 +1849,19 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   absl::InlinedVector<int64_t, 4> OperandIndices(
       const HloInstruction* operand) const;
 
+  // Returns the dimension index of the operand that corresponds to the given
+  // output dimension index, if the instruction is a "transparent" unary
+  // operation (e.g., Broadcast, Bitcast, Reshape, Elementwise Unary).
+  //
+  // Returns std::nullopt if:
+  // 1. The operation is not supported or not unary.
+  // 2. The output dimension is "new" (e.g., created by Broadcast or Reshape
+  // insertion).
+  // 3. The reshape is not a "trivial" reshape (i.e., not just
+  // inserting/deleting 1-sized dims).
+  std::optional<int64_t> MapUnaryOutputDimToOperandDim(
+      int64_t output_dim_idx) const;
+
   // Convenience helper for ShapeUtil::InsertedOrDeleted1SizedDimensions. If
   // this reshape merely inserts or deletes 1-sized dimensions, return the input
   // indices of the deleted dimensions and the output indices of the inserted
@@ -1885,6 +1917,13 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   // general unique ID.
   static int32_t CalculateLocalId(int64_t unique_id) {
     return static_cast<int32_t>(unique_id & 0xFFFFFFFF);
+  }
+
+  // Returns the parent ID of the instruction by extracting it from the more
+  // general unique ID. The method does not differentiate between a parentless
+  // unique id and a unique id with a parent id of 0.
+  static int32_t CalculateParentId(int64_t unique_id) {
+    return static_cast<int32_t>(unique_id >> 32);
   }
 
   bool has_backend_config() const { return !backend_config_.empty(); }
@@ -2029,6 +2068,16 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
     return proto;
   }
 
+  // Applies a function `fn` to the underlying backend config proto. The
+  // function receives a mutable pointer to a proto of type `ConfigProto`.
+  //
+  // If the proto is not already parsed, it will return an error.
+  template <typename ConfigProto, EnableIfProto<ConfigProto>* = nullptr>
+  absl::Status MutateBackendConfig(
+      const std::function<absl::Status(ConfigProto*)>& fn) {
+    return backend_config_.ApplyFnOnProto(fn);
+  }
+
   absl::Status set_backend_config(const tsl::protobuf::Message& proto) {
     backend_config_ = BackendConfigWrapper(proto);
     return absl::OkStatus();
@@ -2096,6 +2145,13 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
     return (m == nullptr) ? *kEmptyMetadata : *m;
   }
 
+  // Reconstructs the full Python call stack from HloMetadata.
+  std::vector<HloStackFrame> GetStackTraceFromMetadata() const;
+
+  // Formats the stack trace reconstructed from metadata into a human-readable
+  // string.
+  std::string GetStackTraceStringFromMetadata(int indent = 0) const;
+
   OpMetadata& mutable_metadata() {
     if (metadata_ == nullptr) {
       metadata_ = std::make_unique<OpMetadata>();
@@ -2116,6 +2172,13 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   void SortInstructionUsersAndControlLists(
       const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
       const HloInstruction& sorted_instruction);
+
+  // Sorts the users of this instruction using the given comparison function.
+  void SortUsers(
+      absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+          compare) {
+    users_.SortInstructionUsers(compare);
+  }
 
   // Old methods kept for smooth subclassing transition BEGIN.
   // NOTE: Refrain from adding more delegates, prefer down casting to subclasses
@@ -2290,7 +2353,10 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   const std::vector<ReplicaGroup>& replica_groups() const;
 
   // Delegates to HloCollectiveInstruction::device_list.
-  const CollectiveDeviceList& device_list() const;
+  const std::shared_ptr<CollectiveDeviceListBase>& device_list() const;
+
+  // Returns true if device_list()->num_replica_groups() > 0.
+  bool has_replica_groups() const;
 
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs() const;
@@ -2383,6 +2449,10 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
 
+  // Delegates to HloConvolutionInstruction::sparsity_config.
+  const SparsityConfig& sparsity_config() const;
+  void set_sparsity_config(const SparsityConfig& config);
+
   // Returns true if the instruction is an async-start, async-update, or
   // async-done.
   bool IsAsynchronous() const;
@@ -2449,7 +2519,7 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
   std::shared_ptr<OriginalValue> original_value() const;
   void set_original_value(std::shared_ptr<OriginalValue> original_value);
 
-  // Copy original value from the input instruction if the source and
+  // Copies original value from the input instruction if the source and
   // destination shapes are compatible. This performs a deep copy if clone is
   // set to true. Otherwise, it performs a shallow copy. Print a warning if the
   // shapes are not compatible and issue_warning is set to true.
@@ -2457,8 +2527,8 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
                          bool issue_warning = false);
 
  protected:
-  // Internal constructor for a given opcode/shape, other fields must be filled
-  // by factory methods.
+  // Internal constructor for a given opcode/shape, other fields must be
+  // filled by factory methods.
   HloInstruction(HloOpcode opcode, const Shape& shape);
 
   void RemoveAllOperands() { operands_.clear(); }
@@ -2648,6 +2718,9 @@ class alignas(kInstructionTypeMask + 1) HloInstruction {
     void RemoveUser(HloInstruction* user);       // REQUIRES: Contains(user)
     int64_t UserId(HloInstruction* user);
     void SortInstructionUsers(
+        absl::FunctionRef<bool(const HloInstruction*, const HloInstruction*)>
+            compare);
+    void SortInstructionUsers(
         const MappedPtrContainerSorter<HloInstruction>::MapPtrFn& map_fn,
         const Users& sorted_instruction_users);
     bool CheckInvariants();
@@ -2768,6 +2841,7 @@ std::string RaggedDotDimensionNumbersToString(
     const RaggedDotDimensionNumbers& dnums);
 std::string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
+std::string SparsityConfigToString(const SparsityConfig& sparsity_config);
 
 absl::StatusOr<RandomAlgorithm> StringToRandomAlgorithm(
     const std::string& name);
@@ -2860,6 +2934,7 @@ bool HloPredicateIsNotOp(const HloInstruction* instruction) {
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kScan:
     case HloOpcode::kCustomCall:
       return true;
     default:

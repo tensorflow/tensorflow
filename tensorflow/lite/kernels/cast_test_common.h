@@ -47,8 +47,7 @@ class CastOpModel : public SingleOpModel {
                  CreateCastOptions(builder_).Union());
     BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
                      /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false,
-                     /*use_simple_allocator=*/false);
+                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
     InterpreterOptions options;
     options.SetCacheConstantCastOp(true);
     interpreter_->ApplyOptions(&options);
@@ -57,6 +56,14 @@ class CastOpModel : public SingleOpModel {
 
   void Set4BitInput(absl::Span<const int8_t> f) {
     PopulateTensor4bit(input_, 0, f.data(), f.data() + f.size());
+  }
+
+  void SetUInt4Input(absl::Span<const int8_t> f) {
+    PopulateTensor4bit(input_, 0, f.data(), f.data() + f.size());
+  }
+
+  void Set2BitInput(absl::Span<const int8_t> data) {
+    PopulateTensor2bit(input_, 0, data.data(), data.data() + data.size());
   }
 
   int input() const { return input_; }

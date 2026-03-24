@@ -17,25 +17,26 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/sycl/sycl_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/stream_executor/typed_kernel_factory.h"
-#include "xla/tsl/platform/status_matchers.h"
 
 namespace stream_executor::sycl {
 namespace {
 
 const int kDefaultDeviceOrdinal = 0;
 
+using ::absl_testing::IsOk;
 using ::testing::Gt;
-using ::tsl::testing::IsOk;
 
 class SyclTimerTest : public ::testing::Test {
  public:
   void LaunchSomeKernel(StreamExecutor* executor, Stream* stream) {
     using AddKernel =
-        TypedKernelFactory<DeviceMemory<float>, DeviceMemory<float>,
-                           DeviceMemory<float>>;
+        TypedKernelFactory<DeviceAddress<float>, DeviceAddress<float>,
+                           DeviceAddress<float>>;
 
     // TODO(intel-tf): This is a temporary workaround to get the test working.
     // This will be replaced with hlo-based spv binary generation once MLIR
@@ -196,14 +197,14 @@ class SyclTimerTest : public ::testing::Test {
     const int64_t kByteLength = sizeof(float) * kLength;
 
     // Prepare arguments: a=1.0, b=2.0, c=0.0
-    DeviceMemory<float> a = executor->AllocateArray<float>(kLength, 0);
-    DeviceMemory<float> b = executor->AllocateArray<float>(kLength, 0);
-    DeviceMemory<float> c = executor->AllocateArray<float>(kLength, 0);
+    DeviceAddress<float> a = executor->AllocateArray<float>(kLength, 0);
+    DeviceAddress<float> b = executor->AllocateArray<float>(kLength, 0);
+    DeviceAddress<float> c = executor->AllocateArray<float>(kLength, 0);
 
     ASSERT_THAT(stream->Memset32(&a, 1.0, kByteLength), IsOk());
     ASSERT_THAT(stream->Memset32(&b, 2.0, kByteLength), IsOk());
     ASSERT_THAT(stream->Memset32(&c, 0.0, kByteLength), IsOk());
-    ASSERT_THAT(add.Launch(ThreadDim(), BlockDim(kLength), stream, a, b, c),
+    ASSERT_THAT(add.Launch(ThreadDim(kLength), BlockDim(), stream, a, b, c),
                 IsOk());
   }
 
@@ -212,14 +213,14 @@ class SyclTimerTest : public ::testing::Test {
     TF_ASSERT_OK_AND_ASSIGN(
         Platform * platform,
         stream_executor::PlatformManager::PlatformWithId(kSyclPlatformId));
-    TF_ASSERT_OK_AND_ASSIGN(executor_,
+    TF_ASSERT_OK_AND_ASSIGN(StreamExecutor * executor,
                             platform->ExecutorForDevice(kDefaultDeviceOrdinal));
+    executor_ = static_cast<SyclExecutor*>(executor);
     TF_ASSERT_OK_AND_ASSIGN(stream_,
                             executor_->CreateStream(/*priority=*/std::nullopt));
   }
 
-  // TODO(intel-tf): Use SyclExecutor instead of StreamExecutor.
-  StreamExecutor* executor_;
+  SyclExecutor* executor_;
   std::unique_ptr<Stream> stream_;
 };
 
@@ -235,7 +236,7 @@ TEST_F(SyclTimerTest, Create) {
                           timer.GetElapsedDuration());
   EXPECT_THAT(timer_result, Gt(absl::ZeroDuration()));
   EXPECT_THAT(timer.GetElapsedDuration(),
-              tsl::testing::StatusIs(absl::StatusCode::kFailedPrecondition));
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace

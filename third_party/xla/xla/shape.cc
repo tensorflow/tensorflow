@@ -137,8 +137,18 @@ absl::StatusOr<Shape> Shape::FromProto(const ShapeProto& shape_proto) {
   return shape;
 }
 
+void Shape::ToProto(ShapeProto& proto) const {
+  proto.Clear();
+  SaveToEmptyProto(proto);
+}
+
 ShapeProto Shape::ToProto() const {
   ShapeProto proto;
+  SaveToEmptyProto(proto);
+  return proto;
+}
+
+void Shape::SaveToEmptyProto(ShapeProto& proto) const {
   proto.set_element_type(element_type_);
 
   if (const auto* const state = if_array_state()) {
@@ -150,17 +160,16 @@ ShapeProto Shape::ToProto() const {
       proto.add_is_dynamic_dimension(dynamic);
     }
     if (state->layout.has_value()) {
-      *proto.mutable_layout() = state->layout->ToProto();
+      state->layout->ToProto(*proto.mutable_layout());
     }
   } else if (const auto* const state = if_tuple_state()) {
     proto.mutable_tuple_shapes()->Reserve(state->tuple_shapes.size());
     for (const Shape& shape : state->tuple_shapes) {
-      *proto.add_tuple_shapes() = shape.ToProto();
+      shape.ToProto(*proto.add_tuple_shapes());
     }
   } else if (const auto* const state = if_buffer_state()) {
-    *proto.add_tuple_shapes() = state->buffer_shape->ToProto();
+    state->buffer_shape->ToProto(*proto.add_tuple_shapes());
   }
-  return proto;
 }
 
 Shape::BufferState::BufferState() : buffer_shape(std::make_unique<Shape>()) {}
@@ -546,15 +555,19 @@ absl::StatusOr<ProgramShape> ProgramShape::FromProto(
   return program_shape;
 }
 
-ProgramShapeProto ProgramShape::ToProto() const {
-  ProgramShapeProto proto;
+void ProgramShape::ToProto(ProgramShapeProto& proto) const {
   for (const Shape& shape : parameters()) {
-    *proto.add_parameters() = shape.ToProto();
+    shape.ToProto(*proto.add_parameters());
   }
-  *proto.mutable_result() = result().ToProto();
+  result().ToProto(*proto.mutable_result());
   for (const std::string& name : parameter_names()) {
     proto.add_parameter_names(name);
   }
+}
+
+ProgramShapeProto ProgramShape::ToProto() const {
+  ProgramShapeProto proto;
+  ToProto(proto);
   return proto;
 }
 

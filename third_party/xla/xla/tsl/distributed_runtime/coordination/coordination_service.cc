@@ -527,6 +527,14 @@ CoordinationService::ConnectAfterBarrierPasses(absl::string_view task_name,
                                   int64_t unused_counter) mutable {
     state_mu_.AssertHeld();
     const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
+    if (!s.ok()) {
+      LOG(WARNING) << "ConnectAfterBarrierPasses: " << s;
+    }
+    if (incarnation != task_state->GetTaskIncarnation()) {
+      LOG(WARNING) << "ConnectAfterBarrierPasses: incarnation=" << incarnation
+                   << ", task_state->GetTaskIncarnation()="
+                   << task_state->GetTaskIncarnation();
+    }
     if (s.ok() && incarnation == task_state->GetTaskIncarnation()) {
       // Connect task to service.
       task_state->Connect();
@@ -1558,7 +1566,6 @@ void CoordinationService::RefreshAliveness() {
       // the same set of alive tasks (alive_tasks) to every task in the barrier.
       std::vector<CoordinatedTask> v{alive_tasks.begin(), alive_tasks.end()};
       std::vector<IncarnationId> incarnation_ids = IncarnationIds(v);
-      absl::c_sort(incarnation_ids);
       for (const GetAliveTasksCallback& done : it->dones) {
         done(absl::OkStatus(), v, incarnation_ids);
       }
@@ -1610,7 +1617,6 @@ void CoordinationService::GetAliveTasksAsync(
   if (TaskSetSubset(alive_tasks, it->in_barrier)) {
     std::vector<CoordinatedTask> v{alive_tasks.begin(), alive_tasks.end()};
     std::vector<IncarnationId> incarnation_ids = IncarnationIds(v);
-    absl::c_sort(incarnation_ids);
     for (const GetAliveTasksCallback& done : it->dones) {
       done(absl::OkStatus(), v, incarnation_ids);
     }

@@ -20,6 +20,10 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "xla/service/platform_util.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/memory_allocation.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -37,34 +41,44 @@ class GpuExecutorTest : public testing::Test {
   }
 };
 
+// TODO(intel-tf): Support GetPointerMemorySpace for host memory.
 using GetPointerMemorySpaceTest = GpuExecutorTest;
 
 TEST_F(GetPointerMemorySpaceTest, Host) {
+  if (GetPlatform()->Name() == "SYCL") {
+    GTEST_SKIP() << "SYCL does not support GetPointerMemorySpace";
+  }
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   TF_ASSERT_OK_AND_ASSIGN(auto host_ptr, executor->HostMemoryAllocate(64));
-  TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(host_ptr->opaque()))
-  EXPECT_EQ(memory_space, MemoryType::kHost);
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_space, executor->GetPointerMemorySpace(
+                                                 host_ptr->address().opaque()));
+  EXPECT_EQ(memory_space, MemorySpace::kHost);
 }
 
 TEST_F(GetPointerMemorySpaceTest, HostAllocatedWithMemoryKind) {
+  if (GetPlatform()->Name() == "SYCL") {
+    GTEST_SKIP() << "SYCL does not support GetPointerMemorySpace";
+  }
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
-  DeviceMemoryBase host_ptr = executor->Allocate(
-      64, static_cast<int64_t>(stream_executor::MemoryType::kHost));
+  DeviceAddressBase host_ptr = executor->Allocate(
+      64, static_cast<int64_t>(stream_executor::MemorySpace::kHost));
   EXPECT_FALSE(host_ptr.is_null());
-  TF_ASSERT_OK_AND_ASSIGN(MemoryType memory_space,
-                          executor->GetPointerMemorySpace(host_ptr.opaque()))
-  EXPECT_EQ(memory_space, MemoryType::kHost);
+  TF_ASSERT_OK_AND_ASSIGN(MemorySpace memory_space,
+                          executor->GetPointerMemorySpace(host_ptr.opaque()));
+  EXPECT_EQ(memory_space, MemorySpace::kHost);
   executor->Deallocate(&host_ptr);
 }
 
 TEST_F(GetPointerMemorySpaceTest, Device) {
+  if (GetPlatform()->Name() == "SYCL") {
+    GTEST_SKIP() << "SYCL does not support GetPointerMemorySpace";
+  }
   StreamExecutor* executor = GetPlatform()->ExecutorForDevice(0).value();
   auto mem = executor->Allocate(64);
   ASSERT_NE(mem, nullptr);
   TF_ASSERT_OK_AND_ASSIGN(auto memory_space,
-                          executor->GetPointerMemorySpace(mem.opaque()))
-  EXPECT_EQ(memory_space, MemoryType::kDevice);
+                          executor->GetPointerMemorySpace(mem.opaque()));
+  EXPECT_EQ(memory_space, MemorySpace::kDevice);
   executor->Deallocate(&mem);
 }
 
@@ -72,6 +86,10 @@ using HostMemoryAllocateTest = GpuExecutorTest;
 
 TEST_F(HostMemoryAllocateTest, Numa) {
   Platform* platform = GetPlatform();
+  if (platform->Name() == "SYCL") {
+    // TODO(intel-tf): Support NUMA for host memory.
+    GTEST_SKIP() << "SYCL does not support NUMA for host memory";
+  }
   constexpr uint64_t kSize = 1024;
   const int num_devices = platform->VisibleDeviceCount();
   for (int device = 0; device < num_devices; ++device) {
@@ -82,8 +100,9 @@ TEST_F(HostMemoryAllocateTest, Numa) {
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<MemoryAllocation> host_ptr,
                             executor->HostMemoryAllocate(kSize));
     ASSERT_TRUE(host_ptr);
-    EXPECT_NE(host_ptr->opaque(), nullptr);
-    const int numa_node = tsl::port::NUMAGetMemAffinity(host_ptr->opaque());
+    EXPECT_NE(host_ptr->address().opaque(), nullptr);
+    const int numa_node =
+        tsl::port::NUMAGetMemAffinity(host_ptr->address().opaque());
     if (numa_node == tsl::port::kNUMANoAffinity) {
       // Could be because `executor` could not determine its own NUMA node, in
       // which case numa_node() will be -1 or 0, depending on the failure mode.

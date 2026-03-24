@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_PYTHON_SAFE_STATIC_INIT_H_
 
 #include <atomic>
-#include <memory>
+#include <type_traits>
 
+#include "absl/base/const_init.h"
+#include "absl/base/no_destructor.h"
 #include "absl/synchronization/mutex.h"
 #include "nanobind/nanobind.h"
 
@@ -37,42 +39,52 @@ namespace xla {
 //     // for example we call some python code using nanobind
 //     nb::module_ numpy = nb::module_::import_("numpy");
 //     auto np_int8 = nb::object(numpy.attr("int8"));
-//     SomeType* obj = new SomeType(np_uint8);
+//     SomeType* obj = new SomeType(np_int8);
 //     return obj;
 // }();
 //
-// let us use SafeStaticInit
+// let us use SafeStatic
+// static SafeStatic<SomeType> p;
 // auto func = [](){
 //     // for example we call some python code using nanobind
 //     nb::module_ numpy = nb::module_::import_("numpy");
 //     auto np_int8 = nb::object(numpy.attr("int8"));
-//     return std::make_unique<SomeType>(np_uint8);
-// }
-// SomeType& p = SafeStaticInit<SomeType>(func);
-template <typename T, typename F>
-T& SafeStaticInit(F init_fn) {
-  static absl::Mutex mutex;
-  static std::atomic<T*> output{nullptr};
-  // Opportunistic check outside the lock.
-  if (T* result = output.load()) {
-    return *result;
+//     return std::make_unique<SomeType>(np_int8);
+// };
+// SomeType& value = p.Get(func);
+template <typename T>
+class SafeStatic {
+ public:
+  template <typename F>
+  T& Get(F init_fn) {
+    // Opportunistic check outside the lock.
+    if (T* result = output_.load()) {
+      return *result;
+    }
+    // Locking must always be ordered, so we must release and reacquire
+    // the gil because init_fn() may release the gil which forces us
+    // to order mutex before gil.
+    // In free-threading mode, the effect is the same but we are ordering
+    // mutex before any critical sections because release_gil releases
+    // all critical sections.
+    nanobind::gil_scoped_release release_gil;
+    absl::MutexLock lock(*mutex_);
+    // Second check under the lock.
+    if (T* result = output_.load()) {
+      return *result;
+    }
+    nanobind::gil_scoped_acquire acquire_gil;
+    output_.store(init_fn().release());
+    return *output_.load();
   }
-  // Locking must always be ordered, so we must release and reacquire
-  // the gil because init_fn() may release the gil which forces us
-  // to order mutex before gil.
-  // In free-threading mode, the effect is the same but we are ordering
-  // mutex before any critical sections because release_gil releases
-  // all critical sections.
-  nanobind::gil_scoped_release release_gil;
-  absl::MutexLock lock(mutex);
-  // Second check under the lock.
-  if (T* result = output.load()) {
-    return *result;
-  }
-  nanobind::gil_scoped_acquire acquire_gil;
-  output.store(init_fn().release());
-  return *output.load();
-}
+
+ private:
+  absl::NoDestructor<absl::Mutex> mutex_{absl::kConstInit};
+  std::atomic<T*> output_{nullptr};
+};
+
+// Google C style requires static objects be trivially destructible.
+static_assert(std::is_trivially_destructible_v<SafeStatic<int>>);
 
 }  // namespace xla
 

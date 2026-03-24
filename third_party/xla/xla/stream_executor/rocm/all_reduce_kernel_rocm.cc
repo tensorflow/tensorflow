@@ -20,11 +20,12 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/base/casts.h"
-#include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel_lib.cu.h"
+#include "xla/stream_executor/gpu/collective_signal.cu.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/rocm/collective_signal_rocm.cu.h"  // IWYU pragma: keep
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/types.h"
 
@@ -37,23 +38,6 @@ union alignas(8) Vec<hip_bfloat16> {
   hip_bfloat16 data[4];
   PackedType packed;
 };
-
-template <>
-__device__ __forceinline__ void PutSignalFlag<PlatformType::ROCM>(
-    uint32_t* addr, uint32_t val) {
-  __atomic_store_n(addr, val, __ATOMIC_RELEASE);
-  __threadfence_system();  // Ensure visibility across all GPUs
-}
-
-template <>
-__device__ __forceinline__ void WaitSignalFlag<PlatformType::ROCM>(
-    uint32_t* addr, uint32_t expected) {
-  uint32_t val;
-  do {
-    __threadfence_system();  // Ensure we see the latest value
-    val = __atomic_load_n(addr, __ATOMIC_ACQUIRE);
-  } while (val < expected);
-}
 
 }  // namespace stream_executor::gpu
 
@@ -74,7 +58,7 @@ __device__ __forceinline__ void WaitSignalFlag<PlatformType::ROCM>(
                 &stream_executor::gpu::AllReduceKernelImpl<                  \
                     HIP_TYPE, xla::ReductionKind::REDUCTION_KIND,            \
                     xla::se::gpu::AllReduceStrategy::STRATEGY,               \
-                    stream_executor::gpu::PlatformType::ROCM>),              \
+                    stream_executor::gpu::PlatformType::kRocm>),             \
             "all_reduce_" #SUFFIX #STRATEGY, arity);                         \
       }));
 

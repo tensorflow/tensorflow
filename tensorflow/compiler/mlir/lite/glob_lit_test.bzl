@@ -7,11 +7,11 @@
 """
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@rules_python//python:py_test.bzl", "py_test")
 load(
-    "@local_xla//xla:lit.bzl",
+    "@xla//xla:lit.bzl",
     "lit_script_with_xla_gpu_cuda_data_dir",
 )
-load("@rules_python//python:py_test.bzl", "py_test")
 
 # Default values used by the test runner.
 _default_test_file_exts = ["mlir", ".pbtxt", ".td"]
@@ -64,7 +64,7 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
             "@llvm-project//llvm:count",
             "@llvm-project//llvm:not",
         ],
-        deps = ["@pypi_lit//:pkg"],
+        deps = ["@pypi//lit"],
         size = size,
         main = "lit.py",
         exec_properties = exec_properties,

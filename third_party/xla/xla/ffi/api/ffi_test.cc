@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/ffi/api/ffi.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -23,31 +24,34 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/c_api.h"
+#include "xla/ffi/attribute_map.h"
 #include "xla/ffi/call_frame.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
-#include "xla/ffi/ffi_api.h"
-#include "xla/ffi/type_id_registry.h"
+#include "xla/ffi/invoke.h"
+#include "xla/ffi/type_registry.h"
 #include "xla/primitive_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/chain.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -57,6 +61,17 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 
 namespace xla::ffi {
+
+using xla::ffi::internal::ArgTag;
+using xla::ffi::internal::NumTagged;
+using xla::ffi::internal::RetTag;
+
+static const XLA_FFI_Api* Api() { return GetXlaFfiApi(); }
+
+// Compile-time test for the template metaprograming for counting tags.
+static_assert(NumTagged<ArgTag, RetTag<int32_t>>::value == 0);
+static_assert(NumTagged<ArgTag, ArgTag<int32_t>>::value == 1);
+static_assert(NumTagged<ArgTag, ArgTag<int32_t>, RetTag<int32_t>>::value == 1);
 
 enum class Int32BasedEnum : int32_t {
   kOne = 1,
@@ -115,8 +130,8 @@ XLA_FFI_REGISTER_STRUCT_ATTR_DECODING(
 
 namespace xla::ffi {
 
+using ::absl_testing::StatusIs;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(FfiTest, DataTypeEnumValue) {
   // Verify that xla::PrimitiveType and xla::ffi::DataType use the same
@@ -443,7 +458,7 @@ TEST(FfiTest, ReturnError) {
   auto handler = Ffi::Bind().To(
       []() { return Error(ErrorCode::kInternal, "Test error"); });
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
   EXPECT_EQ(status, absl::InternalError("Test error"));
 }
 
@@ -456,10 +471,29 @@ TEST(FfiTest, RunId) {
     return Error::Success();
   });
 
-  CallOptions options;
-  options.run_id = xla::RunId{42};
+  InvokeContext context;
+  context.run_id = RunId{42};
 
-  auto status = Call(*handler, call_frame, options);
+  auto status = Invoke(Api(), *handler, call_frame, context);
+
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, RunIdViaContext) {
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Ctx().To([&](Context ctx) {
+    ErrorOr<RunId> run_id = ctx.get<RunId>();
+    EXPECT_TRUE(run_id.has_value());
+    EXPECT_EQ(run_id->run_id, 42);
+    return Error::Success();
+  });
+
+  InvokeContext context;
+  context.run_id = RunId{42};
+
+  auto status = Invoke(Api(), *handler, call_frame, context);
 
   TF_ASSERT_OK(status);
 }
@@ -468,23 +502,30 @@ TEST(FfiTest, DeviceOrdinal) {
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  auto handler =
-      Ffi::Bind().Ctx<DeviceOrdinal>().To([&](int32_t device_ordinal) {
+  auto handler = Ffi::Bind().Ctx<DeviceOrdinal>().Ctx().To(
+      [&](int32_t device_ordinal, Context ctx) {
+        // Get device ordinal from the argument.
         EXPECT_EQ(device_ordinal, 42);
+
+        // Get device ordinal from the context.
+        ErrorOr<int32_t> device_ordinal_or_error = ctx.get<DeviceOrdinal>();
+        EXPECT_TRUE(device_ordinal_or_error.has_value());
+        EXPECT_EQ(*device_ordinal_or_error, 42);
+
         return Error::Success();
       });
 
-  CallOptions options;
-  options.device_ordinal = 42;
+  InvokeContext context;
+  context.device_ordinal = 42;
 
-  auto status = Call(*handler, call_frame, options);
+  auto status = Invoke(Api(), *handler, call_frame, context);
 
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, AnyBufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -499,14 +540,14 @@ TEST(FfiTest, AnyBufferArgument) {
     EXPECT_EQ(buffer.dimensions().size(), 2);
     return Error::Success();
   });
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, BufferArgument) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -517,14 +558,14 @@ TEST(FfiTest, BufferArgument) {
     EXPECT_EQ(buffer.dimensions().size(), 2);
     return Error::Success();
   });
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, AnyBufferResult) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -537,7 +578,7 @@ TEST(FfiTest, AnyBufferResult) {
     EXPECT_EQ(buffer->dimensions().size(), 2);
     return Error::Success();
   });
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
@@ -548,16 +589,15 @@ TEST(FfiTest, MissingBufferArgument) {
 
   auto handler = Ffi::Bind().Arg<BufferR1<F32>>().To(
       [](auto) { return Error::Success(); });
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     HasSubstr("Wrong number of arguments")));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of arguments")));
 }
 
 TEST(FfiTest, WrongRankBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(int32_t));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -565,17 +605,16 @@ TEST(FfiTest, WrongRankBufferArgument) {
 
   auto handler = Ffi::Bind().Arg<BufferR1<F32>>().To(
       [](auto) { return Error::Success(); });
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   EXPECT_THAT(status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Wrong buffer rank: expected 1 but got 2")));
+              StatusIs(absl::StatusCode::kInvalidArgument,
+                       HasSubstr("Wrong buffer rank: expected 1 but got 2")));
 }
 
 TEST(FfiTest, WrongTypeBufferArgument) {
   std::vector<int32_t> storage(4, 0.0);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(int32_t));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(int32_t));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::S32, /*dims=*/{2, 2});
@@ -583,12 +622,12 @@ TEST(FfiTest, WrongTypeBufferArgument) {
 
   auto handler = Ffi::Bind().Arg<BufferR2<F32>>().To(
       [](auto) { return Error::Success(); });
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
+  EXPECT_THAT(
+      status,
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               HasSubstr("Wrong buffer dtype: expected F32 but got S32")));
 }
 
 TEST(FfiTest, WrongNumberOfArguments) {
@@ -602,18 +641,17 @@ TEST(FfiTest, WrongNumberOfArguments) {
 
   auto handler =
       Ffi::Bind().Attr<int>("foo").To([](int foo) { return Error::Success(); });
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
-  EXPECT_THAT(status,
-              absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
-                                     HasSubstr("Wrong number of attributes")));
+  EXPECT_THAT(status, StatusIs(absl::StatusCode::kInvalidArgument,
+                               HasSubstr("Wrong number of attributes")));
   EXPECT_THAT(status.message(), HasSubstr("foo"));
   EXPECT_THAT(status.message(), HasSubstr("bar"));
 }
 
 TEST(FfiTest, TokenArgument) {
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
-  builder.AddBufferArg(se::DeviceMemoryBase(), PrimitiveType::TOKEN,
+  builder.AddBufferArg(se::DeviceAddressBase(), PrimitiveType::TOKEN,
                        /*dims=*/{});
   auto call_frame = builder.Build();
 
@@ -624,13 +662,13 @@ TEST(FfiTest, TokenArgument) {
   };
 
   auto handler = Ffi::Bind().Arg<Token>().To(fn);
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, RemainingArgs) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -638,6 +676,9 @@ TEST(FfiTest, RemainingArgs) {
 
   auto fn = [&](RemainingArgs args) {
     EXPECT_EQ(args.size(), 1);
+
+    EXPECT_TRUE(args.isa<AnyBuffer>(0));
+    EXPECT_FALSE(args.isa<BufferR2<F64>>(0));
 
     ErrorOr<AnyBuffer> arg0 = args.get<AnyBuffer>(0);
     ErrorOr<AnyBuffer> arg1 = args.get<AnyBuffer>(1);
@@ -649,14 +690,14 @@ TEST(FfiTest, RemainingArgs) {
   };
 
   auto handler = Ffi::Bind().RemainingArgs().To(fn);
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, RemainingRets) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/2);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -665,6 +706,9 @@ TEST(FfiTest, RemainingRets) {
 
   auto fn = [&](Result<AnyBuffer> ret, RemainingRets rets) {
     EXPECT_EQ(rets.size(), 1);
+
+    EXPECT_TRUE(rets.isa<AnyBuffer>(0));
+    EXPECT_FALSE(rets.isa<BufferR2<F64>>(0));
 
     ErrorOr<Result<AnyBuffer>> ret0 = rets.get<AnyBuffer>(0);
     ErrorOr<Result<AnyBuffer>> ret1 = rets.get<AnyBuffer>(1);
@@ -676,14 +720,14 @@ TEST(FfiTest, RemainingRets) {
   };
 
   auto handler = Ffi::Bind().Ret<AnyBuffer>().RemainingRets().To(fn);
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, OptionalArgs) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
   builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -696,7 +740,7 @@ TEST(FfiTest, OptionalArgs) {
     };
 
     auto handler = Ffi::Bind().OptionalArg<AnyBuffer>().To(fn);
-    auto status = Call(*handler, call_frame);
+    auto status = Invoke(Api(), *handler, call_frame);
 
     TF_ASSERT_OK(status);
   }
@@ -711,7 +755,7 @@ TEST(FfiTest, OptionalArgs) {
 
     auto handler =
         Ffi::Bind().OptionalArg<AnyBuffer>().OptionalArg<AnyBuffer>().To(fn);
-    auto status = Call(*handler, call_frame);
+    auto status = Invoke(Api(), *handler, call_frame);
 
     TF_ASSERT_OK(status);
   }
@@ -723,7 +767,7 @@ TEST(FfiTest, OptionalArgs) {
     };
 
     auto handler = Ffi::Bind().Arg<AnyBuffer>().OptionalArg<AnyBuffer>().To(fn);
-    auto status = Call(*handler, call_frame);
+    auto status = Invoke(Api(), *handler, call_frame);
 
     TF_ASSERT_OK(status);
   }
@@ -736,7 +780,7 @@ TEST(FfiTest, OptionalArgs) {
     };
 
     auto handler = Ffi::Bind().OptionalArg<AnyBuffer>().RemainingArgs().To(fn);
-    auto status = Call(*handler, call_frame);
+    auto status = Invoke(Api(), *handler, call_frame);
 
     TF_ASSERT_OK(status);
   }
@@ -744,7 +788,7 @@ TEST(FfiTest, OptionalArgs) {
 
 TEST(FfiTest, OptionalRets) {
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
   builder.AddBufferRet(memory, PrimitiveType::F32, /*dims=*/{2, 2});
@@ -757,7 +801,7 @@ TEST(FfiTest, OptionalRets) {
     };
 
     auto handler = Ffi::Bind().OptionalRet<AnyBuffer>().To(fn);
-    auto status = Call(*handler, call_frame);
+    auto status = Invoke(Api(), *handler, call_frame);
 
     TF_ASSERT_OK(status);
   }
@@ -772,7 +816,7 @@ TEST(FfiTest, OptionalRets) {
 
     auto handler =
         Ffi::Bind().OptionalRet<AnyBuffer>().OptionalRet<AnyBuffer>().To(fn);
-    auto status = Call(*handler, call_frame);
+    auto status = Invoke(Api(), *handler, call_frame);
 
     TF_ASSERT_OK(status);
   }
@@ -785,7 +829,7 @@ TEST(FfiTest, OptionalRets) {
     };
 
     auto handler = Ffi::Bind().Ret<AnyBuffer>().OptionalRet<AnyBuffer>().To(fn);
-    auto status = Call(*handler, call_frame);
+    auto status = Invoke(Api(), *handler, call_frame);
 
     TF_ASSERT_OK(status);
   }
@@ -798,7 +842,7 @@ TEST(FfiTest, OptionalRets) {
     };
 
     auto handler = Ffi::Bind().OptionalRet<AnyBuffer>().RemainingRets().To(fn);
-    auto status = Call(*handler, call_frame);
+    auto status = Invoke(Api(), *handler, call_frame);
 
     TF_ASSERT_OK(status);
   }
@@ -813,7 +857,7 @@ TEST(FfiTest, AutoBinding) {
   });
 
   std::vector<float> storage(4, 0.0f);
-  se::DeviceMemoryBase memory(storage.data(), 4 * sizeof(float));
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
 
   CallFrameBuilder::AttributesBuilder attrs;
   attrs.Insert(kI32, 42);
@@ -823,7 +867,7 @@ TEST(FfiTest, AutoBinding) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
   TF_ASSERT_OK(status);
 }
 
@@ -832,10 +876,11 @@ TEST(FfiTest, AutoBindingResult) {
       Ffi::BindTo(+[](Result<AnyBuffer> buffer) { return Error::Success(); });
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/1);
-  builder.AddBufferRet(se::DeviceMemoryBase(), PrimitiveType::F32, /*dims=*/{});
+  builder.AddBufferRet(se::DeviceAddressBase(), PrimitiveType::F32,
+                       /*dims=*/{});
   auto call_frame = builder.Build();
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
   TF_ASSERT_OK(status);
 }
 
@@ -854,14 +899,34 @@ TEST(FfiTest, AutoBindingStructs) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, AutoBindingDictionary) {
   auto handler = Ffi::BindTo(+[](Dictionary attrs) {
+    EXPECT_TRUE(attrs.contains("i32"));
+    EXPECT_TRUE(attrs.contains("f32"));
+
+    EXPECT_TRUE(attrs.contains<int32_t>("i32"));
+    EXPECT_TRUE(attrs.contains<float>("f32"));
+    EXPECT_FALSE(attrs.contains<int64_t>("i32"));
+    EXPECT_FALSE(attrs.contains<int64_t>("f32"));
+
     EXPECT_EQ(*attrs.get<int32_t>("i32"), 42);
     EXPECT_EQ(*attrs.get<float>("f32"), 42.0f);
+
+    auto it = attrs.begin();
+    EXPECT_EQ(*it, "f32");
+    EXPECT_TRUE(attrs.isa<float>(it));
+    EXPECT_EQ(*attrs.get<float>(it), 42.0f);
+
+    EXPECT_EQ(*++it, "i32");
+    EXPECT_TRUE(attrs.isa<int32_t>(it));
+    EXPECT_EQ(*attrs.get<int32_t>(it), 42);
+
+    EXPECT_EQ(++it, attrs.end());
+
     return Error::Success();
   });
 
@@ -873,7 +938,45 @@ TEST(FfiTest, AutoBindingDictionary) {
   builder.AddAttributes(attrs.Build());
   auto call_frame = builder.Build();
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
+  TF_ASSERT_OK(status);
+}
+
+TEST(FfiTest, VariantAttrDecoding) {
+  using Integral = std::variant<int8_t, int16_t, int32_t, int64_t>;
+
+  auto to_string = absl::Overload{
+      [](int8_t i) { return absl::StrCat("i8: ", i); },
+      [](int16_t i) { return absl::StrCat("i16: ", i); },
+      [](int32_t i) { return absl::StrCat("i32: ", i); },
+      [](int64_t i) { return absl::StrCat("i64: ", i); },
+  };
+
+  auto handler = Ffi::BindTo([&](Dictionary attrs) {
+    EXPECT_TRUE(attrs.contains<Integral>("i32"));
+    EXPECT_TRUE(attrs.contains<Integral>("i64"));
+
+    Integral i32 = *attrs.get<Integral>("i32");
+    EXPECT_EQ(i32.index(), 2);
+
+    Integral i64 = *attrs.get<Integral>("i64");
+    EXPECT_EQ(i64.index(), 3);
+
+    EXPECT_EQ(std::visit(to_string, i32), "i32: 42");
+    EXPECT_EQ(std::visit(to_string, i64), "i64: 42");
+
+    return Error::Success();
+  });
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", int32_t{42});
+  attrs.Insert("i64", int64_t{42});
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto status = Invoke(Api(), *handler, call_frame);
   TF_ASSERT_OK(status);
 }
 
@@ -936,7 +1039,7 @@ TEST(FfiTest, ArrayAttr) {
                      .Attr<Span<const float>>("arr8")
                      .Attr<Span<const double>>("arr9")
                      .To(fn);
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
@@ -986,16 +1089,16 @@ TEST(FfiTest, AttrsAsDictionary) {
   };
 
   auto handler = Ffi::Bind().Attrs().To(fn);
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, DictionaryAttr) {
-  CallFrameBuilder::AttributesMap dict0;
+  AttributesMap dict0;
   dict0.try_emplace("i32", 42);
 
-  CallFrameBuilder::AttributesMap dict1;
+  AttributesMap dict1;
   dict1.try_emplace("f32", 42.0f);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -1033,13 +1136,13 @@ TEST(FfiTest, DictionaryAttr) {
   auto handler =
       Ffi::Bind().Attr<Dictionary>("dict0").Attr<Dictionary>("dict1").To(fn);
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, StructAttr) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
   dict.try_emplace("f32", 42.0f);
 
@@ -1063,7 +1166,7 @@ TEST(FfiTest, StructAttr) {
                      .Attr<PairOfI32AndF32>("i32_and_f32")
                      .To(fn);
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
@@ -1084,7 +1187,7 @@ TEST(FfiTest, AttrsAsStruct) {
   };
 
   auto handler = Ffi::Bind().Attrs<PairOfI32AndF32>().To(fn);
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
@@ -1110,7 +1213,7 @@ TEST(FfiTest, PointerAttr) {
   };
 
   auto handler = Ffi::Bind().Attr<Pointer<std::string>>("ptr").To(fn);
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
@@ -1146,13 +1249,13 @@ TEST(FfiTest, EnumAttr) {
                      .Attr<Int64BasedEnum>("i64_two")
                      .To(fn);
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   TF_ASSERT_OK(status);
 }
 
 TEST(FfiTest, WrongEnumAttrType) {
-  CallFrameBuilder::AttributesMap dict;
+  AttributesMap dict;
   dict.try_emplace("i32", 42);
 
   CallFrameBuilder::AttributesBuilder attrs;
@@ -1170,7 +1273,7 @@ TEST(FfiTest, WrongEnumAttrType) {
                      .Attr<Int32BasedEnum>("i32_enum1")
                      .To(fn);
 
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
 
   EXPECT_TRUE(absl::StrContains(
       status.message(),
@@ -1202,13 +1305,32 @@ struct MyDataWithExplicitTypeId {
 
 // Rely on XLA to assign unique type id for the type.
 TypeId MyDataWithAutoTypeId::id = XLA_FFI_UNKNOWN_TYPE_ID;
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto",
-                      &MyDataWithAutoTypeId::id);
+static constexpr auto kMyDataWithAutoTypeIdTypeInfo =
+    MakeTypeInfo<MyDataWithAutoTypeId>();
+
+// Test that XLA FFI macro works.
+XLA_FFI_DECLARE_TYPE_ID_SYMBOL(my_data_type_id);
+XLA_FFI_DECLARE_TYPE_INFO_SYMBOL(my_data_type_info);
+
+extern "C" XLA_FFI_TypeId* my_data_type_id() {
+  return &MyDataWithAutoTypeId::id;
+}
+
+extern "C" const XLA_FFI_TypeInfo* my_data_type_info() {
+  return &kMyDataWithAutoTypeIdTypeInfo;
+}
+
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_auto", my_data_type_id(),
+                      my_data_type_info());
 
 // Provide explicit type id and rely on XLA to check that it's unique.
 TypeId MyDataWithExplicitTypeId::id = {42};
+static constexpr auto kMyDataWithExplicitTypeIdTypeInfo =
+    MakeTypeInfo<MyDataWithExplicitTypeId>();
+
 XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "my_data_explicit",
-                      &MyDataWithExplicitTypeId::id);
+                      &MyDataWithExplicitTypeId::id,
+                      &kMyDataWithExplicitTypeIdTypeInfo);
 
 TEST(FfiTest, UserData) {
   MyDataWithAutoTypeId data0{"foo"};
@@ -1219,9 +1341,9 @@ TEST(FfiTest, UserData) {
 
   ExecutionContext execution_context;
   TF_ASSERT_OK(execution_context.Insert(
-      TypeIdRegistry::TypeId(MyDataWithAutoTypeId::id.type_id), &data0));
+      TypeRegistry::TypeId(MyDataWithAutoTypeId::id.type_id), &data0));
   TF_ASSERT_OK(execution_context.Insert(
-      TypeIdRegistry::TypeId(MyDataWithExplicitTypeId::id.type_id), &data1));
+      TypeRegistry::TypeId(MyDataWithExplicitTypeId::id.type_id), &data1));
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
@@ -1237,70 +1359,95 @@ TEST(FfiTest, UserData) {
                      .Ctx<UserData<MyDataWithExplicitTypeId>>()
                      .To(fn);
 
-  CallOptions options;
-  options.execution_context = &execution_context;
+  InvokeContext context;
+  context.execution_context = &execution_context;
 
-  auto status = Call(*handler, call_frame, options);
+  auto status = Invoke(Api(), *handler, call_frame, context);
 
   TF_ASSERT_OK(status);
 }
 
 struct MyState {
   static TypeId id;
+  static TypeInfo info;
 
   explicit MyState(int32_t value) : value(value) {}
   int32_t value;
 };
 
 TypeId MyState::id = {};  // zero-initialize type id
-XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id);
+TypeInfo MyState::info = MakeTypeInfo<MyState>();
+
+XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id, &MyState::info);
 
 TEST(FfiTest, StatefulHandler) {
-  ExecutionState execution_state;
+  std::array<ExecutionState, 3> state;
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
-  CallOptions options;
-  options.execution_state = &execution_state;
+  InvokeContext context;
+  context.state_context = {&state[0], &state[1], &state[2]};
 
-  // FFI instantiation handler that creates a state for FFI handler.
   auto instantiate =
       Ffi::BindInstantiate().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
         return std::make_unique<MyState>(42);
       });
 
-  // FFI execute handler that uses state created by the instantiation handler.
-  auto execute = Ffi::Bind().Ctx<State<MyState>>().To([](MyState* state) {
-    EXPECT_EQ(state->value, 42);
-    return Error::Success();
-  });
+  auto prepare =
+      Ffi::BindPrepare().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
+        return std::make_unique<MyState>(43);
+      });
+
+  auto initialize =
+      Ffi::BindInitialize().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
+        return std::make_unique<MyState>(44);
+      });
+
+  // FFI execute handler that uses state created by all the handlers.
+  auto execute = Ffi::Bind()
+                     .Ctx<State<MyState>>()
+                     .Ctx<Prepared<MyState>>()
+                     .Ctx<Initialized<MyState>>()
+                     .To([](MyState* s0, MyState* s1, MyState* s2) {
+                       EXPECT_EQ(s0->value, 42);
+                       EXPECT_EQ(s1->value, 43);
+                       EXPECT_EQ(s2->value, 44);
+                       return Error::Success();
+                     });
 
   // Create `State` and store it in the execution state.
+  TF_ASSERT_OK(Invoke(Api(), *instantiate, call_frame, context,
+                      ExecutionStage::kInstantiate));
   TF_ASSERT_OK(
-      Call(*instantiate, call_frame, options, ExecutionStage::kInstantiate));
+      Invoke(Api(), *prepare, call_frame, context, ExecutionStage::kPrepare));
+  TF_ASSERT_OK(Invoke(Api(), *initialize, call_frame, context,
+                      ExecutionStage::kInitialize));
 
   // Check that state was created and forwarded to the execute handler.
-  TF_ASSERT_OK(Call(*execute, call_frame, options));
+  TF_ASSERT_OK(Invoke(Api(), *execute, call_frame, context));
 }
 
 TEST(FfiTest, ScratchAllocator) {
   static void* kAddr = reinterpret_cast<void*>(0xDEADBEEF);
 
   // A test only memory allocator that returns a fixed memory address.
-  struct TestDeviceMemoryAllocator final : public se::DeviceMemoryAllocator {
+  struct TestDeviceMemoryAllocator final : public se::DeviceAddressAllocator {
     size_t count;
 
     TestDeviceMemoryAllocator()
-        : se::DeviceMemoryAllocator(nullptr), count(0) {}
+        : se::DeviceAddressAllocator(nullptr), count(0) {}
 
-    absl::StatusOr<se::OwningDeviceMemory> Allocate(int, uint64_t size, bool,
-                                                    int64_t) final {
+    absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> Allocate(int,
+                                                              uint64_t size,
+                                                              bool,
+                                                              int64_t) final {
       count++;
-      return se::OwningDeviceMemory(se::DeviceMemoryBase(kAddr, size), 0, this);
+      return se::ScopedDeviceAddress<uint8_t>(
+          se::DeviceAddressBase(kAddr, size), 0, this);
     }
 
-    absl::Status Deallocate(int, se::DeviceMemoryBase mem) final {
+    absl::Status Deallocate(int, se::DeviceAddressBase mem) final {
       count--;
       EXPECT_EQ(mem.opaque(), kAddr);
       return absl::OkStatus();
@@ -1324,10 +1471,10 @@ TEST(FfiTest, ScratchAllocator) {
   CallFrame call_frame =
       CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
 
-  CallOptions options;
-  options.backend_options = CallOptions::GpuOptions{nullptr, &allocator};
+  InvokeContext context;
+  context.backend_context = InvokeContext::GpuContext{nullptr, &allocator};
 
-  auto status = Call(*handler, call_frame, options);
+  auto status = Invoke(Api(), *handler, call_frame, context);
 
   TF_ASSERT_OK(status);
   EXPECT_EQ(allocator.count, 0);
@@ -1342,15 +1489,8 @@ TEST(FfiTest, ScratchAllocatorUnimplemented) {
   auto handler = Ffi::Bind().Ctx<ScratchAllocator>().To(fn);
   CallFrame call_frame =
       CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
-  auto status = Call(*handler, call_frame);
+  auto status = Invoke(Api(), *handler, call_frame);
   TF_ASSERT_OK(status);
-}
-
-TEST(FfiTest, BindFfiInternals) {
-  (void)Ffi::Bind().Ctx<FfiApi>().Ctx<FfiExecutionContext>().To(
-      +[](const XLA_FFI_Api* api, XLA_FFI_ExecutionContext* ctx) {
-        return Error::Success();
-      });
 }
 
 TEST(FfiTest, ThreadPool) {
@@ -1383,10 +1523,10 @@ TEST(FfiTest, ThreadPool) {
   CallFrame call_frame =
       CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
 
-  CallOptions options;
-  options.backend_options = CallOptions::CpuOptions{&device};
+  InvokeContext context;
+  context.backend_context = InvokeContext::CpuContext{&device};
 
-  auto status = Call(*handler, call_frame, options);
+  auto status = Invoke(Api(), *handler, call_frame, context);
   TF_ASSERT_OK(status);
 }
 
@@ -1413,11 +1553,11 @@ TEST(FfiTest, AsyncHandler) {
   CallFrame call_frame =
       CallFrameBuilder(/*num_args=*/0, /*num_rets=*/0).Build();
 
-  CallOptions options;
-  options.backend_options = CallOptions::CpuOptions{&device};
+  InvokeContext context;
+  context.backend_context = InvokeContext::CpuContext{&device};
 
   {  // Synchronous call.
-    absl::Status status = Call(*handler, call_frame, options);
+    absl::Status status = Invoke(Api(), *handler, call_frame, context);
     TF_ASSERT_OK(status);
     EXPECT_EQ(value, 42);
   }
@@ -1426,7 +1566,7 @@ TEST(FfiTest, AsyncHandler) {
 
   {  // Asynchronous call.
     tsl::AsyncValueRef<tsl::Chain> async_value =
-        CallAsync(*handler, call_frame, options);
+        InvokeAsync(Api(), *handler, call_frame, context);
     tsl::BlockUntilReady(async_value);
     ASSERT_TRUE(async_value.IsConcrete());
     EXPECT_EQ(value, 42);
@@ -1434,25 +1574,57 @@ TEST(FfiTest, AsyncHandler) {
 }
 
 TEST(FfiTest, Metadata) {
-  auto api = GetXlaFfiApi();
-  auto handler = Ffi::BindTo([]() { return Error::Success(); });
-  auto maybe_metadata = GetMetadata(*handler);
+  auto handler =
+      Ffi::BindInstantiate().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
+        return std::make_unique<MyState>(42);
+      });
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata =
+      GetMetadata(GetXlaFfiApi(), *handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
-  EXPECT_EQ(metadata.api_version.major_version, api->api_version.major_version);
-  EXPECT_EQ(metadata.api_version.minor_version, api->api_version.minor_version);
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
+  EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
+  EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
   EXPECT_EQ(metadata.traits, 0);
+  EXPECT_EQ(metadata.state_type_id.type_id, MyState::id.type_id);
 }
 
 TEST(FfiTest, MetadataTraits) {
   auto handler = Ffi::BindTo([]() { return Error::Success(); },
                              {Traits::kCmdBufferCompatible});
-  auto maybe_metadata = GetMetadata(*handler);
+
+  absl::StatusOr<XLA_FFI_Metadata> maybe_metadata =
+      GetMetadata(GetXlaFfiApi(), *handler);
   EXPECT_TRUE(maybe_metadata.ok());
-  auto metadata = maybe_metadata.value();
+
+  XLA_FFI_Metadata metadata = maybe_metadata.value();
   EXPECT_EQ(metadata.api_version.major_version, XLA_FFI_API_MAJOR);
   EXPECT_EQ(metadata.api_version.minor_version, XLA_FFI_API_MINOR);
   EXPECT_EQ(metadata.traits, XLA_FFI_HANDLER_TRAITS_COMMAND_BUFFER_COMPATIBLE);
+  EXPECT_EQ(metadata.state_type_id.type_id, XLA_FFI_UNKNOWN_TYPE_ID.type_id);
+}
+
+// Test that we can automatically generate FFI handler type signature from a C++
+// function declaration.
+static Error BufferR2F32Function(BufferR2<F32> buffer) {
+  EXPECT_EQ(buffer.dimensions().size(), 2);
+  return Error::Success();
+}
+
+XLA_FFI_DEFINE_HANDLER_SYMBOL(BufferR2F32Handler, BufferR2F32Function);
+
+TEST(FfiTest, DefineAutoSymbol) {
+  std::vector<float> storage(4, 0.0f);
+  se::DeviceAddressBase memory(storage.data(), 4 * sizeof(float));
+
+  CallFrameBuilder builder(/*num_args=*/1, /*num_rets=*/0);
+  builder.AddBufferArg(memory, PrimitiveType::F32, /*dims=*/{2, 2});
+  auto call_frame = builder.Build();
+
+  auto status = Invoke(Api(), BufferR2F32Handler, call_frame);
+
+  TF_ASSERT_OK(status);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1460,7 +1632,7 @@ TEST(FfiTest, MetadataTraits) {
 //===----------------------------------------------------------------------===//
 
 static CallFrameBuilder WithBufferArgs(size_t num_args, size_t rank = 4) {
-  se::DeviceMemoryBase memory;
+  se::DeviceAddressBase memory;
   std::vector<int64_t> dims(4, 1);
 
   CallFrameBuilder builder(/*num_args=*/num_args, /*num_rets=*/0);
@@ -1483,7 +1655,7 @@ void BM_AnyBufferArgX1(benchmark::State& state) {
   });
 
   for (auto _ : state) {
-    CHECK_OK(Call(*handler, call_frame));
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
   }
 }
 
@@ -1510,7 +1682,7 @@ void BM_AnyBufferArgX4(benchmark::State& state) {
                      });
 
   for (auto _ : state) {
-    CHECK_OK(Call(*handler, call_frame));
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
   }
 }
 
@@ -1531,7 +1703,7 @@ void BM_AsyncAnyBufferArgX1(benchmark::State& state) {
   });
 
   for (auto _ : state) {
-    CHECK_OK(Call(*handler, call_frame));
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
   }
 }
 
@@ -1550,7 +1722,7 @@ void BM_BufferArgX1(benchmark::State& state) {
   });
 
   for (auto _ : state) {
-    CHECK_OK(Call(*handler, call_frame));
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
   }
 }
 
@@ -1577,7 +1749,7 @@ void BM_BufferArgX4(benchmark::State& state) {
                      });
 
   for (auto _ : state) {
-    CHECK_OK(Call(*handler, call_frame));
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
   }
 }
 
@@ -1613,7 +1785,7 @@ void BM_BufferArgX8(benchmark::State& state) {
                      });
 
   for (auto _ : state) {
-    CHECK_OK(Call(*handler, call_frame));
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
   }
 }
 
@@ -1640,7 +1812,7 @@ void BM_TupleOfI32Attrs(benchmark::State& state) {
   });
 
   for (auto _ : state) {
-    CHECK_OK(Call(*handler, call_frame));
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
   }
 }
 
@@ -1682,7 +1854,7 @@ void BM_EnumAttrs(benchmark::State& state, F&& f) {
                      .To(std::forward<F>(f));
 
   for (auto _ : state) {
-    CHECK_OK(Call(*handler, call_frame));
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
   }
 }
 
@@ -1703,5 +1875,34 @@ static void BM_EnumAttrsFunctionWrapper(benchmark::State& state) {
 BENCHMARK(BM_EnumAttrs);
 BENCHMARK(BM_EnumAttrsFunction);
 BENCHMARK(BM_EnumAttrsFunctionWrapper);
+
+//===----------------------------------------------------------------------===//
+// BM_VariantAttr
+//===----------------------------------------------------------------------===//
+
+void BM_VariantAttr(benchmark::State& state) {
+  using Integral = std::variant<int8_t, int16_t, int32_t, int64_t>;
+
+  CallFrameBuilder::AttributesBuilder attrs;
+  attrs.Insert("i32", int32_t{0});
+  attrs.Insert("i64", int64_t{0});
+
+  CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
+  builder.AddAttributes(attrs.Build());
+  auto call_frame = builder.Build();
+
+  auto handler = Ffi::Bind().Attr<Integral>("i32").Attr<Integral>("i64").To(
+      [](Integral i32, Integral i64) {
+        benchmark::DoNotOptimize(i32);
+        benchmark::DoNotOptimize(i64);
+        return Error::Success();
+      });
+
+  for (auto _ : state) {
+    CHECK_OK(Invoke(Api(), *handler, call_frame));
+  }
+}
+
+BENCHMARK(BM_VariantAttr);
 
 }  // namespace xla::ffi

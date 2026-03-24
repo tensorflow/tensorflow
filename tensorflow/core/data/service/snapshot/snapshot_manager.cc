@@ -183,8 +183,8 @@ absl::Status SnapshotManager::Start(const SnapshotRequest& request)
     TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Starting to write tf.data snapshot at " << request.path();
   if (env_->FileExists(request.path()).ok()) {
-    return errors::AlreadyExists("tf.data snapshot at ", request.path(),
-                                 " already exists.");
+    return absl::AlreadyExistsError(absl::StrCat(
+        "tf.data snapshot at ", request.path(), " already exists."));
   }
   tsl::mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(WriteOnDiskSkeleton());

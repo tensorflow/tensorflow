@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "xla/tsl/platform/errors.h"
@@ -50,8 +52,9 @@ namespace tfrt_stub {
 
 namespace {
 
-string DeviceName(absl::string_view name_prefix, absl::string_view device_type,
-                  int32_t task_id, size_t device_id) {
+std::string DeviceName(absl::string_view name_prefix,
+                       absl::string_view device_type, int32_t task_id,
+                       size_t device_id) {
   return strings::StrCat(absl::StripSuffix(name_prefix, "0"), task_id,
                          "/device:", device_type, ":", device_id);
 }

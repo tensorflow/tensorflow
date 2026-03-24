@@ -105,14 +105,14 @@ class TensorList {
 
   static const char kTypeName[];
 
-  string TypeName() const { return kTypeName; }
+  std::string TypeName() const { return kTypeName; }
 
   void Encode(VariantTensorData* data) const;
 
   bool Decode(const VariantTensorData& data);
 
   // TODO(apassos) fill this out
-  string DebugString() const { return "TensorList"; }
+  std::string DebugString() const { return "TensorList"; }
 
   PartialTensorShape element_shape;
 

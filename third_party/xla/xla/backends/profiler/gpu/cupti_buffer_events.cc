@@ -16,12 +16,16 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
 
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
+#include "xla/backends/profiler/gpu/cupti_marker_data_parser.h"
 #include "xla/backends/profiler/gpu/cupti_utils.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/mem.h"
@@ -155,8 +159,12 @@ const char *getActivityUnifiedMemoryKindString(
 template <typename CuptiActivity>
 void SetEventGraphId(CuptiTracerEvent &event,
                      const CuptiActivity *cupti_activity) {
+  // In current implementation, CuptiActivityKernelTy, CuptiActivityMemcpyTy,
+  // CuptiActivityMemcpyP2PTy and CuptiActivityMemsetTy all have graphNodeId
+  // when they have graphId.
   if constexpr (CuptiActivityHasGraphId<CuptiActivity>::value) {
     event.graph_id = cupti_activity->graphId;
+    event.graph_node_id = cupti_activity->graphNodeId;
   }
 }
 
@@ -265,6 +273,62 @@ void AddMarkerActivityEvent(CuptiEventCollectorDelegate &collector,
         /* .stream_id = */ 0,
         /* .graph_id = */ marker_trace->id,
     });
+  }
+}
+
+void AddMarkerDataActivityEvent(CuptiEventCollectorDelegate& collector,
+                                void* marker_data_trace) {
+  std::optional<std::pair<std::string, uint32_t>> result =
+      ParseMarkerDataActivity(marker_data_trace);
+  if (result.has_value() && !result.value().first.empty()) {
+    collector.receive(CuptiTracerEvent{
+        /* .type = */ CuptiTracerEventType::MarkerData,
+        /* .source = */ CuptiTracerEventSource::Activity,
+        /* .name = */ std::move(result.value().first),
+        /* .annotation = */ "",
+        /* .nvtx_range = */ "",
+        /* .start_time_ns = */ 0,
+        /* .end_time_ns = */ 0,
+        /* .device_id = */ 0,
+        /* .correlation_id = */ 0,
+        /* .thread_id = */ 0,
+        /* .context_id = */ 0,
+        /* .stream_id = */ 0,
+        /* .graph_id = */ result.value().second,
+    });
+  }
+}
+
+void AddEnvironmentActivityEvent(const CUpti_ActivityEnvironment* environment,
+                                 CuptiEventCollectorDelegate& collector) {
+  auto create_and_receive = [&](const char* name, uint64_t value) {
+    CuptiTracerEvent event{};
+    event.type = CuptiTracerEventType::Environment;
+    event.source = CuptiTracerEventSource::Activity;
+    event.name = name;
+    event.start_time_ns = environment->timestamp;
+    event.end_time_ns = environment->timestamp;
+    event.device_id = environment->deviceId;
+    event.stream_id = 0;
+    event.environment_info = EnvironmentDetails{value};
+    collector.receive(std::move(event));
+  };
+
+  switch (environment->environmentKind) {
+    case CUPTI_ACTIVITY_ENVIRONMENT_SPEED:
+      create_and_receive("sm_clock_mhz", environment->data.speed.smClock);
+      create_and_receive("memory_clock_mhz",
+                         environment->data.speed.memoryClock);
+      break;
+    case CUPTI_ACTIVITY_ENVIRONMENT_TEMPERATURE:
+      create_and_receive("gpu_temp_c",
+                         environment->data.temperature.gpuTemperature);
+      break;
+    case CUPTI_ACTIVITY_ENVIRONMENT_POWER:
+      create_and_receive("power_mw", environment->data.power.power);
+      break;
+    default:
+      break;
   }
 }
 
@@ -576,6 +640,13 @@ static absl::Status ConvertActivityBuffer(
           AddMarkerActivityEvent(
               collector, reinterpret_cast<CuptiActivityMarkerTy *>(record));
           break;
+        case CUPTI_ACTIVITY_KIND_MARKER_DATA:
+          AddMarkerDataActivityEvent(collector, static_cast<void*>(record));
+          break;
+        case CUPTI_ACTIVITY_KIND_ENVIRONMENT:
+          AddEnvironmentActivityEvent(
+              reinterpret_cast<CUpti_ActivityEnvironment*>(record), collector);
+          break;
         default:
           VLOG(3) << "Activity type " << record->kind << " is not supported.";
           break;
@@ -643,6 +714,10 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "ThreadMarkerEnd";
     case CuptiTracerEventType::CudaGraphNodeMap:
       return "CudaGraphNodeMap";
+    case CuptiTracerEventType::MarkerData:
+      return "MarkerData";
+    case CuptiTracerEventType::Environment:
+      return "Environment";
     case CuptiTracerEventType::Unsupported:
       return "";
   }
@@ -658,23 +733,27 @@ absl::string_view StringDeduper::Dedup(absl::string_view str,
   return absl::string_view();
 }
 
-void AnnotationMap::Add(uint32_t device_id, uint32_t correlation_id,
-                        const absl::string_view annotation,
-                        const absl::string_view nvtx_range,
-                        int64_t scope_range_id) {
-  if (annotation.empty() && nvtx_range.empty()) return;
-  VLOG(3) << "Add annotation: device_id: " << device_id
-          << " correlation_id: " << correlation_id
-          << " annotation: " << annotation;
-  if (device_id >= per_device_map_.size()) return;
-  auto &per_device_map = per_device_map_[device_id];
-  if (per_device_map.annotation_deduper.Size() < max_size_) {
-    AnnotationInfo info;
-    info.annotation = per_device_map.annotation_deduper.Dedup(annotation);
-    info.nvtx_range = per_device_map.nvtx_range_deduper.Dedup(nvtx_range);
-    info.scope_range_id = scope_range_id;
-    per_device_map.correlation_map.emplace(correlation_id, info);
+absl::string_view AnnotationMap::Add(uint32_t device_id,
+                                     uint32_t correlation_id,
+                                     const absl::string_view annotation,
+                                     const absl::string_view nvtx_range,
+                                     int64_t scope_range_id) {
+  if ((!annotation.empty() || !nvtx_range.empty()) &&
+      device_id < per_device_map_.size()) {
+    VLOG(3) << "Add annotation: device_id: " << device_id
+            << " correlation_id: " << correlation_id
+            << " annotation: " << annotation;
+    auto& per_device_map = per_device_map_[device_id];
+    if (per_device_map.annotation_deduper.Size() < max_size_) {
+      AnnotationInfo info;
+      info.annotation = per_device_map.annotation_deduper.Dedup(annotation);
+      info.nvtx_range = per_device_map.nvtx_range_deduper.Dedup(nvtx_range);
+      info.scope_range_id = scope_range_id;
+      per_device_map.correlation_map.emplace(correlation_id, info);
+      return info.annotation;
+    }
   }
+  return "";
 }
 
 AnnotationMap::AnnotationInfo AnnotationMap::LookUp(

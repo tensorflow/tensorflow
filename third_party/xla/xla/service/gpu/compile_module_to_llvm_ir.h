@@ -31,11 +31,12 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emitter_context.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -46,7 +47,7 @@ namespace xla {
 namespace gpu {
 
 struct CompileModuleResults {
-  std::unique_ptr<llvm::Module> llvm_module;
+  std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
   std::unique_ptr<llvm::Module> llvm_module_constants;
   std::unique_ptr<BufferAssignment> buffer_assignment;
   std::unique_ptr<ExecutionStreamAssignment> execution_stream_assignment;
@@ -70,10 +71,13 @@ absl::Status LoadCache(IrEmitterContext& ir_emitter_context,
 absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
-    const se::Platform* platform, const se::DeviceDescription& device_desc,
+    se::Platform::Id platform_id, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
-    bool split_constants_module = false);
+    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock);
+
+void LinkLlvmModulesInPlace(
+    std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);
 
 }  // namespace gpu
 }  // namespace xla

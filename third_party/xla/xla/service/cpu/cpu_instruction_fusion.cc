@@ -30,7 +30,9 @@ limitations under the License.
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
@@ -106,6 +108,179 @@ bool BlockSubcomputationFusion(const HloInstruction* instruction,
 }
 
 }  // namespace
+
+bool CpuInstructionFusion::IsExpensive(const HloInstruction& instruction) {
+  namespace m = match;
+
+  switch (instruction.opcode()) {
+    case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kCeil:
+    case HloOpcode::kClamp:
+    case HloOpcode::kClz:
+    case HloOpcode::kCompare:
+    case HloOpcode::kComplex:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConstant:
+    case HloOpcode::kCopy:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kDynamicReshape:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kFloor:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kImag:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kIota:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOptimizationBarrier:
+    case HloOpcode::kOr:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kPad:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kPopulationCount:
+    case HloOpcode::kReal:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kReplicaId:
+    case HloOpcode::kReshape:
+    case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRoundNearestEven:
+    case HloOpcode::kSelect:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kSlice:
+    case HloOpcode::kStochasticConvert:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kTuple:
+    case HloOpcode::kXor:
+      return false;
+
+    // Cheap instructions for reals, but expensive for complex.
+    case HloOpcode::kAbs:
+    case HloOpcode::kSign:
+      return ShapeUtil::ElementIsComplex(instruction.shape());
+
+    case HloOpcode::kConvert:
+      // Converting from f32 to bf16 is expensive as we have to do multiple
+      // checks for NaN, converting from bf16 to f32 is cheap as it is a simple
+      // shift.
+      return instruction.shape().element_type() == PrimitiveType::BF16 &&
+             instruction.operand(0)->shape().element_type() ==
+                 PrimitiveType::F32;
+
+    // We say that integer div/mod by a constant is cheap because it gets
+    // compiled down to multiplies and shifts, and we consider those to be
+    // cheap.
+    case HloOpcode::kDivide:
+    case HloOpcode::kRemainder:
+      return !ShapeUtil::ElementIsIntegral(instruction.shape()) ||
+             !Match(instruction.operand(0),
+                    m::AnyOf<const HloInstruction>(
+                        m::ConstantEffectiveScalar(),
+                        m::Broadcast(m::ConstantEffectiveScalar())));
+
+    case HloOpcode::kCos:
+    case HloOpcode::kSin:
+    case HloOpcode::kTan:
+      return ShapeUtil::ElementIsComplex(instruction.shape());
+
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kSinh:
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kAtanh:
+    case HloOpcode::kCosh:
+    case HloOpcode::kTanh:
+      return true;
+
+    case HloOpcode::kCbrt:
+    case HloOpcode::kPower:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSqrt:
+      return true;
+
+    case HloOpcode::kErf:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+      return true;
+
+      // Expensive instructions or unusual instructions for which fusion is
+      // nonsensical.
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kAsyncStart:
+    case HloOpcode::kAsyncUpdate:
+    case HloOpcode::kAsyncDone:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kCall:
+    case HloOpcode::kCholesky:
+    case HloOpcode::kConditional:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllGatherStart:
+    case HloOpcode::kAllGatherDone:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kAllReduceStart:
+    case HloOpcode::kAllReduceDone:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectiveBroadcast:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kDomain:
+    case HloOpcode::kDot:
+    case HloOpcode::kFft:
+    case HloOpcode::kFusion:
+    case HloOpcode::kGather:
+    case HloOpcode::kLogistic:
+    case HloOpcode::kMap:
+    case HloOpcode::kParameter:
+    case HloOpcode::kRaggedAllToAll:
+    case HloOpcode::kRaggedDot:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kScaledDot:
+    case HloOpcode::kScan:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kSort:
+    case HloOpcode::kTopK:
+    case HloOpcode::kTriangularSolve:
+    case HloOpcode::kWhile:
+    case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
+      return true;
+  }
+
+  return false;
+}
 
 void CpuInstructionFusion::ComputeInstructionsToSkip(
     HloModule* module,

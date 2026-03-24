@@ -86,6 +86,8 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
                       const Config& best_config) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  CacheStats GetCacheStats() const override { return CacheStats(); }
+
  private:
   explicit FileBasedAutotunerCache(const FileBasedCacheConfig& cache_config);
 

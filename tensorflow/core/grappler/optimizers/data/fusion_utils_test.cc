@@ -35,22 +35,22 @@ namespace grappler {
 namespace fusion_utils {
 namespace {
 
-string ParseNodeConnection(const string& name) {
+std::string ParseNodeConnection(const std::string& name) {
   return name.substr(0, name.find(':'));
 }
 
 void CheckUniqueNames(const FunctionDef& function) {
-  std::unordered_set<string> inputs;
+  std::unordered_set<std::string> inputs;
   for (const auto& input_arg : function.signature().input_arg())
     inputs.insert(input_arg.name());
   EXPECT_EQ(inputs.size(), function.signature().input_arg_size());
 
-  std::unordered_set<string> outputs;
+  std::unordered_set<std::string> outputs;
   for (const auto& output_arg : function.signature().output_arg())
     outputs.insert(output_arg.name());
   EXPECT_EQ(outputs.size(), function.signature().output_arg_size());
 
-  std::unordered_set<string> nodes;
+  std::unordered_set<std::string> nodes;
   for (const auto& node : function.node_def()) nodes.insert(node.name());
 
   EXPECT_EQ(nodes.size(), function.node_def_size());
@@ -147,8 +147,8 @@ TEST(FusionUtilsTest, FuseFunctionWithControlOutputs) {
                     fusion_utils::MergeNodes, graph.mutable_library());
 
   EXPECT_EQ(fused_function->signature().control_output_size(), 2);
-  string control_output_1 = fused_function->signature().control_output(0);
-  string control_output_2 = fused_function->signature().control_output(1);
+  std::string control_output_1 = fused_function->signature().control_output(0);
+  std::string control_output_2 = fused_function->signature().control_output(1);
   EXPECT_NE(control_output_1, control_output_2);
   EXPECT_EQ(fused_function->control_ret_size(), 2);
   EXPECT_TRUE(fused_function->control_ret().contains(control_output_1));

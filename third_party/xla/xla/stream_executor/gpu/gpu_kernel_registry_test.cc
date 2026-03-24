@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/threadpool.h"
 
 namespace stream_executor::gpu {
@@ -40,9 +39,6 @@ struct OtherTestKernelTrait {
 };
 
 using testing::Property;
-using tsl::testing::IsOk;
-using tsl::testing::IsOkAndHolds;
-using tsl::testing::StatusIs;
 
 TEST(GpuKernelRegistryTest, RegisterKernel) {
   PlatformObjectRegistry object_registry;

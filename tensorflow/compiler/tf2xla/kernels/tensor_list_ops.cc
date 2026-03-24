@@ -70,7 +70,7 @@ absl::StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
     dynamic_dims.push_back(ctx->Input(1));
   } else {
     dynamic_dims.push_back(
-        xla::ConstantR0<int32>(ctx->builder(), num_elements));
+        xla::ConstantR0<int32_t>(ctx->builder(), num_elements));
   }
   for (int64_t dim = 0; dim < element_shape.dimensions().size(); ++dim) {
     if (dims_are_dynamic[dim]) {
@@ -80,7 +80,7 @@ absl::StatusOr<std::vector<std::vector<xla::XlaOp>>> GetTensorListDynamicDims(
       dynamic_dims.push_back(dynamic_dim_size);
     } else {
       dynamic_dims.push_back(
-          xla::ConstantR0<int32>(ctx->builder(), dynamic_sizes[dim]));
+          xla::ConstantR0<int32_t>(ctx->builder(), dynamic_sizes[dim]));
     }
   }
   list_dynamic_dims.push_back(std::move(dynamic_dims));
@@ -191,7 +191,7 @@ class TensorListReserveOp : public XlaOpKernel {
       OP_REQUIRES_OK(
           ctx,
           SetTensorListPushIndex(
-              new_list, xla::ConstantR0<int32>(ctx->builder(), num_elements),
+              new_list, xla::ConstantR0<int32_t>(ctx->builder(), num_elements),
               &result));
       ctx->SetTensorListOutput(0, result);
       return;
@@ -324,13 +324,13 @@ class TensorListElementShapeOp : public XlaOpKernel {
         ctx->SetOutput(0, xla::ConstantR1<int64_t>(b, list_shape.dimensions()));
         break;
       case DT_INT32: {
-        std::vector<int32> size;
+        std::vector<int32_t> size;
         const auto& dimensions = list_shape.dimensions();
         size.reserve(dimensions.size());
         for (int64_t s : dimensions) {
           size.push_back(s);
         }
-        ctx->SetOutput(0, xla::ConstantR1<int32>(b, size));
+        ctx->SetOutput(0, xla::ConstantR1<int32_t>(b, size));
         break;
       }
       default:

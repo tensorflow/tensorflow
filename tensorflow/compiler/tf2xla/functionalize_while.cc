@@ -438,7 +438,7 @@ absl::Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   builder.Attr("body", body_name);
   // Add some internal attributes which need to be propagated.
   for (absl::string_view attr_name : kAttrsToPropagate) {
-    string attr_val;
+    std::string attr_val;
     if (GetNodeAttr(frame->loop_cond->def(), attr_name, &attr_val).ok()) {
       builder.Attr(attr_name, attr_val);
     }
@@ -513,7 +513,7 @@ absl::Status FunctionalizeWhileLoop(Graph* graph,
   // connected to all source nodes in the graph. Many graphs violate this
   // invariant.
   std::vector<ControlFlowInfo> cf_info;
-  std::vector<string> unreachable_nodes;
+  std::vector<std::string> unreachable_nodes;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph, &cf_info, &unreachable_nodes));
   if (!unreachable_nodes.empty()) {
     return errors::InvalidArgument(
@@ -522,7 +522,7 @@ absl::Status FunctionalizeWhileLoop(Graph* graph,
   }
 
   // Builds Frames, indexed by name.
-  std::unordered_map<string, WhileLoopFrame> frames;
+  std::unordered_map<std::string, WhileLoopFrame> frames;
   TF_RETURN_IF_ERROR(
       ExtractWhileLoopFrames(cf_info, graph, &frames, node_filter));
 

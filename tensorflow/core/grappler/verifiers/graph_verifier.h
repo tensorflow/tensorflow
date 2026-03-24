@@ -41,7 +41,7 @@ class GraphVerifier {
   virtual ~GraphVerifier() {}
 
   // A name for the verifier.
-  virtual string name() const = 0;
+  virtual std::string name() const = 0;
 
   // Implement an algorithm to verify the specified graph.
   // The return value is a Status that represents a concatenation of Status of

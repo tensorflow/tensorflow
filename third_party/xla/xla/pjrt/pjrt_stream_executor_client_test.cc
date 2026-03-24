@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -114,7 +113,6 @@ absl::Status ExecuteWithSameInputBuffer(
   TF_ASSIGN_OR_RETURN(auto executable,
                       ToyExecutable(*client, shape, std::move(set_up_aliases)));
   xla::ExecuteOptions options;
-  options.untuple_result = true;
   return executable->Execute({{buffer.get(), buffer.get()}}, options).status();
 }
 
@@ -153,7 +151,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
       client->BufferFromHostLiteral(literal, client->memory_spaces()[0],
                                     /*device_layout=*/nullptr));
 
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
   auto blocked_buffer =
       std::move(*(buffer->DonateWithControlDependency(future)));
   EXPECT_TRUE(buffer->IsDeleted());
@@ -164,7 +162,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
       ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
   bool got_literal = false;
   blocked_buffer->ToLiteral(result_literal.get()).OnReady([&](absl::Status s) {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     TF_ASSERT_OK(s);
     got_literal = true;
   });
@@ -176,7 +174,7 @@ TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
   EXPECT_TRUE(future.IsReady());
 
   {
-    absl::MutexLock l(&mu);
+    absl::MutexLock l(mu);
     mu.Await(absl::Condition(&got_literal));
   }
 

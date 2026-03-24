@@ -27,9 +27,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/internal/endian.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/transforms/simplifiers/hlo_element_type_converter.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -114,7 +115,8 @@ class HloEvaluatorTest : public HloHardwareIndependentTestBase {
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate());
 
     auto element_type = expected.shape().element_type();
-    if (element_type == F32 || element_type == F64) {
+    if (element_type == F32 || element_type == F64 || element_type == C64 ||
+        element_type == C128) {
       ErrorSpec error(aabs);
       EXPECT_TRUE(LiteralTestUtil::Near(expected, result, error));
     } else {
@@ -375,6 +377,17 @@ TEST_F(HloEvaluatorTest, DoesAdd) {
                std::move(rhs));
 }
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
+// element-wise addition with 2 operands and a different result layout.
+TEST_F(HloEvaluatorTest, DoesAddDifferentResultLayout) {
+  auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
+  auto rhs = LiteralUtil::CreateR2<int64_t>({{2, 4}, {4, 4}});
+  Layout layout({0, 1});
+  auto expected =
+      LiteralUtil::CreateR2WithLayout<int64_t>({{3, 4}, {-96, 8}}, layout);
+  TestBinaryOp(HloOpcode::kAdd, std::move(expected), std::move(lhs),
+               std::move(rhs));
+}
+// Verifies that HloEvaluator evaluates a HLO instruction that performs
 // element-wise and with 2 operands.
 TEST_P(HloEvaluatorBf16Test, DoesAnd) {
   auto lhs = LiteralUtil::CreateR2<int64_t>({{1, 0}, {-100, 4}});
@@ -435,6 +448,25 @@ TEST_F(HloEvaluatorTest, DoesClampS64) {
                 std::move(value), std::move(high));
 }
 
+TEST_F(HloEvaluatorTest, DoesClampS64DifferentResultLayout) {
+  auto low = LiteralUtil::CreateR2<int64_t>(
+      {{-8616761059752331528LL, 6780561065411491190LL},
+       {-8616761059752331528LL, 0LL}});
+  auto value = LiteralUtil::CreateR2<int64_t>(
+      {{-6780561065411491190LL, 6780561065411491180LL},
+       {4241131823772864090LL, -1LL}});
+  auto high = LiteralUtil::CreateR2<int64_t>(
+      {{-6780561065411491180LL, 8616761059752331528LL},
+       {3832151243857508051LL, 1LL}});
+  Layout layout({0, 1});
+  auto expected = LiteralUtil::CreateR2WithLayout<int64_t>(
+      {{-6780561065411491190LL, 6780561065411491190LL},
+       {3832151243857508051LL, 0}},
+      layout);
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
+
 TEST_P(HloEvaluatorBf16Test, DoesDivideDouble) {
   auto lhs = LiteralUtil::CreateR2<double>({{1.0, 0.0}, {-100.0, 4.0}});
   auto rhs = LiteralUtil::CreateR2<double>({{2.2, 4.0}, {4.0, 4.0}});
@@ -475,6 +507,14 @@ TEST_F(HloEvaluatorTest, DoesNegateR2) {
       {{0, std::numeric_limits<int>::min()}, {1, -4}});
   TestUnaryOp(HloOpcode::kNegate, std::move(expected), std::move(operand));
 }
+TEST_F(HloEvaluatorTest, DoesNegateR2DifferentResultLayout) {
+  auto operand = LiteralUtil::CreateR2<int32_t>(
+      {{0, std::numeric_limits<int32_t>::min()}, {-1, 4}});
+  Layout layout({0, 1});
+  auto expected = LiteralUtil::CreateR2WithLayout<int32_t>(
+      {{0, std::numeric_limits<int>::min()}, {1, -4}}, layout);
+  TestUnaryOp(HloOpcode::kNegate, std::move(expected), std::move(operand));
+}
 TEST_P(HloEvaluatorBf16Test, DoesCosR2) {
   auto operand = LiteralUtil::CreateR2<float>({{0, M_PI}, {-M_PI, 2 * M_PI}});
   auto expected = LiteralUtil::CreateR2<float>({{1, -1}, {-1, 1}});
@@ -492,6 +532,108 @@ TEST_P(HloEvaluatorBf16Test, DoesTanR2) {
   auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {0, 0}});
   TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand),
               use_bfloat16_ ? 0.031250 : 9.5367431640625E-7);
+}
+TEST_F(HloEvaluatorTest, DoesSinC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({1.2985, 0.6350});
+  TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesSinC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({1.298457581, 0.634963915});
+  TestUnaryOp(HloOpcode::kSin, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesCosC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.8337, -0.9889});
+  TestUnaryOp(HloOpcode::kCos, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesCosC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected =
+      LiteralUtil::CreateR0<complex128>({0.833730025, -0.988897706});
+  TestUnaryOp(HloOpcode::kCos, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesTanC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.2718, 1.0839});
+  TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesTanC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.271752585, 1.083923327});
+  TestUnaryOp(HloOpcode::kTan, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesSinhC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.6350, 1.2985});
+  TestUnaryOp(HloOpcode::kSinh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesSinhC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.634963915, 1.298457581});
+  TestUnaryOp(HloOpcode::kSinh, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesCoshC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.8337, 0.9889});
+  TestUnaryOp(HloOpcode::kCosh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesCoshC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.833730025, 0.988897706});
+  TestUnaryOp(HloOpcode::kCosh, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAsinC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.4523, 0.5306});
+  TestUnaryOp(HloOpcode::kAsin, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAsinC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.452278447, 0.530637531});
+  TestUnaryOp(HloOpcode::kAsin, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAcosC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex64>({1.1185, -0.5306});
+  TestUnaryOp(HloOpcode::kAcos, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAcosC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({0.5, 0.5});
+  auto expected =
+      LiteralUtil::CreateR0<complex128>({1.118517880, -0.530637531});
+  TestUnaryOp(HloOpcode::kAcos, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAsinhC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.5306, 0.4523});
+  TestUnaryOp(HloOpcode::kAsinh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAsinhC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.530637531, 0.452278447});
+  TestUnaryOp(HloOpcode::kAsinh, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAcoshC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex64>({1.0613, 0.9046});
+  TestUnaryOp(HloOpcode::kAcosh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAcoshC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({1.0, 1.0});
+  auto expected = LiteralUtil::CreateR0<complex128>({1.061275062, 0.904556894});
+  TestUnaryOp(HloOpcode::kAcosh, std::move(expected), std::move(operand), 1e-9);
+}
+TEST_F(HloEvaluatorTest, DoesAtanhC64) {
+  auto operand = LiteralUtil::CreateR0<complex64>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex64>({0.4024, 0.5536});
+  TestUnaryOp(HloOpcode::kAtanh, std::move(expected), std::move(operand), 1e-4);
+}
+TEST_F(HloEvaluatorTest, DoesAtanhC128) {
+  auto operand = LiteralUtil::CreateR0<complex128>({0.5, 0.5});
+  auto expected = LiteralUtil::CreateR0<complex128>({0.402359478, 0.553574359});
+  TestUnaryOp(HloOpcode::kAtanh, std::move(expected), std::move(operand), 1e-9);
 }
 TEST_F(HloEvaluatorTest, DoesNotR2) {
   auto operand =
@@ -4976,6 +5118,42 @@ ENTRY %module {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result));
 }
 
+TEST_F(HloEvaluatorTest, EvaluateGather_ExplicitBatchDimsWithOffsetDims) {
+  const std::string hlo_text = R"(
+HloModule gather
+
+ENTRY main {
+  operand = s32[2,3,2,4] parameter(0)
+  indices = s32[2,3] parameter(1)
+  ROOT gather = s32[2,3,2,4] gather(operand, indices),
+      offset_dims={1,2,3},
+      collapsed_slice_dims={},
+      start_index_map={1,2,3},
+      operand_batching_dims={0},
+      start_indices_batching_dims={0},
+      index_vector_dim=1,
+      slice_sizes={1,3,2,4}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  // operand shape: [2,3,2,4]
+  // batch 0:
+  // [[[0,1,2,3],[4,5,6,7]],[[8,9,10,11],[12,13,14,15]],[[16,17,18,19],[20,21,22,23]]]
+  // batch 1:
+  // [[[24,25,26,27],[28,29,30,31]],[[32,33,34,35],[36,37,38,39]],[[40,41,42,43],[44,45,46,47]]]
+  Array4D<int32_t> operand_array(2, 3, 2, 4);
+  int32_t val = 0;
+  operand_array.Each(
+      [&](absl::Span<const int64_t> /*indices*/, int32_t* v) { *v = val++; });
+  Literal operand = LiteralUtil::CreateR4FromArray4D(operand_array);
+
+  Literal start_indices =
+      LiteralUtil::CreateR2<int32_t>({{0, 0, 0}, {0, 0, 0}});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Evaluate({&operand, &start_indices}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(operand, result));
+}
+
 TEST_F(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {
   const char* hlo_text = R"(
 HloModule TensorFlowScatterV1
@@ -7662,10 +7840,16 @@ TEST(EvalErrorTest, Payload) {
   absl::Status s = absl::InternalError("hmm");
   std::string payload;
   payload.resize(sizeof(internal::EvalErrorDetail));
-  absl::little_endian::Store32(
-      const_cast<char*>(payload.data()),
-      static_cast<uint32_t>(
-          internal::EvalErrorDetail::kDynamicValueDependence));
+
+  uint32_t error_detail =
+      static_cast<uint32_t>(internal::EvalErrorDetail::kDynamicValueDependence);
+  // Ensure that the error detail is also in little endian.
+  if constexpr (absl::endian::native != absl::endian::little) {
+    DCHECK(absl::endian::native == absl::endian::big);
+    error_detail = absl::byteswap(error_detail);
+  }
+  (*payload.data()) = error_detail;
+
   s.SetPayload(internal::kEvalErrorDetailUrl, absl::Cord(payload));
 
   EXPECT_EQ(internal::ParseEvalErrorDetail(s),

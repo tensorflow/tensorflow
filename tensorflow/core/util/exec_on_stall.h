@@ -82,7 +82,7 @@ class ExecuteOnStall {
   Env* env_;
   std::function<void()> f_;
   int64_t deadline_;
-  int32 poll_microseconds_;
+  int32_t poll_microseconds_;
 };
 
 }  // namespace tensorflow

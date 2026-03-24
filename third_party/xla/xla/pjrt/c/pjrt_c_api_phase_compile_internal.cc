@@ -42,7 +42,7 @@ namespace {
 absl::StatusOr<xla::CompileOptions> ParseCompileOptions(
     absl::string_view options_str) {
   xla::CompileOptionsProto options_proto;
-  if (!options_proto.ParseFromArray(options_str.data(), options_str.size())) {
+  if (!options_proto.ParseFromString(options_str)) {
     return absl::InvalidArgumentError(
         "PJRT_Client_Compile: failed to deserialize CompileOptionsProto");
   }

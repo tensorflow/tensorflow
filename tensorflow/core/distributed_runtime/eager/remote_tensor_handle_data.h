@@ -31,12 +31,12 @@ class RemoteTensorHandleData {
   // the corresponding remote tensor is ready. So the remote tensor should be
   // ready when we create a lazy remote handle. If it refers to a remote output,
   // it's not ready until the shape is set.
-  RemoteTensorHandleData(int64_t op_id, int output_num, uint64 context_view_id,
-                         bool is_ready);
+  RemoteTensorHandleData(int64_t op_id, int output_num,
+                         uint64_t context_view_id, bool is_ready);
   // Constructor for unshaped remote handles. It controls the lifetime of a
   // remote handle that it refers to.
   RemoteTensorHandleData(int64_t op_id, int output_num,
-                         const string& remote_task, EagerContext* ctx);
+                         const std::string& remote_task, EagerContext* ctx);
   ~RemoteTensorHandleData();
 
   // A remote tensor handle does not have a Tensor object, hence it can only
@@ -51,18 +51,18 @@ class RemoteTensorHandleData {
   absl::Status WaitReady(const char* caller) const;
   absl::Status SetShape(const TensorShape& shape);
   absl::Status SetShapeAndRemoteTask(const TensorShape& shape,
-                                     const string& remote_task);
+                                     const std::string& remote_task);
   void Poison(absl::Status status);
   absl::Status IsPoisoned() const;
 
-  string DebugString() const;
+  std::string DebugString() const;
 
   // Return the op id and output num. If wait_until_ready is true, block until
   // the remote tensor is ready on a remote worker.
   absl::Status OpIdAndOutputNum(bool wait_until_ready, int64_t* op_id,
-                                int32* output_num) const;
+                                int32_t* output_num) const;
 
-  uint64 context_view_id() const { return context_view_id_; }
+  uint64_t context_view_id() const { return context_view_id_; }
 
  private:
   mutable mutex mu_;
@@ -72,10 +72,10 @@ class RemoteTensorHandleData {
 
   // IDs required when this class is representing a remote tensor handle.
   const int64_t op_id_;
-  const int32 output_num_;
-  string remote_task_ TF_GUARDED_BY(mu_);
-  uint64 context_id_;
-  uint64 context_view_id_;
+  const int32_t output_num_;
+  std::string remote_task_ TF_GUARDED_BY(mu_);
+  uint64_t context_id_;
+  uint64_t context_view_id_;
   EagerContext* ctx_;
 };
 

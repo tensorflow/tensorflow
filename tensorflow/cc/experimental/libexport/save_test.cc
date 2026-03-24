@@ -25,7 +25,7 @@ namespace libexport {
 namespace {
 
 TEST(SaveTest, TestDirectoryStructure) {
-  const string base_dir = tensorflow::io::JoinPath(
+  const std::string base_dir = tensorflow::io::JoinPath(
       tensorflow::testing::TmpDir(), "test_directory_structure");
   TF_ASSERT_OK(Save(base_dir));
   TF_ASSERT_OK(Env::Default()->IsDirectory(base_dir));

@@ -56,14 +56,14 @@ class InPlaceDynamicUpdateSliceFusion : public EmitterBase {
   LaunchDimensions launch_dimensions() const override;
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* indexing_context) const override {
+      int64_t root_index, mlir::MLIRContext* mlir_context) const override {
     // The mapping cannot be statically computed in general, since the offsets
     // are unknown.
     return std::nullopt;
   }
 
   std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
-      int64_t root_index, mlir::MLIRContext* indexing_context) const override;
+      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
  protected:
   absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateMLIRModule(

@@ -59,7 +59,7 @@ class RecordYielder {
  public:
   struct Options {
     // Glob pattern for tfrecords.
-    string file_pattern;
+    std::string file_pattern;
 
     // Random seed. It determines how data files are shuffled and how
     // records are shuffled.
@@ -73,13 +73,13 @@ class RecordYielder {
     float file_shuffle_shift_ratio = 0;
 
     // Randomization buffer keeps these many records.
-    uint64 bufsize = 1;
+    uint64_t bufsize = 1;
 
     // Uses these many concurrent tfrecord iterators to iterate through
     // tfrecords.
-    int32 parallelism = 1;
+    int32_t parallelism = 1;
 
-    string compression_type;
+    std::string compression_type;
   };
 
   explicit RecordYielder(OpKernelConstruction* context,
@@ -116,7 +116,7 @@ class RecordYielder {
   std::mt19937_64 rnd_ TF_GUARDED_BY(mu_);
 
   // Randomization buffer.
-  std::vector<string> buf_ TF_GUARDED_BY(mu_);
+  std::vector<std::string> buf_ TF_GUARDED_BY(mu_);
 
   // True iff we are draining an epoch.
   bool epoch_end_ = false;
@@ -145,14 +145,14 @@ class RecordYielder {
     // any.
     return stop_ || !status_.ok() || (epoch_end_ && !buf_.empty()) ||
            (!epoch_end_ &&
-            buf_.size() >= std::max<uint64>(1, opts_.bufsize / 2));
+            buf_.size() >= std::max<uint64_t>(1, opts_.bufsize / 2));
   }
 
   void MainLoop();
   struct Shard;
   void ShardLoop(Shard* shard);
   bool ShouldFinish(const absl::Status& s);
-  bool Add(std::vector<string>* values);
+  bool Add(std::vector<std::string>* values);
 };
 
 }  // namespace tensorflow

@@ -85,11 +85,11 @@ TFL::ReshapeOp InsertReshapeOp(Location loc, Value input, Type element_type,
   auto new_shape_attr =
       mlir::DenseIntElementsAttr::get(reshape_shape_type, new_shape_array_i32);
 
-  auto new_shape = builder->create<TFL::ConstOp>(loc, new_shape_attr);
+  auto new_shape = TFL::ConstOp::create(*builder, loc, new_shape_attr);
 
   auto reshape_out_type = RankedTensorType::get(new_shape_array, element_type);
-  return builder->create<TFL::ReshapeOp>(loc, reshape_out_type, input,
-                                         new_shape);
+  return TFL::ReshapeOp::create(*builder, loc, reshape_out_type, input,
+                                new_shape);
 }
 
 LogicalResult EnsureBias(Operation* op, int bias_idx,
@@ -148,7 +148,7 @@ TF::ConstOp PadConstValues(Operation* input_op, int value_to_pad,
   auto new_value_i32_attr =
       mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);
 
-  return builder->create<TF::ConstOp>(loc, new_value_i32_attr);
+  return TF::ConstOp::create(*builder, loc, new_value_i32_attr);
 }
 
 SmallVector<Value, 4> SliceOutputs(Operation* split_op, Value input,
@@ -186,13 +186,13 @@ SmallVector<Value, 4> SliceOutputs(Operation* split_op, Value input,
         mlir::DenseIntElementsAttr::get(slice_type, slice_size);
 
     auto slice_begin_const =
-        rewriter->create<TFL::ConstOp>(split_op->getLoc(), slice_begin_attr);
+        TFL::ConstOp::create(*rewriter, split_op->getLoc(), slice_begin_attr);
     auto slice_size_const =
-        rewriter->create<TFL::ConstOp>(split_op->getLoc(), slice_size_attr);
+        TFL::ConstOp::create(*rewriter, split_op->getLoc(), slice_size_attr);
 
-    auto slice_op = rewriter->create<TFL::SliceOp>(
-        split_op->getLoc(), current_output_type, input, slice_begin_const,
-        slice_size_const);
+    auto slice_op =
+        TFL::SliceOp::create(*rewriter, split_op->getLoc(), current_output_type,
+                             input, slice_begin_const, slice_size_const);
 
     // Rewire output.
     slice_outputs.push_back(slice_op.getResult());

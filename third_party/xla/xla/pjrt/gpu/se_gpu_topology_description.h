@@ -24,10 +24,13 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
+#include "xla/pjrt/proto/topology_description.pb.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -69,7 +72,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       PjRtStreamExecutorDeviceDescription& description,
       const std::string& device_vendor, const std::string& compute_capability,
       int core_count, int64_t shared_memory_per_block_optin,
-      int partition_index);
+      int partition_index, const std::string& fabric_uuid);
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
@@ -84,21 +87,21 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
     return gpu_topology_->number_of_hosts();
   }
 
-  absl::StatusOr<int> CoreCountOfDefaultType() const override {
-    return gpu_topology_->number_of_devices();
-  }
-
-  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
-    return gpu_topology_->number_of_devices();
-  }
-
-  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
-    return gpu_topology_->number_of_devices();
+  absl::StatusOr<int> ChipsPerProcess() const override {
+    return gpu_topology_->num_devices_per_host();
   }
 
   absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
     return 1;
   }
+
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultTypePerChip() const override {
+    return 1;
+  }
+
+  absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
+  ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
+      GlobalDeviceId device_id) const override;
 
   absl::StatusOr<std::string> Serialize() const override;
 
@@ -117,12 +120,17 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
       PrimitiveType element_type,
       absl::Span<const int64_t> dims) const override;
 
+  absl::StatusOr<PjRtDeviceDimensions> ChipBounds() const override;
+
   absl::StatusOr<xla::PjRtTopologyDescriptionProto> ToProto() const override;
 
   static absl::StatusOr<std::unique_ptr<StreamExecutorGpuTopologyDescription>>
   FromProto(const xla::PjRtTopologyDescriptionProto& proto);
 
  private:
+  std::unique_ptr<PjRtStreamExecutorDeviceDescription> CreateDeviceDescription(
+      int device_id) const;
+
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
   std::shared_ptr<const GpuTopology> gpu_topology_;

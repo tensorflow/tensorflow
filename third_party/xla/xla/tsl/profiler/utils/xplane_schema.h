@@ -198,6 +198,7 @@ enum HostEventType {
 };
 
 enum StatType {
+  // LINT.IfChange(stat_type_enum)
   kFirstStatType = 0,
   kUnknownStatType = kFirstStatType,
   // TraceMe arguments.
@@ -209,6 +210,7 @@ enum StatType {
   kQueueId,
   kQueueAddr,
   kRequestId,
+  kGlobalChipId,
   kRunId,
   kReplicaId,
   kGraphType,
@@ -290,6 +292,11 @@ enum StatType {
   kScaledValue,
   kThreadId,
   kMatrixUnitUtilizationPercent,
+  kHbmUtilizationPercent,
+  kPerformanceCounterId,
+  kCounterValue,
+  kPerformanceCounterDescription,
+  kPerformanceCounterSets,
   // Cost analysis related.
   kTimeScaleMultiplier,
   // XLA metadata map related.
@@ -372,7 +379,30 @@ enum StatType {
   kCudaGraphMapValueId,
   kCudaGraphNodeMapId,
   kGraphMetadataLineId,
-  kLastStatType = kGraphMetadataLineId,
+  kOffloadCoreId,
+  kTcOffloadStartId,
+  kOffloadExecutionIndex,
+  kMarkerPayloadString,
+  kMetadataCudaVersion,
+  kMetadataLibtpuVersion,
+  kMetadataCudaRuntimeVersion,
+  kMetadataCudaDriverVersion,
+  // LLO Debug Dump.
+  kLloProto,
+  // Total VDD core energy consumed in nano Joules.
+  kVddCoreEnergy,
+  // Number of VDD core power events.
+  kVddCorePowerEvents,
+  // Total HBM energy consumed in nano Joules.
+  kHbmEnergy,
+  // Number of HBM power events.
+  kHbmPowerEvents,
+  // LINT.ThenChange(:last_stat_type)
+
+  // LINT.IfChange(last_stat_type)
+  // Change this to point to the last stat type when adding a new one.
+  kLastStatType = kHbmPowerEvents,
+  // LINT.ThenChange(:stat_type_enum)
 };
 
 enum MegaScaleStatType : uint8_t {
@@ -411,7 +441,8 @@ enum TaskEnvStatType {
   kFirstTaskEnvStatType = 1,
   kEnvProfileStartTime = kFirstTaskEnvStatType,
   kEnvProfileStopTime,
-  kLastTaskEnvStatType = kEnvProfileStopTime,
+  kEnvProfileOptions,
+  kLastTaskEnvStatType = kEnvProfileOptions,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
@@ -503,7 +534,7 @@ class XFlow {
   }
 
   // Encoding
-  uint64 ToStatValue() const { return encoded_.whole; }
+  uint64_t ToStatValue() const { return encoded_.whole; }
 
   // Decoding
   static XFlow FromStatValue(uint64_t encoded) { return XFlow(encoded); }

@@ -14,29 +14,42 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
 
+#include <cstdint>
 #include <limits>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "grpcpp/client_context.h"
+#include "grpcpp/create_channel.h"
 #include "grpcpp/grpcpp.h"  // IWYU pragma: keep
+#include "grpcpp/security/credentials.h"
+#include "grpcpp/support/channel_arguments.h"
+#include "grpcpp/support/status.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
+#include "tsl/profiler/protobuf/profiler_analysis.grpc.pb.h"
+#include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
 namespace tsl {
 namespace profiler {
 namespace {
 
+using tensorflow::ContinuousProfilingResponse;
+using tensorflow::GetSnapshotRequest;
 using tensorflow::MonitorRequest;
 using tensorflow::MonitorResponse;
 using tensorflow::NewProfileSessionRequest;
 using tensorflow::NewProfileSessionResponse;
 using tensorflow::ProfileRequest;
 using tensorflow::ProfileResponse;
+using tensorflow::StopContinuousProfilingRequest;
+using tensorflow::StopContinuousProfilingResponse;
 
 inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
   return s.ok() ? absl::OkStatus()
@@ -48,7 +61,7 @@ template <typename T>
 std::unique_ptr<typename T::Stub> CreateStub(
     const std::string& service_address) {
   ::grpc::ChannelArguments channel_args;
-  channel_args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+  channel_args.SetMaxReceiveMessageSize(std::numeric_limits<int32_t>::max());
   // Default URI prefix is "dns:///" if not provided.
   auto channel = ::grpc::CreateCustomChannel(
       service_address, ::grpc::InsecureChannelCredentials(), channel_args);
@@ -69,6 +82,40 @@ absl::Status ProfileGrpc(const std::string& service_address,
       CreateStub<tensorflow::grpc::ProfilerService>(service_address);
   TF_RETURN_IF_ERROR(
       FromGrpcStatus(stub->Profile(&context, request, response)));
+  return absl::OkStatus();
+}
+
+absl::Status ContinuousProfilingGrpc(const std::string& service_address,
+                                     const ProfileRequest& request,
+                                     ContinuousProfilingResponse* response) {
+  ::grpc::ClientContext context;
+  std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
+      CreateStub<tensorflow::grpc::ProfilerService>(service_address);
+  TF_RETURN_IF_ERROR(FromGrpcStatus(
+      stub->StartContinuousProfiling(&context, request, response)));
+  return absl::OkStatus();
+}
+
+absl::Status StopContinuousProfilingGrpc(
+    const std::string& service_address,
+    const StopContinuousProfilingRequest& request,
+    StopContinuousProfilingResponse* response) {
+  ::grpc::ClientContext context;
+  std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
+      CreateStub<tensorflow::grpc::ProfilerService>(service_address);
+  TF_RETURN_IF_ERROR(FromGrpcStatus(
+      stub->StopContinuousProfiling(&context, request, response)));
+  return absl::OkStatus();
+}
+
+absl::Status GetSnapshotGrpc(const std::string& service_address,
+                             const GetSnapshotRequest& request,
+                             ProfileResponse* response) {
+  ::grpc::ClientContext context;
+  std::unique_ptr<tensorflow::grpc::ProfilerService::Stub> stub =
+      CreateStub<tensorflow::grpc::ProfilerService>(service_address);
+  TF_RETURN_IF_ERROR(
+      FromGrpcStatus(stub->GetSnapshot(&context, request, response)));
   return absl::OkStatus();
 }
 
@@ -106,7 +153,7 @@ absl::Status MonitorGrpc(const std::string& service_address,
 RemoteProfilerSession::RemoteProfilerSession(
     const std::string& service_address, absl::Time deadline,
     const ProfileRequest& profile_request)
-    : response_(absl::make_unique<ProfileResponse>()),
+    : response_(std::make_unique<ProfileResponse>()),
       service_address_(service_address),
       stub_(CreateStub<tensorflow::grpc::ProfilerService>(service_address_)),
       deadline_(deadline),
@@ -135,7 +182,7 @@ void RemoteProfilerSession::ProfileAsync() {
 std::unique_ptr<ProfileResponse> RemoteProfilerSession::WaitForCompletion(
     absl::Status& out_status) {
   if (!response_) {
-    out_status = errors::FailedPrecondition(
+    out_status = absl::FailedPreconditionError(
         "WaitForCompletion must only be called once.");
     return nullptr;
   }
@@ -149,7 +196,7 @@ std::unique_ptr<ProfileResponse> RemoteProfilerSession::WaitForCompletion(
   bool success = cq_.Next(&got_tag, &ok);
   if (!success || !ok || got_tag == nullptr) {
     out_status =
-        errors::Internal("Missing or invalid event from completion queue.");
+        absl::InternalError("Missing or invalid event from completion queue.");
     return nullptr;
   }
 

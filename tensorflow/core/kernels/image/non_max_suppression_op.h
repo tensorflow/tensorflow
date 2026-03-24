@@ -39,10 +39,10 @@ extern const int kNmsBoxesPerTread;
 //   to keep.
 // - flip_boxes: flag reorders the boxes use lower left and upper right
 //   corners if they are given in mixed format.
-Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
-              const float iou_threshold, int* d_selected_indices,
-              int* h_num_boxes_to_keep, OpKernelContext* context,
-              const int max_boxes, bool flip_boxes = false);
+absl::Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
+                    const float iou_threshold, int* d_selected_indices,
+                    int* h_num_boxes_to_keep, OpKernelContext* context,
+                    const int max_boxes, bool flip_boxes = false);
 #endif
 
 }  // namespace tensorflow

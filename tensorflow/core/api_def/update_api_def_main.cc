@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 int main(int argc, char** argv) {
-  tensorflow::string api_files_dir;
-  tensorflow::string op_file_pattern;
+  std::string api_files_dir;
+  std::string op_file_pattern;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("api_def_dir", &api_files_dir,
                        "Base directory of api_def*.pbtxt files."),

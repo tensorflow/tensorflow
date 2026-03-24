@@ -74,7 +74,7 @@ class IteratorResource : public ResourceBase {
   absl::Status SetIteratorFromDataset(OpKernelContext* ctx,
                                       const DatasetBase* dataset);
 
-  string DebugString() const override { return "Iterator resource"; }
+  std::string DebugString() const override { return "Iterator resource"; }
 
   const DataTypeVector& output_dtypes() const { return output_dtypes_; }
 
@@ -194,7 +194,7 @@ class IteratorHandleOp : public OpKernel {
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
-  string name_;
+  std::string name_;
 };
 
 // Like IteratorHandleOp, but creates handles which are never shared, and does
@@ -206,7 +206,7 @@ class AnonymousIteratorHandleOp : public AnonymousResourceOp<IteratorResource> {
   explicit AnonymousIteratorHandleOp(OpKernelConstruction* context);
 
  private:
-  string name() override;
+  std::string name() override;
 
   absl::Status CreateResource(
       OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,

@@ -424,7 +424,7 @@ struct Options {
   uint64_t reserved_bytes_for_block_prefetches = 0;
 
   // List of hlo positions for block prefetches.
-  absl::flat_hash_set<HloPosition> block_prefetched_positions;
+  std::vector<HloPosition> block_prefetched_positions;
 
   // Determines the bandwidth adjustment factor for an async start instruction.
   // The available bandwidth for instructions between this and the async done

@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
@@ -306,23 +306,23 @@ NanoRtExecutable::NanoRtExecutable(
       temp_allocation_index_(temp_allocation_index),
       program_shape_(program_shape) {}
 
-static se::DeviceMemoryBase ToDeviceMemory(
+static se::DeviceAddressBase ToDeviceMemory(
     const NanoRtExecutable::Argument& argument) {
-  return se::DeviceMemoryBase(
+  return se::DeviceAddressBase(
       const_cast<void*>(reinterpret_cast<const void*>(argument.data().data())),
       argument.data().size());
 }
 
-static se::DeviceMemoryBase ToDeviceMemory(
+static se::DeviceAddressBase ToDeviceMemory(
     const NanoRtExecutable::Result& result) {
-  return se::DeviceMemoryBase(reinterpret_cast<void*>(result.data().data()),
-                              result.data().size());
+  return se::DeviceAddressBase(reinterpret_cast<void*>(result.data().data()),
+                               result.data().size());
 }
 
-static se::DeviceMemoryBase ToDeviceMemory(
+static se::DeviceAddressBase ToDeviceMemory(
     const NanoRtExecutable::PreallocatedTemp& temp) {
-  return se::DeviceMemoryBase(reinterpret_cast<void*>(temp.data()),
-                              temp.size());
+  return se::DeviceAddressBase(reinterpret_cast<void*>(temp.data()),
+                               temp.size());
 }
 
 tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
@@ -387,7 +387,7 @@ tsl::AsyncValueRef<NanoRtExecutable::ExecuteEvent> NanoRtExecutable::Execute(
     // vector of buffer allocations, and only allocations corresponding to
     // constants have a valid index.
     if (constant.index >= 0) {
-      buffers[constant.index] = constant.AsDeviceMemoryBase();
+      buffers[constant.index] = constant.AsDeviceAddress();
     }
   }
 

@@ -32,6 +32,7 @@ HIP_RUNTIME_PATH = '%{rocm_root}/lib'
 HIP_RUNTIME_LIBRARY = '%{rocm_root}/lib'
 ROCR_RUNTIME_PATH = '%{rocm_root}/lib'
 ROCR_RUNTIME_LIBRARY = '%{rocr_runtime_library}'
+TMPDIR= '%{tmpdir}'
 VERBOSE = '%{crosstool_verbose}'=='1'
 
 def Log(s):
@@ -232,6 +233,8 @@ def InvokeHipcc(argv, log=False):
 
 
 def main():
+  if TMPDIR:
+    os.environ['TMPDIR'] = TMPDIR
   # ignore PWD env var
   os.environ['PWD']=''
 

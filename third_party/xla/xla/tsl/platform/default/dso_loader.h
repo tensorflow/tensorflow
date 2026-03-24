@@ -41,6 +41,7 @@ absl::StatusOr<void*> GetNcclDsoHandle();
 absl::StatusOr<void*> GetNvshmemDsoHandle();
 absl::StatusOr<void*> GetNvInferDsoHandle();
 absl::StatusOr<void*> GetNvInferPluginDsoHandle();
+absl::StatusOr<void*> GetNvmlDsoHandle();
 
 absl::StatusOr<void*> GetRocblasDsoHandle();
 absl::StatusOr<void*> GetMiopenDsoHandle();

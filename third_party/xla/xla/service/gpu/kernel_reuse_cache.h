@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/service/gpu/executable.pb.h"
+#include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -48,6 +48,7 @@ class KernelReuseCache {
     int64_t shmem_bytes = 0;
     std::string binary;
     stream_executor::gpu::TmaMetadata tma_metadata;
+    bool use_pdl = false;
   };
   struct NamedBinary {
     std::string name;

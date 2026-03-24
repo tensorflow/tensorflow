@@ -41,7 +41,7 @@ limitations under the License.
 namespace stream_executor {
 
 // Forward-declared to avoid StreamExecutor dependency.
-class DeviceMemoryAllocator;
+class DeviceAddressAllocator;
 
 }  // namespace stream_executor
 
@@ -87,11 +87,11 @@ class ExecutableBuildOptions {
   // want to run various algorithms on the device and pick the fastest one -- it
   // might allocate buffers for use by these algorithms using this allocator.
   //
-  // This does not need to be the same as the se::DeviceMemoryAllocator passed
+  // This does not need to be the same as the se::DeviceAddressAllocator passed
   // when running the executable.
   ExecutableBuildOptions& set_device_allocator(
-      se::DeviceMemoryAllocator* allocator);
-  se::DeviceMemoryAllocator* device_allocator() const;
+      se::DeviceAddressAllocator* allocator);
+  se::DeviceAddressAllocator* device_allocator() const;
 
   // The number of replicas of this computation that are to be executed.
   // Defaults to 1.
@@ -310,7 +310,7 @@ class ExecutableBuildOptions {
   bool result_layout_set_ = false;
   std::optional<CompilationEnvironments> comp_envs_;
   std::optional<DebugOptions> debug_options_;
-  se::DeviceMemoryAllocator* device_allocator_ = nullptr;
+  se::DeviceAddressAllocator* device_allocator_ = nullptr;
   int num_replicas_ = 1;
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;

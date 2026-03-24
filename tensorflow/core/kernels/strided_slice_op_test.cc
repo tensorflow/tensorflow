@@ -47,16 +47,16 @@ static void SliceHelper(::testing::benchmark::State& state) {
   CHECK_LT(size, kMaxSize);
 
   Tensor begin(DT_INT32, TensorShape({2}));
-  begin.flat<int32>()(0) = 10;
-  begin.flat<int32>()(1) = 10;
+  begin.flat<int32_t>()(0) = 10;
+  begin.flat<int32_t>()(1) = 10;
 
   Tensor end(DT_INT32, TensorShape({2}));
-  end.flat<int32>()(0) = 10 + kDim;
-  end.flat<int32>()(1) = 10 + size;
+  end.flat<int32_t>()(0) = 10 + kDim;
+  end.flat<int32_t>()(1) = 10 + size;
 
   Tensor strides(DT_INT32, TensorShape({2}));
-  strides.flat<int32>()(0) = 1;
-  strides.flat<int32>()(1) = 1;
+  strides.flat<int32_t>()(0) = 1;
+  strides.flat<int32_t>()(1) = 1;
 
   Tensor input(dt, TensorShape({2 * kDim, kMaxSize}));
   input.flat<T>().setRandom();
@@ -97,9 +97,9 @@ void BM_ValidateStridedSliceOp(::testing::benchmark::State& state) {
   int kDim = 100;
   int kMaxSize = 15000;
   int size = 100;
-  Tensor begin = test::AsTensor<int32>({10, 10});
-  Tensor end = test::AsTensor<int32>({10 + kDim, 10 + size});
-  Tensor strides = test::AsTensor<int32>({1, 1});
+  Tensor begin = test::AsTensor<int32_t>({10, 10});
+  Tensor end = test::AsTensor<int32_t>({10 + kDim, 10 + size});
+  Tensor strides = test::AsTensor<int32_t>({1, 1});
   TensorShape input_shape({2 * kDim, kMaxSize});
 
   for (auto s : state) {

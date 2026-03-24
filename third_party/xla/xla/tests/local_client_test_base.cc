@@ -43,8 +43,8 @@ limitations under the License.
 #include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -57,7 +57,7 @@ namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-absl::StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(
+absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> TestAllocator::Allocate(
     int device_ordinal, uint64_t size, bool retry_on_failure,
     int64_t memory_space) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
@@ -66,19 +66,20 @@ absl::StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
-  return se::StreamExecutorMemoryAllocator::Allocate(
+  return stream_executor::StreamExecutorAddressAllocator::Allocate(
       device_ordinal, size, retry_on_failure, memory_space);
 }
 
 absl::Status TestAllocator::Deallocate(int device_ordinal,
-                                       se::DeviceMemoryBase mem) {
+                                       se::DeviceAddressBase mem) {
   VLOG(2) << "Deallocate(" << device_ordinal << ")";
   {
     absl::MutexLock lock(count_mutex_);
     deallocation_count_++;
     device_deallocation_count_[device_ordinal]++;
   }
-  return se::StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
+  return stream_executor::StreamExecutorAddressAllocator::Deallocate(
+      device_ordinal, mem);
 }
 
 int64_t TestAllocator::allocation_count() const {

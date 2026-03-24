@@ -41,7 +41,7 @@ namespace tensorflow {
 absl::Status FunctionDefToBodyHelper(
     core::RefCountPtr<FunctionRecord>&& record, const AttrSlice& attrs,
     const FunctionLibraryDefinition* const lib_def,
-    const std::function<absl::Status(const string&, const OpDef**)>&
+    const std::function<absl::Status(const std::string&, const OpDef**)>&
         get_func_sig,
     std::unique_ptr<FunctionBody>* fbody) {
   // Instantiates the function template into a graph def.
@@ -96,7 +96,8 @@ absl::Status FunctionDefToBodyHelper(core::RefCountPtr<FunctionRecord>&& record,
                                      const AttrSlice& attrs,
                                      const FunctionLibraryDefinition* lib_def,
                                      std::unique_ptr<FunctionBody>* fbody) {
-  const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
+  const auto get_func_sig = [&lib_def](const std::string& op,
+                                       const OpDef** sig) {
     return lib_def->LookUpOpDef(op, sig);
   };
   return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
@@ -109,7 +110,8 @@ absl::Status FunctionDefToBodyHelper(const FunctionDef& fdef,
                                      std::unique_ptr<FunctionBody>* fbody) {
   core::RefCountPtr<FunctionRecord> record(
       new FunctionRecord(FunctionDef(fdef), {}, true));
-  const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
+  const auto get_func_sig = [&lib_def](const std::string& op,
+                                       const OpDef** sig) {
     return lib_def->LookUpOpDef(op, sig);
   };
   return FunctionDefToBodyHelper(std::move(record), attrs, lib_def,
@@ -125,8 +127,8 @@ bool PrunableStatefulNode(const Node* n) {
   // and can produce different results on each invocation (due to variable
   // updates) but it does not itself modify the variable.
   // TODO(b/341721055): Consolidate this set with other side effect modeling.
-  static const absl::flat_hash_set<string>* prunable_stateful_ops =
-      new absl::flat_hash_set<string>{
+  static const absl::flat_hash_set<std::string>* prunable_stateful_ops =
+      new absl::flat_hash_set<std::string>{
           FunctionLibraryDefinition::kArgOp,
           "ResourceGather",
           "ResourceGatherNd",

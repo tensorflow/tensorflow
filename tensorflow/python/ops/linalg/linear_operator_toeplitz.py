@@ -117,14 +117,14 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
     r"""Initialize a `LinearOperatorToeplitz`.
 
     Args:
-      col: Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
-        The first column of the operator. Allowed dtypes: `float16`, `float32`,
-          `float64`, `complex64`, `complex128`. Note that the first entry of
-          `col` is assumed to be the same as the first entry of `row`.
-      row: Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
-        The first row of the operator. Allowed dtypes: `float16`, `float32`,
-          `float64`, `complex64`, `complex128`. Note that the first entry of
-          `row` is assumed to be the same as the first entry of `col`.
+      col: Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`. The first
+        column of the operator. Allowed dtypes: `float16`, `float32`, `float64`,
+        `complex64`, `complex128`. Note that the first entry of `col` is assumed
+        to be the same as the first entry of `row`.
+      row: Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`. The first row
+        of the operator. Allowed dtypes: `float16`, `float32`, `float64`,
+        `complex64`, `complex128`. Note that the first entry of `row` is assumed
+        to be the same as the first entry of `col`.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `diag.dtype` is real, this is auto-set to `True`.
@@ -134,7 +134,14 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
         self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
+        Should not be `False` for that only square Toeplitz operators currently
+        supported.
       name: A name for this `LinearOperator`.
+
+    Raises:
+      ValueError:  If `is_square` is `False`.
+      ValueError:  If `is_positive_definite` is `True` and
+        `is_non_singular` is `False`.
     """
     parameters = dict(
         col=col,

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -70,36 +71,39 @@ class DotOperandDims {
   static absl::StatusOr<std::array<DotOperandDims, 4>> FromScaledDot(
       const HloInstruction* scaled_dot);
 
+  // --- Factories ---
+
   // Creates a DotOperandDims from a dot instruction and operand index (0 or 1).
   static absl::StatusOr<DotOperandDims> FromDotOperand(
       const HloInstruction* dot, int operand_number);
 
   // Converts two DotOperandDims to a DotDimensionNumbers.
-  static absl::StatusOr<DotDimensionNumbers> IntoDotDimensionNumbers(
+  static absl::StatusOr<DotDimensionNumbers> CreateDotDimensionNumbers(
       const DotOperandDims& lhs_dims, const DotOperandDims& rhs_dims);
 
+  // Converts a span of two DotOperandDims to a DotDimensionNumbers.
+  static absl::StatusOr<DotDimensionNumbers> CreateDotDimensionNumbers(
+      absl::Span<const DotOperandDims> operands_dims);
+
   // Computes the output shape of the dot instruction.
-  static absl::StatusOr<Shape> IntoOutputShape(PrimitiveType element_type,
-                                               const DotOperandDims& lhs_dims,
-                                               const DotOperandDims& rhs_dims);
+  static absl::StatusOr<Shape> ComputeOutputShape(
+      PrimitiveType element_type, const DotOperandDims& lhs_dims,
+      const DotOperandDims& rhs_dims);
+
+  // --- Category scoped functions ---
 
   // Returns the indices of the dimensions of the category.
-  absl::Span<const int64_t> DimensionIndices(Category category) const {
+  absl::Span<const int64_t> Indices(Category category) const {
     return dim_numbers_[category];
   }
 
   // Returns the category size (number of dimensions).
-  int64_t DimensionCount(Category category) const {
+  int64_t Rank(Category category) const {
     return dim_numbers_[category].size();
   }
 
   // Returns the dimension sizes of the category.
-  std::vector<int64_t> DimensionSizes(Category category) const;
-
-  // Permute the dimensions of the category.
-  // The permutation is in the same format as you'd pass to the transpose
-  // instruction. The corresponding dimension numbers are updated.
-  void Permute(absl::Span<const int64_t> permutation);
+  std::vector<int64_t> Sizes(Category category) const;
 
   // Collapses the dimensions of the category. Returns error if the dimensions
   // are not consecutive (but can be permuted).
@@ -107,6 +111,17 @@ class DotOperandDims {
   // dimensions are removed if remove_if_empty; otherwise one dimension is kept
   // (if there was any).
   absl::Status Collapse(Category category, bool remove_if_empty);
+
+  // --- Global dimension functions ---
+
+  // Permute the dimensions of the category.
+  // The permutation is in the same format as you'd pass to the transpose
+  // instruction. The corresponding dimension numbers are updated.
+  void ApplyPermutation(absl::Span<const int64_t> permutation);
+
+  // Converts the shape dimension index to the category dimension index.
+  absl::StatusOr<int64_t> IndexWithinCategory(Category category,
+                                              int64_t global_dim_idx) const;
 
   // Removes the dimensions in the range [start, end).
   absl::Status EraseDimensions(int64_t start, int64_t end);
@@ -119,9 +134,12 @@ class DotOperandDims {
 
   // Returns the shape of the operand.
   const Shape& shape() const { return shape_; }
-  // Converts the shape dimension index to the category dimension index.
-  absl::StatusOr<int64_t> LocalIndex(Category category,
-                                     int64_t global_dim_idx) const;
+
+  // Updates the shape of the operand.
+  absl::Status UpdateShape(const Shape& new_shape);
+
+  // Returns a debug string representation of the DotOperandDims.
+  std::string ToString() const;
 
  private:
   Shape shape_;

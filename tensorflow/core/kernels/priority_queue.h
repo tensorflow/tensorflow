@@ -50,7 +50,7 @@ class PriorityQueue
  public:
   PriorityQueue(int32_t capacity, const DataTypeVector& component_dtypes,
                 const std::vector<TensorShape>& component_shapes,
-                const string& name);
+                const std::string& name);
 
   absl::Status Initialize()
       override;  // Must be called before any other method.
@@ -69,7 +69,7 @@ class PriorityQueue
   absl::Status MatchesPriorityNodeDefTypes(const NodeDef& node_def) const;
   absl::Status MatchesPriorityNodeDefShapes(const NodeDef& node_def) const;
 
-  int32 size() const override {
+  int32_t size() const override {
     mutex_lock lock(mu_);
     return queues_[0].size();
   }

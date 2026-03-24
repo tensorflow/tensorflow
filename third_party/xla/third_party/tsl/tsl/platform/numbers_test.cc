@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <limits>
 #include <string>
@@ -27,6 +28,8 @@ limitations under the License.
 namespace tsl {
 namespace strings {
 
+using strings_internal::kFastToBufferSize;
+
 // NOTE: most of the routines in numbers.h are tested indirectly through
 // strcat_test.cc in this directory.
 
@@ -34,9 +37,9 @@ namespace strings {
 TEST(FpToString, Ints) {
   for (int s = 0; s < 64; s++) {
     for (int delta = -1; delta <= 1; delta++) {
-      uint64 fp = (1ull << s) + delta;
-      string s = FpToString(fp);
-      uint64 fp2;
+      uint64_t fp = (1ull << s) + delta;
+      std::string s = FpToString(fp);
+      uint64_t fp2;
       EXPECT_TRUE(HexStringToUint64(s, &fp2));
       EXPECT_EQ(fp, fp2);
     }
@@ -50,14 +53,14 @@ TEST(FpToString, Ints) {
 TEST(Uint64ToHexString, Ints) {
   for (int s = 0; s < 64; s++) {
     for (int delta = -1; delta <= 1; delta++) {
-      uint64 fp = (1ull << s) + delta;
+      uint64_t fp = (1ull << s) + delta;
       std::string s = absl::StrCat(absl::Hex(fp, absl::kZeroPad16));
-      uint64 fp2;
+      uint64_t fp2;
       EXPECT_TRUE(HexStringToUint64(s, &fp2));
       EXPECT_EQ(fp, fp2) << s;
     }
   }
-  uint64 dummy;
+  uint64_t dummy;
   EXPECT_FALSE(HexStringToUint64("", &dummy));
   EXPECT_FALSE(HexStringToUint64("xyz", &dummy));
   EXPECT_FALSE(HexStringToUint64("0000000000000000xyz", &dummy));
@@ -73,6 +76,8 @@ TEST(HumanReadableNum, Basic) {
   EXPECT_EQ(HumanReadableNum(1048576), "1.05M");
   EXPECT_EQ(HumanReadableNum(23956812342), "23.96B");
   EXPECT_EQ(HumanReadableNum(123456789012345678), "1.23E+17");
+  EXPECT_EQ(HumanReadableNum(std::numeric_limits<int64_t>::max()), "9.22E+18");
+  EXPECT_EQ(HumanReadableNum(std::numeric_limits<int64_t>::min()), "-9.22E+18");
 }
 
 TEST(HumanReadableNumBytes, Bytes) {
@@ -99,7 +104,8 @@ TEST(HumanReadableNumBytes, Bytes) {
   EXPECT_EQ("-4B", HumanReadableNumBytes(-4));
   EXPECT_EQ("-1000B", HumanReadableNumBytes(-1000));
   EXPECT_EQ("-11.77MiB", HumanReadableNumBytes(-12345678));
-  EXPECT_EQ("-8E", HumanReadableNumBytes(kint64min));
+  EXPECT_EQ("-8.00EiB",
+            HumanReadableNumBytes(std::numeric_limits<int64_t>::min()));
 }
 
 TEST(HumanReadableElapsedTime, Basic) {
@@ -122,7 +128,7 @@ TEST(HumanReadableElapsedTime, Basic) {
 }
 
 TEST(safe_strto32, Int32s) {
-  int32 result;
+  int32_t result;
 
   EXPECT_EQ(true, absl::SimpleAtoi("1", &result));
   EXPECT_EQ(1, result);
@@ -156,7 +162,7 @@ TEST(safe_strto32, Int32s) {
 }
 
 TEST(safe_strtou32, UInt32s) {
-  uint32 result;
+  uint32_t result;
 
   EXPECT_TRUE(absl::SimpleAtoi("0", &result));
   EXPECT_EQ(0, result);
@@ -189,7 +195,7 @@ TEST(safe_strtou32, UInt32s) {
 }
 
 TEST(safe_strto64, Int64s) {
-  int64 result;
+  int64_t result;
 
   EXPECT_EQ(true, absl::SimpleAtoi("1", &result));
   EXPECT_EQ(1, result);
@@ -200,9 +206,9 @@ TEST(safe_strto64, Int64s) {
   EXPECT_EQ(true, absl::SimpleAtoi("9223372036854775807", &result));
   EXPECT_EQ(9223372036854775807, result);
   EXPECT_EQ(true, absl::SimpleAtoi("-9223372036854775808", &result));
-  // kint64min == -9223372036854775808
+  // std::numeric_limits<int64_t>::min() == -9223372036854775808
   // Use -9223372036854775808 directly results in out of range error
-  EXPECT_EQ(kint64min, result);
+  EXPECT_EQ(std::numeric_limits<int64_t>::min(), result);
 
   // Invalid argument
   EXPECT_EQ(false, absl::SimpleAtoi(" 132as ", &result));
@@ -225,7 +231,7 @@ TEST(safe_strto64, Int64s) {
 }
 
 TEST(safe_strtou64, UInt64s) {
-  uint64 result;
+  uint64_t result;
 
   EXPECT_TRUE(absl::SimpleAtoi("0", &result));
   EXPECT_EQ(0, result);

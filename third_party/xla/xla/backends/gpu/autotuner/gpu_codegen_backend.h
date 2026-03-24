@@ -17,16 +17,18 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_GPU_CODEGEN_BACKEND_H_
 
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
@@ -34,26 +36,32 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla {
-namespace  gpu {
+namespace gpu {
 
 // Abstract base class for GPU backends, implementing the Backend interface.
 class GpuCodegenBackend : public CodegenBackend {
  public:
   // target_config, debug_options and compiler should outlive the backend.
   // TODO(b/447096292): Remove stream_executor from GpuCodegenBackend.
-  GpuCodegenBackend(absl::string_view name, const DebugOptions* debug_options,
-                    Compiler* compiler,
-                    const Compiler::TargetConfig* target_config,
-                    stream_executor::StreamExecutor* stream_executor = nullptr)
-      : name_(name),
+  GpuCodegenBackend(autotuner::Backend backend,
+                    const DebugOptions* debug_options, Compiler* compiler,
+                    const Compiler::GpuTargetConfig* target_config,
+                    stream_executor::StreamExecutor* stream_executor = nullptr,
+                    bool uses_last_output_for_scratch = false)
+      : backend_(backend),
         stream_executor_(stream_executor),
         target_config_(*target_config),
         debug_options_(*debug_options),
-        compiler_(compiler) {}
+        compiler_(compiler),
+        uses_last_output_for_scratch_(uses_last_output_for_scratch) {}
 
-  absl::string_view name() const override { return name_; }
+  absl::string_view name() const override { return Backend_Name(backend_); }
 
-  const Compiler::TargetConfig& target_config() const { return target_config_; }
+  autotuner::Backend backend() const override { return backend_; }
+
+  const Compiler::GpuTargetConfig& target_config() const {
+    return target_config_;
+  }
   const DebugOptions& debug_options() const { return debug_options_; }
   stream_executor::StreamExecutor* stream_executor() {
     return stream_executor_;
@@ -62,21 +70,32 @@ class GpuCodegenBackend : public CodegenBackend {
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,
       const BackendConfig& config) override {
-    std::unique_ptr<HloModule> hlo_module =
-        ExtractInstructionIntoNewModule(hlo_instruction);
+    bool extract_consumer =
+        uses_last_output_for_scratch_ && hlo_instruction.shape().IsTuple() &&
+        hlo_instruction.users().size() == 1 &&
+        hlo_instruction.users()[0]->opcode() == HloOpcode::kGetTupleElement;
 
-    HloComputation* entry_computation = hlo_module->entry_computation();
-    HloInstruction* root_instruction = entry_computation->root_instruction();
-    TF_RETURN_IF_ERROR(ApplyConfig(*root_instruction, config));
+    std::unique_ptr<HloModule> hlo_module;
+    HloInstruction* instruction_to_tune = nullptr;
+    if (extract_consumer) {
+      hlo_module = ExtractProducerConsumerIntoNewModule(
+          hlo_instruction, *hlo_instruction.users()[0]);
+      instruction_to_tune =
+          hlo_module->entry_computation()->root_instruction()->mutable_operand(
+              0);
+    } else {
+      hlo_module = ExtractInstructionIntoNewModule(hlo_instruction);
+      instruction_to_tune = hlo_module->entry_computation()->root_instruction();
+    }
+    TF_RETURN_IF_ERROR(ApplyConfig(*instruction_to_tune, config));
 
     hlo_module->mutable_config().set_debug_options(debug_options_);
     AdjustDebugOptionsForAutotuning(
-        hlo_module->mutable_config().mutable_debug_options(),
-        allow_register_spills_);
+        hlo_module->mutable_config().mutable_debug_options());
 
     Compiler::CompileOptions options;
-    options.target_config = target_config_;
-    options.is_autotuning_compilation = true;
+    options.gpu_topology = GetSingleDeviceGpuTopology("", target_config_);
+    options.embed_hlo_module = false;
     TF_ASSIGN_OR_RETURN(auto optimized_module,
                         RunHloPasses(std::move(hlo_module), options));
     return compiler_->RunBackend(std::move(optimized_module), stream_executor_,
@@ -84,16 +103,10 @@ class GpuCodegenBackend : public CodegenBackend {
   }
 
   bool CanProduceWrongResults() const override { return false; }
-  // TODO b/443207721 - Remove this once we have a better way to handle register
-  // spilling during autotuning.
-  // Allows compilation to succeed even if kernels spill registers,
-  // ignoring the `xla_gpu_filter_kernels_spilling_registers_on_autotuning`
-  // flag. If not called, the flag's value is honored.
-  void AllowRegisterSpills() { allow_register_spills_ = true; }
 
-  static void AdjustDebugOptionsForAutotuning(
-      DebugOptions& debug_options, bool force_allow_register_spills) {
+  static void AdjustDebugOptionsForAutotuning(DebugOptions& debug_options) {
     debug_options.set_xla_enable_dumping(false);
+    debug_options.set_xla_gpu_dump_llvmir(false);
     // Avoid using another thread pool.
     debug_options.set_xla_gpu_force_compilation_parallelism(1);
     debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(false);
@@ -104,10 +117,15 @@ class GpuCodegenBackend : public CodegenBackend {
     debug_options.set_xla_gpu_async_dot(false);
     debug_options.set_xla_embed_ir_in_executable(false);
     debug_options.set_xla_gpu_kernel_cache_file("");
-    if (force_allow_register_spills) {
-      debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
-          false);
-    }
+    debug_options.set_xla_gpu_experimental_enable_checksum_tracing_on_thunks(
+        false);
+    debug_options.set_xla_gpu_detect_nan(DebugOptions::DETECTION_MODE_NONE);
+    debug_options.set_xla_enable_scoped_logging_timers(false);
+    debug_options.set_xla_gpu_executable_embed_debug_info(false);
+    // Avoid dumping compilation steps.
+    debug_options.set_xla_gpu_dump_autotune_results_to("");
+    debug_options.set_xla_gpu_load_autotune_results_from("");
+    debug_options.set_xla_gpu_dump_autotune_logs_to("");
   }
 
  private:
@@ -121,15 +139,19 @@ class GpuCodegenBackend : public CodegenBackend {
     return hlo_module;
   };
 
-  std::string name_;
+  virtual bool IsSupported(const HloInstruction& instr) = 0;
+
+  friend class FissionBackend;
+
+  autotuner::Backend backend_;
   stream_executor::StreamExecutor* stream_executor_;
-  const Compiler::TargetConfig& target_config_;
+  const Compiler::GpuTargetConfig& target_config_;
   const DebugOptions& debug_options_;
   // TODO(b/407494653): remove compiler when we don't need to run any HLO passes
   // and the codegen backend can directly produce an executable without a
   // compiler instance.
   Compiler* compiler_;
-  bool allow_register_spills_ = false;
+  bool uses_last_output_for_scratch_ = false;
 };
 
 }  // namespace gpu

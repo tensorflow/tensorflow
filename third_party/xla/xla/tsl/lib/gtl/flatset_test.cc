@@ -487,10 +487,10 @@ TEST(FlatSet, ForwardIterator) {
 // or destructions will show up as errors under a sanitizer or
 // heap checker.
 TEST(FlatSet, ConstructDestruct) {
-  FlatSet<string> set;
-  string k1 = "the quick brown fox jumped over the lazy dog";
-  string k2 = k1 + k1;
-  string k3 = k1 + k2;
+  FlatSet<std::string> set;
+  std::string k1 = "the quick brown fox jumped over the lazy dog";
+  std::string k2 = k1 + k1;
+  std::string k3 = k1 + k2;
   set.insert(k1);
   set.insert(k3);
   EXPECT_EQ(set.count(k1), 1);

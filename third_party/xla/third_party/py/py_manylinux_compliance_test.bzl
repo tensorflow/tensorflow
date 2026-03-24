@@ -15,7 +15,7 @@ def verify_manylinux_compliance_test(
         data = [
             wheel,
         ],
-        deps = ["@pypi_auditwheel//:pkg"],
+        deps = ["@pypi//auditwheel"],
         args = [
             "--wheel-path=$(location {})".format(wheel),
             "--aarch64-compliance-tag={}".format(aarch64_compliance_tag),

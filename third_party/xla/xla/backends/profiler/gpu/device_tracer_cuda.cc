@@ -28,11 +28,13 @@ limitations under the License.
 #include "xla/backends/profiler/gpu/cupti_collector.h"
 #include "xla/backends/profiler/gpu/cupti_tracer.h"
 #include "xla/backends/profiler/gpu/cupti_tracer_options_utils.h"
+#include "xla/backends/profiler/gpu/gpu_metadata.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "xla/tsl/util/env_var.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -78,7 +80,7 @@ class GpuTracer : public tsl::profiler::ProfilerInterface {
 
 absl::Status GpuTracer::DoStart() {
   if (!cupti_tracer_->IsAvailable()) {
-    return tsl::errors::Unavailable("Another profile session running.");
+    return absl::UnavailableError("Another profile session running.");
   }
 
   options_.cbids_selected = CuptiTracer::CreateDefaultCallbackIds();
@@ -95,19 +97,36 @@ absl::Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
 
+  // TODO: Change default to true once we have more confidence in HES.
+  ReadBoolFromEnvVar("TF_GPU_CUPTI_ENABLE_ACTIVITY_HW_TRACING", false,
+                     &options_.enable_activity_hardware_tracing)
+      .IgnoreError();
+
 // CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION >= 11000
   options_.cupti_finalize = true;
 #endif
 
   CuptiTracerCollectorOptions collector_options;
-  collector_options.num_gpus = cupti_tracer_->NumGpus();
+  int num_gpus = cupti_tracer_->NumGpus();
+  collector_options.num_gpus = num_gpus;
 
   // TODO: Add a test to verify that the options are set correctly and
   // collectors are generating correct data once ProfileData is
   // available(b/399675726).
   TF_RETURN_IF_ERROR(UpdateCuptiTracerOptionsFromProfilerOptions(
       profile_options_, options_, collector_options));
+
+  if (collector_options.num_gpus <= 0 ||
+      collector_options.num_gpus > num_gpus) {
+    if (collector_options.num_gpus != 0) {
+      LOG(WARNING)
+          << "The provided number of GPUs (" << collector_options.num_gpus
+          << ") is invalid. Profiling will be done on all available GPUs ("
+          << num_gpus << ").";
+    }
+    collector_options.num_gpus = num_gpus;
+  }
 
   uint64_t start_gputime_ns = CuptiTracer::GetTimestamp();
   uint64_t start_walltime_ns = tsl::profiler::GetCurrentTimeNanos();
@@ -120,6 +139,7 @@ absl::Status GpuTracer::DoStart() {
   }
   TF_RETURN_IF_ERROR(
       cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_));
+  AddGpuMetadata();
   return absl::OkStatus();
 }
 
@@ -153,7 +173,7 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       VLOG(1) << "No trace data collected, session wasn't started";
       return absl::OkStatus();
     case State::kStartedOk:
-      return tsl::errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Cannot collect trace before stopping");
     case State::kStartedError:
       LOG(ERROR) << "Cannot collect, profiler failed to start";

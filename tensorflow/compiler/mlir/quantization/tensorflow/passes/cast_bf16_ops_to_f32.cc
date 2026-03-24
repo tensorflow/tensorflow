@@ -91,8 +91,8 @@ class CastBf16OpsToF32 : public RewritePattern {
     for (int i = 0; i < op->getNumOperands(); i++) {
       Value input = op->getOperand(i);
       if (getElementTypeOrSelf(input).isBF16()) {
-        Value f32_cast = rewriter.create<TF::CastOp>(
-            op->getLoc(),
+        Value f32_cast = TF::CastOp::create(
+            rewriter, op->getLoc(),
             CloneTypeWithNewElementType(input.getType(), rewriter.getF32Type()),
             input);
         op->setOperand(i, f32_cast);
@@ -108,8 +108,8 @@ class CastBf16OpsToF32 : public RewritePattern {
         for (Operation* user : op->getUsers()) {
           for (int i = 0; i < user->getNumOperands(); i++) {
             if (user->getOperand(i) == value) {
-              Value bf16_cast = rewriter.create<TF::CastOp>(
-                  user->getLoc(),
+              Value bf16_cast = TF::CastOp::create(
+                  rewriter, user->getLoc(),
                   CloneTypeWithNewElementType(value.getType(),
                                               rewriter.getBF16Type()),
                   value);

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 
+#include <cstdint>
+
 namespace mlir {
 namespace TF {
 

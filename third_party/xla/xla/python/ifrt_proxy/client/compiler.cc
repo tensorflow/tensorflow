@@ -21,6 +21,9 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/bind_front.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -36,7 +39,10 @@
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/user_context_status_util.h"
 #include "xla/python/ifrt_proxy/client/executable.h"
+#include "xla/python/ifrt_proxy/client/mpmd_executable.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/versions.h"
@@ -58,7 +64,7 @@ Compiler::Compiler(xla::ifrt::Client* client,
                    std::shared_ptr<RpcHelper> rpc_helper)
     : client_(client), rpc_helper_(std::move(rpc_helper)) {}
 
-absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
+tsl::Future<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
     std::unique_ptr<Program> program,
     std::unique_ptr<xla::ifrt::CompileOptions> options) {
   auto request = std::make_unique<CompileRequest>();
@@ -127,9 +133,22 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
   TF_ASSIGN_OR_RETURN(*request->mutable_compile_options(),
                       Serialize(*options, std::move(serialize_options)));
 
-  // TODO(b/266635130): Avoid blocking the caller.
-  TF_ASSIGN_OR_RETURN(std::shared_ptr<CompileResponse> response,
-                      rpc_helper_->Compile(std::move(request)).Await());
+  xla::ifrt::UserContextRef user_context =
+      xla::ifrt::UserContextScope::current();
+
+  return rpc_helper_->Compile(std::move(request))
+      .Map(absl::bind_front(&Compiler::CreateExecutableFromResponse, this,
+                            std::move(loaded_host_callbacks),
+                            std::move(user_context)));
+}
+
+absl::StatusOr<xla::ifrt::LoadedExecutableRef>
+Compiler::CreateExecutableFromResponse(
+    std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
+        loaded_host_callbacks,
+    xla::ifrt::UserContextRef user_context,
+    std::shared_ptr<CompileResponse> response) {
+  xla::ifrt::UserContextScope user_context_scope(user_context);
 
   std::vector<xla::ifrt::Device*> addressable_devices;
   addressable_devices.reserve(response->addressable_device_ids_size());
@@ -138,6 +157,33 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
                         client_->LookupDevice(DeviceId(device_id)));
     addressable_devices.push_back(device);
   }
+  absl::StatusOr<
+      absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>>
+      mpmd_addressable_devices;
+  bool is_mpmd_executable = false;
+
+  if (response->has_mpmd_addressable_devices()) {
+    is_mpmd_executable = true;
+    mpmd_addressable_devices =
+        absl::flat_hash_map<std::string, std::vector<xla::ifrt::Device*>>();
+    for (const auto& [name, devices_proto] :
+         response->mpmd_addressable_devices().mpmd_addressable_devices()) {
+      std::vector<xla::ifrt::Device*> current_devices;
+      current_devices.reserve(devices_proto.mpmd_addressable_device_ids_size());
+
+      for (const auto& device_id :
+           devices_proto.mpmd_addressable_device_ids()) {
+        TF_ASSIGN_OR_RETURN(xla::ifrt::Device* const device,
+                            client_->LookupDevice(DeviceId(device_id)));
+        current_devices.push_back(device);
+      }
+      mpmd_addressable_devices->insert({name, std::move(current_devices)});
+    }
+  } else if (response->has_mpmd_addressable_devices_error()) {
+    is_mpmd_executable = true;
+    mpmd_addressable_devices = xla::ifrt::ReattachUserContextRefs(
+        tsl::StatusFromProto(response->mpmd_addressable_devices_error()));
+  }
 
   absl::StatusOr<std::optional<std::string>> fingerprint;
   switch (response->fingerprint_case()) {
@@ -145,7 +191,8 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       fingerprint = response->fingerprint_value();
       break;
     case CompileResponse::kFingerprintError:
-      fingerprint = tsl::StatusFromProto(response->fingerprint_error());
+      fingerprint = xla::ifrt::ReattachUserContextRefs(
+          tsl::StatusFromProto(response->fingerprint_error()));
       break;
     default:
       fingerprint = std::nullopt;
@@ -175,25 +222,35 @@ absl::StatusOr<xla::ifrt::LoadedExecutableRef> Compiler::CompileAndLoad(
       devices.push_back(device);
     }
   }
-  TF_ASSIGN_OR_RETURN(DeviceListRef device_list,
-                      client_->MakeDeviceList(devices));
+  std::optional<DeviceListRef> device_list;
+  if (!devices.empty()) {
+    TF_ASSIGN_OR_RETURN(device_list, client_->MakeDeviceList(devices));
+  }
 
+  if (is_mpmd_executable) {
+    return std::make_unique<MpmdLoadedExecutable>(
+        client_, rpc_helper_, response->loaded_executable_handle(),
+        response->name(), response->num_devices(), device_list,
+        std::move(addressable_devices), std::move(mpmd_addressable_devices),
+        std::move(fingerprint), std::move(loaded_host_callbacks),
+        std::move(loaded_host_callback_handles));
+  }
   return std::make_unique<LoadedExecutable>(
       client_, rpc_helper_, response->loaded_executable_handle(),
       response->name(), response->num_devices(), device_list,
       std::move(addressable_devices), std::move(fingerprint),
-      std::move(ready_future), std::move(loaded_host_callbacks),
+      std::move(loaded_host_callbacks),
       std::move(loaded_host_callback_handles));
 }
 
-absl::StatusOr<xla::ifrt::ExecutableRef> Compiler::Compile(
+tsl::Future<xla::ifrt::ExecutableRef> Compiler::Compile(
     std::unique_ptr<Program> program, const Topology& topology,
     std::unique_ptr<CompileOptions> options) {
   return absl::UnimplementedError(
       "IFRT service compiler does not support `Compile` with a topology");
 }
 
-absl::StatusOr<xla::ifrt::LoadedExecutableRef>
+tsl::Future<xla::ifrt::LoadedExecutableRef>
 Compiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
     std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options) {

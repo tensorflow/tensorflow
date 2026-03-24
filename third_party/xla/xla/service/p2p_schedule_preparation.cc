@@ -883,7 +883,7 @@ absl::Status LinearizeCollectivesWithPipelinedP2PChild(
 
 }  // namespace
 
-absl::StatusOr<bool> P2PSchedulePreparation::Run(
+absl::StatusOr<bool> P2PSchedulePreparation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   P2PGroupMap p2p_group_map;
@@ -951,9 +951,8 @@ absl::StatusOr<bool> P2PSchedulePreparation::Run(
     // other P2P chains.
     std::vector<HloInstruction*> all_instructions =
         computation->MakeInstructionPostOrder();
-    std::vector<HloInstruction*>::iterator begin = all_instructions.begin();
-    std::vector<HloInstruction*>::iterator end = all_instructions.end();
-    for (auto instr_it = begin; instr_it != end; ++instr_it) {
+    for (auto instr_it = all_instructions.begin();
+         instr_it != all_instructions.end(); ++instr_it) {
       HloInstruction* hlo = *instr_it;
       if (!IsP2POp(hlo)) {
         continue;
@@ -984,7 +983,8 @@ absl::StatusOr<bool> P2PSchedulePreparation::Run(
                << hlo->ToString();
 
       TF_RETURN_IF_ERROR(LinearizeCollectivesWithOtherP2P(
-          p2p_group_map, group, collective_in_computation, instr_it, begin, end,
+          p2p_group_map, group, collective_in_computation, instr_it,
+          all_instructions.begin(), all_instructions.end(),
           reachability.get()));
       VLOG(10) << "finish connect other collectives with channel ";
     }

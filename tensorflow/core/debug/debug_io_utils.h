@@ -36,15 +36,15 @@ limitations under the License.
 
 namespace tensorflow {
 
-absl::Status ReadEventFromFile(const string& dump_file_path, Event* event);
+absl::Status ReadEventFromFile(const std::string& dump_file_path, Event* event);
 
 struct DebugWatchAndURLSpec {
-  DebugWatchAndURLSpec(const string& watch_key, const string& url,
+  DebugWatchAndURLSpec(const std::string& watch_key, const std::string& url,
                        const bool gated_grpc)
       : watch_key(watch_key), url(url), gated_grpc(gated_grpc) {}
 
-  const string watch_key;
-  const string url;
+  const std::string watch_key;
+  const std::string url;
   const bool gated_grpc;
 };
 
@@ -63,10 +63,11 @@ class DebugIO {
 
   static absl::Status PublishDebugMetadata(
       const int64_t global_step, const int64_t session_run_index,
-      const int64_t executor_step_index, const std::vector<string>& input_names,
-      const std::vector<string>& output_names,
-      const std::vector<string>& target_nodes,
-      const std::unordered_set<string>& debug_urls);
+      const int64_t executor_step_index,
+      const std::vector<std::string>& input_names,
+      const std::vector<std::string>& output_names,
+      const std::vector<std::string>& target_nodes,
+      const std::unordered_set<std::string>& debug_urls);
 
   // Publishes a tensor to a debug target URL.
   //
@@ -82,13 +83,15 @@ class DebugIO {
   //   step_id: Step ID associated with the tensor.
   static absl::Status PublishDebugTensor(
       const DebugNodeKey& debug_node_key, const Tensor& tensor,
-      const uint64 wall_time_us, const absl::Span<const string> debug_urls,
-      bool gated_grpc, int64_t step_id = -1);
+      const uint64_t wall_time_us,
+      const absl::Span<const std::string> debug_urls, bool gated_grpc,
+      int64_t step_id = -1);
 
   // Convenience overload of the method above for no gated_grpc by default.
   static absl::Status PublishDebugTensor(
       const DebugNodeKey& debug_node_key, const Tensor& tensor,
-      const uint64 wall_time_us, const absl::Span<const string> debug_urls);
+      const uint64_t wall_time_us,
+      const absl::Span<const std::string> debug_urls);
 
   // Publishes a graph to a set of debug URLs.
   //
@@ -96,8 +99,8 @@ class DebugIO {
   //   graph: The graph to be published.
   //   debug_urls: The set of debug URLs to publish the graph to.
   static absl::Status PublishGraph(
-      const Graph& graph, const string& device_name,
-      const std::unordered_set<string>& debug_urls);
+      const Graph& graph, const std::string& device_name,
+      const std::unordered_set<std::string>& debug_urls);
 
   // Determines whether a copy node needs to perform deep-copy of input tensor.
   //
@@ -126,8 +129,8 @@ class DebugIO {
   //
   // Returns:
   //   Whether this debug op should proceed.
-  static bool IsDebugNodeGateOpen(const string& watch_key,
-                                  const std::vector<string>& debug_urls);
+  static bool IsDebugNodeGateOpen(const std::string& watch_key,
+                                  const std::vector<std::string>& debug_urls);
 
   // Determines whether debug information should be sent through a grpc://
   // debug URL given the current gRPC gating status.
@@ -141,10 +144,10 @@ class DebugIO {
   // Returns:
   //   Whether the sending of debug data to the debug_url should
   //     proceed.
-  static bool IsDebugURLGateOpen(const string& watch_key,
-                                 const string& debug_url);
+  static bool IsDebugURLGateOpen(const std::string& watch_key,
+                                 const std::string& debug_url);
 
-  static absl::Status CloseDebugURL(const string& debug_url);
+  static absl::Status CloseDebugURL(const std::string& debug_url);
 };
 
 // Helper class for debug ops.
@@ -171,15 +174,15 @@ class DebugFileIO {
   //   dump_file_path: The actual dump file path (passed as reference).
   static absl::Status DumpTensorToDir(const DebugNodeKey& debug_node_key,
                                       const Tensor& tensor,
-                                      const uint64 wall_time_us,
-                                      const string& dump_root_dir,
-                                      string* dump_file_path);
+                                      const uint64_t wall_time_us,
+                                      const std::string& dump_root_dir,
+                                      std::string* dump_file_path);
 
   // Similar to the above, but for node inputs/outputs dumping feature.
   static absl::Status DumpTensorToDirForNodeDumping(
       const DebugNodeKey& debug_node_key, const Tensor& tensor,
-      uint64 wall_time_us, const string& dump_root_dir, string* dump_file_path,
-      int64_t step_id);
+      uint64_t wall_time_us, const std::string& dump_root_dir,
+      std::string* dump_file_path, int64_t step_id);
 
   // Get the full path to the dump file.
   //
@@ -190,14 +193,14 @@ class DebugFileIO {
   //   output_slot: Output slot index of the said node, e.g., 0.
   //   debug_op: Name of the debug op, e.g., DebugIdentity.
   //   wall_time_us: Time stamp of the dumped tensor, in microseconds (us).
-  static string GetDumpFilePath(const string& dump_root_dir,
-                                const DebugNodeKey& debug_node_key,
-                                const uint64 wall_time_us);
+  static std::string GetDumpFilePath(const std::string& dump_root_dir,
+                                     const DebugNodeKey& debug_node_key,
+                                     const uint64_t wall_time_us);
 
   // Similar to the above, but for node inputs/outputs dumping feature.
-  static string GetDumpFilePathForNodeDumping(
-      const string& dump_root_dir, const DebugNodeKey& debug_node_key,
-      uint64 wall_time_us, int64_t step_id);
+  static std::string GetDumpFilePathForNodeDumping(
+      const std::string& dump_root_dir, const DebugNodeKey& debug_node_key,
+      uint64_t wall_time_us, int64_t step_id);
 
   // Dumps an Event proto to a file.
   //
@@ -206,8 +209,8 @@ class DebugFileIO {
   //   dir_name: Directory path.
   //   file_name: Base file name.
   static absl::Status DumpEventProtoToFile(const Event& event_proto,
-                                           const string& dir_name,
-                                           const string& file_name);
+                                           const std::string& dir_name,
+                                           const std::string& file_name);
 
   // Request additional bytes to be dumped to the file system.
   //
@@ -222,31 +225,31 @@ class DebugFileIO {
   // Returns:
   //   Whether the request is approved given the total dumping
   //   limit.
-  static bool requestDiskByteUsage(uint64 bytes);
+  static bool requestDiskByteUsage(uint64_t bytes);
 
   // Reset the disk byte usage to zero.
   static void resetDiskByteUsage();
 
-  static uint64 global_disk_bytes_limit_;
+  static uint64_t global_disk_bytes_limit_;
 
  private:
   // Encapsulates the Tensor in an Event protobuf and write it to file.
   static absl::Status DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
                                             const Tensor& tensor,
-                                            const uint64 wall_time_us,
-                                            const string& file_path);
+                                            const uint64_t wall_time_us,
+                                            const std::string& file_path);
 
   // Implemented ad hoc here for now.
   // TODO(cais): Replace with shared implementation once http://b/30497715 is
   // fixed.
-  static absl::Status RecursiveCreateDir(Env* env, const string& dir);
+  static absl::Status RecursiveCreateDir(Env* env, const std::string& dir);
 
   // Tracks how much disk has been used so far.
-  static uint64 disk_bytes_used_;
+  static uint64_t disk_bytes_used_;
   // Mutex for thread-safe access to disk_bytes_used_.
   static mutex bytes_mu_;
   // Default limit for the disk space.
-  static const uint64 kDefaultGlobalDiskBytesLimit;
+  static const uint64_t kDefaultGlobalDiskBytesLimit;
 
   friend class DiskUsageLimitTest;
 };
@@ -282,7 +285,7 @@ class DebugGrpcChannel {
   //   server_stream_addr: Address (host name and port) of the debug stream
   //     server implementing the EventListener service (see
   //     debug_service.proto). E.g., "127.0.0.1:12345".
-  explicit DebugGrpcChannel(const string& server_stream_addr);
+  explicit DebugGrpcChannel(const std::string& server_stream_addr);
 
   virtual ~DebugGrpcChannel() {}
 
@@ -337,8 +340,8 @@ class DebugGrpcChannel {
   absl::Status ReceiveServerRepliesAndClose();
 
  private:
-  string server_stream_addr_;
-  string url_;
+  std::string server_stream_addr_;
+  std::string url_;
   ::grpc::ClientContext ctx_;
   std::shared_ptr<::grpc::Channel> channel_;
   std::unique_ptr<grpc::EventListener::Stub> stub_;
@@ -356,7 +359,7 @@ class DebugGrpcIO {
   // Sends a tensor through a debug gRPC stream.
   static absl::Status SendTensorThroughGrpcStream(
       const DebugNodeKey& debug_node_key, const Tensor& tensor,
-      const uint64 wall_time_us, const string& grpc_stream_url,
+      const uint64_t wall_time_us, const std::string& grpc_stream_url,
       const bool gated);
 
   // Sends an Event proto through a debug gRPC stream.
@@ -373,40 +376,40 @@ class DebugGrpcIO {
   // Returns:
   //   The Status of the operation.
   static absl::Status SendEventProtoThroughGrpcStream(
-      const Event& event_proto, const string& grpc_stream_url,
+      const Event& event_proto, const std::string& grpc_stream_url,
       const bool receive_reply = false);
 
   // Receive an EventReply proto through a debug gRPC stream.
   static absl::Status ReceiveEventReplyProtoThroughGrpcStream(
-      EventReply* event_reply, const string& grpc_stream_url);
+      EventReply* event_reply, const std::string& grpc_stream_url);
 
   // Check whether a debug watch key is read-activated at a given gRPC URL.
-  static bool IsReadGateOpen(const string& grpc_debug_url,
-                             const string& watch_key);
+  static bool IsReadGateOpen(const std::string& grpc_debug_url,
+                             const std::string& watch_key);
 
   // Check whether a debug watch key is write-activated (i.e., read- and
   // write-activated) at a given gRPC URL.
-  static bool IsWriteGateOpen(const string& grpc_debug_url,
-                              const string& watch_key);
+  static bool IsWriteGateOpen(const std::string& grpc_debug_url,
+                              const std::string& watch_key);
 
   // Closes a gRPC stream to the given address, if it exists.
   // Thread-safety: Safe with respect to other calls to the same method and
   // calls to SendTensorThroughGrpcStream().
-  static absl::Status CloseGrpcStream(const string& grpc_stream_url);
+  static absl::Status CloseGrpcStream(const std::string& grpc_stream_url);
 
   // Set the gRPC state of a debug node key.
   // TODO(cais): Include device information in watch_key.
   static void SetDebugNodeKeyGrpcState(
-      const string& grpc_debug_url, const string& watch_key,
+      const std::string& grpc_debug_url, const std::string& watch_key,
       const EventReply::DebugOpStateChange::State new_state);
 
  private:
   using DebugNodeName2State =
-      std::unordered_map<string, EventReply::DebugOpStateChange::State>;
+      std::unordered_map<std::string, EventReply::DebugOpStateChange::State>;
 
   // Returns a global map from grpc debug URLs to the corresponding
   // DebugGrpcChannels.
-  static std::unordered_map<string, std::unique_ptr<DebugGrpcChannel>>*
+  static std::unordered_map<std::string, std::unique_ptr<DebugGrpcChannel>>*
   GetStreamChannels();
 
   // Get a DebugGrpcChannel object at a given URL, creating one if necessary.
@@ -420,15 +423,16 @@ class DebugGrpcIO {
   // Returns:
   //   Status of this operation.
   static absl::Status GetOrCreateDebugGrpcChannel(
-      const string& grpc_stream_url, DebugGrpcChannel** debug_grpc_channel);
+      const std::string& grpc_stream_url,
+      DebugGrpcChannel** debug_grpc_channel);
 
   // Returns a map from debug URL to a map from debug op name to enabled state.
-  static std::unordered_map<string, DebugNodeName2State>*
+  static std::unordered_map<std::string, DebugNodeName2State>*
   GetEnabledDebugOpStates();
 
   // Returns a map from debug op names to enabled state, for a given debug URL.
   static DebugNodeName2State* GetEnabledDebugOpStatesAtUrl(
-      const string& grpc_debug_url);
+      const std::string& grpc_debug_url);
 
   // Clear enabled debug op state from all debug URLs (if any).
   static void ClearEnabledWatchKeys();

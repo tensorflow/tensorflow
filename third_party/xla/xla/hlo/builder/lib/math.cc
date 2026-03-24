@@ -1191,7 +1191,11 @@ XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
-XlaOp Asin(XlaOp x) {
+XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAsin, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp z) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(z));
@@ -1271,7 +1275,11 @@ XlaOp Acosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
 // If x is negative, the above would give us some trouble; we can't approximate
 // the result as x + abs(x) = 0!  But we're saved by the fact that asinh(-x) =
 // -asinh(x).
-XlaOp Asinh(XlaOp x) {
+XlaOp Asinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAsinh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));

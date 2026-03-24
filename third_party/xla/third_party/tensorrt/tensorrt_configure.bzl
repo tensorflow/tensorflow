@@ -7,13 +7,13 @@
 """
 
 load(
-    "@local_xla//third_party/gpus:cuda_configure.bzl",
+    "//third_party/gpus:cuda_configure.bzl",
     "find_cuda_config",
     "lib_name",
     "make_copy_files_rule",
 )
 load(
-    "@local_xla//third_party/remote_config:common.bzl",
+    "//third_party/remote_config:common.bzl",
     "config_repo_label",
     "get_cpu_value",
     "get_host_environ",
@@ -330,7 +330,7 @@ remote_tensorrt_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
-        "_find_cuda_config": attr.label(default = "@local_xla//third_party/gpus:find_cuda_config.py"),
+        "_find_cuda_config": attr.label(default = "//third_party/gpus:find_cuda_config.py"),
     },
 )
 
@@ -338,7 +338,7 @@ tensorrt_configure = repository_rule(
     implementation = _tensorrt_configure_impl,
     environ = _ENVIRONS + [_TF_TENSORRT_CONFIG_REPO],
     attrs = {
-        "_find_cuda_config": attr.label(default = "@local_xla//third_party/gpus:find_cuda_config.py"),
+        "_find_cuda_config": attr.label(default = "//third_party/gpus:find_cuda_config.py"),
     },
 )
 """Detects and configures the local CUDA toolchain.

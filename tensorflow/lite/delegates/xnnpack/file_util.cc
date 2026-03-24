@@ -16,13 +16,15 @@ limitations under the License.
 
 #include <fcntl.h>
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 #include <io.h>
 #define F_OK 0
 #define ftruncate _chsize_s
+#define XNN_LSEEK _lseeki64
 #else
 #include <unistd.h>
-#endif  // defined(_MSC_VER)
+#define XNN_LSEEK lseek
+#endif  // defined(_WIN32)
 
 // We currently use the memfd_create system call to create in-memory files which
 // is only supported on Linux and Android.
@@ -37,7 +39,13 @@ limitations under the License.
 #endif  // TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
 #endif  // defined(__linux__) || defined(__ANDROID__)
 
+#include <sys/stat.h>
+
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
+
+#include "tensorflow/lite/delegates/xnnpack/macros.h"
 
 #if !TFLITE_XNNPACK_IN_MEMORY_FILE_ENABLED
 #include "tensorflow/lite/logger.h"
@@ -55,7 +63,7 @@ FileDescriptor FileDescriptor::Duplicate() const {
   if (!IsValid()) {
     return FileDescriptor(-1);
   }
-  return FileDescriptor(dup(fd_));
+  return FileDescriptor::Duplicate(fd_);
 }
 
 void FileDescriptor::Reset(int new_fd) {
@@ -68,22 +76,30 @@ void FileDescriptor::Reset(int new_fd) {
   fd_ = new_fd;
 }
 
-off_t FileDescriptorView::GetPos() const { return lseek(fd_, 0, SEEK_CUR); }
-
-off_t FileDescriptorView::SetPos(off_t position) const {
-  return lseek(fd_, position, SEEK_SET);
+FileDescriptor::Offset FileDescriptorView::GetPos() const {
+  return XNN_LSEEK(fd_, 0, SEEK_CUR);
 }
 
-off_t FileDescriptorView::SetPosFromEnd(off_t offset) const {
-  return lseek(fd_, offset, SEEK_END);
+FileDescriptor::Offset FileDescriptorView::SetPos(
+    FileDescriptor::Offset position) const {
+  return XNN_LSEEK(fd_, position, SEEK_SET);
 }
 
-off_t FileDescriptorView::MovePos(off_t offset) const {
-  return lseek(fd_, offset, SEEK_CUR);
+FileDescriptor::Offset FileDescriptorView::SetPosFromEnd(
+    FileDescriptor::Offset offset) const {
+  return XNN_LSEEK(fd_, offset, SEEK_END);
+}
+
+FileDescriptor::Offset FileDescriptorView::MovePos(
+    FileDescriptor::Offset offset) const {
+  return XNN_LSEEK(fd_, offset, SEEK_CUR);
 }
 
 FileDescriptor FileDescriptor::Open(const char* path, int flags, mode_t mode) {
-#if defined(_MSC_VER)
+  if (!path) {
+    return {};
+  }
+#if defined(_WIN32)
   if (!(flags & O_TEXT)) {
     flags |= O_BINARY;
   }
@@ -145,6 +161,23 @@ FileDescriptor CreateInMemoryFileDescriptor(const char* path) {
                   "this build.");
   return FileDescriptor(-1);
 #endif
+}
+
+bool IsFileEmpty(const char* path, const FileDescriptor& fd) {
+#if defined(_WIN32)
+  struct _stat64 file_stats{};
+  const int res = fd.IsValid() ? _fstat64(fd.Value(), &file_stats)
+                               : _stat64(path, &file_stats);
+#else
+  struct stat file_stats{};
+  const int res =
+      fd.IsValid() ? fstat(fd.Value(), &file_stats) : stat(path, &file_stats);
+#endif
+  XNNPACK_RETURN_CHECK(
+      res == 0 || errno == ENOENT,
+      "could not access file descriptor %d stats to get size ('%s'): %s.",
+      fd.Value(), path, strerror(errno));
+  return file_stats.st_size == 0;
 }
 
 }  // namespace xnnpack

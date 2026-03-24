@@ -17,8 +17,6 @@ limitations under the License.
 #define XLA_PJRT_BUFFER_SEQUENCING_EVENT_H_
 
 #include <cstdint>
-#include <functional>
-#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
@@ -26,11 +24,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -61,14 +59,28 @@ namespace xla {
 // same stream causes no additional waiting.
 class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
  public:
-  explicit BufferSequencingEvent(tsl::thread::ThreadPool* thread_pool)
-      : thread_pool_(thread_pool),
+  struct EventState {
+    // An event that is triggered when the content of one or more buffers has
+    // been read or written. If this event is used as a definition event and is
+    // nullptr, it is assumed that the buffer's content is always defined for
+    // example because it uses storage borrowed from elsewhere.
+    EventPool::Handle event;
+
+    se::Stream* definition_stream;
+  };
+
+  explicit BufferSequencingEvent(AsyncWorkRunner* async_work_runner)
+      : async_work_runner_(async_work_runner),
         event_(tsl::MakeUnconstructedAsyncValueRef<EventState>()) {}
 
+  explicit BufferSequencingEvent(AsyncWorkRunner* async_work_runner,
+                                 tsl::AsyncValueRef<EventState> event)
+      : async_work_runner_(async_work_runner), event_(event) {}
+
   static tsl::AsyncValueRef<BufferSequencingEvent> Create(
-      tsl::thread::ThreadPool* thread_pool) {
+      AsyncWorkRunner* async_work_runner) {
     return tsl::MakeConstructedAsyncValueRef<BufferSequencingEvent>(
-        thread_pool);
+        async_work_runner);
   }
 
   // Sets the sequencing event to 'event', which is recorded on 'stream'. Must
@@ -109,12 +121,6 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
     return !(*this < rhs);
   }
 
-  // Executes the `task` if the event is ready; otherwise adds the `task`
-  // callback to `event_` async value, to be executed when it becomes
-  // available.
-  void ExecuteOrAddToFutureTasks(const std::string& task_name,
-                                 std::function<void()> task);
-
   bool IsDefined() { return event_.IsAvailable(); }
 
   // Do not call directly. Use PjRtStreamExecutorClient::SetEventAsError.
@@ -138,17 +144,9 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // blocks the calling thread until either of those 2 happens.
   bool IsPredeterminedErrorOrDefinedOn(se::Stream* stream);
 
-  struct EventState {
-    // An event that is triggered when the content of one or more buffers has
-    // been read or written. If this event is used as a definition event and is
-    // nullptr, it is assumed that the buffer's content is always defined for
-    // example because it uses storage borrowed from elsewhere.
-    EventPool::Handle event;
-
-    se::Stream* definition_stream;
-  };
-
   se::Stream* definition_stream() const { return event_->definition_stream; }
+
+  const tsl::AsyncValueRef<EventState>& event() { return event_; }
 
  private:
   uint64_t sequence_number() const;
@@ -158,7 +156,7 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // at the tail of the queue, i.e., for any newly enqueued command.
   absl::InlinedVector<se::Stream*, 2> streams_defined_on_ ABSL_GUARDED_BY(mu_);
 
-  tsl::thread::ThreadPool* thread_pool_;
+  AsyncWorkRunner* async_work_runner_;
 
   // Indicates if the buffer is in an error status. And error status is used to
   // propagate the error to the buffer consumers.

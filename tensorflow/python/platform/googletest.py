@@ -100,8 +100,12 @@ def test_src_dir_path(relative_path):
   Returns:
     An absolute path to the linked in runfiles.
   """
-  return os.path.join(os.environ['TEST_SRCDIR'],
-                      'org_tensorflow/tensorflow', relative_path)
+  return os.path.join(
+      os.environ['TEST_SRCDIR'],
+      os.environ['TEST_WORKSPACE'],
+      'tensorflow',
+      relative_path,
+  )
 
 
 def StatefulSessionAvailable():

@@ -27,9 +27,11 @@ package_group(
         # Authorized users go here.
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/core/...",
+        # copybara:uncomment "//third_party/neptune/...",
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
+        # TODO(b/476497239): Remove the old JSV codebase once the migration is done.
         # copybara:uncomment "//learning/infra/mira/experimental/orbax_model/...",
     ],
 )
@@ -42,6 +44,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:session_options",
         "//tensorflow/core/common_runtime:core_cpu_internal",
@@ -49,14 +52,13 @@ cc_library(
         "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/framework:function_proto_cc",
         "//tensorflow/core/framework:graph_proto_cc",
-        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:refcount",
-        "@local_xla//xla/tsl/platform:errors",
+        "@tsl//tsl/platform:refcount",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -78,8 +80,9 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base:nullability",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -151,7 +154,7 @@ cc_library(
     hdrs = ["device_with_custom_allocator.h"],
     deps = [
         "//tensorflow/core:framework",
-        "@local_xla//xla/tsl/framework:allocator",
+        "@xla//xla/tsl/framework:allocator",
     ],
 )
 

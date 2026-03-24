@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "xla/tsl/platform/file_system.h"
 #include "tensorflow/core/platform/file_statistics.h"
@@ -85,8 +86,9 @@ class ModularFileSystem final : public FileSystem {
   absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override;
+  absl::Status OpenTransaction(TransactionToken** token);
   bool FilesExist(const std::vector<std::string>& files,
                   TransactionToken* token,
                   std::vector<absl::Status>* status) override;
@@ -112,15 +114,15 @@ class ModularFileSystem final : public FileSystem {
   absl::Status IsDirectory(const std::string& fname,
                            TransactionToken* token) override;
   absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
-                           uint64* file_size) override;
+                           uint64_t* file_size) override;
   absl::Status RenameFile(const std::string& src, const std::string& target,
                           TransactionToken* token) override;
   absl::Status CopyFile(const std::string& src, const std::string& target,
                         TransactionToken* token) override;
-  std::string TranslateName(const std::string& name) const override;
+  std::string TranslateName(absl::string_view name) const override;
   void FlushCaches(TransactionToken* token) override;
   absl::Status SetOption(const std::string& name,
-                         const std::vector<string>& values) override;
+                         const std::vector<std::string>& values) override;
   absl::Status SetOption(const std::string& name,
                          const std::vector<int64_t>& values) override;
   absl::Status SetOption(const std::string& name,
@@ -148,7 +150,7 @@ class ModularRandomAccessFile final : public RandomAccessFile {
 
   ~ModularRandomAccessFile() override { ops_->cleanup(file_.get()); }
 
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override;
   absl::Status Name(absl::string_view* result) const override;
 
@@ -193,7 +195,7 @@ class ModularReadOnlyMemoryRegion final : public ReadOnlyMemoryRegion {
   ~ModularReadOnlyMemoryRegion() override { ops_->cleanup(region_.get()); };
 
   const void* data() override { return ops_->data(region_.get()); }
-  uint64 length() override { return ops_->length(region_.get()); }
+  uint64_t length() override { return ops_->length(region_.get()); }
 
  private:
   std::unique_ptr<TF_ReadOnlyMemoryRegion> region_;

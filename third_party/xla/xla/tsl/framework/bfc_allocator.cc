@@ -25,6 +25,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -54,7 +55,7 @@ const uint64_t kDefaultMemoryFilterMask = tsl::profiler::TraceMeFiltersToMask(
 constexpr BFCAllocator::ChunkHandle BFCAllocator::kInvalidChunkHandle;
 
 BFCAllocator::BFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
-                           size_t total_memory, const string& name,
+                           size_t total_memory, const std::string& name,
                            const Options& opts)
     : opts_(opts),
       coalesce_regions_(sub_allocator->SupportsCoalescing()),
@@ -104,7 +105,7 @@ BFCAllocator::~BFCAllocator() {
   // Lock the mutex to make sure that all memory effects are safely published
   // and available to a thread running the destructor (i.e., deallocations
   // happened on a different thread right before the destructor).
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 
   // Return memory back.
   VLOG(2) << "Number of regions allocated: "
@@ -252,7 +253,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
     size_t unused_alignment, size_t num_bytes,
     const AllocationAttributes& allocation_attr) {
   // Fast path: Try once to allocate without getting the retry_helper_ involved
-  uint64 freed_by_count = 0;
+  uint64_t freed_by_count = 0;
   if (allocation_attr.freed_by_func != nullptr) {
     freed_by_count = (*allocation_attr.freed_by_func)();
   }
@@ -264,7 +265,7 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
     static const int64_t kMaxMillisToWait = 10000;  // 10 seconds
     r = retry_helper_.AllocateRaw(
         [this, &allocation_attr](size_t a, size_t nb, bool v) {
-          uint64 freed_by_count = 0;
+          uint64_t freed_by_count = 0;
           if (allocation_attr.freed_by_func != nullptr) {
             freed_by_count = (*allocation_attr.freed_by_func)();
           }
@@ -289,7 +290,7 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
       // tolerate failing.  For example, we allocate convolution scratch memory
       // as non-retryable; if it fails, we'll just use a fallback algorithm that
       // uses no scratch.
-      static std::atomic<int32> log_counter{0};
+      static std::atomic<int32_t> log_counter{0};
       constexpr int kMaxFailureLogs = 10;
       bool dump_log_on_failure =
           (/*retry is globally disabled*/ !opts_.allow_retry_on_failure &&
@@ -297,14 +298,14 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
            log_counter.load(std::memory_order_relaxed) < kMaxFailureLogs) ||
           VLOG_IS_ON(2);
 
-      uint64 freed_by_count = 0;
+      uint64_t freed_by_count = 0;
       if (allocation_attr.freed_by_func != nullptr) {
         freed_by_count = (*allocation_attr.freed_by_func)();
       }
       void* res = AllocateRawInternal(unused_alignment, num_bytes,
                                       dump_log_on_failure, freed_by_count);
       if (res == nullptr) {
-        int32 counter_value = log_counter.load(std::memory_order_relaxed);
+        int32_t counter_value = log_counter.load(std::memory_order_relaxed);
         if (counter_value < kMaxFailureLogs) {
           log_counter.store(counter_value + 1, std::memory_order_relaxed);
           LOG(WARNING)
@@ -433,7 +434,7 @@ void BFCAllocator::DeallocateRegions(
 void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
                                         size_t num_bytes,
                                         bool dump_log_on_failure,
-                                        uint64 freed_before) {
+                                        uint64_t freed_before) {
   if (num_bytes == 0) {
     VLOG(2) << "tried to allocate 0 bytes";
     return nullptr;
@@ -446,7 +447,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // The BFC allocator tries to find the best fit first.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   if (!timestamped_chunks_.empty()) {
     // Merge timestamped chunks whose counts have become safe for general use.
     MergeTimestampedChunks(0);
@@ -554,7 +555,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"peak_bytes_in_use", stats_.peak_bytes_in_use},
                                {"requested_bytes", req_bytes},
                                {"allocation_bytes", alloc_bytes},
-                               {"addr", reinterpret_cast<uint64>(chunk_ptr)},
+                               {"addr", reinterpret_cast<uint64_t>(chunk_ptr)},
                                {"tf_op", annotation.pending_op_name},
                                {"id", annotation.pending_step_id},
                                {"region_type", annotation.pending_region_type},
@@ -566,7 +567,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                 size_t num_bytes, uint64 freed_before) {
+                                 size_t num_bytes, uint64_t freed_before) {
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
@@ -703,7 +704,7 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
     VLOG(2) << "tried to deallocate nullptr";
     return;
   }
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
 
   // Find the chunk from the ptr.
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
@@ -856,8 +857,8 @@ BFCAllocator::ChunkHandle BFCAllocator::TryToCoalesce(ChunkHandle h,
   return coalesced_chunk;
 }
 
-void BFCAllocator::SetSafeFrontier(uint64 count) {
-  uint64 current = safe_frontier_.load(std::memory_order_relaxed);
+void BFCAllocator::SetSafeFrontier(uint64_t count) {
+  uint64_t current = safe_frontier_.load(std::memory_order_relaxed);
   while (count > current) {
     if (safe_frontier_.compare_exchange_strong(current, count)) {
       retry_helper_.NotifyDealloc();
@@ -947,7 +948,7 @@ bool BFCAllocator::TracksAllocationSizes() const { return true; }
 
 size_t BFCAllocator::RequestedSize(const void* ptr) const {
   CHECK(ptr);
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for requested size of pointer we never allocated: " << ptr;
@@ -956,7 +957,7 @@ size_t BFCAllocator::RequestedSize(const void* ptr) const {
 }
 
 size_t BFCAllocator::AllocatedSize(const void* ptr) const {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocated size of pointer we never allocated: " << ptr;
@@ -965,7 +966,7 @@ size_t BFCAllocator::AllocatedSize(const void* ptr) const {
 }
 
 int64_t BFCAllocator::AllocationId(const void* ptr) const {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)
       << "Asked for allocation id of pointer we never allocated: " << ptr;
@@ -999,10 +1000,9 @@ void RenderRegion(char* rendered, const size_t resolution,
 
 }  // namespace
 
-string BFCAllocator::RenderOccupancy() {
+std::string BFCAllocator::RenderOccupancy() {
   // Make a buffer for the ASCII-art representation.
   const size_t resolution = 100;
-  char rendered[resolution];
 
   // Compute the total region size to render over
   size_t total_region_size = 0;
@@ -1015,8 +1015,7 @@ string BFCAllocator::RenderOccupancy() {
   }
 
   // Start out with everything empty
-  RenderRegion(rendered, resolution, total_region_size, 0, nullptr, nullptr,
-               total_region_size, '_');
+  std::string rendered(resolution, '_');
 
   size_t region_offset = 0;
   for (const auto& region : region_manager_.regions()) {
@@ -1028,20 +1027,21 @@ string BFCAllocator::RenderOccupancy() {
         // Render the wasted space
         size_t wasted = c->size - c->requested_size;
         if (wasted > 0) {
-          RenderRegion(rendered, resolution, total_region_size,
+          RenderRegion(rendered.data(), resolution, total_region_size,
                        region_offset + c->requested_size, region.ptr(), c->ptr,
                        wasted, 'x');
         }
         // Then the occupied space
-        RenderRegion(rendered, resolution, total_region_size, region_offset,
-                     region.ptr(), c->ptr, c->requested_size, '*');
+        RenderRegion(rendered.data(), resolution, total_region_size,
+                     region_offset, region.ptr(), c->ptr, c->requested_size,
+                     '*');
       }
       h = c->next;
     }
     region_offset += region.memory_size();
   }
 
-  return string(rendered, resolution);
+  return rendered;
 }
 
 void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
@@ -1089,9 +1089,9 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      string buf = absl::StrCat((c->in_use() ? "InUse" : "Free "), " at ",
-                                absl::Hex(reinterpret_cast<uint64>(c->ptr)),
-                                " of size ", c->size);
+      std::string buf = absl::StrCat(
+          (c->in_use() ? "InUse" : "Free "), " at ",
+          absl::Hex(reinterpret_cast<uint64_t>(c->ptr)), " of size ", c->size);
 #ifdef TENSORFLOW_MEM_DEBUG
       if (ShouldRecordOpName()) {
         absl::StrAppend(&buf, " by op ", c->op_name, " action_count ",
@@ -1116,11 +1116,15 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   }
   LOG(INFO) << "Sum Total of in-use chunks: "
             << strings::HumanReadableNumBytes(total_bytes);
-  LOG(INFO) << "Total bytes in pool: " << *stats_.pool_bytes
-            << " memory_limit_: " << memory_limit_
-            << " available bytes: " << (memory_limit_ - *stats_.pool_bytes)
+  LOG(INFO) << "Total size in pool: "
+            << strings::HumanReadableNumBytes(*stats_.pool_bytes)
+            << " memory_limit_: "
+            << strings::HumanReadableNumBytes(memory_limit_)
+            << " available size: "
+            << strings::HumanReadableNumBytes(memory_limit_ -
+                                              *stats_.pool_bytes)
             << " curr_region_allocation_bytes_: "
-            << curr_region_allocation_bytes_;
+            << strings::HumanReadableNumBytes(curr_region_allocation_bytes_);
   LOG(INFO) << "Stats: \n" << stats_.DebugString();
 }
 
@@ -1128,8 +1132,8 @@ void BFCAllocator::MaybeWriteMemoryMap() {
   const char* gpu_memory_map_file = std::getenv("TF_BFC_MEMORY_DUMP");
   if (gpu_memory_map_file != nullptr) {
     std::unique_ptr<WritableFile> dump_file;
-    string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
-                                    Env::Default()->NowMicros());
+    std::string file_name = absl::StrCat(gpu_memory_map_file, "_", Name(), ".",
+                                         Env::Default()->NowMicros());
     absl::Status status =
         Env::Default()->NewWritableFile(file_name, &dump_file);
     if (!status.ok()) {
@@ -1146,7 +1150,7 @@ void BFCAllocator::MaybeWriteMemoryMap() {
 }
 
 MemoryDump BFCAllocator::RecordMemoryMap() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   return RecordMemoryMapInternal();
 }
 
@@ -1183,7 +1187,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       const Chunk* c = ChunkFromHandle(h);
       tensorflow::MemChunk* mc = md.add_chunk();
       mc->set_in_use(c->in_use());
-      mc->set_address(reinterpret_cast<uint64>(c->ptr));
+      mc->set_address(reinterpret_cast<uint64_t>(c->ptr));
       mc->set_size(c->size);
       mc->set_requested_size(c->requested_size);
       mc->set_bin(c->bin_num);
@@ -1217,12 +1221,12 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
 }
 
 std::optional<AllocatorStats> BFCAllocator::GetStats() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   return stats_;
 }
 
 bool BFCAllocator::ClearStats() {
-  absl::MutexLock l(&mutex_);
+  absl::MutexLock l(mutex_);
   stats_.num_allocs = 0;
   stats_.peak_bytes_in_use = stats_.bytes_in_use;
   stats_.largest_alloc_size = 0;

@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -33,11 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
-#include "tsl/platform/env.h"
-#include "tsl/platform/protobuf.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -215,11 +212,11 @@ std::vector<stream_executor::dnn::AlgorithmDesc> GetDisabledConvAlgorithms(
         GetDebugOptionsFromFlags().xla_gpu_algorithm_denylist_path();
     if (!file_path.empty()) {
       std::string denylist_text;
-      TF_CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), file_path,
-                                        &denylist_text));
-      TF_CHECK_OK(ParseTextFormatDenyList(*list, denylist_text));
+      CHECK_OK(tsl::ReadFileToString(tsl::Env::Default(), file_path,
+                                     &denylist_text));
+      CHECK_OK(ParseTextFormatDenyList(*list, denylist_text));
     }
-    TF_CHECK_OK(ParseTextFormatDenyList(*list, kDefaultDenylist));
+    CHECK_OK(ParseTextFormatDenyList(*list, kDefaultDenylist));
     return list;
   }();
 

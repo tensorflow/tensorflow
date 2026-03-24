@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
@@ -134,8 +135,11 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
 
   // If ftz is enabled, set it as an attribute on every function in the module.
   if (debug_options.xla_gpu_ftz()) {
+    llvm::AttrBuilder attrs(module->getContext());
+    auto preserve_sign = llvm::DenormalMode::getPreserveSign();
+    attrs.addDenormalFPEnvAttr({preserve_sign, preserve_sign});
     for (llvm::Function& fn : *module) {
-      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
+      fn.addFnAttrs(attrs);
     }
   }
 
@@ -247,13 +251,16 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
       {12, 1}, {12, 0}, {11, 0}, {10, 3}, {10, 0}, {9, 0}, {8, 9}, {8, 7},
       {8, 6},  {8, 0},  {7, 5},  {7, 2},  {7, 0},  {6, 2}, {6, 1}, {6, 0},
       {5, 3},  {5, 2},  {5, 0},  {3, 7},  {3, 5},  {3, 2}, {3, 0}};
-  auto target_compute_capability = kSupportedVersions[0];
+  // Initialize to the least supported version, which acts as a safe fallback
+  auto target_compute_capability =
+      kSupportedVersions[std::size(kSupportedVersions) - 1];
 
   for (const auto& v : kSupportedVersions) {
-    if (!gpu_compute_capability.CanRunOn(v)) {
+    if (gpu_compute_capability.SupportsAllFeaturesOf(v)) {
+      // Found the most advanced supported capability
+      target_compute_capability = v;
       break;
     }
-    target_compute_capability = v;
   }
 
   if (target_compute_capability.major == gpu_compute_capability.major &&
@@ -273,7 +280,7 @@ std::string GetSmName(se::CudaComputeCapability compute_capability) {
     // major version supports the forward compatible feature
     // extension.
     target_compute_capability.feature_extension =
-        se::CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures;
+        se::CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures;
   }
 
   // If the current CC isn't supported by LLVM and it is newer then
@@ -318,8 +325,7 @@ absl::StatusOr<std::string> CompileToPtx(
       return std::string();
     }
 
-    auto compute_capability =
-        std::get_if<se::CudaComputeCapability>(&gpu_version);
+    auto compute_capability = gpu_version.cuda_compute_capability();
     if (!compute_capability) {
       return xla::Internal("Incompatible compute capability was specified.");
     }

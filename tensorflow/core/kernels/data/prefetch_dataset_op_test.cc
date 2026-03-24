@@ -29,7 +29,7 @@ class PrefetchDatasetParams : public DatasetParams {
                         DataTypeVector output_dtypes,
                         std::vector<PartialTensorShape> output_shapes,
                         int64_t slack_period, bool legacy_autotune,
-                        int64_t buffer_size_min, string node_name)
+                        int64_t buffer_size_min, std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         buffer_size_(buffer_size),
@@ -46,7 +46,8 @@ class PrefetchDatasetParams : public DatasetParams {
     return {CreateTensor<int64_t>(TensorShape({}), {buffer_size_})};
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
     input_names->emplace_back(PrefetchDatasetOp::kInputDataset);
     input_names->emplace_back(PrefetchDatasetOp::kBufferSize);
@@ -64,7 +65,7 @@ class PrefetchDatasetParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override {
+  std::string dataset_type() const override {
     return PrefetchDatasetOp::kDatasetType;
   }
 

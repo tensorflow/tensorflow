@@ -46,17 +46,17 @@ using ::tensorflow::grappler::GrapplerItem;
 using ::tensorflow::serving::BatchOpRewriteConfig;
 
 // Add batch op in both GraphDef.node and GraphDef.library.function.node_def.
-void AddBatchOp(GraphDef* graph, int num_batch_threads = 16,
-                const absl::flat_hash_map<string, int>& reserved_int_attrs = {},
-                int max_batch_size = 16, int batch_timeout_micros = 10000,
-                const std::vector<int32>& allowed_batch_sizes = {8, 16},
-                int max_enqueued_batches = 1000,
-                bool disable_large_batch_splitting = false,
-                std::string_view mixed_priority_policy = "",
-                int low_priority_max_batch_size = -1,
-                int low_priority_batch_timeout_micros = -1,
-                const std::vector<int32>& low_priority_allowed_batch_sizes = {},
-                int low_priority_max_enqueued_batches = -1) {
+void AddBatchOp(
+    GraphDef* graph, int num_batch_threads = 16,
+    const absl::flat_hash_map<std::string, int>& reserved_int_attrs = {},
+    int max_batch_size = 16, int batch_timeout_micros = 10000,
+    const std::vector<int32_t>& allowed_batch_sizes = {8, 16},
+    int max_enqueued_batches = 1000, bool disable_large_batch_splitting = false,
+    std::string_view mixed_priority_policy = "",
+    int low_priority_max_batch_size = -1,
+    int low_priority_batch_timeout_micros = -1,
+    const std::vector<int32_t>& low_priority_allowed_batch_sizes = {},
+    int low_priority_max_enqueued_batches = -1) {
   auto set_batch_node_attribute = [&](const int32_t num_batch_threads,
                                       NodeDef* batch_op) {
     batch_op->set_name("cond/batch/BatchFunction");
@@ -288,7 +288,7 @@ TEST_F(BatchOpRewriterTest, UpdateBatchOptions) {
       128);
   (*config.mutable_batch_options())["model_with_override"]
       .set_batch_timeout_micros(5000);
-  const std::vector<int32> allowed_batch_sizes{4, 32};
+  const std::vector<int32_t> allowed_batch_sizes{4, 32};
   (*config.mutable_batch_options())["model_with_override"]
       .mutable_allowed_batch_sizes()
       ->Add(allowed_batch_sizes.begin(), allowed_batch_sizes.end());

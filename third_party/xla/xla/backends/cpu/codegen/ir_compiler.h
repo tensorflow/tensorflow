@@ -35,9 +35,10 @@ limitations under the License.
 #include "llvm/Support/Error.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/hlo_module_config.h"
-#include "tsl/platform/cpu_info.h"
 
 namespace xla::cpu {
 
@@ -64,10 +65,7 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
     llvm::CodeGenOptLevel opt_level = llvm::CodeGenOptLevel::None;
     bool optimize_for_size = false;
 
-    // Maximum CPU instruction set for wich the compiler should generate code.
-    // If instruction set is empty, compiler will generate code for all ISA
-    // extensions detected on the current machine.
-    std::optional<tsl::port::CPUFeature> max_cpu_feature;
+    TargetMachineOptions target_machine_options;
 
     llvm::FastMathFlags fast_math_flags;
 
@@ -96,22 +94,18 @@ class IrCompiler : public llvm::orc::IRCompileLayer::IRCompiler {
   IrCompiler(TargetMachineBuilder target_machine_builder, Options options,
              CompilationHooks hooks);
 
-  // Infers the `llvm::TargetMachine` for the current host. If `max_cpu_feature`
-  // is provided, it will be used to constrain the set of features that LLVM
-  // codegen (instruction selection) is allowed to use, e.g. it can be used to
-  // explicitly disable certain AVX512 extensions, in case the compiled
-  // executable will be serialized and later loaded on a different machine.
+  // Infers the `llvm::TargetMachine` for the targeted host.
   static absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
   InferTargetMachine(const llvm::TargetOptions& target_options,
                      llvm::CodeGenOptLevel opt_level,
-                     std::optional<tsl::port::CPUFeature> max_cpu_feature);
+                     const TargetMachineOptions& target_machine_options);
 
   // Returns a target machine builder that uses `InferTargetMachine` defined
   // above to infer the target machine for the given options.
   static TargetMachineBuilder InferTargetMachineBuilder(
       const llvm::TargetOptions& target_options,
       llvm::CodeGenOptLevel opt_level,
-      std::optional<tsl::port::CPUFeature> max_cpu_feature);
+      const TargetMachineOptions& target_machine_options);
 
   // Compiles a `module` to an ObjectFile.
   llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> operator()(

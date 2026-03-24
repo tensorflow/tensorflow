@@ -25,6 +25,7 @@ limitations under the License.
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/symbolic_tiled_hlo_instruction.h"
+#include "xla/codegen/xtile/codegen/tiled_emitter_constraints.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
@@ -66,12 +67,14 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
       llvm::SmallVector<mlir::AffineMap, 4> tile_size_maps,
       llvm::SmallVector<RootTileInfo, 2> roots,
       std::vector<CustomConstraints> custom_constraints,
-      const Shape& root_shape, const se::DeviceDescription& device_info)
+      const Shape& root_shape, const se::DeviceDescription& device_info,
+      std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints)
       : tile_size_maps_(std::move(tile_size_maps)),
         roots_(std::move(roots)),
         custom_constraints_(std::move(custom_constraints)),
         root_shape_(root_shape),
-        device_info_(device_info) {}
+        device_info_(device_info),
+        tiled_emitter_constraints_(std::move(tiled_emitter_constraints)) {}
 
   // Derives a vector of `CustomConstraints` to be checked within
   // `ParametersSatisfyConstraints` from a vector of
@@ -114,6 +117,8 @@ class TritonEmitterConstraints : public EmitterSpecificConstraints {
   Shape root_shape_;
 
   se::DeviceDescription device_info_;
+
+  std::unique_ptr<TiledEmitterConstraints> tiled_emitter_constraints_;
 };
 
 }  // namespace gpu

@@ -62,6 +62,7 @@ class IfrtCallOpTest : public OpsTestBase {
                     const std::vector<DataType>& output_type_list) {
     TF_CHECK_OK(NodeDefBuilder("op", "IfrtCall")
                     .Input(FakeInput(num_inputs, input_type))
+                    .Input(FakeInput(0, DT_INT32))
                     .Attr("program_id", program_id)
                     .Attr("variable_arg_indices", variable_arg_indices)
                     .Attr("Tout", output_type_list)

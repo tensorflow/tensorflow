@@ -60,23 +60,21 @@ void MaybeUnfoldLargeSplatConstant(mlir::OpBuilder* op_builder,
   }
 
   op_builder->setInsertionPoint(const_op);
-  mlir::arith::ConstantOp fill_shape =
-      op_builder->create<mlir::arith::ConstantOp>(
-          const_op->getLoc(), DenseIntElementsAttr::get(
-                                  tensorflow::GetTypeFromTFTensorShape(
-                                      {splat_elements_attr.getType().getRank()},
-                                      op_builder->getI64Type()),
-                                  splat_elements_attr.getType().getShape()));
-  mlir::arith::ConstantOp fill_value =
-      op_builder->create<mlir::arith::ConstantOp>(
-          const_op->getLoc(),
-          DenseElementsAttr::get(
-              tensorflow::GetTypeFromTFTensorShape(
-                  {}, splat_elements_attr.getType().getElementType()),
-              splat_elements_attr.getSplatValue<Attribute>()));
-  TFL::FillOp fill = op_builder->create<TFL::FillOp>(
-      const_op->getLoc(), splat_elements_attr.getType(), fill_shape,
-      fill_value);
+  mlir::arith::ConstantOp fill_shape = mlir::arith::ConstantOp::create(
+      *op_builder, const_op->getLoc(),
+      DenseIntElementsAttr::get(tensorflow::GetTypeFromTFTensorShape(
+                                    {splat_elements_attr.getType().getRank()},
+                                    op_builder->getI64Type()),
+                                splat_elements_attr.getType().getShape()));
+  mlir::arith::ConstantOp fill_value = mlir::arith::ConstantOp::create(
+      *op_builder, const_op->getLoc(),
+      DenseElementsAttr::get(
+          tensorflow::GetTypeFromTFTensorShape(
+              {}, splat_elements_attr.getType().getElementType()),
+          splat_elements_attr.getSplatValue<Attribute>()));
+  TFL::FillOp fill = TFL::FillOp::create(*op_builder, const_op->getLoc(),
+                                         splat_elements_attr.getType(),
+                                         fill_shape, fill_value);
   const_op->replaceAllUsesWith(fill);
   const_op->erase();
 }

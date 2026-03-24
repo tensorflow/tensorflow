@@ -103,6 +103,7 @@ message SerializedXlaExecutableMetadata {
     ifrt.DTypeProto dtype = 5;
     // Layout can be absent when the parameter uses the default layout.
     ifrt.LayoutProto layout = 1;
+    string memory_kind = 6;
     xla.OpSharding op_sharding = 2;
     bool donated_input = 3;
   }

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
@@ -43,7 +43,6 @@ namespace {
 using LegalizeSchedulingAnnotationsTest = HloHardwareIndependentTestBase;
 using SchedulingAnnotationPropagationTest = HloHardwareIndependentTestBase;
 using RemoveLoopIterationAnnotationTest = HloHardwareIndependentTestBase;
-using ::tsl::testing::IsOkAndHolds;
 
 TEST_F(LegalizeSchedulingAnnotationsTest, NonIntegerAnnotation) {
   constexpr absl::string_view hlo_string = R"(
@@ -196,6 +195,55 @@ TEST_F(LegalizeSchedulingAnnotationsTest, AnnotationWithGaps2) {
   LegalizeSchedulingAnnotations::Config config;
   EXPECT_IS_NOT_OK(
       LegalizeSchedulingAnnotations(config).Run(hlo_module.get()).status());
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest, GapSearchSkipsTuple) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16]{0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  b0 = f32[16]{0} bitcast(p0), frontend_attributes={_scheduling_group_id="1"}
+  b1 = f32[16]{0} bitcast(b0)
+  tuple = (f32[16]{0}, f32[16]{0}) tuple(b1, p1)
+  gte0 = f32[16]{0} get-tuple-element(tuple), index=0
+  gte1 = f32[16]{0} get-tuple-element(tuple), index=1
+  b2 = f32[16]{0} bitcast(gte1), frontend_attributes={_scheduling_group_id="1"}
+  ROOT add = f32[16]{0} add(b2, b2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.skip_opt_barriers = true;
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_OK(result);
+}
+
+TEST_F(LegalizeSchedulingAnnotationsTest, GapSearchSkipsOptBarrier) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16]{0} parameter(0)
+  p1 = f32[16]{0} parameter(1)
+  b0 = f32[16]{0} bitcast(p0), frontend_attributes={_scheduling_group_id="1"}
+  b1 = f32[16]{0} bitcast(b0)
+  tuple = (f32[16]{0}, f32[16]{0}) tuple(b1, p1)
+  opt_barrier = (f32[16]{0}, f32[16]{0}) opt-barrier(tuple)
+  gte0 = f32[16]{0} get-tuple-element(opt_barrier), index=0
+  gte1 = f32[16]{0} get-tuple-element(opt_barrier), index=1
+  b2 = f32[16]{0} bitcast(gte1), frontend_attributes={_scheduling_group_id="1"}
+  ROOT add = f32[16]{0} add(b2, b2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LegalizeSchedulingAnnotations::Config config;
+  config.skip_opt_barriers = true;
+  auto result = LegalizeSchedulingAnnotations(config).Run(hlo_module.get());
+  EXPECT_IS_OK(result);
 }
 
 TEST_F(LegalizeSchedulingAnnotationsTest, MissingAnnotationInStart) {

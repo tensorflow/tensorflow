@@ -137,7 +137,7 @@ class DeviceCompiler : public ResourceBase {
     return compiler_client_.get();
   }
 
-  string DebugString() const override;
+  std::string DebugString() const override;
 
  private:
   // Common implementation of Compile and CompileSingleOp. The `OpKernelContext`
@@ -259,7 +259,7 @@ DeviceCompiler<ExecutableType, ClientType>::~DeviceCompiler() {
 }
 
 template <typename ExecutableType, typename ClientType>
-string DeviceCompiler<ExecutableType, ClientType>::DebugString() const {
+std::string DeviceCompiler<ExecutableType, ClientType>::DebugString() const {
   return "DeviceCompiler";
 }
 
@@ -331,7 +331,7 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
     CompileScope scope, OpKernelContext* ctx,
     DeviceCompilationProfiler* profiler, mutex* mu) {
   tensorflow::Env* env = tensorflow::Env::Default();
-  const uint64 compile_start_us = env->NowMicros();
+  const uint64_t compile_start_us = env->NowMicros();
 
   TfGraphToHloCompiler compiler(options);
   cache_value.compile_state = DeviceCompileState::kCompiled;
@@ -385,8 +385,8 @@ DeviceCompiler<ExecutableType, ClientType>::CompileStrict(
   // Finalize the cache to release the XlaComputation after it was compiled.
   cache_->Finalize();
 
-  const uint64 compile_end_us = env->NowMicros();
-  const uint64 compile_time_us = compile_end_us - compile_start_us;
+  const uint64_t compile_end_us = env->NowMicros();
+  const uint64_t compile_time_us = compile_end_us - compile_start_us;
 
   device_compiler_internal::LogOnceXlaCompiledFirstCluster();
   TF_RETURN_IF_ERROR(profiler->RegisterCompilation(
@@ -496,7 +496,7 @@ absl::Status DeviceCompiler<ExecutableType, ClientType>::CompileImpl(
 
   profiler->RegisterExecution(function);
 
-  string human_signature;
+  std::string human_signature;
   if (VLOG_IS_ON(2)) {
     human_signature = VLOG_IS_ON(3) ? signature.HumanString() : function.name();
     VLOG(2) << "DeviceCompilationClusterSignature: " << human_signature;

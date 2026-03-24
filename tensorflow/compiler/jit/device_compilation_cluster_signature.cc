@@ -65,9 +65,9 @@ struct SignatureNotEqual {
 // Functor that incrementally computes a Signature's hash given its current hash
 // and one of its args.
 struct SignatureHashCombiner {
-  explicit SignatureHashCombiner(const uint64 h) : h(h) {}
-  uint64 h;
-  uint64 operator()(const Tensor& arg) {
+  explicit SignatureHashCombiner(const uint64_t h) : h(h) {}
+  uint64_t h;
+  uint64_t operator()(const Tensor& arg) {
     h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.dtype())));
     h = Hash64Combine(
         h, Hash64(arg.tensor_data().data(), arg.tensor_data().size()));
@@ -76,7 +76,7 @@ struct SignatureHashCombiner {
     }
     return h;
   }
-  uint64 operator()(const TensorTypeAndShape& arg) {
+  uint64_t operator()(const TensorTypeAndShape& arg) {
     h = Hash64Combine(h, std::hash<int>()(static_cast<int>(arg.first)));
     h = Hash64Combine(h, std::hash<int>()(arg.second.size()));
     for (int dim : arg.second) {
@@ -108,8 +108,8 @@ bool Signature::operator==(const Signature& other) const {
   return true;
 }
 
-uint64 Signature::Hash::operator()(const Signature& signature) const {
-  uint64 h = std::hash<string>()(signature.name);
+uint64_t Signature::Hash::operator()(const Signature& signature) const {
+  uint64_t h = std::hash<std::string>()(signature.name);
   for (const auto& arg : signature.args) {
     h = std::visit(SignatureHashCombiner(h), arg);
   }

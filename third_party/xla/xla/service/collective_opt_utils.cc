@@ -15,27 +15,32 @@ limitations under the License.
 
 #include "xla/service/collective_opt_utils.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <functional>
+#include <limits>
 #include <optional>
 #include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
 
 namespace xla {
+
+namespace m = match;
+
 namespace {
 
 // Table lookup is a specific HLO pattern used to retrieve a value from
@@ -166,6 +171,84 @@ bool IsPerIdOffsets(absl::Span<const HloInstruction*> offsets,
   return true;
 }
 
+// Infers the tightest bounds on an instruction's result we can at compile time.
+std::optional<std::pair<int64_t, int64_t>> GetKnownRange(
+    const HloInstruction* hlo) {
+  const HloInstruction* cur = hlo;
+  while (HloPredicateIsOp<HloOpcode::kConvert, HloOpcode::kReshape,
+                          HloOpcode::kBitcast, HloOpcode::kCopy>(cur)) {
+    cur = cur->operand(0);
+  }
+  if (IsTableLookup(cur)) {
+    const HloInstruction* table = cur->operand(0);
+
+    if (table->IsConstant()) {
+      int64_t size = table->shape().dimensions(0);
+      int64_t min_v = std::numeric_limits<int64_t>::max();
+      int64_t max_v = std::numeric_limits<int64_t>::min();
+      for (int64_t i = 0; i < size; ++i) {
+        std::optional<int64_t> v = table->literal().GetIntegralAsS64({i});
+        if (!v.has_value()) {
+          return std::nullopt;
+        }
+        min_v = std::min(min_v, *v);
+        max_v = std::max(max_v, *v);
+      }
+      return std::make_pair(min_v, max_v);
+    }
+  }
+  if (cur->IsConstant() && ShapeUtil::IsEffectiveScalar(cur->shape())) {
+    std::optional<int64_t> v = GetScalarInt64Value(cur);
+    if (v.has_value()) {
+      return std::make_pair(*v, *v);
+    }
+  }
+  return std::nullopt;
+}
+
+// Backtracks through no-ops to find the "base" instruction responsible for
+// some instruction's value.
+const HloInstruction* BacktrackToBase(const HloInstruction* instruction) {
+  const HloInstruction* cur = instruction;
+
+  while (true) {
+    if (HloPredicateIsOp<HloOpcode::kReshape, HloOpcode::kBitcast,
+                         HloOpcode::kCopy>(cur)) {
+      cur = cur->operand(0);
+      continue;
+    }
+
+    if (cur->opcode() == HloOpcode::kConvert) {
+      if (cur->operand(0)->shape().AreAllLeavesIntegers() &&
+          cur->shape().AreAllLeavesIntegers() &&
+          primitive_util::BitWidth(cur->operand(0)->shape().element_type()) <=
+              primitive_util::BitWidth(cur->shape().element_type())) {
+        cur = cur->operand(0);
+        continue;
+      }
+    }
+
+    if (cur->opcode() == HloOpcode::kClamp) {
+      // For some clamp ops it's possible to prove they are no-ops at compile
+      // time.
+      std::optional<int64_t> lower_bound = GetScalarInt64Value(cur->operand(0));
+      std::optional<int64_t> upper_bound = GetScalarInt64Value(cur->operand(2));
+      std::optional<std::pair<int64_t, int64_t>> range =
+          GetKnownRange(cur->operand(1));
+      if (lower_bound.has_value() && upper_bound.has_value() &&
+          range.has_value() && range->first >= *lower_bound &&
+          range->second <= *upper_bound) {
+        cur = cur->operand(1);
+        continue;
+      }
+    }
+
+    break;
+  }
+
+  return cur;
+}
+
 // Checks that `offset` used in dynamic-slice matches the sequential sharding
 // across devices within the same replica group.
 // Specifically, it checks if the offset for j-th device in a replica group
@@ -178,6 +261,8 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
                    bool use_global_device_ids) {
   const bool iota_group = instruction->replica_groups().empty() ||
                           (is_cross_module && !use_global_device_ids);
+
+  offset = BacktrackToBase(offset);
 
   if (offset->opcode() == HloOpcode::kMultiply) {
     // Check if it's constant * IsPerIdOffset(..., shard_size / constant, ...)
@@ -216,20 +301,6 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
     if (id_mapping_is_identity) {
       return true;
     }
-  }
-  if (offset->opcode() == HloOpcode::kBitcast ||
-      offset->opcode() == HloOpcode::kReshape ||
-      offset->opcode() == HloOpcode::kCopy) {
-    return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
-                         instruction, is_cross_module, use_global_device_ids);
-  }
-
-  if (offset->opcode() == HloOpcode::kConvert &&
-      offset->operand(0)->shape().AreAllLeavesIntegers() &&
-      primitive_util::BitWidth(offset->operand(0)->shape().element_type()) <=
-          primitive_util::BitWidth(offset->shape().element_type())) {
-    return IsPerIdOffset(offset->operand(0), shard_size, map_id, group_size,
-                         instruction, is_cross_module, use_global_device_ids);
   }
 
   if (offset->opcode() == HloOpcode::kClamp) {
@@ -270,24 +341,19 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
           VLOG(2) << "Found subtraction pattern with table lookup";
 
           // Verify that the table lookup uses the same ID as the multiplication
-          auto* table_lookup = offset->operand(1);
-          while (table_lookup->opcode() == HloOpcode::kReshape ||
-                 table_lookup->opcode() == HloOpcode::kBitcast ||
-                 table_lookup->opcode() == HloOpcode::kCopy) {
-            table_lookup = table_lookup->operand(0);
+          const HloInstruction* id_base = BacktrackToBase(id_operand);
+          const HloInstruction* table_lookup =
+              BacktrackToBase(offset->operand(1));
+          if (table_lookup->opcode() != HloOpcode::kDynamicSlice) {
+            VLOG(2) << "Table lookup is not dynamic slice: "
+                    << table_lookup->ToString();
+            return false;
           }
-
-          bool index_matches = false;
-          if (table_lookup->operand(1) == id_operand) {
-            index_matches = true;
-          } else if (table_lookup->operand(1)->opcode() ==
-                         HloOpcode::kConvert &&
-                     table_lookup->operand(1)->operand(0) == id_operand) {
-            index_matches = true;
-          } else if (id_operand->opcode() == HloOpcode::kConvert &&
-                     id_operand->operand(0) == table_lookup->operand(1)) {
-            index_matches = true;
-          }
+          const HloInstruction* table_base =
+              BacktrackToBase(table_lookup->operand(0));
+          const HloInstruction* table_idx_base =
+              BacktrackToBase(table_lookup->operand(1));
+          const bool index_matches = id_base == table_idx_base;
 
           if (index_matches) {
             const int64_t num_groups =
@@ -301,38 +367,40 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
                         ? j
                         : instruction->replica_groups()[i].replica_ids(j);
 
-                // Calculate expected offset: (id * slice_size) -
-                // table_lookup[id]
-                int64_t expected_mult = id * slice_size;
-
                 // Get table lookup value - use the original ID operand for
                 // mapping
-                const HloInstruction* index_operand = table_lookup->operand(1);
-                if (index_operand->opcode() == HloOpcode::kConvert) {
-                  index_operand = index_operand->operand(0);
-                }
-                int64_t table_index = GetIndexForId(index_operand, id, map_id);
+                int64_t table_index = GetIndexForId(table_idx_base, id, map_id);
                 if (table_index < 0) {
                   VLOG(2) << "Failed to get table index for ID " << id;
                   return false;
                 }
-
                 int64_t table_value;
-                if (table_lookup->operand(0)->opcode() == HloOpcode::kIota) {
+                if (table_base->opcode() == HloOpcode::kIota) {
                   table_value = table_index;
                 } else {
-                  table_value =
-                      *table_lookup->operand(0)->literal().GetIntegralAsS64(
-                          {table_index});
+                  std::optional<int64_t> table_value_opt =
+                      table_base->literal().GetIntegralAsS64({table_index});
+                  if (!table_value_opt.has_value()) {
+                    VLOG(2) << "Failed to get table value for index "
+                            << table_index;
+                    return false;
+                  }
+                  table_value = *table_value_opt;
                 }
 
-                int64_t expected_offset = expected_mult - table_value;
+                int64_t mult_id = GetIndexForId(id_base, id, map_id);
+                if (mult_id < 0) {
+                  VLOG(2) << "Failed to get multiply ID for global ID " << id;
+                  return false;
+                }
+                int64_t expected_offset = (mult_id * slice_size) - table_value;
 
                 // Check if this matches the expected pattern for reduce-scatter
                 if (expected_offset != shard_size * j) {
                   VLOG(2) << "Subtraction pattern offset " << expected_offset
                           << " doesn't match expected " << (shard_size * j)
-                          << " for ID " << id;
+                          << " for ID " << id << ", slice size " << slice_size
+                          << ", table value " << table_value;
                   return false;
                 }
               }
@@ -429,6 +497,86 @@ std::optional<ReduceScatterSpec> SpecFromReduceScatterInstr(
   return spec;
 }
 
+int64_t GetGroupSize(bool is_cross_module, bool use_global_device_ids,
+                     int64_t num_partitions, int64_t num_replicas,
+                     const HloChannelInstruction* instruction) {
+  if (!is_cross_module) {
+    return instruction->replica_groups().empty()
+               ? num_replicas
+               : instruction->replica_groups()[0].replica_ids_size();
+  }
+  if (use_global_device_ids) {
+    return instruction->replica_groups()[0].replica_ids_size();
+  }
+  return num_partitions;
+}
+
+MapIdToTableOffset CreateMapIdFn(bool is_cross_module,
+                                 bool use_global_device_ids,
+                                 int64_t num_partitions, int64_t num_replicas,
+                                 const HloChannelInstruction* instruction,
+                                 HloPredicate match_partition_id,
+                                 HloPredicate match_replica_id) {
+  if (!is_cross_module) {
+    return [=](const HloInstruction* hlo, int64_t id) {
+      return match_replica_id(hlo) ? id : -1;
+    };
+  }
+  if (use_global_device_ids) {
+    bool orthogonal_replicas = true;
+    std::vector<int64_t> partition_id_to_index(num_partitions, -1);
+    for (int64_t g = 0; g < instruction->replica_groups().size(); ++g) {
+      const auto& group = instruction->replica_groups()[g];
+      for (int64_t i = 0; i < group.replica_ids_size(); ++i) {
+        int64_t global_id = group.replica_ids(i);
+        int64_t partition_id = global_id % num_partitions;
+        if (partition_id_to_index[partition_id] == -1) {
+          partition_id_to_index[partition_id] = i;
+          continue;
+        }
+        if (partition_id_to_index[partition_id] != i ||
+            global_id / num_partitions !=
+                group.replica_ids(0) / num_partitions) {
+          orthogonal_replicas = false;
+          break;
+        }
+      }
+    }
+    return [=](const HloInstruction* hlo, int64_t id) -> int64_t {
+      if (match_replica_id(hlo)) {
+        return num_partitions == 1 ? id : -1;
+      }
+      if (match_partition_id(hlo)) {
+        if (num_replicas == 1) {
+          return id;
+        }
+        return orthogonal_replicas ? id % num_partitions : -1;
+      }
+      auto is_replica_mul_num_partitions = [&](const HloInstruction* operand) {
+        return operand->opcode() == HloOpcode::kMultiply &&
+               ((operand->operand(0)->opcode() == HloOpcode::kReplicaId &&
+                 operand->operand(1)->IsConstant() &&
+                 GetScalarInt64Value(operand->operand(1)) == num_partitions) ||
+                (operand->operand(1)->opcode() == HloOpcode::kReplicaId &&
+                 operand->operand(0)->IsConstant() &&
+                 GetScalarInt64Value(operand->operand(0)) == num_partitions));
+      };
+      if (hlo->opcode() == HloOpcode::kAdd &&
+          ((match_partition_id(hlo->operand(0)) &&
+            is_replica_mul_num_partitions(hlo->operand(1))) ||
+           (match_partition_id(hlo->operand(1)) &&
+            is_replica_mul_num_partitions(hlo->operand(0))))) {
+        return id;
+      }
+      return -1;
+    };
+  }
+  // is_cross_module && !use_global_device_ids
+  return [=](const HloInstruction* hlo, int64_t id) {
+    return match_partition_id(hlo) ? id : -1;
+  };
+}
+
 }  // namespace
 
 std::optional<ReduceScatterSpec> MatchReduceScatter(
@@ -477,6 +625,77 @@ std::optional<ReduceScatterSpec> AllGatherDynamicSliceCancellation(
     return std::nullopt;
   }
   return spec;
+}
+
+bool IsDynamicSlicingLocalDeviceFromAllGather(
+    HloInstruction* ds, HloAllGatherInstruction* all_gather,
+    int64_t num_partitions, int64_t num_replicas, bool is_cross_module,
+    bool use_global_device_ids) {
+  // Check if the user is a DynamicSlice.
+  if (ds->opcode() != HloOpcode::kDynamicSlice) {
+    return false;
+  }
+
+  const HloInstruction* ag_operand = all_gather->operand(0);
+  int64_t all_gather_dimension = all_gather->all_gather_dimension();
+
+  int64_t shard_size = ag_operand->shape().dimensions(all_gather_dimension);
+
+  // The offset operand index in DynamicSlice is 1 + dimension index.
+  int64_t operand_index = all_gather_dimension + 1;
+  if (operand_index >= ds->operand_count()) {
+    VLOG(2) << "DynamicSlice operand index is out of bounds.";
+    return false;
+  }
+  const HloInstruction* offset_hlo = ds->operand(operand_index);
+
+  MapIdToTableOffset map_id = CreateMapIdFn(
+      is_cross_module, use_global_device_ids, num_partitions, num_replicas,
+      all_gather, HloPredicateIsOp<HloOpcode::kPartitionId>,
+      HloPredicateIsOp<HloOpcode::kReplicaId>);
+  int64_t group_size = GetGroupSize(is_cross_module, use_global_device_ids,
+                                    num_partitions, num_replicas, all_gather);
+
+  // IsPerIdOffset checks if the offset for the j-th device (partition_id)
+  // is equal to shard_size * j.
+  if (IsPerIdOffset(offset_hlo, shard_size, map_id, group_size, all_gather,
+                    is_cross_module, use_global_device_ids)) {
+    return true;
+  }
+  HloInstruction* shard_size_constant;
+  HloInstruction* offset_constant;
+  int64_t dynamic_slice_size_in_ag_dim =
+      ds->dynamic_slice_sizes()[all_gather_dimension];
+  if (Match(ds, m::DynamicSlice().WithOperand(
+                    operand_index,
+                    m::Add(m::MultiplyAnyOrder(
+                               m::Convert((m::AnyOf<HloInstruction>(
+                                   m::PartitionId(), m::ReplicaId()))),
+                               m::Constant(&shard_size_constant)),
+                           m::Constant(&offset_constant))))) {
+    std::optional<int64_t> shard_size_constant_value =
+        GetScalarInt64Value(shard_size_constant);
+    if (!shard_size_constant_value.has_value() ||
+        shard_size_constant_value != shard_size) {
+      VLOG(2) << "Constant does not match the shard size: "
+              << shard_size_constant->ToString();
+      return false;
+    }
+    std::optional<int64_t> offset_constant_value =
+        GetScalarInt64Value(offset_constant);
+    if (!offset_constant_value.has_value()) {
+      VLOG(2) << "Offset is not a constant: " << offset_constant->ToString();
+      return false;
+    }
+    if (*offset_constant_value + dynamic_slice_size_in_ag_dim <= shard_size) {
+      return true;
+    }
+    VLOG(2) << "Offset is invalid for shard size: " << shard_size << " "
+            << "offset_value: " << *offset_constant_value << " "
+            << "dynamic_slice_size_in_ag_dim: " << dynamic_slice_size_in_ag_dim;
+  }
+  VLOG(2) << "The match pattern is not recognized: " << offset_hlo->ToString();
+  return false;
 }
 
 std::optional<SplitDimSpec> ExtractSplitDimSpec(
@@ -655,10 +874,12 @@ MatchPermutedSliceAndPartitionOffset(const HloAllGatherInstruction* ag,
     return std::nullopt;
   }
 
-  // Only matches for kFlattenedID collective mode.
+  // Only matches for COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID collective mode.
   absl::StatusOr<CollectiveOpGroupMode> mode = GetCollectiveOpGroupMode(ag);
 
-  if (!mode.ok() || mode.value() != CollectiveOpGroupMode::kFlattenedID) {
+  if (!mode.ok() ||
+      mode.value() !=
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
     VLOG(2) << "AG does not use global device ids or channel id "
             << ag->ToString();
     return std::nullopt;
@@ -832,70 +1053,24 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
   HloInstruction* user = ds_user->dynamic_slice;
   HloInstruction* reshape = ds_user->reshape;
 
+  MapIdToTableOffset map_id = CreateMapIdFn(
+      is_cross_module, use_global_device_ids, num_partitions, num_replicas,
+      instruction, match_partition_id, match_replica_id);
+  std::optional<int64_t> optional_group_size =
+      GetGroupSize(is_cross_module, use_global_device_ids, num_partitions,
+                   num_replicas, instruction);
+  if (!optional_group_size) {
+    return std::nullopt;
+  }
+  int64_t group_size = *optional_group_size;
+
   ReduceScatterSpec spec;
-  int64_t group_size;
-  MapIdToTableOffset map_id;
   spec.dynamic_slice = user;
   if (!is_cross_module) {
     spec.sharded_replicas = num_replicas;
-    group_size = instruction->replica_groups().empty()
-                     ? num_replicas
-                     : instruction->replica_groups()[0].replica_ids_size();
-    map_id = [&](const HloInstruction* hlo, int64_t id) {
-      return match_replica_id(hlo) ? id : -1;
-    };
   } else if (use_global_device_ids) {
     spec.sharded_replicas = num_replicas;
     spec.sharded_partitions = num_partitions;
-    group_size = instruction->replica_groups()[0].replica_ids_size();
-    bool orthogonal_replicas = true;
-    std::vector<int64_t> partition_id_to_index(num_partitions, -1);
-    for (int64_t g = 0; g < instruction->replica_groups().size(); ++g) {
-      const auto& group = instruction->replica_groups()[g];
-      for (int64_t i = 0; i < group.replica_ids_size(); ++i) {
-        int64_t global_id = group.replica_ids(i);
-        int64_t partition_id = global_id % num_partitions;
-        if (partition_id_to_index[partition_id] == -1) {
-          partition_id_to_index[partition_id] = i;
-          continue;
-        }
-        if (partition_id_to_index[partition_id] != i ||
-            global_id / num_partitions !=
-                group.replica_ids(0) / num_partitions) {
-          orthogonal_replicas = false;
-          break;
-        }
-      }
-    }
-    map_id = [&, orthogonal_replicas](const HloInstruction* hlo,
-                                      int64_t id) -> int64_t {
-      if (match_replica_id(hlo)) {
-        return num_partitions == 1 ? id : -1;
-      }
-      if (match_partition_id(hlo)) {
-        if (num_replicas == 1) {
-          return id;
-        }
-        return orthogonal_replicas ? id % num_partitions : -1;
-      }
-      auto is_replica_mul_num_partitions = [&](const HloInstruction* operand) {
-        return operand->opcode() == HloOpcode::kMultiply &&
-               ((operand->operand(0)->opcode() == HloOpcode::kReplicaId &&
-                 operand->operand(1)->IsConstant() &&
-                 GetScalarInt64Value(operand->operand(1)) == num_partitions) ||
-                (operand->operand(1)->opcode() == HloOpcode::kReplicaId &&
-                 operand->operand(0)->IsConstant() &&
-                 GetScalarInt64Value(operand->operand(0)) == num_partitions));
-      };
-      if (hlo->opcode() == HloOpcode::kAdd &&
-          ((match_partition_id(hlo->operand(0)) &&
-            is_replica_mul_num_partitions(hlo->operand(1))) ||
-           (match_partition_id(hlo->operand(1)) &&
-            is_replica_mul_num_partitions(hlo->operand(0))))) {
-        return id;
-      }
-      return -1;
-    };
   } else {
     // Right now all cross-partition all-reduces' subgroups refer to replicas
     // unless they use use_global_device_ids.
@@ -907,10 +1082,6 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
       return std::nullopt;
     }
     spec.sharded_partitions = num_partitions;
-    group_size = num_partitions;
-    map_id = [&](const HloInstruction* hlo, int64_t id) {
-      return match_partition_id(hlo) ? id : -1;
-    };
   }
   if (group_size < 2) {
     VLOG(2) << "Group_size < 2, nothing to do " << instruction->ToString();
@@ -969,7 +1140,7 @@ std::optional<ReduceScatterSpec> MatchWithDynamicSlice(
                                                  reshape->shape());
     // Map each unmodified output dim of reshape to the corresponding input dim.
     absl::flat_hash_map<int64_t, int64_t> unmodified_output_to_input_map;
-    for (const std::pair<int64_t, int64_t>& io_pair : unmodified_dims) {
+    for (const auto& io_pair : unmodified_dims) {
       unmodified_output_to_input_map.insert({io_pair.second, io_pair.first});
     }
 
@@ -1149,6 +1320,94 @@ bool MatchDsPadAllGather(HloInstruction* ds_hlo, HloInstruction** pad_hlo,
   return Match(ds_hlo,
                m::DynamicSlice().WithOperand(
                    0, m::Pad(pad_hlo, m::AllGather(ag_hlo), m::Constant())));
+}
+
+const HloInstruction* FindCanonicalSendRecvStartOp(const HloInstruction* hlo) {
+  CHECK(hlo->opcode() == HloOpcode::kSend ||
+        hlo->opcode() == HloOpcode::kRecv ||
+        hlo->opcode() == HloOpcode::kSendDone ||
+        hlo->opcode() == HloOpcode::kRecvDone);
+  // If the instruction is wrapped in an async computation, return
+  // the instruction itself.
+  if (hlo->parent()->IsAsyncComputation()) {
+    return hlo;
+  }
+
+  // Find container while loop and index for the send/recv case or
+  // return canonical start op directly.
+  const HloInstruction* while_op = nullptr;
+  int64_t i = -1;
+  if (hlo->opcode() == HloOpcode::kSend || hlo->opcode() == HloOpcode::kRecv) {
+    CHECK_EQ(hlo->users().size(), 1);
+    const HloInstruction* unique_user = hlo->users().front();
+
+    // Return send/recv inst directly if this is a simple send/recv
+    // pair.
+    if (unique_user->opcode() == HloOpcode::kSendDone ||
+        unique_user->opcode() == HloOpcode::kRecvDone) {
+      return hlo;
+    }
+
+    // Find while loop and index, otherwise.
+    CHECK(unique_user->opcode() == HloOpcode::kTuple ||
+          unique_user->opcode() == HloOpcode::kWhile);
+    if (unique_user->IsRoot()) {
+      // send/recv op in the loop body.
+      auto maybe_while_op =
+          unique_user->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while_op);
+      while_op = *maybe_while_op;
+      i = unique_user->operand_index(hlo);
+    } else {
+      // send/recv leading into the loop.
+      CHECK_EQ(unique_user->users().size(), 1);
+      CHECK(unique_user->users().front()->opcode() == HloOpcode::kWhile);
+      while_op = unique_user->users().front();
+      i = unique_user->operand_index(hlo);
+    }
+  }
+
+  // Find container while loop and index for the send-done/recv-done
+  // case or return canonical start op directly.
+  if (hlo->opcode() == HloOpcode::kSendDone ||
+      hlo->opcode() == HloOpcode::kRecvDone) {
+    const HloInstruction* operand = hlo->operand(0);
+
+    // Return send/recv hlo directly if this is a simple send/recv
+    // pair.
+    if (operand->opcode() == HloOpcode::kSend ||
+        operand->opcode() == HloOpcode::kRecv) {
+      return operand;
+    }
+
+    // Find while loop and index, otherwise.
+    CHECK(operand->opcode() == HloOpcode::kGetTupleElement);
+    const auto* gte = Cast<HloGetTupleElementInstruction>(operand);
+    const HloInstruction* iter_tuple = operand->operand(0);
+    if (iter_tuple->opcode() == HloOpcode::kParameter) {
+      // send-done/recv-done in the loop body.
+      CHECK(Cast<HloParameterInstruction>(iter_tuple)->parameter_number() == 0);
+      auto maybe_while =
+          iter_tuple->parent()->GetUniqueCaller(HloOpcode::kWhile);
+      CHECK(maybe_while);
+      while_op = *maybe_while;
+      i = gte->tuple_index();
+    } else {
+      // send-done/recv-done proceeding the loop.
+      CHECK(iter_tuple->opcode() == HloOpcode::kWhile);
+      while_op = iter_tuple;
+      i = gte->tuple_index();
+    }
+  }
+
+  // Extract canonical start op from while loop's init.
+  CHECK(while_op != nullptr);
+  CHECK(0 <= i && i < while_op->shape().tuple_shapes().size());
+  const HloInstruction* init = while_op->operand(0);
+  const HloInstruction* canonical_start_op = init->operand(i);
+  CHECK(canonical_start_op->opcode() == HloOpcode::kSend ||
+        canonical_start_op->opcode() == HloOpcode::kRecv);
+  return canonical_start_op;
 }
 
 }  // namespace xla

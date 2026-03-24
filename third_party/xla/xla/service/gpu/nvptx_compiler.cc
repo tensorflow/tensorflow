@@ -40,16 +40,21 @@ limitations under the License.
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/autotuner/block_level_emitter.h"
-#include "xla/backends/gpu/autotuner/cublas.h"
-#include "xla/backends/gpu/autotuner/cublaslt.h"
-#include "xla/backends/gpu/autotuner/cudnn.h"
-#include "xla/backends/gpu/autotuner/native_emitter.h"
-#include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/backends/gpu/transforms/algebraic_simplifier.h"
+#include "xla/backends/gpu/transforms/block_scaling_rewriter.h"
+#include "xla/backends/gpu/transforms/conv_kind_assignment.h"
+#include "xla/backends/gpu/transforms/conv_padding_legalization.h"
+#include "xla/backends/gpu/transforms/conv_rewriter.h"
+#include "xla/backends/gpu/transforms/cublas_pad_for_gemms.h"
+#include "xla/backends/gpu/transforms/cudnn_custom_call_compiler.h"
+#include "xla/backends/gpu/transforms/cudnn_fused_conv_rewriter.h"
+#include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
+#include "xla/backends/gpu/transforms/cudnn_norm_rewriter.h"
+#include "xla/backends/gpu/transforms/cudnn_pad_for_convolutions.h"
+#include "xla/backends/gpu/transforms/cudnn_simplify_padding.h"
+#include "xla/backends/gpu/transforms/triangular_solve_rewriter.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -60,17 +65,12 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_constant_folding.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
-#include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/compilation_stats.h"
 #include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/float_support.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_pass.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
-#include "xla/service/gpu/autotuning/conv_algorithm_picker.h"
-#include "xla/service/gpu/autotuning/gemm_fusion_autotuner.h"
-#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -80,20 +80,6 @@ limitations under the License.
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/gpu/ptx_compile_options_from_debug_options.h"
 #include "xla/service/gpu/target_constants.h"
-#include "xla/service/gpu/transforms/algebraic_simplifier.h"
-#include "xla/service/gpu/transforms/block_scaling_rewriter.h"
-#include "xla/service/gpu/transforms/conv_padding_legalization.h"
-#include "xla/service/gpu/transforms/conv_rewriter.h"
-#include "xla/service/gpu/transforms/cublas_pad_for_gemms.h"
-#include "xla/service/gpu/transforms/cudnn_custom_call_compiler.h"
-#include "xla/service/gpu/transforms/cudnn_fused_conv_rewriter.h"
-#include "xla/service/gpu/transforms/cudnn_fusion_compiler.h"
-#include "xla/service/gpu/transforms/cudnn_norm_rewriter.h"
-#include "xla/service/gpu/transforms/cudnn_pad_for_convolutions.h"
-#include "xla/service/gpu/transforms/cudnn_simplify_padding.h"
-#include "xla/service/gpu/transforms/gpusolver_rewriter.h"
-#include "xla/service/gpu/transforms/triangular_solve_rewriter.h"
-#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -104,7 +90,6 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/cuda/cuda_solver_context.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -128,7 +113,7 @@ class ConvBfloat16Support : public FloatSupport {
  public:
   explicit ConvBfloat16Support(
       se::dnn::VersionInfo cudnn_version,
-      se::CudaComputeCapability cuda_compute_capability)
+      const se::CudaComputeCapability& cuda_compute_capability)
       : FloatSupport(BF16),
         is_conv_bf16_supported_(cuda_compute_capability.IsAtLeast(
             se::CudaComputeCapability::kAmpere)) {}
@@ -154,7 +139,7 @@ class ConvBfloat16Support : public FloatSupport {
 class MatmulBfloat16Support : public FloatSupport {
  public:
   explicit MatmulBfloat16Support(
-      se::CudaComputeCapability cuda_compute_capability)
+      const se::CudaComputeCapability& cuda_compute_capability)
       : FloatSupport(BF16),
         is_matmul_bf16_supported_(cuda_compute_capability.IsAtLeast(
             se::CudaComputeCapability::kAmpere)) {}
@@ -179,36 +164,42 @@ class MatmulBfloat16Support : public FloatSupport {
 }  // namespace
 
 absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
-    HloModule* hlo_module, se::GpuComputeCapability gpu_version,
+    HloModule* hlo_module, const se::GpuComputeCapability& gpu_version,
     se::dnn::VersionInfo dnn_version,
-    const se::SemanticVersion& toolkit_version) {
-  auto cuda_compute_capability =
-      std::get<se::CudaComputeCapability>(gpu_version);
+    const se::SemanticVersion& toolkit_version,
+    CompilationStats* compilation_stats) {
+  auto* cuda_compute_capability = gpu_version.cuda_compute_capability();
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
   // (ConvPaddingLegalization). Also expand cuSolver calls.
-  HloPassPipeline pipeline("conv_canonicalization");
+  HloPassPipeline pipeline("conv_canonicalization", compilation_stats);
   pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/false,
       /*allow_mixed_precision=*/false);
 
   // Convert unsupported bf16 convolutions to f32.
-  ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
+  ConvBfloat16Support conv_bf16_support(dnn_version, *cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
   // Convert unsupported bf16 matmuls to f32.
-  MatmulBfloat16Support matmul_bf16_support(cuda_compute_capability);
+  MatmulBfloat16Support matmul_bf16_support(*cuda_compute_capability);
   pipeline.AddPass<FloatNormalization>(&matmul_bf16_support);
 
-  pipeline.AddPass<GpusolverRewriter>(
-      stream_executor::CudaSolverContext::Create);
   if (!hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
-    pipeline.AddPass<ConvRewriter>(cuda_compute_capability, dnn_version);
-    pipeline.AddPass<CudnnFusedConvRewriter>(cuda_compute_capability,
-                                             dnn_version, toolkit_version);
-    pipeline.AddPass<ConvPaddingLegalization>();
-    pipeline.AddPass<CudnnPadForConvolutions>(cuda_compute_capability);
+    if (hlo_module->config()
+            .debug_options()
+            .xla_gpu_experimental_enable_conv_fusion()) {
+      pipeline.AddPass<ConvKindAssignment>(gpu_version, dnn_version);
+    } else {
+      // TODO(b/487265446): Remove ConvRewriter, CudnnFusedConvRewriter, and
+      // ConvPaddingLegalization once ConvFusionRewriter is the default.
+      pipeline.AddPass<ConvRewriter>(gpu_version, dnn_version);
+      pipeline.AddPass<CudnnFusedConvRewriter>(*cuda_compute_capability,
+                                               dnn_version, toolkit_version);
+      pipeline.AddPass<ConvPaddingLegalization>();
+      pipeline.AddPass<CudnnPadForConvolutions>(*cuda_compute_capability);
+    }
   }
   // The conv padding/vectorization passes which we need to get rid of.  They
   // also leave behind unnecessary tuple/get-tuple-element pairs that
@@ -269,25 +260,29 @@ absl::Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
 absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const TargetConfig& gpu_target_config,
-    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool) {
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+    const GpuAliasInfo* alias_info, tsl::thread::ThreadPool* thread_pool,
+    CompilationStats* compilation_stats) {
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
-  auto cuda_compute_capability = std::get<se::CudaComputeCapability>(
-      gpu_target_config.device_description.gpu_compute_capability());
+  auto* cuda_compute_capability =
+      gpu_target_config.device_description.gpu_compute_capability()
+          .cuda_compute_capability();
 
-  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
+  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1",
+                               compilation_stats);
   if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_layer_norm() &&
       !hlo_module->config()
            .debug_options()
            .xla_gpu_experimental_disable_binary_libraries()) {
     // Rewrite normalization patterns into cuDNN Custom Calls.
-    pre_pipeline.AddPass<CudnnNormRewriter>(cuda_compute_capability);
+    pre_pipeline.AddPass<CudnnNormRewriter>(*cuda_compute_capability);
   }
 
   pre_pipeline.AddPass<BlockScalingRewriter>(
-      /*allow_cudnn=*/cuda_compute_capability.IsAtLeastBlackwell() &&
-      gpu_target_config.dnn_version_info >= se::dnn::VersionInfo(9, 7));
+      cuda_compute_capability->IsAtLeastBlackwell()
+          ? gpu_target_config.dnn_version_info
+          : se::dnn::VersionInfo{});
   pre_pipeline.AddPass<DotDimensionMerger>();
 
   if (!hlo_module->config()
@@ -295,11 +290,11 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
            .xla_gpu_experimental_disable_binary_libraries()) {
     for (const CublasPaddingRequirement& requirement :
          CublasPaddingRequirements) {
-      if (cuda_compute_capability.SupportsAllFeaturesOf(
+      if (cuda_compute_capability->SupportsAllFeaturesOf(
               requirement.min_compute_capability)) {
-        pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
-                                                requirement.data_type,
-                                                requirement.multiple_of);
+        pre_pipeline.AddPass<CublasPadForGemms>(
+            gpu_target_config.device_description.gpu_compute_capability(),
+            requirement.data_type, requirement.multiple_of);
       }
     }
   }
@@ -312,9 +307,10 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool));
+      thread_pool, compilation_stats));
 
-  HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
+  HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2",
+                                compilation_stats);
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
@@ -326,140 +322,8 @@ absl::Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   return absl::OkStatus();
 }
 
-// Linearize collective schedule under if online autotuning of convolutions is
-// enabled.
-bool NVPTXCompiler::RequiresCollectiveScheduleLinearizer(
-    const HloModule* module, se::StreamExecutor* stream_exec) {
-  if (stream_exec == nullptr || !GpuConvAlgorithmPicker::IsEnabled(module)) {
-    return false;
-  }
-  for (const HloComputation* comp : module->MakeNonfusionComputations()) {
-    for (const HloInstruction* inst : comp->instructions()) {
-      if (GpuConvAlgorithmPicker::IsCandidate(inst)) {
-        return true;
-      }
-    }
-  }
-  // No convolution auto-tuning candidates found in the module.
-  return false;
-}
-
-absl::Status NVPTXCompiler::AddConvAndGemmAutotuningPasses(
-    HloPassPipeline* pipeline, const se::GpuComputeCapability& gpu_version,
-    const CompileOptions& options, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-    se::StreamExecutor* stream_exec,
-    const Compiler::TargetConfig* target_config) {
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  if (hlo_module->config()
-          .debug_options()
-          .xla_gpu_experimental_disable_binary_libraries() ||
-      debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops()) {
-    return absl::OkStatus();
-  }
-
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::make_unique<CublasBackend>(
-      stream_exec, &debug_options, this, target_config));
-  backends.push_back(std::make_unique<CublasLtBackend>(
-      stream_exec, &debug_options, this, target_config));
-  backends.push_back(std::make_unique<CudnnBackend>(stream_exec, &debug_options,
-                                                    this, target_config));
-  auto should_autotune = [](const HloInstruction& instruction) -> bool {
-    return instruction.opcode() == HloOpcode::kCustomCall &&
-           (IsCublasGemm(instruction) ||
-            IsCustomCallToDnnConvolution(instruction));
-  };
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_exec,
-                            thread_pool, should_autotune, target_config,
-                            options.device_allocator));
-  pipeline->AddPass(std::move(autotuner_pass));
-  return absl::OkStatus();
-}
-
-absl::Status NVPTXCompiler::AddGemmFusionAutotuningPasses(
-    HloPassPipeline* pipeline, HloModule* hlo_module,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-    const MultiProcessKeyValueStore& key_value_store,
-    const se::SemanticVersion& toolkit_version,
-    se::StreamExecutor* stream_executor) {
-  pipeline->AddPass<GemmFusionAutotuner>(autotune_config, toolkit_version,
-                                         thread_pool, key_value_store,
-                                         mlir_context());
-  return absl::OkStatus();
-}
-
-namespace {
-
-// Returns true if the instruction is a fusion that would go through the native
-// emitter, but may benefit from going through the block-level emitter.
-// Currently, we only do this for reductions and transposes.
-bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
-  if (instruction.opcode() != HloOpcode::kFusion) {
-    return false;
-  }
-  auto fusion = Cast<const HloFusionInstruction>(&instruction);
-  // kCustom fusions have already been assigned to a backend and we don't want
-  // to override it.
-  if (fusion->fusion_kind() == HloInstruction::FusionKind::kCustom) {
-    return false;
-  }
-  // Scatter can't go through the block-level emitter and runs into comparator
-  // issues in the autotuner as different runs can produce different results.
-  if (absl::c_any_of(fusion->fused_instructions_computation()->instructions(),
-                     HloPredicateIsOp<HloOpcode::kScatter>)) {
-    return false;
-  }
-  return absl::c_any_of(
-      fusion->fused_instructions_computation()->instructions(),
-      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
-}
-
-}  // namespace
-
-absl::Status NVPTXCompiler::AddFusionAutotuningPass(
-    HloPassPipeline* pipeline, HloModule* hlo_module,
-    const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
-    stream_executor::StreamExecutor* stream_executor,
-    const Compiler::TargetConfig* target_config,
-    HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
-  if (stream_executor == nullptr) {
-    return absl::OkStatus();
-  }
-  const DebugOptions& debug_options = hlo_module->config().debug_options();
-  if (debug_options.xla_gpu_autotune_level() == 0 ||
-      debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      !debug_options.xla_gpu_experimental_enable_fusion_autotuner()) {
-    return absl::OkStatus();
-  }
-
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  auto ble_backend = std::make_unique<BlockLevelEmitterBackend>(
-      &debug_options, this, shape_size_fn, target_config,
-      /*use_default_config=*/true);
-  ble_backend->AllowRegisterSpills();
-  backends.push_back(std::move(ble_backend));
-  auto native_backend = std::make_unique<NativeEmitterBackend>(
-      &debug_options, this, target_config);
-  native_backend->AllowRegisterSpills();
-  backends.push_back(std::move(native_backend));
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<AutotunerPass> autotuner_pass,
-      AutotunerPass::Create(std::move(backends), debug_options, stream_executor,
-                            thread_pool, ShouldAutotuneBetweenFusionEmitters,
-                            target_config, options.device_allocator,
-                            /*optimize_scratch_bytes=*/false));
-  pipeline->AddPass(std::move(autotuner_pass));
-  return absl::OkStatus();
-}
-
 absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
-    HloModule* module, se::StreamExecutor* stream_exec,
+    HloModule* module, se::dnn::DnnSupport& dnn_support,
     BinaryMap* dnn_compiled_graphs) {
   if (module->config()
           .debug_options()
@@ -470,11 +334,11 @@ absl::Status NVPTXCompiler::RunCudnnCompilerPasses(
     return absl::StrFormat("XlaCompileCudnnFusion:#module=%s,program_id=%d#",
                            module->name(), module->unique_id());
   });
-  CuDnnFusionCompiler fusion_compiler(*stream_exec, *dnn_compiled_graphs);
+  CuDnnFusionCompiler fusion_compiler(dnn_support, *dnn_compiled_graphs);
   TF_RETURN_IF_ERROR(
       fusion_compiler.Run(module, {HloInstruction::kMainExecutionThread})
           .status());
-  CuDnnCustomCallCompiler call_compiler(*stream_exec, *dnn_compiled_graphs);
+  CuDnnCustomCallCompiler call_compiler(dnn_support, *dnn_compiled_graphs);
   return call_compiler.Run(module, {HloInstruction::kMainExecutionThread})
       .status();
 }
@@ -601,7 +465,8 @@ void WarnIfBadDriverJITVersion() {
 }
 
 absl::StatusOr<const se::cuda::CompilationProvider*>
-NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options) {
+NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options,
+                                      se::StreamExecutor* stream_exec) {
   absl::MutexLock lock(compilation_providers_mutex_);
   std::unique_ptr<se::cuda::CompilationProvider>& compilation_provider =
       compilation_providers_[se::cuda::CompilationProviderOptions::
@@ -611,7 +476,7 @@ NVPTXCompiler::GetCompilationProvider(const DebugOptions& debug_options) {
         compilation_provider,
         se::cuda::AssembleCompilationProvider(
             se::cuda::CompilationProviderOptions::FromDebugOptions(
-                debug_options)));
+                debug_options, stream_exec)));
   }
   return compilation_provider.get();
 }
@@ -639,7 +504,7 @@ NVPTXCompiler::CompileTargetBinary(
   } else {
     selected_module = llvm_module;
   }
-
+  const DebugOptions& debug_options = module_config.debug_options();
   std::string ptx;
   if (!(debug_module &&
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
@@ -649,12 +514,13 @@ NVPTXCompiler::CompileTargetBinary(
         absl::StrCat(
             "NVPTXCompiler::CompileTargetBinary - CompileToPtx for ",
             (debug_module != nullptr ? debug_module->name() : "(unknown")),
-        !options.is_autotuning_compilation);
+        debug_options.xla_enable_scoped_logging_timers());
     uint64_t start_usecs = tsl::Env::Default()->NowMicros();
+
     TF_ASSIGN_OR_RETURN(
         ptx, nvptx::CompileToPtx(selected_module,
                                  device_description.gpu_compute_capability(),
-                                 module_config.debug_options()));
+                                 debug_options));
 
     uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
@@ -662,7 +528,7 @@ NVPTXCompiler::CompileTargetBinary(
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
 
     if (DumpingEnabledForHloModule(debug_module ? debug_module->name() : "",
-                                   module_config.debug_options())) {
+                                   debug_options)) {
       if (debug_module) {
         DumpToFileInDirOrStdout(*debug_module, "",
                                 shard_number.has_value()
@@ -682,16 +548,15 @@ NVPTXCompiler::CompileTargetBinary(
     return BackendCompileResult{};
   }
 
-  TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
-                      GetCompilationProvider(module_config.debug_options()));
+  TF_ASSIGN_OR_RETURN(
+      const se::cuda::CompilationProvider* compilation_provider,
+      GetCompilationProvider(module_config.debug_options(), nullptr));
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(
-          module_config.debug_options(),
-          /*is_autotuning_compilation=*/options.is_autotuning_compilation);
+      PtxCompileOptionsFromDebugOptions(module_config.debug_options());
 
-  se::CudaComputeCapability cc = std::get<se::CudaComputeCapability>(
-      device_description.gpu_compute_capability());
+  se::CudaComputeCapability cc =
+      *device_description.gpu_compute_capability().cuda_compute_capability();
 
   // This may print multiple lines per HLO compilation because of the
   // parallelized compilation of LLVM modules.
@@ -700,7 +565,7 @@ NVPTXCompiler::CompileTargetBinary(
   XLA_SCOPED_LOGGING_TIMER_IF(
       absl::StrCat("NVPTXCompiler::CompileTargetBinary - PtxToCubin for ",
                    module_name),
-      !options.is_autotuning_compilation);
+      debug_options.xla_enable_scoped_logging_timers());
   tsl::profiler::ScopedAnnotation annotation([&] {
     return absl::StrFormat("XlaCompileGpuAsm:#module=%s#", module_name);
   });
@@ -721,23 +586,27 @@ NVPTXCompiler::CompileTargetBinary(
                         compilation_provider->CompileToRelocatableModule(
                             cc, ptx, compilation_options));
     record_ptx_to_cubin_metric();
-    return BackendCompileResult{std::move(ptx),
-                                std::move(relocatable_module.cubin)};
+    return BackendCompileResult{
+        std::move(ptx), std::move(relocatable_module.cubin),
+        /*dnn_compiled_graphs=*/{}, std::move(relocatable_module.module_stats)};
   }
 
   TF_ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
       compilation_provider->Compile(cc, ptx, compilation_options));
   record_ptx_to_cubin_metric();
-  return BackendCompileResult{std::move(ptx), std::move(assembly.cubin)};
+  return BackendCompileResult{std::move(ptx), std::move(assembly.cubin),
+                              /*dnn_compiled_graphs=*/{},
+                              std::move(assembly.module_stats)};
 }
 
 absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
     const HloModuleConfig& hlo_module_config,
-    const stream_executor::DeviceDescription& device_description) {
+    const stream_executor::DeviceDescription& device_description,
+    se::StreamExecutor* stream_exec) {
   TF_ASSIGN_OR_RETURN(
       const se::cuda::CompilationProvider* compilation_provider,
-      GetCompilationProvider(hlo_module_config.debug_options()));
+      GetCompilationProvider(hlo_module_config.debug_options(), stream_exec));
   return compilation_provider->SupportsCompileAndLink() &&
          compilation_provider->SupportsCompileToRelocatableModule();
 }
@@ -745,16 +614,16 @@ absl::StatusOr<bool> NVPTXCompiler::CanUseLinkModules(
 absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     const stream_executor::DeviceDescription& device_description,
     std::vector<std::vector<uint8_t>> modules,
-    const DebugOptions& debug_options) {
+    const DebugOptions& debug_options, se::StreamExecutor* stream_exec) {
   if (modules.empty()) {
     return std::vector<uint8_t>{};
   }
 
-  auto cc = std::get<stream_executor::CudaComputeCapability>(
-      device_description.gpu_compute_capability());
+  auto cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
 
   TF_ASSIGN_OR_RETURN(const se::cuda::CompilationProvider* compilation_provider,
-                      GetCompilationProvider(debug_options));
+                      GetCompilationProvider(debug_options, stream_exec));
 
   std::vector<se::cuda::CompilationProvider::RelocatableModuleOrPtx> inputs;
   inputs.reserve(modules.size());
@@ -763,15 +632,14 @@ absl::StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
   }
 
   se::cuda::CompilationOptions compilation_options =
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false);
+      PtxCompileOptionsFromDebugOptions(debug_options);
 
   VLOG(1) << "Linking " << modules.size()
           << " modules with compilation provider "
           << compilation_provider->name();
   TF_ASSIGN_OR_RETURN(
       se::cuda::Assembly assembly,
-      compilation_provider->CompileAndLink(cc, inputs, compilation_options));
+      compilation_provider->CompileAndLink(*cc, inputs, compilation_options));
 
   return std::move(assembly.cubin);
 }

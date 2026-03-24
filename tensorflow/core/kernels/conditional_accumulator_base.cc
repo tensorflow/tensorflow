@@ -19,8 +19,8 @@ limitations under the License.
 namespace tensorflow {
 
 ConditionalAccumulatorBase::ConditionalAccumulatorBase(
-    const DataType& dtype, const PartialTensorShape& shape, const string& name,
-    const string& reduction_type)
+    const DataType& dtype, const PartialTensorShape& shape,
+    const std::string& name, const std::string& reduction_type)
     : dtype_(dtype),
       shape_(shape),
       name_(name),

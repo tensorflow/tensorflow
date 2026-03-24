@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -60,7 +60,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
   }
 
   absl::Status EnqueueTransferHostToDevice(
-      stream_executor::DeviceMemoryBase device_dst, const void* host_src,
+      stream_executor::DeviceAddressBase device_dst, const void* host_src,
       uint64_t size) {
     StatusHelper status;
     stream_executor::tpu::ExecutorApiFn()
@@ -78,7 +78,7 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
   }
 
   absl::Status EnqueueTransferDeviceToHost(
-      stream_executor::DeviceMemoryBase device_src, void* host_dst,
+      stream_executor::DeviceAddressBase device_src, void* host_dst,
       uint64_t size) {
     StatusHelper status;
     stream_executor::tpu::ExecutorApiFn()
@@ -89,8 +89,8 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
   }
 
   absl::Status EnqueueOnTpuDeviceSendRecvLocal(
-      stream_executor::DeviceMemoryBase send_buffer,
-      stream_executor::DeviceMemoryBase recv_buffer) override {
+      stream_executor::DeviceAddressBase send_buffer,
+      stream_executor::DeviceAddressBase recv_buffer) override {
     StatusHelper status;
     stream_executor::tpu::ExecutorApiFn()
         ->TpuStream_TpuEnqueueOnDeviceSendRecvLocalFn(
@@ -132,25 +132,25 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     return status.status();
   }
 
-  absl::Status Memcpy(stream_executor::DeviceMemoryBase* device_dst,
+  absl::Status Memcpy(stream_executor::DeviceAddressBase* device_dst,
                       const void* host_src, uint64_t size) override {
     StatusHelper status;
-    SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
+    SE_DeviceAddressBase se_base = ApiConverter::ToC(*device_dst);
     stream_executor::tpu::ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
         se_executor_, stream_, &se_base, host_src, size, status.c_status);
     return status.status();
   }
-  absl::Status Memcpy(stream_executor::DeviceMemoryBase* device_dst,
-                      const stream_executor::DeviceMemoryBase& device_src,
+  absl::Status Memcpy(stream_executor::DeviceAddressBase* device_dst,
+                      const stream_executor::DeviceAddressBase& device_src,
                       uint64_t size) override {
     return absl::UnimplementedError(
         "Memcpy from device to deviceis not implemented for TPU");
   }
   absl::Status Memcpy(void* host_dst,
-                      const stream_executor::DeviceMemoryBase& device_src,
+                      const stream_executor::DeviceAddressBase& device_src,
                       uint64_t size) override {
     StatusHelper status;
-    SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
+    SE_DeviceAddressBase se_base = ApiConverter::ToC(device_src);
     stream_executor::tpu::ExecutorApiFn()->TpuExecutor_MemcpyToHostFn(
         se_executor_, stream_, host_dst, &se_base, size, status.c_status);
     return status.status();

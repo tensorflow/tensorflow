@@ -26,6 +26,7 @@ limitations under the License.
 #include <iterator>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <ostream>
 #include <string>
 #include <tuple>
@@ -35,6 +36,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "experimental.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
@@ -55,8 +57,19 @@ std::ostream& operator<<(std::ostream& os, const PackIdentifier& p) {
 namespace {
 
 using testing::ElementsAreArray;
+using testing::Eq;
+using testing::Ge;
+using testing::IsNull;
+using testing::Ne;
+using testing::Not;
 
-TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
+static xnn_fingerprint kDefaultFingerprint{/*id=*/0xf00d, /*value=*/0xb33f};
+
+struct WeightCacheBuilderTest : testing::Test {
+  void SetUp() override { xnn_set_fingerprint(kDefaultFingerprint); }
+};
+
+TEST_F(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
   using std::size;
 
   const std::string payload = "This is some data in the file.";
@@ -72,7 +85,8 @@ TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
   const size_t payload_size = size(payload);
   void* buffer = builder.Reserve(payload_size);
   std::memcpy(buffer, payload.c_str(), payload_size);
-  auto loc = builder.Append(dummy_id, buffer, payload_size);
+  auto loc =
+      builder.Append(dummy_id, buffer, payload_size, kDefaultFingerprint.id);
 
   EXPECT_EQ(loc.size, payload_size);
   EXPECT_GE(builder.capacity(), payload_size);
@@ -123,7 +137,7 @@ TEST(WeightCacheBuilderTest, ReserveAppendWriteWorks) {
   EXPECT_THAT(cache_data, ElementsAreArray(payload));
 }
 
-TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
+TEST_F(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   using std::size;
 
   const std::string payload = "This is some data in the file.";
@@ -137,7 +151,8 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   ASSERT_TRUE(builder.StartBuildStep());
 
   const size_t payload_size = size(payload);
-  auto loc = builder.Append(dummy_id, payload.c_str(), payload_size);
+  auto loc = builder.Append(dummy_id, payload.c_str(), payload_size,
+                            kDefaultFingerprint.id);
 
   EXPECT_EQ(loc.size, payload_size);
 
@@ -186,7 +201,7 @@ TEST(WeightCacheBuilderTest, AppendWithoutReserveWriteWorks) {
   EXPECT_THAT(cache_data, ElementsAreArray(payload));
 }
 
-TEST(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
+TEST_F(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
   const std::string cache_path = testing::TempDir() + "/cache";
   const std::string payload = "This is some data in the file.";
   const PackIdentifier dummy_id{1, 2, 3};
@@ -198,7 +213,8 @@ TEST(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
   ASSERT_TRUE(builder.StartBuildStep());
 
   const size_t payload_size = size(payload);
-  auto loc = builder.Append(dummy_id, payload.c_str(), payload_size);
+  auto loc = builder.Append(dummy_id, payload.c_str(), payload_size,
+                            kDefaultFingerprint.id);
   EXPECT_EQ(loc.size, payload_size);
   ASSERT_TRUE(builder.StopBuildStep());
 
@@ -218,13 +234,13 @@ TEST(WeightCacheBuilderTest, CorruptBufferListFailsGracefully) {
   EXPECT_FALSE(builder.StartBuildStep());
 }
 
-TEST(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
+TEST_F(WeightCacheBuilderTest, InvalidFileDescriptorFails) {
   WeightCacheBuilder builder;
   EXPECT_FALSE(builder.Start("", FileDescriptor()));
   EXPECT_FALSE(builder.Start("/seldf/sedsft", FileDescriptor()));
 }
 
-TEST(WeightCacheBuilderTest, InMemoryCacheCanBeBuilt) {
+TEST_F(WeightCacheBuilderTest, InMemoryCacheCanBeBuilt) {
   if (!TfLiteXNNPackDelegateCanUseInMemoryWeightCacheProvider()) {
     GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
                     "isn't supported by the current system, skipping test.";
@@ -239,7 +255,7 @@ TEST(WeightCacheBuilderTest, InMemoryCacheCanBeBuilt) {
   EXPECT_EQ(errno, ENOENT);
 }
 
-TEST(WeightCacheBuilderTest, MultipleStepBuild) {
+TEST_F(WeightCacheBuilderTest, MultipleStepBuild) {
   using std::size;
 
   const std::string payload1 = "This is some data in the file.";
@@ -262,7 +278,8 @@ TEST(WeightCacheBuilderTest, MultipleStepBuild) {
     const size_t payload_size = size(payload1);
     void* buffer = builder.Reserve(payload_size);
     std::memcpy(buffer, payload1.c_str(), payload_size);
-    const auto loc = builder.Append(dummy_id1, buffer, payload_size);
+    const auto loc =
+        builder.Append(dummy_id1, buffer, payload_size, kDefaultFingerprint.id);
     EXPECT_EQ(loc.size, payload_size);
     EXPECT_GE(builder.capacity(), payload_size);
   }
@@ -270,7 +287,8 @@ TEST(WeightCacheBuilderTest, MultipleStepBuild) {
     const size_t payload_size = size(payload3);
     void* buffer = builder.Reserve(payload_size);
     std::memcpy(buffer, payload3.c_str(), payload_size);
-    const auto loc = builder.Append(dummy_id3, buffer, payload_size);
+    const auto loc =
+        builder.Append(dummy_id3, buffer, payload_size, kDefaultFingerprint.id);
     (void)loc;
   }
 
@@ -284,7 +302,8 @@ TEST(WeightCacheBuilderTest, MultipleStepBuild) {
     const size_t payload_size = size(payload2);
     void* buffer = builder.Reserve(payload_size);
     std::memcpy(buffer, payload2.c_str(), payload_size);
-    const auto loc = builder.Append(dummy_id2, buffer, payload_size);
+    const auto loc =
+        builder.Append(dummy_id2, buffer, payload_size, kDefaultFingerprint.id);
     EXPECT_EQ(loc.size, payload_size);
     EXPECT_GE(builder.capacity(), payload_size);
   }
@@ -300,6 +319,7 @@ TEST(WeightCacheBuilderTest, MultipleStepBuild) {
   ASSERT_NE(header.buffer_list_offset, 0);
   ASSERT_NE(header.buffer_list_size, 0);
   ASSERT_LE(header.buffer_list_offset + header.buffer_list_size, handle.size());
+  EXPECT_FALSE(header.stale);
 
   const cache::schema::BufferList* const packed_weights =
       cache::schema::GetBufferList(handle.data() + header.buffer_list_offset);
@@ -362,6 +382,54 @@ TEST(WeightCacheBuilderTest, MultipleStepBuild) {
   EXPECT_THAT(GetBufferData(buffer3), ElementsAreArray(payload3));
 }
 
+TEST(CacheMissHandlerTest, ReserveThenAppendWorks) {
+  const int kBufferSize = 5;
+  const size_t kMinOffset = 12;
+  CacheMissHandler cache_miss_handler;
+  cache_miss_handler.SetMinOffset(kMinOffset);
+  double* ptr = reinterpret_cast<double*>(
+      cache_miss_handler.Reserve(kBufferSize * sizeof(double)));
+  EXPECT_THAT(ptr, Not(IsNull()));
+  std::iota(ptr, ptr + kBufferSize, 1);
+
+  const PackIdentifier dummy_id{2, 3, 4};
+  BufferLocation loc = cache_miss_handler.Append(
+      dummy_id, ptr, kBufferSize * sizeof(double), kDefaultFingerprint.id);
+  EXPECT_THAT(loc.size, Eq(kBufferSize * sizeof(double)));
+  EXPECT_THAT(loc.offset, Ge(kMinOffset));
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(1));
+}
+
+TEST(CacheMissHandlerTest, AppendWithoutReserveWorks) {
+  const double kData[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  const size_t kMinOffset = 12;
+  CacheMissHandler cache_miss_handler;
+  cache_miss_handler.SetMinOffset(kMinOffset);
+  const PackIdentifier dummy_id{2, 3, 4};
+  BufferLocation loc = cache_miss_handler.Append(dummy_id, kData, sizeof(kData),
+                                                 kDefaultFingerprint.id);
+  EXPECT_THAT(loc.size, Eq(sizeof(kData)));
+  EXPECT_THAT(loc.offset, Ge(kMinOffset));
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(1));
+}
+
+TEST(CacheMissHandlerTest, MultipleAppendsReturnDifferentOffsets) {
+  const size_t kMinOffset = 12;
+  const double kData[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  CacheMissHandler cache_miss_handler;
+  cache_miss_handler.SetMinOffset(kMinOffset);
+  const PackIdentifier dummy_id1{2, 3, 4};
+  BufferLocation loc1 = cache_miss_handler.Append(
+      dummy_id1, kData, sizeof(kData), kDefaultFingerprint.id);
+  const PackIdentifier dummy_id2{1, 3, 4};
+  BufferLocation loc2 = cache_miss_handler.Append(
+      dummy_id2, kData, sizeof(kData), kDefaultFingerprint.id);
+  EXPECT_THAT(loc1.offset, Ne(loc2.offset));
+  EXPECT_THAT(loc1.offset, Ge(kMinOffset));
+  EXPECT_THAT(loc2.offset, Ge(kMinOffset));
+  EXPECT_THAT(cache_miss_handler.BufferCount(), Eq(2));
+}
+
 struct FakeContext {
   // Adds a new tensor and it's backing buffer to the context.
   //
@@ -389,7 +457,8 @@ struct FakeContext {
                                           const int weights_index) const {
     return {.seed = algorithm_seed,
             .kernel = buffers[weights_index].data(),
-            .bias = nullptr};
+            .bias = nullptr,
+            .fingerprint_id = kDefaultFingerprint.id};
   }
 
   // Creates a look up key for the XNNPack weight provider C interface.
@@ -398,7 +467,8 @@ struct FakeContext {
                                           const int bias_index) const {
     return {.seed = algorithm_seed,
             .kernel = buffers[weights_index].data(),
-            .bias = buffers[bias_index].data()};
+            .bias = buffers[bias_index].data(),
+            .fingerprint_id = kDefaultFingerprint.id};
   }
 
   // Helps creating fake packed data.
@@ -505,6 +575,7 @@ struct BuildMMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
       GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
                       "isn't supported by the current system, skipping test.";
     }
+    xnn_set_fingerprint(kDefaultFingerprint);
     AddTensors();
     EndSetup();
   }
@@ -652,6 +723,17 @@ TEST_P(BuildMMapWeightCacheProviderTest, BuildStepSequenceWorks) {
   EXPECT_FALSE(cache_provider.IsBuilding());
 }
 
+TEST_P(BuildMMapWeightCacheProviderTest, MemoryLockCacheWorks) {
+  enum { kWeightIndex, kBiasIndex };
+  ASSERT_TRUE(cache_provider.StartBuildStep());
+  ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1, kWeightIndex,
+                  kBiasIndex);
+  ASSERT_TRUE(cache_provider.StopBuildStep());
+
+  EXPECT_TRUE(cache_provider.LockMemory());
+  EXPECT_TRUE(cache_provider.UnlockMemory());
+}
+
 struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
   enum { kWeightIndex1, kBiasIndex, kWeightIndex2 };
 
@@ -660,15 +742,13 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
     if (IsSkipped()) {
       return;
     }
-
     ASSERT_TRUE(cache_provider.StartBuildStep());
-
     pack_id_1 = ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed1,
                                 kWeightIndex1, kBiasIndex);
     pack_id_2 = ctx.PackTensors(&cache_provider.GetCacheProvider(), kAlgoSeed2,
                                 kWeightIndex2);
-
     ASSERT_TRUE(cache_provider.StopBuildStep());
+    cache_provider.StopBuild();
   }
 
   xnn_weights_cache_look_up_key LookUpKey1() const {
@@ -679,6 +759,10 @@ struct LoadMMapWeightCacheProviderTest : BuildMMapWeightCacheProviderTest {
     return ctx.LookUpKey(kAlgoSeed2, kWeightIndex2);
   }
 
+  xnn_weights_cache_look_up_key InvalidLookUpKey() const {
+    return ctx.LookUpKey(kAlgoSeed3, kWeightIndex2);
+  }
+
   PackIdentifier pack_id_1;
   PackIdentifier pack_id_2;
 };
@@ -687,8 +771,43 @@ INSTANTIATE_TEST_SUITE_P(Test, LoadMMapWeightCacheProviderTest, TestVariants(),
                          TestVariant::Name);
 
 TEST_P(LoadMMapWeightCacheProviderTest, LookUpFailsIfKeyDoesntMatch) {
-  xnn_weights_cache_look_up_key look_up_key{};
+  xnn_weights_cache_look_up_key look_up_key = InvalidLookUpKey();
   EXPECT_EQ(cache_provider.LookUp(&look_up_key), SIZE_MAX);
+}
+
+TEST_P(LoadMMapWeightCacheProviderTest,
+       InsertOutsideOfBuildStepMarksCacheAsStale) {
+  char data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  xnn_weights_cache_look_up_key look_up_key = InvalidLookUpKey();
+  EXPECT_THAT(cache_provider.ReserveSpace(sizeof(data)), Not(IsNull()));
+  EXPECT_THAT(cache_provider.LookUpOrInsert(&look_up_key, data, sizeof(data)),
+              Not(Eq(SIZE_MAX)));
+  // Note: the in-memory weight cache doesn't write to a file so we don't care.
+  if (use_explicit_fd || !use_in_memory_cache) {
+    // Delete the cache provider to force a sync of the stale state.
+    cache_provider = MMapWeightCacheProvider();
+    EXPECT_THAT(IsCompatibleCacheFile(tmp_file), Eq(false));
+  }
+}
+
+TEST_P(LoadMMapWeightCacheProviderTest, LoadingAStaleFileRestartsABuild) {
+  char data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  xnn_weights_cache_look_up_key look_up_key = InvalidLookUpKey();
+  ASSERT_FALSE(cache_provider.IsBuilding());
+  EXPECT_THAT(cache_provider.ReserveSpace(sizeof(data)), Not(IsNull()));
+  EXPECT_THAT(cache_provider.LookUpOrInsert(&look_up_key, data, sizeof(data)),
+              Not(Eq(SIZE_MAX)));
+  // Note: the in-memory weight cache doesn't write to a file so we don't care.
+  if (use_in_memory_cache) {
+    return;
+  }
+  // Delete the cache provider to force a sync of the stale state.
+  cache_provider = MMapWeightCacheProvider();
+  EXPECT_FALSE(IsCompatibleCacheFile(tmp_file));
+
+  EXPECT_TRUE(cache_provider.LoadOrStartBuild(tmp_file.GetCPath(),
+                                              tmp_file.Duplicate()));
+  EXPECT_TRUE(cache_provider.CanStartBuildStep());
 }
 
 TEST_P(LoadMMapWeightCacheProviderTest, LookUpSucceeds) {
@@ -723,6 +842,7 @@ struct MMapWeightCacheProviderTest : testing::TestWithParam<TestVariant> {
       GTEST_SKIP() << "In-memory weight cache isn't enabled for this build or "
                       "isn't supported by the current system, skipping test.";
     }
+    xnn_set_fingerprint(kDefaultFingerprint);
   }
   bool use_explicit_fd = GetParam().use_explicit_fd;
   const char* const explicit_fd_path = GetParam().explicit_fd_path;
@@ -767,6 +887,7 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     std::unordered_map<size_t, size_t> tensor_buffer_identifiers;
     for (int i = 0; i < kBufferCount; ++i) {
       tensors[i].data.data = (void*)(fake_buffer_pointer + i);
+      tensors[i].bytes = 1;
       tensor_buffer_identifiers[i] = i;
     }
 
@@ -783,12 +904,14 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     const xnn_weights_cache_look_up_key look_up_key_1{
         .seed = fake_packing_algo_seed,
         .kernel = tensors[0].data.data,
-        .bias = tensors[1].data.data};
+        .bias = tensors[1].data.data,
+        .fingerprint_id = kDefaultFingerprint.id};
 
     const xnn_weights_cache_look_up_key look_up_key_3{
         .seed = fake_packing_algo_seed,
         .kernel = tensors[3].data.data,
-        .bias = tensors[4].data.data};
+        .bias = tensors[4].data.data,
+        .fingerprint_id = kDefaultFingerprint.id};
 
     // Lookup non-packed tensor.
     ASSERT_EQ(cache->look_up(cache, &look_up_key_1), SIZE_MAX);
@@ -829,7 +952,8 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     const xnn_weights_cache_look_up_key look_up_key_2{
         .seed = fake_packing_algo_seed,
         .kernel = tensors[2].data.data,
-        .bias = tensors[3].data.data};
+        .bias = tensors[3].data.data,
+        .fingerprint_id = kDefaultFingerprint.id};
 
     const size_t build_offset_2 = cache->look_up_or_insert(
         cache, &look_up_key_2, (void*)packed_data_ref_2,
@@ -904,17 +1028,20 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
     const xnn_weights_cache_look_up_key look_up_key_1{
         .seed = fake_packing_algo_seed,
         .kernel = tensors[0].data.data,
-        .bias = tensors[1].data.data};
+        .bias = tensors[1].data.data,
+        .fingerprint_id = kDefaultFingerprint.id};
 
     const xnn_weights_cache_look_up_key look_up_key_2{
         .seed = fake_packing_algo_seed,
         .kernel = tensors[2].data.data,
-        .bias = tensors[3].data.data};
+        .bias = tensors[3].data.data,
+        .fingerprint_id = kDefaultFingerprint.id};
 
     const xnn_weights_cache_look_up_key look_up_key_3{
         .seed = fake_packing_algo_seed,
         .kernel = tensors[3].data.data,
-        .bias = tensors[4].data.data};
+        .bias = tensors[4].data.data,
+        .fingerprint_id = kDefaultFingerprint.id};
 
     ASSERT_TRUE(cache->is_finalized(cache));
 
@@ -945,65 +1072,151 @@ TEST_P(MMapWeightCacheProviderTest, XnnpackCApiJourney) {
   }
 }
 
-TEST_P(MMapWeightCacheProviderTest, XnnpackRebuildOnVersionMismatch) {
+TEST_P(MMapWeightCacheProviderTest, CacheIsRebuiltOnFingerprintMismatch) {
+  if (use_in_memory_cache) {
+    GTEST_SUCCEED() << "In-memory cache is never reloaded.";
+    return;
+  }
   TempFileDesc temp_fd;
   const char* temp_fd_cpath = explicit_fd_path;
-  FileDescriptor temp_fd_value = temp_fd.Duplicate();
 
-  {  // Set bad build identifier
-    XNNPackCacheHeader header{.version = XNNPackCacheHeader::kVersion};
-    header.xnnpack_build_identifier[0] += 1;
-    ASSERT_TRUE(temp_fd_value.Write(&header, sizeof(header)));
+  xnn_fingerprint test_fingeprint{0x7357, 0xF33D};
+  {  // Build a cache file with a specific fingerprint.
+    // Clear fingerprints and add a test fingerprint to XNNPack.
+    xnn_clear_fingerprints();
+    xnn_set_fingerprint(test_fingeprint);
+
+    // Build a cache file.
+    MMapWeightCacheProvider cache_provider;
+
+    const char kernel[] = "Fake data.";
+    TfLiteTensor tensor;
+    tensor.data.data = (void*)kernel;
+    tensor.bytes = sizeof(kernel);
+    cache_provider.MapTensorIdentifiers(
+        &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 1}});
+    ASSERT_TRUE(
+        cache_provider.LoadOrStartBuild(temp_fd_cpath, temp_fd.Duplicate()));
+    ASSERT_TRUE(cache_provider.StartBuildStep());
+    const xnn_weights_cache_look_up_key look_up_key_1{
+        .seed = 1234,
+        .kernel = kernel,
+        .bias = nullptr,
+        .fingerprint_id = test_fingeprint.id};
+    xnn_weights_cache_t cache = &cache_provider.GetCacheProvider();
+    const size_t build_offset_1 = cache->look_up_or_insert(
+        cache, &look_up_key_1,
+        const_cast<void*>(reinterpret_cast<const void*>(kernel)),
+        sizeof(kernel));
+    (void)build_offset_1;
+    ASSERT_TRUE(cache_provider.StopBuildStep());
   }
 
   if (!use_explicit_fd) {
     temp_fd.Close();
     temp_fd_cpath = temp_fd.GetCPath();
-    temp_fd_value.Close();
-    if (use_in_memory_cache) {
-      temp_fd_cpath = kInMemoryCachePath;
-    }
   }
 
+  // Change the test fingerprint value.
+  test_fingeprint.value = 0xdeadb33f;
+  xnn_set_fingerprint(test_fingeprint);
+
+  // Reload the file.
   auto build_cache_provider = std::make_unique<MMapWeightCacheProvider>();
   MMapWeightCacheProvider& cache_provider = *build_cache_provider;
-  ASSERT_TRUE(cache_provider.LoadOrStartBuild(temp_fd_cpath,
-                                              temp_fd_value.Duplicate()));
+  ASSERT_TRUE(
+      cache_provider.LoadOrStartBuild(temp_fd_cpath, temp_fd.Duplicate()));
   ASSERT_TRUE(cache_provider.StartBuildStep());
 }
 
-class IsCompatibleCacheFileTest : public testing::Test {
+enum class IsCompatibleCacheFileTestOverload { kPath, kDescriptor };
+
+class IsCompatibleCacheFileTest
+    : public testing::TestWithParam<IsCompatibleCacheFileTestOverload> {
  public:
+  using Param = IsCompatibleCacheFileTestOverload;
+
   void SetUp() override {
-    header_.version = XNNPackCacheHeader::kVersion;
-    memcpy(header_.xnnpack_build_identifier,
-           xnn_experimental_get_build_identifier_data(),
-           xnn_experimental_get_build_identifier_size());
+    xnn_clear_fingerprints();
+    xnn_set_fingerprint(kDefaultFingerprint);
+
+    // Build a cache file.
+    MMapWeightCacheProvider cache_provider;
+
+    const char kernel[] = "Fake data.";
+    TfLiteTensor tensor;
+    tensor.data.data = (void*)kernel;
+    tensor.bytes = sizeof(kernel);
+    cache_provider.MapTensorIdentifiers(
+        &tensor, /*size=*/1, /*tensor_index_to_identifier=*/{{0, 1}});
+    ASSERT_TRUE(
+        cache_provider.LoadOrStartBuild(fd_.GetCPath(), fd_.Duplicate()));
+    ASSERT_TRUE(cache_provider.StartBuildStep());
+    const xnn_weights_cache_look_up_key look_up_key_1{
+        .seed = 1234,
+        .kernel = kernel,
+        .bias = nullptr,
+        .fingerprint_id = kDefaultFingerprint.id};
+    xnn_weights_cache_t cache = &cache_provider.GetCacheProvider();
+    const size_t build_offset_1 = cache->look_up_or_insert(
+        cache, &look_up_key_1,
+        const_cast<void*>(reinterpret_cast<const void*>(kernel)),
+        sizeof(kernel));
+    (void)build_offset_1;
+    ASSERT_TRUE(cache_provider.StopBuildStep());
   }
 
-  bool WriteHeaderAndReturnIsCompatibleCacheFile() {
-    const bool res = fd_.Write(&header_, sizeof(header_));
-    fd_.Close();
-    return res && IsCompatibleCacheFile(fd_.GetCPath());
+  void ChangeRuntimeFingerprintValue() {
+    xnn_set_fingerprint(
+        {kDefaultFingerprint.id, kDefaultFingerprint.value + 1});
   }
 
-  XNNPackCacheHeader header_{};
+  bool CallIsCompatibleCacheFile() {
+    switch (GetParam()) {
+      case Param::kPath:
+        fd_.Close();
+        return IsCompatibleCacheFile(fd_.GetCPath());
+      case Param::kDescriptor: {
+        const auto pos = fd_.GetPos();
+        EXPECT_NE(pos, 0);  // We test with a non zero position.
+        return IsCompatibleCacheFile(fd_);
+        EXPECT_EQ(fd_.GetPos(), pos);
+      }
+    }
+  }
+
   TempFileDesc fd_;
 };
 
-TEST_F(IsCompatibleCacheFileTest, ReturnsTrueForACorrectHeader) {
-  EXPECT_TRUE(WriteHeaderAndReturnIsCompatibleCacheFile());
+std::string Name(
+    const testing::TestParamInfo<IsCompatibleCacheFileTestOverload>& info) {
+  switch (info.param) {
+    case IsCompatibleCacheFileTestOverload::kPath:
+      return "WithPathOverload";
+    case IsCompatibleCacheFileTestOverload::kDescriptor:
+      return "WithFileDescriptorOverload";
+  }
 }
 
-TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongHeaderVersion) {
-  header_.version += 1;
-  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
+TEST_P(IsCompatibleCacheFileTest, ReturnsTrueWhenFingerprintMatches) {
+  EXPECT_TRUE(CallIsCompatibleCacheFile());
 }
 
-TEST_F(IsCompatibleCacheFileTest, ReturnsFalseForWrongBuildIdentifier) {
-  header_.xnnpack_build_identifier[0] += 1;
-  EXPECT_FALSE(WriteHeaderAndReturnIsCompatibleCacheFile());
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenFingerprintMismatches) {
+  ChangeRuntimeFingerprintValue();
+  EXPECT_FALSE(CallIsCompatibleCacheFile());
 }
+
+TEST_P(IsCompatibleCacheFileTest, ReturnsFalseWhenFingerprintIsNotFound) {
+  xnn_clear_fingerprints();
+  EXPECT_FALSE(CallIsCompatibleCacheFile());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Test, IsCompatibleCacheFileTest,
+    testing::Values(IsCompatibleCacheFileTest::Param::kPath,
+                    IsCompatibleCacheFileTest::Param::kDescriptor),
+    Name);
 
 }  // namespace
 }  // namespace tflite::xnnpack

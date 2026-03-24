@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/service/backend.h"
@@ -54,6 +55,7 @@ class CollectivePerfTableGen {
     ALL_GATHER,
     REDUCE_SCATTER,
     ALL_TO_ALL,
+    COLLECTIVE_PERMUTE,
   };
 
   struct Config {
@@ -62,10 +64,14 @@ class CollectivePerfTableGen {
     // Search space.
     StepSpec tensor_size_bytes_spec;
     std::vector<CollectiveType> collective_types = {
-        CollectiveType::ALL_REDUCE,
-        CollectiveType::ALL_GATHER,
-        CollectiveType::REDUCE_SCATTER,
-        CollectiveType::ALL_TO_ALL,
+        CollectiveType::ALL_REDUCE,         CollectiveType::ALL_GATHER,
+        CollectiveType::REDUCE_SCATTER,     CollectiveType::ALL_TO_ALL,
+        CollectiveType::COLLECTIVE_PERMUTE,
+    };
+    std::vector<CollectivePermuteCostModelType> collective_permute_patterns = {
+        CollectivePermuteCostModelType::kIntraPartitionOneWay,
+        CollectivePermuteCostModelType::kIntraPartitionTwoWayAllMutual,
+        CollectivePermuteCostModelType::kIntraPartitionTwoWayHasNonMutual,
     };
     std::vector<std::string> replica_groups_list;
 
@@ -79,7 +85,7 @@ class CollectivePerfTableGen {
   };
 
   struct ProfilingData {
-    absl::Duration runtime = absl::Nanoseconds(42);
+    absl::Duration runtime = absl::Nanoseconds(420);
   };
 
   // Factory method to create the perf table gen.
@@ -118,9 +124,13 @@ class CollectivePerfTableGen {
   std::vector<ExecutionProfile> Run(PjRtLoadedExecutable& executable);
 
   Config config_;
-  std::unique_ptr<Backend> backend_;
   std::unique_ptr<PjRtEnvironment> pjrt_env_;
 };
+
+// Builds a string of source target pairs for collective permute.
+// Right now, this only supports the intra-partition cases.
+std::string BuildSourceTargetPairs(CollectivePermuteCostModelType pattern,
+                                   int num_devices);
 
 }  // namespace xla::gpu
 

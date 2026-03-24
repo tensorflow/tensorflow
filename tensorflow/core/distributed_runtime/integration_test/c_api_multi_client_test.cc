@@ -174,7 +174,7 @@ TEST(CAPI, MultiClientSendRecv) {
         tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
     context->ListDevices(&device_attrs);
 
-    tensorflow::uint64 send_device_incarnation = 0;
+    uint64_t send_device_incarnation = 0;
     for (const auto& device_attr : device_attrs) {
       if (device_attr.name() == send_device) {
         send_device_incarnation = device_attr.incarnation();

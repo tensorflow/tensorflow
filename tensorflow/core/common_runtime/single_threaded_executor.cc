@@ -65,8 +65,8 @@ namespace {
 typedef absl::InlinedVector<TensorValue, 4UL> TensorValueVec;
 typedef absl::InlinedVector<AllocatorAttributes, 4UL> AllocatorAttributeVec;
 
-static const string& kSingleThreadedExecutor =
-    *new string("SINGLE_THREADED_EXECUTOR");
+static const std::string& kSingleThreadedExecutor =
+    *new std::string("SINGLE_THREADED_EXECUTOR");
 
 class SingleThreadedExecutorImpl : public Executor {
  public:

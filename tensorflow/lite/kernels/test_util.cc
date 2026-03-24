@@ -20,6 +20,8 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstring>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
@@ -39,7 +41,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "absl/synchronization/mutex.h"
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/compiler/mlir/lite/allocation.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
@@ -49,16 +54,20 @@ limitations under the License.
 #include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
+#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/simple_planner.h"
+#include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/serialization/writer_lib.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
+#include "tensorflow/lite/types/fp16.h"  // IWYU pragma: keep
 #include "tensorflow/lite/version.h"
 #include "tsl/platform/logging.h"
 
@@ -70,6 +79,25 @@ using ::testing::FloatNear;
 using ::testing::Matcher;
 
 namespace {
+
+// An Allocation that owns the memory and will delete it when the Allocation is
+// destroyed.
+class OwnedMemoryAllocation : public Allocation {
+ public:
+  OwnedMemoryAllocation(std::unique_ptr<uint8_t[]> data, size_t size)
+      : Allocation(DefaultErrorReporter(), tflite::Allocation::Type::kMemory),
+        data_(std::move(data)),
+        size_(size) {}
+
+  ~OwnedMemoryAllocation() override = default;
+  const void* base() const override { return data_.get(); }
+  size_t bytes() const override { return size_; }
+  bool valid() const override { return true; }
+
+ private:
+  std::unique_ptr<uint8_t[]> data_;
+  size_t size_;
+};
 
 // Converts an integer from the sign-and-magnitude representation to
 // the biased representation.  More precisely, let N be 2 to the
@@ -118,12 +146,6 @@ bool AlmostEquals(float lhs, float rhs, uint32_t max_ulps) {
   return DistanceBetweenSignAndMagnitudeNumbers(
              absl::bit_cast<uint32_t>(lhs), absl::bit_cast<uint32_t>(rhs)) <=
          max_ulps;
-}
-
-MATCHER_P3(FloatAbsRelNear, value, max_abs_err, max_rel_err, "") {
-  auto matcher =
-      FloatNear(value, std::max(max_abs_err, std::abs(max_rel_err * value)));
-  return ::testing::ExplainMatchResult(matcher, arg, result_listener);
 }
 
 MATCHER(Fp16Eq, "") {
@@ -178,6 +200,88 @@ std::string GetDumpedModelName() {
   return output_file_name;
 }
 
+// Modifies the dumped model as the following:
+// 1. Removes optional input tensors in subgraph inputs.
+// 2. Adds a signature def to the model.
+// 3. Copies input tensors from interpreter to model buffers.
+std::unique_ptr<FlatBufferModel> ModifyDumpedModel(
+    std::unique_ptr<FlatBufferModel> fb_model,
+    tflite::Interpreter* interpreter) {
+  std::unique_ptr<ModelT> model(fb_model->GetModel()->UnPack());
+  auto& graph = model->subgraphs[0];
+
+  // Remove optional inputs in subgraph.
+  std::vector<int> fixed_inputs;
+  for (int i : graph->inputs) {
+    if (i < 0 || i >= graph->tensors.size()) {
+      continue;
+    }
+    fixed_inputs.push_back(i);
+  }
+  graph->inputs = std::move(fixed_inputs);
+
+  // Copy inputs from interpreter to model buffers.
+  for (int i = 0; i < graph->inputs.size(); ++i) {
+    int input_idx = graph->inputs[i];
+    TfLiteTensor* t = interpreter->tensor(input_idx);
+    if (t == nullptr) {
+      TFLITE_LOG(INFO) << "input tensor is null";
+      continue;
+    }
+    char* raw_data = GetTensorData<char>(t);
+    if (raw_data == nullptr) {
+      TFLITE_LOG(INFO) << "input tensor data is null";
+      continue;
+    }
+    std::vector<uint8_t> data(t->bytes);
+    memcpy(data.data(), raw_data, t->bytes);
+    auto buffer = std::make_unique<BufferT>();
+    buffer->data = data;
+    model->buffers.push_back(std::move(buffer));
+    graph->tensors[input_idx]->buffer = model->buffers.size() - 1;
+  }
+
+  // Add a signature def to the model.
+  auto def = std::make_unique<SignatureDefT>();
+  def->subgraph_index = 0;
+  def->signature_key = "serving_default";
+  for (int i : graph->inputs) {
+    if (i < 0 || i >= graph->tensors.size()) {
+      continue;
+    }
+    auto map = std::make_unique<TensorMapT>();
+    map->name = graph->tensors[i]->name;
+    if (map->name.empty()) {
+      map->name = absl::StrFormat("input_%d", i);
+    }
+    map->tensor_index = i;
+    def->inputs.push_back(std::move(map));
+  }
+  for (int i : graph->outputs) {
+    if (i < 0 || i >= graph->tensors.size()) {
+      continue;
+    }
+    auto map = std::make_unique<TensorMapT>();
+    map->name = graph->tensors[i]->name;
+    if (map->name.empty()) {
+      map->name = absl::StrFormat("output_%d", i);
+    }
+    map->tensor_index = i;
+    def->outputs.push_back(std::move(map));
+  }
+  model->signature_defs.push_back(std::move(def));
+
+  // Pack and build a new FlatBufferModel from the modified model.
+  flatbuffers::FlatBufferBuilder fbb;
+  flatbuffers::Offset<Model> packed_model = Model::Pack(fbb, model.get());
+  FinishModelBuffer(fbb, packed_model);
+  auto data = std::make_unique<uint8_t[]>(fbb.GetSize());
+  memcpy(data.get(), fbb.GetBufferPointer(), fbb.GetSize());
+  auto allocation =
+      std::make_unique<OwnedMemoryAllocation>(std::move(data), fbb.GetSize());
+  return FlatBufferModel::VerifyAndBuildFromAllocation(std::move(allocation));
+}
+
 }  // namespace
 
 bool AllowFp16PrecisionForFp32() {
@@ -197,27 +301,6 @@ Matcher<std::tuple<float, float>> FloatingPointAlmostEq() {
     return Fp16Eq();
   }
   return FloatEq();
-}
-
-std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
-                                           float max_abs_err,
-                                           float fp16_max_abs_err,
-                                           float max_rel_err,
-                                           float fp16_max_rel_err) {
-  if (AllowFp16PrecisionForFp32()) {
-    if (fp16_max_abs_err == kFpErrorAuto) {
-      max_abs_err = std::max(max_abs_err, std::sqrt(max_abs_err));
-    } else {
-      max_abs_err = fp16_max_abs_err;
-    }
-    max_rel_err = fp16_max_rel_err;
-  }
-  std::vector<Matcher<float>> matchers;
-  matchers.reserve(values.size());
-  for (const float& v : values) {
-    matchers.emplace_back(FloatAbsRelNear(v, max_abs_err, max_rel_err));
-  }
-  return matchers;
 }
 
 std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
@@ -333,23 +416,30 @@ void SingleOpModel::SetCustomOp(
       CustomOptionsFormat_FLEXBUFFERS));
 }
 
-void SingleOpModel::AllocateAndDelegate(bool apply_delegate) {
-  CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
-      << "Cannot allocate tensors";
-  interpreter_->ResetVariableTensors();
+TfLiteStatus SingleOpModel::AllocateTensors() {
+  TfLiteStatus status = interpreter_->AllocateTensors();
+  if (status == kTfLiteOk) {
+    interpreter_->ResetVariableTensors();
+  }
+  return status;
+}
 
+void SingleOpModel::AllocateAndDelegate(bool apply_delegate) {
   // In some rare cases a test may need to postpone modifying the graph with
   // a delegate, e.g. if tensors are not fully specified. In such cases the
   // test has to explicitly call ApplyDelegate() when necessary.
   if (apply_delegate) ApplyDelegate();
+
+  CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
+      << "Cannot allocate tensors";
+  interpreter_->ResetVariableTensors();
 }
 
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads,
                                      bool allow_fp32_relax_to_fp16,
                                      bool apply_delegate,
-                                     bool allocate_and_delegate,
-                                     bool use_simple_allocator) {
+                                     bool allocate_and_delegate) {
   input_shapes_ = input_shapes;
   allow_fp32_relax_to_fp16_ = allow_fp32_relax_to_fp16;
   apply_delegate_ = apply_delegate;
@@ -374,7 +464,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   uint8_t* buffer_pointer = builder_.GetBufferPointer();
   UpdateOpVersion(buffer_pointer);
 
-  use_simple_allocator |=
+  bool use_simple_allocator =
       tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
           tflite::KernelTestDelegateProviders::kUseSimpleAllocator);
 
@@ -462,12 +552,11 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
 
 TfLiteStatus SingleOpModel::Invoke() { return interpreter_->Invoke(); }
 
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     bool use_simple_allocator) {
+void SingleOpModel::BuildInterpreter(
+    std::vector<std::vector<int>> input_shapes) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
                    /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true,
-                   use_simple_allocator);
+                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true);
 }
 
 // static
@@ -630,13 +719,33 @@ void SingleOpModel::MaybeDumpModel() {
   if (output_file_name.empty()) {
     return;
   }
+
+  // Get the model buffer.
+  std::unique_ptr<uint8_t[]> buffer;
+  size_t size = 0;
+  if (ModelWriter(interpreter_.get()).GetBuffer(&buffer, &size) != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to get model buffer";
+    return;
+  }
+  auto model = tflite::FlatBufferModel::BuildFromBuffer(
+      reinterpret_cast<char*>(buffer.get()), size);
+  if (model == nullptr) {
+    TFLITE_LOG(ERROR) << "Failed to build model from buffer";
+    return;
+  }
+  // Modify the model to set the input tensors to the model buffers and add
+  // signature def.
+  auto modified_model = ModifyDumpedModel(std::move(model), interpreter_.get());
+  const Allocation* allocation = modified_model->allocation();
+
   // Save the model to file
   std::string output_file_path =
       absl::StrCat(dump_directory, "/", output_file_name);
   TFLITE_LOG(INFO) << "Saving model to " << output_file_path;
-  if (ModelWriter(interpreter_.get()).Write(output_file_path) != kTfLiteOk) {
-    TFLITE_LOG(ERROR) << "Failed to save model to " << output_file_path;
-  }
+  std::ofstream output_file(output_file_path);
+  output_file.write(reinterpret_cast<const char*>(allocation->base()),
+                    allocation->bytes());
+  output_file.close();
 }
 
 SingleOpModel::~SingleOpModel() {

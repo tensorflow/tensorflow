@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -47,13 +48,16 @@ MATCHER_P2(InstructionMapping, instruction, num_tiling_parameters,
 
 class TilingSpecificationTest : public HloHardwareIndependentTestBase {
  public:
+  TilingSpecificationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   SymbolicTileAnalysis AnalyzeModule(HloModule* module) {
     SymbolicTileAnalysisOrError analysis_or_error =
         SymbolicTileAnalysis::AnalyzeComputation(
             *module->entry_computation()
                  ->root_instruction()
                  ->fused_instructions_computation(),
-            &mlir_context_, /*emitter_specific_constraints_builder=*/nullptr);
+            &mlir_context_,
+            /*emitter_specific_constraints_builder=*/nullptr);
 
     CHECK(std::holds_alternative<SymbolicTileAnalysis>(analysis_or_error));
     return std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));

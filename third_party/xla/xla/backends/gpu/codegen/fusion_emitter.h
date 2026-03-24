@@ -30,7 +30,6 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
@@ -46,7 +45,8 @@ namespace xla {
 namespace gpu {
 
 struct FusionEmissionResult {
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  std::unique_ptr<llvm::Module> module;
+  ThunkSequence thunks;
 };
 
 class FusionInterface {
@@ -61,10 +61,11 @@ class FusionInterface {
 // Interface for fusions that are implemented using cuda kernels.
 class KernelFusionInterface : public FusionInterface {
  public:
-  virtual ~KernelFusionInterface() = default;
+  ~KernelFusionInterface() override = default;
 
   // Returns the fusion's launch dimensions.
   virtual LaunchDimensions launch_dimensions() const = 0;
+  virtual int unroll_factor() const { return 0; }
 
   // Computes an indexing map from thread to output element(s) of the **hero**.
   //
@@ -97,25 +98,22 @@ class KernelFusionInterface : public FusionInterface {
   // block sizes in the given launch dimensions.
   static IndexingMap GetDefaultThreadIdIndexingMap(
       const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& shape, mlir::MLIRContext* ctx);
+      const Shape& shape, mlir::MLIRContext* mlir_context);
 };
 
+void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst);
+void AnnotateAttrsIfUnset(const emitters::KernelArguments& arguments,
+                          llvm::Function& dst);
+
 absl::StatusOr<llvm::Function*> BuildKernelPrototype(
-    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& suggested_name,
+    llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
+    const std::string& impl_fn_name, const std::string& unique_kernel_name,
     const emitters::KernelArguments& arguments,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
 
-absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
-    IrEmitterContext& ir_emitter_context, const std::string& impl_fn_name,
-    const std::string& unique_kernel_name,
-    const emitters::KernelArguments& arguments,
-    const LaunchDimensions& launch_dimensions, llvm::IRBuilderBase* builder);
-
-// Compute the kernel name. The opcode string may contain "-" which cannot be
-// in a PTX function name, so sanitize the name before uniquifying it.
-std::string GetSanitizedUniqueName(IrEmitterContext& ir_emitter_context,
-                                   const std::string& suggested_name);
+absl::StatusOr<llvm::Function*> RemoveUnusedTritonAbiArguments(
+    llvm::Module* llvm_module, IrEmitterContext& ir_emitter_context,
+    const std::string& sanitized_kernel_name, bool keep_scratch = false);
 
 absl::Status AnnotateKernelLaunchDimensions(
     const se::DeviceDescription& device_info,

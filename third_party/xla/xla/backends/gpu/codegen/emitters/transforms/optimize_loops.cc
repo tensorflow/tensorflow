@@ -34,8 +34,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
-#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"  // IWYU pragma: keep
+#include "xla/backends/gpu/codegen/emitters/transforms/passes.h"  // IWYU pragma: keep
 #include "xla/service/gpu/gpu_fusible.h"
 
 namespace xla {
@@ -53,6 +53,8 @@ bool IsExpensiveToUnroll(mlir::Operation* op) {
       mlir::func::CallOp,
       mlir::math::AcosOp,
       mlir::math::AcoshOp,
+      mlir::math::AsinOp,
+      mlir::math::AsinhOp,
       mlir::math::AtanhOp,
       mlir::math::SinhOp,
       mlir::scf::ForOp
@@ -61,7 +63,7 @@ bool IsExpensiveToUnroll(mlir::Operation* op) {
       >(op);
 }
 
-int GetUnrollingFactor(mlir::scf::ForOp op) {
+int GetUnrollingFactor(mlir::scf::ForOp op, int max_unroll_factor) {
   // We only unroll loops with a step of 1 and a lower bound of 0. That's the
   // only type we generate.
   if (auto step = op.getConstantStep(); !step || step->getSExtValue() != 1) {
@@ -120,7 +122,7 @@ int GetUnrollingFactor(mlir::scf::ForOp op) {
 
   // Always unroll if the trip count is smaller than the max unroll factor,
   // because it's very likely that the loop was meant to be unrolled.
-  if (trip_count <= MaxUnrollFactor()) {
+  if (trip_count <= max_unroll_factor) {
     return trip_count;
   }
 
@@ -131,25 +133,35 @@ int GetUnrollingFactor(mlir::scf::ForOp op) {
   return factor;
 }
 
-struct UnrollLoops : mlir::OpRewritePattern<mlir::scf::ForOp> {
+class UnrollLoops : public mlir::OpRewritePattern<mlir::scf::ForOp> {
+ public:
   using mlir::OpRewritePattern<mlir::scf::ForOp>::OpRewritePattern;
+
+  UnrollLoops(mlir::MLIRContext* context, int max_unroll_factor)
+      : mlir::OpRewritePattern<mlir::scf::ForOp>(context),
+        max_unroll_factor_(max_unroll_factor) {}
 
   mlir::LogicalResult matchAndRewrite(
       mlir::scf::ForOp op, mlir::PatternRewriter& rewriter) const override {
-    if (int factor = GetUnrollingFactor(op); factor > 1) {
+    if (int factor = GetUnrollingFactor(op, max_unroll_factor_); factor > 1) {
       return mlir::loopUnrollByFactor(op, factor);
     }
     return rewriter.notifyMatchFailure(op, "loop can't be unrolled");
   }
+
+ private:
+  int max_unroll_factor_;
 };
 
 class OptimizeLoopsPass
     : public impl::OptimizeLoopsPassBase<OptimizeLoopsPass> {
  public:
+  using impl::OptimizeLoopsPassBase<OptimizeLoopsPass>::OptimizeLoopsPassBase;
+
   void runOnOperation() override {
     // First unroll loops. If unrolling is possible, we prefer it.
     mlir::RewritePatternSet unroll_patterns(&getContext());
-    unroll_patterns.add<UnrollLoops>(&getContext());
+    unroll_patterns.add<UnrollLoops>(&getContext(), max_unroll_factor_);
     if (mlir::failed(mlir::applyPatternsGreedily(getOperation(),
                                                  std::move(unroll_patterns)))) {
       signalPassFailure();
@@ -160,9 +172,11 @@ class OptimizeLoopsPass
 
 }  // namespace
 
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateOptimizeLoopsPass() {
-  return std::make_unique<OptimizeLoopsPass>();
+std::unique_ptr<mlir::Pass> CreateOptimizeLoopsPass(int max_unroll_factor) {
+  OptimizeLoopsPassOptions options;
+  options.max_unroll_factor_ =
+      max_unroll_factor ? max_unroll_factor : MaxUnrollFactor();
+  return std::make_unique<OptimizeLoopsPass>(options);
 }
 
 }  // namespace gpu

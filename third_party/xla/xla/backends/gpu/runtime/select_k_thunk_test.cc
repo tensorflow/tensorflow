@@ -16,10 +16,12 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/select_k_thunk.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -30,48 +32,62 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::tsl::proto_testing::EqualsProto;
 
 TEST(SelectKThunkTest, ToProto) {
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
-  thunk_info.thunk_id = 456;
-
-  BufferAllocation alloc0(/*index=*/0, /*size=*/20, /*color=*/0);
-  BufferAllocation::Slice slice0(&alloc0, /*offset=*/0, /*size=*/20);
-
-  BufferAllocation alloc1(/*index=*/1, /*size=*/12, /*color=*/0);
-  BufferAllocation::Slice slice1(&alloc1, /*offset=*/0, /*size=*/12);
-
-  BufferAllocation alloc2(/*index=*/2, /*size=*/12, /*color=*/0);
-  BufferAllocation::Slice slice2(&alloc2, /*offset=*/0, /*size=*/12);
-
-  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {1, 5}), slice0);
-  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {1, 3}), slice1);
-  emitters::KernelArgument arg2(ShapeUtil::MakeShape(U32, {1, 3}), slice2);
-  arg0.set_written(false);
-  arg1.set_written(true);
-  arg2.set_written(true);
-
-  emitters::KernelArguments kernel_arguments({arg0, arg1, arg2});
-
   auto c1 = HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{.125f, 0.875f, .5f, .25f, 0.75f}}));
   auto topKInst = HloInstruction::CreateCustomCall(
       ShapeUtil::MakeShape(F32, {1, 5}), {c1.get()}, "__gpu$TopK");
 
-  SelectKThunk thunk(topKInst.get(), 1, 5, 3, F32, kernel_arguments,
-                     ThunkId(456));
+  Thunk::ThunkInfo thunk_info =
+      Thunk::ThunkInfo::WithProfileAnnotation(topKInst.get(), ThunkId{456});
+
+  std::vector<BufferAllocation> buffer_allocations = {
+      {/*index=*/0, /*size=*/20, /*color=*/0},
+      {/*index=*/1, /*size=*/12, /*color=*/0},
+      {/*index=*/2, /*size=*/12, /*color=*/0}};
+
+  BufferAllocation::Slice slice0(&buffer_allocations[0], /*offset=*/0,
+                                 /*size=*/20);
+  BufferAllocation::Slice slice1(&buffer_allocations[1], /*offset=*/0,
+                                 /*size=*/12);
+  BufferAllocation::Slice slice2(&buffer_allocations[2], /*offset=*/0,
+                                 /*size=*/12);
+
+  emitters::KernelArgument arg0(ShapeUtil::MakeShape(F32, {1, 5}), slice0);
+  emitters::KernelArgument arg1(ShapeUtil::MakeShape(F32, {1, 3}), slice1);
+  emitters::KernelArgument arg2(ShapeUtil::MakeShape(U32, {1, 3}), slice2);
+
+  emitters::KernelArguments kernel_arguments({arg0, arg1, arg2});
+
+  SelectKThunk thunk(std::move(thunk_info), 1, 5, 3, F32, kernel_arguments);
+
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(proto, EqualsProto(R"pb(
                 thunk_info { profile_annotation: "custom-call" thunk_id: 456 }
-                select_k_thunk {}
+                select_k_thunk {
+                  args { buffer_allocation_index: 0 size: 20 }
+                  args { buffer_allocation_index: 1 size: 12 }
+                  args { buffer_allocation_index: 2 size: 12 }
+                  batch_size: 1
+                  num_elements: 5
+                  k: 3
+                  dtype: F32
+                }
               )pb"));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SelectKThunk> deserialized,
+      SelectKThunk::FromProto(thunk.thunk_info(), proto.select_k_thunk(),
+                              buffer_allocations));
+  EXPECT_THAT(deserialized->ToProto(), IsOkAndHolds(EqualsProto(proto)));
 }
 
 }  // namespace

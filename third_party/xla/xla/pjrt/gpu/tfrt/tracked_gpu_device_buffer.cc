@@ -28,8 +28,8 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -44,7 +44,7 @@ ShapedBuffer GpuDeviceMemory::AsShapedBuffer(const Shape& on_device_shape,
                                              const PjRtDevice* device) const {
   ShapedBuffer shaped_buffer(on_device_shape, device->local_device_id().value(),
                              device->local_hardware_id().value());
-  ShapeTree<se::DeviceMemoryBase>::iterator iterator =
+  ShapeTree<se::DeviceAddressBase>::iterator iterator =
       shaped_buffer.buffers().begin();
   CHECK(iterator != shaped_buffer.buffers().end());
   iterator->second = buffer_;
@@ -60,19 +60,19 @@ void GpuDeviceMemory::SetUnOwned() {
 }
 
 absl::StatusOr<GpuDeviceMemory> GpuDeviceMemory::Allocate(
-    se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size) {
+    se::DeviceAddressAllocator* allocator, int device_ordinal, size_t size) {
   return Allocate(allocator, device_ordinal, size,
-                  static_cast<int>(se::MemoryType::kDevice));
+                  static_cast<int>(stream_executor::MemorySpace::kDevice));
 }
 
 absl::StatusOr<GpuDeviceMemory> GpuDeviceMemory::Allocate(
-    se::DeviceMemoryAllocator* allocator, int device_ordinal, size_t size,
+    se::DeviceAddressAllocator* allocator, int device_ordinal, size_t size,
     int64_t memory_space) {
   if (size == 0) {
-    return GpuDeviceMemory(se::DeviceMemoryBase());
+    return GpuDeviceMemory(se::DeviceAddressBase());
   }
   TF_ASSIGN_OR_RETURN(
-      stream_executor::OwningDeviceMemory memory,
+      stream_executor::ScopedDeviceAddress<uint8_t> memory,
       allocator->Allocate(device_ordinal, size, /*retry_on_failure=*/true,
                           memory_space));
   return GpuDeviceMemory(std::move(memory));

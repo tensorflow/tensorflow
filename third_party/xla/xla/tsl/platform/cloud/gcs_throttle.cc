@@ -60,7 +60,7 @@ void GcsThrottle::SetConfig(GcsThrottleConfig config) {
 void GcsThrottle::UpdateState() {
   // TODO(b/72643279): Switch to a monotonic clock.
   int64_t now = env_time_->GetOverridableNowSeconds();
-  uint64 delta_secs =
+  uint64_t delta_secs =
       std::max(int64_t{0}, now - static_cast<int64_t>(last_updated_secs_));
   available_tokens_ += delta_secs * config_.token_rate;
   available_tokens_ = std::min(available_tokens_, config_.bucket_size);

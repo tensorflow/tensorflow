@@ -35,16 +35,16 @@ void TensorList::Encode(VariantTensorData* data) const {
       invalid_indices.push_back(i);
     }
   }
-  string metadata;
+  std::string metadata;
   // TODO(b/118838800): Add a proto for storing the metadata.
   // Metadata format:
   // <num_invalid_tensors><invalid_indices><element_dtype><element_shape_proto>
-  core::PutVarint64(&metadata, static_cast<uint64>(invalid_indices.size()));
+  core::PutVarint64(&metadata, static_cast<uint64_t>(invalid_indices.size()));
   for (size_t i : invalid_indices) {
-    core::PutVarint64(&metadata, static_cast<uint64>(i));
+    core::PutVarint64(&metadata, static_cast<uint64_t>(i));
   }
-  core::PutVarint64(&metadata, static_cast<uint64>(element_dtype));
-  core::PutVarint64(&metadata, static_cast<uint64>(max_num_elements));
+  core::PutVarint64(&metadata, static_cast<uint64_t>(element_dtype));
+  core::PutVarint64(&metadata, static_cast<uint64_t>(max_num_elements));
   TensorShapeProto element_shape_proto;
   element_shape.AsProto(&element_shape_proto);
   element_shape_proto.AppendToString(&metadata);
@@ -55,9 +55,9 @@ bool TensorList::Decode(const VariantTensorData& data) {
   // TODO(srbs): Change the signature to Decode(VariantTensorData data) so
   // that we do not have to copy each tensor individually below. This would
   // require changing VariantTensorData::tensors() as well.
-  string metadata;
+  std::string metadata;
   data.get_metadata(&metadata);
-  uint64 scratch;
+  uint64_t scratch;
   absl::string_view iter(metadata);
   std::vector<size_t> invalid_indices;
   core::GetVarint64(&iter, &scratch);
@@ -91,7 +91,7 @@ bool TensorList::Decode(const VariantTensorData& data) {
   core::GetVarint64(&iter, &scratch);
   max_num_elements = static_cast<int>(scratch);
   TensorShapeProto element_shape_proto;
-  element_shape_proto.ParseFromString(string(iter.data(), iter.size()));
+  element_shape_proto.ParseFromString(iter);
   element_shape = PartialTensorShape(element_shape_proto);
   return true;
 }

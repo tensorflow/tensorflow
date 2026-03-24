@@ -83,7 +83,7 @@ class XStatsBuilder {
   void ParseAndAddStatValue(const XStatMetadata& metadata,
                             absl::string_view value) {
     int64_t int_value;
-    uint64 uint_value;
+    uint64_t uint_value;
     double double_value;
     if (absl::SimpleAtoi(value, &int_value)) {
       AddStatValue(metadata, int_value);
@@ -116,7 +116,7 @@ class XStatsBuilder {
     return nullptr;
   }
 
-  static uint64 IntOrUintValue(const XStat& stat) {
+  static uint64_t IntOrUintValue(const XStat& stat) {
     return stat.value_case() == XStat::kUint64Value ? stat.uint64_value()
                                                     : stat.int64_value();
   }
@@ -227,6 +227,10 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   int64_t TimestampPs() const { return LineTimestampPs() + OffsetPs(); }
   int64_t DurationPs() const { return event_->duration_ps(); }
   int64_t MetadataId() const { return event_->metadata_id(); }
+
+  void SetMetadataId(int64_t metadata_id) {
+    event_->set_metadata_id(metadata_id);
+  }
 
   void SetOffsetPs(int64_t offset_ps) { event_->set_offset_ps(offset_ps); }
 
@@ -430,6 +434,21 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   // Artifacts to accelerate the builders.
   int64_t last_event_metadata_id_ = 0LL;
   int64_t last_stat_metadata_id_ = 0LL;
+
+ public:
+  // Sets the last event metadata id so that the next call to
+  // CreateEventMetadata() will start from this id.
+  void SetLastEventMetadataId(int64_t last_event_metadata_id) {
+    last_event_metadata_id_ = last_event_metadata_id;
+  }
+
+  // Sets the last stat metadata id so that the next call to
+  // CreateStatMetadata() will start from this id.
+  void SetLastStatMetadataId(int64_t last_stat_metadata_id) {
+    last_stat_metadata_id_ = last_stat_metadata_id;
+  }
+
+ private:
   absl::flat_hash_map<std::string, XEventMetadata*> event_metadata_by_name_;
   absl::flat_hash_map<std::string, XStatMetadata*> stat_metadata_by_name_;
   absl::flat_hash_map<int64_t, XLine*> lines_by_id_;

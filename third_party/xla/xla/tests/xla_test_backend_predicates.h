@@ -53,7 +53,7 @@ inline constexpr const absl::string_view kCpu = "cpu";
 inline constexpr const absl::string_view kGpu = "gpu";
 inline constexpr const absl::string_view kA100 = "a100";
 inline constexpr const absl::string_view kH100 = "h100";
-inline constexpr const absl::string_view kB100 = "b100";
+inline constexpr const absl::string_view kB200 = "b200";
 inline constexpr const absl::string_view kP100 = "p100";
 inline constexpr const absl::string_view kV100 = "v100";
 
@@ -93,8 +93,6 @@ bool BackendIsStrict(absl::string_view device);
 
 bool BackendSupportsFloat64();
 bool BackendSupportsComplex128();
-
-bool UsingStreamExecutorGpuClient();
 
 // Useful to generate an intentionally empty set of inputs for a parameterized
 // test. This is needed when we are manipulating the inputs based on the

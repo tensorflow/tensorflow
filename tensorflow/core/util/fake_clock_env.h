@@ -43,11 +43,11 @@ class FakeClockEnv : public EnvWrapper {
   void AdvanceByMicroseconds(int64_t micros);
 
   // Returns the current time of FakeClockEnv in microseconds.
-  uint64 NowMicros() const override;
+  uint64_t NowMicros() const override;
 
  private:
   mutable mutex mu_;
-  uint64 current_time_ TF_GUARDED_BY(mu_) = 0;
+  uint64_t current_time_ TF_GUARDED_BY(mu_) = 0;
 
   FakeClockEnv(const FakeClockEnv&) = delete;
   void operator=(const FakeClockEnv&) = delete;

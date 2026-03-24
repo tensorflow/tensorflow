@@ -20,7 +20,9 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/resource_loader.h"
@@ -30,8 +32,9 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> RunFileCheck(const std::string& input,
-                                  absl::string_view pattern) {
+absl::StatusOr<bool> RunFileCheck(
+    const std::string& input, absl::string_view pattern,
+    absl::Span<const absl::string_view> additional_check_prefixes) {
   // Generate an input file for the FileCheck pattern.
   std::string pattern_path;
   auto env = tsl::Env::Default();
@@ -40,11 +43,13 @@ absl::StatusOr<bool> RunFileCheck(const std::string& input,
   }
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(env, pattern_path, pattern));
   VLOG(3) << "input: " << input;
-  return RunFileCheckWithPatternFile(input, pattern_path);
+  return RunFileCheckWithPatternFile(input, pattern_path,
+                                     additional_check_prefixes);
 }
 
 absl::StatusOr<bool> RunFileCheckWithPatternFile(
-    const std::string& input, const std::string& pattern_file) {
+    const std::string& input, const std::string& pattern_file,
+    absl::Span<const absl::string_view> additional_check_prefixes) {
   // Invoke FileCheck to check whether input matches `pattern`.
   std::string binary_name = "FileCheck";
   tsl::io::AppendDotExeIfWindows(binary_name);
@@ -53,24 +58,16 @@ absl::StatusOr<bool> RunFileCheckWithPatternFile(
           ? tsl::io::JoinPath("external", "llvm-project", "llvm", binary_name)
           : tsl::io::JoinPath("llvm", "llvm-project", "llvm", binary_name));
 
+  std::string check_prefixes = "--check-prefixes=CHECK";
+  for (const absl::string_view& prefix : additional_check_prefixes) {
+    absl::StrAppend(&check_prefixes, ",", prefix);
+  }
+
   tsl::SubProcess file_check_process;
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  std::string file_check_prefixes;
-#if GOOGLE_CUDA
-  file_check_prefixes = "--check-prefixes=CHECK,CHECK-PTX";
-#endif  // GOOGLE_CUDA
-#if TENSORFLOW_USE_ROCM
-  file_check_prefixes = "--check-prefixes=CHECK,CHECK-GCN";
-#endif  // TENSORFLOW_USE_ROCM
   file_check_process.SetProgram(
       file_check_path,
       {file_check_path, "-v", "-dump-input=fail", "--dump-input-filter=all",
-       file_check_prefixes, "--allow-unused-prefixes", pattern_file});
-#else  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
-  file_check_process.SetProgram(file_check_path,
-                                {file_check_path, "-v", "-dump-input=fail",
-                                 "--dump-input-filter=all", pattern_file});
-#endif
+       check_prefixes, "--allow-unused-prefixes", pattern_file});
   file_check_process.SetChannelAction(tsl::CHAN_STDIN, tsl::ACTION_PIPE);
   file_check_process.SetChannelAction(tsl::CHAN_STDERR, tsl::ACTION_PIPE);
   if (!file_check_process.Start()) {

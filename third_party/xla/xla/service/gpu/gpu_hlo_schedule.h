@@ -32,7 +32,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";
+inline constexpr absl::string_view kFingerprintBeforeLHS =
+    "fingerprint_before_lhs";
 
 // Converts sync collective instructions to a pair of async start and done
 // instructions.

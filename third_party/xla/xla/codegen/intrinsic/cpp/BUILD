@@ -1,6 +1,14 @@
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load(":cc_to_llvm_ir.bzl", "cc_to_llvm_ir")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
+load(
+    "//xla/tsl/platform/default:build_config_root.bzl",
+    "if_llvm_aarch32_available",
+    "if_llvm_hexagon_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
+load(":cc_to_llvm_ir.bzl", "cc_ir_header")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -21,10 +29,50 @@ cc_library(
     srcs = [],
 )
 
+cc_binary(
+    name = "embed_bitcode",
+    srcs = ["embed_bitcode.cc"],
+    defines = if_llvm_aarch32_available(["TF_LLVM_AARCH32_AVAILABLE=1"]) + [
+        "TF_LLVM_AARCH64_AVAILABLE=1",
+    ] + if_llvm_hexagon_available([
+        "TF_LLVM_HEXAGON_AVAILABLE=1",
+    ]) + if_llvm_powerpc_available([
+        "TF_LLVM_POWERPC_AVAILABLE=1",
+    ]) + if_llvm_system_z_available([
+        "TF_LLVM_S390X_AVAILABLE=1",
+    ]) + if_llvm_x86_available([
+        "TF_LLVM_X86_AVAILABLE=1",
+    ]),
+    deps = [
+        "//xla/util:embedded_constant_buffers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:AArch64CodeGen",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Object",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:TargetParser",
+    ] + if_llvm_aarch32_available([
+        "@llvm-project//llvm:ARMCodeGen",
+    ]) + if_llvm_hexagon_available([
+        "@llvm-project//llvm:HexagonCodeGen",
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCCodeGen",
+    ]) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86CodeGen",
+    ]),
+)
+
 cc_library(
     name = "tanh",
     srcs = ["tanh.cc"],
     hdrs = ["tanh.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
     deps = [
         ":vector_ops",
     ],
@@ -33,92 +81,119 @@ cc_library(
 cc_library(
     name = "vector_ops",
     hdrs = ["vector_ops.h"],
+    deps = [
+        "@eigen_archive//:eigen3",
+    ],
 )
 
-cc_to_llvm_ir(
-    name = "tanh_ir_file",
+cc_ir_header(
+    name = "tanh_ll",
     src = "tanh.cc",
-    out = "tanh.ll",
     deps = [
         ":cpp_context_provider",
         ":tanh",
         ":vector_ops",
     ],
-)
-
-genrule(
-    name = "tanh_ll_header",
-    srcs = [":tanh_ir_file"],
-    outs = ["tanh_ll.h"],
-    # This command wraps the IR text in a C++ raw string literal.
-    cmd = """
-        echo 'constexpr const char* tanh_ir_string = R"gen_ir(' > $@ && \\
-        cat $(location :tanh_ir_file) >> $@ && \\
-        echo ')gen_ir";' >> $@
-    """,
-)
-
-cc_library(
-    name = "tanh_ll_header_lib",
-    hdrs = [":tanh_ll_header"],
 )
 
 xla_cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
     deps = [
-        ":tanh",
-        ":tanh_ll_header_lib",
-        ":vector_ops",
+        ":_cpp_gen_intrinsics",
+        ":tanh_ll",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:test",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Support",
     ],
 )
 
 cc_library(
-    name = "eigen_unary",
+    name = "eigen_unary_lib",
     srcs = ["eigen_unary.cc"],
     hdrs = ["eigen_unary.h"],
+    copts = [
+        "-Wno-psabi",
+    ],
     deps = [
         ":vector_ops",
         "@eigen_archive//:eigen3",
     ],
 )
 
-cc_to_llvm_ir(
-    name = "eigen_unary_ir_file",
+cc_ir_header(
+    name = "eigen_unary_ll",
     src = "eigen_unary.cc",
-    out = "eigen_unary.ll",
     deps = [
         ":cpp_context_provider",
-        ":eigen_unary",
+        ":eigen_unary_lib",
+        ":vector_ops",
+        "@eigen_archive//:eigen3",
     ],
-)
-
-cc_library(
-    name = "eigen_unary_ll_header_lib",
-    hdrs = [":eigen_unary_ll_header"],
-)
-
-genrule(
-    name = "eigen_unary_ll_header",
-    srcs = [":eigen_unary_ir_file"],
-    outs = ["eigen_unary_ll.h"],
-    cmd = """
-        echo 'constexpr const char* eigen_unary_ir_string = R"gen_ir(' > $@ && \\
-        cat $(location :eigen_unary_ir_file) >> $@ && \\
-        echo ')gen_ir";' >> $@
-    """,
 )
 
 xla_cc_test(
     name = "eigen_unary_test",
     srcs = ["eigen_unary_test.cc"],
+    copts = [
+        "-Wno-psabi",
+    ],
     deps = [
-        ":eigen_unary",
-        ":eigen_unary_ll_header_lib",
+        ":_cpp_gen_intrinsics",
+        ":eigen_unary_lib",
+        ":eigen_unary_ll",
+        ":vector_ops",
+        "//xla/codegen/intrinsic:test_matchers",
         "@com_google_googletest//:gtest_main",
-        "@eigen_archive//:eigen3",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_binary(
+    name = "dump_llvm_ir",
+    srcs = ["dump_llvm_ir.cc"],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        ":eigen_unary_ll",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "_cpp_gen_intrinsics",
+    srcs = ["cpp_gen_intrinsics.cc"],
+    hdrs = ["cpp_gen_intrinsics.h"],
+    deps = [
+        ":eigen_unary_ll",
+        "//xla/codegen/intrinsic",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:IRReader",
+        "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TransformUtils",
+        "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+cc_library(
+    name = "_intrinsic_declarations",
+    hdrs = ["intrinsic_declarations.h"],
+    deps = [
+        ":_cpp_gen_intrinsics",
+        "//xla:xla_data_proto_cc",
+        "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic:type",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:ir_headers",
     ],
 )

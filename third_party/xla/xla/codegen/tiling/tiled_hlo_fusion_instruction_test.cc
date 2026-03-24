@@ -21,12 +21,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/gpu/model/experimental/symbolic_expr.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -36,8 +35,11 @@ using ::testing::HasSubstr;
 
 class TiledHloFusionInstructionTest : public HloHardwareIndependentTestBase {
  public:
+  TiledHloFusionInstructionTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
   mlir::MLIRContext mlir_context_;
-  gpu::SymbolicExprContext symbolic_expr_context_{&mlir_context_};
 };
 
 TEST_F(TiledHloFusionInstructionTest,
@@ -47,8 +49,8 @@ TEST_F(TiledHloFusionInstructionTest,
       ShapeUtil::MakeShape(PrimitiveType::F32, {32, 64}), "p0");
 
   IndexingMap tile_offsets_indexing = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
-                     &symbolic_expr_context_),
+      ParseSymbolicMap("(d0) -> (d0 floordiv 16, (d0 mod 16) * 16)",
+                       &mlir_context_),
       /*dim_upper_bounds=*/{8},
       /*symbol_upper_bounds=*/{});
 

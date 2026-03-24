@@ -112,7 +112,7 @@ TEST_F(AsyncKernelLaunchTest, ScheduledOverlappingAsyncComputations) {
       rhs = f32[2]{0} parameter(1)
       ROOT add = f32[2]{0} add(lhs, rhs)
     }
-    
+
     mul {
       lhs = f32[2]{0} parameter(0)
       rhs = f32[2]{0} parameter(1)

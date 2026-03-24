@@ -29,7 +29,7 @@ class ParallelBatch : public TFDataOptimizerBase {
   ParallelBatch() = default;
   ~ParallelBatch() override = default;
 
-  string name() const override { return "parallel_batch"; }
+  std::string name() const override { return "parallel_batch"; }
 
   bool UsesFunctionLibrary() const override { return false; }
 

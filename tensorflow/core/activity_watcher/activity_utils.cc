@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/activity_watcher/activity_utils.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
@@ -28,7 +29,7 @@ namespace tensorflow {
 namespace activity_watcher {
 
 std::unique_ptr<Activity> ActivityFromContext(
-    OpKernelContext* context, tsl::string name, ActivityCategory category,
+    OpKernelContext* context, std::string name, ActivityCategory category,
     Activity::Attributes additional_attributes) {
   Activity::Attributes attributes(std::move(additional_attributes));
   if (context) {

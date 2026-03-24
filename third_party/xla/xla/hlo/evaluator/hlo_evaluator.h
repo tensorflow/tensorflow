@@ -84,6 +84,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   virtual std::unique_ptr<HloEvaluator> CreateEmbedded(
       int64_t max_loop_iterations) {
     auto result = std::make_unique<HloEvaluator>(max_loop_iterations);
+    result->set_use_fast_path(use_fast_path_);
     result->set_custom_call_handler(custom_call_handler_);
     return result;
   }
@@ -232,6 +233,14 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // operation.
   void set_trace_mac_handler(TraceMACHandler handler) {
     trace_mac_handler_ = std::move(handler);
+  }
+
+  using EvalLiteralHandler = std::function<void(const HloInstruction* hlo,
+                                                const LiteralSlice& literal)>;
+  // Sets a handler that is called during evaluation for each literal, e.g., in
+  // case we want them dumped to a file.
+  void set_eval_literal_handler(EvalLiteralHandler handler) {
+    eval_literal_handler_ = std::move(handler);
   }
 
   // Returns the result of a matrix multiply `lhs x rhs`.
@@ -463,6 +472,9 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
 
   // Sets the evaluated literal for the given instruction.
   void SetEvaluatedLiteralFor(const HloInstruction* hlo, Literal literal) {
+    if (eval_literal_handler_) {
+      eval_literal_handler_(hlo, literal);
+    }
     state_.set_evaluated(hlo, std::move(literal));
   }
 
@@ -567,10 +579,19 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
     Literal result(shape);
-    TF_RETURN_IF_ERROR(
-        result.PopulateLinearParallel<ReturnT>([&](int64_t linear_index, int) {
-          return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
-        }));
+    bool same_layout =
+        LayoutUtil::Equal(operand->shape().layout(), shape.layout());
+    if (same_layout) {
+      TF_RETURN_IF_ERROR(result.PopulateLinearParallel<ReturnT>(
+          [&](int64_t linear_index, int /*thread_id*/) {
+            return unary_op(operand_literal.GetLinear<NativeT>(linear_index));
+          }));
+    } else {
+      TF_RETURN_IF_ERROR(result.PopulateParallel<ReturnT>(
+          [&](absl::Span<const int64_t> multi_index, int /*thread_id*/) {
+            return unary_op(operand_literal.Get<NativeT>(multi_index));
+          }));
+    }
     return result;
   }
 
@@ -602,10 +623,13 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   // Optional handler for tracing MAC operations (eg in dot and convolution).
   TraceMACHandler trace_mac_handler_;
 
+  // Optional handler exercised when evaluating literals.
+  EvalLiteralHandler eval_literal_handler_;
+
   // TODO(ezhulenev): Move cache members to EvaluationState.
   std::unique_ptr<TuplePointsToAnalysis> tuple_points_to_analysis_cache_;
 
-  // Set by EvaluateInternal and opportunitiscally used by the HandleXXX
+  // Set by EvaluateInternal and opportunistically used by the HandleXXX
   // functions. When non-empty, the HandleXXX function may evaluate the
   // instruction at only the given shape index.
   //

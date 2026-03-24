@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cstdint>
+#include <string>
 
 #include "absl/log/log.h"
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
@@ -185,7 +186,7 @@ class StatelessCategoricalOp : public CategoricalOp {
 
  private:
   DataType dtype_;
-  string device_type_string_;
+  std::string device_type_string_;
 
   StatelessCategoricalOp(const StatelessCategoricalOp&) = delete;
   void operator=(const StatelessCategoricalOp&) = delete;

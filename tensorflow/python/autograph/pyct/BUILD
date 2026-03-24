@@ -1,27 +1,30 @@
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "templates",
     srcs = ["templates.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
         ":ast_util",
         ":parser",
         ":qual_names",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "transpiler",
     srcs = ["transpiler.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":cache",
@@ -33,25 +36,27 @@ py_strict_library(
         ":templates",
         ":transformer",
         "//tensorflow/python/autograph/utils:ag_logging",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ast_util",
     srcs = ["ast_util.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
         ":parser",
         ":qual_names",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "loader",
     srcs = ["loader.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":origin_info",
@@ -59,49 +64,55 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "gast_util",
     srcs = ["gast_util.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
-    deps = ["@pypi_gast//:pkg"],
+    deps = ["@pypi//gast"],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
 )
 
-py_strict_library(
+py_library(
     name = "parser",
     srcs = ["parser.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":errors",
         ":inspect_utils",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_astunparse//:pkg",
-        "@pypi_gast//:pkg",
+        "@pypi//astunparse",
+        "@pypi//gast",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "naming",
     srcs = ["naming.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [":qual_names"],
 )
 
-py_strict_library(
+py_library(
     name = "inspect_utils",
     srcs = ["inspect_utils.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python/util:tf_inspect"],
 )
 
-py_strict_library(
+py_library(
     name = "origin_info",
     srcs = ["origin_info.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
@@ -109,61 +120,67 @@ py_strict_library(
         ":parser",
         ":pretty_printer",
         "//tensorflow/python/util:tf_inspect",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "anno",
     srcs = ["anno.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
-    deps = ["@pypi_gast//:pkg"],
+    deps = ["@pypi//gast"],
 )
 
-py_strict_library(
+py_library(
     name = "errors",
     srcs = ["errors.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
 )
 
-py_strict_library(
+py_library(
     name = "transformer",
     srcs = ["transformer.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
         ":parser",
         ":pretty_printer",
         ":templates",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "qual_names",
     srcs = ["qual_names.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
         ":parser",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cfg",
     srcs = ["cfg.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":anno",
-        "@pypi_astunparse//:pkg",
-        "@pypi_gast//:pkg",
+        "@pypi//astunparse",
+        "@pypi//gast",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "error_utils",
     srcs = ["error_utils.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":origin_info",
@@ -171,25 +188,28 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "cache",
     srcs = ["cache.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
 )
 
-py_strict_library(
+py_library(
     name = "pretty_printer",
     srcs = ["pretty_printer.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
-        "@pypi_gast//:pkg",
-        "@pypi_termcolor//:pkg",
+        "@pypi//gast",
+        "@pypi//termcolor",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "anno_test",
     srcs = ["anno_test.py"],
+    strict_deps = True,
     deps = [
         ":anno",
         #internal proto upb dep
@@ -197,9 +217,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ast_util_test",
     srcs = ["ast_util_test.py"],
+    strict_deps = True,
     deps = [
         ":anno",
         ":ast_util",
@@ -207,15 +228,16 @@ py_strict_test(
         ":parser",
         ":pretty_printer",
         ":qual_names",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "cache_test",
     srcs = ["cache_test.py"],
+    strict_deps = True,
     deps = [
         ":cache",
         #internal proto upb dep
@@ -223,36 +245,39 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "cfg_test",
     srcs = ["cfg_test.py"],
+    strict_deps = True,
     deps = [
         ":cfg",
         ":parser",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "loader_test",
     srcs = ["loader_test.py"],
+    strict_deps = True,
     deps = [
         ":ast_util",
         ":loader",
         ":parser",
         ":pretty_printer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:tf_inspect",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "error_utils_test",
     srcs = ["error_utils_test.py"],
+    strict_deps = True,
     deps = [
         ":error_utils",
         ":origin_info",
@@ -261,9 +286,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "inspect_utils_test",
     srcs = ["inspect_utils_test.py"],
+    strict_deps = True,
     deps = [
         ":inspect_utils",
         #internal proto upb dep
@@ -281,9 +307,10 @@ sh_test(
     tags = ["no_oss"],
 )
 
-py_strict_test(
+py_test(
     name = "naming_test",
     srcs = ["naming_test.py"],
+    strict_deps = True,
     deps = [
         ":naming",
         #internal proto upb dep
@@ -291,9 +318,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "origin_info_test",
     srcs = ["origin_info_test.py"],
+    strict_deps = True,
     deps = [
         ":anno",
         ":inspect_utils",
@@ -306,23 +334,25 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "parser_test",
     srcs = ["parser_test.py"],
+    strict_deps = True,
     deps = [
         ":ast_util",
         ":errors",
         ":parser",
         ":pretty_printer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "pretty_printer_test",
     srcs = ["pretty_printer_test.py"],
+    strict_deps = True,
     deps = [
         ":pretty_printer",
         #internal proto upb dep
@@ -330,9 +360,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "qual_names_test",
     srcs = ["qual_names_test.py"],
+    strict_deps = True,
     deps = [
         ":anno",
         ":parser",
@@ -342,42 +373,45 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "templates_test",
     srcs = ["templates_test.py"],
+    strict_deps = True,
     deps = [
         ":loader",
         ":parser",
         ":qual_names",
         ":templates",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "transformer_test",
     srcs = ["transformer_test.py"],
+    strict_deps = True,
     deps = [
         ":anno",
         ":origin_info",
         ":parser",
         ":transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "transpiler_test",
     srcs = ["transpiler_test.py"],
+    strict_deps = True,
     deps = [
         ":transformer",
         ":transpiler",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/platform:client_testlib",
     ],

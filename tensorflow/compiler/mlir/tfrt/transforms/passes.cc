@@ -88,7 +88,9 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
 
   AddTfDeviceAssignmentPasses(pm, options);
 
-  pm.addPass(tfrt_compiler::CreateTfrtXlaRewritePass());
+  if (options.allow_xla_cpu) {
+    pm.addPass(tfrt_compiler::CreateTfrtXlaRewritePass());
+  }
 
   // Here we perform TFRT specific optimization before standard TF optimization,
   // as TFRT-specific optimization may create more opportunities.
@@ -138,6 +140,8 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
       .max_enqueued_batches = options.max_enqueued_batches,
       .batch_queue_global_prioritization_num_threads =
           options.batch_queue_global_prioritization_num_threads,
+      .enable_priority_aware_batch_scheduler =
+          options.enable_priority_aware_batch_scheduler,
   }));
 
   // Deduplicate functions invoked by tf.BatchFunction with the same
@@ -152,7 +156,6 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   pm.addPass(mlir::createInlinerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateRemoveUnusedWhileResultsPass());
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   // Apply standard optimization after optimizing control flow ops.
   pm.addPass(mlir::createInlinerPass());
@@ -163,6 +166,7 @@ void CreateTFExecutorToTFPreInvariantOptimizationPipelineHelper(
   // by performing shape inference again after reference variable to resource
   // variable conversion. We should remove this after b/187876545 is fixed.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateLaunchToDeviceAttributePass());

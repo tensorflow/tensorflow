@@ -59,10 +59,10 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
       elemType.isF64())
     return true;
 
-  // I1, I4, I8, I16, I32, I64 types are allowed.
-  if (elemType.isInteger(1) || elemType.isInteger(4) || elemType.isInteger(8) ||
-      elemType.isInteger(16) || elemType.isInteger(32) ||
-      elemType.isInteger(64))
+  // I1, I2, I4, I8, I16, I32, I64 types are allowed.
+  if (elemType.isInteger(1) || elemType.isInteger(2) || elemType.isInteger(4) ||
+      elemType.isInteger(8) || elemType.isInteger(16) ||
+      elemType.isInteger(32) || elemType.isInteger(64))
     return true;
 
   // Complex<F<32>> is allowed.
@@ -70,9 +70,11 @@ bool IsCompatibleTypeWithTFLCastOp(Type type) {
       mlir::cast<ComplexType>(elemType).getElementType().isF32())
     return true;
 
-  // QUINT8 and UI8 are allowed.
+  // QUINT8, UI4, UI8, UI16, and UI32 are allowed.
   if (mlir::isa<TF::Quint8Type>(elemType) ||
-      (elemType.isInteger(8) && mlir::cast<IntegerType>(elemType).isUnsigned()))
+      (elemType.isInteger() && mlir::cast<IntegerType>(elemType).isUnsigned() &&
+       (elemType.isInteger(4) || elemType.isInteger(8) ||
+        elemType.isInteger(16) || elemType.isInteger(32))))
     return true;
 
   return false;

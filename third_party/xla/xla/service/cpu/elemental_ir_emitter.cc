@@ -49,6 +49,11 @@ absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtanh(
   return Unimplemented("atanh");
 }
 
+absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAsinh(
+    PrimitiveType prim_type, llvm::Value* value) {
+  return Unimplemented("asinh");
+}
+
 absl::StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(
     PrimitiveType prim_type, llvm::Value* value) {
   if (prim_type == F32 || prim_type == F64 || prim_type == F16) {

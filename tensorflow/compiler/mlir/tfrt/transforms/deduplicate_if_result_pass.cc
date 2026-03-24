@@ -94,7 +94,7 @@ mlir::func::FuncOp CreateBranchFunctionWithDeduplicatedResults(
   auto new_func_type = mlir::FunctionType::get(builder.getContext(), arg_types,
                                                new_result_types);
 
-  auto new_func = builder.create<mlir::func::FuncOp>(loc, name, new_func_type);
+  auto new_func = mlir::func::FuncOp::create(builder, loc, name, new_func_type);
   new_func.setVisibility(mlir::func::FuncOp::Visibility::Private);
 
   mlir::OpBuilder::InsertionGuard guard(builder);
@@ -110,8 +110,8 @@ mlir::func::FuncOp CreateBranchFunctionWithDeduplicatedResults(
 
   // Create the call op to the original func. The arguments are simply
   // the arguments from the wrapper function.
-  auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
-      loc, result_types, block->getArguments(), /*args_attrs=*/nullptr,
+  auto call_op = mlir::TF::PartitionedCallOp::create(
+      builder, loc, result_types, block->getArguments(), /*args_attrs=*/nullptr,
       /*res_attrs=*/nullptr,
       mlir::FlatSymbolRefAttr::get(func.getSymNameAttr()), empty_string_attr,
       empty_string_attr, empty_string_attr);
@@ -120,7 +120,7 @@ mlir::func::FuncOp CreateBranchFunctionWithDeduplicatedResults(
     results.push_back(call_op.getResult(i));
   }
 
-  builder.create<mlir::func::ReturnOp>(loc, results);
+  mlir::func::ReturnOp::create(builder, loc, results);
 
   return new_func;
 }
@@ -183,8 +183,8 @@ void DeduplicateIfOps(mlir::ModuleOp module) {
         new_result_types.push_back(op->getResult(i).getType());
       }
 
-      auto new_if_op = builder.create<mlir::TF::IfOp>(
-          op.getLoc(), new_result_types, op.getCond(), op.getInput(),
+      auto new_if_op = mlir::TF::IfOp::create(
+          builder, op.getLoc(), new_result_types, op.getCond(), op.getInput(),
           new_then_func.getSymName(), new_else_func.getSymName(),
           op.getIsStateless());
 

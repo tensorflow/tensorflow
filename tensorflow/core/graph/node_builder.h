@@ -67,8 +67,8 @@ class NodeBuilder {
     // * a nullptr Node* was passed to the NodeOut constructor, or
     // * an out-of-range index was passed to the NodeOut constructor.
     bool error;
-    string name;
-    int32 index;
+    std::string name;
+    int32_t index;
     DataType dt;
   };
 
@@ -132,7 +132,7 @@ class NodeBuilder {
   absl::StatusOr<Node*> Finalize(Graph* graph, bool consume = false);
 
   // Accessors for the values set in the constructor.
-  const string& node_name() const { return def_builder_.node_name(); }
+  const std::string& node_name() const { return def_builder_.node_name(); }
   const OpDef& op_def() const { return def_builder_.op_def(); }
 
  private:
@@ -157,8 +157,8 @@ class NodeBuilder {
   const OpRegistryInterface* op_registry_;
   std::vector<NodeOut> inputs_;
   std::vector<Node*> control_inputs_;
-  std::vector<string> errors_;
-  string assigned_device_;
+  std::vector<std::string> errors_;
+  std::string assigned_device_;
 };
 
 // IMPLEMENTATION -------------------------------------------------------------

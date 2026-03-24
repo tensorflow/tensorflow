@@ -16,20 +16,52 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_H_
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_REDUCE_H_
 
+#include <array>
 #include <cstdint>
 
 #include "absl/status/status.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/STLExtras.h"
 #include "xla/core/collectives/rank_id.h"
-#include "xla/service/collective_ops_utils.h"
+#include "xla/core/collectives/reduction_kind.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/launch_dimensions.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
+
+constexpr auto kSupportedFloatingPointTypes = std::array{F32, BF16, F64};
+constexpr auto kSupportedIntegralTypes = std::array{S32, S64};
+constexpr auto kSupportedPredicateTypes = std::array{PRED};
+constexpr auto kSupportedNumericReductionOps =
+    std::array{HloOpcode::kAdd, HloOpcode::kMultiply, HloOpcode::kMaximum,
+               HloOpcode::kMinimum};
+constexpr auto kSupportedLogicalReductionOps =
+    std::array{HloOpcode::kOr, HloOpcode::kAnd};
+
+// Returns the supported element types for all-reduce.
+inline auto SupportedTypes() {
+  return llvm::concat<const PrimitiveType>(gpu::kSupportedFloatingPointTypes,
+                                           gpu::kSupportedIntegralTypes,
+                                           gpu::kSupportedPredicateTypes);
+}
+
+// Returns the supported reduction ops for the given element type as a span.
+absl::Span<const HloOpcode> SupportedReductionOps(PrimitiveType element_type);
+
+// Returns the all-reduce strategy for the given input size.
+// If `is_multimem_enabled` is true, then multimem strategies are also
+// considered.
+se::gpu::AllReduceStrategy GetAllReduceStrategy(int64_t input_size_bytes,
+                                                bool is_multimem_enabled);
+
+// Returns the maximum supported all-reduce size in bytes for the given
+// strategy.
+int64_t GetMaxSupportedAllReduceSizeBytes(se::gpu::AllReduceStrategy strategy);
 
 // Returns the launch dimensions for the all-reduce kernel.
 // The launch dimensions are determined by the number of elements and the
@@ -79,15 +111,15 @@ absl::Status RunAllReduceKernel(
     PrimitiveType element_type,                      //
     ReductionKind reduction_kind,                    //
     se::gpu::AllReduceStrategy all_reduce_strategy,  //
-    se::DeviceMemoryBase symmetric_input_buffer,     //
-    se::DeviceMemoryBase local_input_buffer,         //
-    se::DeviceMemoryBase output_buffer,              //
+    se::DeviceAddressBase symmetric_input_buffer,    //
+    se::DeviceAddressBase local_input_buffer,        //
+    se::DeviceAddressBase output_buffer,             //
     RankId rank,                                     //
     int64_t num_ranks,                               //
     int64_t num_elements,                            //
-    se::DeviceMemoryBase symmetric_signal_buffer,    //
+    se::DeviceAddressBase symmetric_signal_buffer,   //
     uint32_t signal_value,                           //
-    se::DeviceMemoryBase metadata                    //
+    se::DeviceAddressBase metadata                   //
 );
 
 }  // namespace xla::gpu

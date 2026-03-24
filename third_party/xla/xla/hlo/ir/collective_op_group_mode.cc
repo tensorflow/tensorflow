@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/util.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -31,11 +32,15 @@ struct CollectiveOpGroupModeInfo {
 };
 
 const CollectiveOpGroupModeInfo kGroupModeInfos[] = {
-    {CollectiveOpGroupMode::kCrossReplica, "cross_replica"},
-    {CollectiveOpGroupMode::kCrossPartition, "cross_partition"},
-    {CollectiveOpGroupMode::kCrossReplicaAndPartition,
+    {CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA,
+     "cross_replica"},
+    {CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION,
+     "cross_partition"},
+    {CollectiveOpGroupMode::
+         COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION,
      "cross_replica_and_partition"},
-    {CollectiveOpGroupMode::kFlattenedID, "flattened_id"},
+    {CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
+     "flattened_id"},
 };
 
 }  // namespace
@@ -70,15 +75,16 @@ absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
       return InvalidArgument(
           "Cannot have use_global_device_ids=true without channel_id");
     }
-    return CollectiveOpGroupMode::kCrossReplica;
+    return CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA;
   }
   if (!use_global_device_ids.has_value()) {
-    return CollectiveOpGroupMode::kCrossPartition;
+    return CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION;
   }
   if (!*use_global_device_ids) {
-    return CollectiveOpGroupMode::kCrossReplicaAndPartition;
+    return CollectiveOpGroupMode::
+        COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA_AND_PARTITION;
   }
-  return CollectiveOpGroupMode::kFlattenedID;
+  return CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID;
 }
 
 }  // namespace xla

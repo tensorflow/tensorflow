@@ -437,8 +437,6 @@ class XLAConfigOptions:
       if compiler_pair == (SyclCompiler.ICPX, HostCompiler.CLANG):
         rc.append("build --config sycl")
         rc.append("build --config icpx_clang")
-      elif compiler_pair == (SyclCompiler.ICPX, HostCompiler.GCC):
-        rc.append("build --config sycl")
       else:
         raise NotImplementedError(" Sycl with host compiler not supported")
 
@@ -453,18 +451,6 @@ class XLAConfigOptions:
     # error: defining a type within 'offsetof' is a C23 extension
     if dpav.clang_major_version and dpav.clang_major_version >= 19:
       self.compiler_options.append("-Wno-c23-extensions")
-
-    # Avoid XNNPACK using `-mavxvnniint8` (needs clang-16+/gcc-13+)
-    if (
-        dpav.clang_major_version is not None and dpav.clang_major_version < 16
-    ) or (dpav.gcc_major_version is not None and dpav.gcc_major_version < 13):
-      rc.append("build --define=xnn_enable_avxvnniint8=false")
-
-    # Avoid XNNPACK using `-mavx512fp16` (needs clang-14+/gcc-12+).
-    if (
-        dpav.clang_major_version is not None and dpav.clang_major_version < 14
-    ) or (dpav.gcc_major_version is not None and dpav.gcc_major_version < 12):
-      rc.append("build --define=xnn_enable_avx512fp16=false")
 
     rc.append(f"build --action_env PYTHON_BIN_PATH={self.python_bin_path}")
     rc.append(f"build --python_path {self.python_bin_path}")
@@ -630,7 +616,6 @@ def main():
 def is_hermetic_build(backend: Backend, os_host: OS):
   return (
       backend != Backend.ROCM
-      and backend != Backend.SYCL
       and os_host == OS.LINUX
   )
 

@@ -241,8 +241,8 @@ class TFUniformQuantizedOpsPattern : public ConversionPattern {
       Type orig_op_type = op->getOperandTypes()[i];
       if (IsIllegalType(orig_op_type) &&
           !IsQintValueDefinedByIntToQintCast(op->getOperand(i))) {
-        new_operands.push_back(rewriter.create<TF::CastOp>(
-            op->getLoc(), orig_op_type, operands[i]));
+        new_operands.push_back(TF::CastOp::create(rewriter, op->getLoc(),
+                                                  orig_op_type, operands[i]));
       } else {
         new_operands.push_back(operands[i]);
       }
@@ -261,8 +261,8 @@ class TFUniformQuantizedOpsPattern : public ConversionPattern {
       Value &result = new_results[i];
       if (IsIllegalType(result.getType()) &&
           !IsQintValueQintToIntCast(op->getResult(i))) {
-        result = rewriter.create<TF::CastOp>(
-            op->getLoc(), ToLegalType(result.getType()), result);
+        result = TF::CastOp::create(rewriter, op->getLoc(),
+                                    ToLegalType(result.getType()), result);
       }
       // If the result is already consumed by qint->int CastOp, manually replace
       // its use by the new UQ op. This is because such CastOp is already legal,

@@ -104,14 +104,14 @@ class GraphDefBuilder {
 
     // Returns a string representation of the status associated with *this.
     // Returns the string `"OK"` if the status doesn't have any error.
-    string StatusToString() const {
+    std::string StatusToString() const {
       return status_->ok() ? "OK" : std::string(status_->message());
     }
 
     // Given the Op type name, return a name for a node of that type.
     // Uses the value set in WithName() if that has been called.  Otherwise,
     // returns a name built out of the Op type name.
-    string GetNameForOp(absl::string_view op) const;
+    std::string GetNameForOp(absl::string_view op) const;
 
     // Sets the device, adds control inputs, adds attrs, and calls Finalize().
     // If Finalize returns an error, it is saved and this function returns
@@ -133,17 +133,17 @@ class GraphDefBuilder {
     Options WithControlInputsImpl(absl::Span<Node* const> control_inputs);
     template <class T>
     Options WithAttrImpl(absl::string_view name, T&& value) {
-      attrs_.emplace_back(string(name), AttrValue());
+      attrs_.emplace_back(std::string(name), AttrValue());
       SetAttrValue(std::forward<T>(value), &attrs_.back().second);
       return *this;
     }
 
     Graph* const graph_;
     absl::Status* const status_;
-    string name_;
-    string device_;
+    std::string name_;
+    std::string device_;
     std::vector<Node*> control_inputs_;
-    std::vector<std::pair<string, AttrValue>> attrs_;
+    std::vector<std::pair<std::string, AttrValue>> attrs_;
   };
 
   // Start building a new graph.
@@ -176,7 +176,7 @@ class GraphDefBuilder {
 
   // Returns whether a user-defined function with `name` already exists in the
   // graph.
-  bool HasFunction(const string& name) {
+  bool HasFunction(const std::string& name) {
     return flib_def_.Find(name) != nullptr;
   }
 
@@ -196,18 +196,19 @@ namespace ops {
 typedef NodeBuilder::NodeOut NodeOut;
 
 // For adding an Op with no inputs to a GraphDefBuilder.
-Node* SourceOp(const string& op_name, const GraphDefBuilder::Options& opts);
+Node* SourceOp(const std::string& op_name,
+               const GraphDefBuilder::Options& opts);
 
 // For adding an Op with one input to a GraphDefBuilder.
-Node* UnaryOp(const string& op_name, NodeOut input,
+Node* UnaryOp(const std::string& op_name, NodeOut input,
               const GraphDefBuilder::Options& opts);
 
 // For adding an Op with two inputs to a GraphDefBuilder.
-Node* BinaryOp(const string& op_name, NodeOut a, NodeOut b,
+Node* BinaryOp(const std::string& op_name, NodeOut a, NodeOut b,
                const GraphDefBuilder::Options& opts);
 
 // For adding an Op with three inputs to a GraphDefBuilder.
-Node* TernaryOp(const string& op_name, NodeOut a, NodeOut b, NodeOut c,
+Node* TernaryOp(const std::string& op_name, NodeOut a, NodeOut b, NodeOut c,
                 const GraphDefBuilder::Options& opts);
 
 }  // namespace ops

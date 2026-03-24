@@ -16,12 +16,14 @@ limitations under the License.
 #include <cstddef>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
-#include "xla/stream_executor/host_or_device_scalar.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/types.h"
 
@@ -61,11 +63,13 @@ class BlasLt : public gpu::BlasLt {
         blas::Transpose trans_a = blas::Transpose::kNoTranspose,
         blas::Transpose trans_b = blas::Transpose::kNoTranspose,
         Epilogue epilogue = Epilogue::kDefault,
-        PointerMode pointer_mode = PointerMode::kHost);
+        PointerMode pointer_mode = PointerMode::kHost,
+        gpu::ScaleMode scale_mode = gpu::ScaleMode::kNone);
 
     hipblasComputeType_t compute_type() const { return compute_type_; }
     hipDataType scale_type() const { return datatype_; }
     bool has_bias_epilogue() const { return has_bias_epilogue_; }
+    gpu::ScaleMode scale_mode() const { return scale_mode_; }
     hipblasPointerMode_t pointer_mode() const {
       return HIPBLAS_POINTER_MODE_HOST;
     }
@@ -73,16 +77,19 @@ class BlasLt : public gpu::BlasLt {
 
    private:
     MatmulDesc(hipblasLtMatmulDesc_t handle, hipblasComputeType_t compute_type,
-               hipDataType datatype, bool bias_epilogue)
+               hipDataType datatype, bool bias_epilogue,
+               gpu::ScaleMode scale_mode)
         : handle_(handle, wrap::hipblasLtMatmulDescDestroy),
           compute_type_(compute_type),
           datatype_(datatype),
-          has_bias_epilogue_(bias_epilogue) {}
+          has_bias_epilogue_(bias_epilogue),
+          scale_mode_(scale_mode) {}
 
     Owned<hipblasLtMatmulDesc_t> handle_;
     hipblasComputeType_t compute_type_;
     hipDataType datatype_;
     bool has_bias_epilogue_;
+    gpu::ScaleMode scale_mode_;
   };
 
   struct MatmulPlan : public gpu::BlasLt::MatmulPlan {

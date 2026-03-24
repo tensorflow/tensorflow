@@ -1,8 +1,4 @@
 load(
-    "@io_bazel_rules_closure//closure:defs.bzl",
-    "closure_proto_library",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_copts",
@@ -150,11 +146,6 @@ tf_pyclif_proto_library(
 
 tf_jspb_proto_library(
     name = "example_jspb_proto",
-    deps = [":example_protos"],
-)
-
-closure_proto_library(
-    name = "example_protos_closure",
     deps = [":example_protos"],
 )
 

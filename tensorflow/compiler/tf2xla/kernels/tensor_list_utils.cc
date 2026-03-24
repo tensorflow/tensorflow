@@ -393,7 +393,7 @@ absl::Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
 
       std::vector<xla::XlaOp> start_indices(
           element_part_shape.dimensions().size() + 1,
-          xla::ConstantR0<int32>(b, 0));
+          xla::ConstantR0<int32_t>(b, 0));
       start_indices[0] = push_index;
 
       xla::XlaOp list_part = xla::GetTupleElement(list, i);
@@ -409,7 +409,7 @@ absl::Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
     xla::XlaOp update = xla::Reshape(element, element_dims);
 
     std::vector<xla::XlaOp> start_indices(element_shape.dimensions().size() + 1,
-                                          xla::ConstantR0<int32>(b, 0));
+                                          xla::ConstantR0<int32_t>(b, 0));
     start_indices[0] = push_index;
 
     xla::XlaOp list_part = xla::GetTupleElement(list, 0);
@@ -418,7 +418,7 @@ absl::Status ExecuteTensorListPushBack(xla::XlaOp list, xla::XlaOp element,
     result_parts.push_back(updated_list_part);
   }
 
-  xla::XlaOp updated_push_index = push_index + xla::ConstantR0<int32>(b, 1);
+  xla::XlaOp updated_push_index = push_index + xla::ConstantR0<int32_t>(b, 1);
   result_parts.push_back(updated_push_index);
 
   *result = xla::Tuple(b, result_parts);
@@ -441,14 +441,14 @@ absl::Status ExecuteTensorListPopBack(xla::XlaOp list, xla::XlaOp* list_result,
   TF_ASSIGN_OR_RETURN(xla::Shape list_shape, b->GetShape(list));
   int list_tuple_size = xla::ShapeUtil::TupleElementCount(list_shape);
   xla::XlaOp push_index = xla::GetTupleElement(list, list_tuple_size - 1);
-  push_index = push_index - xla::ConstantR0<int32>(b, 1);
+  push_index = push_index - xla::ConstantR0<int32_t>(b, 1);
 
   std::vector<xla::XlaOp> list_result_parts, element_result_parts;
   for (int i = 0; i < list_tuple_size - 1; i++) {
     const xla::Shape& list_part_shape =
         xla::ShapeUtil::GetTupleElementShape(list_shape, i);
     std::vector<xla::XlaOp> start_indices(list_part_shape.dimensions().size(),
-                                          xla::ConstantR0<int32>(b, 0));
+                                          xla::ConstantR0<int32_t>(b, 0));
     start_indices[0] = push_index;
 
     std::vector<int64_t> slice_shape =
@@ -496,7 +496,7 @@ absl::Status ExecuteTensorListSetItem(xla::XlaOp list, xla::XlaOp index,
   xla::XlaOp update = xla::Reshape(element, element_dims);
 
   std::vector<xla::XlaOp> start_indices(element_shape.dimensions().size() + 1,
-                                        xla::ConstantR0<int32>(b, 0));
+                                        xla::ConstantR0<int32_t>(b, 0));
   start_indices[0] = index;
 
   xla::XlaOp list_part = xla::GetTupleElement(list, 0);
@@ -550,7 +550,7 @@ absl::Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
   const xla::Shape& buffer_shape =
       xla::ShapeUtil::GetTupleElementShape(list_shape, 0);
   std::vector<xla::XlaOp> start_indices(buffer_shape.dimensions().size(),
-                                        xla::ConstantR0<int32>(b, 0));
+                                        xla::ConstantR0<int32_t>(b, 0));
   start_indices[0] = index;
 
   std::vector<int64_t> slice_shape =
@@ -585,7 +585,7 @@ absl::Status ExecuteTensorListFromTensor(int push_index, xla::XlaOp tensor,
   }
 
   std::vector<xla::XlaOp> result_parts{tensor,
-                                       xla::ConstantR0<int32>(b, push_index)};
+                                       xla::ConstantR0<int32_t>(b, push_index)};
   *result = xla::Tuple(b, result_parts);
   return absl::OkStatus();
 }

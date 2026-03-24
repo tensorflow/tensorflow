@@ -62,7 +62,7 @@ class BaseDenseAttention(Layer):
         `mask==False` do not contribute to the result.
     training: Python boolean indicating whether the layer should behave in
       training mode (adding dropout) or in inference mode (no dropout).
-    return_attention_scores: bool, it `True`, returns the attention scores
+    return_attention_scores: bool, if `True`, returns the attention scores
       (after masking and softmax) as an additional output argument.
 
   Output:

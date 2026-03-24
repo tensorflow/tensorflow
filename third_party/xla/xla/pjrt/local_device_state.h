@@ -24,9 +24,14 @@ limitations under the License.
 #include <stack>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -111,13 +116,14 @@ class LocalDeviceState {
                    AllocationModel allocation_model,
                    int max_inflight_computations, bool allow_event_reuse,
                    bool use_callback_stream, int device_ordinal = -1,
-                   std::optional<StreamOptions> stream_options = std::nullopt);
+                   std::optional<StreamOptions> stream_options = std::nullopt,
+                   bool schedule_async = false);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
 
-  PjRtLocalDeviceId local_device_id() { return local_device_id_; }
-  PjRtLocalHardwareId local_hardware_id() { return local_hardware_id_; }
+  LocalDeviceId local_device_id() { return local_device_id_; }
+  LocalChipId local_hardware_id() { return local_hardware_id_; }
 
   LocalClient* client() const { return client_; }
 
@@ -168,9 +174,13 @@ class LocalDeviceState {
   // Enqueues a copy of `src_buffer` to `dst_buffer` onto `transfer_stream`.
   virtual absl::Status ThenMemcpyDeviceToDevice(
       se::Stream* transfer_stream, se::Stream* dst_stream,
-      se::DeviceMemoryBase src_buffer, se::DeviceMemoryBase dst_buffer);
+      se::DeviceAddressBase src_buffer, se::DeviceAddressBase dst_buffer);
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
+
+  WorkerThread* async_dispatch_thread() const {
+    return async_dispatch_thread_.get();
+  }
 
   WorkerThread* cleanup_thread() const { return cleanup_thread_.get(); }
 
@@ -209,7 +219,8 @@ class LocalDeviceState {
     return allow_delete_before_fulfill_;
   }
 
-  absl::Status AllocateAndRecordEvent(BufferSequencingEventRef event,
+  absl::Status AllocateAndRecordEvent(AsyncWorkRunner* async_work_runner,
+                                      BufferSequencingEventRef event,
                                       se::Stream* stream);
 
   size_t GetNextComputeStreamSyncPoint() {
@@ -220,7 +231,8 @@ class LocalDeviceState {
   // which only incur the expense of constructing a cuda event if they're really
   // needed. This allows constructing a definition event per buffer.
   absl::StatusOr<BufferSequencingEventRef> GetEventForComputeStreamSyncPoint(
-      size_t sync_point, tsl::thread::ThreadPool* thread_pool);
+      size_t sync_point, AsyncWorkRunner* async_work_runner,
+      bool nullptr_if_past = false);
 
  private:
   absl::Status SynchronizeAllActivity();
@@ -233,8 +245,8 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  PjRtLocalDeviceId local_device_id_;
-  PjRtLocalHardwareId local_hardware_id_;
+  LocalDeviceId local_device_id_;
+  LocalChipId local_hardware_id_;
   se::StreamExecutor* const executor_;
   LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;
@@ -272,6 +284,10 @@ class LocalDeviceState {
 
   // A worker thread, used for replicated computation launches.
   std::unique_ptr<WorkerThread> execute_thread_;
+
+  // A worker thread, used for launching executables async
+  // Only if schedule_async=true is passed in the constructor.
+  std::unique_ptr<WorkerThread> async_dispatch_thread_;
 
   // A worker thread, used for callbacks. It is necessary that this be a
   // different thread to the execute thread because we acquire the compute

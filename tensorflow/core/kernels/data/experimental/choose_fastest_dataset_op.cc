@@ -139,7 +139,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<ChooseFastestIterator>(
           ChooseFastestIterator::Params{
               this, absl::StrCat(prefix, "::ChooseFastest")});
@@ -153,7 +153,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "ChooseFastestDatasetOp::Dataset";
     }
 

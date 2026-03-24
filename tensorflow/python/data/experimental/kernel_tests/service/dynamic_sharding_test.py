@@ -461,12 +461,9 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     output = []
     iter1 = self.getNext(dataset1)
     iter2 = self.getNext(dataset2)
-    for _ in range(5):
-      output.append(self.evaluate(iter1()))
-      output.append(self.evaluate(iter2()))
     output.extend(self.getIteratorOutput(iter1))
     output.extend(self.getIteratorOutput(iter2))
-    self.assertEqual(sorted(output), list(range(100)))
+    self.assertCountEqual(output, list(range(100)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testDifferentDatasetIdsForSameJob(self):

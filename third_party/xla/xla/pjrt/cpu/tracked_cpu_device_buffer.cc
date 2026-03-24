@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/alignment.h"
 #include "xla/future.h"
+#include "xla/pjrt/abstract_tracked_device_buffer.h"
 #include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
@@ -48,28 +49,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-// Returns an AsyncValueRef<CpuEvent> that will be ready after all the async
-// values in `events` are ready. If errors occurs, one of the errors will be
-// propagated through the returned async value.
-tsl::AsyncValueRef<CpuEvent> AfterAll(
-    absl::Span<const tsl::AsyncValueRef<CpuEvent>> events) {
-  if (events.empty()) {
-    return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
-  }
-  if (events.size() == 1) {
-    return events.front();
-  }
-
-  tsl::CountDownAsyncValueRef<CpuEvent> after_all(events.size());
-  for (auto& event : events) {
-    event.AndThen([after_all](absl::Status status) mutable {
-      after_all.CountDown(std::move(status));
-    });
-  }
-
-  return std::move(after_all).AsRef();
-}
-
 //===----------------------------------------------------------------------===//
 // Default CpuDeviceMemory::RawMemory allocator.
 //===----------------------------------------------------------------------===//
@@ -80,7 +59,8 @@ class AlignedMemory final : public CpuDeviceMemory::RawMemory {
       : base_(base), size_bytes_(size_bytes) {}
 
   ~AlignedMemory() final {
-    tsl::port::AlignedSizedFree(base_, cpu::MinAlign(), size_bytes_);
+    tsl::port::AlignedSizedFree(base_, size_bytes_,
+                                static_cast<std::align_val_t>(cpu::MinAlign()));
   }
 
   void* base() const final { return base_; }
@@ -95,7 +75,8 @@ class AlignedAllocator final : public CpuDeviceMemory::Allocator {
  public:
   absl::StatusOr<std::unique_ptr<CpuDeviceMemory::RawMemory>> Allocate(
       size_t size_bytes, size_t alignment) const final {
-    if (void* base = tsl::port::AlignedMalloc(size_bytes, alignment)) {
+    if (void* base = tsl::port::AlignedMalloc(
+            size_bytes, static_cast<std::align_val_t>(alignment))) {
       return std::make_unique<AlignedMemory>(base, size_bytes);
     }
     return ResourceExhausted("Out of memory allocating %d bytes.", size_bytes);
@@ -208,42 +189,27 @@ absl::Status CpuDeviceMemory::AllocateInto(
 //===----------------------------------------------------------------------===//
 
 TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
-    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events)
-    : TrackedCpuDeviceBuffer(owns_buffers, std::move(buffer),
-                             AfterAll(definition_events)) {}
-
-TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
-    size_t buffer_size,
-    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events)
-    : TrackedCpuDeviceBuffer(owns_buffers, std::move(buffer), buffer_size,
-                             AfterAll(definition_events)) {}
-
-TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
+    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     tsl::AsyncValueRef<CpuEvent> definition_event)
-    : owns_buffers_(owns_buffers),
-      buffer_(std::move(buffer)),
-      definition_event_(std::move(definition_event)) {
-  DCHECK(definition_event_);
-  CHECK(buffer_.IsConcrete());
-  buffer_size_ = buffer_->size_bytes();
-}
-
-TrackedCpuDeviceBuffer::TrackedCpuDeviceBuffer(
-    bool owns_buffers, tsl::AsyncValueRef<CpuDeviceMemory> buffer,
-    size_t buffer_size, tsl::AsyncValueRef<CpuEvent> definition_event)
-    : owns_buffers_(owns_buffers),
-      buffer_(std::move(buffer)),
-      buffer_size_(buffer_size),
+    : AbstractTrackedDeviceBuffer(std::move(raw_buffer)),
       definition_event_(std::move(definition_event)) {
   DCHECK(definition_event_);
 }
 
-TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() { ReleaseDeviceMemory(); }
+TrackedCpuDeviceBuffer::~TrackedCpuDeviceBuffer() = default;
 
-size_t TrackedCpuDeviceBuffer::BufferSize() { return buffer_size_; }
+const tsl::AsyncValueRef<CpuDeviceMemory>& TrackedCpuDeviceBuffer::buffer() {
+  if (raw_buffer()) {
+    return tensorflow::down_cast<CpuRawBuffer*>(this->raw_buffer().get())
+        ->buffer();
+  }
+  static absl::NoDestructor<tsl::AsyncValueRef<CpuDeviceMemory>> missing_buffer;
+  return *missing_buffer;
+}
+
+size_t TrackedCpuDeviceBuffer::BufferSize() {
+  return raw_buffer() ? raw_buffer()->GetOnDeviceSizeInBytes() : 0;
+}
 
 void TrackedCpuDeviceBuffer::AddUsageEvents(
     absl::Span<tsl::AsyncValueRef<CpuEvent>> events) {
@@ -271,8 +237,8 @@ TrackedCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
   return std::move(usage_events_);
 }
 
-void TrackedCpuDeviceBuffer::ReleaseDeviceMemory() {
-  buffer_ = tsl::AsyncValueRef<CpuDeviceMemory>();
+void TrackedCpuDeviceBuffer::ConfirmDonation() {
+  ReleaseDeviceMemory();
   definition_event_.reset();
   usage_events_.clear();
 }
@@ -284,12 +250,14 @@ TrackedCpuDeviceBuffer::GetAsyncValueDefinitionEvents() {
   return result;
 }
 
-tsl::RCReference<CommonPjRtRawBuffer> TrackedCpuDeviceBuffer::GetRawBuffer(
-    PjRtMemorySpace* memory_space) {
-  if (!buffer_) {
-    return tsl::RCReference<CommonPjRtRawBuffer>();
+std::vector<tsl::RCReference<tsl::AsyncValue>>
+TrackedCpuDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> result;
+  result.push_back(definition_event_.CopyRCRef());
+  for (auto& event : usage_events_) {
+    result.push_back(event.CopyRCRef());
   }
-  return tsl::MakeRef<CpuRawBuffer>(memory_space, buffer_);
+  return result;
 }
 
 void TrackedCpuDeviceBuffer::AddUsageEvent(
@@ -323,7 +291,7 @@ void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
 }
 
 Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
-  auto [promise, future] = Future<>::MakePromise();
+  auto [promise, future] = MakePromise<>();
 
   tensorflow::down_cast<CommonPjRtClient*>(memory_space->client())
       ->TrackFuture(memory_space, "BufferDefinitionEvent", future);
@@ -368,6 +336,24 @@ absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
         absl::StrFormat("Error Execute: %s", error->message()));
   }
   return absl::OkStatus();
+}
+
+bool TrackedCpuDeviceBuffer::AddDefinitionEventsToSet(
+    PjRtDeviceEventSet& events) {
+  if (!definition_event_.IsAvailable() || definition_event_.IsError()) {
+    tensorflow::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
+        definition_event_.CopyRCRef());
+  }
+  return false;
+}
+
+void TrackedCpuDeviceBuffer::AddUsageEventsToSet(PjRtDeviceEventSet& events) {
+  for (const auto& ev : usage_events_) {
+    if (!ev.IsAvailable()) {
+      tensorflow::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
+          ev.CopyRCRef());
+    }
+  }
 }
 
 }  // namespace xla

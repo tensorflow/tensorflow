@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package xla.megascale.runtime;
+
+option java_multiple_files = true;
+option java_outer_classname = "Runtime";
+
+message HostNetworkAddress {
+  string address = 1;
+  string interface_name = 2;
+  int32 numa_node = 4;
+  // The host name used for debugging only, and is supplied by pathways or MXLA
+  // coordinator. Do not use this for creating connection to other peers, use
+  // the address above.
+  string host_name_for_debugging = 3;
+}
+
+// NetworkAddressMapping provides mapping between a unique endpoint (slice_id,
+// host_id) and the network address it is reachable at.
+message NetworkAddressMapping {
+  int32 slice_id = 1;
+  int32 host_id = 2;
+  repeated HostNetworkAddress addresses = 3;
+}
+
+// Holds the network address mapping of all endpoints (slice_id, host_id).
+message EndpointAddresses {
+  repeated NetworkAddressMapping address_mappings = 1;
+}

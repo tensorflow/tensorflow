@@ -18,7 +18,7 @@ cc_library(
     hdrs = ["coordination_client.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_client",
     ],
 )
 
@@ -29,7 +29,7 @@ cc_library(
     ],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_rpc_handler",
     ],
 )
 
@@ -38,7 +38,7 @@ cc_library(
     hdrs = ["coordination_service_error_util.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_error_util",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_error_util",
     ],
 )
 
@@ -58,10 +58,10 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@local_tsl//tsl/profiler/lib:traceme",
-        "@local_tsl//tsl/profiler/lib:traceme_encode",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
-        "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
+        "@tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme_encode",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@xla//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
@@ -81,11 +81,11 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/distributed_runtime:call_options",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_client",
-        "@local_xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
-        "@local_xla//xla/tsl/protobuf:coordination_config_proto_cc",
-        "@local_xla//xla/tsl/protobuf:coordination_service_proto_cc",
+        "@xla//xla/tsl/distributed_runtime:call_options",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_client",
+        "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",
+        "@xla//xla/tsl/protobuf:coordination_config_proto_cc",
+        "@xla//xla/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 

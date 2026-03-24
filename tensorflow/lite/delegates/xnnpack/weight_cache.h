@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_WEIGHT_CACHE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_WEIGHT_CACHE_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/c/common.h"
@@ -55,14 +57,25 @@ inline constexpr char kInMemoryCachePath[] = ":memory";
 // When reading a cache file, the cache should be rejected if `version`
 // doesn't match `kVersion`.
 struct XNNPackCacheHeader {
-  enum : uint64_t { kInvalidHeader = 0, kVersion = 1 };
+  enum : uint64_t { kInvalidHeader = 0, kVersion = 4 };
   uint64_t version;
-  uint8_t xnnpack_build_identifier[32];
   uint64_t buffer_list_offset;
   uint64_t buffer_list_size;
+  uint8_t stale;
 };
 
+// Checks if the file at the given path is compatible with the current XNNPack
+// weight cache.
 bool IsCompatibleCacheFile(const char* path);
+
+// Checks if the opened file is compatible with the current XNNPack weight
+// cache.
+//
+// Position in the file may be changed during the function execution but is
+// restored upon exiting.
+//
+// Note: the file descriptor must be open and valid.
+bool IsCompatibleCacheFile(FileDescriptorView fd);
 
 struct PackIdentifier {
   enum { kNoId = SIZE_MAX };
@@ -149,8 +162,8 @@ class WeightCacheBuilder {
   // The buffer space must have been reserved before using `Reserve`. If not, a
   // new call to `Reserve` will be done and the data will be copied over.
   [[nodiscard /*The location to the appended data should be saved.*/]]
-  BufferLocation Append(PackIdentifier pack_id, const void* data,
-                        uint64_t size);
+  BufferLocation Append(PackIdentifier pack_id, const void* data, uint64_t size,
+                        int fingerprint_id);
 
   // Writes the flatbuffer to disk.
   [[nodiscard /*Writing the weight cache can fail.*/]]
@@ -205,7 +218,61 @@ class WeightCacheBuilder {
   FileDescriptorView fd_;
   std::string file_path_;
 
-  bool is_build_step_ = false;
+  std::atomic<bool> is_build_step_ = false;
+};
+
+// This class handles cache misses when a cache is loaded (vs. being built).
+//
+// It substitutes itself to the file by storing packed data in buffers
+// allocated on the fly that aren't persisted to the cache file.
+class CacheMissHandler {
+ public:
+  // Reserves space in the data buffer for the required size in bytes and
+  // returns the address of that space.
+  //
+  // A call to `Reserve` should alway be followed by a call to `Append`.
+  [[nodiscard /*The pointer to reserved space should be used.*/]]
+  void* Reserve(size_t size);
+
+  // Adds a buffer to the cache.
+  //
+  // The buffer space must have been reserved before using `Reserve`. If not, a
+  // new call to `Reserve` will be done and the data will be copied over.
+  [[nodiscard /*The location to the appended data should be saved.*/]]
+  BufferLocation Append(PackIdentifier pack_id, const void* data, uint64_t size,
+                        int fingerprint_id);
+
+  // Sets the reference offset from which all the cache miss offsets will be
+  // derived from. This avoids overwriting an offset that's already in use.
+  void SetMinOffset(size_t min_offset) { min_offset_ = min_offset; }
+
+  // Checks if the number of Reserve and Append calls are consistent.
+  bool ConsistentReserveAppendCalls() const noexcept {
+    return reserve_count_ == append_count_;
+  }
+
+  // Checks if cache misses have happened.
+  bool HasCacheMisses() const noexcept { return append_count_; }
+
+  size_t BufferCount() const noexcept { return buffers_.size(); }
+
+ private:
+  struct Buffer {
+    // Unaligned buffer holding at least loc.size elements.
+    std::unique_ptr<uint8_t[]> data;
+    BufferLocation loc;
+    // `kMinAlignement`-aligned pointer within data, holding at least loc.size
+    // elements.
+    uint8_t* ptr;
+    // True if an Append operation matching this buffer was called.
+    bool used;
+  };
+  std::vector<Buffer> buffers_;
+  // Holds a location that is bigger than all of the locations held in the
+  // cache. This is to avoid clashing with the stored offsets.
+  size_t min_offset_ = 0;
+  size_t append_count_ = 0;
+  size_t reserve_count_ = 0;
 };
 
 // Allows XNNPack to directly load packed weights from disk instead of having to
@@ -228,6 +295,7 @@ class MMapWeightCacheProvider {
   MMapWeightCacheProvider& operator=(const MMapWeightCacheProvider&) = delete;
   MMapWeightCacheProvider(MMapWeightCacheProvider&&);
   MMapWeightCacheProvider& operator=(MMapWeightCacheProvider&&);
+  ~MMapWeightCacheProvider();
 
   // Changes the file path to save the cache to.
   //
@@ -248,6 +316,11 @@ class MMapWeightCacheProvider {
   [[nodiscard /*Starting to build a cache file may fail.*/]]
   bool StartBuild(const char* file_path, FileDescriptor fd = FileDescriptor());
 
+  // If the cache is still being built, this signals that all of the building
+  // operations are done and that `CanStartBuildStep()` should now return
+  // `false`.
+  void StopBuild() { builder_.Reset(); }
+
   // Sets the weight file path and loads it.
   [[nodiscard /*Loading a cache file may fail.*/]]
   bool Load(const std::string& path, FileDescriptor fd = FileDescriptor());
@@ -256,11 +329,21 @@ class MMapWeightCacheProvider {
   [[nodiscard /*Loading cache data may fail.*/]]
   bool Load();
 
+  // Attempts to lock the cache in memory. Only applicable when the OS supports
+  // memory locking and the cache is mapped.
+  [[nodiscard /*Locking cache data may fail.*/]]
+  bool LockMemory();
+
+  // Attempts to unlock the cache in memory. Only applicable when the OS
+  // supports memory locking and the cache is mapped and locked.
+  [[nodiscard /*Unlocking cache data may fail.*/]]
+  bool UnlockMemory();
+
   // Checks if the cache is currently being built or if it was loaded from a
   // file.
   [[nodiscard]]
   bool CanStartBuildStep() const {
-    return building_run_;
+    return builder_.IsStarted();
   };
 
   // Prepares to add new data to the cache.
@@ -313,7 +396,8 @@ class MMapWeightCacheProvider {
   // Releases the weight cache's memory.
   void Release();
 
-  // Returns true if any weights have been added to the underlying builder.
+  // Returns true if the underlying builder is ready to add weights to the
+  // cache.
   [[nodiscard]]
   bool IsBuilding() const {
     return builder_.IsBuilding();
@@ -349,7 +433,19 @@ class MMapWeightCacheProvider {
   // C interface: `xnn_weights_cache_provider` callback.
   static enum xnn_status delete_cache(void* context);
 
+  // C interface: `xnn_weights_cache_provider` callback.
+  static enum xnn_status alias_data(void* context, void* alias, void* original);
+
+  // Checks if caches misses have happened and updates the cache file stale
+  // flag.
+  bool WriteCacheMissFlag();
+
  private:
+  struct OriginalBufferMetadata {
+    uint64_t identifier;
+    size_t size;
+  };
+
   // Hashes a cache key to lookup in `cache_key_to_identifier_`.
   PackIdentifier BuildPackIdentifier(const xnn_weights_cache_look_up_key& key);
 
@@ -365,13 +461,16 @@ class MMapWeightCacheProvider {
       /*look_up_or_insert=*/MMapWeightCacheProvider::look_up_or_insert,
       /*is_finalized=*/MMapWeightCacheProvider::is_finalized,
       /*offset_to_addr=*/MMapWeightCacheProvider::offset_to_addr,
-      /*delete_cache=*/MMapWeightCacheProvider::delete_cache};
+      /*delete_cache=*/MMapWeightCacheProvider::delete_cache,
+      /*alias_data=*/MMapWeightCacheProvider::alias_data,
+  };
 
   // Path to the cache file.
   std::string file_path_;
 
   // Maps buffer addresses to buffer identifiers.
-  std::unordered_map<const void*, uint64_t> buffer_address_to_identifier_;
+  std::unordered_map<const void*, OriginalBufferMetadata>
+      buffer_address_to_identifier_;
 
   std::unordered_map<const void*, const void*> buffer_remaps_;
 
@@ -391,12 +490,8 @@ class MMapWeightCacheProvider {
   // Used to build the cache.
   WeightCacheBuilder builder_;
 
-  // True if the current run is the one building the cache file.
-  //
-  // We cannot distinguish between a wrong/outdated cache and one that is not
-  // fully done. To detect misuse, we still want to raise an error when XNNPack
-  // tries to append data to an existing file (i.e. when this is `false`).
-  bool building_run_ = false;
+  // Handles cache misses when not building the cache file.
+  CacheMissHandler cache_miss_handler_;
 
   // Stores the loaded buffer addresses corresponding to the given offset in the
   // cache file.

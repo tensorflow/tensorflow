@@ -29,15 +29,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
+#include "xla/hlo/analysis/hlo_reachability.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/map_util.h"
+#include "xla/service/hlo_value.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/types.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -559,7 +559,7 @@ SequentialHloOrdering::SequentialHloOrdering(HloSchedule&& schedule)
 
 void SequentialHloOrdering::Initialize() {
   // Create a map from instruction to its order position.
-  TF_DCHECK_OK(schedule_.Verify());
+  DCHECK_OK(schedule_.Verify());
   for (const auto& computation_sequence : schedule_.sequences()) {
     const auto& order = computation_sequence.second.instructions();
     for (int i = 0; i < order.size(); ++i) {

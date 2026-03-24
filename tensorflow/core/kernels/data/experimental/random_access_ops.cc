@@ -34,7 +34,7 @@ absl::Status GetElementAtIndexOp::DoCompute(OpKernelContext* ctx) {
   DatasetBase* finalized_dataset;
   TF_ASSIGN_OR_RETURN(finalized_dataset, GetFinalizedDataset(ctx, dataset));
 
-  int64 index = 0;
+  int64_t index = 0;
   TF_RETURN_IF_ERROR(ParseScalarArgument<int64_t>(ctx, "index", &index));
 
   std::vector<Tensor> components;

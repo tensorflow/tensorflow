@@ -29,7 +29,7 @@ namespace tensorflow {
 class Int32FulltypePass {
  public:
   Int32FulltypePass() = default;
-  explicit Int32FulltypePass(string debug_location)
+  explicit Int32FulltypePass(std::string debug_location)
       : debug_location_(debug_location) {}
 
   // For each node in this graph that outputs int32 tensors, set full
@@ -57,7 +57,7 @@ class Int32FulltypePass {
 
  private:
   // Location of where annotations were added for debug messages.
-  string debug_location_;
+  std::string debug_location_;
 };
 
 }  // namespace tensorflow

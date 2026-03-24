@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/service/shape_inference.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -32,26 +31,25 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -345,19 +343,13 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 
   TF_RETURN_IF_ERROR(ExpectArray(shape, "operand of unary operation"));
 
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
   switch (opcode) {
-    case HloOpcode::kAsin:
-    case HloOpcode::kAcos:
-    case HloOpcode::kAcosh:
-    case HloOpcode::kAtanh:
-    case HloOpcode::kCosh:
     case HloOpcode::kFloor:
     case HloOpcode::kCbrt:  // Complex cbrt is not implemented in either of the
                             // backends.
     case HloOpcode::kCeil:
     case HloOpcode::kErf:
-    case HloOpcode::kSinh:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRoundNearestEven:
       if (!ShapeUtil::ElementIsFloating(shape)) {
@@ -367,7 +359,14 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
             HloOpcodeString(opcode), PrimitiveType_Name(shape.element_type()));
       }
       return shape;
+    case HloOpcode::kAsin:
+    case HloOpcode::kAsinh:
+    case HloOpcode::kAcos:
+    case HloOpcode::kAcosh:
+    case HloOpcode::kAtanh:
+    case HloOpcode::kCosh:
     case HloOpcode::kCos:
+    case HloOpcode::kSinh:
     case HloOpcode::kSin:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -625,8 +624,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
         PrimitiveType_Name(new_element_type));
   }
 
-  int input_bitwidth = primitive_util::BitWidth(old_element_type);
-  int output_bitwidth = primitive_util::BitWidth(new_element_type);
+  int input_bitwidth = primitive_util::StorageBitWidth(old_element_type);
+  int output_bitwidth = primitive_util::StorageBitWidth(new_element_type);
   if (std::max(input_bitwidth, output_bitwidth) %
           std::min(input_bitwidth, output_bitwidth) !=
       0) {
@@ -663,8 +662,8 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
 /* static */ absl::StatusOr<Shape> ShapeInference::InferStochasticConvertShape(
     const Shape& operand_shape, const Shape& random_shape,
     PrimitiveType new_element_type) {
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(random_shape));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(random_shape));
 
   TF_RETURN_IF_ERROR(
       ExpectArray(operand_shape, "lhs of stochastic convert operation"));
@@ -966,7 +965,7 @@ void GenerateDotResultDimensions(
       ShapeUtil::HigherPrecisionElementType(lhs, rhs));
   Shape result = ShapeUtil::MakeShape(type, dimensions, is_dynamic);
 
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred dot shape: " << ShapeUtil::HumanString(result);
   return result;
 }
@@ -1172,7 +1171,7 @@ void GenerateDotResultDimensions(
                               is_dynamic, rhs_group_dimensions);
 
   Shape result = ShapeUtil::MakeShape(type, dimensions, is_dynamic);
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred ragged dot shape: " << ShapeUtil::HumanString(result);
   return result;
 }
@@ -1464,8 +1463,8 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       ShapeUtil::HumanStringWithLayout(rhs),
       StrJoin(broadcast_dimensions, ", "));
 
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
   TF_RETURN_IF_ERROR(ExpectArray(
       lhs, absl::StrCat("lhs of binary operation ", HloOpcodeString(opcode))));
@@ -1547,9 +1546,9 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferTernaryOpShape(
     HloOpcode opcode, const Shape& lhs, const Shape& rhs, const Shape& ehs) {
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(ehs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(ehs));
   switch (opcode) {
     case HloOpcode::kClamp:
       return InferClampShape(lhs, rhs, ehs);
@@ -1573,7 +1572,7 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 /* static */ absl::StatusOr<Shape> ShapeInference::InferVariadicOpShape(
     HloOpcode opcode, absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* shape : operand_shapes) {
-    TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(*shape));
+    DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(*shape));
   }
   switch (opcode) {
     case HloOpcode::kTuple: {
@@ -2122,10 +2121,23 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvolveShape(
-    const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
+    const Shape& lhs, const Shape& rhs_arg, int64_t feature_group_count,
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
+    const SparsityConfig& sparsity_config,
     std::optional<PrimitiveType> preferred_element_type) {
+  const Shape* rhs_ptr = &rhs_arg;
+  if (rhs_arg.IsTuple()) {
+    if (rhs_arg.tuple_shapes().size() != 2) {
+      return InvalidArgument(
+          "rhs of convolution, if a tuple, must have 2 elements for sparsity; "
+          "got: %s",
+          ShapeUtil::HumanString(rhs_arg));
+    }
+    rhs_ptr = &rhs_arg.tuple_shapes(0);
+  }
+  const Shape& rhs = *rhs_ptr;
+
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -2183,30 +2195,27 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
         "The RHS argument to a convolution should have rank %d; rhs: %s.",
         num_dims, ShapeUtil::HumanString(rhs));
   }
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
-  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
+  DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
   // Verifies that the input and window dimensions are a permutation of
   // the dimension numbers.
   std::vector<int64_t> input_dnums(num_dims);
   input_dnums[0] = dnums.input_batch_dimension();
   input_dnums[1] = dnums.input_feature_dimension();
-  std::copy(dnums.input_spatial_dimensions().begin(),
-            dnums.input_spatial_dimensions().end(), input_dnums.begin() + 2);
+  absl::c_copy(dnums.input_spatial_dimensions(), input_dnums.begin() + 2);
   absl::c_sort(input_dnums);
 
   std::vector<int64_t> window_dnums(num_dims);
   window_dnums[0] = dnums.kernel_input_feature_dimension();
   window_dnums[1] = dnums.kernel_output_feature_dimension();
-  std::copy(dnums.kernel_spatial_dimensions().begin(),
-            dnums.kernel_spatial_dimensions().end(), window_dnums.begin() + 2);
+  absl::c_copy(dnums.kernel_spatial_dimensions(), window_dnums.begin() + 2);
   absl::c_sort(window_dnums);
 
   std::vector<int64_t> output_dnums(num_dims);
   output_dnums[0] = dnums.output_batch_dimension();
   output_dnums[1] = dnums.output_feature_dimension();
-  std::copy(dnums.output_spatial_dimensions().begin(),
-            dnums.output_spatial_dimensions().end(), output_dnums.begin() + 2);
+  absl::c_copy(dnums.output_spatial_dimensions(), output_dnums.begin() + 2);
   absl::c_sort(output_dnums);
 
   std::vector<int64_t> expected_dnums(num_dims);
@@ -2254,8 +2263,24 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   for (int i = 0; i < num_spatial_dims; ++i) {
     kernel_spatial_dims[i] = rhs.dimensions(dnums.kernel_spatial_dimensions(i));
   }
-  const int64_t kernel_input_features =
+  int64_t kernel_input_features =
       rhs.dimensions(dnums.kernel_input_feature_dimension());
+  if (sparsity_config.has_rhs()) {
+    VLOG(8) << "Using sparse RHS for convolution. Got kernel_input_features: "
+            << kernel_input_features
+            << ", sparsity_config: " << SparsityConfigToString(sparsity_config);
+    int64_t num_non_zero = sparsity_config.rhs().num_non_zero();
+    int64_t block_size = sparsity_config.rhs().block_size();
+    if (num_non_zero != 1) {
+      return InvalidArgument("Only 1:N sparsity is currently supported.");
+    }
+    // Since the kernel is sparse, the effective number of input features is
+    // the number of non-zero elements times the block size. This currently
+    // assumes 1:N sparsity, where N is the block size.
+    kernel_input_features = kernel_input_features * block_size;
+  } else {
+    VLOG(8) << "Not using sparse RHS for convolution.";
+  }
   const int64_t kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
@@ -3592,9 +3617,9 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
 
   std::vector<int64_t> dimensions(operand.dimensions().size() +
                                   broadcast_sizes.size());
-  std::copy(broadcast_sizes.begin(), broadcast_sizes.end(), dimensions.begin());
-  std::copy(operand.dimensions().begin(), operand.dimensions().end(),
-            dimensions.begin() + broadcast_sizes.size());
+  absl::c_copy(broadcast_sizes, dimensions.begin());
+  absl::c_copy(operand.dimensions(),
+               dimensions.begin() + broadcast_sizes.size());
 
   TF_ASSIGN_OR_RETURN(Shape result, ShapeUtil::MakeValidatedShape(
                                         operand.element_type(), dimensions));
@@ -3859,9 +3884,6 @@ ShapeInference::InferCollectivePermuteDoneShape(const Shape& operand_shape) {
         StrJoin(dimensions, ","), ShapeUtil::HumanString(operand));
   }
 
-  // Permute(dimensions,input) computes output[dimensions[i]]=input[i]. However,
-  // we need output[i]=input[dimensions[i]] which is
-  // Permute(Inverse(dimensions),input).
   return ShapeUtil::PermuteDimensions(dimensions, operand);
 }
 

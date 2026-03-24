@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_join.h"
+#include "google/protobuf/descriptor.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/compilation_environments.h"
 #include "xla/tsl/util/command_line_flags.h"
@@ -131,9 +132,11 @@ ProcessNewGpuCompilationEnvironment(
 }  // namespace xla
 
 static bool InitModule() {
-  xla::CompilationEnvironments::RegisterProcessNewEnvFn(
-      xla::GpuCompilationEnvironment::descriptor(),
-      xla::ProcessNewGpuCompilationEnvironment);
+  // TODO(b/284274097): Enable the registration once GPU compilation environment
+  // is well supported.
+  // xla::CompilationEnvironments::RegisterProcessNewEnvFn(
+  //     xla::GpuCompilationEnvironment::descriptor(),
+  //     xla::ProcessNewGpuCompilationEnvironment);
   return true;
 }
 static bool module_initialized = InitModule();

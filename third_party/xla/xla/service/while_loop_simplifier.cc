@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_original_value_util.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "xla/service/call_inliner.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/while_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -274,6 +276,9 @@ static absl::StatusOr<HloInstruction*> RemoveDeadTupleIndices(
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);
+
+  CopyOriginalValue(while_init, new_while_init, old_to_new_tuple_idx);
+  CopyOriginalValue(while_op, new_while_op, old_to_new_tuple_idx);
 
   // Create a tuple op that recreates the output of the old while op.  That is,
   // we transform to
@@ -840,7 +845,8 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
   };
 
   // Returns a new tuple without the elements of constant_tuple_indices.
-  auto remove_constant_elems = [&](HloInstruction* instr) {
+  auto remove_constant_elems =
+      [&](HloInstruction* instr) -> std::unique_ptr<HloInstruction> {
     CHECK(ShapeUtil::Compatible(instr->shape(), while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
@@ -851,10 +857,24 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
                 while_shape.tuple_shapes(i), instr, i)));
       }
     }
-    return HloInstruction::CreateTuple(tuple_elems);
+    std::unique_ptr<HloInstruction> new_tuple =
+        HloInstruction::CreateTuple(tuple_elems);
+    if (instr->original_value()) {
+      auto new_ov = std::make_shared<OriginalValue>(new_tuple->shape());
+      int64_t new_i = 0;
+      for (int i = 0; i < while_shape.tuple_shapes().size(); ++i) {
+        if (!constant_tuple_indices.count(i)) {
+          CHECK_OK(new_ov->mutable_tree()->CopyCompatibleSubtreeFrom(
+              instr->original_value()->tree(), {i}, {new_i++}));
+        }
+      }
+      new_tuple->set_original_value(new_ov);
+    }
+    return new_tuple;
   };
 
-  auto add_constant_elems = [&](HloInstruction* instr) {
+  auto add_constant_elems =
+      [&](HloInstruction* instr) -> std::unique_ptr<HloInstruction> {
     CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
 
     std::vector<HloInstruction*> tuple_elems;
@@ -917,6 +937,17 @@ static absl::StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
       module->AddEmbeddedComputation(std::move(new_while_cond)),
       module->AddEmbeddedComputation(std::move(new_while_body)),
       add_new_instr(remove_constant_elems(while_init))));
+  if (while_op->original_value()) {
+    auto new_ov = std::make_shared<OriginalValue>(new_while_op->shape());
+    int64_t new_i = 0;
+    for (int i = 0; i < while_shape.tuple_shapes().size(); ++i) {
+      if (!constant_tuple_indices.count(i)) {
+        CHECK_OK(new_ov->mutable_tree()->CopyCompatibleSubtreeFrom(
+            while_op->original_value()->tree(), {i}, {new_i++}));
+      }
+    }
+    new_while_op->set_original_value(new_ov);
+  }
   new_while_op->CopyBackendConfigFrom(while_op);
   CopyFrontendAttributes(while_op, new_while_op);
   CopyMetadata(while_op, new_while_op);
@@ -1160,6 +1191,20 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
 }
 
 static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
+  auto flatten_original_value = [&](HloInstruction* old_instr,
+                                    HloInstruction* new_instr) {
+    if (old_instr->original_value()) {
+      auto new_original_value =
+          std::make_shared<OriginalValue>(new_instr->shape());
+      int64_t i = 0;
+      for (auto& [shape_index, original_array] :
+           old_instr->original_value()->tree().leaves()) {
+        *new_original_value->mutable_tree()->mutable_element({i++}) =
+            original_array;
+      }
+      new_instr->set_original_value(new_original_value);
+    }
+  };
   HloModule* module = while_op->GetModule();
   HloComputation* computation = while_op->parent();
   auto* while_init = while_op->mutable_operand(0);
@@ -1261,6 +1306,9 @@ static absl::StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   for (auto& instr : new_instrs) {
     computation->AddInstruction(std::move(instr));
   }
+
+  flatten_original_value(while_init, new_while_op->mutable_operand(0));
+  flatten_original_value(while_op, new_while_op);
   return true;
 }
 
@@ -1403,6 +1451,8 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
           add_binary_op(elem_shape, HloOpcode::kMultiply,
                         add_gte(instr, *trip_counter),
                         add_new_instr(induction_vars.at(i)->Clone()))));
+      // Copy the original value of the induction variable to its replacement.
+      tuple_elems.back()->CopyOriginalValue(while_body_root->operand(i));
     }
     return HloInstruction::CreateTuple(tuple_elems);
   };
@@ -1496,6 +1546,15 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
       module->AddEmbeddedComputation(std::move(new_while_body)),
       get_new_while_init(while_init)));
   new_while->CopyBackendConfigFrom(while_op);
+  if (auto original_value = while_init->original_value()) {
+    new_while->while_init()->set_original_value(original_value);
+  }
+  if (auto original_value = while_op->original_value()) {
+    new_while->set_original_value(original_value);
+  }
+  if (added_trip_counter) {
+    AppendToWhileLoopOriginalValue(new_while, {});
+  }
   CopyFrontendAttributes(while_op, new_while);
   CopyMetadata(while_op, new_while);
   TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
@@ -1506,11 +1565,11 @@ static absl::StatusOr<HloInstruction*> TryMergeInductionVariables(
   return new_while;
 }
 
-absl::StatusOr<bool> WhileLoopSimplifier::Run(
+absl::StatusOr<bool> WhileLoopSimplifier::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(3,
-                 "WhileLoopSimplifier::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      3, "WhileLoopSimplifier::RunImpl(), before:\n" + module->ToString());
   bool changed = false;
 
   // Gather all the while ops in our module.  We do this ahead of time so we
@@ -1631,8 +1690,8 @@ absl::StatusOr<bool> WhileLoopSimplifier::Run(
     HloDCE dce;
     TF_RETURN_IF_ERROR(dce.Run(module).status());
   }
-  XLA_VLOG_LINES(3,
-                 "WhileLoopSimplifier::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      3, "WhileLoopSimplifier::RunImpl(), after:\n" + module->ToString());
   return changed;
 }
 

@@ -43,7 +43,15 @@ class RocmComputeCapability {
 
   RocmComputeCapability() = default;
 
-  std::string gcn_arch_name() const { return gcn_arch_name_; }
+  static RocmComputeCapability EarliestCDNASupport() {
+    return RocmComputeCapability{"gfx908"};
+  }
+
+  static RocmComputeCapability EarliestRDNASupport() {
+    return RocmComputeCapability{"gfx1030"};
+  }
+
+  const std::string& gcn_arch_name() const { return gcn_arch_name_; }
 
   std::string ToString() const { return gcn_arch_name(); }
 
@@ -51,6 +59,11 @@ class RocmComputeCapability {
     RocmComputeCapabilityProto proto;
     proto.set_gcn_arch_name(gcn_arch_name_);
     return proto;
+  }
+
+  static RocmComputeCapability FromProto(
+      const RocmComputeCapabilityProto& proto) {
+    return RocmComputeCapability{proto.gcn_arch_name()};
   }
 
   bool operator==(const RocmComputeCapability& other) const {
@@ -83,8 +96,7 @@ class RocmComputeCapability {
       "gfx1030",  // RX68xx / RX69xx
       "gfx1100",  // RX7900
       "gfx1101",  // RX7700 / RX7800
-      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201",
-  };
+      "gfx1103", "gfx1150", "gfx1151", "gfx1200", "gfx1201"};
 
   bool is_supported_gfx_version() const {
     return IsThisGfxInAnyList(kSupportedGfxVersions);
@@ -156,7 +168,7 @@ class RocmComputeCapability {
 
   bool has_mfma_instr_support() const { return gfx9_mi100_or_later(); }
 
-  bool has_amd_matrix_core() const {
+  bool has_amd_matrix_instr() const {
     return gfx9_mi100_or_later() || gfx12() || gfx11();
   }
 
@@ -182,6 +194,10 @@ class RocmComputeCapability {
 
   bool has_nanoo_fp8_support() const { return gfx9_mi300(); }
 
+  bool has_mx_type_support() const { return gfx9_mi350(); }
+
+  int threads_per_warp() const { return gfx9_mi100_or_later() ? 64 : 32; }
+
   /// \brief Invalid gfx id for default gcn_arch_name_ value and testing
   static constexpr absl::string_view kInvalidGfx = "gfx000";
 
@@ -191,7 +207,7 @@ class RocmComputeCapability {
   template <typename... ArrayOfStrings>
   bool IsThisGfxInAnyList(ArrayOfStrings&&... arr) const {
     static_assert(sizeof...(arr) >= 1);
-    const auto gfx = gfx_version();
+    const std::string gfx = gfx_version();
     return (implIsThisGfxInAnyList(std::begin(arr), std::end(arr), gfx) || ...);
   }
 
@@ -199,10 +215,9 @@ class RocmComputeCapability {
   /// \warning Don't use directly!
   bool implIsThisGfxInAnyList(const absl::string_view* beg,
                               const absl::string_view* end,
-                              const std::string& gfx) const {
-    return std::any_of(beg, end, [&gfx = gfx](const absl::string_view& s) {
-      return gfx == s;
-    });
+                              const absl::string_view gfx) const {
+    return std::any_of(
+        beg, end, [&gfx = gfx](const absl::string_view s) { return gfx == s; });
   }
 
   std::string gcn_arch_name_{kInvalidGfx};  // default to invalid arch.

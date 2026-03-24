@@ -85,8 +85,8 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
                   typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
                   int* info) {
-    const int64 num_matrices = output.size();
-    const int64 n = lu_factor.dimension(2);
+    const int64_t num_matrices = output.size();
+    const int64_t n = lu_factor.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
 
     TF_CHECK_OK(GpuLaunchKernel(
@@ -108,8 +108,8 @@ struct LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
                   typename TTypes<Scalar, 3>::ConstTensor lu_factor,
                   const int* pivots, typename TTypes<Scalar, 1>::Tensor sign,
                   typename TTypes<Scalar, 1>::Tensor log_abs_det) {
-    const int64 num_matrices = sign.size();
-    const int64 n = lu_factor.dimension(2);
+    const int64_t num_matrices = sign.size();
+    const int64_t n = lu_factor.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
     TF_CHECK_OK(GpuLaunchKernel(
         DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>,

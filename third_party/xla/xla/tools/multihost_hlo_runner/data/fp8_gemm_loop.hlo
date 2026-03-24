@@ -1,0 +1,50 @@
+HloModule test
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+while_cond {
+  pp = (s32[], f8e5m2[32768,1024], f8e4m3fn[8192,1024], bf16[32768,8192], bf16[32768,8192]) parameter(0)
+  idx = s32[] get-tuple-element(pp), index=0
+  total = s32[] constant(20)
+  ROOT cmp = pred[] compare(idx, total), direction=LT
+}
+
+while_body {
+  pp = (s32[], f8e5m2[32768,1024], f8e4m3fn[8192,1024], bf16[32768,8192], bf16[32768,8192]) parameter(0)
+  idx = s32[] get-tuple-element(pp), index=0
+
+  X = f8e5m2[32768,1024] get-tuple-element(pp), index=1
+  Y = f8e4m3fn[8192,1024] get-tuple-element(pp), index=2
+  Z = bf16[32768,8192] get-tuple-element(pp), index=3
+  Prev = bf16[32768,8192] get-tuple-element(pp), index=4
+
+  dot_XY = bf16[32768,8192] dot(X, Y), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  add_XY = bf16[32768,8192] add(dot_XY, Z)
+
+  New = bf16[32768,8192] add(add_XY, Prev)
+
+  inc = s32[] constant(1)
+  idx2 = s32[] add(idx, inc)
+  
+  ROOT TT = (s32[], f8e5m2[32768,1024], f8e4m3fn[8192,1024], bf16[32768,8192], bf16[32768,8192]) tuple(idx2, X, Y, Z, New)
+} 
+
+ENTRY main {
+  X = f8e5m2[32768,1024] parameter(0)
+  Y = f8e4m3fn[8192,1024] parameter(1)
+  Z = bf16[32768,8192] parameter(2)
+  c0 = s32[] constant(0)
+  zero = bf16[] constant(0)
+  W = bf16[32768,8192] broadcast(zero), dimensions={}
+
+  TT = (s32[], f8e5m2[32768,1024], f8e4m3fn[8192,1024], bf16[32768,8192], bf16[32768,8192]) tuple(c0, X, Y, Z, W)
+  while = (s32[], f8e5m2[32768,1024], f8e4m3fn[8192,1024], bf16[32768,8192], bf16[32768,8192]) while(TT), condition=while_cond, body=while_body
+  R = bf16[32768,8192] get-tuple-element(while), index=4
+  R32 = f32[32768,8192] convert(R)
+  zero32 = f32[] constant(0)
+  ROOT red = f32[32768] reduce(R32, zero32), dimensions={1}, to_apply=sum
+}

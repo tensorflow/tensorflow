@@ -15,52 +15,42 @@ limitations under the License.
 
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 
-#include <memory>
 #include <string>
-#include <tuple>
-#include <utility>
-#include <variant>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
-#include "absl/strings/substitute.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
-#include "xla/backends/gpu/codegen/triton/fusion_emitter.h"
+#include "google/protobuf/descriptor.h"
+#include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/float_normalization.h"
-#include "xla/hlo/utils/hlo_query.h"
-#include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla::gpu {
 
@@ -82,24 +72,20 @@ std::vector<xla::PrimitiveType> AllXlaDataTypes() {
 }
 
 bool SupportsBF16(const stream_executor::GpuComputeCapability& cc) {
-  if (std::holds_alternative<stream_executor::CudaComputeCapability>(cc)) {
-    return std::get<stream_executor::CudaComputeCapability>(cc).IsAtLeast(
+  if (cc.IsCuda()) {
+    return cc.cuda_compute_capability()->IsAtLeast(
         se::CudaComputeCapability::kAmpere);
-  } else if (std::holds_alternative<stream_executor::RocmComputeCapability>(
-                 cc)) {
-    return std::get<stream_executor::RocmComputeCapability>(cc)
-        .has_bf16_dtype_support();
+  }
+  if (cc.IsRocm()) {
+    return cc.rocm_compute_capability()->has_bf16_dtype_support();
   }
   CHECK(false);
 }
 
-absl::Status CreateTritonIrAndFileCheck(HloTestBase* test,
-                                        absl::string_view hlo_text,
+absl::Status CreateTritonIrAndFileCheck(const HloModule* hlo_module,
                                         absl::string_view triton_fusion_name,
                                         absl::string_view filecheck_pattern) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
-                      test->ParseAndReturnVerifiedModule(hlo_text));
-  auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
+  auto* comp = hlo_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr) << absl::StrCat(
       "Computation '", triton_fusion_name, "' is not found in the module");
   auto fusion_backend_config = comp->FusionInstruction()
@@ -118,12 +104,17 @@ absl::Status CreateTritonIrAndFileCheck(
     absl::string_view filecheck_pattern) {
   auto* fusion = Cast<HloFusionInstruction>(computation.FusionInstruction());
 
-  mlir::MLIRContext context;
+  mlir::MLIRContext mlir_context;
+  bool use_experimental_tiling =
+      fusion->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_enable_tiling_propagation();
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> triton_module,
-      CreateTritonModule("triton_fn", fusion,
-                         TestGpuDeviceInfo::RTXA6000DeviceInfo(),
-                         block_level_parameters, context));
+      CreateTritonModule(
+          "triton_fn", fusion, TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+          block_level_parameters, mlir_context, use_experimental_tiling));
 
   std::string out;
   llvm::raw_string_ostream os(out);
@@ -136,19 +127,24 @@ absl::Status CreateTritonIrAndFileCheck(
 }
 
 absl::Status CreateTritonIrAndFileCheckForDot(
-    HloTestBase* test, absl::string_view hlo_text,
-    absl::string_view triton_fusion_name, absl::string_view filecheck_pattern) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
-                      test->ParseAndReturnVerifiedModule(hlo_text));
-  auto* comp = verified_module->GetComputationWithName(triton_fusion_name);
+    const HloModule* hlo_module, absl::string_view triton_fusion_name,
+    absl::string_view filecheck_pattern) {
+  auto* comp = hlo_module->GetComputationWithName(triton_fusion_name);
   TF_RET_CHECK(comp != nullptr);
-  return CreateTritonIrAndFileCheck(*comp, /*block_level_parameters=*/{},
-                                    filecheck_pattern);
+  return CreateTritonIrAndFileCheckForDot(*comp, filecheck_pattern);
 }
 
 absl::Status CreateTritonIrAndFileCheckForDot(
     const HloComputation& computation, absl::string_view filecheck_pattern) {
-  return CreateTritonIrAndFileCheck(computation, /*block_level_parameters=*/{},
+  BlockLevelParameters block_level_parameters;
+  if (auto gpu_config =
+          computation.FusionInstruction()->backend_config<GpuBackendConfig>();
+      gpu_config.ok() && gpu_config->has_fusion_backend_config() &&
+      gpu_config->fusion_backend_config().has_block_level_fusion_config()) {
+    block_level_parameters = BlockLevelParameters::FromBlockLevelFusionConfig(
+        gpu_config->fusion_backend_config().block_level_fusion_config());
+  }
+  return CreateTritonIrAndFileCheck(computation, block_level_parameters,
                                     filecheck_pattern);
 }
 
@@ -158,163 +154,6 @@ absl::StatusOr<bool> ApplyFloatNormalization(
   HloPassPipeline pipeline("hlo float normalization");
   pipeline.AddPass<FloatNormalization>(&bf16_support);
   return pipeline.Run(module);
-}
-
-namespace {
-
-std::string PrimitiveTypeAndHloOpcodeToString(PrimitiveType data_type,
-                                              HloOpcode opcode) {
-  return absl::StrCat(
-      primitive_util::LowercasePrimitiveTypeName(data_type), "_",
-      absl::StrReplaceAll(HloOpcodeString(opcode), {{"-", "_"}}));
-}
-
-}  // namespace
-
-std::string ComputeCapabilityToString(
-    const stream_executor::GpuComputeCapability& cc) {
-  if (auto cuda_cc = std::get_if<se::CudaComputeCapability>(&cc)) {
-    return absl::StrReplaceAll(cuda_cc->ToString(), {{".", ""}});
-  } else {
-    CHECK(std::holds_alternative<se::RocmComputeCapability>(cc));
-    return "rocm";
-  }
-}
-
-std::string TritonSupportTestTypeAndDeviceToString(
-    const ::testing::TestParamInfo<
-        std::tuple<PrimitiveType, se::GpuComputeCapability>>& data) {
-  auto [data_type, cc] = data.param;
-  return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type),
-                      "_", ComputeCapabilityToString(cc));
-}
-
-std::string TritonSupportTestTypeAndOpcodeToString(
-    const ::testing::TestParamInfo<std::tuple<PrimitiveType, HloOpcode>>&
-        data) {
-  auto [data_type, opcode] = data.param;
-  return PrimitiveTypeAndHloOpcodeToString(data_type, opcode);
-}
-
-std::string TritonSupportTestTypeAndOpcodeAndDeviceToString(
-    const ::testing::TestParamInfo<
-        std::tuple<PrimitiveType, HloOpcode, se::GpuComputeCapability>>& data) {
-  auto [data_type, opcode, cc] = data.param;
-  return absl::StrCat(PrimitiveTypeAndHloOpcodeToString(data_type, opcode), "_",
-                      ComputeCapabilityToString(cc));
-}
-
-std::string TritonSupportTestTwoTypesAndDeviceToString(
-    const ::testing::TestParamInfo<
-        std::tuple<PrimitiveType, PrimitiveType, se::GpuComputeCapability>>&
-        data) {
-  auto [data_type_1, data_type_2, cc] = data.param;
-  return absl::StrCat(primitive_util::LowercasePrimitiveTypeName(data_type_1),
-                      "_",
-                      primitive_util::LowercasePrimitiveTypeName(data_type_2),
-                      "_", ComputeCapabilityToString(cc));
-}
-
-std::string TritonSupportTestTypeToString(
-    const ::testing::TestParamInfo<PrimitiveType>& data) {
-  return primitive_util::LowercasePrimitiveTypeName(data.param);
-}
-
-std::string TritonSupportTestDeviceToString(
-    const ::testing::TestParamInfo<se::GpuComputeCapability>& data) {
-  return ComputeCapabilityToString(data.param);
-}
-
-namespace {
-
-// This function does nothing if the input module already has an entry
-// computation whose root is a fusion. Otherwise, creates a new entry
-// computation whose root is a fusion instruction that calls the original entry
-// computation. The new fusion instruction uses the generic Triton backend kind.
-absl::Status ConvertEntryToTritonFusion(HloModule* module,
-                                        bool use_nested_gemm_fusions) {
-  if (module->entry_computation()->root_instruction()->opcode() ==
-      HloOpcode::kFusion) {
-    return absl::OkStatus();
-  }
-  auto builder = HloComputation::Builder("entry");
-  std::vector<HloInstruction*> params;
-  for (auto& param : module->entry_computation()->parameter_instructions()) {
-    TF_ASSIGN_OR_RETURN(
-        auto param_clone,
-        builder.AddParameter(HloInstruction::CreateParameter(
-            param->parameter_number(), param->shape(),
-            absl::StrCat("param_", param->parameter_number()))));
-    params.push_back(param_clone);
-  }
-
-  auto fusion = builder.AddInstruction(HloInstruction::CreateFusion(
-      module->entry_computation()->root_instruction()->shape(),
-      HloInstruction::FusionKind::kCustom, params,
-      module->entry_computation()));
-
-  gpu::GpuBackendConfig gpu_config;
-  if (use_nested_gemm_fusions) {
-    gpu_config.mutable_fusion_backend_config()->set_kind(
-        std::string(kTritonNestedGemmFusionKind));
-  } else {
-    gpu_config.mutable_fusion_backend_config()->set_kind(
-        std::string(kTritonFusionKind));
-  }
-  TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
-
-  auto new_entry =
-      module->AddComputationAndUnifyNamesAndIds(builder.Build(),
-                                                /*is_entry=*/false);
-  module->ReplaceEntryComputation(new_entry);
-  return absl::OkStatus();
-}
-
-}  // namespace
-
-DebugOptions TritonSupportTestBase::GetDebugOptionsForTest() const {
-  auto options = HloTestBase::GetDebugOptionsForTest();
-  // It's necessary to set this manually, because it's disabled in optimized
-  // builds and there are some ASAN builds that run on TAP with -c opt.
-  options.set_xla_gpu_llvm_verification_level(1);
-  return options;
-}
-
-absl::StatusOr<TritonSupportTestBase::TestedInstruction>
-TritonSupportTestBase::ParseTemplateAndGetInstruction(
-    absl::string_view hlo_template, xla::PrimitiveType data_type,
-    xla::HloOpcode opcode, bool use_nested_gemm_fusions) {
-  const std::string hlo_text = absl::Substitute(
-      hlo_template, primitive_util::LowercasePrimitiveTypeName(data_type),
-      HloOpcodeString(opcode));
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      ParseAndReturnVerifiedModule(hlo_text));
-  TF_RETURN_IF_ERROR(
-      ConvertEntryToTritonFusion(module.get(), use_nested_gemm_fusions));
-  const HloComputation* computation =
-      module->GetComputationWithName("triton_computation");
-  if (computation == module->entry_computation()) {
-    return absl::InvalidArgumentError(
-        "The `triton_computation` and the module's entry computation cannot be "
-        "the same.");
-  }
-  const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(
-      module->entry_computation()->root_instruction());
-  if (fusion == nullptr) {
-    return absl::InvalidArgumentError(
-        "The computation's entry root is not a fusion.");
-  }
-  if (computation == nullptr) {
-    return absl::InvalidArgumentError(
-        "No computation with the name `triton_computation` found.");
-  }
-  const HloInstruction* instr =
-      hlo_query::GetFirstInstructionWithOpcode(*computation, opcode);
-  if (instr == nullptr) {
-    return absl::InvalidArgumentError(absl::StrFormat(
-        "No instruction with opcode [%s] found.", HloOpcodeString(opcode)));
-  }
-  return TestedInstruction(std::move(module), *instr);
 }
 
 }  // namespace xla::gpu

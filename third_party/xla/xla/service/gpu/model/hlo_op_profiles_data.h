@@ -22,9 +22,9 @@ namespace gpu {
 // The data below is obtained with
 // xla/service/gpu/model:hlo_op_profiler_run
 
-constexpr char kDeviceHloOpProfiles[] = R"pb(
+inline constexpr char kDeviceHloOpProfiles[] = R"pb(
   entries {
-    key: "sm_100"  # "NVIDIA B200"
+    key: "sm_100_B200"
     value {
       entries {
         instruction {

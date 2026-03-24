@@ -13,23 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
+#include "xla/pjrt/plugin/xla_gpu/xla_gpu_pjrt_client.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/gpu/model/hlo_op_profiler.h"
 #include "xla/service/gpu/model/hlo_op_profiles.h"
-#include "xla/service/hlo_runner.h"
-#include "xla/service/platform_util.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/service/pjrt_gpu_utils.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/init_main.h"
@@ -58,9 +66,26 @@ void WriteOutput(const DeviceHloInstructionProfiles& literal,
     file_name = tsl::io::GetTempFilename(absl::StrCat(name, ".textproto"));
   }
   VLOG(0) << "Writing output to " << file_name;
-  TF_CHECK_OK(
-      tsl::WriteStringToFile(tsl::Env::Default(), file_name,
-                             tsl::LegacyUnredactedDebugString(literal)));
+  CHECK_OK(tsl::WriteStringToFile(tsl::Env::Default(), file_name,
+                                  tsl::LegacyUnredactedDebugString(literal)));
+}
+
+std::pair<std::unique_ptr<HloRunnerInterface>,
+          stream_executor::DeviceDescription>
+MakeRunnerAndGetDeviceDescription() {
+  GpuAllocatorConfig gpu_config;
+  gpu_config.kind = GpuAllocatorConfig::Kind::kDefault;
+  gpu_config.preallocate = false;
+  gpu_config.collective_memory_size = 0;
+  GpuClientOptions options;
+  options.allocator_config = std::move(gpu_config);
+
+  absl::StatusOr<std::unique_ptr<PjRtClient>> client =
+      GetXlaPjrtGpuClient(options);
+  CHECK_OK(client);
+  GpuTargetConfig gpu_target_config = GetGpuTargetConfig(client->get());
+  return {std::make_unique<HloRunnerPjRt>(*std::move(client)),
+          gpu_target_config.device_description};
 }
 
 int RunProfiler(int argc, char** argv) {
@@ -78,43 +103,18 @@ int RunProfiler(int argc, char** argv) {
     LOG(QFATAL) << "Error parsing flags";
   }
 
-  HloRunner runner(PlatformUtil::GetPlatform("cuda").value());
-  HloOpProfiler profiler(runner);
-  const se::DeviceDescription& dev_info =
-      runner.backend().stream_executors()[0]->GetDeviceDescription();
+  auto [runner, dev_info] = MakeRunnerAndGetDeviceDescription();
+  HloOpProfiler profiler(runner.get(), &dev_info);
   VLOG(0) << dev_info.name() << " @ " << dev_info.clock_rate_ghz() << " GHz";
-
-  const std::vector<PrimitiveType> dtypes = {
-      S8, S16, S32, S64, U8, U16, U32, U64, F16, F32, F64, C64, C128,
-  };
-  const std::vector<HloOpcode> ops = {
-      // Unary
-      HloOpcode::kCbrt,
-      HloOpcode::kCos,
-      HloOpcode::kErf,
-      HloOpcode::kExp,
-      HloOpcode::kExpm1,
-      HloOpcode::kLog,
-      HloOpcode::kLog1p,
-      HloOpcode::kLogistic,
-      HloOpcode::kRsqrt,
-      HloOpcode::kSin,
-      HloOpcode::kSinh,
-      HloOpcode::kSqrt,
-      HloOpcode::kTanh,
-      // Binary
-      HloOpcode::kAdd,
-      HloOpcode::kAtan2,
-      HloOpcode::kDivide,
-      HloOpcode::kMultiply,
-      HloOpcode::kPower,
-      HloOpcode::kSubtract,
-  };
 
   HloInstructionProfileList instr_profiles;
 
   for (const PrimitiveType data_type : HloOpProfiler::AllSupportedDtypes()) {
     for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
+      if (HloOpProfiler::TooFastToMeasure().count(op) ||
+          HloOpProfiler::Unsupported().count(op)) {
+        continue;
+      }
       auto result = profiler.MeasureClockCyclesPerOp(op, data_type);
       if (result.ok()) {
         instr_profiles.add_entries()->Swap(&*result);

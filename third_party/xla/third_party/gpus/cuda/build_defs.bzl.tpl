@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # Macros for building CUDA code.
 def if_cuda(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with CUDA.
@@ -137,7 +139,7 @@ def cuda_header_library(
     target without virtual includes. This works around the fact that bazel can't
     mix 'includes' and 'include_prefix' in the same target."""
 
-    native.cc_library(
+    cc_library(
         name = name + "_virtual",
         hdrs = hdrs,
         include_prefix = include_prefix,
@@ -146,7 +148,7 @@ def cuda_header_library(
         visibility = ["//visibility:private"],
     )
 
-    native.cc_library(
+    cc_library(
         name = name,
         textual_hdrs = hdrs,
         deps = deps + [":%s_virtual" % name],
@@ -160,7 +162,7 @@ def cuda_library(copts = [], tags = [], deps = [], **kwargs):
     # "use of the "register" storage class specifier is not allowed" error.
     # This can and should be removed once we migrate on glibc-2.27 or newer.
     local_defines = kwargs.pop("local_defines", []) + ["register="]
-    native.cc_library(
+    cc_library(
         copts = cuda_default_copts() + copts,
         tags = tags + [
             "gpu",

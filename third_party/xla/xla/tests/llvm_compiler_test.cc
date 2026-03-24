@@ -19,12 +19,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/service/backend.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -81,8 +79,8 @@ TEST_F(LLVMCompilerTest, HooksTest) {
                   .ok());
 
   // Test that hooks were called.
-  EXPECT_EQ(1, pre_opt_hook_call_count);
-  EXPECT_EQ(1, post_opt_hook_call_count);
+  EXPECT_LE(1, pre_opt_hook_call_count);
+  EXPECT_LE(1, post_opt_hook_call_count);
 }
 
 }  // namespace

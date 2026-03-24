@@ -25,14 +25,14 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
-#include "xla/client/local_client.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/service.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/env.h"
@@ -41,7 +41,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using TwoPlusTwoSimpleTest = ClientLibraryTestBase;
+using TwoPlusTwoSimpleTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoVector) {
   XlaBuilder builder("two_plus_two");
@@ -55,8 +56,6 @@ TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoVector) {
 
 TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithOneTransfer) {
   Literal x_literal = LiteralUtil::CreateR0<float>(1.0f);
-  std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(x_literal).value();
 
   XlaBuilder builder("one_transfer");
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x_value");
@@ -64,17 +63,13 @@ TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithOneTransfer) {
   Add(x, y);
 
   float expected = 3.0f;
-  ComputeAndCompareR0<float>(&builder, expected, {x_data.get()},
+  ComputeAndCompareR0<float>(&builder, expected, {&x_literal},
                              ErrorSpec(0.0001));
 }
 
 TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithTwoTransfer) {
   Literal x_literal = LiteralUtil::CreateR0<float>(1.0f);
-  std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(x_literal).value();
   Literal y_literal = LiteralUtil::CreateR0<float>(2.0f);
-  std::unique_ptr<GlobalData> y_data =
-      client_->TransferToServer(y_literal).value();
 
   XlaBuilder builder("two_transfers");
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {}), "x_value");
@@ -82,7 +77,7 @@ TEST_F(TwoPlusTwoSimpleTest, TwoPlusTwoScalarWithTwoTransfer) {
   Add(x, y);
 
   float expected = 3.0f;
-  ComputeAndCompareR0<float>(&builder, expected, {x_data.get(), y_data.get()},
+  ComputeAndCompareR0<float>(&builder, expected, {&x_literal, &y_literal},
                              ErrorSpec(0.0001));
 
   auto* outputs_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");

@@ -15,12 +15,18 @@ limitations under the License.
 
 #include "xla/python/ifrt/user_context_registry.h"
 
+#include <limits>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/base/no_destructor.h"
 #include "absl/base/nullability.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/python/ifrt/user_context.h"
 
@@ -94,6 +100,28 @@ void UserContextRegistry::Unregister(
   auto it = registry_.find(id);
   if (it != registry_.end() && it->second.second == tracked_user_context) {
     registry_.erase(it);
+  }
+}
+
+CustomStatusExpanderRegistry& CustomStatusExpanderRegistry::Get() {
+  static absl::NoDestructor<CustomStatusExpanderRegistry> registry;
+  return *registry;
+}
+
+void CustomStatusExpanderRegistry::Register(absl::string_view payload_name,
+                                            PayloadExpanderFn expander,
+                                            std::optional<int> process_order) {
+  absl::WriterMutexLock lock(mu_);
+  std::pair<int, std::string> key = {
+      process_order.value_or(std::numeric_limits<int>::max()),
+      std::string(payload_name)};
+  CHECK(registry_.insert({std::move(key), std::move(expander)}).second);
+}
+
+void CustomStatusExpanderRegistry::Process(absl::Status& status) {
+  absl::ReaderMutexLock lock(mu_);
+  for (const auto& [_, expander] : registry_) {
+    expander(status);
   }
 }
 

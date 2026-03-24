@@ -17,15 +17,16 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_SELECT_K_THUNK_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/types.h"  // IWYU pragma: keep
 
@@ -40,18 +41,17 @@ class SelectKThunk : public Thunk {
  public:
   // Constructor.
   // Parameters:
-  //   inst             - The HLO instruction that generated this thunk.
+  //   thunk_info       - ThunkInfo contains profile annotation & thunk id.
   //   batch_size       - Number of batches in the input tensor.
   //   num_elements     - Number of elements in each batch.
   //   k                - Number of top elements to select.
   //   dtype            - Data type of elements (e.g., F32, BF16).
   //   kernel_arguments - Kernel arguments holding buffer slices for
   //                      inputs/outputs.
-  SelectKThunk(const HloInstruction* inst, std::uint32_t batch_size,
+  SelectKThunk(ThunkInfo thunk_info, std::uint32_t batch_size,
                std::uint32_t num_elements, std::uint32_t k,
                xla::PrimitiveType dtype,
-               const emitters::KernelArguments& kernel_arguments,
-               ThunkId thunk_id);
+               const emitters::KernelArguments& kernel_arguments);
 
   std::string ToString(int indent) const override;
 
@@ -63,6 +63,10 @@ class SelectKThunk : public Thunk {
   }
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
+  static absl::StatusOr<std::unique_ptr<SelectKThunk>> FromProto(
+      ThunkInfo thunk_info, const SelectKThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
  private:
   std::uint32_t batch_size_;

@@ -44,7 +44,7 @@ TEST(CudaComputeCapabilityTest, ToString) {
   EXPECT_EQ(
       CudaComputeCapability(
           100, 52,
-          CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
+          CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures)
           .ToString(),
       "100.52f");
 }
@@ -65,13 +65,13 @@ TEST(CudaComputeCapabilityTest, FromString) {
                   100, 52, FeatureExtension::kAcceleratedFeatures)));
   EXPECT_THAT(CudaComputeCapability::FromString("100.52f"),
               IsOkAndHolds(CudaComputeCapability(
-                  100, 52, FeatureExtension::kForwardCompatibleFeatures)));
+                  100, 52, FeatureExtension::kFamilyCompatibleFeatures)));
   EXPECT_THAT(CudaComputeCapability::FromString("100.52F"),
               IsOkAndHolds(CudaComputeCapability(
-                  100, 52, FeatureExtension::kForwardCompatibleFeatures)));
+                  100, 52, FeatureExtension::kFamilyCompatibleFeatures)));
   EXPECT_THAT(CudaComputeCapability::FromString("100.52 f"),
               IsOkAndHolds(CudaComputeCapability(
-                  100, 52, FeatureExtension::kForwardCompatibleFeatures)));
+                  100, 52, FeatureExtension::kFamilyCompatibleFeatures)));
   EXPECT_THAT(CudaComputeCapability::FromString("1"),
               StatusIs(absl::StatusCode::kInvalidArgument));
   EXPECT_THAT(CudaComputeCapability::FromString("12"),
@@ -103,12 +103,12 @@ TEST(CudaComputeCapabilityTest, ToProto) {
   CudaComputeCapabilityProto proto2 =
       CudaComputeCapability(
           100, 5,
-          CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
+          CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures)
           .ToProto();
   EXPECT_EQ(proto2.major(), 100);
   EXPECT_EQ(proto2.minor(), 5);
   EXPECT_EQ(proto2.feature_extension(),
-            CudaComputeCapabilityProto::FORWARD_COMPATIBLE_FEATURES);
+            CudaComputeCapabilityProto::FAMILY_COMPATIBLE_FEATURES);
 }
 
 TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionUnspecified) {
@@ -167,7 +167,7 @@ TEST(CudaComputeCapabilityTest, IsAtLeastMethods) {
   // IsAtLeastAmpere (sm_80)
   EXPECT_FALSE(CudaComputeCapability(7, 5).IsAtLeastAmpere());
   EXPECT_FALSE(
-      CudaComputeCapability(7, 5, FeatureExtension::kForwardCompatibleFeatures)
+      CudaComputeCapability(7, 5, FeatureExtension::kFamilyCompatibleFeatures)
           .IsAtLeastAmpere());
   EXPECT_TRUE(CudaComputeCapability(8, 0).IsAtLeastAmpere());
   EXPECT_TRUE(
@@ -188,28 +188,13 @@ TEST(CudaComputeCapabilityTest, IsAtLeastMethods) {
   // IsAtLeastBlackwell (sm_100)
   EXPECT_FALSE(CudaComputeCapability(9, 0).IsAtLeastBlackwell());
   EXPECT_FALSE(
-      CudaComputeCapability(9, 0, FeatureExtension::kForwardCompatibleFeatures)
+      CudaComputeCapability(9, 0, FeatureExtension::kFamilyCompatibleFeatures)
           .IsAtLeastBlackwell());
   EXPECT_TRUE(CudaComputeCapability(10, 0).IsAtLeastBlackwell());
   EXPECT_TRUE(
       CudaComputeCapability(10, 0, FeatureExtension::kAcceleratedFeatures)
           .IsAtLeastBlackwell());
   EXPECT_TRUE(CudaComputeCapability(10, 1).IsAtLeastBlackwell());
-
-  // IsAtLeastBlackwellPro (sm_120)
-  EXPECT_FALSE(CudaComputeCapability(11, 0).IsAtLeastBlackwellPro());
-  EXPECT_FALSE(
-      CudaComputeCapability(11, 0, FeatureExtension::kForwardCompatibleFeatures)
-          .IsAtLeastBlackwellPro());
-  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
-  EXPECT_TRUE(
-      CudaComputeCapability(12, 0, FeatureExtension::kAcceleratedFeatures)
-          .IsAtLeastBlackwellPro());
-  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
-  EXPECT_TRUE(CudaComputeCapability(12, 0).IsAtLeastBlackwellPro());
-  EXPECT_TRUE(
-      CudaComputeCapability(12, 0, FeatureExtension::kForwardCompatibleFeatures)
-          .IsAtLeastBlackwellPro());
 }
 
 TEST(CudaComputeCapabilityTest, FromProtoWithFeatureExtensionSpecified) {
@@ -231,16 +216,16 @@ TEST(CudaComputeCapabilityTest, Hash) {
   EXPECT_TRUE(absl::VerifyTypeImplementsAbslHashCorrectly({
       CudaComputeCapability(0, 0),
       CudaComputeCapability(0, 0, FeatureExtension::kAcceleratedFeatures),
-      CudaComputeCapability(0, 0, FeatureExtension::kForwardCompatibleFeatures),
+      CudaComputeCapability(0, 0, FeatureExtension::kFamilyCompatibleFeatures),
       CudaComputeCapability(0, 1),
       CudaComputeCapability(0, 1, FeatureExtension::kAcceleratedFeatures),
-      CudaComputeCapability(0, 1, FeatureExtension::kForwardCompatibleFeatures),
+      CudaComputeCapability(0, 1, FeatureExtension::kFamilyCompatibleFeatures),
       CudaComputeCapability(1, 0),
       CudaComputeCapability(1, 0, FeatureExtension::kAcceleratedFeatures),
-      CudaComputeCapability(1, 0, FeatureExtension::kForwardCompatibleFeatures),
+      CudaComputeCapability(1, 0, FeatureExtension::kFamilyCompatibleFeatures),
       CudaComputeCapability(1, 1),
       CudaComputeCapability(1, 1, FeatureExtension::kAcceleratedFeatures),
-      CudaComputeCapability(1, 1, FeatureExtension::kForwardCompatibleFeatures),
+      CudaComputeCapability(1, 1, FeatureExtension::kFamilyCompatibleFeatures),
   }));
 }
 
@@ -256,12 +241,12 @@ TEST(CudaComputeCapabilityTest, ComparisonTest) {
   CudaComputeCapability base_but_accelerated{
       1, 0, FeatureExtension::kAcceleratedFeatures};
   CudaComputeCapability base_but_forward_compatible{
-      1, 0, FeatureExtension::kForwardCompatibleFeatures};
+      1, 0, FeatureExtension::kFamilyCompatibleFeatures};
   CudaComputeCapability newer_but_same_generation{1, 1};
   CudaComputeCapability newer_but_same_generation_accelerated{
       1, 1, FeatureExtension::kAcceleratedFeatures};
   CudaComputeCapability newer_but_same_generation_compatible{
-      1, 1, FeatureExtension::kForwardCompatibleFeatures};
+      1, 1, FeatureExtension::kFamilyCompatibleFeatures};
   CudaComputeCapability next_generation{2, 0};
 
   EXPECT_TRUE(base == base);
@@ -340,7 +325,7 @@ TEST(CudaComputeCapabilityTest, GetPtxAsTargetName) {
   EXPECT_EQ(
       CudaComputeCapability(
           10, 0,
-          CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
+          CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures)
           .GetPtxAsTargetName(),
       "sm_100f");
 }
@@ -358,7 +343,7 @@ TEST(CudaComputeCapabilityTest, WithoutAnyFeatureExtension) {
   EXPECT_EQ(
       CudaComputeCapability(
           100, 52,
-          CudaComputeCapability::FeatureExtension::kForwardCompatibleFeatures)
+          CudaComputeCapability::FeatureExtension::kFamilyCompatibleFeatures)
           .WithoutAnyFeatureExtension(),
       CudaComputeCapability(100, 52));
 }

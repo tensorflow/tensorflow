@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_norm_runner.pb.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/lazy_op_runner.h"
 #include "xla/stream_executor/stream.h"
@@ -66,7 +66,7 @@ struct GpuNormDescriptor {
   std::optional<Shape> dy_shape;
   std::optional<Shape> dscale_shape;
   std::optional<Shape> dbias_shape;
-  size_t scratch_size;
+  Shape scratch_shape;
 
   static absl::StatusOr<GpuNormDescriptor> FromProto(
       const GpuNormDescriptorProto& proto);
@@ -186,16 +186,16 @@ struct RunNormOptions {
 };
 
 absl::Status RunGpuNorm(const GpuNormConfig& conv_config,
-                        const se::DeviceMemoryBase& x_buffer,
-                        const se::DeviceMemoryBase& scale_buffer,
-                        const se::DeviceMemoryBase& y_or_dx_buffer,
-                        std::optional<se::DeviceMemoryBase> bias_buffer,
-                        std::optional<se::DeviceMemoryBase> dy_buffer,
-                        std::optional<se::DeviceMemoryBase> expectation_buffer,
-                        std::optional<se::DeviceMemoryBase> norm_factor_buffer,
-                        std::optional<se::DeviceMemoryBase> dscale_buffer,
-                        std::optional<se::DeviceMemoryBase> dbias_buffer,
-                        const se::DeviceMemoryBase& scratch_memory,
+                        const se::DeviceAddressBase& x_buffer,
+                        const se::DeviceAddressBase& scale_buffer,
+                        const se::DeviceAddressBase& y_or_dx_buffer,
+                        std::optional<se::DeviceAddressBase> bias_buffer,
+                        std::optional<se::DeviceAddressBase> dy_buffer,
+                        std::optional<se::DeviceAddressBase> expectation_buffer,
+                        std::optional<se::DeviceAddressBase> norm_factor_buffer,
+                        std::optional<se::DeviceAddressBase> dscale_buffer,
+                        std::optional<se::DeviceAddressBase> dbias_buffer,
+                        const se::DeviceAddressBase& scratch_memory,
                         se::Stream* stream, RunNormOptions options = {});
 
 }  // namespace gpu

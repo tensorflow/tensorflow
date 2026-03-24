@@ -398,3 +398,13 @@ func.func @constant_vector() -> vector<2x3xf32> {
 // CHECK-LABEL: func.func @constant_vector
 // CHECK-SAME: -> vector<6xf32>
 // CHECK-NOT:  builtin.unrealized_conversion_cast
+
+// -----
+
+func.func @get_dynamic_dim_size(%in: tensor<16x8x4xf32>) -> (i32) {
+  %out = xla.get_dynamic_dim_size %in 1 : tensor<16x8x4xf32>
+  func.return %out : i32
+}
+// CHECK-LABEL: func.func @get_dynamic_dim_size(
+// CHECK-SAME:      %[[TENSOR:.*]]: tensor<512xf32>) -> i32 {
+// CHECK:         xla.get_dynamic_dim_size %[[TENSOR]] 1 : tensor<512xf32>

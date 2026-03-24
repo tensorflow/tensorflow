@@ -17,14 +17,18 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/base/no_destructor.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/lib/Target/SPIRV/MCTargetDesc/SPIRVBaseInfo.h"
 #include "llvm/lib/Target/SPIRV/SPIRVAPI.h"
+#include "llvm/lib/Target/SPIRV/SPIRVCommandLine.h"
 #include "xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "tsl/platform/errors.h"
@@ -70,10 +74,29 @@ std::vector<std::string> GetSPIRVBackendOptions(
   return backend_llvm_opts;
 }
 
+std::vector<std::string> RemoveUnsupportedExtensionsFromAll(
+    llvm::Triple triple,
+    const std::vector<std::string> unsupported_extensions) {
+  std::set<std::string> extensions;
+  auto valid_extensions =
+      llvm::SPIRVExtensionsParser::getValidExtensions(triple);
+
+  for (auto& ext : valid_extensions) {
+    extensions.insert(llvm::getSymbolicOperandMnemonic(
+        llvm::SPIRV::OperandCategory::ExtensionOperand, ext));
+  }
+
+  for (auto& ext : unsupported_extensions) {
+    extensions.erase(ext);
+  }
+  return std::vector<std::string>(extensions.begin(), extensions.end());
+}
+
 absl::StatusOr<std::string> CompileToSPIRV(
     llvm::Module* module, stream_executor::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options) {
   static absl::once_flag backend_init_flag;
+  static absl::NoDestructor<std::vector<std::string>> spirv_extensions;
   absl::call_once(backend_init_flag, SPIRVBackendInit);
   auto llvm_opts = GetSPIRVBackendOptions(debug_options);
   llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_opts);
@@ -138,6 +161,15 @@ absl::StatusOr<std::string> CompileToSPIRV(
   }
 
   llvm::Triple default_target_triple("spirv64-unknown-unknown");
+  // List of extensions to block during module translation.
+  // Block SPV_KHR_float_controls2 extension because the current L0 drivers lack
+  // the needed translation support.
+  const std::vector<std::string> unsupported_extensions = {
+      "SPV_KHR_float_controls2"};
+  if (spirv_extensions->empty()) {
+    *spirv_extensions = RemoveUnsupportedExtensionsFromAll(
+        default_target_triple, unsupported_extensions);
+  }
   std::unique_ptr<llvm::TargetMachine> target_machine =
       GetTargetMachine(default_target_triple, "", debug_options, "");
   TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
@@ -153,10 +185,9 @@ absl::StatusOr<std::string> CompileToSPIRV(
 
   std::string spirv_str;
   std::string spirv_err_msg;
-  std::vector<std::string> spirv_extensions{"all"};
   std::vector<std::string> spirv_options{default_target_triple.str()};
   bool spirv_success = llvm::SPIRVTranslateModule(
-      module, spirv_str, spirv_err_msg, spirv_extensions, spirv_options);
+      module, spirv_str, spirv_err_msg, *spirv_extensions, spirv_options);
   if (!spirv_success) {
     return absl::AbortedError("Failed to translate LLVM module to SPIRV.");
   }

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/ffi.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/core/host_offloading/host_offloading_buffer.h"
@@ -416,7 +417,7 @@ TEST_P(HostOffloadingRuntimeExecutableTest, FfiWithThreadpool) {
       auto computation,
       CompileFromString(hlo, host_offloading_executable_type));
 
-  Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::F32, {1});
+  Shape shape = ShapeUtil::MakeShape(xla::PrimitiveType::S32, {});
   auto result_literal = LiteralUtil::CreateR0<int32_t>(0);
 
   ShapeTree<HostOffloadingBuffer> result(

@@ -44,12 +44,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/tsl/lib/gtl/value_or_die.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -399,7 +397,7 @@ struct PostorderDFSVisitor {
   bool IsInstructionOverLimit(const HloInstructionProto* proto,
                               const InferenceContext& context) {
     auto shape = Shape::FromProto(proto->shape());
-    TF_CHECK_OK(shape.status());
+    CHECK_OK(shape.status());
     auto subshape = std::make_unique<Shape>(
         ShapeUtil::GetSubshape(*shape, context.shape_index));
 
@@ -411,7 +409,8 @@ struct PostorderDFSVisitor {
     for (int64_t operand_id : proto->operand_ids()) {
       const HloInstructionProto* operand =
           handle_to_instruction(operand_id).value();
-      auto operand_shape = std::make_unique<Shape>(operand->shape());
+      auto operand_shape = Shape::FromProto(operand->shape());
+      CHECK_OK(operand_shape.status());
 
       if (operand_shape->IsArray() &&
           ShapeUtil::ElementsIn(*operand_shape) > kLargeShapeElementLimit &&
@@ -1715,7 +1714,12 @@ absl::StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
   TF_ASSIGN_OR_RETURN(auto* inst, builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(inst->opcode()));
   std::vector<Literal> operands;
-  auto output_shape = std::make_unique<const Shape>(inst->shape());
+  std::unique_ptr<Shape> output_shape;
+  {
+    TF_ASSIGN_OR_RETURN(auto output_shape_stack,
+                        Shape::FromProto(inst->shape()));
+    output_shape = std::make_unique<Shape>(std::move(output_shape_stack));
+  }
   switch (opcode) {
     case HloOpcode::kSlice:
     case HloOpcode::kConcatenate:
