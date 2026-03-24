@@ -24,7 +24,6 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 
@@ -32,12 +31,10 @@ namespace xla::gpu {
 
 // Emit a constant with a given number of element, given byte size of the
 // element, given symbol name and content.
-GpuExecutable::ConstantInfo AppendGlobalConstant(llvm::Module* module,
-                                                 int64_t num_elements,
-                                                 int64_t bytes_per_element,
-                                                 absl::string_view symbol_name,
-                                                 int allocation_idx,
-                                                 DenseDataIntermediate content);
+void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
+                          int64_t bytes_per_element,
+                          absl::string_view symbol_name, int allocation_idx,
+                          DenseDataIntermediate content, bool emit_initializer);
 
 absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
     const HloSortInstruction* sort, llvm::Module* llvm_module,

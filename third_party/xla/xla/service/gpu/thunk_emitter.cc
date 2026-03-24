@@ -285,9 +285,22 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConstant(
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       GetAllocationSliceForHlo(instr, {}));
 
-  GpuExecutable::ConstantInfo info =
-      AppendGlobalConstant(constants_module_.get(), num_elements, element_bytes,
-                           global_name, slice.index(), std::move(content));
+  // LLVM and PTXAS don't deal well with large constants, so we only emit very
+  // small constants directly in LLVM IR.  Larger constants are emitted with
+  // zero initializers in LLVM IR and are later overwritten when the PTX/CUBIN
+  // is loaded.
+  bool should_emit_initializer = num_elements <= 1;
+  AppendGlobalConstant(constants_module_.get(), num_elements, element_bytes,
+                       global_name, slice.index(), content,
+                       should_emit_initializer);
+
+  GpuExecutable::ConstantInfo info;
+  info.symbol_name.assign(global_name);
+  info.allocation_index = slice.index();
+  if (!should_emit_initializer) {
+    info.content = content;
+  }
+
   ir_emitter_context_->constants().push_back(std::move(info));
   return ThunkSequence{};
 }

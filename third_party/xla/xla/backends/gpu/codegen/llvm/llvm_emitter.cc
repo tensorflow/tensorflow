@@ -70,7 +70,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/hlo_to_ir_bindings.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/ir_emitter_context.h"
@@ -88,7 +87,6 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/fingerprint.h"
@@ -415,7 +413,6 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
 // Emits constants to generated LLVM IR, and also populates related information
 // to 'ir_emitter_context' for large-constant initializations.
 absl::Status EmitConstants(llvm::Module* module,
-                           IrEmitterContext* ir_emitter_context,
                            const HloComputation& computation) {
   for (HloInstruction* instr : computation.instructions()) {
     if (instr->opcode() != HloOpcode::kConstant) {
@@ -434,13 +431,13 @@ absl::Status EmitConstants(llvm::Module* module,
     std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
 
     auto base = static_cast<const uint8_t*>(literal.untyped_data());
-    GpuExecutable::ConstantInfo info = AppendGlobalConstant(
+    AppendGlobalConstant(
         module, literal.element_count(),
         ShapeUtil::ByteSizeOfPrimitiveType(literal.shape().element_type()),
         global_name, /*allocation_idx=*/-1,
         DenseDataIntermediate::Alias(
-            absl::MakeSpan(base, base + literal.size_bytes())));
-    ir_emitter_context->constants().push_back(std::move(info));
+            absl::MakeSpan(base, base + literal.size_bytes())),
+        /*emit_initializer=*/true);
   }
   return absl::OkStatus();
 }
@@ -461,8 +458,7 @@ absl::StatusOr<llvm::Function*> IrEmitter::CodegenNestedComputation(
     return function;
   }
 
-  RETURN_IF_ERROR(
-      EmitConstants(module_, ir_emitter_context_, nested_computation));
+  RETURN_IF_ERROR(EmitConstants(module_, nested_computation));
   std::vector<const HloInstruction*> io_hlos;
   std::vector<llvm::Type*> argument_types;
   std::vector<int64_t> argument_dereferenceable_bytes;
@@ -689,16 +685,11 @@ void CreateStore(llvm::Value* data, llvm::Value* address, int alignment_bytes,
 
 }  // namespace
 
-GpuExecutable::ConstantInfo AppendGlobalConstant(
-    llvm::Module* module, int64_t num_elements, int64_t bytes_per_element,
-    absl::string_view symbol_name, int allocation_idx,
-    DenseDataIntermediate content) {
-  // LLVM and PTXAS don't deal well with large constants, so we only emit very
-  // small constants directly in LLVM IR.  Larger constants are emitted with
-  // zero initializers in LLVM IR and are later overwritten when the PTX/CUBIN
-  // is loaded.
-  bool should_emit_initializer = num_elements <= 1;
-
+void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
+                          int64_t bytes_per_element,
+                          absl::string_view symbol_name, int allocation_idx,
+                          DenseDataIntermediate content,
+                          bool emit_initializer) {
   llvm::IRBuilder<> b(module->getContext());
   // Ptxas has issues if the constant allocation is smaller than 64 bytes.
   // TODO(b/253259975): Remove when fixed ptxas version is submitted.
@@ -710,10 +701,9 @@ GpuExecutable::ConstantInfo AppendGlobalConstant(
       b.getInt8Ty(),
       std::max(num_elements * bytes_per_element, kMinConstAllocationInBytes));
 
-  GpuExecutable::ConstantInfo info;
   llvm::Constant* initializer = [&]() -> llvm::Constant* {
-    if (!should_emit_initializer) {
-      info.content = std::move(content);
+    if (!emit_initializer) {
+      // Content is filled by GpuExecutable during initialization.
       return llvm::ConstantAggregateZero::get(global_type);
     }
 
@@ -736,19 +726,15 @@ GpuExecutable::ConstantInfo AppendGlobalConstant(
   //
   // We may have to be more clever here in the future if we notice that we're
   // keeping around too many globals because of their linkage.
-  auto* global_for_const = new llvm::GlobalVariable(
-      global_type, /*isConstant=*/should_emit_initializer,
-      llvm::GlobalValue::ExternalLinkage,
-      /*Initializer=*/initializer, symbol_name,
-      /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/addrspace,
-      /*isExternallyInitialized=*/false);
+  auto* global_for_const =
+      new llvm::GlobalVariable(global_type, /*isConstant=*/emit_initializer,
+                               llvm::GlobalValue::ExternalLinkage,
+                               /*Initializer=*/initializer, symbol_name,
+                               /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+                               /*AddressSpace=*/addrspace,
+                               /*isExternallyInitialized=*/false);
   global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
   module->insertGlobalVariable(global_for_const);
-
-  info.symbol_name.assign(symbol_name);
-  info.allocation_index = allocation_idx;
-  return info;
 }
 
 absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
