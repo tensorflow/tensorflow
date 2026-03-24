@@ -431,13 +431,6 @@ bool shouldOpenDims(ArrayRef<bool> allowPropagationToTensors, int64_t index) {
   return allowPropagationToTensors[index];
 }
 
-// TODO(bixia): Use the function getTensorRank() from sdy/utils/utils.h.
-int64_t getRank(mlir::Type type) {
-  if (auto tensorType = llvm::dyn_cast<mlir::ShapedType>(type)) {
-    return tensorType.getRank();
-  }
-  return 0;
-}
 
 // Convert the shardings in `funcOp` from kXlaShardingAttr into kShardingAttr.
 LogicalResult importShardings(
@@ -450,10 +443,10 @@ LogicalResult importShardings(
             funcOp.getArgAttrOfType<StringAttr>(argNum, kXlaShardingAttr)) {
       funcOp.setArgAttr(
           argNum, kShardingAttr,
-          convertToSdySharding(parseShardingFromString(oldSharding), globalMesh,
-                               deviceIdToMaximalMeshName, getRank(argType),
-                               shouldOpenDims(allowPropagationToArgs, argNum),
-                               inlineMesh));
+          convertToSdySharding(
+              parseShardingFromString(oldSharding), globalMesh,
+              deviceIdToMaximalMeshName, mlir::sdy::getTensorRank(argType),
+              shouldOpenDims(allowPropagationToArgs, argNum), inlineMesh));
       funcOp.removeArgAttr(argNum, kXlaShardingAttr);
     }
   }
@@ -465,7 +458,7 @@ LogicalResult importShardings(
           resNum, kShardingAttr,
           convertToSdySharding(
               parseShardingFromString(oldSharding), globalMesh,
-              deviceIdToMaximalMeshName, getRank(resType),
+              deviceIdToMaximalMeshName, mlir::sdy::getTensorRank(resType),
               shouldOpenDims(allowPropagationToResults, resNum), inlineMesh));
       funcOp.removeResultAttr(
           resNum, StringAttr::get(funcOp.getContext(), kXlaShardingAttr));
@@ -483,10 +476,10 @@ LogicalResult importShardings(
       newShardings.reserve(op->getNumResults());
       for (const auto& [resHloSharding, resType] :
            llvm::zip_equal(flatHloSharding, op->getResultTypes())) {
-        newShardings.push_back(
-            convertToSdySharding(resHloSharding, globalMesh,
-                                 deviceIdToMaximalMeshName, getRank(resType),
-                                 /*openDims=*/false, inlineMesh));
+        newShardings.push_back(convertToSdySharding(
+            resHloSharding, globalMesh, deviceIdToMaximalMeshName,
+            mlir::sdy::getTensorRank(resType),
+            /*openDims=*/false, inlineMesh));
       }
       mlir::sdy::setShardings(op, newShardings);
       op->removeAttr(kXlaShardingAttr);
