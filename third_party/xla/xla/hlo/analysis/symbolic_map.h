@@ -18,14 +18,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <ostream>
 #include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
@@ -174,6 +176,17 @@ class SymbolicMap {
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const SymbolicMap& map) {
     sink.Append(map.ToString());
+  }
+
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                       const SymbolicMap& map) {
+    os << map.ToString();
+    return os;
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const SymbolicMap& map) {
+    os << map.ToString();
+    return os;
   }
 
  private:
