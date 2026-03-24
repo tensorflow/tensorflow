@@ -1414,13 +1414,18 @@ message DebugOptions {
   // If true, use MultiGpuBarrierKernel in one-shot RaggedAllToAll thunk.
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier = 450;
 
+  // If true, use MultiGpuBarrierWithNcclKernel in one-shot RaggedAllToAll
+  // thunk.
+  optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
+      462;
+
   // If true, enable experimental tiling propagation.
   optional bool xla_gpu_experimental_enable_tiling_propagation = 456;
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 462
+  // Next id: 463
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

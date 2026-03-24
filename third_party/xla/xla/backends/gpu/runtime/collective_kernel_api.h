@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 
@@ -39,6 +40,11 @@ namespace xla::gpu {
 absl::Status LaunchMultiGpuBarrier(
     stream_executor::Stream* stream, int64_t num_devices, RankId rank,
     const std::vector<stream_executor::DeviceAddressBase>& barrier_addresses,
+    stream_executor::DeviceAddressBase local_barrier_signal_value);
+
+absl::Status LaunchMultiGpuBarrierWithNccl(
+    stream_executor::Stream* stream, int64_t num_devices, RankId rank,
+    xla::SymmetricMemory* symmetric_memory,
     stream_executor::DeviceAddressBase local_barrier_signal_value);
 
 // Returns the size of the barrier signal buffer in bytes.

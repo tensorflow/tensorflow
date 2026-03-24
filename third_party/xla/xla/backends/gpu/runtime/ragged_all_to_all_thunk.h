@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -96,6 +98,9 @@ struct RaggedAllToAllStreamState {
   // Peers write specific slots in this array to signal this device.
   std::unique_ptr<se::MemoryAllocation> barrier_signal_buffer;
 
+  // Reference to the symmetric memory handler for the barrier signal buffer.
+  tsl::TiedRef<xla::SymmetricMemory> barrier_signal_symmetric_memory;
+
   // MultiGpuBarrier: Device memory for the current local step counter.
   // This value is incremented locally by the kernel after every barrier.
   std::unique_ptr<se::MemoryAllocation> barrier_signal_value;
@@ -123,12 +128,13 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
                            const HloRaggedAllToAllInstruction* instr,
                            std::vector<Buffer> buffers,
                            bool p2p_memcpy_enabled);
-  RaggedAllToAllStartThunk(ThunkInfo thunk_info,
-                           const RaggedAllToAllConfig& config,
-                           std::shared_ptr<AsyncEvents> async_events,
-                           std::vector<CollectiveThunk::Buffer> buffers,
-                           bool one_shot_kernel_enabled,
-                           bool use_multi_gpu_barrier_in_one_shot_kernel);
+  RaggedAllToAllStartThunk(
+      ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
+      std::shared_ptr<AsyncEvents> async_events,
+      std::vector<CollectiveThunk::Buffer> buffers,
+      bool one_shot_kernel_enabled,
+      bool use_multi_gpu_barrier_in_one_shot_kernel,
+      bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel);
 
   // Returns whether the given instruction can be lowered to a nccl
   // ragged-all-to-all call.
@@ -155,6 +161,10 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
 
   bool use_multi_gpu_barrier_in_one_shot_kernel() const {
     return use_multi_gpu_barrier_in_one_shot_kernel_;
+  }
+
+  bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() const {
+    return use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_;
   }
 
   // Returns true if one shot kernel is supported
@@ -197,6 +207,7 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   const std::vector<Buffer> buffers_;
   const bool one_shot_kernel_enabled_;
   const bool use_multi_gpu_barrier_in_one_shot_kernel_;
+  const bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_;
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,
@@ -261,6 +272,17 @@ absl::Status RunOneShotRaggedAllToAll(
 absl::Status RunOneShotRaggedAllToAll(
     const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
     const se::DeviceAddressBase& barrier_signal_buffer,
+    const se::DeviceAddressBase& barrier_signal_value,
+    int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
+    absl::Span<DeviceBufferPair const> buffers,
+    const std::vector<RaggedAllToAllRendezvousValue>& participants);
+
+// It utilizes `MultiGpuBarrierWithNcclKernel` to enforce device-side
+// synchronization. This ensures input/output buffers are safe to access without
+// requiring Event-based coordination, enabling compatibility with CUDA Graphs.
+absl::Status RunOneShotRaggedAllToAllWithNccl(
+    const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
+    std::shared_ptr<xla::SymmetricMemory> barrier_signal_symmetric_memory,
     const se::DeviceAddressBase& barrier_signal_value,
     int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
     absl::Span<DeviceBufferPair const> buffers,

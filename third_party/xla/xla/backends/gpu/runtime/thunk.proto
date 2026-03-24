@@ -335,6 +335,7 @@ message RaggedAllToAllStartThunkProto {
   int64 num_row_elements = 6;
   bool one_shot_kernel_enabled = 7;
   bool use_multi_gpu_barrier_in_one_shot_kernel = 8;
+  bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = 9;
 }
 
 message CollectivePermuteStartThunkProto {

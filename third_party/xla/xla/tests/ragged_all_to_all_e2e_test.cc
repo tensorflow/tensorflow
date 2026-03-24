@@ -57,6 +57,7 @@ enum class RaggedAllToAllImplType {
   kDecomposer,
   kOneShot,
   kOneShotWithMultiGpuBarrier,
+  kOneShotWithMultiGpuBarrierWithNccl,
 };
 
 class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
@@ -234,6 +235,12 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     if (impl_type_ == RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
+    }
+    if (impl_type_ ==
+        RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl) {
+      opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
+      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
+          true);
     }
     return opts;
   }
@@ -901,6 +908,8 @@ std::string RaggedAllToAllImplTypeName(
       return "one_shot";
     case RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier:
       return "one_shot_with_multi_gpu_barrier";
+    case RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl:
+      return "one_shot_with_multi_gpu_barrier_with_nccl";
     default:
       LOG(FATAL) << "Unknown ragged all-to-all implementation type.";
   }
@@ -910,10 +919,11 @@ INSTANTIATE_TEST_SUITE_P(
     RaggedAllToAllTest, RaggedAllToAllTest,
     ::testing::Combine(
         ::testing::Bool(),
-        ::testing::Values(RaggedAllToAllImplType::kNccl,
-                          RaggedAllToAllImplType::kDecomposer,
-                          RaggedAllToAllImplType::kOneShot,
-                          RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier)),
+        ::testing::Values(
+            RaggedAllToAllImplType::kNccl, RaggedAllToAllImplType::kDecomposer,
+            RaggedAllToAllImplType::kOneShot,
+            RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier,
+            RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl)),
     [](const ::testing::TestParamInfo<std::tuple<bool, RaggedAllToAllImplType>>&
            info) {
       return absl::StrCat(std::get<0>(info.param) ? "async" : "sync", "_",
