@@ -20,13 +20,17 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "third_party/re2/re2.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
+#include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
