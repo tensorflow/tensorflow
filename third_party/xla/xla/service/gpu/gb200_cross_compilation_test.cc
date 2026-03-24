@@ -104,6 +104,13 @@ TEST_F(Gb200CrossCompilationTest, CrossCompilationToB200) {
   EXPECT_FALSE(AutotunerCache::ResultCacheIsEmpty());
 }
 
+TEST_F(Gb200CrossCompilationTest, CrossCompilationToRTX6000PRO) {
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CompiledModule> result,
+                       CrossCompileTo(GpuModel::RTX6000PRO));
+  // Verify that the auto tuner ran.
+  EXPECT_FALSE(AutotunerCache::ResultCacheIsEmpty());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
