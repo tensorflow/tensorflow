@@ -148,14 +148,16 @@ absl::StatusOr<bool> EquivalentLayouts(DType dtype1, const Shape& shape1,
     }
     // TODO(hyeontaek): Change to IFRT `Layout` comparison once
     // we add `Client::GetDefaultLayout()` that returns a `CustomLayoutRef`.
+    TF_ASSIGN_OR_RETURN(Shape shard_shape1, sharding1->GetShardShape(shape1));
+    TF_ASSIGN_OR_RETURN(Shape shard_shape2, sharding2->GetShardShape(shape2));
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout1,
-        device1->client()->GetDefaultPjRtLayout(dtype1, shape1.dims(), device1,
-                                                sharding1->memory_kind()));
+        device1->client()->GetDefaultPjRtLayout(
+            dtype1, shard_shape1.dims(), device1, sharding1->memory_kind()));
     TF_ASSIGN_OR_RETURN(
         std::shared_ptr<const xla::PjRtLayout> pjrt_layout2,
-        device2->client()->GetDefaultPjRtLayout(dtype2, shape2.dims(), device2,
-                                                sharding2->memory_kind()));
+        device2->client()->GetDefaultPjRtLayout(
+            dtype2, shard_shape2.dims(), device2, sharding2->memory_kind()));
     return *pjrt_layout1 == *pjrt_layout2;
   }
   if (layout1 != nullptr && layout2 != nullptr) {
